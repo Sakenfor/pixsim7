@@ -3,6 +3,8 @@ import { lazy } from 'react';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
+import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
+
 import type { Module } from '@app/modules/types';
 
 /** Open Plugin Manager action */
@@ -49,6 +51,6 @@ export const pluginWorkspaceModule: Module = {
     category: 'development',
     featureId: 'plugin-workspace',
     hidden: true,
-    component: lazy(() => import('../../../routes/PluginWorkspace').then(m => ({ default: m.PluginWorkspaceRoute }))),
+    component: DevtoolsRedirect,
   },
 };

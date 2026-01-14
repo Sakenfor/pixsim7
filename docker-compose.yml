@@ -110,25 +110,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Admin Panel (Web UI)
-  admin:
-    build:
-      context: ./admin
-      dockerfile: Dockerfile
-    container_name: pixsim7-admin
-    depends_on:
-      - backend
-    environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8001/api/v1}
-      VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8001/ws}
-    ports:
-      - "${ADMIN_PORT:-8002}:5173"  # Configurable, default 8002
-    volumes:
-      - ./admin:/app
-      - /app/node_modules
-    command: npm run dev -- --host 0.0.0.0
-    restart: unless-stopped
-
 volumes:
   postgres_data:
   redis_data:

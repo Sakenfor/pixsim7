@@ -11,11 +11,11 @@ from pathlib import Path
 from PySide6.QtCore import QObject
 
 try:
-    from .services import ServiceDef, build_services_with_fallback
+    from .services import ServiceDef, build_services_from_manifests
     from .qt_bridge import QtEventBridge
     from .config import ROOT, UIState, load_ui_state
 except ImportError:
-    from services import ServiceDef, build_services_with_fallback
+    from services import ServiceDef, build_services_from_manifests
     from qt_bridge import QtEventBridge
     from config import ROOT, UIState, load_ui_state
 
@@ -55,13 +55,19 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
     if service_def.key == "db":
         # DB is detached (docker-compose runs in background)
         is_detached = True
+        compose_file = None
+        if "-f" in service_def.args:
+            idx = service_def.args.index("-f")
+            if idx + 1 < len(service_def.args):
+                compose_file = service_def.args[idx + 1]
+        if not compose_file:
+            compose_file = os.path.join(ROOT, "docker-compose.db-only.yml")
 
         def db_start(state):
             """Custom start for docker-compose."""
             from launcher.core.types import ServiceStatus, HealthStatus
             try:
                 from scripts.launcher_gui.docker_utils import compose_up_detached
-                compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
                 ok, out = compose_up_detached(compose_file)
                 if ok:
                     state.status = ServiceStatus.RUNNING
@@ -83,7 +89,6 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
             from launcher.core.types import ServiceStatus, HealthStatus
             try:
                 from scripts.launcher_gui.docker_utils import compose_down
-                compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
                 ok, _ = compose_down(compose_file)
                 state.status = ServiceStatus.STOPPED
                 state.health = HealthStatus.STOPPED
@@ -97,7 +102,6 @@ def convert_service_def(service_def: ServiceDef) -> ServiceDefinition:
             """Custom health check for docker-compose."""
             try:
                 from scripts.launcher_gui.docker_utils import compose_ps
-                compose_file = os.path.join(ROOT, 'docker-compose.db-only.yml')
                 ok, stdout = compose_ps(compose_file)
                 if ok and stdout:
                     out = stdout.lower()
@@ -141,7 +145,7 @@ class LauncherFacade(QObject):
         super().__init__(parent)
 
         # Load service definitions
-        service_defs = build_services_with_fallback()
+        service_defs = build_services_from_manifests()
         core_services = [convert_service_def(sd) for sd in service_defs]
 
         # Create Qt event bridge

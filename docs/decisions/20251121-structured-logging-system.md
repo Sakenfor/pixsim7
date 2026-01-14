@@ -31,7 +31,7 @@ Without structured logging:
 - Must support multiple services (backend, worker, frontend)
 - Must handle high-volume events without overwhelming storage
 - Must redact sensitive data automatically
-- Must enable real-time log viewing in admin panel
+- Must enable real-time log viewing in developer tools UI
 - Must store logs in database for querying and analysis
 
 ### Alternatives Considered
@@ -129,7 +129,7 @@ PixSim7 implements a **custom structured logging system** with these components:
    - Logs written to files: `data/logs/pixsim7.log`
    - Background worker ingests logs into PostgreSQL
    - `log` table with JSONB column for flexible querying
-   - Admin panel provides real-time log viewer
+   - Developer tools UI provides real-time log viewer
 
 ### Usage Pattern
 
@@ -253,7 +253,7 @@ This system was built from the start. Ongoing work:
 1. ✅ Implement in backend services (complete)
 2. ✅ Implement in workers (complete)
 3. ✅ Database ingestion (complete)
-4. ✅ Admin panel log viewer (complete)
+4. ✅ Developer log viewer (complete)
 5. ⏳ Implement in frontend (in progress)
 6. ⏳ Add log retention policy (future)
 7. ⏳ Add log analytics dashboard (future)
@@ -272,7 +272,7 @@ This system was built from the start. Ongoing work:
 - **`pixsim7/backend/main/services/submission/pipeline.py`** - Pipeline stage logging
 - **`pixsim7/backend/main/services/provider/adapters/pixverse.py`** - Provider logging
 - **`pixsim7/backend/main/api/v1/logs.py`** - Log ingestion endpoint
-- **`admin/src/routes/logs/`** - Admin log viewer
+- **`launcher/gui/`** - Launcher log view
 
 ### Docs
 - **`AI_README.md`** (lines 130-135) - Logging system overview

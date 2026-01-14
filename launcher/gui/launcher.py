@@ -22,7 +22,7 @@ _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file_
 load_dotenv(_env_path)
 
 try:
-    from .services import build_services_with_fallback, ServiceDef
+    from .services import build_services_from_manifests, ServiceDef
     from .config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
@@ -38,7 +38,7 @@ try:
     from .dialogs.log_management_dialog import show_log_management_dialog
 except ImportError:
     # Fallback for running directly
-    from services import build_services_with_fallback, ServiceDef
+    from services import build_services_from_manifests, ServiceDef
     from config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
@@ -233,7 +233,7 @@ class LauncherWindow(QWidget):
         # Apply window flags (always on top)
         self._apply_window_flags()
 
-        self.services = build_services_with_fallback()
+        self.services = build_services_from_manifests()
 
         # Initialize service management
         # Use new launcher_core if available, otherwise fall back to old implementation
@@ -1012,7 +1012,7 @@ class LauncherWindow(QWidget):
         self.status_label.setText(
             f"{status_emoji} {running_count}/{len(self.processes)} running "
             f"({healthy_count} healthy) • "
-            f"Backend:{p.backend} Admin:{p.admin} Frontend:{p.frontend}"
+            f"Backend:{p.backend} Frontend:{p.frontend}"
         )
 
     def selected_key(self) -> str | None:
@@ -1273,7 +1273,7 @@ class LauncherWindow(QWidget):
                 pass
 
         # Rebuild services and processes
-        self.services = build_services_with_fallback()
+        self.services = build_services_from_manifests()
         old_processes = self.processes
         self.processes = {}
 
@@ -1623,7 +1623,7 @@ class LauncherWindow(QWidget):
             pass
 
         try:
-            self.services = build_services_with_fallback()
+            self.services = build_services_from_manifests()
             old_processes = self.processes
             self.processes = {}
             for s in self.services:

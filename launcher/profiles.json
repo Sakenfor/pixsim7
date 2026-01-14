@@ -4,18 +4,19 @@
     "use_local_datastores": false,
     "ports": {
       "backend": 8000,
-      "admin": 8002,
+      "generation": 8001,
       "frontend": 5173,
       "game_frontend": 5174,
-      "game_service": 8050
+      "game_service": 8050,
+      "devtools": 5176
     },
     "base_urls": {
       "backend": "",
       "generation": "",
       "frontend": "",
-      "admin": "",
       "game_frontend": "",
-      "launcher": ""
+      "launcher": "",
+      "devtools": ""
     }
   },
   "https_local": {
@@ -23,18 +24,19 @@
     "use_local_datastores": false,
     "ports": {
       "backend": 8000,
-      "admin": 8002,
+      "generation": 8001,
       "frontend": 5173,
       "game_frontend": 5174,
-      "game_service": 8050
+      "game_service": 8050,
+      "devtools": 5176
     },
     "base_urls": {
       "backend": "https://api.pixsim7.local",
       "generation": "https://gen.pixsim7.local",
       "frontend": "https://app.pixsim7.local",
-      "admin": "https://admin.pixsim7.local",
       "game_frontend": "https://game.pixsim7.local",
-      "launcher": "https://launcher.pixsim7.local"
+      "launcher": "https://launcher.pixsim7.local",
+      "devtools": "https://dev.pixsim7.local"
     }
   }
 }

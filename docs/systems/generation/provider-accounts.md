@@ -84,7 +84,7 @@ class ProviderAccount(SQLModel):
 On job completion update latency (time from started_at to completed_at) for adaptive scheduling.
 
 Account Upgrade Flow:
-- User marks account as pro via admin panel or automatic detection (token capabilities).
+- User marks account as pro via devtools UI or automatic detection (token capabilities).
 - Backend recalculates max_concurrent_jobs and persists.
 - Frontend displays badge (e.g., PRO) and maybe a concurrency meter.
 

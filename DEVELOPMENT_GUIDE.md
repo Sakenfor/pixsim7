@@ -21,7 +21,7 @@ scripts\dev-up.bat
 
 # Access:
 # - Backend API: http://localhost:8001/docs
-# - Admin Panel: http://localhost:5173
+# - Frontend: http://localhost:5173
 # - Health Check: http://localhost:8001/health
 ```
 
@@ -39,9 +39,7 @@ Press Ctrl+C to stop all services.
 # Just double-click or run:
 launch.bat
 
-# Then visit:
-# - Admin Panel: http://localhost:8002
-# - Start all services from the web UI
+# Then visit the launcher UI to start services.
 ```
 
 ### **Option 3: Docker Everything**
@@ -52,7 +50,6 @@ docker-compose up -d
 
 # Access:
 # - Backend API: http://localhost:8001/docs
-# - Admin Panel: http://localhost:8002
 ```
 
 ### **Option 4: Manual Multi-Terminal (Advanced)**
@@ -69,7 +66,7 @@ PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 
 # Terminal 3: Start worker
 PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings
 
-# Terminal 4: Start admin panel
+# Terminal 4: Start frontend
 cd apps/main && pnpm dev
 ```
 
@@ -79,7 +76,7 @@ cd apps/main && pnpm dev
 
 ### **Required**
 - Python 3.11+ (3.12 recommended)
-- Node.js 18+ (for admin panel and frontend)
+- Node.js 18+ (for frontends)
 - Docker + Docker Compose (for databases)
 - Git
 
@@ -114,8 +111,6 @@ cp .env.example .env
 POSTGRES_PORT=5434          # Not default 5432
 REDIS_PORT=6380             # Not default 6379
 BACKEND_PORT=8001           # ⚠️ NOT 8000!
-ADMIN_PORT=8002
-
 # Database
 DATABASE_URL=postgresql://pixsim:pixsim123@localhost:5434/pixsim7
 REDIS_URL=redis://localhost:6380/0
@@ -126,7 +121,7 @@ JWT_ALGORITHM=HS256
 JWT_EXPIRATION_MINUTES=10080     # 7 days
 
 # CORS
-CORS_ORIGINS=http://localhost:8002,http://localhost:5173
+CORS_ORIGINS=http://localhost:5173
 
 # ZeroTier (optional - for remote access)
 ZEROTIER_NETWORK=10.243.0.0/16
@@ -180,17 +175,7 @@ docker-compose -f docker-compose.db-only.yml exec postgres \
 # Should show 22 tables
 ```
 
-### **5. Admin Panel Setup**
-
-```bash
-cd admin
-npm install
-npm run dev
-
-# Visit: http://localhost:8002
-```
-
-### **6. Frontend Setup (Optional)**
+### **5. Frontend Setup (Optional)**
 
 ```bash
 cd frontend
@@ -221,11 +206,6 @@ PYTHONPATH=/g/code/pixsim7 uvicorn pixsim7.backend.main.main:app \
 ```bash
 PYTHONPATH=/g/code/pixsim7 arq pixsim7.backend.main.workers.arq_worker.WorkerSettings \
   --watch pixsim7/backend/main
-```
-
-**Start admin panel**:
-```bash
-cd admin && npm run dev
 ```
 
 ### **Production Mode**

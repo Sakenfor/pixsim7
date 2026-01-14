@@ -24,6 +24,7 @@ try:
     from .. import theme
     from ..dialogs.ports_dialog import show_ports_dialog
     from ..dialogs.env_editor_dialog import show_env_editor
+    from ..services import load_service_configs
     from .tab_builder import create_info_label
 except Exception:
     from config import (
@@ -38,6 +39,7 @@ except Exception:
     import theme
     from dialogs.ports_dialog import show_ports_dialog
     from dialogs.env_editor_dialog import show_env_editor
+    from services import load_service_configs
     from widgets.tab_builder import create_info_label
 
 
@@ -46,8 +48,8 @@ class SettingsPanel(QWidget):
         super().__init__(parent)
         self._state = ui_state
         self._env_vars = read_env_file()
-        self._profiles = self._load_profiles()
         self._services_config = self._load_services_config()
+        self._profiles = self._merge_profile_defaults(self._load_profiles())
         self._on_saved = on_saved
         self._init_ui()
 
@@ -200,10 +202,10 @@ class SettingsPanel(QWidget):
             self._service_port_inputs[env_key] = spin
 
         self.spin_backend_port = self._service_port_inputs.get("BACKEND_PORT")
-        self.spin_admin_port = self._service_port_inputs.get("ADMIN_PORT")
         self.spin_frontend_port = self._service_port_inputs.get("FRONTEND_PORT")
         self.spin_game_frontend_port = self._service_port_inputs.get("GAME_FRONTEND_PORT")
         self.spin_game_service_port = self._service_port_inputs.get("GAME_SERVICE_PORT")
+        self.spin_devtools_port = self._service_port_inputs.get("DEVTOOLS_PORT")
 
         self.input_backend_base = QLineEdit()
         self.input_backend_base.setPlaceholderText(self._get_placeholder_url('backend'))
@@ -226,19 +228,19 @@ class SettingsPanel(QWidget):
         self.lbl_frontend_effective = QLabel()
         endpoints_layout.addRow("Frontend Effective URL:", self.lbl_frontend_effective)
 
-        self.input_admin_base = QLineEdit()
-        self.input_admin_base.setPlaceholderText(self._get_placeholder_url('admin'))
-        self.input_admin_base.setText(self._env_vars.get("ADMIN_BASE_URL", ""))
-        endpoints_layout.addRow("Admin Base URL:", self.input_admin_base)
-        self.lbl_admin_effective = QLabel()
-        endpoints_layout.addRow("Admin Effective URL:", self.lbl_admin_effective)
-
         self.input_game_base = QLineEdit()
         self.input_game_base.setPlaceholderText(self._get_placeholder_url('game_frontend'))
         self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
         endpoints_layout.addRow("Game Frontend Base URL:", self.input_game_base)
         self.lbl_game_effective = QLabel()
         endpoints_layout.addRow("Game Frontend Effective URL:", self.lbl_game_effective)
+
+        self.input_devtools_base = QLineEdit()
+        self.input_devtools_base.setPlaceholderText(self._get_placeholder_url('devtools'))
+        self.input_devtools_base.setText(self._env_vars.get("DEVTOOLS_BASE_URL", ""))
+        endpoints_layout.addRow("DevTools Base URL:", self.input_devtools_base)
+        self.lbl_devtools_effective = QLabel()
+        endpoints_layout.addRow("DevTools Effective URL:", self.lbl_devtools_effective)
 
         self.input_launcher_base = QLineEdit()
         self.input_launcher_base.setPlaceholderText(self._get_placeholder_url('launcher'))
@@ -266,8 +268,8 @@ class SettingsPanel(QWidget):
         self.input_backend_base.textChanged.connect(self._update_effective_endpoints)
         self.input_generation_base.textChanged.connect(self._update_effective_endpoints)
         self.input_frontend_base.textChanged.connect(self._update_effective_endpoints)
-        self.input_admin_base.textChanged.connect(self._update_effective_endpoints)
         self.input_game_base.textChanged.connect(self._update_effective_endpoints)
+        self.input_devtools_base.textChanged.connect(self._update_effective_endpoints)
         self.input_launcher_base.textChanged.connect(self._update_effective_endpoints)
         if self.spin_backend_port:
             self.spin_backend_port.valueChanged.connect(self._update_effective_endpoints)
@@ -275,10 +277,10 @@ class SettingsPanel(QWidget):
             self.spin_frontend_port.valueChanged.connect(self._update_effective_endpoints)
         if self.spin_game_frontend_port:
             self.spin_game_frontend_port.valueChanged.connect(self._update_effective_endpoints)
-        if self.spin_admin_port:
-            self.spin_admin_port.valueChanged.connect(self._update_effective_endpoints)
         if self.spin_game_service_port:
             self.spin_game_service_port.valueChanged.connect(self._update_effective_endpoints)
+        if self.spin_devtools_port:
+            self.spin_devtools_port.valueChanged.connect(self._update_effective_endpoints)
         return page
 
     def _create_network_local_page(self) -> QWidget:
@@ -394,8 +396,8 @@ class SettingsPanel(QWidget):
             effective(self.input_generation_base.text(), self._get_port_value("GENERATION_API_PORT", self._get_port_value("BACKEND_PORT")))
         )
         self.lbl_frontend_effective.setText(effective(self.input_frontend_base.text(), self._get_port_value("FRONTEND_PORT")))
-        self.lbl_admin_effective.setText(effective(self.input_admin_base.text(), self._get_port_value("ADMIN_PORT")))
         self.lbl_game_effective.setText(effective(self.input_game_base.text(), self._get_port_value("GAME_FRONTEND_PORT")))
+        self.lbl_devtools_effective.setText(effective(self.input_devtools_base.text(), self._get_port_value("DEVTOOLS_PORT")))
         self.lbl_launcher_effective.setText(effective(self.input_launcher_base.text(), 8100))
 
     def _load_profiles(self) -> dict:
@@ -409,16 +411,43 @@ class SettingsPanel(QWidget):
             pass
         return {"default": {"label": "Default", "ports": {}, "base_urls": {}, "use_local_datastores": False}}
 
-    def _load_services_config(self) -> dict:
-        services_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'services.json'))
+    def _merge_profile_defaults(self, profiles: dict) -> dict:
+        if not isinstance(profiles, dict):
+            return {"default": {"label": "Default", "ports": {}, "base_urls": {}, "use_local_datastores": False}}
+        if not self._services_config:
+            return profiles
+
+        for profile_key, profile in profiles.items():
+            if not isinstance(profile, dict):
+                continue
+            ports = profile.setdefault("ports", {})
+            base_urls = profile.setdefault("base_urls", {})
+            for service in self._services_config:
+                if not service.get("enabled", True):
+                    continue
+                service_key = service.get("profile_key") or service.get("id")
+                if not service_key:
+                    continue
+                default_port = service.get("default_port")
+                if default_port is not None and service_key not in ports:
+                    try:
+                        ports[service_key] = int(default_port)
+                    except Exception:
+                        pass
+                if service_key not in base_urls:
+                    subdomain = service.get("subdomain")
+                    if profile_key == "https_local" and subdomain:
+                        base_urls[service_key] = f"https://{subdomain}.pixsim7.local"
+                    else:
+                        base_urls[service_key] = ""
+
+        return profiles
+
+    def _load_services_config(self) -> list[dict]:
         try:
-            with open(services_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data
+            return load_service_configs()
         except Exception:
-            pass
-        return {}
+            return []
 
     def _get_placeholder_url(self, service: str) -> str:
         """Get placeholder URL from https_local profile."""
@@ -427,22 +456,22 @@ class SettingsPanel(QWidget):
         return base_urls.get(service, '')
 
     def _get_db_scan_ports(self, db_type: str) -> list:
-        """Get scan ports for postgres/redis from services.json."""
-        for infra in self._services_config.get('infrastructure_services', []):
-            if infra.get('id') != 'db':
+        """Get scan ports for postgres/redis from service manifests."""
+        for service in self._services_config:
+            if service.get('id') != 'db':
                 continue
-            for port_def in infra.get('ports', []):
+            for port_def in service.get('ports', []):
                 if port_def.get('name', '').lower() == db_type.lower():
                     return port_def.get('scan_ports', [])
         # Fallback defaults
         return [5432, 5433, 5434, 5435] if db_type.lower() == 'postgres' else [6379, 6380]
 
     def _get_db_connection_template(self, db_type: str) -> str:
-        """Get connection template for postgres/redis from services.json."""
-        for infra in self._services_config.get('infrastructure_services', []):
-            if infra.get('id') != 'db':
+        """Get connection template for postgres/redis from service manifests."""
+        for service in self._services_config:
+            if service.get('id') != 'db':
                 continue
-            for port_def in infra.get('ports', []):
+            for port_def in service.get('ports', []):
                 if port_def.get('name', '').lower() == db_type.lower():
                     return port_def.get('connection_template', '')
         return ''
@@ -463,21 +492,24 @@ class SettingsPanel(QWidget):
         if ports:
             if self.spin_backend_port and "backend" in ports:
                 self.spin_backend_port.setValue(int(ports["backend"]))
-            if self.spin_admin_port and "admin" in ports:
-                self.spin_admin_port.setValue(int(ports["admin"]))
+            gen_spin = self._service_port_inputs.get("GENERATION_API_PORT")
+            if gen_spin and "generation" in ports:
+                gen_spin.setValue(int(ports["generation"]))
             if self.spin_frontend_port and "frontend" in ports:
                 self.spin_frontend_port.setValue(int(ports["frontend"]))
             if self.spin_game_frontend_port and "game_frontend" in ports:
                 self.spin_game_frontend_port.setValue(int(ports["game_frontend"]))
             if self.spin_game_service_port and "game_service" in ports:
                 self.spin_game_service_port.setValue(int(ports["game_service"]))
+            if getattr(self, "spin_devtools_port", None) and "devtools" in ports:
+                self.spin_devtools_port.setValue(int(ports["devtools"]))
 
         base_urls = profile.get("base_urls", {})
         self.input_backend_base.setText(base_urls.get("backend", ""))
         self.input_generation_base.setText(base_urls.get("generation", ""))
         self.input_frontend_base.setText(base_urls.get("frontend", ""))
-        self.input_admin_base.setText(base_urls.get("admin", ""))
         self.input_game_base.setText(base_urls.get("game_frontend", ""))
+        self.input_devtools_base.setText(base_urls.get("devtools", ""))
         self.input_launcher_base.setText(base_urls.get("launcher", ""))
 
         use_local = bool(profile.get("use_local_datastores", False))
@@ -585,17 +617,17 @@ class SettingsPanel(QWidget):
                 self._get_port_value("GENERATION_API_PORT", self._get_port_value("BACKEND_PORT"))
             ),
             "FRONTEND_BASE_URL": self._normalize_or_derived(self.input_frontend_base.text(), self.spin_frontend_port.value()),
-            "ADMIN_BASE_URL": self._normalize_or_derived(self.input_admin_base.text(), self.spin_admin_port.value()),
             "GAME_FRONTEND_BASE_URL": self._normalize_or_derived(self.input_game_base.text(), self.spin_game_frontend_port.value()),
+            "DEVTOOLS_BASE_URL": self._normalize_or_derived(self.input_devtools_base.text(), self._get_port_value("DEVTOOLS_PORT")),
             "LAUNCHER_BASE_URL": self._normalize_or_derived(self.input_launcher_base.text(), 8100),
             "USE_LOCAL_DATASTORES": "1" if self._state.use_local_datastores else "0",
             "LOCAL_DATABASE_URL": self.input_local_db_url.text().strip(),
             "LOCAL_REDIS_URL": self.input_local_redis_url.text().strip(),
             "BACKEND_PORT": str(self._get_port_value("BACKEND_PORT")),
-            "ADMIN_PORT": str(self._get_port_value("ADMIN_PORT")),
             "FRONTEND_PORT": str(self._get_port_value("FRONTEND_PORT")),
             "GAME_FRONTEND_PORT": str(self._get_port_value("GAME_FRONTEND_PORT")),
             "GAME_SERVICE_PORT": str(self._get_port_value("GAME_SERVICE_PORT")),
+            "DEVTOOLS_PORT": str(self._get_port_value("DEVTOOLS_PORT")),
             "DATABASE_URL": self.input_database_url.text().strip(),
             "REDIS_URL": self.input_redis_url.text().strip(),
             "SECRET_KEY": self.input_secret_key.text().strip(),
@@ -658,8 +690,8 @@ class SettingsPanel(QWidget):
         self.input_backend_base.setText(env_updates.get("BACKEND_BASE_URL", ""))
         self.input_generation_base.setText(env_updates.get("GENERATION_BASE_URL", ""))
         self.input_frontend_base.setText(env_updates.get("FRONTEND_BASE_URL", ""))
-        self.input_admin_base.setText(env_updates.get("ADMIN_BASE_URL", ""))
         self.input_game_base.setText(env_updates.get("GAME_FRONTEND_BASE_URL", ""))
+        self.input_devtools_base.setText(env_updates.get("DEVTOOLS_BASE_URL", ""))
         self.input_launcher_base.setText(env_updates.get("LAUNCHER_BASE_URL", ""))
         self._update_effective_endpoints()
 
@@ -668,15 +700,15 @@ class SettingsPanel(QWidget):
             env_updates.get("BACKEND_BASE_URL"),
             env_updates.get("GENERATION_BASE_URL"),
             env_updates.get("FRONTEND_BASE_URL"),
-            env_updates.get("ADMIN_BASE_URL"),
             env_updates.get("GAME_FRONTEND_BASE_URL"),
+            env_updates.get("DEVTOOLS_BASE_URL"),
             env_updates.get("LAUNCHER_BASE_URL"),
         ]
         ports = {
             "backend": self._get_port_value("BACKEND_PORT"),
-            "admin": self._get_port_value("ADMIN_PORT"),
             "frontend": self._get_port_value("FRONTEND_PORT"),
             "game_frontend": self._get_port_value("GAME_FRONTEND_PORT"),
+            "devtools": self._get_port_value("DEVTOOLS_PORT"),
         }
         for port in ports.values():
             urls.append(f"http://localhost:{port}")
@@ -743,20 +775,21 @@ class SettingsPanel(QWidget):
                 self.chk_backend_debug.setChecked(defaults.backend_debug_enabled)
             default_ports = Ports()
             self.spin_backend_port.setValue(default_ports.backend)
-            self.spin_admin_port.setValue(default_ports.admin)
             self.spin_frontend_port.setValue(default_ports.frontend)
             self.spin_game_frontend_port.setValue(default_ports.game_frontend)
             self.spin_game_service_port.setValue(default_ports.game_service)
+            if hasattr(self, "spin_devtools_port") and self.spin_devtools_port:
+                self.spin_devtools_port.setValue(default_ports.devtools)
             if hasattr(self, "input_backend_base"):
                 self.input_backend_base.setText("")
             if hasattr(self, "input_generation_base"):
                 self.input_generation_base.setText("")
             if hasattr(self, "input_frontend_base"):
                 self.input_frontend_base.setText("")
-            if hasattr(self, "input_admin_base"):
-                self.input_admin_base.setText("")
             if hasattr(self, "input_game_base"):
                 self.input_game_base.setText("")
+            if hasattr(self, "input_devtools_base"):
+                self.input_devtools_base.setText("")
             if hasattr(self, "input_launcher_base"):
                 self.input_launcher_base.setText("")
             if hasattr(self, "chk_use_local_datastores"):
@@ -839,46 +872,48 @@ class SettingsPanel(QWidget):
     def _collect_configured_ports(self) -> dict:
         env = read_env_file()
         ports_by_id = {}
+        seen_env = set()
 
-        services_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'services.json'))
-        try:
-            with open(services_path, 'r', encoding='utf-8') as f:
-                services = json.load(f)
-        except Exception:
-            services = {}
+        for cfg in self._services_config:
+            if not cfg.get("enabled", True):
+                continue
+            port_defs = cfg.get("ports", []) or []
+            if not port_defs and cfg.get("port_env"):
+                port_defs = [{
+                    "name": cfg.get("name", cfg.get("id", cfg.get("port_env"))),
+                    "env": cfg.get("port_env"),
+                    "default_port": cfg.get("default_port", 0),
+                }]
 
-        for section in ("backend_services", "frontend_services"):
-            for cfg in services.get(section, []) or []:
-                if not cfg.get("enabled", True):
+            for port_def in port_defs:
+                port_env = port_def.get("env")
+                if not port_env or port_env in seen_env:
                     continue
-                port = self._resolve_port_from_config(cfg, env)
-                if port is None:
-                    continue
-                service_id = cfg.get("id", cfg.get("name", "service"))
-                label = cfg.get("name", service_id)
-                ports_by_id[service_id] = {"label": label, "port": port}
+                seen_env.add(port_env)
+                port = self._parse_int(env.get(port_env), port_def.get("default_port", 0))
+                label = port_def.get("name", cfg.get("name", cfg.get("id", port_env))).strip()
+                ports_by_id[port_env] = {"label": label, "port": port}
 
-        # Known infra ports
-        postgres_port = self._parse_int(env.get("POSTGRES_PORT"), default=5434)
-        redis_port = self._parse_int(env.get("REDIS_PORT"), default=6380)
-        ports_by_id.setdefault("postgres", {"label": "Postgres", "port": postgres_port})
-        ports_by_id.setdefault("redis", {"label": "Redis", "port": redis_port})
-
-        launcher_port = self._parse_int(env.get("LAUNCHER_PORT"), default=8100)
-        ports_by_id.setdefault("launcher-api", {"label": "Launcher API", "port": launcher_port})
+        # Fallback infra ports if not defined by manifests
+        ports_by_id.setdefault("POSTGRES_PORT", {"label": "Postgres", "port": self._parse_int(env.get("POSTGRES_PORT"), default=5434)})
+        ports_by_id.setdefault("REDIS_PORT", {"label": "Redis", "port": self._parse_int(env.get("REDIS_PORT"), default=6380)})
+        ports_by_id.setdefault("LAUNCHER_PORT", {"label": "Launcher API", "port": self._parse_int(env.get("LAUNCHER_PORT"), default=8100)})
+        ports_by_id.setdefault("GAME_SERVICE_PORT", {"label": "Game Service", "port": self._parse_int(env.get("GAME_SERVICE_PORT"), default=8050)})
 
         # Override with current UI values for known services
-        if "main-api" in ports_by_id:
-            ports_by_id["main-api"]["port"] = self.spin_backend_port.value()
-        if "admin" in ports_by_id:
-            ports_by_id["admin"]["port"] = self.spin_admin_port.value()
-        if "frontend" in ports_by_id:
-            ports_by_id["frontend"]["port"] = self.spin_frontend_port.value()
-        if "game_frontend" in ports_by_id:
-            ports_by_id["game_frontend"]["port"] = self.spin_game_frontend_port.value()
-
-        # Game service is not always defined, track separately
-        ports_by_id.setdefault("game-service", {"label": "Game Service", "port": self.spin_game_service_port.value()})
+        if "BACKEND_PORT" in ports_by_id and self.spin_backend_port:
+            ports_by_id["BACKEND_PORT"]["port"] = self.spin_backend_port.value()
+        gen_spin = self._service_port_inputs.get("GENERATION_API_PORT")
+        if "GENERATION_API_PORT" in ports_by_id and gen_spin:
+            ports_by_id["GENERATION_API_PORT"]["port"] = gen_spin.value()
+        if "FRONTEND_PORT" in ports_by_id and self.spin_frontend_port:
+            ports_by_id["FRONTEND_PORT"]["port"] = self.spin_frontend_port.value()
+        if "GAME_FRONTEND_PORT" in ports_by_id and self.spin_game_frontend_port:
+            ports_by_id["GAME_FRONTEND_PORT"]["port"] = self.spin_game_frontend_port.value()
+        if "DEVTOOLS_PORT" in ports_by_id and getattr(self, "spin_devtools_port", None):
+            ports_by_id["DEVTOOLS_PORT"]["port"] = self.spin_devtools_port.value()
+        if "GAME_SERVICE_PORT" in ports_by_id and self.spin_game_service_port:
+            ports_by_id["GAME_SERVICE_PORT"]["port"] = self.spin_game_service_port.value()
 
         return {item["label"]: item["port"] for item in ports_by_id.values()}
 
@@ -886,32 +921,23 @@ class SettingsPanel(QWidget):
         env = read_env_file()
         items = []
         seen = set()
-
-        for section in ("backend_services", "frontend_services"):
-            for cfg in self._services_config.get(section, []) or []:
-                if not cfg.get("enabled", True):
-                    continue
-                for port_def in cfg.get("ports", []) or []:
-                    port_env = port_def.get("env")
-                    if not port_env:
-                        continue
-                    if port_env in seen:
-                        continue
-                    seen.add(port_env)
-                    value = self._parse_int(env.get(port_env), port_def.get("default_port", 0))
-                    label = port_def.get("name", cfg.get("name", cfg.get("id", port_env))).strip()
-                    items.append({"env": port_env, "label": label, "value": value})
-
-        for infra in self._services_config.get("infrastructure_services", []) or []:
-            if not infra.get("enabled", True):
+        for cfg in self._services_config:
+            if not cfg.get("enabled", True):
                 continue
-            for port_def in infra.get("ports", []) or []:
+            port_defs = cfg.get("ports", []) or []
+            if not port_defs and cfg.get("port_env"):
+                port_defs = [{
+                    "name": cfg.get("name", cfg.get("id", cfg.get("port_env"))),
+                    "env": cfg.get("port_env"),
+                    "default_port": cfg.get("default_port", 0),
+                }]
+            for port_def in port_defs:
                 port_env = port_def.get("env")
                 if not port_env or port_env in seen:
                     continue
                 seen.add(port_env)
                 value = self._parse_int(env.get(port_env), port_def.get("default_port", 0))
-                label = port_def.get("name", infra.get("name", port_env)).strip()
+                label = port_def.get("name", cfg.get("name", cfg.get("id", port_env))).strip()
                 items.append({"env": port_env, "label": label, "value": value})
 
         return items
@@ -969,8 +995,8 @@ class SettingsPanel(QWidget):
         self.input_backend_base.setText(base_urls.get('backend', ''))
         self.input_generation_base.setText(base_urls.get('generation', ''))
         self.input_frontend_base.setText(base_urls.get('frontend', ''))
-        self.input_admin_base.setText(base_urls.get('admin', ''))
         self.input_game_base.setText(base_urls.get('game_frontend', ''))
+        self.input_devtools_base.setText(base_urls.get('devtools', ''))
         self.input_launcher_base.setText(base_urls.get('launcher', ''))
 
     def _open_ports_editor(self):
@@ -1008,8 +1034,8 @@ class SettingsPanel(QWidget):
         self.input_backend_base.setText(self._env_vars.get("BACKEND_BASE_URL", ""))
         self.input_generation_base.setText(self._env_vars.get("GENERATION_BASE_URL", ""))
         self.input_frontend_base.setText(self._env_vars.get("FRONTEND_BASE_URL", ""))
-        self.input_admin_base.setText(self._env_vars.get("ADMIN_BASE_URL", ""))
         self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
+        self.input_devtools_base.setText(self._env_vars.get("DEVTOOLS_BASE_URL", ""))
         self.input_launcher_base.setText(self._env_vars.get("LAUNCHER_BASE_URL", ""))
         self.input_database_url.setText(self._env_vars.get("DATABASE_URL", ""))
         self.input_redis_url.setText(self._env_vars.get("REDIS_URL", ""))

@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/main",
+  "name": "@pixsim7/devtools",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -9,14 +9,7 @@
     "prebuild": "pnpm run build:deps",
     "build:deps": "pnpm --filter @pixsim7/shared.types build && pnpm --filter @pixsim7/shared.logic-core build && pnpm --filter @pixsim7/shared.ui build && pnpm --filter @pixsim7/game.engine build && pnpm --filter @pixsim7/game.components build && pnpm --filter @pixsim7/scene.shapes build && pnpm --filter @pixsim7/scene.gizmos build",
     "build:check": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "prepare": "husky"
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix"
-    ]
+    "preview": "vite preview"
   },
   "dependencies": {
     "@pixsim7/shared.api-client": "workspace:*",
@@ -55,7 +48,6 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
     "@pixsim7/shared.config": "workspace:*",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
@@ -64,37 +56,26 @@
     "@vitejs/plugin-react": "^5.1.0",
     "vite-tsconfig-paths": "^5.0.1",
     "autoprefixer": "^10.4.20",
-    "eslint": "^9.39.1",
-    "eslint-import-resolver-typescript": "^4.4.4",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.46.3",
     "vite": "^7.2.2"
   },
   "pixsim": {
     "service": {
-      "id": "frontend",
+      "id": "devtools",
       "type": "frontend",
-      "name": "Main Frontend",
-      "description": "React main application",
-      "directory": "apps/main",
+      "name": "DevTools",
+      "description": "Developer tools workspace",
+      "directory": "apps/devtools",
       "command": "pnpm",
       "args": ["dev", "--port"],
-      "port_env": "FRONTEND_PORT",
-      "default_port": 5173,
-      "base_url_env": "FRONTEND_BASE_URL",
-      "subdomain": "app",
+      "port_env": "DEVTOOLS_PORT",
+      "default_port": 5176,
+      "base_url_env": "DEVTOOLS_BASE_URL",
+      "subdomain": "dev",
       "env_overrides": {
-        "VITE_GAME_URL": "$GAME_FRONTEND_BASE_URL",
-        "VITE_BACKEND_URL": "$BACKEND_BASE_URL",
-        "VITE_DEVTOOLS_URL": "$DEVTOOLS_BASE_URL"
+        "VITE_BACKEND_URL": "$BACKEND_BASE_URL"
       },
       "auto_start": false,
       "enabled": true

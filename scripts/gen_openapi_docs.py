@@ -31,7 +31,34 @@ from pathlib import Path
 DEFAULT_INPUT = "pixsim7/backend/main/openapi.json"
 DEFAULT_URL = "http://localhost:8000/openapi.json"
 DEFAULT_OUTPUT = "docs/api/ENDPOINTS.md"
-DEFAULT_SERVICES_CONFIG = "launcher/services.json"
+DEFAULT_SERVICES_ROOT = "."
+MANIFEST_FILENAME = "pixsim.service.json"
+SKIP_DIRS = {
+    ".git",
+    ".github",
+    ".husky",
+    ".claude",
+    ".pytest_cache",
+    ".idea",
+    ".vscode",
+    "node_modules",
+    "packages",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "storage",
+    "data",
+    "docs",
+    "examples",
+    "tests",
+    "launcher",
+    "pixsim7",
+    "chrome-extension",
+}
 
 
 def load_openapi_from_file(path: Path) -> dict:
@@ -62,21 +89,71 @@ def fetch_openapi_from_url(url: str) -> dict:
         sys.exit(1)
 
 
-def load_services_config(path: Path) -> dict | None:
-    """Load services.json config if present."""
-    if not path.exists():
-        return None
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError as e:
-        print(f"Error: Invalid JSON in {path}: {e}")
-        sys.exit(1)
+def load_service_configs(root: Path) -> list[dict]:
+    """Load service manifests from package.json and pixsim.service.json files."""
+    configs: list[dict] = []
+    seen: set[str] = set()
+
+    if root.is_file():
+        try:
+            with open(root, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            service = data.get("service") if isinstance(data, dict) else None
+            if service is None:
+                service = data.get("pixsim", {}).get("service") if isinstance(data, dict) else None
+            if service is None and isinstance(data, dict) and data.get("id"):
+                service = data
+            if isinstance(service, dict) and service.get("id"):
+                return [service]
+        except json.JSONDecodeError as e:
+            print(f"Error: Invalid JSON in {root}: {e}")
+            sys.exit(1)
+        return []
+
+    def should_skip_dir(name: str) -> bool:
+        return name in SKIP_DIRS
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not should_skip_dir(d)]
+        if "package.json" in filenames:
+            pkg_path = Path(dirpath) / "package.json"
+            try:
+                with open(pkg_path, "r", encoding="utf-8") as f:
+                    pkg = json.load(f)
+                service = pkg.get("pixsim", {}).get("service")
+                if isinstance(service, dict) and service.get("id") and service["id"] not in seen:
+                    configs.append(service)
+                    seen.add(service["id"])
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON in {pkg_path}: {e}")
+                sys.exit(1)
+
+        if MANIFEST_FILENAME in filenames:
+            manifest_path = Path(dirpath) / MANIFEST_FILENAME
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                service = data.get("service") if isinstance(data, dict) else None
+                if service is None:
+                    service = data.get("pixsim", {}).get("service") if isinstance(data, dict) else None
+                if service is None and isinstance(data, dict) and data.get("id"):
+                    service = data
+                if isinstance(service, dict) and service.get("id") and service["id"] not in seen:
+                    configs.append(service)
+                    seen.add(service["id"])
+            except json.JSONDecodeError as e:
+                print(f"Error: Invalid JSON in {manifest_path}: {e}")
+                sys.exit(1)
+
+    return configs
 
 
-def resolve_service_config(config: dict, service_id: str) -> dict | None:
+def resolve_service_config(configs: list[dict], service_id: str) -> dict | None:
     """Find a backend service definition by id."""
-    for service in config.get("backend_services", []):
+    for service in configs:
+        service_type = (service.get("type") or "backend").lower()
+        if service_type not in {"backend", "api"}:
+            continue
         if service.get("id") == service_id:
             return service
     return None
@@ -234,12 +311,13 @@ def main():
     parser.add_argument(
         "--service",
         type=str,
-        help="Backend service id from launcher/services.json",
+        help="Backend service id from service manifests",
     )
     parser.add_argument(
+        "--services-root",
         "--services-config",
         type=str,
-        help=f"Path to services.json (default: {DEFAULT_SERVICES_CONFIG})",
+        help=f"Root directory or manifest file (default: {DEFAULT_SERVICES_ROOT})",
     )
     args = parser.parse_args()
 
@@ -249,20 +327,20 @@ def main():
 
     service_id = args.service or os.getenv("OPENAPI_SERVICE")
     if service_id:
-        services_config_path = Path(
-            args.services_config
-            if args.services_config
-            else os.getenv("OPENAPI_SERVICES_CONFIG", DEFAULT_SERVICES_CONFIG)
+        services_root = Path(
+            args.services_root
+            if args.services_root
+            else os.getenv("OPENAPI_SERVICES_ROOT", os.getenv("OPENAPI_SERVICES_CONFIG", DEFAULT_SERVICES_ROOT))
         )
-        if not services_config_path.is_absolute():
-            services_config_path = project_root / services_config_path
+        if not services_root.is_absolute():
+            services_root = project_root / services_root
 
-        config = load_services_config(services_config_path)
-        if not config:
-            print(f"Error: services config not found: {services_config_path}")
+        configs = load_service_configs(services_root)
+        if not configs:
+            print(f"Error: no service manifests found in: {services_root}")
             sys.exit(1)
 
-        service_config = resolve_service_config(config, service_id)
+        service_config = resolve_service_config(configs, service_id)
         if not service_config:
             print(f"Error: OpenAPI service not found: {service_id}")
             sys.exit(1)

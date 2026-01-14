@@ -1,0 +1,38 @@
+{
+  "id": "main-api",
+  "type": "backend",
+  "name": "Main Backend API",
+  "description": "Core API handling game, users, assets, dialogue, and actions",
+  "module": "pixsim7.backend.main.main:app",
+  "port_env": "BACKEND_PORT",
+  "default_port": 8000,
+  "base_url_env": "BACKEND_BASE_URL",
+  "profile_key": "backend",
+  "subdomain": "api",
+  "ports": [
+    {
+      "name": "Backend API",
+      "env": "BACKEND_PORT",
+      "default_port": 8000
+    },
+    {
+      "name": "Launcher API",
+      "env": "LAUNCHER_PORT",
+      "default_port": 8100
+    },
+    {
+      "name": "Game Service",
+      "env": "GAME_SERVICE_PORT",
+      "default_port": 8050
+    }
+  ],
+  "info_endpoint": "/dev/info",
+  "health_endpoint": "/health",
+  "docs_endpoint": "/docs",
+  "openapi_endpoint": "/openapi.json",
+  "openapi_types_path": "packages/shared/types/src/openapi.generated.ts",
+  "depends_on": ["db"],
+  "tags": ["core", "api", "game"],
+  "auto_start": true,
+  "enabled": true
+}

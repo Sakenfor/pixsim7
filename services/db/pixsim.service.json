@@ -1,0 +1,25 @@
+{
+  "id": "db",
+  "type": "docker-compose",
+  "name": "Databases (Docker)",
+  "description": "PostgreSQL and Redis via docker-compose",
+  "file": "docker-compose.db-only.yml",
+  "ports": [
+    {
+      "name": "Postgres",
+      "env": "POSTGRES_PORT",
+      "default_port": 5434,
+      "scan_ports": [5432, 5433, 5434, 5435],
+      "connection_template": "postgresql://pixsim:pixsim123@127.0.0.1:{port}/pixsim7"
+    },
+    {
+      "name": "Redis",
+      "env": "REDIS_PORT",
+      "default_port": 6380,
+      "scan_ports": [6379, 6380],
+      "connection_template": "redis://localhost:{port}/0"
+    }
+  ],
+  "auto_start": false,
+  "enabled": true
+}

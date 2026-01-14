@@ -36,10 +36,10 @@ def set_backend_log_level(level: str) -> None:
 @dataclass
 class Ports:
     backend: int = 8001
-    admin: int = 8002
     frontend: int = 5173
     game_frontend: int = 5174
     game_service: int = 8050
+    devtools: int = 5176
 
 
 def read_env_ports(env_path: Optional[str] = None) -> Ports:
@@ -57,14 +57,14 @@ def read_env_ports(env_path: Optional[str] = None) -> Ports:
                     v = v.strip()
                     if k == 'BACKEND_PORT':
                         p.backend = int(v)
-                    elif k == 'ADMIN_PORT':
-                        p.admin = int(v)
                     elif k == 'FRONTEND_PORT':
                         p.frontend = int(v)
                     elif k == 'GAME_FRONTEND_PORT':
                         p.game_frontend = int(v)
                     elif k == 'GAME_SERVICE_PORT':
                         p.game_service = int(v)
+                    elif k == 'DEVTOOLS_PORT':
+                        p.devtools = int(v)
         except Exception:
             pass
     return p
@@ -86,10 +86,10 @@ def write_env_ports(ports: Ports, env_path: Optional[str] = None) -> None:
     # Update or add port entries
     port_keys = {
         'BACKEND_PORT': str(ports.backend),
-        'ADMIN_PORT': str(ports.admin),
         'FRONTEND_PORT': str(ports.frontend),
         'GAME_FRONTEND_PORT': str(ports.game_frontend),
         'GAME_SERVICE_PORT': str(ports.game_service),
+        'DEVTOOLS_PORT': str(ports.devtools),
     }
     
     updated_keys = set()
@@ -153,14 +153,16 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     except Exception:
         pass
     p = ports or read_env_ports()
-    # Vite env for admin/frontend
-    env['VITE_ADMIN_PORT'] = str(p.admin)
+    # Vite env for frontend/devtools
     if 'VITE_BACKEND_URL' not in env:
         backend_base_url = os.getenv("BACKEND_BASE_URL")
         env['VITE_BACKEND_URL'] = backend_base_url or f"http://localhost:{p.backend}"
     if 'VITE_GAME_URL' not in env:
         game_base_url = os.getenv("GAME_FRONTEND_BASE_URL")
         env['VITE_GAME_URL'] = game_base_url or f"http://localhost:{p.game_frontend}"
+    if 'VITE_DEVTOOLS_URL' not in env:
+        devtools_base_url = os.getenv("DEVTOOLS_BASE_URL")
+        env['VITE_DEVTOOLS_URL'] = devtools_base_url or f"http://localhost:{p.devtools}"
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
     # SQL logging control (use parameter if provided, otherwise use global setting)
     sql_log_enabled = sql_logging if sql_logging is not None else _sql_logging_enabled

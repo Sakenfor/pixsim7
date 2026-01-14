@@ -1,10 +1,8 @@
 import type { ActionDefinition } from '@shared/types';
-import { lazy } from 'react';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
-import { AppMapPanel } from '@features/panels/components/dev/AppMapPanel';
-import { TemplateAnalyticsPanel } from '@features/panels/components/dev/TemplateAnalyticsPanel';
+import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
 
 import type { Module } from '@app/modules/types';
 
@@ -53,10 +51,9 @@ export const appMapModule: Module = {
     featurePrimary: true,
     showInNav: true,
     hidden: true,
-    component: lazy(() => import('../../../routes/AppMapDev').then(m => ({ default: m.AppMapDev }))),
+    component: DevtoolsRedirect,
     actions: [openAppMapAction],
     devTool: {
-      panelComponent: AppMapPanel,
       category: 'graph',
       tags: ['architecture', 'map', 'visualization', 'structure'],
     },
@@ -74,7 +71,7 @@ export const modulesDevModule: Module = {
     category: 'development',
     featureId: 'modules-dev',
     hidden: true,
-    component: lazy(() => import('../../../routes/ModulesDev').then(m => ({ default: m.ModulesDev }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -89,9 +86,8 @@ export const templateAnalyticsModule: Module = {
     category: 'development',
     featureId: 'template-analytics',
     hidden: true,
-    component: lazy(() => import('../../../routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev }))),
+    component: DevtoolsRedirect,
     devTool: {
-      panelComponent: TemplateAnalyticsPanel,
       category: 'debug',
       tags: ['templates', 'analytics', 'metrics', 'performance'],
     },
@@ -109,7 +105,7 @@ export const promptInspectorModule: Module = {
     category: 'development',
     featureId: 'prompt-inspector',
     hidden: true,
-    component: lazy(() => import('../../../routes/PromptInspectorDev').then(m => ({ default: m.PromptInspectorDev }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -124,7 +120,7 @@ export const promptImporterModule: Module = {
     category: 'development',
     featureId: 'prompt-importer',
     hidden: true,
-    component: lazy(() => import('../../../routes/DevPromptImporter').then(m => ({ default: m.DevPromptImporter }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -139,7 +135,7 @@ export const promptLabModule: Module = {
     category: 'development',
     featureId: 'prompt-lab',
     hidden: true,
-    component: lazy(() => import('../../../routes/PromptLabDev').then(m => ({ default: m.PromptLabDev }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -154,7 +150,7 @@ export const actionBlockGraphModule: Module = {
     category: 'development',
     featureId: 'action-block-graph',
     hidden: true,
-    component: lazy(() => import('../../../routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -169,7 +165,7 @@ export const blockFitModule: Module = {
     category: 'development',
     featureId: 'block-fit',
     hidden: true,
-    component: lazy(() => import('../../../routes/BlockFitDev').then(m => ({ default: m.BlockFitDev }))),
+    component: DevtoolsRedirect,
   },
 };
 
@@ -184,6 +180,6 @@ export const widgetBuilderModule: Module = {
     category: 'development',
     featureId: 'widget-builder',
     hidden: true,
-    component: lazy(() => import('../../../routes/WidgetBuilderRoute').then(m => ({ default: m.WidgetBuilderRoute }))),
+    component: DevtoolsRedirect,
   },
 };

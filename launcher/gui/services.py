@@ -1,13 +1,42 @@
 from dataclasses import dataclass
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Iterable
 import os
 import json
 from pathlib import Path
 
 try:
-    from .config import ROOT, read_env_ports, find_python_executable
+    from .config import ROOT, read_env_ports, find_python_executable, read_env_file
 except ImportError:
-    from config import ROOT, read_env_ports, find_python_executable
+    from config import ROOT, read_env_ports, find_python_executable, read_env_file
+
+
+MANIFEST_FILENAME = "pixsim.service.json"
+SKIP_DIRS = {
+    ".git",
+    ".github",
+    ".husky",
+    ".claude",
+    ".pytest_cache",
+    ".idea",
+    ".vscode",
+    "node_modules",
+    "packages",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    "__pycache__",
+    ".venv",
+    "venv",
+    "storage",
+    "data",
+    "docs",
+    "examples",
+    "tests",
+    "launcher",
+    "pixsim7",
+    "chrome-extension",
+}
 
 
 @dataclass
@@ -28,117 +57,120 @@ class ServiceDef:
     openapi_types_path: Optional[str] = None  # Relative path to generated types file
 
 
-def build_services() -> List[ServiceDef]:
-    ports = read_env_ports()
-    python_exe = find_python_executable()
+def _iter_package_json_paths(root: Path) -> Iterable[Path]:
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        if "package.json" in filenames:
+            yield Path(dirpath) / "package.json"
 
-    # On Windows, QProcess needs .cmd extension for npm/pnpm
-    import sys
-    pnpm_exe = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
-    npm_exe = "npm.cmd" if sys.platform == "win32" else "npm"
 
-    return [
-        ServiceDef(
-            key="db",
-            title="Databases (Docker)",
-            program="docker-compose",
-            args=["-f", os.path.join(ROOT, "docker-compose.db-only.yml"), "up", "-d"],
-            cwd=ROOT,
-            url=None,
-            health_url=None,  # Will check via docker-compose ps
-            required_tool="docker|docker-compose",
-            health_grace_attempts=8,
-        ),
-        ServiceDef(
-            key="backend",
-            title="Backend API",
-            program=python_exe,
-            args=["-m", "uvicorn", "pixsim7.backend.main.main:app", "--host", "0.0.0.0", "--port", str(ports.backend), "--reload"],
-            cwd=ROOT,
-            env_overrides={
-                "PYTHONPATH": ROOT,
-                "PIXSIM_LOG_FORMAT": "human",  # Human-readable logs in console
-                "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8",
-            },
-            url=f"http://localhost:{ports.backend}/docs",
-            health_url=f"http://localhost:{ports.backend}/health",
-            health_grace_attempts=6,
-            depends_on=["db"],  # Backend requires database
-            openapi_url=f"http://localhost:{ports.backend}/openapi.json",
-            openapi_types_path="packages/shared/types/src/openapi.generated.ts",
-        ),
-        ServiceDef(
-            key="worker",
-            title="Worker (ARQ)",
-            program=python_exe,
-            args=["-m", "arq", "pixsim7.backend.main.workers.arq_worker.WorkerSettings"],
-            cwd=ROOT,
-            env_overrides={
-                "PYTHONPATH": ROOT,
-                "PIXSIM_LOG_FORMAT": "human",  # Human-readable logs in console
-                "REDIS_URL": os.getenv("REDIS_URL", "redis://localhost:6380/0"),  # Explicit Redis URL for ARQ
-                "PYTHONUTF8": "1",
-                "PYTHONIOENCODING": "utf-8",
-            },
-            url=None,
-            health_url=None,  # No HTTP health check for worker
-            health_grace_attempts=10,
-            depends_on=["db"],  # Worker requires Redis from db service
-        ),
-        ServiceDef(
-            key="admin",
-            title="Admin (SvelteKit)",
-            program=npm_exe,
-            args=["run", "dev"],
-            cwd=os.path.join(ROOT, "admin"),
-            env_overrides={
-                "VITE_ADMIN_PORT": str(ports.admin),
-                "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-            },
-            url=f"http://localhost:{ports.admin}",
-            health_url=f"http://localhost:{ports.admin}/",
-            required_tool="npm",
-            health_grace_attempts=15,
-        ),
-        ServiceDef(
-            key="frontend",
-            title="Frontend (React)",
-            program=pnpm_exe,
-            args=["dev", "--port", str(ports.frontend)],
-            cwd=os.path.join(ROOT, "frontend"),
-            env_overrides={
-                "VITE_GAME_URL": f"http://localhost:{ports.game_frontend}",
-                "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-            },
-            url=f"http://localhost:{ports.frontend}",
-            health_url=f"http://localhost:{ports.frontend}/",
-            required_tool="pnpm",
-            health_grace_attempts=15,
-        ),
-        ServiceDef(
-            key="game_frontend",
-            title="Game Frontend (React)",
-            program=pnpm_exe,
-            args=["dev", "--port", str(ports.game_frontend)],
-            cwd=os.path.join(ROOT, "game-frontend"),
-            env_overrides={
-                "VITE_BACKEND_URL": f"http://localhost:{ports.backend}",
-            },
-            url=f"http://localhost:{ports.game_frontend}",
-            health_url=f"http://localhost:{ports.game_frontend}/",
-            required_tool="pnpm",
-            health_grace_attempts=15,
-        ),
-    ]
+def _iter_manifest_paths(root: Path) -> Iterable[Path]:
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        if MANIFEST_FILENAME in filenames:
+            yield Path(dirpath) / MANIFEST_FILENAME
+
+
+def _load_json(path: Path) -> Optional[Dict]:
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except Exception:
+        return None
+
+
+def _load_service_from_package_json(path: Path) -> Optional[Dict]:
+    data = _load_json(path)
+    if not data:
+        return None
+    service = data.get("pixsim", {}).get("service")
+    if not isinstance(service, dict):
+        return None
+    if "directory" not in service:
+        service = dict(service)
+        try:
+            service["directory"] = str(path.parent.relative_to(ROOT))
+        except Exception:
+            service["directory"] = str(path.parent)
+    return service
+
+
+def _load_service_from_manifest(path: Path) -> Optional[Dict]:
+    data = _load_json(path)
+    if not data:
+        return None
+    if isinstance(data.get("service"), dict):
+        return data["service"]
+    if isinstance(data.get("pixsim", {}).get("service"), dict):
+        return data["pixsim"]["service"]
+    if isinstance(data, dict) and data.get("id"):
+        return data
+    return None
+
+
+def load_service_configs(root: Optional[Path] = None) -> List[Dict]:
+    root_path = Path(root or ROOT)
+    configs: List[Dict] = []
+    seen_ids = set()
+
+    package_paths = sorted(_iter_package_json_paths(root_path))
+    manifest_paths = sorted(_iter_manifest_paths(root_path))
+
+    for path in package_paths:
+        config = _load_service_from_package_json(path)
+        if not config:
+            continue
+        service_id = config.get("id")
+        if not service_id:
+            continue
+        if service_id in seen_ids:
+            print(f"Warning: duplicate service id '{service_id}' in {path}")
+            continue
+        seen_ids.add(service_id)
+        configs.append(config)
+
+    for path in manifest_paths:
+        config = _load_service_from_manifest(path)
+        if not config:
+            continue
+        service_id = config.get("id")
+        if not service_id:
+            continue
+        if service_id in seen_ids:
+            print(f"Warning: duplicate service id '{service_id}' in {path}")
+            continue
+        seen_ids.add(service_id)
+        configs.append(config)
+
+    return configs
+
+
+def load_backend_service_configs(root: Optional[Path] = None) -> List[Dict]:
+    configs = load_service_configs(root)
+    backend_types = {"backend", "api"}
+    return [cfg for cfg in configs if (cfg.get("type") or "").lower() in backend_types]
+
+
+def _get_env_value(key: str, env_vars: Optional[Dict[str, str]] = None) -> Optional[str]:
+    if key in os.environ:
+        return os.environ[key]
+    if env_vars is None:
+        try:
+            env_vars = read_env_file()
+        except Exception:
+            env_vars = {}
+    return env_vars.get(key)
 
 
 def _resolve_port(service_config: Dict) -> int:
-    """Resolve port from environment variable or use default."""
-    port_env = service_config.get('port_env')
-    if port_env and os.getenv(port_env):
-        return int(os.getenv(port_env))
-    return service_config.get('default_port', 8000)
+    """Resolve port from environment or .env, fallback to default."""
+    port_env = service_config.get("port_env")
+    if port_env:
+        value = _get_env_value(port_env)
+        if value:
+            return int(value)
+    return service_config.get("default_port", 8000)
+
 
 def _normalize_base_url(value: str) -> str:
     return value.rstrip("/")
@@ -155,11 +187,11 @@ def _join_base_url(base_url: str, endpoint: Optional[str]) -> str:
 def _resolve_base_url(service_config: Dict, port: int) -> str:
     """Resolve base URL from env/config, fallback to localhost + port."""
     base_url = None
-    base_url_env = service_config.get('base_url_env')
+    base_url_env = service_config.get("base_url_env")
     if base_url_env:
-        base_url = os.getenv(base_url_env)
+        base_url = _get_env_value(base_url_env)
     if not base_url:
-        base_url = service_config.get('base_url')
+        base_url = service_config.get("base_url")
     if base_url:
         return _normalize_base_url(base_url)
     return f"http://localhost:{port}"
@@ -168,7 +200,7 @@ def _resolve_base_url(service_config: Dict, port: int) -> str:
 def _get_command_executable(command: str) -> str:
     """Get platform-specific command executable (adds .cmd on Windows for npm/pnpm)."""
     import sys
-    if sys.platform == "win32" and command in ['npm', 'pnpm']:
+    if sys.platform == "win32" and command in ["npm", "pnpm"]:
         return f"{command}.cmd"
     return command
 
@@ -184,214 +216,219 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
     if not env_overrides:
         return {}
 
-    backend_base_url = os.getenv("BACKEND_BASE_URL", f"http://localhost:{ports.backend}")
-    admin_base_url = os.getenv("ADMIN_BASE_URL", f"http://localhost:{ports.admin}")
-    frontend_base_url = os.getenv("FRONTEND_BASE_URL", f"http://localhost:{ports.frontend}")
-    game_frontend_base_url = os.getenv("GAME_FRONTEND_BASE_URL", f"http://localhost:{ports.game_frontend}")
-    launcher_base_url = os.getenv("LAUNCHER_BASE_URL", "http://localhost:8100")
+    env_vars = read_env_file()
+    backend_base_url = _get_env_value("BACKEND_BASE_URL", env_vars) or f"http://localhost:{ports.backend}"
+    frontend_base_url = _get_env_value("FRONTEND_BASE_URL", env_vars) or f"http://localhost:{ports.frontend}"
+    game_frontend_base_url = _get_env_value("GAME_FRONTEND_BASE_URL", env_vars) or f"http://localhost:{ports.game_frontend}"
+    devtools_base_url = _get_env_value("DEVTOOLS_BASE_URL", env_vars) or f"http://localhost:{ports.devtools}"
+    launcher_base_url = _get_env_value("LAUNCHER_BASE_URL", env_vars) or "http://localhost:8100"
+    generation_port = _get_env_value("GENERATION_API_PORT", env_vars)
+    generation_base_url = _get_env_value("GENERATION_BASE_URL", env_vars)
+    if not generation_base_url and generation_port:
+        generation_base_url = f"http://localhost:{generation_port}"
 
     substituted = {}
     for key, value in env_overrides.items():
-        # Replace port placeholders with actual port values
         if service_port is not None:
-            value = value.replace('$PORT', str(service_port))
-        value = value.replace('$BACKEND_PORT', str(ports.backend))
-        value = value.replace('$FRONTEND_PORT', str(ports.frontend))
-        value = value.replace('$GAME_FRONTEND_PORT', str(ports.game_frontend))
-        value = value.replace('$ADMIN_PORT', str(ports.admin))
-        value = value.replace('$BACKEND_BASE_URL', backend_base_url)
-        value = value.replace('$FRONTEND_BASE_URL', frontend_base_url)
-        value = value.replace('$GAME_FRONTEND_BASE_URL', game_frontend_base_url)
-        value = value.replace('$ADMIN_BASE_URL', admin_base_url)
-        value = value.replace('$LAUNCHER_BASE_URL', launcher_base_url)
+            value = value.replace("$PORT", str(service_port))
+        value = value.replace("$BACKEND_PORT", str(ports.backend))
+        value = value.replace("$FRONTEND_PORT", str(ports.frontend))
+        value = value.replace("$GAME_FRONTEND_PORT", str(ports.game_frontend))
+        value = value.replace("$DEVTOOLS_PORT", str(ports.devtools))
+        value = value.replace("$BACKEND_BASE_URL", backend_base_url)
+        value = value.replace("$FRONTEND_BASE_URL", frontend_base_url)
+        value = value.replace("$GENERATION_BASE_URL", generation_base_url or "")
+        if generation_port:
+            value = value.replace("$GENERATION_API_PORT", generation_port)
+        value = value.replace("$GAME_FRONTEND_BASE_URL", game_frontend_base_url)
+        value = value.replace("$DEVTOOLS_BASE_URL", devtools_base_url)
+        value = value.replace("$LAUNCHER_BASE_URL", launcher_base_url)
         substituted[key] = value
 
     return substituted
 
 
+def _merge_env_overrides(base: Dict[str, str], service_config: Dict, ports, service_port: Optional[int] = None) -> Dict[str, str]:
+    overrides = dict(base)
+    overrides.update(_substitute_env_vars(service_config.get("env_overrides", {}), ports, service_port))
+    return overrides
+
+
 def _convert_backend_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a backend service from services.json to ServiceDef."""
+    """Convert a backend service manifest to ServiceDef."""
     python_exe = find_python_executable()
-    service_id = service_config['id']
+    service_id = service_config["id"]
     port = _resolve_port(service_config)
     base_url = _resolve_base_url(service_config, port)
 
-    # Parse module (e.g., "pixsim7.backend.main.main:app")
-    module = service_config.get('module', 'pixsim7.backend.main.main:app')
+    module = service_config.get("module", "pixsim7.backend.main.main:app")
 
-    # OpenAPI settings (optional)
-    openapi_endpoint = service_config.get('openapi_endpoint')
+    openapi_endpoint = service_config.get("openapi_endpoint")
     openapi_url = _join_base_url(base_url, openapi_endpoint) if openapi_endpoint else None
-    openapi_types_path = service_config.get('openapi_types_path')
+    openapi_types_path = service_config.get("openapi_types_path")
 
-    docs_endpoint = service_config.get('docs_endpoint', '/docs')
-    health_endpoint = service_config.get('health_endpoint', '/health')
+    docs_endpoint = service_config.get("docs_endpoint", "/docs")
+    health_endpoint = service_config.get("health_endpoint", "/health")
+    cwd = service_config.get("cwd")
+    if not cwd:
+        directory = service_config.get("directory")
+        cwd = os.path.join(ROOT, directory) if directory else ROOT
 
-    return ServiceDef(
-        key=service_id,
-        title=service_config.get('name', service_id),
-        program=python_exe,
-        args=["-m", "uvicorn", module, "--host", "0.0.0.0", "--port", str(port), "--reload"],
-        cwd=ROOT,
-        env_overrides={
+    env_overrides = _merge_env_overrides(
+        {
             "PYTHONPATH": ROOT,
             "PIXSIM_LOG_FORMAT": "human",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
         },
+        service_config,
+        ports,
+        service_port=port,
+    )
+
+    return ServiceDef(
+        key=service_id,
+        title=service_config.get("name", service_id),
+        program=python_exe,
+        args=["-m", "uvicorn", module, "--host", "0.0.0.0", "--port", str(port), "--reload"],
+        cwd=cwd,
+        env_overrides=env_overrides,
         url=_join_base_url(base_url, docs_endpoint),
         health_url=_join_base_url(base_url, health_endpoint),
-        health_grace_attempts=6,
-        depends_on=service_config.get('depends_on', []),
+        health_grace_attempts=service_config.get("health_grace_attempts", 6),
+        depends_on=service_config.get("depends_on", []),
         openapi_url=openapi_url,
         openapi_types_path=openapi_types_path,
     )
 
 
 def _convert_frontend_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert a frontend service from services.json to ServiceDef."""
-    service_id = service_config['id']
+    """Convert a frontend service manifest to ServiceDef."""
+    service_id = service_config["id"]
     port = _resolve_port(service_config)
     base_url = _resolve_base_url(service_config, port)
 
-    # Get command executable (handles Windows .cmd extension)
-    command = _get_command_executable(service_config.get('command', 'pnpm'))
+    command = _get_command_executable(service_config.get("command", "pnpm"))
 
-    # Build args (add port if needed)
-    args = service_config.get('args', ['dev', '--port'])
-    if '--port' in args or 'dev' in args:
+    args = service_config.get("args", ["dev", "--port"])
+    if "--port" in args or "dev" in args:
         args = args + [str(port)]
 
-    # Substitute port placeholders in env_overrides from JSON
     env_overrides = _substitute_env_vars(
-        service_config.get('env_overrides', {}),
+        service_config.get("env_overrides", {}),
         ports,
-        service_port=port
+        service_port=port,
+    )
+
+    directory = service_config.get("directory")
+    cwd = service_config.get("cwd") or (os.path.join(ROOT, directory) if directory else ROOT)
+
+    return ServiceDef(
+        key=service_id,
+        title=service_config.get("name", service_id),
+        program=command,
+        args=args,
+        cwd=cwd,
+        env_overrides=env_overrides,
+        url=base_url,
+        health_url=_join_base_url(base_url, service_config.get("health_endpoint", "/")),
+        required_tool=command.replace(".cmd", ""),
+        health_grace_attempts=service_config.get("health_grace_attempts", 15),
+        depends_on=service_config.get("depends_on", []),
+    )
+
+
+def _convert_worker_service_to_def(service_config: Dict, ports) -> ServiceDef:
+    """Convert a worker/background service manifest to ServiceDef."""
+    python_exe = find_python_executable()
+    service_id = service_config["id"]
+    module = service_config.get("module", "arq")
+    args = ["-m", module] + service_config.get("args", [])
+    cwd = service_config.get("cwd")
+    if not cwd:
+        directory = service_config.get("directory")
+        cwd = os.path.join(ROOT, directory) if directory else ROOT
+
+    env_overrides = _merge_env_overrides(
+        {
+            "PYTHONPATH": ROOT,
+            "PIXSIM_LOG_FORMAT": "human",
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
+        },
+        service_config,
+        ports,
     )
 
     return ServiceDef(
         key=service_id,
-        title=service_config.get('name', service_id),
-        program=command,
+        title=service_config.get("name", service_id),
+        program=python_exe,
         args=args,
-        cwd=os.path.join(ROOT, service_config.get('directory', service_id)),
+        cwd=cwd,
         env_overrides=env_overrides,
-        url=base_url,
-        health_url=_join_base_url(base_url, service_config.get('health_endpoint', '/')),
-        required_tool=command.replace('.cmd', ''),
-        health_grace_attempts=15,
+        url=None,
+        health_url=None,
+        health_grace_attempts=service_config.get("health_grace_attempts", 10),
+        depends_on=service_config.get("depends_on", []),
     )
 
 
-def _convert_infrastructure_service_to_def(service_config: Dict, ports) -> ServiceDef:
-    """Convert an infrastructure service from services.json to ServiceDef."""
-    python_exe = find_python_executable()
-    service_id = service_config['id']
-    service_type = service_config.get('type', 'python')
+def _convert_docker_compose_service_to_def(service_config: Dict, ports) -> ServiceDef:
+    """Convert a docker-compose service manifest to ServiceDef."""
+    service_id = service_config["id"]
+    compose_file = service_config.get("file", "docker-compose.db-only.yml")
+    cwd = service_config.get("cwd")
+    if not cwd:
+        directory = service_config.get("directory")
+        cwd = os.path.join(ROOT, directory) if directory else ROOT
 
-    if service_type == 'docker-compose':
-        # Docker-compose service
-        compose_file = service_config.get('file', 'docker-compose.db-only.yml')
-        return ServiceDef(
-            key=service_id,
-            title=service_config.get('name', service_id),
-            program="docker-compose",
-            args=["-f", os.path.join(ROOT, compose_file), "up", "-d"],
-            cwd=ROOT,
-            url=None,
-            health_url=None,
-            required_tool="docker|docker-compose",
-            health_grace_attempts=8,
-        )
-    elif service_type == 'python':
-        # Python module service (like ARQ worker)
-        module = service_config.get('module', 'arq')
-        args = ["-m", module] + service_config.get('args', [])
-
-        return ServiceDef(
-            key=service_id,
-            title=service_config.get('name', service_id),
-            program=python_exe,
-            args=args,
-            cwd=ROOT,
-            env_overrides={
-                "PYTHONPATH": ROOT,
-                "PIXSIM_LOG_FORMAT": "human",
-            },
-            url=None,
-            health_url=None,
-            health_grace_attempts=10,
-            depends_on=service_config.get('depends_on', []),
-        )
-    else:
-        raise ValueError(f"Unsupported infrastructure service type: {service_type}")
+    return ServiceDef(
+        key=service_id,
+        title=service_config.get("name", service_id),
+        program="docker-compose",
+        args=["-f", os.path.join(ROOT, compose_file), "up", "-d"],
+        cwd=cwd,
+        url=None,
+        health_url=None,
+        required_tool="docker|docker-compose",
+        health_grace_attempts=service_config.get("health_grace_attempts", 8),
+        depends_on=service_config.get("depends_on", []),
+    )
 
 
-def build_services_from_json() -> Optional[List[ServiceDef]]:
-    """
-    Build service definitions from services.json configuration.
-
-    Returns:
-        List of ServiceDef objects, or None if services.json doesn't exist
-    """
-    services_json_path = Path(ROOT) / "launcher" / "services.json"
-
-    if not services_json_path.exists():
-        return None
-
-    try:
-        with open(services_json_path, 'r') as f:
-            config = json.load(f)
-
-        ports = read_env_ports()
-        services = []
-
-        # Convert backend services
-        for backend_config in config.get('backend_services', []):
-            if backend_config.get('enabled', True):
-                try:
-                    services.append(_convert_backend_service_to_def(backend_config, ports))
-                except Exception as e:
-                    print(f"Warning: Failed to convert backend service {backend_config.get('id', 'unknown')}: {e}")
-
-        # Convert frontend services
-        for frontend_config in config.get('frontend_services', []):
-            if frontend_config.get('enabled', True):
-                try:
-                    services.append(_convert_frontend_service_to_def(frontend_config, ports))
-                except Exception as e:
-                    print(f"Warning: Failed to convert frontend service {frontend_config.get('id', 'unknown')}: {e}")
-
-        # Convert infrastructure services
-        for infra_config in config.get('infrastructure_services', []):
-            if infra_config.get('enabled', True):
-                try:
-                    services.append(_convert_infrastructure_service_to_def(infra_config, ports))
-                except Exception as e:
-                    print(f"Warning: Failed to convert infrastructure service {infra_config.get('id', 'unknown')}: {e}")
-
+def build_services_from_manifests() -> List[ServiceDef]:
+    ports = read_env_ports()
+    services: List[ServiceDef] = []
+    configs = load_service_configs()
+    if not configs:
+        print("Warning: no service manifests found")
         return services
 
-    except Exception as e:
-        print(f"Warning: Failed to load services.json: {e}")
-        import traceback
-        traceback.print_exc()
-        return None
+    for service_config in configs:
+        if not service_config.get("enabled", True):
+            continue
 
+        service_type = (service_config.get("type") or "").lower()
+        runtime = (service_config.get("runtime") or "").lower()
 
-def build_services_with_fallback() -> List[ServiceDef]:
-    """
-    Build service definitions with fallback strategy.
+        try:
+            if service_type in {"frontend", "ui", "web"}:
+                services.append(_convert_frontend_service_to_def(service_config, ports))
+            elif service_type in {"backend", "api"}:
+                services.append(_convert_backend_service_to_def(service_config, ports))
+            elif service_type in {"worker", "python"} or runtime == "python":
+                services.append(_convert_worker_service_to_def(service_config, ports))
+            elif service_type in {"docker-compose", "docker"} or runtime == "docker-compose":
+                services.append(_convert_docker_compose_service_to_def(service_config, ports))
+            else:
+                if service_config.get("command"):
+                    services.append(_convert_frontend_service_to_def(service_config, ports))
+                elif service_config.get("module"):
+                    services.append(_convert_worker_service_to_def(service_config, ports))
+                else:
+                    print(f"Warning: unsupported service type '{service_type}' for {service_config.get('id')}")
+        except Exception as e:
+            print(f"Warning: failed to convert service {service_config.get('id', 'unknown')}: {e}")
 
-    First tries to load from services.json, falls back to hardcoded definitions.
-    """
-    # Try services.json first
-    services = build_services_from_json()
-    if services is not None:
-        # Avoid printing Unicode symbols that may not be supported in some terminals
-        print("Loaded services from services.json")
-        return services
-
-    # Fall back to hardcoded definitions
-    print("Using hardcoded service definitions")
-    return build_services()
+    return services

@@ -7,6 +7,7 @@
  * These tools are registered with the plugin catalog on app startup.
  */
 
+import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 import type { DevToolDefinition } from '@lib/dev/devtools/types';
 
 // Import dev tool components
@@ -54,7 +55,7 @@ export const pluginWorkspaceTool: DevToolDefinition = {
   description: 'Develop and test plugins (UI, interactions, node types, tools)',
   icon: 'plug',
   category: 'plugins',
-  routePath: '/dev/plugins',
+  routePath: buildDevtoolsUrl('/plugin-workspace'),
   tags: ['plugins', 'dev', 'workspace', 'test', 'harness'],
 };
 
@@ -124,7 +125,7 @@ export const promptLabTool: DevToolDefinition = {
   description: 'Analyze, import, and browse prompts',
   icon: 'fileText',
   category: 'prompts',
-  routePath: '/dev/prompt-lab',
+  routePath: buildDevtoolsUrl('/dev/prompt-lab'),
   tags: ['prompts', 'analysis', 'import', 'library'],
 };
 
@@ -134,7 +135,7 @@ export const promptBlockGraphTool: DevToolDefinition = {
   description: 'Visualize parsed prompt blocks as a graph',
   icon: 'graph',
   category: 'prompts',
-  routePath: '/dev/prompt-lab',
+  routePath: buildDevtoolsUrl('/dev/prompt-lab'),
   tags: ['prompts', 'graph', 'analysis', 'blocks'],
 };
 
@@ -144,7 +145,7 @@ export const actionBlockGraphTool: DevToolDefinition = {
   description: 'Visualize ActionBlocks and their compatibility/composition',
   icon: 'zap',
   category: 'prompts',
-  routePath: '/dev/action-block-graph',
+  routePath: buildDevtoolsUrl('/dev/action-block-graph'),
   tags: ['action-blocks', 'graph', 'library', 'prompts'],
 };
 
@@ -154,7 +155,7 @@ export const blockFitTool: DevToolDefinition = {
   description: 'Inspect and rate how well ActionBlocks fit specific assets',
   icon: 'target',
   category: 'prompts',
-  routePath: '/dev/block-fit',
+  routePath: buildDevtoolsUrl('/dev/block-fit'),
   tags: ['action-blocks', 'assets', 'fit', 'feedback'],
 };
 

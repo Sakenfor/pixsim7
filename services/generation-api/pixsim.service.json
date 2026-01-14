@@ -1,0 +1,29 @@
+{
+  "id": "generation-api",
+  "type": "backend",
+  "name": "Generation API",
+  "description": "Lightweight API for generation + chrome extension + automation (excludes game engine)",
+  "module": "pixsim7.backend.generation.main:app",
+  "port_env": "GENERATION_API_PORT",
+  "default_port": 8001,
+  "base_url_env": "GENERATION_BASE_URL",
+  "profile_key": "generation",
+  "subdomain": "gen",
+  "ports": [
+    {
+      "name": "Generation API",
+      "env": "GENERATION_API_PORT",
+      "default_port": 8001
+    }
+  ],
+  "info_endpoint": "/dev/info",
+  "health_endpoint": "/health",
+  "docs_endpoint": "/docs",
+  "openapi_endpoint": "/openapi.json",
+  "openapi_types_path": "packages/shared/types/src/openapi.generated.ts",
+  "depends_on": ["db"],
+  "tags": ["api", "generation", "ai", "microservice", "chrome-extension", "automation", "lightweight"],
+  "provides": ["generations", "prompts", "providers", "analytics", "auth", "accounts", "automation"],
+  "auto_start": false,
+  "enabled": true
+}

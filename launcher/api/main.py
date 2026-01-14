@@ -43,10 +43,10 @@ async def lifespan(app: FastAPI):
     print("=" * 70)
     print()
 
-    # Load service definitions (tries services.json first, falls back to hardcoded)
-    from launcher.gui.services import build_services_with_fallback
+    # Load service definitions from manifests
+    from launcher.gui.services import build_services_from_manifests
 
-    services_list = build_services_with_fallback()
+    services_list = build_services_from_manifests()
     print(f"Loaded {len(services_list)} service definitions")
 
     # Create container with config

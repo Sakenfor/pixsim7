@@ -3,21 +3,18 @@ Multi-Service Discovery for Launcher
 
 Supports discovering and managing multiple backend services for microservices architecture.
 """
-import os
-import json
 import time
 import requests
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
-from pathlib import Path
 import logging
 
 from .service_discovery import ServiceDiscovery, ArchitectureMetrics
 
 try:
-    from .services import _resolve_port
+    from .services import _resolve_port, load_backend_service_configs
 except ImportError:
-    from services import _resolve_port
+    from services import _resolve_port, load_backend_service_configs
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +47,7 @@ class MultiServiceDiscovery:
         Initialize multi-service discovery.
 
         Args:
-            services_config: List of service configuration dicts from services.json
+            services_config: List of service configuration dicts from manifests
         """
         self.services_config = services_config
         self.discovered_services: Dict[str, ServiceDiscovery] = {}
@@ -202,37 +199,24 @@ class MultiServiceDiscovery:
         return len([s for s in self.services_config if s.get('enabled', True)])
 
 
-def load_services_config(config_path: Optional[str] = None) -> Optional[List[Dict]]:
+def load_services_config() -> Optional[List[Dict]]:
     """
-    Load backend services configuration from services.json.
+    Load backend services configuration from service manifests.
 
     Args:
-        config_path: Path to services.json (defaults to launcher/services.json)
-
     Returns:
-        List of backend service configurations, or None if file doesn't exist
+        List of backend service configurations, or None if none are found
     """
-    if not config_path:
-        # Try to find services.json relative to this file
-        launcher_dir = Path(__file__).parent.parent
-        config_path = launcher_dir / "services.json"
-
-    if not Path(config_path).exists():
-        logger.debug(f"Services config not found at {config_path}")
-        return None
-
     try:
-        with open(config_path, 'r') as f:
-            data = json.load(f)
-
-        backend_services = data.get('backend_services', [])
-
-        # Filter to enabled services only
-        enabled_services = [s for s in backend_services if s.get('enabled', True)]
-
-        logger.info(f"Loaded {len(enabled_services)} backend services from config")
-        return enabled_services
-
+        backend_services = [
+            service for service in load_backend_service_configs()
+            if service.get('enabled', True)
+        ]
+        if not backend_services:
+            logger.debug("No backend services found in manifests")
+            return None
+        logger.info(f"Loaded {len(backend_services)} backend services from manifests")
+        return backend_services
     except Exception as e:
-        logger.error(f"Failed to load services config: {e}")
+        logger.error(f"Failed to load backend service manifests: {e}")
         return None

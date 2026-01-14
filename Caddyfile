@@ -19,9 +19,9 @@ app.pixsim7.local {
   reverse_proxy localhost:5173
 }
 
-admin.pixsim7.local {
+dev.pixsim7.local {
   tls internal
-  reverse_proxy localhost:8002
+  reverse_proxy localhost:5176
 }
 
 game.pixsim7.local {

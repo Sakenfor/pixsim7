@@ -30,7 +30,6 @@ PixSim7 is a **provider-agnostic video generation platform** that unifies multip
 ### Core Platform
 - **REST API** - FastAPI with 25+ endpoints for jobs, accounts, assets, and automation
 - **Background Workers** - ARQ-based async job processing
-- **Admin Panel** - Real-time service monitoring, log viewer, and system metrics
 - **Multi-Provider Support** - Unified interface for Pixverse, Runway, Pika, Sora, and more
 - **Account Management** - Pool management with automatic session refresh
 
@@ -55,7 +54,7 @@ PixSim7 is a **provider-agnostic video generation platform** that unifies multip
 ### Prerequisites
 - **Docker** & Docker Compose (recommended)
 - **Python 3.11+** (for local development)
-- **Node.js 18+** (for admin panel)
+- **Node.js 18+** (for frontend and devtools)
 
 ### Option 1: Docker (Recommended)
 
@@ -71,8 +70,6 @@ cp .env.example .env
 # Start all services
 docker-compose up -d
 
-# Access admin panel
-open http://localhost:8002
 ```
 
 ### Option 2: Launcher (Windows)
@@ -81,8 +78,8 @@ open http://localhost:8002
 # Double-click or run
 launch.bat
 
-# Opens web UI at http://localhost:8002 where you can:
-# - Start/stop all services
+# Opens the desktop launcher where you can:
+# - Start/stop services
 # - Monitor logs in real-time
 # - View system metrics
 ```
@@ -100,12 +97,9 @@ conda activate pixsim7
 # Start backend
 uvicorn pixsim7.backend.main.main:app --host 0.0.0.0 --port 8001
 
-# Start admin panel (separate terminal)
-cd admin && npm install && npm run dev
 ```
 
 **Access Points:**
-- Admin Panel: http://localhost:8002
 - API Documentation: http://localhost:8001/docs
 - Health Check: http://localhost:8001/health
 
@@ -172,7 +166,6 @@ cd admin && npm install && npm run dev
 ```env
 # API Server
 BACKEND_PORT=8001          # Backend API (http://localhost:8001)
-ADMIN_PORT=8002            # Admin panel (http://localhost:8002)
 
 # Database
 POSTGRES_PORT=5434         # PostgreSQL (avoid conflicts)
@@ -184,7 +177,7 @@ REDIS_URL=redis://localhost:6380/0
 
 # Optional: Remote Access
 ZEROTIER_NETWORK=10.243.0.0/16
-CORS_ORIGINS=http://localhost:8002
+CORS_ORIGINS=http://localhost:5173
 
 # Optional: AI Hub (LLM prompt editing)
 OPENAI_API_KEY=sk-...
@@ -201,7 +194,6 @@ pixsim7/
 │   ├── domain/             # Database models
 │   ├── workers/            # Background jobs
 │   └── infrastructure/     # Database, Redis, logging
-├── admin/                  # Svelte admin panel
 ├── chrome-extension/       # Browser extension
 ├── data/                   # Persistent data (gitignored)
 │   ├── postgres/           # Database files

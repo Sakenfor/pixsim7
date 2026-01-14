@@ -42,7 +42,7 @@ def show_env_editor(parent) -> dict | None:
     inputs: dict[str, QLineEdit] = {}
 
     common_vars = [
-        'BACKEND_PORT', 'ADMIN_PORT', 'FRONTEND_PORT', 'GAME_FRONTEND_PORT',
+        'BACKEND_PORT', 'FRONTEND_PORT', 'GAME_FRONTEND_PORT',
         'DATABASE_URL', 'REDIS_URL', 'SECRET_KEY', 'DEBUG',
         'PIXVERSE_API_KEY', 'OPENAI_API_KEY'
     ]
