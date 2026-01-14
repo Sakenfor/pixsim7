@@ -17,7 +17,17 @@ export type DockWidgetDefinition = DockZoneDefinition;
 export { dockWidgetSelectors };
 
 // @deprecated - use dockWidgetSelectors directly
-export const dockWidgetRegistry = dockWidgetSelectors;
+// Lazy proxy avoids TDZ errors during catalog selector initialization.
+export const dockWidgetRegistry: typeof dockWidgetSelectors = new Proxy(
+  {} as typeof dockWidgetSelectors,
+  {
+    get: (_target, prop) => (dockWidgetSelectors as any)[prop],
+    has: (_target, prop) => prop in dockWidgetSelectors,
+    ownKeys: () => Reflect.ownKeys(dockWidgetSelectors),
+    getOwnPropertyDescriptor: (_target, prop) =>
+      Object.getOwnPropertyDescriptor(dockWidgetSelectors as any, prop as any),
+  }
+);
 
 /**
  * Register a dock widget definition.
