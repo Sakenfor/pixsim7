@@ -22,12 +22,11 @@ from pixsim7.backend.main.infrastructure.redis.client import get_redis
 from pixsim7.backend.main.services.user import UserService, AuthService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.generation import GenerationService
-from pixsim7.backend.main.services.generation.gateway import GenerationGateway
 from pixsim7.backend.main.infrastructure.services.router import ServiceRouter
+from pixsim7.backend.main.infrastructure.services.gateway import ServiceGateway
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
-from pixsim7.backend.main.services.analysis.gateway import AnalysisGateway
 from pixsim7.backend.main.services.game import (
     GameSessionService,
     GameLocationService,
@@ -90,9 +89,9 @@ def get_service_router() -> ServiceRouter:
 def get_generation_gateway(
     generation_service: GenerationService = Depends(get_generation_service),
     router: ServiceRouter = Depends(get_service_router),
-) -> GenerationGateway:
+) -> ServiceGateway[GenerationService]:
     """Get GenerationGateway instance."""
-    return GenerationGateway(router, generation_service)
+    return ServiceGateway("generation", router, generation_service)
 
 
 def get_provider_service(db: AsyncSession = Depends(get_database)) -> ProviderService:
@@ -116,9 +115,9 @@ def get_analysis_service(db: AsyncSession = Depends(get_database)) -> AnalysisSe
 def get_analysis_gateway(
     analysis_service: AnalysisService = Depends(get_analysis_service),
     router: ServiceRouter = Depends(get_service_router),
-) -> AnalysisGateway:
+) -> ServiceGateway[AnalysisService]:
     """Get AnalysisGateway instance."""
-    return AnalysisGateway(router, analysis_service)
+    return ServiceGateway("analysis", router, analysis_service)
 
 
 async def get_redis_client() -> Optional[Redis]:
@@ -391,11 +390,11 @@ UserSvc = Annotated[UserService, Depends(get_user_service)]
 AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
-GenerationGatewaySvc = Annotated[GenerationGateway, Depends(get_generation_gateway)]
+GenerationGatewaySvc = Annotated[ServiceGateway[GenerationService], Depends(get_generation_gateway)]
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
-AnalysisGatewaySvc = Annotated[AnalysisGateway, Depends(get_analysis_gateway)]
+AnalysisGatewaySvc = Annotated[ServiceGateway[AnalysisService], Depends(get_analysis_gateway)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 GameTriggerSvc = Annotated[GameTriggerService, Depends(get_game_trigger_service)]

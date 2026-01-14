@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-SERVICE_ENV_MAP = {
+SERVICE_ENV_ALIASES = {
     "generation": "GENERATION_BASE_URL",
     "analysis": "ANALYSIS_BASE_URL",
 }
@@ -44,8 +44,7 @@ def load_service_registry() -> Dict[str, ServiceInfo]:
     timeouts = _load_json_mapping("PIXSIM_SERVICE_TIMEOUTS")
     registry: Dict[str, ServiceInfo] = {}
 
-    for service_id, env_key in SERVICE_ENV_MAP.items():
-        raw_url = os.getenv(env_key) or base_urls.get(service_id)
+    for service_id, raw_url in base_urls.items():
         base_url = raw_url.strip() if isinstance(raw_url, str) and raw_url.strip() else None
         timeout_s = _coerce_timeout(timeouts.get(service_id), 30.0)
         registry[service_id] = ServiceInfo(
@@ -55,10 +54,13 @@ def load_service_registry() -> Dict[str, ServiceInfo]:
             enabled=True,
         )
 
-    for service_id, raw_url in base_urls.items():
-        if service_id in registry:
+    for service_id, env_key in SERVICE_ENV_ALIASES.items():
+        raw_url = os.getenv(env_key)
+        if not raw_url:
             continue
-        base_url = raw_url.strip() if isinstance(raw_url, str) and raw_url.strip() else None
+        base_url = raw_url.strip()
+        if not base_url:
+            continue
         timeout_s = _coerce_timeout(timeouts.get(service_id), 30.0)
         registry[service_id] = ServiceInfo(
             id=service_id,

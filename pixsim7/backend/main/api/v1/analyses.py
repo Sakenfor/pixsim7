@@ -11,16 +11,8 @@ from datetime import datetime
 from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisGatewaySvc
 from pixsim7.backend.main.domain.assets.analysis import AnalyzerType, AnalysisStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
-from pixsim7.backend.main.infrastructure.services.client import ServiceClientError
 
 router = APIRouter()
-
-
-def _raise_remote_error(exc: ServiceClientError) -> None:
-    detail = exc.detail
-    if isinstance(detail, dict) and "detail" in detail:
-        detail = detail["detail"]
-    raise HTTPException(status_code=exc.status_code, detail=detail)
 
 
 # ===== REQUEST/RESPONSE SCHEMAS =====
@@ -100,15 +92,14 @@ async def create_analysis(
     Use GET /analyses/{id} to check status and retrieve results.
     """
     try:
-        if analysis_gateway.has_remote():
-            payload = request.model_dump(mode="json")
-            data = await analysis_gateway.request_remote(
-                req,
-                "POST",
-                f"/api/v1/assets/{asset_id}/analyze",
-                json=payload,
-            )
-            return AnalysisResponse.model_validate(data)
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            f"/api/v1/assets/{asset_id}/analyze",
+            json=request.model_dump(mode="json"),
+        )
+        if proxy.called:
+            return AnalysisResponse.model_validate(proxy.data)
 
         analysis_service = analysis_gateway.local
         analysis = await analysis_service.create_analysis(
@@ -140,8 +131,6 @@ async def create_analysis(
             completed_at=analysis.completed_at,
         )
 
-    except ServiceClientError as exc:
-        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
@@ -164,19 +153,22 @@ async def list_asset_analyses(
     Returns analyses ordered by creation time (newest first).
     """
     try:
-        if analysis_gateway.has_remote():
-            params = {
-                "analyzer_type": analyzer_type.value if analyzer_type else None,
-                "status": status.value if status else None,
-                "limit": limit,
-            }
-            data = await analysis_gateway.request_remote(
-                req,
-                "GET",
-                f"/api/v1/assets/{asset_id}/analyses",
-                params={k: v for k, v in params.items() if v is not None},
-            )
-            return AnalysisListResponse.model_validate(data)
+        proxy = await analysis_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/assets/{asset_id}/analyses",
+            params={
+                k: v
+                for k, v in {
+                    "analyzer_type": analyzer_type.value if analyzer_type else None,
+                    "status": status.value if status else None,
+                    "limit": limit,
+                }.items()
+                if v is not None
+            },
+        )
+        if proxy.called:
+            return AnalysisListResponse.model_validate(proxy.data)
 
         analysis_service = analysis_gateway.local
         analyses = await analysis_service.get_analyses_for_asset(
@@ -213,8 +205,6 @@ async def list_asset_analyses(
             total=len(items),
         )
 
-    except ServiceClientError as exc:
-        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
@@ -234,13 +224,13 @@ async def get_analysis(
     Returns the analysis including its current status and result (if completed).
     """
     try:
-        if analysis_gateway.has_remote():
-            data = await analysis_gateway.request_remote(
-                req,
-                "GET",
-                f"/api/v1/analyses/{analysis_id}",
-            )
-            return AnalysisResponse.model_validate(data)
+        proxy = await analysis_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/analyses/{analysis_id}",
+        )
+        if proxy.called:
+            return AnalysisResponse.model_validate(proxy.data)
 
         analysis_service = analysis_gateway.local
         analysis = await analysis_service.get_analysis(analysis_id)
@@ -267,8 +257,6 @@ async def get_analysis(
             completed_at=analysis.completed_at,
         )
 
-    except ServiceClientError as exc:
-        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -286,13 +274,13 @@ async def cancel_analysis(
     Only the owner of the analysis can cancel it.
     """
     try:
-        if analysis_gateway.has_remote():
-            data = await analysis_gateway.request_remote(
-                req,
-                "POST",
-                f"/api/v1/analyses/{analysis_id}/cancel",
-            )
-            return AnalysisResponse.model_validate(data)
+        proxy = await analysis_gateway.proxy(
+            req,
+            "POST",
+            f"/api/v1/analyses/{analysis_id}/cancel",
+        )
+        if proxy.called:
+            return AnalysisResponse.model_validate(proxy.data)
 
         analysis_service = analysis_gateway.local
         analysis = await analysis_service.cancel_analysis(analysis_id, user)
@@ -315,8 +303,6 @@ async def cancel_analysis(
             completed_at=analysis.completed_at,
         )
 
-    except ServiceClientError as exc:
-        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
