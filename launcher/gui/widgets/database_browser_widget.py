@@ -26,6 +26,24 @@ except ImportError:
 from pixsim7.backend.main.domain import ProviderAccount
 
 
+def _normalize_async_db_url(db_url: str) -> str:
+    """Ensure the DB URL uses an async driver (asyncpg)."""
+    if "+asyncpg" in db_url:
+        return db_url
+
+    if db_url.startswith("postgresql+psycopg2://"):
+        return db_url.replace("postgresql+psycopg2://", "postgresql+asyncpg://", 1)
+    if db_url.startswith("postgresql+psycopg://"):
+        return db_url.replace("postgresql+psycopg://", "postgresql+asyncpg://", 1)
+
+    if db_url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + db_url[len("postgres://"):]
+    if db_url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + db_url[len("postgresql://"):]
+
+    return db_url
+
+
 def _resolve_db_url() -> str:
     env = read_env_file()
     return env.get(
@@ -39,7 +57,7 @@ class DatabaseBrowserWidget(QWidget):
 
     def __init__(self, db_url: str | None = None, parent=None):
         super().__init__(parent)
-        self.db_url = db_url or _resolve_db_url()
+        self.db_url = _normalize_async_db_url(db_url or _resolve_db_url())
         self.engine = None
         self.accounts = []
         self._init_ui()
