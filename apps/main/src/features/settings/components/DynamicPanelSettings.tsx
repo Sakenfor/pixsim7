@@ -9,8 +9,9 @@ import { useMemo, useState, useCallback } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { usePanelConfigStore, type PanelDefinition } from '@features/panels';
+import type { PanelDefinition } from '@features/panels/lib/panelRegistry';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
 
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 

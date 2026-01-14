@@ -14,8 +14,8 @@ import { useState, useMemo } from 'react';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
-import { usePanelConfigStore } from '@features/panels';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
 import { useWorkspaceStore } from '@features/workspace';
 
 

@@ -5,13 +5,13 @@
  * This is a layout-only view today; future UI presets can extend this surface.
  */
 
+import type { DockZoneDefinition } from "@lib/dockview/dockZoneRegistry";
 import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDockviewHost } from "@lib/dockview";
 import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import type { DockWidgetDefinition } from "@features/panels";
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";
 import type { LayoutPreset } from "@features/workspace/stores/workspaceStore";
 
@@ -69,7 +69,7 @@ function getWidgetPresets(
   return presets.filter((preset) => preset.scope === scope || preset.scope === "all");
 }
 
-function resolveWidgetHost(widget: DockWidgetDefinition) {
+function resolveWidgetHost(widget: DockZoneDefinition) {
   return getDockviewHost(widget.dockviewId);
 }
 
@@ -96,7 +96,7 @@ export function WidgetPresetsSettings() {
     [registryVersion],
   );
 
-  const handleApply = (widget: DockWidgetDefinition, preset: LayoutPreset) => {
+  const handleApply = (widget: DockZoneDefinition, preset: LayoutPreset) => {
     const host = resolveWidgetHost(widget);
     if (!host?.api) {
       window.alert(`Open the ${widget.label} widget to apply presets.`);
@@ -121,7 +121,7 @@ export function WidgetPresetsSettings() {
     }
   };
 
-  const handleSave = (widget: DockWidgetDefinition) => {
+  const handleSave = (widget: DockZoneDefinition) => {
     const host = resolveWidgetHost(widget);
     if (!host?.api) {
       window.alert(`Open the ${widget.label} widget to save presets.`);
@@ -156,7 +156,7 @@ export function WidgetPresetsSettings() {
     }
   };
 
-  const handleImport = (widget: DockWidgetDefinition) => {
+  const handleImport = (widget: DockZoneDefinition) => {
     const raw = window.prompt("Paste preset JSON:");
     if (!raw) return;
 

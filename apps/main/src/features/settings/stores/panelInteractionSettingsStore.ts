@@ -7,7 +7,8 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { PanelAction, WorkspaceZone } from '@features/panels';
+
+import type { PanelAction, WorkspaceZone } from '@features/panels/lib/types';
 
 /**
  * User override for a specific panel interaction
@@ -126,7 +127,8 @@ export const usePanelInteractionSettingsStore = create<PanelInteractionSettingsS
           const currentSettings = state.panelSettings[panelId];
           if (!currentSettings?.interactionOverrides) return state;
 
-          const { [targetPanelId]: _, ...remainingOverrides } = currentSettings.interactionOverrides;
+          const remainingOverrides = { ...currentSettings.interactionOverrides };
+          delete remainingOverrides[targetPanelId];
 
           return {
             panelSettings: {
@@ -180,7 +182,8 @@ export const usePanelInteractionSettingsStore = create<PanelInteractionSettingsS
 
       resetPanelSettings: (panelId) => {
         set(state => {
-          const { [panelId]: _, ...remaining } = state.panelSettings;
+          const remaining = { ...state.panelSettings };
+          delete remaining[panelId];
           return { panelSettings: remaining };
         });
       },

@@ -11,18 +11,13 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
-import {
-  getAllPanelMetadata,
-  type PanelMetadata,
-  usePanelConfigStore,
-  panelSettingsScopeRegistry,
-  usePanelInstanceSettingsStore,
-  useResolvePanelSettings,
-  useResolveComponentSettings,
-  getScopeMode,
-  ScopeModeSelect,
-} from '@features/panels';
+import { ScopeModeSelect } from '@features/panels/components/shared/ScopeModeSelect';
+import { useResolvePanelSettings, useResolveComponentSettings } from '@features/panels/lib/instanceSettingsResolver';
+import { getAllPanelMetadata, type PanelMetadata } from '@features/panels/lib/panelMetadataRegistry';
 import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpers';
+import { panelSettingsScopeRegistry, getScopeMode } from '@features/panels/lib/panelSettingsScopes';
+import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
+import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
 import type { PanelId } from '@features/workspace';
 
 import { resolveSchemaValues } from '../lib/core/schemaUtils';

@@ -1,5 +1,7 @@
 import type { ComponentType } from 'react';
-import type { PanelSettingsProps } from '@features/panels';
+
+import type { PanelSettingsProps } from '@features/panels/lib/panelRegistry';
+
 import { DynamicSettingsPanel } from './DynamicSettingsPanel';
 
 export function createPanelSchemaSettingsSection(

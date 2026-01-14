@@ -6,8 +6,11 @@
  */
 
 import { useMemo, useState } from 'react';
+
+import { getAllPanelMetadata } from '@features/panels/lib/panelMetadataRegistry';
+import type { PanelAction } from '@features/panels/lib/types';
+
 import { usePanelInteractionSettingsStore } from '../stores/panelInteractionSettingsStore';
-import { getAllPanelMetadata, type PanelAction } from '@features/panels';
 
 const PANEL_ACTIONS: Array<{ value: PanelAction; label: string; description: string }> = [
   { value: 'nothing', label: 'Do Nothing', description: 'Panel stays as-is' },
