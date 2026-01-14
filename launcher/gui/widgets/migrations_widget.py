@@ -523,7 +523,7 @@ class MigrationsWidget(QWidget):
             heads_clean = heads_text.strip()
 
             if "error" in current_clean.lower() or "error" in heads_clean.lower():
-                return "error", "Database connection error", "?"
+                return "error", "Database connection error", "[ERROR]"
 
             current_rev = None
             if current_clean and "(" not in current_clean:
@@ -543,11 +543,11 @@ class MigrationsWidget(QWidget):
 
             if current_rev and heads_rev:
                 if current_rev == heads_rev:
-                    return "up_to_date", f"Database is up-to-date (version {current_rev[:8]}...)", "?"
-                return "pending", f"Updates available! Current: {current_rev[:8]}... ? Latest: {heads_rev[:8]}...", "??"
+                    return "up_to_date", f"Database is up-to-date (version {current_rev[:8]}...)", "[OK]"
+                return "pending", f"Updates available! Current: {current_rev[:8]}... -> Latest: {heads_rev[:8]}...", "[WARN]"
             if not current_rev:
-                return "not_initialized", "Database not initialized with migrations", "?"
-            return "unknown", "Status unclear - check details below", "?"
+                return "not_initialized", "Database not initialized with migrations", "[?]"
+            return "unknown", "Status unclear - check details below", "[?]"
 
         def refresh():
             current = get_current_revision()
