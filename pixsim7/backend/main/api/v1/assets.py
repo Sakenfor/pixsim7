@@ -1637,8 +1637,49 @@ async def enrich_asset(
     # Fetch metadata from provider
     try:
         provider = PixverseProvider()
+        provider_metadata = None
+        parent_video_id = None
+        is_synthetic_source = False
 
-        if asset.media_type.value == "VIDEO":
+        # Workaround: Detect synthetic _src_X IDs (e.g., "12345_src_0", "12345_src_video")
+        # These are source assets extracted from video metadata that can't be looked up directly.
+        # Instead, we fetch the parent video's metadata.
+        # Pattern handles:
+        #   - Numeric IDs: 12345_src_0, 12345_src_video
+        #   - UUIDs: abc123de-f456-7890-abcd-ef1234567890_src_0
+        import re
+        synthetic_match = re.match(
+            r'^(\d+|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})_src_(?:video|\d+)$',
+            asset.provider_asset_id or '',
+            re.IGNORECASE
+        )
+        if synthetic_match:
+            parent_video_id = synthetic_match.group(1)
+            is_synthetic_source = True
+            logger.info(
+                "enrich_asset_synthetic_id_detected",
+                asset_id=asset.id,
+                provider_asset_id=asset.provider_asset_id,
+                parent_video_id=parent_video_id,
+            )
+
+        if is_synthetic_source and parent_video_id:
+            # Fetch parent video metadata - it contains source image/video info
+            client = provider._create_client(account)
+            provider_metadata = await client.get_video(parent_video_id)
+            if provider_metadata:
+                # Convert Pydantic model to dict if needed
+                if hasattr(provider_metadata, 'model_dump'):
+                    provider_metadata = provider_metadata.model_dump()
+                elif hasattr(provider_metadata, 'dict'):
+                    provider_metadata = provider_metadata.dict()
+                logger.info(
+                    "enrich_asset_parent_video_fetched",
+                    asset_id=asset.id,
+                    parent_video_id=parent_video_id,
+                    has_prompt=bool(provider_metadata.get("prompt") or provider_metadata.get("customer_paths", {}).get("prompt") if isinstance(provider_metadata, dict) else False),
+                )
+        elif asset.media_type.value == "VIDEO":
             client = provider._create_client(account)
             provider_metadata = await client.get_video(asset.provider_asset_id)
         else:
