@@ -83,12 +83,8 @@ from .assets.metadata import (
 )
 
 # Asset lineage and branching
-from .assets.lineage import (
-    AssetLineage,
-    AssetBranch,
-    AssetBranchVariant,
-    AssetClip,
-)
+from .assets.lineage import AssetLineage
+from .assets.branching import AssetBranch, AssetBranchVariant, AssetClip
 
 # Scene models (Phase 2)
 from .scene import Scene, SceneAsset, SceneConnection
