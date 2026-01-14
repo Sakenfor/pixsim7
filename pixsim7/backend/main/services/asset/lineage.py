@@ -18,6 +18,18 @@ from pixsim7.backend.main.shared.schemas.image_edit_schemas import (
 from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionAsset
 
 
+# Mapping from composition role to default influence type
+ROLE_TO_INFLUENCE: Dict[str, str] = {
+    "main_character": "content",
+    "companion": "content",
+    "environment": "content",
+    "prop": "content",
+    "style_reference": "style",
+    "effect": "blend",
+    "composition_reference": "content",
+}
+
+
 class AssetLineageService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -215,17 +227,6 @@ def build_lineage_from_composition_metadata(
     n_inputs = len(composition_metadata)
     default_weight = 1.0 / n_inputs if n_inputs > 0 else 1.0
 
-    # Mapping from role to default influence type
-    role_to_influence: Dict[str, str] = {
-        "main_character": "content",
-        "companion": "content",
-        "environment": "content",
-        "prop": "content",
-        "style_reference": "style",
-        "effect": "blend",
-        "composition_reference": "content",
-    }
-
     for entry in composition_metadata:
         parent_id = _resolve_asset_id(entry.get("asset"))
         if parent_id is None:
@@ -236,7 +237,7 @@ def build_lineage_from_composition_metadata(
         if not influence_type:
             role = entry.get("role")
             if role:
-                influence_type = role_to_influence.get(role, "content")
+                influence_type = ROLE_TO_INFLUENCE.get(role, "content")
             else:
                 influence_type = "content"
 
@@ -292,15 +293,7 @@ def build_lineage_from_composition_assets(
         # Map role to default influence type if not specified
         influence_type = comp_asset.influence_type
         if not influence_type and comp_asset.role:
-            role_to_influence: Dict[str, str] = {
-                "main_character": "content",
-                "companion": "content",
-                "environment": "content",
-                "prop": "content",
-                "style_reference": "style",
-                "effect": "blend",
-            }
-            influence_type = role_to_influence.get(comp_asset.role, "content")
+            influence_type = ROLE_TO_INFLUENCE.get(comp_asset.role, "content")
 
         lineage_rows.append(
             AssetLineage(
