@@ -9,14 +9,9 @@ the need to manually update registry.py or __init__.py when adding new kinds.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Type, TypeVar
-import yaml
 
 from pixsim7.backend.main.routes.concepts.schemas import ConceptResponse
-
-# Default paths
-_ONTOLOGY_PATH = Path(__file__).parent.parent / "ontology" / "data" / "ontology.yaml"
 
 
 # =============================================================================

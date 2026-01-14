@@ -1,27 +1,24 @@
 """
-Dev Ontology Usage API
+Dev Vocabulary Usage API
 
-Dev-only endpoint for inspecting ontology IDs and their usage in ActionBlocks.
+Dev-only endpoint for inspecting vocabulary IDs and their usage in ActionBlocks.
 
 Purpose:
-- View all ontology IDs defined in ontology.yaml
-- See which ontology IDs are used in ActionBlocks
-- Track usage statistics for ontology alignment
+- View all vocabulary IDs from VocabularyRegistry
+- See which vocabulary IDs are used in ActionBlocks
+- Track usage statistics for vocabulary alignment
 
 Design:
 - Dev-only endpoint (no production use)
-- Reads from ontology.yaml and scans ActionBlock tags
-- Helps evolve the ontology over time
+- Reads from VocabularyRegistry and scans ActionBlock tags
+- Helps evolve the vocabulary over time
 """
 from fastapi import APIRouter, HTTPException
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
-# NOTE: This endpoint uses the legacy OntologyRegistry which loads ontology.yaml.
-# The canonical source is now VocabularyRegistry in shared.ontology.vocabularies.
-# This endpoint may need updating to use vocabularies instead.
-from pixsim7.backend.main.domain.ontology.registry import get_ontology_registry
+from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.prompt.block.tagging import extract_ontology_ids_from_tags
 from sqlalchemy import select
@@ -35,7 +32,7 @@ router = APIRouter(prefix="/dev/ontology", tags=["dev", "ontology"])
 # ===== Response Models =====
 
 class OntologyIdUsage(BaseModel):
-    """Usage statistics for a single ontology ID."""
+    """Usage statistics for a single vocabulary ID."""
     id: str
     label: Optional[str] = None
     category: str
@@ -45,8 +42,8 @@ class OntologyIdUsage(BaseModel):
 
 
 class OntologyUsageResponse(BaseModel):
-    """Complete ontology usage report."""
-    ontology_version: str
+    """Complete vocabulary usage report."""
+    vocabulary_version: str
     total_ids: int
     total_action_blocks_scanned: int
     ids: List[OntologyIdUsage]
@@ -54,99 +51,83 @@ class OntologyUsageResponse(BaseModel):
 
 # ===== Helper Functions =====
 
-def extract_all_domain_ids_from_registry() -> Dict[str, Dict[str, Any]]:
+def extract_all_vocab_ids_from_registry() -> Dict[str, Dict[str, Any]]:
     """
-    Extract all ontology IDs from the domain section using the registry.
+    Extract all vocabulary IDs from VocabularyRegistry.
 
     Returns:
-        Dict mapping ontology ID to metadata {label, category}
+        Dict mapping vocabulary ID to metadata {label, category}
     """
-    registry = get_ontology_registry()
-    raw_core = registry._raw_core
-
+    registry = get_registry()
     id_map: Dict[str, Dict[str, Any]] = {}
 
-    # Get domain packs from raw data
-    domain = raw_core.get("domain", {})
-    packs = domain.get("packs", {})
-    default_pack = packs.get("default", {})
+    # Parts (anatomy)
+    for part in registry.all_parts():
+        id_map[part.id] = {
+            "label": part.label,
+            "category": f"part.{part.category}" if part.category else "part"
+        }
 
-    # Helper to extract IDs from a category
-    def extract_from_category(category_name: str, category_label: str) -> None:
-        category_items = default_pack.get(category_name, [])
-        if not isinstance(category_items, list):
-            return
+    # Spatial (camera views, framing, orientation)
+    for spatial in registry.all_spatial():
+        id_map[spatial.id] = {
+            "label": spatial.label,
+            "category": f"spatial.{spatial.category}" if spatial.category else "spatial"
+        }
 
-        for item in category_items:
-            if not isinstance(item, dict):
-                continue
+    # Poses
+    for pose in registry.all_poses():
+        id_map[pose.id] = {
+            "label": pose.label,
+            "category": f"pose.{pose.category}" if pose.category else "pose"
+        }
 
-            item_id = item.get("id")
-            label = item.get("label")
+    # Moods
+    for mood in registry.all_moods():
+        id_map[mood.id] = {
+            "label": mood.label,
+            "category": f"mood.{mood.category}" if mood.category else "mood"
+        }
 
-            if item_id:
-                id_map[item_id] = {
-                    "label": label,
-                    "category": category_label
-                }
+    # Locations
+    for location in registry.all_locations():
+        id_map[location.id] = {
+            "label": location.label,
+            "category": f"location.{location.category}" if location.category else "location"
+        }
 
-    # Extract from all domain categories
-    extract_from_category("anatomy_parts", "anatomy.part")
-    extract_from_category("anatomy_regions", "anatomy.region")
-    extract_from_category("actions", "action")
-    extract_from_category("states_physical", "state.physical")
-    extract_from_category("states_emotional", "state.emotional")
-    extract_from_category("states_positional", "state.positional")
-    extract_from_category("spatial_location", "spatial.location")
-    extract_from_category("spatial_orientation", "spatial.orientation")
-    extract_from_category("spatial_contact", "spatial.contact")
-    extract_from_category("camera_views", "camera.view")
-    extract_from_category("camera_framing", "camera.framing")
-    extract_from_category("beats_sequence", "beat.sequence")
-    extract_from_category("beats_micro", "beat.micro")
+    # Ratings
+    for rating in registry.all_ratings():
+        id_map[rating.id] = {
+            "label": rating.label,
+            "category": "rating"
+        }
 
-    # Add core intensity and speed IDs
-    core = raw_core.get("core", {})
-    intensity_labels = core.get("intensity", {}).get("labels", [])
-    if isinstance(intensity_labels, list):
-        for intensity_item in intensity_labels:
-            if isinstance(intensity_item, dict):
-                item_id = intensity_item.get("id")
-                if item_id:
-                    id_map[item_id] = {
-                        "label": item_id.replace("intensity:", "").capitalize(),
-                        "category": "intensity"
-                    }
-
-    speed_labels = core.get("speed", {}).get("labels", {})
-    for speed_key, speed_data in speed_labels.items():
-        if isinstance(speed_data, dict):
-            item_id = speed_data.get("id")
-            if item_id:
-                id_map[item_id] = {
-                    "label": speed_key.capitalize(),
-                    "category": "speed"
-                }
+    # Roles
+    for role in registry.all_roles():
+        id_map[role.id] = {
+            "label": role.label,
+            "category": "role"
+        }
 
     return id_map
 
 
-async def count_ontology_id_usage(db, ontology_id: str, limit: int = 5) -> tuple[int, List[str]]:
+async def count_vocab_id_usage(db, vocab_id: str, limit: int = 5) -> tuple[int, List[str]]:
     """
-    Count how many ActionBlocks use a specific ontology ID.
+    Count how many ActionBlocks use a specific vocabulary ID.
 
     Args:
         db: Database session
-        ontology_id: The ontology ID to search for
+        vocab_id: The vocabulary ID to search for
         limit: Max number of example block IDs to return
 
     Returns:
         (count, example_block_ids)
     """
     # Query all action blocks (limited to avoid performance issues)
-    # In production, this should be optimized with better indexing or caching
     result = await db.execute(
-        select(PromptBlock).limit(1000)  # Limit scan to first 1000 blocks
+        select(PromptBlock).limit(1000)
     )
     blocks = result.scalars().all()
 
@@ -154,17 +135,13 @@ async def count_ontology_id_usage(db, ontology_id: str, limit: int = 5) -> tuple
     example_block_ids = []
 
     for block in blocks:
-        # Extract ontology IDs from this block's tags
         if not block.tags:
             continue
 
         block_ontology_ids = extract_ontology_ids_from_tags(block.tags)
 
-        # Check if our target ID is in this block
-        if ontology_id in block_ontology_ids:
+        if vocab_id in block_ontology_ids:
             matching_count += 1
-
-            # Add to examples if we haven't hit the limit
             if len(example_block_ids) < limit:
                 example_block_ids.append(block.block_id)
 
@@ -179,32 +156,29 @@ async def get_ontology_usage(
     user: CurrentUser = None,
 ) -> OntologyUsageResponse:
     """
-    Get ontology IDs and their usage in ActionBlocks.
+    Get vocabulary IDs and their usage in ActionBlocks.
 
     Returns:
-        Complete ontology usage report with:
-        - List of all ontology IDs
+        Complete vocabulary usage report with:
+        - List of all vocabulary IDs
         - Usage counts per ID
         - Example ActionBlock IDs using each ID
     """
     try:
-        # Get registry and extract version
-        registry = get_ontology_registry()
-        version = registry._raw_core.get("version", "unknown")
+        registry = get_registry()
 
-        # Extract all domain IDs
-        id_map = extract_all_domain_ids_from_registry()
+        # Extract all vocab IDs
+        id_map = extract_all_vocab_ids_from_registry()
 
         # Build usage report for each ID
         id_usages: List[OntologyIdUsage] = []
 
-        for ontology_id, metadata in id_map.items():
-            # Count usage in ActionBlocks
-            count, examples = await count_ontology_id_usage(db, ontology_id, limit=5)
+        for vocab_id, metadata in id_map.items():
+            count, examples = await count_vocab_id_usage(db, vocab_id, limit=5)
 
             id_usages.append(
                 OntologyIdUsage(
-                    id=ontology_id,
+                    id=vocab_id,
                     label=metadata.get("label"),
                     category=metadata.get("category", "unknown"),
                     action_block_count=count,
@@ -220,14 +194,14 @@ async def get_ontology_usage(
         total_blocks = len(result.scalars().all())
 
         response = OntologyUsageResponse(
-            ontology_version=version,
+            vocabulary_version="1.0.0",
             total_ids=len(id_usages),
             total_action_blocks_scanned=total_blocks,
             ids=id_usages,
         )
 
         logger.info(
-            f"Generated ontology usage report: {len(id_usages)} IDs, {total_blocks} blocks scanned",
+            f"Generated vocabulary usage report: {len(id_usages)} IDs, {total_blocks} blocks scanned",
             extra={"user_id": user.id if user else None}
         )
 
@@ -235,13 +209,13 @@ async def get_ontology_usage(
 
     except Exception as e:
         logger.error(
-            f"Failed to generate ontology usage report: {e}",
+            f"Failed to generate vocabulary usage report: {e}",
             extra={"user_id": user.id if user else None},
             exc_info=True,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate ontology usage report: {str(e)}"
+            detail=f"Failed to generate vocabulary usage report: {str(e)}"
         )
 
 
@@ -250,25 +224,32 @@ async def get_ontology_info(
     user: CurrentUser = None,
 ) -> Dict[str, Any]:
     """
-    Get basic ontology information.
+    Get basic vocabulary information.
 
     Returns:
-        Ontology metadata (version, label, description)
+        Vocabulary metadata and counts
     """
     try:
-        registry = get_ontology_registry()
-        raw_core = registry._raw_core
+        registry = get_registry()
 
         info = {
-            "version": raw_core.get("version", "unknown"),
-            "label": raw_core.get("label", ""),
-            "description": raw_core.get("description", ""),
-            "has_core_section": bool(raw_core.get("core")),
-            "has_domain_section": bool(raw_core.get("domain")),
+            "version": "1.0.0",
+            "label": "PixSim7 Vocabulary Registry",
+            "description": "Unified vocabulary system for poses, moods, locations, parts, spatial, etc.",
+            "counts": {
+                "poses": len(registry.all_poses()),
+                "moods": len(registry.all_moods()),
+                "locations": len(registry.all_locations()),
+                "ratings": len(registry.all_ratings()),
+                "roles": len(registry.all_roles()),
+                "parts": len(registry.all_parts()),
+                "spatial": len(registry.all_spatial()),
+            },
+            "loaded_packs": [p.id for p in registry.loaded_packs],
         }
 
         logger.info(
-            "Retrieved ontology info",
+            "Retrieved vocabulary info",
             extra={"user_id": user.id if user else None}
         )
 
@@ -276,11 +257,11 @@ async def get_ontology_info(
 
     except Exception as e:
         logger.error(
-            f"Failed to get ontology info: {e}",
+            f"Failed to get vocabulary info: {e}",
             extra={"user_id": user.id if user else None},
             exc_info=True,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get ontology info: {str(e)}"
+            detail=f"Failed to get vocabulary info: {str(e)}"
         )

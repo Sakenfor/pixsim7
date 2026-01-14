@@ -16,18 +16,7 @@ from pixsim7.backend.main.shared.schemas.image_edit_schemas import (
     EditSummary,
 )
 from pixsim7.backend.main.shared.schemas.composition_schemas import CompositionAsset
-
-
-# Mapping from composition role to default influence type
-ROLE_TO_INFLUENCE: Dict[str, str] = {
-    "main_character": "content",
-    "companion": "content",
-    "environment": "content",
-    "prop": "content",
-    "style_reference": "style",
-    "effect": "blend",
-    "composition_reference": "content",
-}
+from pixsim7.backend.main.shared.composition import get_role_to_influence_mapping
 
 
 class AssetLineageService:
@@ -237,7 +226,7 @@ def build_lineage_from_composition_metadata(
         if not influence_type:
             role = entry.get("role")
             if role:
-                influence_type = ROLE_TO_INFLUENCE.get(role, "content")
+                influence_type = get_role_to_influence_mapping().get(role, "content")
             else:
                 influence_type = "content"
 
@@ -293,7 +282,7 @@ def build_lineage_from_composition_assets(
         # Map role to default influence type if not specified
         influence_type = comp_asset.influence_type
         if not influence_type and comp_asset.role:
-            influence_type = ROLE_TO_INFLUENCE.get(comp_asset.role, "content")
+            influence_type = get_role_to_influence_mapping().get(comp_asset.role, "content")
 
         lineage_rows.append(
             AssetLineage(

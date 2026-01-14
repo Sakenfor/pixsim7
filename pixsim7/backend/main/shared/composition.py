@@ -88,6 +88,21 @@ def get_composition_role_metadata() -> Dict[str, Dict[str, Any]]:
     """Return a defensive copy of role metadata from YAML."""
     return copy.deepcopy(_ROLE_DATA["roles"])
 
+
+def get_role_to_influence_mapping() -> Dict[str, str]:
+    """Build role->influence type mapping from YAML metadata.
+
+    Returns a mapping from composition role id to default influence type.
+    Used by lineage tracking to determine how a source asset influenced the output.
+
+    Influence types: content, style, structure, mask, blend, replacement, reference
+    """
+    roles = _ROLE_DATA["roles"]
+    return {
+        role_id: meta.get("defaultInfluence", "content")
+        for role_id, meta in roles.items()
+    }
+
 # Prompt role mapping (PromptSegmentRole -> composition role)
 # Not in YAML because prompt roles are a separate concern from tag/alias roles
 PROMPT_ROLE_TO_COMPOSITION_ROLE = {
