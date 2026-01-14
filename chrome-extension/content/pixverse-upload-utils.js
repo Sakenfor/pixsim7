@@ -937,13 +937,30 @@
    * @returns {Object} - { success: number, failed: string[] }
    */
   async function restoreAllImages(images, options = {}) {
-    const { onProgress, timeout = 5000, slotCount = 0 } = options;
+    const { onProgress, timeout = 5000, slotCount = 0, clearFirst = false } = options;
     let success = 0;
     const failed = [];
 
     // Get fresh slot list
     let uploads = findUploadInputs();
     let relevantSlots = uploads.filter(u => u.priority >= 10);
+
+    // Clear all occupied slots first if requested
+    if (clearFirst) {
+      debugLog('[Restore] Clearing all occupied slots first');
+      for (const slot of relevantSlots) {
+        if (slot.hasImage && slot.container) {
+          debugLog('[Restore] Clearing slot:', slot.containerId);
+          await clearUploadContainer(slot.container);
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+      // Re-scan slots after clearing
+      await new Promise(r => setTimeout(r, 500));
+      uploads = findUploadInputs();
+      relevantSlots = uploads.filter(u => u.priority >= 10);
+      debugLog('[Restore] Slots after clearing:', relevantSlots.map(s => ({ id: s.containerId, hasImage: s.hasImage })));
+    }
 
 
     // Calculate max slot position needed

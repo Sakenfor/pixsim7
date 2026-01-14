@@ -557,7 +557,8 @@
           if (sourceImages.length > 0) {
             const { restoreAllImages } = window.PXS7.uploadUtils || {};
             if (restoreAllImages) {
-              restoreResult = await restoreAllImages(sourceImages);
+              // Clear occupied slots first to fully restore generation state
+              restoreResult = await restoreAllImages(sourceImages, { clearFirst: true });
             } else {
               debugLog('[Restore] restoreAllImages not available, falling back to simple inject');
               for (const url of sourceImages) {
