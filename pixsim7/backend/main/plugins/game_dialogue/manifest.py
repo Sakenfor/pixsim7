@@ -37,7 +37,7 @@ from pixsim7.backend.main.domain.narrative.action_blocks.generator import (
     GenerationResult,
     PreviousSegmentSnapshot
 )
-from pixsim7.backend.main.domain.narrative.action_blocks.types_v2 import ContentRating
+from pixsim7.backend.main.domain.narrative.action_blocks import ContentRating
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 
 

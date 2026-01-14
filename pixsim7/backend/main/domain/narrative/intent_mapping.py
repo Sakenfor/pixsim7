@@ -7,7 +7,7 @@ and the action engine's branch intents, preventing drift between the systems.
 
 from enum import Enum
 from typing import List, Optional
-from ..action_blocks.types import BranchIntent
+from ..action_blocks import BranchIntent
 
 
 class NarrativeIntent(str, Enum):
