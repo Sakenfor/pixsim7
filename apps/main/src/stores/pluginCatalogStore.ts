@@ -6,6 +6,13 @@
  * enabling/disabling plugins with optimistic updates.
  */
 import { create } from 'zustand';
+
+import {
+  loadRemotePluginBundles,
+  unregisterPlugin,
+} from '@lib/plugins/bundleRegistrar';
+import { isBundleFamily, type BundleFamily } from '@lib/plugins/types';
+
 import type { PluginInfo } from '../lib/api/plugins';
 import {
   getPlugins,
@@ -13,11 +20,6 @@ import {
   enablePlugin as apiEnablePlugin,
   disablePlugin as apiDisablePlugin,
 } from '../lib/api/plugins';
-import {
-  loadRemotePluginBundles,
-  unregisterPlugin,
-} from '@lib/plugins/bundleRegistrar';
-import { isBundleFamily, type BundleFamily } from '@lib/plugins/types';
 
 // ===== TYPES =====
 
@@ -69,8 +71,20 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
     try {
       // Fetch all plugins and enabled plugins in parallel
       const [allPlugins, enabled] = await Promise.all([
-        getPlugins(),
-        getEnabledPlugins(),
+        getPlugins().catch((error: any) => {
+          if (error?.response?.status === 404) {
+            console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
+            return [];
+          }
+          throw error;
+        }),
+        getEnabledPlugins().catch((error: any) => {
+          if (error?.response?.status === 404) {
+            console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
+            return [];
+          }
+          throw error;
+        }),
       ]);
 
       set({
@@ -102,8 +116,20 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
 
     try {
       const [allPlugins, enabled] = await Promise.all([
-        getPlugins(),
-        getEnabledPlugins(),
+        getPlugins().catch((error: any) => {
+          if (error?.response?.status === 404) {
+            console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
+            return [];
+          }
+          throw error;
+        }),
+        getEnabledPlugins().catch((error: any) => {
+          if (error?.response?.status === 404) {
+            console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
+            return [];
+          }
+          throw error;
+        }),
       ]);
 
       set({
