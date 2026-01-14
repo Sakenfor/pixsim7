@@ -442,6 +442,47 @@
       text-align: right;
     }
 
+    /* Hotkey settings */
+    .hotkey-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+
+    .hotkey-label {
+      flex: 1;
+      color: var(--text-muted);
+      min-width: 80px;
+    }
+
+    .hotkey-btn {
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 10px;
+      font-family: monospace;
+      cursor: pointer;
+      min-width: 60px;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    .hotkey-btn:hover { border-color: var(--accent); }
+    .hotkey-btn.recording {
+      border-color: var(--accent);
+      background: rgba(233, 69, 96, 0.2);
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
     /* History markers on seek bar */
     .seek-marker {
       position: absolute;
@@ -735,6 +776,12 @@
           <option value="2">2x</option>
         </select>
 
+        <div class="volume-controls" style="display: flex; align-items: center; gap: 4px;">
+          <button class="playback-btn" id="volumeBtn" title="Mute/Unmute (M)" style="font-size: 12px;">🔊</button>
+          <input type="range" class="setting-slider" id="volumeSlider" min="0" max="100" value="100" title="Volume (Up/Down arrows)" style="width: 60px;">
+          <span class="setting-value" id="volumeValue" style="min-width: 30px; font-size: 10px;">100%</span>
+        </div>
+
         <div class="frame-controls" style="font-size: 10px;">
           <span style="color: var(--text-muted);">F:</span>
           <input type="number" class="frame-input" id="frameInput" value="0" min="0" style="width: 50px; font-size: 10px; padding: 3px;">
@@ -769,6 +816,15 @@
                     Show seek markers
                   </label>
                   <button class="btn btn-secondary" id="clearHistory" style="margin-left: auto; padding: 2px 6px;">Clear</button>
+                </div>
+              </div>
+              <div class="settings-section">
+                <div class="settings-title" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>Hotkeys</span>
+                  <button class="btn btn-secondary" id="resetHotkeys" style="padding: 2px 6px; font-size: 9px;">Reset</button>
+                </div>
+                <div class="hotkey-list" id="hotkeyList" style="max-height: 150px; overflow-y: auto;">
+                  <!-- Hotkey rows will be generated dynamically -->
                 </div>
               </div>
             </div>

@@ -108,46 +108,258 @@
     elements.skipShiftVal.textContent = state.skipShiftFrames + 'f';
   });
 
+  // ===== Volume controls =====
+  function updateVolumeIcon() {
+    if (!elements.volumeBtn) return;
+    if (state.isMuted || state.volume === 0) {
+      elements.volumeBtn.textContent = '🔇';
+    } else if (state.volume < 0.5) {
+      elements.volumeBtn.textContent = '🔉';
+    } else {
+      elements.volumeBtn.textContent = '🔊';
+    }
+  }
+
+  function setVolume(vol) {
+    state.volume = Math.max(0, Math.min(1, vol));
+    elements.video.volume = state.volume;
+    if (elements.volumeSlider) {
+      elements.volumeSlider.value = Math.round(state.volume * 100);
+    }
+    if (elements.volumeValue) {
+      elements.volumeValue.textContent = Math.round(state.volume * 100) + '%';
+    }
+    if (state.volume > 0) {
+      state.isMuted = false;
+      elements.video.muted = false;
+    }
+    updateVolumeIcon();
+  }
+
+  function toggleMute() {
+    if (state.isMuted) {
+      state.isMuted = false;
+      elements.video.muted = false;
+      setVolume(state.volumeBeforeMute || 1.0);
+    } else {
+      state.volumeBeforeMute = state.volume;
+      state.isMuted = true;
+      elements.video.muted = true;
+      updateVolumeIcon();
+    }
+  }
+
+  if (elements.volumeSlider) {
+    elements.volumeSlider.addEventListener('input', () => {
+      setVolume(parseInt(elements.volumeSlider.value) / 100);
+    });
+  }
+
+  if (elements.volumeBtn) {
+    elements.volumeBtn.addEventListener('click', toggleMute);
+  }
+
+  // ===== Hotkey System =====
+  const DEFAULT_HOTKEYS = {
+    playPause: { code: 'Space', ctrl: false, shift: false, alt: false, label: 'Play/Pause' },
+    skipBack: { code: 'ArrowLeft', ctrl: false, shift: false, alt: false, label: 'Skip Back' },
+    skipForward: { code: 'ArrowRight', ctrl: false, shift: false, alt: false, label: 'Skip Forward' },
+    capture: { code: 'KeyC', ctrl: false, shift: false, alt: false, label: 'Capture' },
+    saveAsset: { code: 'KeyS', ctrl: false, shift: false, alt: false, label: 'Save Asset' },
+    regionMode: { code: 'KeyR', ctrl: false, shift: false, alt: false, label: 'Rectangle' },
+    polygonMode: { code: 'KeyP', ctrl: false, shift: false, alt: false, label: 'Polygon' },
+    mute: { code: 'KeyM', ctrl: false, shift: false, alt: false, label: 'Mute' },
+    volumeUp: { code: 'ArrowUp', ctrl: false, shift: false, alt: false, label: 'Volume Up' },
+    volumeDown: { code: 'ArrowDown', ctrl: false, shift: false, alt: false, label: 'Volume Down' },
+  };
+
+  const HOTKEY_STORAGE_KEY = 'pxs7_player_hotkeys';
+
+  function loadHotkeys() {
+    try {
+      const stored = localStorage.getItem(HOTKEY_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Merge with defaults to handle new hotkeys added in updates
+        state.hotkeys = { ...DEFAULT_HOTKEYS };
+        for (const action of Object.keys(DEFAULT_HOTKEYS)) {
+          if (parsed[action]) {
+            state.hotkeys[action] = { ...DEFAULT_HOTKEYS[action], ...parsed[action] };
+          }
+        }
+      } else {
+        state.hotkeys = { ...DEFAULT_HOTKEYS };
+      }
+    } catch (e) {
+      state.hotkeys = { ...DEFAULT_HOTKEYS };
+    }
+  }
+
+  function saveHotkeys() {
+    try {
+      localStorage.setItem(HOTKEY_STORAGE_KEY, JSON.stringify(state.hotkeys));
+    } catch (e) {
+      console.warn('Failed to save hotkeys:', e);
+    }
+  }
+
+  function formatHotkey(hotkey) {
+    const parts = [];
+    if (hotkey.ctrl) parts.push('Ctrl');
+    if (hotkey.shift) parts.push('Shift');
+    if (hotkey.alt) parts.push('Alt');
+
+    // Convert code to readable key name
+    let key = hotkey.code;
+    if (key.startsWith('Key')) key = key.slice(3);
+    else if (key.startsWith('Digit')) key = key.slice(5);
+    else if (key === 'ArrowLeft') key = '←';
+    else if (key === 'ArrowRight') key = '→';
+    else if (key === 'ArrowUp') key = '↑';
+    else if (key === 'ArrowDown') key = '↓';
+    else if (key === 'Space') key = 'Space';
+
+    parts.push(key);
+    return parts.join('+');
+  }
+
+  function renderHotkeySettings() {
+    if (!elements.hotkeyList) return;
+
+    elements.hotkeyList.innerHTML = '';
+    for (const [action, hotkey] of Object.entries(state.hotkeys)) {
+      const row = document.createElement('div');
+      row.className = 'hotkey-row';
+      row.innerHTML = `
+        <span class="hotkey-label">${hotkey.label}</span>
+        <button class="hotkey-btn" data-action="${action}">${formatHotkey(hotkey)}</button>
+      `;
+      elements.hotkeyList.appendChild(row);
+    }
+
+    // Add click handlers for hotkey buttons
+    elements.hotkeyList.querySelectorAll('.hotkey-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startRecordingHotkey(btn.dataset.action, btn);
+      });
+    });
+  }
+
+  function startRecordingHotkey(action, btn) {
+    // Cancel any existing recording
+    if (state.recordingHotkey) {
+      const prevBtn = elements.hotkeyList.querySelector('.hotkey-btn.recording');
+      if (prevBtn) {
+        prevBtn.classList.remove('recording');
+        prevBtn.textContent = formatHotkey(state.hotkeys[state.recordingHotkey]);
+      }
+    }
+
+    state.recordingHotkey = action;
+    btn.classList.add('recording');
+    btn.textContent = 'Press key...';
+  }
+
+  function handleHotkeyRecording(e) {
+    if (!state.recordingHotkey) return false;
+
+    // Ignore modifier-only keypresses
+    if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return true;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const action = state.recordingHotkey;
+    state.hotkeys[action] = {
+      ...state.hotkeys[action],
+      code: e.code,
+      ctrl: e.ctrlKey,
+      shift: e.shiftKey,
+      alt: e.altKey,
+    };
+
+    saveHotkeys();
+    state.recordingHotkey = null;
+    renderHotkeySettings();
+    return true;
+  }
+
+  function matchesHotkey(e, hotkey) {
+    return e.code === hotkey.code &&
+           e.ctrlKey === hotkey.ctrl &&
+           e.shiftKey === hotkey.shift &&
+           e.altKey === hotkey.alt;
+  }
+
+  // Reset hotkeys button
+  if (elements.resetHotkeysBtn) {
+    elements.resetHotkeysBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.hotkeys = JSON.parse(JSON.stringify(DEFAULT_HOTKEYS));
+      saveHotkeys();
+      renderHotkeySettings();
+    });
+  }
+
+  // Initialize hotkeys
+  loadHotkeys();
+  renderHotkeySettings();
+
   // ===== Keyboard shortcuts =====
   document.addEventListener('keydown', (e) => {
+    // Handle hotkey recording first
+    if (handleHotkeyRecording(e)) return;
+
     if (e.target.tagName === 'INPUT') return;
 
-    switch (e.code) {
-      case 'Space':
-        e.preventDefault();
-        if (elements.video.paused) elements.video.play();
-        else elements.video.pause();
-        break;
-      case 'ArrowLeft':
-        e.preventDefault();
-        elements.video.pause();
-        elements.video.currentTime = Math.max(0, elements.video.currentTime - getSkipAmount(e));
-        break;
-      case 'ArrowRight':
-        e.preventDefault();
-        elements.video.pause();
-        elements.video.currentTime = Math.min(elements.video.duration, elements.video.currentTime + getSkipAmount(e));
-        break;
-      case 'KeyC':
-        if (e.ctrlKey || e.metaKey) return;
-        e.preventDefault();
-        window.PXS7Player.capture?.captureAndUpload();
-        break;
-      case 'KeyS':
-        if (e.ctrlKey || e.metaKey) return;
-        e.preventDefault();
-        window.PXS7Player.capture?.saveToAssetsOnly();
-        break;
-      case 'KeyR':
-        e.preventDefault();
+    const hotkeys = state.hotkeys;
+
+    if (matchesHotkey(e, hotkeys.playPause)) {
+      e.preventDefault();
+      if (elements.video.paused) elements.video.play();
+      else elements.video.pause();
+    } else if (e.code === hotkeys.skipBack.code && !hotkeys.skipBack.ctrl && !hotkeys.skipBack.shift && !hotkeys.skipBack.alt) {
+      // Skip back with modifier support (normal, ctrl, shift)
+      e.preventDefault();
+      elements.video.pause();
+      elements.video.currentTime = Math.max(0, elements.video.currentTime - getSkipAmount(e));
+    } else if (e.code === hotkeys.skipForward.code && !hotkeys.skipForward.ctrl && !hotkeys.skipForward.shift && !hotkeys.skipForward.alt) {
+      // Skip forward with modifier support (normal, ctrl, shift)
+      e.preventDefault();
+      elements.video.pause();
+      elements.video.currentTime = Math.min(elements.video.duration, elements.video.currentTime + getSkipAmount(e));
+    } else if (matchesHotkey(e, hotkeys.capture)) {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      window.PXS7Player.capture?.captureAndUpload();
+    } else if (matchesHotkey(e, hotkeys.saveAsset)) {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      window.PXS7Player.capture?.saveToAssetsOnly();
+    } else if (matchesHotkey(e, hotkeys.regionMode)) {
+      e.preventDefault();
+      window.PXS7Player.region?.toggleRegionMode();
+    } else if (matchesHotkey(e, hotkeys.polygonMode)) {
+      e.preventDefault();
+      window.PXS7Player.region?.togglePolygonMode();
+    } else if (e.code === 'Escape' && (state.regionMode || state.polygonMode)) {
+      e.preventDefault();
+      if (state.polygonMode && window.PXS7Player.region?.togglePolygonMode) {
+        window.PXS7Player.region.togglePolygonMode();
+      } else if (state.regionMode) {
         window.PXS7Player.region?.toggleRegionMode();
-        break;
-      case 'Escape':
-        if (state.regionMode) {
-          e.preventDefault();
-          window.PXS7Player.region?.toggleRegionMode();
-        }
-        break;
+      }
+    } else if (matchesHotkey(e, hotkeys.mute)) {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      toggleMute();
+    } else if (matchesHotkey(e, hotkeys.volumeUp)) {
+      e.preventDefault();
+      setVolume(state.volume + 0.05);
+    } else if (matchesHotkey(e, hotkeys.volumeDown)) {
+      e.preventDefault();
+      setVolume(state.volume - 0.05);
     }
   });
 
@@ -156,5 +368,7 @@
     updateTimeDisplay,
     updateVideoInfo,
     getSkipAmount,
+    setVolume,
+    toggleMute,
   };
 })();

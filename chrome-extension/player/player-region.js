@@ -690,6 +690,7 @@
   // Export
   window.PXS7Player.region = {
     toggleRegionMode,
+    togglePolygonMode,
     clearRegion,
     updateRegionBox,
     updateBlurPreview,

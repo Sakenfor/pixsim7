@@ -52,6 +52,13 @@
     // Video history
     historyBtn: document.getElementById('historyBtn'),
     historyDropdown: document.getElementById('historyDropdown'),
+    // Volume controls
+    volumeBtn: document.getElementById('volumeBtn'),
+    volumeSlider: document.getElementById('volumeSlider'),
+    volumeValue: document.getElementById('volumeValue'),
+    // Hotkey settings
+    hotkeyList: document.getElementById('hotkeyList'),
+    resetHotkeysBtn: document.getElementById('resetHotkeys'),
     // Conversion UI
     convertOverlay: document.getElementById('convertOverlay'),
     convertText: document.getElementById('convertText'),
@@ -89,6 +96,13 @@
     // Blur
     blurAmount: 0,
     blurPreviewCtx: null,
+    // Volume
+    volume: 1.0,
+    isMuted: false,
+    volumeBeforeMute: 1.0,
+    // Hotkeys (action -> { code, ctrl, shift, alt })
+    hotkeys: null, // Will be initialized in player-controls.js
+    recordingHotkey: null, // Currently recording hotkey action
   };
 
   // ===== Utility Functions =====
