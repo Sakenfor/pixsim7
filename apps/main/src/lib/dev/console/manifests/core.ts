@@ -10,7 +10,8 @@ import { useGenerationSettingsStore } from '@features/generation/stores/generati
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
 import { useToolConfigStore } from '@features/gizmos/stores/toolConfigStore';
-import { useSelectionStore, useGraphStore } from '@features/graph';
+import { useGraphStore } from '@features/graph/stores/graphStore';
+import { useSelectionStore } from '@features/graph/stores/selectionStore';
 import { usePromptSettingsStore } from '@features/prompts';
 import { useWorldContextStore } from '@features/scene';
 import { useWorkspaceStore } from '@features/workspace';
