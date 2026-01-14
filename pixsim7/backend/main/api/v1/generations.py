@@ -11,7 +11,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional, List
 from uuid import UUID
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GenerationSvc, DatabaseSession
+from pixsim7.backend.main.api.dependencies import (
+    CurrentUser,
+    GenerationGatewaySvc,
+    DatabaseSession,
+)
+from pixsim7.backend.main.infrastructure.services.client import ServiceClientError
 from pixsim7.backend.main.shared.schemas.generation_schemas import (
     CreateGenerationRequest,
     GenerationResponse,
@@ -39,6 +44,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _raise_remote_error(exc: ServiceClientError) -> None:
+    detail = exc.detail
+    if isinstance(detail, dict) and "detail" in detail:
+        detail = detail["detail"]
+    raise HTTPException(status_code=exc.status_code, detail=detail)
+
+
 # ===== CREATE GENERATION =====
 
 @router.post("/generations", response_model=GenerationResponse, status_code=201)
@@ -46,7 +58,7 @@ async def create_generation(
     request: CreateGenerationRequest,
     req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc
+    generation_gateway: GenerationGatewaySvc,
 ):
     """
     Create a new generation from a Generation Node configuration
@@ -66,7 +78,21 @@ async def create_generation(
     identifier = await get_client_identifier(req)
     await job_create_limiter.check(identifier)
 
+    if generation_gateway.has_remote():
+        try:
+            payload = request.model_dump(mode="json")
+            data = await generation_gateway.request_remote(
+                req,
+                "POST",
+                "/api/v1/generations",
+                json=payload,
+            )
+            return GenerationResponse.model_validate(data)
+        except ServiceClientError as exc:
+            _raise_remote_error(exc)
+
     try:
+        generation_service = generation_gateway.local
         # Build or enrich social context if world_id and session_id available
         social_context_dict = None
         if request.social_context:
@@ -133,6 +159,8 @@ async def create_generation(
 
         return GenerationResponse.model_validate(generation)
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except QuotaExceededError as e:
         raise HTTPException(status_code=429, detail=str(e))
     except DomainValidationError as e:
@@ -191,7 +219,7 @@ async def create_simple_image_to_video(
     request: SimpleImageToVideoRequest,
     req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc,
+    generation_gateway: GenerationGatewaySvc,
 ):
   """Create a simple IMAGE_TO_VIDEO generation from raw prompt + image URL.
 
@@ -206,7 +234,21 @@ async def create_simple_image_to_video(
   identifier = await get_client_identifier(req)
   await job_create_limiter.check(identifier)
 
+  if generation_gateway.has_remote():
+    try:
+      payload = request.model_dump(mode="json")
+      data = await generation_gateway.request_remote(
+        req,
+        "POST",
+        "/api/v1/generations/simple-image-to-video",
+        json=payload,
+      )
+      return GenerationResponse.model_validate(data)
+    except ServiceClientError as exc:
+      _raise_remote_error(exc)
+
   try:
+    generation_service = generation_gateway.local
     # Convert flat request to structured generation_config format
     # This keeps the service layer structured-only
     params = {
@@ -254,6 +296,8 @@ async def create_simple_image_to_video(
 
     return GenerationResponse.model_validate(generation)
 
+  except ServiceClientError as exc:
+    _raise_remote_error(exc)
   except QuotaExceededError as e:
     raise HTTPException(status_code=429, detail=str(e))
   except DomainValidationError as e:
@@ -268,8 +312,9 @@ async def create_simple_image_to_video(
 @router.get("/generations/{generation_id}", response_model=GenerationResponse)
 async def get_generation(
     generation_id: int,
+    req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc
+    generation_gateway: GenerationGatewaySvc,
 ):
     """
     Get generation by ID
@@ -281,8 +326,19 @@ async def get_generation(
     - Result asset (if completed)
     """
     try:
+        if generation_gateway.has_remote():
+            data = await generation_gateway.request_remote(
+                req,
+                "GET",
+                f"/api/v1/generations/{generation_id}",
+            )
+            return GenerationResponse.model_validate(data)
+
+        generation_service = generation_gateway.local
         generation = await generation_service.get_generation_for_user(generation_id, user)
         return GenerationResponse.model_validate(generation)
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -294,8 +350,9 @@ async def get_generation(
 
 @router.get("/generations", response_model=GenerationListResponse)
 async def list_generations(
+    req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc,
+    generation_gateway: GenerationGatewaySvc,
     db: DatabaseSession,
     workspace_id: Optional[int] = Query(None),
     status: Optional[GenerationStatus] = Query(None),
@@ -318,6 +375,23 @@ async def list_generations(
     from pixsim7.backend.main.domain.providers import ProviderAccount
 
     try:
+        if generation_gateway.has_remote():
+            params = {
+                "workspace_id": workspace_id,
+                "status": status.value if status else None,
+                "operation_type": operation_type.value if operation_type else None,
+                "limit": limit,
+                "offset": offset,
+            }
+            data = await generation_gateway.request_remote(
+                req,
+                "GET",
+                "/api/v1/generations",
+                params={k: v for k, v in params.items() if v is not None},
+            )
+            return GenerationListResponse.model_validate(data)
+
+        generation_service = generation_gateway.local
         generations = await generation_service.list_generations(
             user=user,
             workspace_id=workspace_id,
@@ -358,6 +432,8 @@ async def list_generations(
             limit=limit,
             offset=offset,
         )
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except Exception as e:
         logger.error(f"Failed to list generations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list generations: {str(e)}")
@@ -368,8 +444,9 @@ async def list_generations(
 @router.post("/generations/{generation_id}/cancel", response_model=GenerationResponse)
 async def cancel_generation(
     generation_id: int,
+    req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc
+    generation_gateway: GenerationGatewaySvc,
 ):
     """
     Cancel a pending or processing generation
@@ -378,8 +455,19 @@ async def cancel_generation(
     Only the generation owner or admin can cancel.
     """
     try:
+        if generation_gateway.has_remote():
+            data = await generation_gateway.request_remote(
+                req,
+                "POST",
+                f"/api/v1/generations/{generation_id}/cancel",
+            )
+            return GenerationResponse.model_validate(data)
+
+        generation_service = generation_gateway.local
         generation = await generation_service.cancel_generation(generation_id, user)
         return GenerationResponse.model_validate(generation)
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -392,8 +480,9 @@ async def cancel_generation(
 @router.post("/generations/{generation_id}/retry", response_model=GenerationResponse)
 async def retry_generation(
     generation_id: int,
+    req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc,
+    generation_gateway: GenerationGatewaySvc,
     db: DatabaseSession,
 ):
     """
@@ -413,6 +502,15 @@ async def retry_generation(
     from pixsim7.backend.main.shared.config import settings
 
     try:
+        if generation_gateway.has_remote():
+            data = await generation_gateway.request_remote(
+                req,
+                "POST",
+                f"/api/v1/generations/{generation_id}/retry",
+            )
+            return GenerationResponse.model_validate(data)
+
+        generation_service = generation_gateway.local
         # Authorization + existence check
         generation = await generation_service.get_generation_for_user(generation_id, user)
 
@@ -458,6 +556,8 @@ async def retry_generation(
 
         return GenerationResponse.model_validate(generation)
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
@@ -472,8 +572,9 @@ async def retry_generation(
 @router.delete("/generations/{generation_id}", status_code=204)
 async def delete_generation(
     generation_id: int,
+    req: Request,
     user: CurrentUser,
-    generation_service: GenerationSvc
+    generation_gateway: GenerationGatewaySvc,
 ):
     """
     Delete a generation
@@ -485,8 +586,19 @@ async def delete_generation(
     Only the generation owner or admin can delete.
     """
     try:
+        if generation_gateway.has_remote():
+            await generation_gateway.request_remote(
+                req,
+                "DELETE",
+                f"/api/v1/generations/{generation_id}",
+            )
+            return None
+
+        generation_service = generation_gateway.local
         await generation_service.delete_generation(generation_id, user)
         return None
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:

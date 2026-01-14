@@ -22,6 +22,8 @@ from pixsim7.backend.main.infrastructure.redis.client import get_redis
 from pixsim7.backend.main.services.user import UserService, AuthService
 from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.generation import GenerationService
+from pixsim7.backend.main.services.generation.gateway import GenerationGateway
+from pixsim7.backend.main.infrastructure.services.router import ServiceRouter
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
@@ -76,6 +78,20 @@ def get_generation_service(
 ) -> GenerationService:
     """Get GenerationService instance"""
     return GenerationService(db, user_service)
+
+
+@lru_cache(maxsize=1)
+def get_service_router() -> ServiceRouter:
+    """Get the service router singleton."""
+    return ServiceRouter.from_env()
+
+
+def get_generation_gateway(
+    generation_service: GenerationService = Depends(get_generation_service),
+    router: ServiceRouter = Depends(get_service_router),
+) -> GenerationGateway:
+    """Get GenerationGateway instance."""
+    return GenerationGateway(router, generation_service)
 
 
 def get_provider_service(db: AsyncSession = Depends(get_database)) -> ProviderService:
@@ -366,6 +382,7 @@ UserSvc = Annotated[UserService, Depends(get_user_service)]
 AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
+GenerationGatewaySvc = Annotated[GenerationGateway, Depends(get_generation_gateway)]
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
