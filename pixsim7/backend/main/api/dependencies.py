@@ -27,6 +27,7 @@ from pixsim7.backend.main.infrastructure.services.router import ServiceRouter
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.provider.provider_service import ProviderService
 from pixsim7.backend.main.services.analysis import AnalysisService
+from pixsim7.backend.main.services.analysis.gateway import AnalysisGateway
 from pixsim7.backend.main.services.game import (
     GameSessionService,
     GameLocationService,
@@ -110,6 +111,14 @@ def get_asset_service(
 def get_analysis_service(db: AsyncSession = Depends(get_database)) -> AnalysisService:
     """Get AnalysisService instance"""
     return AnalysisService(db)
+
+
+def get_analysis_gateway(
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    router: ServiceRouter = Depends(get_service_router),
+) -> AnalysisGateway:
+    """Get AnalysisGateway instance."""
+    return AnalysisGateway(router, analysis_service)
 
 
 async def get_redis_client() -> Optional[Redis]:
@@ -386,6 +395,7 @@ GenerationGatewaySvc = Annotated[GenerationGateway, Depends(get_generation_gatew
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
+AnalysisGatewaySvc = Annotated[AnalysisGateway, Depends(get_analysis_gateway)]
 GameSessionSvc = Annotated[GameSessionService, Depends(get_game_session_service)]
 GameLocationSvc = Annotated[GameLocationService, Depends(get_game_location_service)]
 GameTriggerSvc = Annotated[GameTriggerService, Depends(get_game_trigger_service)]

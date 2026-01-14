@@ -3,16 +3,24 @@ Asset Analysis API endpoints
 
 Handles asset analysis creation, status checking, and result retrieval.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisSvc
+from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisGatewaySvc
 from pixsim7.backend.main.domain.assets.analysis import AnalyzerType, AnalysisStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
+from pixsim7.backend.main.infrastructure.services.client import ServiceClientError
 
 router = APIRouter()
+
+
+def _raise_remote_error(exc: ServiceClientError) -> None:
+    detail = exc.detail
+    if isinstance(detail, dict) and "detail" in detail:
+        detail = detail["detail"]
+    raise HTTPException(status_code=exc.status_code, detail=detail)
 
 
 # ===== REQUEST/RESPONSE SCHEMAS =====
@@ -81,8 +89,9 @@ class AnalysisListResponse(BaseModel):
 async def create_analysis(
     asset_id: int,
     request: CreateAnalysisRequest,
+    req: Request,
     user: CurrentUser,
-    analysis_service: AnalysisSvc,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a new analysis job for an asset.
@@ -91,6 +100,17 @@ async def create_analysis(
     Use GET /analyses/{id} to check status and retrieve results.
     """
     try:
+        if analysis_gateway.has_remote():
+            payload = request.model_dump(mode="json")
+            data = await analysis_gateway.request_remote(
+                req,
+                "POST",
+                f"/api/v1/assets/{asset_id}/analyze",
+                json=payload,
+            )
+            return AnalysisResponse.model_validate(data)
+
+        analysis_service = analysis_gateway.local
         analysis = await analysis_service.create_analysis(
             user=user,
             asset_id=asset_id,
@@ -120,6 +140,8 @@ async def create_analysis(
             completed_at=analysis.completed_at,
         )
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
@@ -129,8 +151,9 @@ async def create_analysis(
 @router.get("/assets/{asset_id}/analyses", response_model=AnalysisListResponse)
 async def list_asset_analyses(
     asset_id: int,
+    req: Request,
     user: CurrentUser,
-    analysis_service: AnalysisSvc,
+    analysis_gateway: AnalysisGatewaySvc,
     analyzer_type: Optional[AnalyzerType] = Query(None, description="Filter by analyzer type"),
     status: Optional[AnalysisStatus] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results to return"),
@@ -141,6 +164,21 @@ async def list_asset_analyses(
     Returns analyses ordered by creation time (newest first).
     """
     try:
+        if analysis_gateway.has_remote():
+            params = {
+                "analyzer_type": analyzer_type.value if analyzer_type else None,
+                "status": status.value if status else None,
+                "limit": limit,
+            }
+            data = await analysis_gateway.request_remote(
+                req,
+                "GET",
+                f"/api/v1/assets/{asset_id}/analyses",
+                params={k: v for k, v in params.items() if v is not None},
+            )
+            return AnalysisListResponse.model_validate(data)
+
+        analysis_service = analysis_gateway.local
         analyses = await analysis_service.get_analyses_for_asset(
             asset_id=asset_id,
             user=user,
@@ -175,6 +213,8 @@ async def list_asset_analyses(
             total=len(items),
         )
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:
@@ -184,8 +224,9 @@ async def list_asset_analyses(
 @router.get("/analyses/{analysis_id}", response_model=AnalysisResponse)
 async def get_analysis(
     analysis_id: int,
+    req: Request,
     user: CurrentUser,
-    analysis_service: AnalysisSvc,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Get a single analysis by ID.
@@ -193,6 +234,15 @@ async def get_analysis(
     Returns the analysis including its current status and result (if completed).
     """
     try:
+        if analysis_gateway.has_remote():
+            data = await analysis_gateway.request_remote(
+                req,
+                "GET",
+                f"/api/v1/analyses/{analysis_id}",
+            )
+            return AnalysisResponse.model_validate(data)
+
+        analysis_service = analysis_gateway.local
         analysis = await analysis_service.get_analysis(analysis_id)
 
         # Check authorization
@@ -217,6 +267,8 @@ async def get_analysis(
             completed_at=analysis.completed_at,
         )
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -224,8 +276,9 @@ async def get_analysis(
 @router.post("/analyses/{analysis_id}/cancel", response_model=AnalysisResponse)
 async def cancel_analysis(
     analysis_id: int,
+    req: Request,
     user: CurrentUser,
-    analysis_service: AnalysisSvc,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Cancel a pending or processing analysis.
@@ -233,6 +286,15 @@ async def cancel_analysis(
     Only the owner of the analysis can cancel it.
     """
     try:
+        if analysis_gateway.has_remote():
+            data = await analysis_gateway.request_remote(
+                req,
+                "POST",
+                f"/api/v1/analyses/{analysis_id}/cancel",
+            )
+            return AnalysisResponse.model_validate(data)
+
+        analysis_service = analysis_gateway.local
         analysis = await analysis_service.cancel_analysis(analysis_id, user)
 
         return AnalysisResponse(
@@ -253,6 +315,8 @@ async def cancel_analysis(
             completed_at=analysis.completed_at,
         )
 
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except InvalidOperationError as e:

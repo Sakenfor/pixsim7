@@ -4,7 +4,7 @@ Analyzer API endpoints
 Provides discovery of available analyzers (prompt and asset) for frontend configuration.
 """
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -12,6 +12,7 @@ from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
     CurrentAdminUser,
     DatabaseSession,
+    AnalysisGatewaySvc,
 )
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget, AnalyzerKind
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import (
@@ -27,8 +28,39 @@ from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
     AnalyzerPresetError,
 )
 from pixsim7.backend.main.domain.enums import ReviewStatus
+from pixsim7.backend.main.infrastructure.services.client import ServiceClientError
 
 router = APIRouter()
+
+
+def _raise_remote_error(exc: ServiceClientError) -> None:
+    detail = exc.detail
+    if isinstance(detail, dict) and "detail" in detail:
+        detail = detail["detail"]
+    raise HTTPException(status_code=exc.status_code, detail=detail)
+
+
+async def _proxy_request(
+    analysis_gateway: AnalysisGatewaySvc,
+    req: Request,
+    method: str,
+    path: str,
+    *,
+    json: Optional[dict] = None,
+    params: Optional[dict] = None,
+) -> Optional[object]:
+    if not analysis_gateway.has_remote():
+        return None
+    try:
+        return await analysis_gateway.request_remote(
+            req,
+            method,
+            path,
+            json=json,
+            params=params,
+        )
+    except ServiceClientError as exc:
+        _raise_remote_error(exc)
 
 
 class AnalyzerResponse(BaseModel):
@@ -191,6 +223,8 @@ async def list_analyzers(
         False,
         description="Include disabled analyzers (admin/debug use)",
     ),
+    req: Request,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     List available analyzers.
@@ -202,6 +236,21 @@ async def list_analyzers(
     - target: 'prompt' for text analysis, 'asset' for media analysis
     - include_legacy: include backward-compatible aliases
     """
+    if analysis_gateway.has_remote():
+        params = {
+            "target": target,
+            "include_legacy": include_legacy,
+            "include_disabled": include_disabled,
+        }
+        data = await _proxy_request(
+            analysis_gateway,
+            req,
+            "GET",
+            "/api/v1/analyzers",
+            params=params,
+        )
+        return AnalyzersListResponse.model_validate(data)
+
     try:
         target_enum = AnalyzerTarget(target) if target else None
     except ValueError:
@@ -233,10 +282,23 @@ async def list_analyzers(
 
 
 @router.get("/analyzers/{analyzer_id}", response_model=AnalyzerResponse)
-async def get_analyzer(analyzer_id: str):
+async def get_analyzer(
+    analyzer_id: str,
+    req: Request,
+    analysis_gateway: AnalysisGatewaySvc,
+):
     """
     Get info about a specific analyzer.
     """
+    if analysis_gateway.has_remote():
+        data = await _proxy_request(
+            analysis_gateway,
+            req,
+            "GET",
+            f"/api/v1/analyzers/{analyzer_id}",
+        )
+        return AnalyzerResponse.model_validate(data)
+
     analyzer = analyzer_registry.get(analyzer_id)
     if not analyzer:
         raise HTTPException(status_code=404, detail=f"Analyzer '{analyzer_id}' not found")
@@ -247,12 +309,25 @@ async def get_analyzer(analyzer_id: str):
 @router.post("/analyzers", response_model=AnalyzerResponse, status_code=201)
 async def create_analyzer(
     data: AnalyzerDefinitionCreate,
+    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a new analyzer definition (admin only).
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json")
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            "/api/v1/analyzers",
+            json=payload,
+        )
+        return AnalyzerResponse.model_validate(remote)
+
     service = AnalyzerDefinitionService(db)
 
     try:
@@ -286,12 +361,25 @@ async def create_analyzer(
 async def update_analyzer(
     analyzer_id: str,
     data: AnalyzerDefinitionUpdate,
+    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update an analyzer definition (admin only).
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json", exclude_unset=True)
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "PATCH",
+            f"/api/v1/analyzers/{analyzer_id}",
+            json=payload,
+        )
+        return AnalyzerResponse.model_validate(remote)
+
     service = AnalyzerDefinitionService(db)
     updates = data.model_dump(exclude_unset=True)
 
@@ -314,12 +402,23 @@ async def update_analyzer(
 @router.delete("/analyzers/{analyzer_id}", status_code=204)
 async def delete_analyzer(
     analyzer_id: str,
+    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete an analyzer definition (admin only).
     """
+    if analysis_gateway.has_remote():
+        await _proxy_request(
+            analysis_gateway,
+            req,
+            "DELETE",
+            f"/api/v1/analyzers/{analyzer_id}",
+        )
+        return None
+
     service = AnalyzerDefinitionService(db)
     deleted = await service.delete_definition(analyzer_id)
     if not deleted:
@@ -329,8 +428,10 @@ async def delete_analyzer(
 
 @router.get("/analyzer-presets", response_model=AnalyzerPresetListResponse)
 async def list_analyzer_presets(
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
     analyzer_id: Optional[str] = None,
     status: Optional[str] = None,
     include_public: bool = False,
@@ -348,6 +449,23 @@ async def list_analyzer_presets(
         raise HTTPException(status_code=403, detail="Admin access required")
     if owner_user_id is not None and not user.is_admin():
         raise HTTPException(status_code=403, detail="Admin access required")
+
+    if analysis_gateway.has_remote():
+        params = {
+            "analyzer_id": analyzer_id,
+            "status": status,
+            "include_public": include_public,
+            "owner_user_id": owner_user_id,
+            "include_all": include_all,
+        }
+        data = await _proxy_request(
+            analysis_gateway,
+            req,
+            "GET",
+            "/api/v1/analyzer-presets",
+            params={k: v for k, v in params.items() if v is not None},
+        )
+        return AnalyzerPresetListResponse.model_validate(data)
 
     service = AnalyzerPresetService(db)
     status_enum = None
@@ -376,12 +494,25 @@ async def list_analyzer_presets(
 @router.post("/analyzer-presets", response_model=AnalyzerPresetResponse, status_code=201)
 async def create_analyzer_preset(
     data: AnalyzerPresetCreate,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a personal analyzer preset.
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json")
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            "/api/v1/analyzer-presets",
+            json=payload,
+        )
+        return AnalyzerPresetResponse.model_validate(remote)
+
     service = AnalyzerPresetService(db)
     try:
         preset = await service.create_preset(
@@ -403,12 +534,25 @@ async def create_analyzer_preset(
 async def update_analyzer_preset(
     preset_entry_id: int,
     data: AnalyzerPresetUpdate,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update a personal analyzer preset (draft/rejected only).
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json", exclude_unset=True)
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "PATCH",
+            f"/api/v1/analyzer-presets/{preset_entry_id}",
+            json=payload,
+        )
+        return AnalyzerPresetResponse.model_validate(remote)
+
     service = AnalyzerPresetService(db)
     try:
         preset = await service.update_preset(
@@ -432,12 +576,23 @@ async def update_analyzer_preset(
 @router.delete("/analyzer-presets/{preset_entry_id}", status_code=204)
 async def delete_analyzer_preset(
     preset_entry_id: int,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete a personal analyzer preset.
     """
+    if analysis_gateway.has_remote():
+        await _proxy_request(
+            analysis_gateway,
+            req,
+            "DELETE",
+            f"/api/v1/analyzer-presets/{preset_entry_id}",
+        )
+        return None
+
     service = AnalyzerPresetService(db)
     try:
         deleted = await service.delete_preset(
@@ -456,12 +611,23 @@ async def delete_analyzer_preset(
 @router.post("/analyzer-presets/{preset_entry_id}/submit", response_model=AnalyzerPresetResponse)
 async def submit_analyzer_preset(
     preset_entry_id: int,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Submit a preset for admin approval.
     """
+    if analysis_gateway.has_remote():
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            f"/api/v1/analyzer-presets/{preset_entry_id}/submit",
+        )
+        return AnalyzerPresetResponse.model_validate(remote)
+
     service = AnalyzerPresetService(db)
     try:
         preset = await service.submit_preset(
@@ -478,12 +644,23 @@ async def submit_analyzer_preset(
 @router.post("/analyzer-presets/{preset_entry_id}/approve", response_model=AnalyzerPresetResponse)
 async def approve_analyzer_preset(
     preset_entry_id: int,
+    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Approve a preset (admin only).
     """
+    if analysis_gateway.has_remote():
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            f"/api/v1/analyzer-presets/{preset_entry_id}/approve",
+        )
+        return AnalyzerPresetResponse.model_validate(remote)
+
     service = AnalyzerPresetService(db)
     try:
         preset = await service.approve_preset(
@@ -501,12 +678,25 @@ async def approve_analyzer_preset(
 async def reject_analyzer_preset(
     preset_entry_id: int,
     data: AnalyzerPresetReject,
+    req: Request,
     admin: CurrentAdminUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Reject a preset (admin only).
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json")
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            f"/api/v1/analyzer-presets/{preset_entry_id}/reject",
+            json=payload,
+        )
+        return AnalyzerPresetResponse.model_validate(remote)
+
     service = AnalyzerPresetService(db)
     try:
         preset = await service.reject_preset(
@@ -523,8 +713,10 @@ async def reject_analyzer_preset(
 
 @router.get("/analyzer-instances", response_model=AnalyzerInstanceListResponse)
 async def list_analyzer_instances(
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
     analyzer_id: Optional[str] = None,
     provider_id: Optional[str] = None,
     include_disabled: bool = False,
@@ -532,6 +724,21 @@ async def list_analyzer_instances(
     """
     List analyzer instances for the current user.
     """
+    if analysis_gateway.has_remote():
+        params = {
+            "analyzer_id": analyzer_id,
+            "provider_id": provider_id,
+            "include_disabled": include_disabled,
+        }
+        data = await _proxy_request(
+            analysis_gateway,
+            req,
+            "GET",
+            "/api/v1/analyzer-instances",
+            params={k: v for k, v in params.items() if v is not None},
+        )
+        return AnalyzerInstanceListResponse.model_validate(data)
+
     service = AnalyzerInstanceService(db)
     instances = await service.list_instances(
         owner_user_id=user.id,
@@ -563,12 +770,25 @@ async def list_analyzer_instances(
 @router.post("/analyzer-instances", response_model=AnalyzerInstanceResponse, status_code=201)
 async def create_analyzer_instance(
     data: AnalyzerInstanceCreate,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Create a new analyzer instance (per-user).
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json")
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "POST",
+            "/api/v1/analyzer-instances",
+            json=payload,
+        )
+        return AnalyzerInstanceResponse.model_validate(remote)
+
     service = AnalyzerInstanceService(db)
     try:
         instance = await service.create_instance(
@@ -605,12 +825,23 @@ async def create_analyzer_instance(
 @router.get("/analyzer-instances/{instance_id}", response_model=AnalyzerInstanceResponse)
 async def get_analyzer_instance(
     instance_id: int,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Get a specific analyzer instance.
     """
+    if analysis_gateway.has_remote():
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "GET",
+            f"/api/v1/analyzer-instances/{instance_id}",
+        )
+        return AnalyzerInstanceResponse.model_validate(remote)
+
     service = AnalyzerInstanceService(db)
     instance = await service.get_instance_for_user(
         instance_id=instance_id,
@@ -638,12 +869,25 @@ async def get_analyzer_instance(
 async def update_analyzer_instance(
     instance_id: int,
     data: AnalyzerInstanceUpdate,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Update an analyzer instance.
     """
+    if analysis_gateway.has_remote():
+        payload = data.model_dump(mode="json", exclude_unset=True)
+        remote = await _proxy_request(
+            analysis_gateway,
+            req,
+            "PATCH",
+            f"/api/v1/analyzer-instances/{instance_id}",
+            json=payload,
+        )
+        return AnalyzerInstanceResponse.model_validate(remote)
+
     service = AnalyzerInstanceService(db)
     updates = data.model_dump(exclude_unset=True)
 
@@ -679,12 +923,23 @@ async def update_analyzer_instance(
 @router.delete("/analyzer-instances/{instance_id}", status_code=204)
 async def delete_analyzer_instance(
     instance_id: int,
+    req: Request,
     user: CurrentUser,
     db: DatabaseSession,
+    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     Delete an analyzer instance.
     """
+    if analysis_gateway.has_remote():
+        await _proxy_request(
+            analysis_gateway,
+            req,
+            "DELETE",
+            f"/api/v1/analyzer-instances/{instance_id}",
+        )
+        return None
+
     service = AnalyzerInstanceService(db)
     deleted = await service.delete_instance(
         instance_id=instance_id,
