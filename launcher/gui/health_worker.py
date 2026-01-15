@@ -390,9 +390,11 @@ class HealthWorker(QThread):
                                     # Service is responding
                                     requested_running = getattr(sp, 'requested_running', True)
 
+                                    # Service is up, so always mark running.
+                                    sp.running = True
+
                                     if requested_running:
                                         # User wants this service running, mark as healthy
-                                        sp.running = True
                                         if hasattr(sp, 'externally_managed'):
                                             sp.externally_managed = False
                                     else:
