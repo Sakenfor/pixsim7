@@ -450,24 +450,33 @@ class HealthWorker(QThread):
                         # No health URL: use PID-based detection where possible.
                         # This is especially important for detached services like
                         # the ARQ worker, which don't expose HTTP health checks.
-                        if sp.running:
+                        pid = None
+                        try:
+                            pid = sp.get_effective_pid()
+                        except Exception:
                             pid = getattr(sp, "started_pid", None) or getattr(sp, "detected_pid", None)
+
+                        if pid:
                             try:
                                 try:
                                     from .process_utils import is_process_alive
                                 except ImportError:
                                     from process_utils import is_process_alive
-                                alive = bool(pid and is_process_alive(pid))
+                                alive = bool(is_process_alive(pid))
                             except Exception:
                                 alive = True  # fall back to optimistic
 
                             if alive:
+                                sp.running = True
+                                if hasattr(sp, 'externally_managed') and getattr(sp, "proc", None) is None:
+                                    sp.externally_managed = True
                                 self._emit_health_update(key, HealthStatus.HEALTHY)
                                 self.failure_counts[key] = 0
                             else:
                                 sp.running = False
                                 self._emit_health_update(key, HealthStatus.STOPPED)
                         else:
+                            sp.running = False
                             self._emit_health_update(key, HealthStatus.STOPPED)
                 except Exception:
                     self._emit_health_update(key, HealthStatus.UNHEALTHY)

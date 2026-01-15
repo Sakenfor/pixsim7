@@ -141,7 +141,7 @@ def kill_process_by_pid(pid: int, force: bool = False) -> bool:
 def _get_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
     """Return process info for a PID on Windows using PowerShell CIM.
 
-    Keys: ProcessId, ParentProcessId, Name, CommandLine
+    Keys: ProcessId, ParentProcessId, Name, CommandLine, CreationDate
     """
     if os.name != 'nt' or not pid:
         return None
@@ -153,7 +153,7 @@ def _get_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
             '-Command',
             (
                 "$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
-                "if($p){{ $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Compress }}"
+                "if($p){{ $p | Select-Object ProcessId,ParentProcessId,Name,CommandLine,CreationDate | ConvertTo-Json -Compress }}"
             ).format(pid=pid),
         ]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
@@ -168,6 +168,7 @@ def _get_windows_process_info(pid: int) -> Optional[Dict[str, Any]]:
                 'ParentProcessId': data.get('ParentProcessId'),
                 'Name': data.get('Name') or '',
                 'CommandLine': data.get('CommandLine') or '',
+                'CreationDate': data.get('CreationDate') or '',
             }
         except Exception:
             return None
@@ -211,6 +212,124 @@ def is_process_alive(pid: int) -> bool:
             return True
     except Exception:
         return False
+
+
+def get_process_cmdline(pid: int) -> Optional[str]:
+    """Return a process command line string if available."""
+    if not pid:
+        return None
+    try:
+        if os.name == 'nt':
+            info = _get_windows_process_info(pid)
+            cmdline = (info or {}).get('CommandLine') if info else None
+            return cmdline or None
+        proc_path = f"/proc/{pid}/cmdline"
+        if os.path.exists(proc_path):
+            with open(proc_path, 'rb') as handle:
+                raw = handle.read()
+            parts = [p.decode('utf-8', errors='replace') for p in raw.split(b'\0') if p]
+            cmdline = " ".join(parts).strip()
+            return cmdline or None
+        result = subprocess.run(
+            ['ps', '-o', 'command=', '-p', str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            cmdline = (result.stdout or '').strip()
+            return cmdline or None
+    except Exception:
+        pass
+    return None
+
+
+def get_process_start_time(pid: int) -> Optional[str]:
+    """Return a process start timestamp string if available."""
+    if not pid:
+        return None
+    try:
+        if os.name == 'nt':
+            info = _get_windows_process_info(pid)
+            started = (info or {}).get('CreationDate') if info else None
+            return started or None
+        stat_path = f"/proc/{pid}/stat"
+        if os.path.exists(stat_path):
+            with open(stat_path, 'r', encoding='utf-8') as handle:
+                parts = handle.read().split()
+            if len(parts) > 21:
+                return parts[21]
+        result = subprocess.run(
+            ['ps', '-o', 'lstart=', '-p', str(pid)],
+            capture_output=True,
+            text=True,
+            timeout=2
+        )
+        if result.returncode == 0:
+            started = (result.stdout or '').strip()
+            return started or None
+    except Exception:
+        pass
+    return None
+
+
+def build_pid_fingerprint(
+    pid: int,
+    port: Optional[int] = None,
+    cmdline_hint: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Capture process fingerprint data for PID verification."""
+    fingerprint: Dict[str, Any] = {"pid": int(pid)}
+    if port:
+        fingerprint["port"] = int(port)
+    cmdline = get_process_cmdline(pid) or cmdline_hint
+    if cmdline:
+        fingerprint["cmdline"] = cmdline
+    started = get_process_start_time(pid)
+    if started:
+        fingerprint["start_time"] = started
+    return fingerprint
+
+
+def pid_matches_fingerprint(pid: int, fingerprint: Dict[str, Any]) -> bool:
+    """Validate that the PID still represents the same process."""
+    if not pid or not fingerprint:
+        return False
+    if not is_process_alive(pid):
+        return False
+
+    verified = False
+    expected_port = fingerprint.get("port")
+    if expected_port:
+        port_pid = find_pid_by_port(int(expected_port))
+        if port_pid:
+            if port_pid != pid:
+                return False
+            verified = True
+
+    expected_cmdline = fingerprint.get("cmdline")
+    if expected_cmdline:
+        actual_cmdline = get_process_cmdline(pid)
+        if actual_cmdline:
+            if expected_cmdline in actual_cmdline or actual_cmdline in expected_cmdline:
+                verified = True
+            else:
+                return False
+        elif not expected_port:
+            return False
+
+    expected_start = fingerprint.get("start_time") or fingerprint.get("started_at")
+    if expected_start:
+        actual_start = get_process_start_time(pid)
+        if actual_start:
+            if actual_start == expected_start:
+                verified = True
+            else:
+                return False
+        elif not expected_port and not expected_cmdline:
+            return False
+
+    return verified
 
 
 def find_uvicorn_root_pid_windows(child_pid: int) -> Optional[int]:

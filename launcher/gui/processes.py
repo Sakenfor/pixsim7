@@ -105,10 +105,51 @@ class ServiceProcess:
     def _load_persisted_pid(self):
         """Load PID from persistent storage if the process is still running."""
         try:
-            stored_pid = pid_store.get_pid(self.defn.key)
-            if stored_pid and pid_store.is_pid_running(stored_pid):
-                self.persisted_pid = stored_pid
-                _log("loaded_persisted_pid", service_key=self.defn.key, pid=stored_pid)
+            entry = pid_store.get_pid_entry(self.defn.key)
+            if not entry:
+                return
+            stored_pid = entry.get("pid")
+            if stored_pid and pid_store.is_pid_running(int(stored_pid)):
+                stored_pid = int(stored_pid)
+                pu = None
+                try:
+                    pu = _get_process_utils()
+                    matches = pu.pid_matches_fingerprint(stored_pid, entry)
+                except Exception:
+                    matches = False
+                if not matches:
+                    # Try to recover via port detection if available.
+                    port = entry.get("port")
+                    try:
+                        port_pid = pu.find_pid_by_port(int(port)) if pu and port else None
+                    except Exception:
+                        port_pid = None
+                    if port_pid and pid_store.is_pid_running(port_pid):
+                        try:
+                            if pu:
+                                metadata = pu.build_pid_fingerprint(
+                                    port_pid,
+                                    port=int(port) if port else None,
+                                    cmdline_hint=entry.get("cmdline"),
+                                )
+                            else:
+                                metadata = {"port": int(port)} if port else {}
+                        except Exception:
+                            metadata = {"port": int(port)} if port else {}
+                        pid_store.save_pid(self.defn.key, port_pid, metadata=metadata)
+                        stored_pid = port_pid
+                        matches = True
+                        _log("persisted_pid_recovered", service_key=self.defn.key, pid=port_pid)
+                if matches:
+                    self.persisted_pid = stored_pid
+                    self.detected_pid = stored_pid
+                    self.running = True
+                    self.requested_running = True
+                    self.externally_managed = True
+                    self.health_status = HealthStatus.STARTING
+                    _log("loaded_persisted_pid", service_key=self.defn.key, pid=stored_pid)
+                else:
+                    pid_store.clear_pid(self.defn.key)
             elif stored_pid:
                 # PID was stored but process is gone - clean up
                 pid_store.clear_pid(self.defn.key)
@@ -119,7 +160,14 @@ class ServiceProcess:
         """Save PID to persistent storage."""
         if pid:
             try:
-                pid_store.save_pid(self.defn.key, pid)
+                port = self._get_port_from_health_url()
+                cmdline_hint = " ".join([self.defn.program] + self.defn.args).strip()
+                try:
+                    pu = _get_process_utils()
+                    metadata = pu.build_pid_fingerprint(pid, port=port, cmdline_hint=cmdline_hint)
+                except Exception:
+                    metadata = {"port": port, "cmdline": cmdline_hint} if port or cmdline_hint else {}
+                pid_store.save_pid(self.defn.key, pid, metadata=metadata)
                 self.persisted_pid = pid
             except Exception:
                 pass
@@ -433,7 +481,8 @@ class ServiceProcess:
             return False
 
     def stop(self, graceful=True):
-        if not self.running:
+        effective_pid = self.get_effective_pid()
+        if not self.running and not effective_pid:
             return
 
         # Mark that user requested the service to be stopped

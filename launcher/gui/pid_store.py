@@ -24,19 +24,43 @@ def _ensure_data_dir():
     os.makedirs(data_dir, exist_ok=True)
 
 
-def _load_pids() -> Dict[str, int]:
+def _normalize_pid_entry(value) -> Optional[Dict[str, object]]:
+    """Normalize PID entries from disk (supports legacy int format)."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        pid = value.get("pid") or value.get("PID")
+        if not pid:
+            return None
+        entry = {"pid": int(pid)}
+        for key in ("port", "cmdline", "start_time", "started_at"):
+            if key in value and value[key]:
+                entry[key] = value[key]
+        return entry
+    try:
+        return {"pid": int(value)}
+    except Exception:
+        return None
+
+
+def _load_pids() -> Dict[str, Dict[str, object]]:
     """Load PIDs from disk."""
     if not os.path.exists(PID_FILE):
         return {}
     try:
         with open(PID_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        return {k: int(v) for k, v in data.items() if v}
+        entries: Dict[str, Dict[str, object]] = {}
+        for key, value in data.items():
+            entry = _normalize_pid_entry(value)
+            if entry:
+                entries[str(key)] = entry
+        return entries
     except Exception:
         return {}
 
 
-def _save_pids(pids: Dict[str, int]):
+def _save_pids(pids: Dict[str, Dict[str, object]]):
     """Save PIDs to disk."""
     _ensure_data_dir()
     try:
@@ -46,13 +70,18 @@ def _save_pids(pids: Dict[str, int]):
         pass
 
 
-def save_pid(service_key: str, pid: int):
+def save_pid(service_key: str, pid: int, metadata: Optional[Dict[str, object]] = None):
     """Save a service PID to persistent storage."""
     if not pid:
         return
     try:
+        entry: Dict[str, object] = {"pid": int(pid)}
+        if metadata:
+            for key in ("port", "cmdline", "start_time", "started_at"):
+                if key in metadata and metadata[key] is not None:
+                    entry[key] = metadata[key]
         pids = _load_pids()
-        pids[service_key] = pid
+        pids[service_key] = entry
         _save_pids(pids)
     except Exception:
         pass
@@ -60,6 +89,18 @@ def save_pid(service_key: str, pid: int):
 
 def get_pid(service_key: str) -> Optional[int]:
     """Get a persisted PID for a service."""
+    pids = _load_pids()
+    entry = pids.get(service_key)
+    if entry:
+        try:
+            return int(entry.get("pid"))
+        except Exception:
+            return None
+    return None
+
+
+def get_pid_entry(service_key: str) -> Optional[Dict[str, object]]:
+    """Get the persisted PID entry (pid + metadata) for a service."""
     pids = _load_pids()
     return pids.get(service_key)
 
@@ -77,7 +118,8 @@ def clear_pid(service_key: str):
 
 def get_all_pids() -> Dict[str, int]:
     """Get all persisted PIDs."""
-    return _load_pids()
+    entries = _load_pids()
+    return {key: int(entry.get("pid")) for key, entry in entries.items() if entry.get("pid")}
 
 
 def is_pid_running(pid: int) -> bool:
@@ -108,10 +150,14 @@ def is_pid_running(pid: int) -> bool:
 def cleanup_stale_pids():
     """Remove PIDs for processes that are no longer running."""
     pids = _load_pids()
-    active_pids = {}
-    for key, pid in pids.items():
+    active_pids: Dict[str, Dict[str, object]] = {}
+    for key, entry in pids.items():
+        try:
+            pid = int(entry.get("pid"))
+        except Exception:
+            continue
         if is_pid_running(pid):
-            active_pids[key] = pid
+            active_pids[key] = entry
     if len(active_pids) != len(pids):
         _save_pids(active_pids)
     return active_pids
