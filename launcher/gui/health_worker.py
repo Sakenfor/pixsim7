@@ -430,6 +430,23 @@ class HealthWorker(QThread):
                             grace = getattr(getattr(sp, 'defn', None), 'health_grace_attempts', self.failure_threshold)
                             current_status = getattr(sp, 'health_status', None)
 
+                            # If the health URL is down but the port is alive, treat as STARTING/UNHEALTHY.
+                            if getattr(sp, "proc", None) is None:
+                                try:
+                                    self._detect_and_store_pid(sp, url=health_url)
+                                except Exception:
+                                    pass
+                            detected_pid = getattr(sp, "detected_pid", None)
+                            if detected_pid:
+                                sp.running = True
+                                if hasattr(sp, 'externally_managed'):
+                                    sp.externally_managed = True
+                                if self.failure_counts[key] < grace:
+                                    self._emit_health_update(key, HealthStatus.STARTING)
+                                else:
+                                    self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                                continue
+
                             # If we're in grace period and status is STARTING, keep showing STARTING
                             if current_status in (HealthStatus.STARTING, HealthStatus.UNKNOWN) and self.failure_counts[key] < grace:
                                 if sp.running:
