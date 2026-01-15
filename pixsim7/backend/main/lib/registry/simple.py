@@ -50,31 +50,16 @@ from typing import (
 from abc import ABC
 import structlog
 
+from pixsim7.backend.main.lib.registry.base import RegistryBase, RegistryObserverMixin
+from pixsim7.backend.main.lib.registry.errors import DuplicateKeyError, KeyNotFoundError
+
 logger = structlog.get_logger(__name__)
 
 K = TypeVar("K")  # Key type
 V = TypeVar("V")  # Value type
 
 
-class DuplicateKeyError(ValueError):
-    """Raised when attempting to register a duplicate key."""
-
-    def __init__(self, key: str, registry_name: str = "registry"):
-        self.key = key
-        self.registry_name = registry_name
-        super().__init__(f"Duplicate key '{key}' in {registry_name}")
-
-
-class KeyNotFoundError(KeyError):
-    """Raised when a key is not found in the registry."""
-
-    def __init__(self, key: str, registry_name: str = "registry"):
-        self.key = key
-        self.registry_name = registry_name
-        super().__init__(f"Key '{key}' not found in {registry_name}")
-
-
-class SimpleRegistry(Generic[K, V]):
+class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
     """
     Generic registry for storing items by key.
 
@@ -99,18 +84,12 @@ class SimpleRegistry(Generic[K, V]):
         seed_on_init: bool = False,
         log_operations: bool = True,
     ):
-        self._name = name or self.__class__.__name__
+        super().__init__(name=name, log_operations=log_operations)
         self._allow_overwrite = allow_overwrite
-        self._log_operations = log_operations
         self._items: Dict[K, V] = {}
 
         if seed_on_init:
             self._seed_defaults()
-
-    @property
-    def name(self) -> str:
-        """Registry name for logging/errors."""
-        return self._name
 
     # =========================================================================
     # Core Operations
@@ -134,6 +113,7 @@ class SimpleRegistry(Generic[K, V]):
 
         if self._log_operations:
             logger.debug(f"Registered item in {self._name}", key=str(key))
+        self._notify_listeners("register", key=str(key))
 
     def register_item(self, item: V) -> K:
         """
@@ -194,6 +174,8 @@ class SimpleRegistry(Generic[K, V]):
 
         if item is not None and self._log_operations:
             logger.debug(f"Unregistered item from {self._name}", key=str(key))
+        if item is not None:
+            self._notify_listeners("unregister", key=str(key))
 
         return item
 
@@ -204,6 +186,8 @@ class SimpleRegistry(Generic[K, V]):
 
         if self._log_operations and count > 0:
             logger.debug(f"Cleared {count} items from {self._name}")
+        if count > 0:
+            self._notify_listeners("clear", count=count)
 
     def reset(self) -> None:
         """
@@ -223,6 +207,7 @@ class SimpleRegistry(Generic[K, V]):
 
         if self._log_operations:
             logger.debug(f"Reset {self._name} with {len(self._items)} defaults")
+        self._notify_listeners("reset", count=len(self._items))
 
     # =========================================================================
     # Query Operations
@@ -304,29 +289,6 @@ class SimpleRegistry(Generic[K, V]):
         raise NotImplementedError(
             f"{self._name}._get_item_key() must be overridden to use register_item()"
         )
-
-    def _seed_defaults(self) -> None:
-        """
-        Seed default items on init/reset.
-
-        Override this to define default items that should be registered
-        when the registry is initialized or reset.
-        """
-        pass
-
-    def _on_reset(self) -> None:
-        """
-        Called at the start of reset() before clearing.
-
-        Override this to reset external state like registration flags
-        that need to be cleared when the registry is reset.
-
-        Example:
-            def _on_reset(self) -> None:
-                from .core_package import reset_core_registration
-                reset_core_registration()
-        """
-        pass
 
 
 # =============================================================================

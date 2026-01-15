@@ -38,10 +38,13 @@ from typing import (
 )
 import structlog
 
-from pixsim7.backend.main.lib.registry.simple import (
-    SimpleRegistry,
+from pixsim7.backend.main.lib.registry.base import RegistryBase
+from pixsim7.backend.main.lib.registry.errors import (
     DuplicateKeyError,
     KeyNotFoundError,
+)
+from pixsim7.backend.main.lib.registry.simple import (
+    SimpleRegistry,
 )
 
 logger = structlog.get_logger(__name__)
@@ -51,7 +54,7 @@ K = TypeVar("K")    # Key type (typically str)
 V = TypeVar("V")    # Value type
 
 
-class NestedRegistry(Generic[NS, K, V]):
+class NestedRegistry(RegistryBase, Generic[NS, K, V]):
     """
     Two-level registry: namespace -> key -> value.
 
@@ -79,16 +82,10 @@ class NestedRegistry(Generic[NS, K, V]):
         log_operations: bool = True,
         auto_create_namespace: bool = True,
     ):
-        self._name = name or self.__class__.__name__
+        super().__init__(name=name, log_operations=log_operations)
         self._allow_overwrite = allow_overwrite
-        self._log_operations = log_operations
         self._auto_create_namespace = auto_create_namespace
         self._namespaces: Dict[NS, SimpleRegistry[K, V]] = {}
-
-    @property
-    def name(self) -> str:
-        """Registry name for logging/errors."""
-        return self._name
 
     # =========================================================================
     # Namespace Management

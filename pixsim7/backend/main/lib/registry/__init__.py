@@ -49,12 +49,22 @@ from .dependencies import (
 )
 from .simple import (
     SimpleRegistry,
+    create_registry,
+)
+from .errors import (
     DuplicateKeyError,
     KeyNotFoundError,
-    create_registry,
+)
+from .base import (
+    RegistryBase,
+    RegistryObserverMixin,
 )
 from .nested import (
     NestedRegistry,
+)
+from .layered import (
+    LayeredRegistry,
+    LayeredNestedRegistry,
 )
 from .world_merge import (
     WorldMergeMixin,
@@ -83,8 +93,14 @@ __all__ = [
     "DuplicateKeyError",
     "KeyNotFoundError",
     "create_registry",
+    # Base and mixins
+    "RegistryBase",
+    "RegistryObserverMixin",
     # Nested registry
     "NestedRegistry",
+    # Layered registry
+    "LayeredRegistry",
+    "LayeredNestedRegistry",
     # World merge
     "WorldMergeMixin",
     "MergeStrategy",
