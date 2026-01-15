@@ -199,6 +199,8 @@ class AnalyzerPresetReject(BaseModel):
 
 @router.get("/analyzers", response_model=AnalyzersListResponse)
 async def list_analyzers(
+    req: Request,
+    analysis_gateway: AnalysisGatewaySvc,
     target: Optional[str] = Query(
         None,
         description="Filter by target: 'prompt' or 'asset'. If not specified, returns all."
@@ -211,8 +213,6 @@ async def list_analyzers(
         False,
         description="Include disabled analyzers (admin/debug use)",
     ),
-    req: Request,
-    analysis_gateway: AnalysisGatewaySvc,
 ):
     """
     List available analyzers.
