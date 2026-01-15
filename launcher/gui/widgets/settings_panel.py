@@ -49,8 +49,11 @@ class SettingsPanel(QWidget):
         self._state = ui_state
         self._env_vars = read_env_file()
         self._services_config = self._load_services_config()
+        self._services_by_id = {cfg.get("id"): cfg for cfg in self._services_config if cfg.get("id")}
         self._profiles = self._merge_profile_defaults(self._load_profiles())
         self._on_saved = on_saved
+        self._selected_service_id = None
+        self._endpoint_rows = {}
         self._init_ui()
 
     def _init_ui(self):
@@ -185,6 +188,25 @@ class SettingsPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
 
+        focus_group = QGroupBox("Service Focus")
+        focus_layout = QHBoxLayout(focus_group)
+        focus_layout.setContentsMargins(12, 8, 12, 8)
+        focus_layout.addWidget(QLabel("Selected service:"))
+        self.lbl_selected_service = QLabel()
+        self.lbl_selected_service.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-weight: 600;")
+        focus_layout.addWidget(self.lbl_selected_service)
+        focus_layout.addStretch()
+
+        self.chk_focus_selected = QCheckBox("Show only selected service")
+        self.chk_focus_selected.setChecked(True)
+        self.chk_focus_selected.toggled.connect(self._apply_service_filter)
+        focus_layout.addWidget(self.chk_focus_selected)
+
+        btn_sync = QPushButton("Use selected service")
+        btn_sync.clicked.connect(self._sync_selected_service)
+        focus_layout.addWidget(btn_sync)
+        layout.addWidget(focus_group)
+
         endpoints_group = QGroupBox("Ports and Base URLs")
         endpoints_layout = QFormLayout(endpoints_group)
         endpoints_layout.setSpacing(8)
@@ -195,10 +217,13 @@ class SettingsPanel(QWidget):
             label = service["label"]
             env_key = service["env"]
             value = service["value"]
+            service_id = service.get("service_id")
             spin = QSpinBox()
             spin.setRange(1, 65535)
             spin.setValue(value)
-            endpoints_layout.addRow(f"{label} Port:", spin)
+            label_widget = QLabel(f"{label} Port:")
+            endpoints_layout.addRow(label_widget, spin)
+            self._register_endpoint_row(service_id, label_widget, spin)
             self._service_port_inputs[env_key] = spin
 
         self.spin_backend_port = self._service_port_inputs.get("BACKEND_PORT")
@@ -207,47 +232,72 @@ class SettingsPanel(QWidget):
         self.spin_game_service_port = self._service_port_inputs.get("GAME_SERVICE_PORT")
         self.spin_devtools_port = self._service_port_inputs.get("DEVTOOLS_PORT")
 
+        base_url_service_map = self._collect_base_url_service_map()
         self.input_backend_base = QLineEdit()
         self.input_backend_base.setPlaceholderText(self._get_placeholder_url('backend'))
         self.input_backend_base.setText(self._env_vars.get("BACKEND_BASE_URL", ""))
-        endpoints_layout.addRow("Backend Base URL:", self.input_backend_base)
+        backend_label = QLabel("Backend Base URL:")
+        endpoints_layout.addRow(backend_label, self.input_backend_base)
+        self._register_endpoint_row(base_url_service_map.get("BACKEND_BASE_URL"), backend_label, self.input_backend_base)
         self.lbl_backend_effective = QLabel()
-        endpoints_layout.addRow("Backend Effective URL:", self.lbl_backend_effective)
+        backend_effective_label = QLabel("Backend Effective URL:")
+        endpoints_layout.addRow(backend_effective_label, self.lbl_backend_effective)
+        self._register_endpoint_row(base_url_service_map.get("BACKEND_BASE_URL"), backend_effective_label, self.lbl_backend_effective)
 
         self.input_generation_base = QLineEdit()
         self.input_generation_base.setPlaceholderText(self._get_placeholder_url('generation'))
         self.input_generation_base.setText(self._env_vars.get("GENERATION_BASE_URL", ""))
-        endpoints_layout.addRow("Generation Base URL:", self.input_generation_base)
+        generation_label = QLabel("Generation Base URL:")
+        endpoints_layout.addRow(generation_label, self.input_generation_base)
+        self._register_endpoint_row(base_url_service_map.get("GENERATION_BASE_URL"), generation_label, self.input_generation_base)
         self.lbl_generation_effective = QLabel()
-        endpoints_layout.addRow("Generation Effective URL:", self.lbl_generation_effective)
+        generation_effective_label = QLabel("Generation Effective URL:")
+        endpoints_layout.addRow(generation_effective_label, self.lbl_generation_effective)
+        self._register_endpoint_row(base_url_service_map.get("GENERATION_BASE_URL"), generation_effective_label, self.lbl_generation_effective)
 
         self.input_frontend_base = QLineEdit()
         self.input_frontend_base.setPlaceholderText(self._get_placeholder_url('frontend'))
         self.input_frontend_base.setText(self._env_vars.get("FRONTEND_BASE_URL", ""))
-        endpoints_layout.addRow("Frontend Base URL:", self.input_frontend_base)
+        frontend_label = QLabel("Frontend Base URL:")
+        endpoints_layout.addRow(frontend_label, self.input_frontend_base)
+        self._register_endpoint_row(base_url_service_map.get("FRONTEND_BASE_URL"), frontend_label, self.input_frontend_base)
         self.lbl_frontend_effective = QLabel()
-        endpoints_layout.addRow("Frontend Effective URL:", self.lbl_frontend_effective)
+        frontend_effective_label = QLabel("Frontend Effective URL:")
+        endpoints_layout.addRow(frontend_effective_label, self.lbl_frontend_effective)
+        self._register_endpoint_row(base_url_service_map.get("FRONTEND_BASE_URL"), frontend_effective_label, self.lbl_frontend_effective)
 
         self.input_game_base = QLineEdit()
         self.input_game_base.setPlaceholderText(self._get_placeholder_url('game_frontend'))
         self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
-        endpoints_layout.addRow("Game Frontend Base URL:", self.input_game_base)
+        game_label = QLabel("Game Frontend Base URL:")
+        endpoints_layout.addRow(game_label, self.input_game_base)
+        self._register_endpoint_row(base_url_service_map.get("GAME_FRONTEND_BASE_URL"), game_label, self.input_game_base)
         self.lbl_game_effective = QLabel()
-        endpoints_layout.addRow("Game Frontend Effective URL:", self.lbl_game_effective)
+        game_effective_label = QLabel("Game Frontend Effective URL:")
+        endpoints_layout.addRow(game_effective_label, self.lbl_game_effective)
+        self._register_endpoint_row(base_url_service_map.get("GAME_FRONTEND_BASE_URL"), game_effective_label, self.lbl_game_effective)
 
         self.input_devtools_base = QLineEdit()
         self.input_devtools_base.setPlaceholderText(self._get_placeholder_url('devtools'))
         self.input_devtools_base.setText(self._env_vars.get("DEVTOOLS_BASE_URL", ""))
-        endpoints_layout.addRow("DevTools Base URL:", self.input_devtools_base)
+        devtools_label = QLabel("DevTools Base URL:")
+        endpoints_layout.addRow(devtools_label, self.input_devtools_base)
+        self._register_endpoint_row(base_url_service_map.get("DEVTOOLS_BASE_URL"), devtools_label, self.input_devtools_base)
         self.lbl_devtools_effective = QLabel()
-        endpoints_layout.addRow("DevTools Effective URL:", self.lbl_devtools_effective)
+        devtools_effective_label = QLabel("DevTools Effective URL:")
+        endpoints_layout.addRow(devtools_effective_label, self.lbl_devtools_effective)
+        self._register_endpoint_row(base_url_service_map.get("DEVTOOLS_BASE_URL"), devtools_effective_label, self.lbl_devtools_effective)
 
         self.input_launcher_base = QLineEdit()
         self.input_launcher_base.setPlaceholderText(self._get_placeholder_url('launcher'))
         self.input_launcher_base.setText(self._env_vars.get("LAUNCHER_BASE_URL", ""))
-        endpoints_layout.addRow("Launcher Base URL:", self.input_launcher_base)
+        launcher_label = QLabel("Launcher Base URL:")
+        endpoints_layout.addRow(launcher_label, self.input_launcher_base)
+        self._register_endpoint_row("global", launcher_label, self.input_launcher_base)
         self.lbl_launcher_effective = QLabel()
-        endpoints_layout.addRow("Launcher Effective URL:", self.lbl_launcher_effective)
+        launcher_effective_label = QLabel("Launcher Effective URL:")
+        endpoints_layout.addRow(launcher_effective_label, self.lbl_launcher_effective)
+        self._register_endpoint_row("global", launcher_effective_label, self.lbl_launcher_effective)
 
         layout.addWidget(endpoints_group)
 
@@ -265,6 +315,7 @@ class SettingsPanel(QWidget):
 
         layout.addStretch()
         self._update_effective_endpoints()
+        self._sync_selected_service()
         self.input_backend_base.textChanged.connect(self._update_effective_endpoints)
         self.input_generation_base.textChanged.connect(self._update_effective_endpoints)
         self.input_frontend_base.textChanged.connect(self._update_effective_endpoints)
@@ -371,6 +422,21 @@ class SettingsPanel(QWidget):
         self.input_log_level = QLineEdit()
         self.input_log_level.setText(self._env_vars.get("LOG_LEVEL", ""))
         env_layout.addRow("LOG_LEVEL:", self.input_log_level)
+
+        self.input_analysis_base = QLineEdit()
+        self.input_analysis_base.setText(self._env_vars.get("ANALYSIS_BASE_URL", ""))
+        self.input_analysis_base.setPlaceholderText("http://localhost:8005 (optional)")
+        env_layout.addRow("Analysis Base URL:", self.input_analysis_base)
+
+        self.input_service_base_urls = QLineEdit()
+        self.input_service_base_urls.setText(self._env_vars.get("PIXSIM_SERVICE_BASE_URLS", ""))
+        self.input_service_base_urls.setPlaceholderText('{"generation":"http://localhost:8001"}')
+        env_layout.addRow("Service Base URLs (JSON):", self.input_service_base_urls)
+
+        self.input_service_timeouts = QLineEdit()
+        self.input_service_timeouts.setText(self._env_vars.get("PIXSIM_SERVICE_TIMEOUTS", ""))
+        self.input_service_timeouts.setPlaceholderText('{"generation":30,"analysis":30}')
+        env_layout.addRow("Service Timeouts (JSON):", self.input_service_timeouts)
 
         layout.addWidget(env_group)
 
@@ -634,6 +700,9 @@ class SettingsPanel(QWidget):
             "CORS_ORIGINS": self.input_cors_origins.text().strip(),
             "DEBUG": self.input_debug.text().strip(),
             "LOG_LEVEL": self.input_log_level.text().strip(),
+            "ANALYSIS_BASE_URL": self.input_analysis_base.text().strip(),
+            "PIXSIM_SERVICE_BASE_URLS": self.input_service_base_urls.text().strip(),
+            "PIXSIM_SERVICE_TIMEOUTS": self.input_service_timeouts.text().strip(),
         }
         for env_key, spin in self._service_port_inputs.items():
             env_updates[env_key] = str(spin.value())
@@ -810,6 +879,12 @@ class SettingsPanel(QWidget):
                 self.input_debug.setText("")
             if hasattr(self, "input_log_level"):
                 self.input_log_level.setText("")
+            if hasattr(self, "input_analysis_base"):
+                self.input_analysis_base.setText("")
+            if hasattr(self, "input_service_base_urls"):
+                self.input_service_base_urls.setText("")
+            if hasattr(self, "input_service_timeouts"):
+                self.input_service_timeouts.setText("")
 
     def _save_settings(self):
         if not self._confirm_port_changes():
@@ -924,6 +999,7 @@ class SettingsPanel(QWidget):
         for cfg in self._services_config:
             if not cfg.get("enabled", True):
                 continue
+            service_id = cfg.get("id")
             port_defs = cfg.get("ports", []) or []
             if not port_defs and cfg.get("port_env"):
                 port_defs = [{
@@ -938,7 +1014,12 @@ class SettingsPanel(QWidget):
                 seen.add(port_env)
                 value = self._parse_int(env.get(port_env), port_def.get("default_port", 0))
                 label = port_def.get("name", cfg.get("name", cfg.get("id", port_env))).strip()
-                items.append({"env": port_env, "label": label, "value": value})
+                items.append({
+                    "env": port_env,
+                    "label": label,
+                    "value": value,
+                    "service_id": service_id,
+                })
 
         return items
 
@@ -1037,6 +1118,12 @@ class SettingsPanel(QWidget):
         self.input_game_base.setText(self._env_vars.get("GAME_FRONTEND_BASE_URL", ""))
         self.input_devtools_base.setText(self._env_vars.get("DEVTOOLS_BASE_URL", ""))
         self.input_launcher_base.setText(self._env_vars.get("LAUNCHER_BASE_URL", ""))
+        if hasattr(self, "input_analysis_base"):
+            self.input_analysis_base.setText(self._env_vars.get("ANALYSIS_BASE_URL", ""))
+        if hasattr(self, "input_service_base_urls"):
+            self.input_service_base_urls.setText(self._env_vars.get("PIXSIM_SERVICE_BASE_URLS", ""))
+        if hasattr(self, "input_service_timeouts"):
+            self.input_service_timeouts.setText(self._env_vars.get("PIXSIM_SERVICE_TIMEOUTS", ""))
         self.input_database_url.setText(self._env_vars.get("DATABASE_URL", ""))
         self.input_redis_url.setText(self._env_vars.get("REDIS_URL", ""))
         self.input_secret_key.setText(self._env_vars.get("SECRET_KEY", ""))
@@ -1049,6 +1136,59 @@ class SettingsPanel(QWidget):
             value = self._parse_int(self._env_vars.get(env_key), spin.value())
             spin.setValue(value)
         self._update_effective_endpoints()
+
+    def _register_endpoint_row(self, service_id: str | None, label: QLabel, widget: QWidget) -> None:
+        key = service_id or "global"
+        self._endpoint_rows.setdefault(key, []).append((label, widget))
+
+    def _collect_base_url_service_map(self) -> dict:
+        mapping = {}
+        for cfg in self._services_config:
+            env_key = cfg.get("base_url_env")
+            if env_key and cfg.get("id"):
+                mapping[env_key] = cfg.get("id")
+        return mapping
+
+    def _sync_selected_service(self) -> None:
+        self._selected_service_id = self._resolve_selected_service_id()
+        self._update_selected_service_label()
+        self._apply_service_filter()
+
+    def _resolve_selected_service_id(self) -> str | None:
+        parent = self.parent()
+        if parent and hasattr(parent, "selected_key"):
+            try:
+                key = parent.selected_key()
+                if key:
+                    return key
+            except Exception:
+                pass
+        for cfg in self._services_config:
+            if cfg.get("id"):
+                return cfg.get("id")
+        return None
+
+    def _update_selected_service_label(self) -> None:
+        service_id = self._selected_service_id
+        label = "None"
+        if service_id and service_id in self._services_by_id:
+            cfg = self._services_by_id[service_id]
+            label = cfg.get("name", service_id)
+        elif service_id:
+            label = service_id
+        self.lbl_selected_service.setText(label)
+
+    def _apply_service_filter(self, *_args) -> None:
+        show_only = self.chk_focus_selected.isChecked() if hasattr(self, "chk_focus_selected") else False
+        selected_id = self._selected_service_id
+        for service_id, rows in self._endpoint_rows.items():
+            if not show_only or not selected_id:
+                visible = True
+            else:
+                visible = service_id in ("global", selected_id)
+            for label, widget in rows:
+                label.setVisible(visible)
+                widget.setVisible(visible)
 
     def _detect_local_datastores(self):
         pg_ports = self._get_db_scan_ports('postgres')

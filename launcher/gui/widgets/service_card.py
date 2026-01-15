@@ -25,8 +25,8 @@ OPENAPI_STATUS_COLORS = {
 }
 
 OPENAPI_STATUS_TEXT = {
-    OpenAPIStatus.FRESH: "✓ API Types Fresh",
-    OpenAPIStatus.STALE: "⚠ API Types Stale",
+    OpenAPIStatus.FRESH: "API Types Fresh",
+    OpenAPIStatus.STALE: "API Types Stale",
     OpenAPIStatus.UNAVAILABLE: "? API Types Unknown",
     OpenAPIStatus.NO_OPENAPI: "",
 }
@@ -81,11 +81,11 @@ class ServiceCard(QFrame):
 
         status_info = STATUS_TEXT[self.service_process.health_status]
         if not self.service_process.tool_available:
-            status_info = f"⚠ {self.service_process.tool_check_message}"
+            status_info = f"Warn: {self.service_process.tool_check_message}"
         elif service_def.url:
             try:
                 port = service_def.url.split(':')[-1].split('/')[0]
-                status_info += f" • Port {port}"
+                status_info += f" | Port {port}"
             except Exception:
                 pass
         self.status_label = QLabel(status_info)
@@ -161,7 +161,7 @@ class ServiceCard(QFrame):
         self.stop_btn.setEnabled(self.service_process.running)
         btn_layout.addWidget(self.stop_btn, stretch=1)
 
-        self.force_stop_btn = QPushButton("⚠")
+        self.force_stop_btn = QPushButton("!")
         self.force_stop_btn.setFixedSize(24, theme.BUTTON_HEIGHT_MD)
         self.force_stop_btn.setToolTip("Force stop service (kill all processes)")
         self.force_stop_btn.setEnabled(self.service_process.running)
@@ -184,12 +184,12 @@ class ServiceCard(QFrame):
         """)
         btn_layout.addWidget(self.force_stop_btn)
 
-        self.restart_btn = make_btn("↻", 28, "Restart service", theme.ACCENT_WARNING, "#e8a730")
+        self.restart_btn = make_btn("Restart", 52, "Restart service", theme.ACCENT_WARNING, "#e8a730")
         self.restart_btn.setEnabled(self.service_process.running)
         btn_layout.addWidget(self.restart_btn, stretch=1)
 
         if service_def.url:
-            self.open_btn = make_btn("↗", 24, f"Open {service_def.url}", theme.ACCENT_PRIMARY, theme.ACCENT_HOVER)
+            self.open_btn = make_btn("Open", 38, f"Open {service_def.url}", theme.ACCENT_PRIMARY, theme.ACCENT_HOVER)
             btn_layout.addWidget(self.open_btn)
         else:
             self.open_btn = None
@@ -257,12 +257,12 @@ class ServiceCard(QFrame):
         menu.addSeparator()
 
         # Refresh status
-        refresh_action = QAction("🔄 Refresh Status", self)
+        refresh_action = QAction("Refresh Status", self)
         refresh_action.triggered.connect(lambda: self.openapi_refresh_requested.emit(self.service_def.key))
         menu.addAction(refresh_action)
 
         # Generate types
-        generate_action = QAction("⚡ Generate Types", self)
+        generate_action = QAction("Generate Types", self)
         generate_action.setToolTip("Run pnpm openapi:gen to regenerate TypeScript types")
         generate_action.triggered.connect(lambda: self.openapi_generate_requested.emit(self.service_def.key))
         menu.addAction(generate_action)
@@ -270,7 +270,7 @@ class ServiceCard(QFrame):
         menu.addSeparator()
 
         # Open OpenAPI Tools dialog
-        tools_action = QAction("🔧 OpenAPI Tools...", self)
+        tools_action = QAction("OpenAPI Tools...", self)
         tools_action.triggered.connect(self._open_openapi_tools)
         menu.addAction(tools_action)
 
@@ -303,7 +303,7 @@ class ServiceCard(QFrame):
         if color:
             self.openapi_indicator.show()
             if status == OpenAPIStatus.FRESH:
-                self.openapi_indicator.setText("✓ API")
+                self.openapi_indicator.setText("OK API")
                 self.openapi_indicator.setStyleSheet(f"""
                     QPushButton {{
                         background-color: rgba(63, 185, 80, 0.2);
@@ -317,7 +317,7 @@ class ServiceCard(QFrame):
                     }}
                 """)
             elif status == OpenAPIStatus.STALE:
-                self.openapi_indicator.setText("⚠ API")
+                self.openapi_indicator.setText("STALE")
                 self.openapi_indicator.setStyleSheet(f"""
                     QPushButton {{
                         background-color: rgba(210, 153, 34, 0.2);
@@ -382,18 +382,18 @@ class ServiceCard(QFrame):
         if getattr(self.service_process, "externally_managed", False):
             status_info += " (external)"
         if not self.service_process.tool_available:
-            status_info = f"⚠ {self.service_process.tool_check_message}"
+            status_info = f"Warn: {self.service_process.tool_check_message}"
         elif self.service_def.url:
             try:
                 port = self.service_def.url.split(':')[-1].split('/')[0]
-                status_info += f" • Port {port}"
+                status_info += f" | Port {port}"
             except Exception:
                 pass
 
         # Add PID if available (prefer started > detected > persisted)
         pid = self.service_process.get_effective_pid()
         if pid:
-            status_info += f" • PID {pid}"
+            status_info += f" | PID {pid}"
 
         # Add uptime if running
         if is_running and self.start_time:
@@ -401,23 +401,23 @@ class ServiceCard(QFrame):
             hours = int(uptime.total_seconds() // 3600)
             minutes = int((uptime.total_seconds() % 3600) // 60)
             if hours > 0:
-                status_info += f" • Up {hours}h {minutes}m"
+                status_info += f" | Up {hours}h {minutes}m"
             elif minutes > 0:
-                status_info += f" • Up {minutes}m"
+                status_info += f" | Up {minutes}m"
             else:
-                status_info += f" • Just started"
+                status_info += f" | Just started"
 
         # Show intent vs actual state when interesting
         if requested_running is True and not is_running:
-            status_info += " • Start requested"
+            status_info += " | Start requested"
         elif requested_running is False and is_running and getattr(self.service_process, "externally_managed", False):
-            status_info += " • Stop requested"
+            status_info += " | Stop requested"
 
         if status == HealthStatus.UNHEALTHY and getattr(self.service_process, 'last_error_line', ''):
             err = self.service_process.last_error_line
             if len(err) > 80:
                 err = err[:77] + '...'
-            status_info += f" • {err}"
+            status_info += f" | {err}"
         self.status_label.setText(status_info)
 
         # Build a helpful tooltip with error + recent logs
