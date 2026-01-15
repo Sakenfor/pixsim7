@@ -1,8 +1,7 @@
-import { useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 
 import { useAssetSelectionStore, type SelectedAsset } from '@features/assets/stores/assetSelectionStore';
-import { useCubeSettingsStore } from '@features/cubes';
-import type { GenerationQueueState, QueuedAsset } from '@features/generation';
+import type { InputItem } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
@@ -12,63 +11,50 @@ export type { OperationType };
 
 export interface QuickGenerateBindings {
   lastSelectedAsset?: SelectedAsset;
-  mainQueue: QueuedAsset[];
-  mainQueueIndex: number;
-  multiAssetQueue: QueuedAsset[];
-  multiAssetQueueIndex: number;
+  operationInputs: InputItem[];
+  operationInputIndex: number;
+  transitionInputs: InputItem[];
   dynamicParams: Record<string, any>;
   setDynamicParams: Dispatch<SetStateAction<Record<string, any>>>;
   prompts: string[];
   setPrompts: Dispatch<SetStateAction<string[]>>;
   transitionDurations: number[];
   setTransitionDurations: Dispatch<SetStateAction<number[]>>;
-  consumeFromQueue: GenerationQueueState['consumeFromQueue'];
-  removeFromQueue: GenerationQueueState['removeFromQueue'];
-  clearMultiAssetQueue: () => void;
-  cycleQueue: (queueType?: 'main' | 'multi', direction?: 'next' | 'prev') => void;
-  /**
-   * Explicitly set source_asset_id from the active asset.
-   * This is for manual "Use This Asset" actions - inference happens automatically in logic.
-   */
-  useActiveAsset: () => void;
+  removeInput: (operationType: OperationType, inputId: string) => void;
+  cycleInputs: (operationType: OperationType, direction?: 'next' | 'prev') => void;
+  setInputIndex: (operationType: OperationType, index: number) => void;
 }
 
 /**
  * Hook: useQuickGenerateBindings
  *
- * Exposes queue and selection state to QuickGenerateModule.
- *
- * IMPORTANT: This hook does NOT auto-fill source_asset_id into dynamicParams.
- * Asset ID inference happens in buildGenerationRequest (quickGenerateLogic.ts)
- * which has access to mainQueueCurrent and activeAsset via context.
+ * Exposes per-operation input state and dynamic params to QuickGenerateModule.
  *
  * This hook manages:
- * - State exposure (queues, selection, dynamicParams)
- * - Operation type auto-switching when items added to queue
+ * - State exposure (inputs, selection, dynamicParams)
  * - source_asset_ids array sync for video_transition
  * - prompts/durations arrays for video_transition
  */
 export function useQuickGenerateBindings(
   operationType: OperationType,
-  setOperationType: (operation: OperationType) => void,
 ): QuickGenerateBindings {
-  // Active asset support
   const lastSelectedAsset = useAssetSelectionStore(s => s.lastSelectedAsset);
 
-  const { useSettingsStore, useQueueStore } = useGenerationScopeStores();
+  const { useSettingsStore, useInputStore } = useGenerationScopeStores();
 
-  // Generation queue support (scoped)
-  const mainQueue = useQueueStore(s => s.mainQueue);
-  const mainQueueIndex = useQueueStore(s => s.mainQueueIndex);
-  const multiAssetQueue = useQueueStore(s => s.multiAssetQueue);
-  const multiAssetQueueIndex = useQueueStore(s => s.multiAssetQueueIndex);
-  const consumeFromQueue = useQueueStore(s => s.consumeFromQueue);
-  const removeFromQueue = useQueueStore(s => s.removeFromQueue);
-  const clearQueue = useQueueStore(s => s.clearQueue);
-  const cycleQueue = useQueueStore(s => s.cycleQueue);
+  const operationInputs = useInputStore(
+    s => s.inputsByOperation[operationType]?.items ?? []
+  );
+  const operationInputIndex = useInputStore(
+    s => s.inputsByOperation[operationType]?.currentIndex ?? 1
+  );
+  const transitionInputs = useInputStore(
+    s => s.inputsByOperation.video_transition?.items ?? []
+  );
 
-  // Settings for auto-selection behavior
-  const autoSelectOperationType = useCubeSettingsStore(s => s.autoSelectOperationType);
+  const removeInput = useInputStore(s => s.removeInput);
+  const cycleInputs = useInputStore(s => s.cycleInputs);
+  const setInputIndex = useInputStore(s => s.setInputIndex);
 
   // Dynamic params from operation_specs (scoped store)
   const dynamicParams = useSettingsStore((s) => s.params);
@@ -78,76 +64,9 @@ export function useQuickGenerateBindings(
   const [prompts, setPrompts] = useState<string[]>([]);
   const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
 
-  // Track previous queue state to detect adds
-  const prevMainQueueLengthRef = useRef<number | null>(null);
-  const prevTransitionQueueLengthRef = useRef<number | null>(null);
-
-  /**
-   * Explicitly set source_asset_id from active asset.
-   * Use this for "Use This Asset" button actions.
-   * Note: Inference from activeAsset also happens in logic, so this is optional.
-   */
-  const useActiveAsset = () => {
-    if (!lastSelectedAsset) return;
-
-    if (
-      (operationType === 'image_to_video' || operationType === 'image_to_image') &&
-      lastSelectedAsset.type === 'image'
-    ) {
-      setDynamicParams((prev) => ({
-        ...prev,
-        source_asset_id: lastSelectedAsset.id,
-      }));
-    } else if (operationType === 'video_extend' && lastSelectedAsset.type === 'video') {
-      setDynamicParams((prev) => ({
-        ...prev,
-        source_asset_id: lastSelectedAsset.id,
-      }));
-    }
-  };
-
-  // Auto-switch operation type when items added to main queue
-  // NOTE: We no longer set source_asset_id here - logic infers it from mainQueueCurrent
-  useEffect(() => {
-    const prevLength = prevMainQueueLengthRef.current;
-    const currentLength = mainQueue.length;
-
-    // Update ref for next render
-    prevMainQueueLengthRef.current = currentLength;
-
-    if (currentLength === 0) return;
-
-    // Get current item based on index (1-based index, convert to 0-based)
-    const currentIdx = Math.max(0, Math.min(mainQueueIndex - 1, currentLength - 1));
-    const currentItem = mainQueue[currentIdx];
-    if (!currentItem) return;
-
-    const { asset, operation } = currentItem;
-
-    // Only auto-switch operation type when items are added (not on cycle/initial load)
-    const itemsWereAdded = prevLength !== null && currentLength > prevLength;
-
-    if (itemsWereAdded) {
-      // Set operation type if explicitly specified in queue item
-      if (operation) {
-        setOperationType(operation);
-      } else if (autoSelectOperationType) {
-        // Auto-select operation type based on asset type
-        if (asset.mediaType === 'image') {
-          setOperationType('image_to_video');
-        } else if (asset.mediaType === 'video') {
-          setOperationType('video_extend');
-        }
-      }
-    }
-  }, [mainQueue, mainQueueIndex, setOperationType, autoSelectOperationType]);
-
   // Sync source_asset_ids and prompts/durations arrays for video_transition
   useEffect(() => {
-    const currentLength = multiAssetQueue.length;
-
-    // Update ref for next render
-    prevTransitionQueueLengthRef.current = currentLength;
+    const currentLength = transitionInputs.length;
 
     if (currentLength === 0) {
       setPrompts([]);
@@ -163,21 +82,18 @@ export function useQuickGenerateBindings(
       return;
     }
 
-    // Sync source_asset_ids array from multiAssetQueue
-    // This IS needed here because it's an array that must stay in sync with the queue
     setDynamicParams((prev) => ({
       ...prev,
-      source_asset_ids: multiAssetQueue.map((item) => item.asset.id),
+      source_asset_ids: transitionInputs.map((item) => item.asset.id),
     }));
 
-    // Initialize prompts array with N-1 elements (one per transition between images)
-    const numTransitions = Math.max(0, multiAssetQueue.length - 1);
+    const numTransitions = Math.max(0, transitionInputs.length - 1);
     setPrompts(prev => {
-      const newPrompts = [...prev];
-      while (newPrompts.length < numTransitions) {
-        newPrompts.push('');
+      const next = [...prev];
+      while (next.length < numTransitions) {
+        next.push('');
       }
-      return newPrompts.slice(0, numTransitions);
+      return next.slice(0, numTransitions);
     });
     setTransitionDurations(prev => {
       const next = [...prev];
@@ -186,28 +102,21 @@ export function useQuickGenerateBindings(
       }
       return next.slice(0, numTransitions);
     });
-  }, [multiAssetQueue, setDynamicParams]);
-
-  const clearMultiAssetQueue = () => {
-    clearQueue('multi');
-  };
+  }, [transitionInputs, setDynamicParams]);
 
   return {
     lastSelectedAsset,
-    mainQueue,
-    mainQueueIndex,
-    multiAssetQueue,
-    multiAssetQueueIndex,
+    operationInputs,
+    operationInputIndex,
+    transitionInputs,
     dynamicParams,
     setDynamicParams,
     prompts,
     setPrompts,
     transitionDurations,
     setTransitionDurations,
-    consumeFromQueue,
-    removeFromQueue,
-    clearMultiAssetQueue,
-    cycleQueue,
-    useActiveAsset,
+    removeInput,
+    cycleInputs,
+    setInputIndex,
   };
 }

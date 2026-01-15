@@ -2,7 +2,7 @@
  * AssetViewerDockview
  *
  * Dockview-based asset viewer with resizable, rearrangeable panels.
- * Uses SmartDockview for smart tab visibility (tabs shown only when grouped).
+ * Uses PanelHostDockview for smart tab visibility (tabs shown only when grouped).
  *
  * Default layout:
  * ┌─────────────────────────────┐
@@ -18,11 +18,10 @@
 import type { DockviewApi } from 'dockview-core';
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 
-import { SmartDockview } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
-import type { PanelDefinition } from '@features/panels';
+import { PanelHostDockview } from '@features/panels';
 
 import type { ViewerSettings } from './types';
 
@@ -65,8 +64,7 @@ const DEFAULT_VIEWER_PANEL_IDS = [
  * Create the default panel layout for asset viewer.
  * Media preview takes top 75%, generate/metadata tabs below.
  */
-function createDefaultLayout(api: DockviewApi, panelDefs: PanelDefinition[]) {
-  void panelDefs;
+function createDefaultLayout(api: DockviewApi) {
   // Media panel takes the top area
   api.addPanel({
     id: 'media-preview',
@@ -183,7 +181,7 @@ export function AssetViewerDockview({
   }, []);
 
   return (
-    <SmartDockview
+    <PanelHostDockview
       panels={viewerPanelIds}
       storageKey="dockview:asset-viewer:v5"
       context={context}
@@ -194,6 +192,7 @@ export function AssetViewerDockview({
       panelManagerId={panelManagerId}
       onReady={handleReady}
       enableContextMenu
+      resolvePanelTitle={(panelId) => panelSelectors.get(panelId)?.title ?? panelId}
     />
   );
 }

@@ -28,9 +28,6 @@ import { AdvancedSettingsPopover } from '@features/controlCenter/components/Adva
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
 
 
-import { OPERATION_METADATA } from '@/types/operations';
-
-
 /** Icon configuration for param values - data-driven approach */
 const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> = {
   quality: {
@@ -154,19 +151,11 @@ export function GenerationSettingsPanel({
   excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt'],
   error,
 }: GenerationSettingsPanelProps) {
-  const { useSessionStore, useQueueStore } = useGenerationScopeStores();
+  const { useSessionStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
-
-  // Input mode for optional multi-asset operations
-  // Subscribe directly to operationInputModePrefs to trigger re-render on changes
-  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
-  const setOperationInputMode = useQueueStore(s => s.setOperationInputMode);
-  const operationMetadata = OPERATION_METADATA[operationType];
-  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
-  const currentInputMode = operationInputModePrefs[operationType] ?? 'single';
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
@@ -303,60 +292,21 @@ export function GenerationSettingsPanel({
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Operation type + Input mode toggle (inline) */}
-        {(showOperationType || isOptionalMultiAsset) && (
+        {/* Operation type */}
+        {showOperationType && (
           <div className="flex gap-1">
-            {showOperationType && (
-              <select
-                value={operationType}
-                onChange={(e) => setOperationType(e.target.value as any)}
-                disabled={generating}
-                className={clsx(
-                  'px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium',
-                  isOptionalMultiAsset ? 'flex-1' : 'w-full'
-                )}
-              >
-                <option value="image_to_image">Image</option>
-                <option value="image_to_video">Video</option>
-                <option value="video_extend">Extend</option>
-                <option value="video_transition">Transition</option>
-                <option value="fusion">Fusion</option>
-              </select>
-            )}
-
-            {/* Input mode toggle for optional multi-asset operations */}
-            {isOptionalMultiAsset && (
-              <div className={clsx('flex rounded-lg overflow-hidden shadow-sm', showOperationType ? '' : 'w-full')}>
-                <button
-                  type="button"
-                  onClick={() => setOperationInputMode(operationType, 'single')}
-                  disabled={generating}
-                  className={clsx(
-                    'px-2 py-1.5 text-[10px] font-medium transition-colors flex-1',
-                    currentInputMode === 'single'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-blue-50 dark:hover:bg-neutral-700'
-                  )}
-                  title="Single asset mode"
-                >
-                  1
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setOperationInputMode(operationType, 'multi')}
-                  disabled={generating}
-                  className={clsx(
-                    'px-2 py-1.5 text-[10px] font-medium transition-colors flex-1',
-                    currentInputMode === 'multi'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-purple-50 dark:hover:bg-neutral-700'
-                  )}
-                  title="Multi-asset mode"
-                >
-                  +
-                </button>
-              </div>
-            )}
+            <select
+              value={operationType}
+              onChange={(e) => setOperationType(e.target.value as any)}
+              disabled={generating}
+              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
+            >
+              <option value="image_to_image">Image</option>
+              <option value="image_to_video">Video</option>
+              <option value="video_extend">Extend</option>
+              <option value="video_transition">Transition</option>
+              <option value="fusion">Fusion</option>
+            </select>
           </div>
         )}
 

@@ -9,13 +9,15 @@
  * - 3-panel (no asset): Prompt | Settings, with Blocks below Prompt
  */
 
-import { useMemo, forwardRef } from 'react';
 import type { DockviewApi } from 'dockview-core';
+import { useMemo, forwardRef } from 'react';
+
 import {
   QuickGenPanelHost,
   QUICKGEN_PRESETS,
   type QuickGenPanelHostRef,
 } from '@features/generation';
+
 import type { QuickGenPanelContext } from './QuickGeneratePanels';
 
 export interface QuickGenerateDockviewProps {
@@ -47,7 +49,7 @@ export const QuickGenerateDockview = forwardRef<QuickGenerateDockviewRef, QuickG
     );
 
     const storageKey = useMemo(
-      () => (showAssetPanel ? 'dockview:quickgen:v3:with-asset' : 'dockview:quickgen:v3:no-asset'),
+      () => (showAssetPanel ? 'dockview:quickgen:v4:with-asset' : 'dockview:quickgen:v4:no-asset'),
       [showAssetPanel]
     );
 

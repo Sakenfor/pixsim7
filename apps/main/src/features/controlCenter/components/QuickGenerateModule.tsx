@@ -21,7 +21,6 @@ import {
   GenerationWorkbench,
   GenerationSettingsPanel,
   GenerationScopeProvider,
-  resolveInputMode,
   resolveDisplayAssets,
 } from '@features/generation';
 import {
@@ -36,6 +35,7 @@ import {
 import { useQuickGenerateController } from '@features/prompts';
 import type { PanelId } from '@features/workspace';
 
+import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { CompactAssetCard } from './CompactAssetCard';
@@ -161,34 +161,26 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     error,
     generationId,
     lastSelectedAsset,
-    mainQueue,
-    mainQueueIndex,
-    multiAssetQueue,
-    removeFromQueue,
+    operationInputs,
+    operationInputIndex,
+    removeInput,
     prompts,
     setPrompts,
     transitionDurations,
     setTransitionDurations,
     generate,
-    cycleQueue,
+    cycleInputs,
+    setInputIndex,
   } = useQuickGenerateController();
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
-  // Get scoped queue store for all queue operations
-  const { useQueueStore } = useGenerationScopeStores();
-  const updateLockedTimestamp = useQueueStore(s => s.updateLockedTimestamp);
-  const setQueueIndex = useQueueStore(s => s.setQueueIndex);
-  // Subscribe directly to operationInputModePrefs to trigger re-render on changes
-  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
-
-  // Resolve input mode using shared utility
-  const { inputMode, isInMultiMode } = resolveInputMode({
-    operationType,
-    multiAssetQueueLength: multiAssetQueue.length,
-    operationInputModePrefs,
-  });
+  // Get scoped input store for all input operations
+  const { useInputStore } = useGenerationScopeStores();
+  const updateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
+  const operationMetadata = OPERATION_METADATA[operationType];
+  const isMultiAssetOp = operationMetadata?.multiAssetMode !== 'single';
 
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
@@ -209,11 +201,11 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
         id: 'controlCenter',
         label: 'Control Center',
         mode: operationType,
-        supportsMultiAsset: isInMultiMode,
+        supportsMultiAsset: isMultiAssetOp,
         ref,
       };
     },
-    [operationType, isInMultiMode, generationId],
+    [operationType, isMultiAssetOp, generationId],
   );
 
   const generationContextProvider = useMemo(
@@ -232,10 +224,9 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     scope: 'root',
   });
 
-  // Get scoped queue store actions for the widget capability
-  const scopedEnqueueAsset = useQueueStore(s => s.enqueueAsset);
-  const scopedEnqueueAssets = useQueueStore(s => s.enqueueAssets);
-  const scopedSetOperationInputMode = useQueueStore(s => s.setOperationInputMode);
+  // Get scoped input store actions for the widget capability
+  const scopedAddInput = useInputStore(s => s.addInput);
+  const scopedAddInputs = useInputStore(s => s.addInputs);
 
   // Get control center state for open/close
   const ccIsOpen = useControlCenterStore(s => s.isOpen);
@@ -248,12 +239,11 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       setOpen: ccSetOpen,
       operationType,
       setOperationType,
-      enqueueAsset: scopedEnqueueAsset,
-      enqueueAssets: scopedEnqueueAssets,
-      setOperationInputMode: scopedSetOperationInputMode,
+      addInput: scopedAddInput,
+      addInputs: scopedAddInputs,
       widgetId: 'controlCenter',
     }),
-    [ccIsOpen, ccSetOpen, operationType, setOperationType, scopedEnqueueAsset, scopedEnqueueAssets, scopedSetOperationInputMode],
+    [ccIsOpen, ccSetOpen, operationType, setOperationType, scopedAddInput, scopedAddInputs],
   );
 
   const generationWidgetProvider = useMemo(
@@ -270,7 +260,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
 
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
 
-  // Always show asset panel for these operations (to show queue or allow drag-drop)
+  // Always show asset panel for these operations (to show inputs or allow drag-drop)
   const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
 
   const maxChars = resolvePromptLimitForModel(
@@ -292,11 +282,9 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   // Resolve display assets using shared utility
   const displayAssets = resolveDisplayAssets({
     operationType,
-    mainQueue,
-    mainQueueIndex,
-    multiAssetQueue,
+    inputs: operationInputs,
+    currentIndex: operationInputIndex,
     lastSelectedAsset,
-    inputMode,
   });
 
   const handleTransitionDurationChange = (segmentIndex: number, seconds: number) => {
@@ -384,22 +372,22 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     />
   ), [generating, canGenerate, generate, error]);
 
-  // Wrapper to set main queue index directly
-  const setMainQueueIndex = useCallback((index: number) => {
-    setQueueIndex('main', index);
-  }, [setQueueIndex]);
+  // Wrapper to set current operation input index directly
+  const setOperationInputIndex = useCallback((index: number) => {
+    setInputIndex(operationType, index);
+  }, [operationType, setInputIndex]);
 
   // Prepare panel context data
   const panelContext = useMemo<QuickGenPanelContext>(() => ({
     displayAssets,
-    mainQueue,
-    mainQueueIndex,
+    operationInputs,
+    operationInputIndex,
     operationType,
     isFlexibleOperation: isFlexibleOp,
-    removeFromQueue,
+    removeInput,
     updateLockedTimestamp,
-    cycleQueue,
-    setMainQueueIndex,
+    cycleInputs,
+    setOperationInputIndex,
     prompt,
     setPrompt,
     providerId,
@@ -410,14 +398,14 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     renderSettingsPanel,
   }), [
     displayAssets,
-    mainQueue,
-    mainQueueIndex,
+    operationInputs,
+    operationInputIndex,
     operationType,
     isFlexibleOp,
-    removeFromQueue,
+    removeInput,
     updateLockedTimestamp,
-    cycleQueue,
-    setMainQueueIndex,
+    cycleInputs,
+    setOperationInputIndex,
     prompt,
     setPrompt,
     providerId,
@@ -436,18 +424,18 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     }
   }, [panelLayoutResetTrigger]);
 
-  // Handle dockview ready - store API reference and focus asset panel when queue grows
+  // Handle dockview ready - store API reference and focus asset panel when inputs grow
   const handleDockviewReady = useCallback((api: DockviewApi) => {
     dockviewApiRef.current = api;
   }, []);
 
-  // Focus asset panel when assets are added to queue
-  const prevQueueLengthRef = useRef(mainQueue.length);
+  // Focus asset panel when inputs are added
+  const prevInputLengthRef = useRef(operationInputs.length);
   useEffect(() => {
-    const prevLength = prevQueueLengthRef.current;
-    const currentLength = mainQueue.length;
+    const prevLength = prevInputLengthRef.current;
+    const currentLength = operationInputs.length;
 
-    // Asset was added (queue grew)
+    // Asset was added (inputs grew)
     if (currentLength > prevLength && currentLength > 0 && dockviewApiRef.current) {
       // Use requestAnimationFrame to ensure layout is ready
       requestAnimationFrame(() => {
@@ -459,8 +447,8 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       });
     }
 
-    prevQueueLengthRef.current = currentLength;
-  }, [mainQueue.length]);
+    prevInputLengthRef.current = currentLength;
+  }, [operationInputs.length]);
 
   // Render the main content area based on operation type and input mode
   const scopeControl = (
@@ -478,7 +466,8 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
 
   const renderContent = () => {
     // Unified multi-asset layout for: video_transition, fusion, or optional ops in multi mode
-    const isMultiAssetLayout = operationType === 'video_transition' || isInMultiMode;
+    const isMultiAssetLayout = operationType === 'video_transition' ||
+      (operationMetadata?.multiAssetMode === 'optional' && operationInputs.length > 1);
     const isTransitionMode = operationType === 'video_transition';
 
     if (isMultiAssetLayout) {
@@ -490,7 +479,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
           <div className="flex-shrink-0 flex items-stretch">
             {displayAssets.length > 0 ? (
               <div className="flex items-stretch gap-1.5">
-                {multiAssetQueue.map((queueItem, idx) => {
+                {operationInputs.map((inputItem, idx) => {
                   const hasOutgoingTransition = isTransitionMode && !isLastAsset(idx);
                   const isSelected = isTransitionMode && selectedTransitionIndex === idx;
 
@@ -509,11 +498,11 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
                       onClick={() => isTransitionMode && hasOutgoingTransition && setSelectedTransitionIndex(idx)}
                     >
                       <CompactAssetCard
-                        asset={queueItem.asset}
+                        asset={inputItem.asset}
                         showRemoveButton
-                        onRemove={() => removeFromQueue(queueItem.asset.id, 'multi')}
-                        lockedTimestamp={queueItem.lockedTimestamp}
-                        onLockTimestamp={(timestamp) => updateLockedTimestamp(queueItem.asset.id, timestamp, 'multi')}
+                        onRemove={() => removeInput(operationType, inputItem.id)}
+                        lockedTimestamp={inputItem.lockedTimestamp}
+                        onLockTimestamp={(timestamp) => updateLockedTimestamp(operationType, inputItem.id, timestamp)}
                         hideFooter
                         fillHeight
                       />
@@ -631,7 +620,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     // Use SmartDockview for asset+prompt or prompt+settings layout
     // Key includes mode to force remount when switching between single/multi modes
     const dockviewContent = (
-      <div key={`dockview-${inputMode}`} className="h-full relative">
+      <div key={`dockview-${operationType}`} className="h-full relative">
         <QuickGenerateDockview
           ref={dockviewRef}
           context={panelContext}

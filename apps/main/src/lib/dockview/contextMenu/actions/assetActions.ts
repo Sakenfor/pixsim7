@@ -25,6 +25,7 @@ import {
   type AssetSelection,
   type GenerationContextSummary,
 } from '@features/contextHub';
+import { useGenerationInputStore } from '@features/generation';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
@@ -173,7 +174,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
         const widget = activeProvider.getValue();
         if (!widget) return;
         const operationType = resolveOperationType(widget.operationType, fallbackOperationType);
-        enqueueAssetsToWidget(widget, assets, operationType);
+        addInputsToWidget(widget, assets, operationType);
       },
     },
   ];
@@ -207,7 +208,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
         const widget = provider.getValue();
         if (!widget) return;
         const operationType = resolveOperationType(widget.operationType, fallbackOperationType);
-        enqueueAssetsToWidget(widget, assets, operationType);
+        addInputsToWidget(widget, assets, operationType);
       },
     });
   });
@@ -215,23 +216,19 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
   return actions;
 }
 
-function enqueueAssetsToWidget(
+function addInputsToWidget(
   widget: GenerationWidgetContext,
   assets: AssetModel[],
   operationType: OperationType,
 ) {
-  const forceMulti = assets.length > 1;
   if (widget.setOperationType && widget.operationType !== operationType) {
     widget.setOperationType(operationType);
   }
-  if (widget.enqueueAssets) {
-    widget.enqueueAssets({ assets, operationType, forceMulti });
-  } else {
-    if (forceMulti) {
-      widget.setOperationInputMode(operationType, 'multi');
-    }
+  if (widget.addInputs) {
+    widget.addInputs({ assets, operationType });
+  } else if (widget.addInput) {
     assets.forEach((asset) => {
-      widget.enqueueAsset({ asset, operationType, forceMulti });
+      widget.addInput({ asset, operationType });
     });
   }
   widget.setOpen(true);
@@ -296,7 +293,7 @@ function createGenerationAction(
 
       const generationWidget = resolveGenerationWidget(ctx);
       if (!generationWidget) return;
-      enqueueAssetsToWidget(generationWidget, assets, operationType);
+      addInputsToWidget(generationWidget, assets, operationType);
     },
   };
 }
@@ -330,7 +327,7 @@ const addToTransitionAction = createGenerationAction(
 
 const removeFromQueueAction: MenuAction = {
   id: 'asset:remove-from-queue',
-  label: 'Remove from Queue',
+  label: 'Remove from Inputs',
   icon: 'x-circle',
   iconColor: 'text-orange-500',
   category: 'queue',
@@ -338,20 +335,15 @@ const removeFromQueueAction: MenuAction = {
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
     if (!assets.length) return false;
-    const queueStore = useGenerationQueueStore.getState();
-    // Check if any asset is in either queue
-    return assets.some(
-      (a) =>
-        queueStore.mainQueue.some((q) => q.asset.id === a.id) ||
-        queueStore.multiAssetQueue.some((q) => q.asset.id === a.id),
-    );
+    const inputStore = useGenerationInputStore.getState();
+    const allInputs = inputStore.getAllInputs();
+    return assets.some((a) => allInputs.some((item) => item.asset.id === a.id));
   },
   execute: (ctx) => {
     const assets = resolveAssets(ctx);
-    const queueStore = useGenerationQueueStore.getState();
+    const inputStore = useGenerationInputStore.getState();
     assets.forEach((asset) => {
-      queueStore.removeFromQueue(asset.id, 'main');
-      queueStore.removeFromQueue(asset.id, 'multi');
+      inputStore.removeAssetEverywhere(asset.id);
     });
   },
 };

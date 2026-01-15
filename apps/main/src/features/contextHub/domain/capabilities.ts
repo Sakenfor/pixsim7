@@ -217,7 +217,7 @@ export type PanelContextCapability<T = unknown> = T;
 
 /**
  * Generation widget capability - exposes actions for the nearest generation widget.
- * Allows media cards and other components to enqueue assets to the correct widget.
+ * Allows media cards and other components to add inputs to the correct widget.
  */
 export interface GenerationWidgetContext {
   /** Whether the widget is currently visible/open */
@@ -228,22 +228,17 @@ export interface GenerationWidgetContext {
   operationType: OperationType;
   /** Update the operation type (if supported by the widget) */
   setOperationType?: (operationType: OperationType) => void;
-  /** Enqueue an asset to the widget's queue */
-  enqueueAsset: (options: {
+  /** Add an asset to the widget's inputs */
+  addInput: (options: {
     asset: AssetModel;
     operationType: OperationType;
     slotIndex?: number;
-    forceMulti?: boolean;
   }) => void;
-  /** Enqueue multiple assets using the widget's routing rules */
-  enqueueAssets?: (options: {
+  /** Add multiple assets using the widget's routing rules */
+  addInputs?: (options: {
     assets: AssetModel[];
     operationType: OperationType;
-    forceMulti?: boolean;
-    setInputMode?: boolean;
   }) => void;
-  /** Set input mode preference for an operation */
-  setOperationInputMode: (operationType: OperationType, mode: 'single' | 'multi') => void;
   /** Unique identifier for this widget instance */
   widgetId: string;
 }

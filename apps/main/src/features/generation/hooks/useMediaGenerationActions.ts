@@ -24,25 +24,25 @@ import { useGenerationScopeStores } from './useGenerationScope';
  * Hook: useMediaGenerationActions
  *
  * Centralizes gallery generation actions so MediaCard and widgets
- * can queue work and open the nearest generation widget consistently.
+ * can add inputs and open the nearest generation widget consistently.
  *
- * Uses the centralized `enqueueAssets` API for automatic queue routing
- * based on operation metadata and user preferences.
+ * Uses the centralized input store API for automatic routing
+ * based on operation metadata.
  *
  * Scope-aware: Uses useGenerationScopeStores() to read from the current
  * generation scope (panel-local or global). This allows quick actions
  * to use the appropriate settings context.
  *
  * When assets are added via quick actions:
- * - The asset is added to the appropriate generation queue (auto-routed)
+ * - The asset is added to the appropriate operation inputs (auto-routed)
  * - The asset is selected in the asset selection store
  * - The generation operation type is aligned when possible
  * - The active generation widget is opened (if available)
  */
 export function useMediaGenerationActions() {
   // Use scoped stores for scope-aware generation settings
-  const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
-  const scopedEnqueueAssets = useQueueStore((s) => s.enqueueAssets);
+  const { useSessionStore, useSettingsStore, useInputStore } = useGenerationScopeStores();
+  const scopedAddInputs = useInputStore((s) => s.addInputs);
 
   // Read operation type from scoped session store
   const sessionOperationType = useSessionStore((s) => s.operationType);
@@ -76,35 +76,27 @@ export function useMediaGenerationActions() {
     [setSessionOperationType, widgetContext],
   );
 
-  const enqueueAssets = useCallback(
+  const addInputs = useCallback(
     (options: {
       assets: AssetModel[];
       operationType: OperationType;
-      forceMulti?: boolean;
-      setInputMode?: boolean;
     }) => {
-      if (widgetContext?.enqueueAssets) {
-        widgetContext.enqueueAssets(options);
+      if (widgetContext?.addInputs) {
+        widgetContext.addInputs(options);
         return;
       }
-      if (widgetContext?.enqueueAsset) {
-        const shouldForceMulti = options.forceMulti ?? options.assets.length > 1;
-        const shouldSetMode = options.setInputMode !== false;
-        if (shouldForceMulti && shouldSetMode) {
-          widgetContext.setOperationInputMode(options.operationType, 'multi');
-        }
+      if (widgetContext?.addInput) {
         options.assets.forEach((asset) => {
-          widgetContext.enqueueAsset({
+          widgetContext.addInput({
             asset,
             operationType: options.operationType,
-            forceMulti: shouldForceMulti,
           });
         });
         return;
       }
-      scopedEnqueueAssets(options);
+      scopedAddInputs(options);
     },
-    [scopedEnqueueAssets, widgetContext],
+    [scopedAddInputs, widgetContext],
   );
 
   // Helper to select asset in selection store
@@ -112,11 +104,11 @@ export function useMediaGenerationActions() {
     selectAsset(toSelectedAsset(asset, 'gallery'));
   }, [selectAsset]);
 
-  // Smart queue action - automatically routes to main or multi-asset queue via enqueueAsset
+  // Smart input action - routes based on operation metadata
   const createQueueAction = useCallback(
     (operationType: OperationType) => (asset: AssetModel) => {
-      // Use centralized enqueueAsset which handles queue routing automatically
-      enqueueAssets({ assets: [asset], operationType });
+      // Use centralized input store which handles routing automatically
+      addInputs({ assets: [asset], operationType });
 
       selectAssetFromSummary(asset);
 
@@ -127,7 +119,7 @@ export function useMediaGenerationActions() {
 
       openGenerationWidget(operationType);
     },
-    [enqueueAssets, selectAssetFromSummary, setOperationType, currentOperationType, openGenerationWidget],
+    [addInputs, selectAssetFromSummary, setOperationType, currentOperationType, openGenerationWidget],
   );
 
   // Memoize individual actions for stable references
@@ -139,22 +131,22 @@ export function useMediaGenerationActions() {
   const queueAutoGenerate = useCallback(
     (asset: AssetModel) => {
       // Auto-generate uses current operation type for routing
-      enqueueAssets({ assets: [asset], operationType: currentOperationType });
+      addInputs({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
       openGenerationWidget(currentOperationType);
     },
-    [enqueueAssets, currentOperationType, selectAssetFromSummary, openGenerationWidget],
+    [addInputs, currentOperationType, selectAssetFromSummary, openGenerationWidget],
   );
 
-  // Silent add - just adds to queue without opening control center
+  // Silent add - adds inputs without opening control center
   const queueSilentAdd = useCallback(
     (asset: AssetModel) => {
       // Silent add uses current operation type for routing
-      enqueueAssets({ assets: [asset], operationType: currentOperationType });
+      addInputs({ assets: [asset], operationType: currentOperationType });
       selectAssetFromSummary(asset);
-      // Don't open control center - just queue it
+      // Don't open control center - just add inputs
     },
-    [enqueueAssets, currentOperationType, selectAssetFromSummary],
+    [addInputs, currentOperationType, selectAssetFromSummary],
   );
 
   // Generations store for seeding new generations
@@ -163,13 +155,13 @@ export function useMediaGenerationActions() {
 
   // Quick generate - immediately triggers generation with an asset
   // Uses current scoped settings (provider, model, params, etc.)
-  // Does NOT add to queue - just generates directly
+  // Does NOT add to inputs - just generates directly
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean }) => {
       try {
-        // Optionally add to queue (default: no)
+        // Optionally add to inputs (default: no)
         if (options?.addToQueue) {
-          enqueueAssets({ assets: [asset], operationType: currentOperationType });
+          addInputs({ assets: [asset], operationType: currentOperationType });
           selectAssetFromSummary(asset);
         }
 
@@ -198,7 +190,7 @@ export function useMediaGenerationActions() {
             type: asset.mediaType,
             source: 'gallery',
           },
-          mainQueueCurrent: { asset, lockedTimestamp: undefined },
+          currentInput: { id: 'quick', asset, queuedAt: '', lockedTimestamp: undefined },
         });
 
         if (buildResult.error || !buildResult.params) {
@@ -223,7 +215,7 @@ export function useMediaGenerationActions() {
           operationType,
           providerId,
           finalPrompt: buildResult.finalPrompt,
-          params: normalizedParams,
+          params: buildResult.params,
           status: result.status || 'pending',
         }));
 
@@ -235,7 +227,7 @@ export function useMediaGenerationActions() {
       }
     },
     [
-      enqueueAssets,
+      addInputs,
       currentOperationType,
       selectAssetFromSummary,
       useSessionStore,

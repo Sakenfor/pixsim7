@@ -1,10 +1,11 @@
 import { createJSONStorage } from "zustand/middleware";
-import type { GenerationSettingsState } from "./generationSettingsStore";
-import { createGenerationSettingsStore } from "./generationSettingsStore";
+
+import type { GenerationInputStoreHook } from "./generationInputStore";
+import { createGenerationInputStore } from "./generationInputStore";
 import type { GenerationSessionStoreHook } from "./generationSessionStore";
 import { createGenerationSessionStore } from "./generationSessionStore";
-import type { GenerationQueueStoreHook } from "./generationQueueStore";
-import { createGenerationQueueStore } from "./generationQueueStore";
+import type { GenerationSettingsState } from "./generationSettingsStore";
+import { createGenerationSettingsStore } from "./generationSettingsStore";
 
 export type GenerationSettingsStoreHook = <T>(
   selector: (state: GenerationSettingsState) => T
@@ -12,7 +13,7 @@ export type GenerationSettingsStoreHook = <T>(
 
 const sessionStores = new Map<string, GenerationSessionStoreHook>();
 const settingsStores = new Map<string, GenerationSettingsStoreHook>();
-const queueStores = new Map<string, GenerationQueueStoreHook>();
+const inputStores = new Map<string, GenerationInputStoreHook>();
 
 function getStorageKey(prefix: string, scopeId: string) {
   return `${prefix}:${scopeId}`;
@@ -39,13 +40,13 @@ export function getGenerationSettingsStore(scopeId: string): GenerationSettingsS
   return store;
 }
 
-export function getGenerationQueueStore(scopeId: string): GenerationQueueStoreHook {
-  const existing = queueStores.get(scopeId);
+export function getGenerationInputStore(scopeId: string): GenerationInputStoreHook {
+  const existing = inputStores.get(scopeId);
   if (existing) return existing;
 
-  const store = createGenerationQueueStore(
-    getStorageKey("generation_queue", scopeId),
+  const store = createGenerationInputStore(
+    getStorageKey("generation_inputs", scopeId),
   );
-  queueStores.set(scopeId, store);
+  inputStores.set(scopeId, store);
   return store;
 }

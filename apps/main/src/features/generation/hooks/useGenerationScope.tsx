@@ -1,22 +1,25 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useMemo } from "react";
+
 import { useControlCenterStore } from "@features/controlCenter/stores/controlCenterStore";
-import { useGenerationSettingsStore } from "../stores/generationSettingsStore";
-import { useGenerationQueueStore } from "../stores/generationQueueStore";
-import type { GenerationSessionStoreHook } from "../stores/generationSessionStore";
-import type { GenerationQueueStoreHook } from "../stores/generationQueueStore";
+
+import { useGenerationInputStore } from "../stores/generationInputStore";
+import type { GenerationInputStoreHook } from "../stores/generationInputStore";
 import {
   getGenerationSessionStore,
   getGenerationSettingsStore,
-  getGenerationQueueStore,
+  getGenerationInputStore,
   type GenerationSettingsStoreHook,
 } from "../stores/generationScopeStores";
+import type { GenerationSessionStoreHook } from "../stores/generationSessionStore";
+import { useGenerationSettingsStore } from "../stores/generationSettingsStore";
 
 export interface GenerationScopeStores {
   id: string;
   label: string;
   useSessionStore: GenerationSessionStoreHook;
   useSettingsStore: GenerationSettingsStoreHook;
-  useQueueStore: GenerationQueueStoreHook;
+  useInputStore: GenerationInputStoreHook;
 }
 
 const GLOBAL_SCOPE: GenerationScopeStores = {
@@ -24,7 +27,7 @@ const GLOBAL_SCOPE: GenerationScopeStores = {
   label: "Global",
   useSessionStore: useControlCenterStore as unknown as GenerationSessionStoreHook,
   useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
-  useQueueStore: useGenerationQueueStore as unknown as GenerationQueueStoreHook,
+  useInputStore: useGenerationInputStore as unknown as GenerationInputStoreHook,
 };
 
 /**
@@ -78,7 +81,7 @@ export function GenerationScopeProvider({
       label: label ?? "Local Generation",
       useSessionStore: getGenerationSessionStore(scopeId),
       useSettingsStore: getGenerationSettingsStore(scopeId),
-      useQueueStore: getGenerationQueueStore(scopeId),
+      useInputStore: getGenerationInputStore(scopeId),
     };
   }, [scopeId, label, parentScope]);
 

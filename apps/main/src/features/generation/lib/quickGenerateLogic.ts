@@ -1,7 +1,7 @@
 import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
 
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
-import type { QueuedAsset } from '@features/generation';
+import type { InputItem } from '@features/generation';
 
 import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 import type { OperationType } from '@/types/operations';
@@ -14,13 +14,11 @@ export interface QuickGenerateContext {
   prompt: string;
   presetParams: Record<string, any>;
   dynamicParams: Record<string, any>;
-  sourceAssetIds?: number[];
-  inputMode?: 'single' | 'multi';
-  multiQueueAssets?: QueuedAsset[];
+  operationInputs?: InputItem[];
   prompts: string[];
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
-  mainQueueCurrent?: QueuedAsset;
+  currentInput?: InputItem;
 }
 
 export interface BuildGenerationResult {
@@ -57,34 +55,31 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     prompt,
     presetParams,
     dynamicParams,
-    sourceAssetIds,
-    inputMode = 'single',
-    multiQueueAssets,
+    operationInputs = [],
     prompts,
     activeAsset,
-    mainQueueCurrent,
+    currentInput,
   } = context;
 
   const trimmedPrompt = prompt.trim();
   let inferredSourceAssetId: number | undefined;
   let inferredSourceAssetIds: number[] | undefined;
 
-  // Helper to resolve a single-asset input (prefers queue, then dynamic param, then active selection)
   const resolveSingleSourceAssetId = (options: {
     allowVideo?: boolean;
   } = {}): number | undefined => {
     const allowVideo = options.allowVideo ?? false;
     let sourceAssetId = dynamicParams.source_asset_id;
-    const queueAssetId =
-      mainQueueCurrent && (
-        mainQueueCurrent.asset.mediaType === 'image' ||
-        (allowVideo && mainQueueCurrent.asset.mediaType === 'video')
+    const inputAssetId =
+      currentInput && (
+        currentInput.asset.mediaType === 'image' ||
+        (allowVideo && currentInput.asset.mediaType === 'video')
       )
-        ? mainQueueCurrent.asset.id
+        ? currentInput.asset.id
         : undefined;
 
-    if (queueAssetId) {
-      sourceAssetId = queueAssetId;
+    if (inputAssetId) {
+      sourceAssetId = inputAssetId;
     } else if (!sourceAssetId && activeAsset) {
       const isImage = activeAsset.type === 'image';
       const isVideo = activeAsset.type === 'video';
@@ -96,31 +91,28 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     return sourceAssetId;
   };
 
-  // Helper to extract tag slugs from asset tags
   const getTagStrings = (asset: { tags?: Array<{ slug?: string; name?: string }> }): string[] => {
     return (asset.tags ?? [])
       .map(t => t.slug ?? t.name ?? '')
       .filter(Boolean);
   };
 
-  const resolveCompositionAssetsFromQueue = (
-    queueAssets: QueuedAsset[] | undefined
+  const resolveCompositionAssetsFromInputs = (
+    inputs: InputItem[] | undefined
   ): Array<{ asset: string; layer: number; role: string }> | undefined => {
-    if (!queueAssets || queueAssets.length === 0) return undefined;
-    return queueAssets.map((queueItem, index) => {
-      const tags = getTagStrings(queueItem.asset);
+    if (!inputs || inputs.length === 0) return undefined;
+    return inputs.map((item, index) => {
+      const tags = getTagStrings(item.asset);
       const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
-      // Default: first image is environment (background), others are main_character (subjects)
       const defaultRole = index === 0 ? 'environment' : 'main_character';
       return {
-        asset: `asset:${queueItem.asset.id}`,
+        asset: `asset:${item.asset.id}`,
         layer: index,
         role: inferredRole ?? defaultRole,
       };
     });
   };
 
-  // Operation-specific validation with context-aware messages
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {
       error: 'Please enter a prompt describing what you want to generate.',
@@ -129,121 +121,81 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    const queueCompositionAssets =
-      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
     const explicitCompositionAssets =
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
-
-    // Priority: multi-asset list > queue selection > dynamic params > activeAsset
-    // NOTE: Legacy image_url is no longer checked - use source_asset_id(s) only
-    const multiSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
+    const paramsSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
       ? dynamicParams.source_asset_ids
-      : Array.isArray(sourceAssetIds) && sourceAssetIds.length > 0
-        ? sourceAssetIds
-        : undefined;
+      : undefined;
+    const inputSourceIds = operationInputs.length > 0
+      ? operationInputs.map((item) => item.asset.id)
+      : undefined;
 
-    if (inputMode === 'multi' && !queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
+    let resolvedSourceIds = paramsSourceIds ?? inputSourceIds;
+
+    if (!resolvedSourceIds && !explicitCompositionAssets) {
+      const fallbackId = resolveSingleSourceAssetId();
+      if (fallbackId) {
+        resolvedSourceIds = [fallbackId];
+      }
+    }
+
+    if (!resolvedSourceIds && !explicitCompositionAssets) {
       return {
-        error: 'No images selected. Add images from the gallery to build a multi-image edit.',
+        error: 'No image selected. Select an image from the gallery to transform.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (queueCompositionAssets || explicitCompositionAssets || multiSourceIds?.length) {
-      if (!dynamicParams.source_asset_ids) {
-        inferredSourceAssetIds = multiSourceIds;
-      }
+    if (!trimmedPrompt) {
+      return {
+        error: 'Please enter a prompt describing how to transform the image.',
+        finalPrompt: trimmedPrompt,
+      };
+    }
 
-      if (!trimmedPrompt) {
-        return {
-          error: 'Please enter a prompt describing how to transform the image.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-    } else {
-      let sourceAssetId = dynamicParams.source_asset_id;
-      const queueAssetId = mainQueueCurrent?.asset.mediaType === 'image'
-        ? mainQueueCurrent.asset.id
-        : undefined;
-
-      if (queueAssetId) {
-        sourceAssetId = queueAssetId;
-      } else if (!sourceAssetId && activeAsset?.type === 'image') {
-        sourceAssetId = activeAsset.id;
-      }
-
-      // Validate we have an asset ID
-      if (!sourceAssetId) {
-        return {
-          error: 'No image selected. Select an image from the gallery to transform.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      if (!trimmedPrompt) {
-        return {
-          error: 'Please enter a prompt describing how to transform the image.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-
-      if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
-        inferredSourceAssetId = queueAssetId;
-      } else if (!dynamicParams.source_asset_id && sourceAssetId) {
-        inferredSourceAssetId = sourceAssetId;
-      }
+    if (resolvedSourceIds && !dynamicParams.source_asset_ids) {
+      inferredSourceAssetIds = resolvedSourceIds;
     }
   }
 
   if (operationType === 'fusion') {
-    const queueCompositionAssets =
-      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
     const explicitCompositionAssets =
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
-    const multiSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
+    const paramsSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
       ? dynamicParams.source_asset_ids
-      : Array.isArray(sourceAssetIds) && sourceAssetIds.length > 0
-        ? sourceAssetIds
-        : undefined;
+      : undefined;
+    const inputSourceIds = operationInputs.length > 0
+      ? operationInputs.map((item) => item.asset.id)
+      : undefined;
 
-    if (inputMode === 'multi' && !queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
+    let resolvedSourceIds = paramsSourceIds ?? inputSourceIds;
+
+    if (!resolvedSourceIds && !explicitCompositionAssets) {
+      const fallbackId = resolveSingleSourceAssetId({ allowVideo: true });
+      if (fallbackId) {
+        resolvedSourceIds = [fallbackId];
+      }
+    }
+
+    if (!resolvedSourceIds && !explicitCompositionAssets) {
       return {
-        error: 'No images selected. Add images from the gallery to build a fusion.',
+        error: 'No images selected. Add an image from the gallery to fuse.',
         finalPrompt: trimmedPrompt,
       };
     }
 
-    if (!queueCompositionAssets && !explicitCompositionAssets && !multiSourceIds?.length) {
-      const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
-      if (!sourceAssetId) {
-        return {
-          error: 'No images selected. Add an image from the gallery to fuse.',
-          finalPrompt: trimmedPrompt,
-        };
-      }
-      if (!dynamicParams.source_asset_id && sourceAssetId) {
-        inferredSourceAssetId = sourceAssetId;
-      }
+    if (resolvedSourceIds && !dynamicParams.source_asset_ids) {
+      inferredSourceAssetIds = resolvedSourceIds;
     }
   }
 
   if (operationType === 'image_to_video') {
-    // Priority: queue selection > dynamic params > activeAsset
-    // NOTE: Legacy image_url is no longer checked - use source_asset_id only
-    const queueAssetId =
-      mainQueueCurrent && (
-        mainQueueCurrent.asset.mediaType === 'image' || mainQueueCurrent.asset.mediaType === 'video'
-      )
-        ? mainQueueCurrent.asset.id
-        : undefined;
     const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
 
-    // Validate prompt if we have an asset (optional - can fall back to text_to_video)
-    // If no asset, the caller will handle switching to text_to_video
     if (sourceAssetId && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
@@ -251,28 +203,14 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
-      inferredSourceAssetId = queueAssetId;
-    } else if (!dynamicParams.source_asset_id && sourceAssetId) {
+    if (!dynamicParams.source_asset_id && sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }
 
   if (operationType === 'video_extend') {
-    // Priority: queue selection > dynamic params > activeAsset
-    // NOTE: Legacy video_url/original_video_id are no longer checked - use source_asset_id only
-    let sourceAssetId = dynamicParams.source_asset_id;
-    const queueAssetId = mainQueueCurrent?.asset.mediaType === 'video'
-      ? mainQueueCurrent.asset.id
-      : undefined;
+    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
 
-    if (queueAssetId) {
-      sourceAssetId = queueAssetId;
-    } else if (!sourceAssetId && activeAsset?.type === 'video') {
-      sourceAssetId = activeAsset.id;
-    }
-
-    // Validate we have an asset ID
     if (!sourceAssetId) {
       return {
         error: 'No video selected. Click "Video Extend" on a gallery video to extend it.',
@@ -280,27 +218,22 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (queueAssetId && queueAssetId !== dynamicParams.source_asset_id) {
-      inferredSourceAssetId = queueAssetId;
-    } else if (!dynamicParams.source_asset_id && sourceAssetId) {
+    if (!dynamicParams.source_asset_id && sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }
 
   let transitionDurations: number[] | undefined;
   if (operationType === 'video_transition') {
-    // NOTE: Legacy image_urls is no longer checked - use source_asset_ids only
-    const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids)
+    const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
       ? dynamicParams.source_asset_ids
-      : Array.isArray(sourceAssetIds)
-        ? sourceAssetIds
-        : [];
+      : operationInputs.map((item) => item.asset.id);
     const assetCount = transitionSourceIds.length;
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
     if (!assetCount) {
       return {
-        error: 'No images in transition queue. Use "Add to Transition" from the gallery to add images.',
+        error: 'No images in transition inputs. Use "Add to Transition" from the gallery to add images.',
         finalPrompt: trimmedPrompt,
       };
     }
@@ -339,7 +272,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     }
   }
 
-  // Build params - merge preset params, dynamic params, and operation-specific params
   const params: Record<string, any> = {
     prompt: trimmedPrompt,
     ...presetParams,
@@ -355,13 +287,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    const queueCompositionAssets =
-      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
-    const forceCompositionFromSource =
-      inputMode !== 'multi' && (inferredSourceAssetId !== undefined || inferredSourceAssetIds !== undefined);
-    if (queueCompositionAssets) {
-      params.composition_assets = queueCompositionAssets;
-    } else if (forceCompositionFromSource || !params.composition_assets) {
+    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs);
+    if (inputCompositionAssets) {
+      params.composition_assets = inputCompositionAssets;
+    } else if (!params.composition_assets) {
       const sourceIds = Array.isArray(params.source_asset_ids)
         ? params.source_asset_ids
         : params.source_asset_id
@@ -369,7 +298,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           : [];
 
       if (sourceIds.length > 0) {
-        // Assign default roles: first = environment (background), others = main_character
         params.composition_assets = sourceIds.map((id: number, index: number) => ({
           asset: `asset:${id}`,
           layer: index,
@@ -383,13 +311,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'fusion') {
-    const queueCompositionAssets =
-      inputMode === 'multi' ? resolveCompositionAssetsFromQueue(multiQueueAssets) : undefined;
-    const forceCompositionFromSource =
-      inputMode !== 'multi' && (inferredSourceAssetId !== undefined || inferredSourceAssetIds !== undefined);
-    if (queueCompositionAssets) {
-      params.composition_assets = queueCompositionAssets;
-    } else if (forceCompositionFromSource || !params.composition_assets) {
+    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs);
+    if (inputCompositionAssets) {
+      params.composition_assets = inputCompositionAssets;
+    } else if (!params.composition_assets) {
       const sourceIds = Array.isArray(params.source_asset_ids)
         ? params.source_asset_ids
         : params.source_asset_id
@@ -397,7 +322,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           : [];
 
       if (sourceIds.length > 0) {
-        // Assign default roles: first = environment (background), others = main_character
         params.composition_assets = sourceIds.map((id: number, index: number) => ({
           asset: `asset:${id}`,
           layer: index,
@@ -410,9 +334,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     delete params.source_asset_ids;
   }
 
-  // Add array fields for video_transition
   if (operationType === 'video_transition') {
-    // NOTE: Legacy image_urls fallback removed - source_asset_ids is now required
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
     if (transitionDurations && transitionDurations.length) {
       params.durations = transitionDurations;

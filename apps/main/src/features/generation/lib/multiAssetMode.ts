@@ -1,33 +1,14 @@
 /**
- * Multi-Asset Mode Utilities
+ * Input Display Utilities
  *
- * Consolidated logic for determining input mode (single vs multi) and
- * resolving display assets based on operation type and queue state.
- *
- * This module is the single source of truth for multi-asset mode decisions,
- * used by QuickGenerateModule, QuickGeneratePanels, and useQuickGenerateController.
+ * Centralized helpers for resolving display assets from per-operation inputs.
  */
 
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 import type { AssetModel } from '@features/assets';
-import type { QueuedAsset, InputMode } from '../stores/generationQueueStore';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
-export interface InputModeParams {
-  operationType: OperationType;
-  multiAssetQueueLength: number;
-  operationInputModePrefs?: Partial<Record<OperationType, InputMode>>;
-}
-
-export interface InputModeResult {
-  inputMode: InputMode;
-  isInMultiMode: boolean;
-  isOptionalMultiAsset: boolean;
-  isRequiredMultiAsset: boolean;
-}
+import type { InputItem } from '../stores/generationInputStore';
 
 export interface SelectedAssetLike {
   id: number;
@@ -37,68 +18,16 @@ export interface SelectedAssetLike {
 
 export interface DisplayAssetsParams {
   operationType: OperationType;
-  mainQueue: QueuedAsset[];
-  mainQueueIndex: number;
-  multiAssetQueue: QueuedAsset[];
+  inputs: InputItem[];
+  currentIndex: number;
   lastSelectedAsset?: SelectedAssetLike;
-  inputMode?: InputMode;
   /** If true, accepts lastSelectedAsset regardless of type match */
   allowAnySelected?: boolean;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Input Mode Resolution
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Resolves whether an operation should run in single or multi-asset mode.
- *
- * Logic:
- * - `multiAssetMode: 'required'` → always 'multi' (e.g., video_transition)
- * - `multiAssetMode: 'single'` → always 'single' (e.g., video_extend)
- * - `multiAssetMode: 'optional'` → 'multi' if:
- *   - multiAssetQueue has items (auto-multi), OR
- *   - user preference is 'multi'
- *
- * @returns InputModeResult with inputMode and derived flags
- */
-export function resolveInputMode({
-  operationType,
-  multiAssetQueueLength,
-  operationInputModePrefs,
-}: InputModeParams): InputModeResult {
-  const metadata = OPERATION_METADATA[operationType];
-  const isOptionalMultiAsset = metadata?.multiAssetMode === 'optional';
-  const isRequiredMultiAsset = metadata?.multiAssetMode === 'required';
-
-  // Auto-multi: optional operations with items in queue
-  const autoMulti = isOptionalMultiAsset && multiAssetQueueLength > 0;
-
-  // Determine input mode
-  let inputMode: InputMode;
-  if (isRequiredMultiAsset || autoMulti) {
-    inputMode = 'multi';
-  } else if (isOptionalMultiAsset && operationInputModePrefs?.[operationType] === 'multi') {
-    inputMode = 'multi';
-  } else {
-    inputMode = 'single';
-  }
-
-  return {
-    inputMode,
-    isInMultiMode: inputMode === 'multi',
-    isOptionalMultiAsset,
-    isRequiredMultiAsset,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Display Assets Resolution
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
  * Builds a fallback AssetModel from a selected asset reference.
- * Used when no queued assets are available but an asset is selected in the gallery.
+ * Used when no inputs are available but an asset is selected in the gallery.
  */
 export function buildFallbackAsset(asset: SelectedAssetLike): AssetModel {
   return {
@@ -132,49 +61,32 @@ export function buildFallbackAsset(asset: SelectedAssetLike): AssetModel {
 }
 
 /**
- * Resolves which assets to display based on operation type and queue state.
+ * Resolves which assets to display based on operation type and input state.
  *
  * Priority:
- * 1. Multi-asset mode: return all assets from multiAssetQueue
- * 2. Single-asset mode with mainQueue: return current item from mainQueue
- * 3. Fallback to multiAssetQueue[0] if available (for transition from multi to single)
- * 4. Fallback to lastSelectedAsset if it matches the operation type
- * 5. Empty array if nothing available
+ * 1. Single-mode ops: return current input (by index).
+ * 2. Multi-mode ops: return all input assets.
+ * 3. Fallback to lastSelectedAsset if it matches the operation type.
+ * 4. Empty array if nothing available.
  */
 export function resolveDisplayAssets({
   operationType,
-  mainQueue,
-  mainQueueIndex,
-  multiAssetQueue,
+  inputs,
+  currentIndex,
   lastSelectedAsset,
-  inputMode,
   allowAnySelected = false,
 }: DisplayAssetsParams): AssetModel[] {
-  // Resolve input mode if not provided
-  const { isInMultiMode } = inputMode
-    ? { isInMultiMode: inputMode === 'multi' }
-    : resolveInputMode({
-        operationType,
-        multiAssetQueueLength: multiAssetQueue.length,
-      });
+  const metadata = OPERATION_METADATA[operationType];
+  const isSingleMode = metadata?.multiAssetMode === 'single';
 
-  // Multi-asset mode: return all from multiAssetQueue
-  if ((operationType === 'video_transition' || isInMultiMode) && multiAssetQueue.length > 0) {
-    return multiAssetQueue.map(item => item.asset);
+  if (inputs.length > 0) {
+    if (isSingleMode) {
+      const index = Math.max(0, Math.min(currentIndex - 1, inputs.length - 1));
+      return [inputs[index].asset];
+    }
+    return inputs.map(item => item.asset);
   }
 
-  // Single-asset mode: return current from mainQueue
-  if (mainQueue.length > 0) {
-    const index = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
-    return [mainQueue[index].asset];
-  }
-
-  // Fallback: check multiAssetQueue (handles transition from multi to single mode)
-  if (multiAssetQueue.length > 0) {
-    return [multiAssetQueue[0].asset];
-  }
-
-  // Fallback: use lastSelectedAsset if it matches the operation
   if (lastSelectedAsset) {
     const matchesOperation =
       (operationType === 'image_to_video' && lastSelectedAsset.type === 'image') ||

@@ -228,8 +228,7 @@ export function isMultiAssetOperation(operationType: OperationType): boolean {
 /**
  * Check if an operation should default to the multi-asset queue.
  *
- * @deprecated Use `useGenerationQueueStore().resolveQueueType()` instead for
- * centralized queue routing that respects user preferences for optional operations.
+ * @deprecated Input routing is now handled by per-operation input lists.
  */
 export function shouldDefaultToMultiAssetQueue(operationType: OperationType): boolean {
   return OPERATION_METADATA[operationType]?.multiAssetMode === 'required';

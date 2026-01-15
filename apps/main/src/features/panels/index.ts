@@ -98,6 +98,7 @@ export {
 } from "./lib/panelPlugin";
 export { initializePanels } from "./lib/initializePanels";
 export { PanelHostLite } from "./components/host/PanelHostLite";
+export { PanelHostDockview } from "./components/host/PanelHostDockview";
 
 // Panel actions
 export * from "./lib/actions";

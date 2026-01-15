@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { buildGenerationRequest, type QuickGenerateContext } from '../quickGenerateLogic';
 
 function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGenerateContext {
@@ -75,10 +76,9 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Blend the characters',
-      inputMode: 'multi',
-      multiQueueAssets: [
-        { asset: { id: 10, mediaType: 'image' }, queuedAt: '' },
-        { asset: { id: 11, mediaType: 'image' }, queuedAt: '' },
+      operationInputs: [
+        { id: 'a', asset: { id: 10, mediaType: 'image' }, queuedAt: '' },
+        { id: 'b', asset: { id: 11, mediaType: 'image' }, queuedAt: '' },
       ] as any,
       dynamicParams: {},
     });
@@ -97,11 +97,10 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
-      inputMode: 'multi',
-      multiQueueAssets: [
-        { asset: { id: 1, mediaType: 'image' }, queuedAt: '' },
-        { asset: { id: 2, mediaType: 'image' }, queuedAt: '' },
-        { asset: { id: 3, mediaType: 'image' }, queuedAt: '' },
+      operationInputs: [
+        { id: 'a', asset: { id: 1, mediaType: 'image' }, queuedAt: '' },
+        { id: 'b', asset: { id: 2, mediaType: 'image' }, queuedAt: '' },
+        { id: 'c', asset: { id: 3, mediaType: 'image' }, queuedAt: '' },
       ] as any,
       dynamicParams: {},
     });
@@ -119,9 +118,9 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
-      inputMode: 'multi',
-      multiQueueAssets: [
+      operationInputs: [
         {
+          id: 'a',
           asset: {
             id: 1,
             mediaType: 'image',
@@ -130,6 +129,7 @@ describe('buildGenerationRequest', () => {
           queuedAt: '',
         },
         {
+          id: 'b',
           asset: {
             id: 2,
             mediaType: 'image',
@@ -138,6 +138,7 @@ describe('buildGenerationRequest', () => {
           queuedAt: '',
         },
         {
+          id: 'c',
           asset: {
             id: 3,
             mediaType: 'image',
@@ -165,9 +166,9 @@ describe('buildGenerationRequest', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
       prompt: 'Combine these images',
-      inputMode: 'multi',
-      multiQueueAssets: [
+      operationInputs: [
         {
+          id: 'a',
           asset: {
             id: 1,
             mediaType: 'image',
@@ -176,6 +177,7 @@ describe('buildGenerationRequest', () => {
           queuedAt: '',
         },
         {
+          id: 'b',
           asset: {
             id: 2,
             mediaType: 'image',

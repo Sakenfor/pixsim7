@@ -56,14 +56,14 @@ export type QuickGenPanelId =
 export interface QuickGenPanelContext {
   // Asset panel
   displayAssets: AssetModel[];
-  mainQueue: any[];
-  mainQueueIndex: number;
-  operationType: string;
+  operationInputs: { id: string; asset: AssetModel; lockedTimestamp?: number }[];
+  operationInputIndex: number;
+  operationType: OperationType;
   isFlexibleOperation: boolean;
-  removeFromQueue: (id: number, queue: 'main') => void;
-  updateLockedTimestamp: (id: number, timestamp: number | undefined, queue: 'main') => void;
-  cycleQueue: (queue: 'main', direction: 'prev' | 'next') => void;
-  setMainQueueIndex: (index: number) => void;
+  removeInput: (operationType: OperationType, inputId: string) => void;
+  updateLockedTimestamp: (operationType: OperationType, inputId: string, timestamp: number | undefined) => void;
+  cycleInputs: (operationType: OperationType, direction: 'prev' | 'next') => void;
+  setOperationInputIndex: (index: number) => void;
 
   // Prompt panel
   prompt: string;
@@ -100,45 +100,43 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const scopeInstanceId = useScopeInstanceId("generation");
   const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
-  // Subscribe to scoped queue store for live queue data
-  const { useQueueStore } = useGenerationScopeStores();
-  const storeMainQueue = useQueueStore(s => s.mainQueue);
-  const storeMainQueueIndex = useQueueStore(s => s.mainQueueIndex);
-  const storeSetQueueIndex = useQueueStore(s => s.setQueueIndex);
-  const storeCycleQueue = useQueueStore(s => s.cycleQueue);
-  const operationInputModePrefs = useQueueStore(s => s.operationInputModePrefs);
+  // Subscribe to scoped input store for live input data
+  const { useInputStore } = useGenerationScopeStores();
 
   const {
-    removeFromQueue: ctxRemoveFromQueue,
+    removeInput: ctxRemoveInput,
     updateLockedTimestamp: ctxUpdateLockedTimestamp,
   } = ctx || {};
 
   const operationType = ctx?.operationType ?? controller.operationType;
   const isFlexibleOperation = ctx?.isFlexibleOperation ?? FLEXIBLE_OPERATIONS.has(operationType);
-  const removeFromQueue = ctxRemoveFromQueue ?? controller.removeFromQueue;
-  const updateLockedTimestamp = ctxUpdateLockedTimestamp ?? controller.updateLockedTimestamp;
+  const removeInput = ctxRemoveInput ?? controller.removeInput;
+  const storeUpdateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
+  const updateLockedTimestamp = ctxUpdateLockedTimestamp ?? storeUpdateLockedTimestamp;
+  const storeInputs = useInputStore(s => s.inputsByOperation[operationType]?.items ?? []);
+  const storeInputIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
+  const storeSetInputIndex = useInputStore(s => s.setInputIndex);
+  const storeCycleInputs = useInputStore(s => s.cycleInputs);
 
   const displayAssets = useMemo(() => {
     if (ctx?.displayAssets) return ctx.displayAssets;
     return resolveDisplayAssets({
       operationType,
-      mainQueue: controller.mainQueue,
-      mainQueueIndex: controller.mainQueueIndex,
-      multiAssetQueue: controller.multiAssetQueue,
+      inputs: controller.operationInputs,
+      currentIndex: controller.operationInputIndex,
       lastSelectedAsset: controller.lastSelectedAsset,
-      inputMode: operationInputModePrefs[operationType],
       allowAnySelected,
     });
   }, [
     ctx?.displayAssets,
     operationType,
-    controller.mainQueue,
-    controller.mainQueueIndex,
-    controller.multiAssetQueue,
+    controller.operationInputs,
+    controller.operationInputIndex,
     controller.lastSelectedAsset,
-    operationInputModePrefs,
     allowAnySelected,
   ]);
+
+  const operationMeta = OPERATION_METADATA[operationType];
 
   useProvideCapability<AssetInputContext>(
     CAP_ASSET_INPUT,
@@ -153,10 +151,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
             return Number.isFinite(id) ? Ref.asset(id) : null;
           })
           .filter((ref): ref is AssetRef => !!ref);
-        const minCount = isFlexibleOperation ? 0 : 1;
+        const supportsMulti = operationMeta?.multiAssetMode !== 'single';
+        const minCount = operationMeta?.multiAssetMode === 'required'
+          ? 2
+          : isFlexibleOperation
+          ? 0
+          : 1;
         const isMultiAsset =
-          operationType === "video_transition" ||
-          (isFlexibleOperation && (displayAssets?.length ?? 0) > 1);
+          operationMeta?.multiAssetMode === 'required' ||
+          (supportsMulti && (displayAssets?.length ?? 0) > 1);
         const maxCount = isMultiAsset ? Math.max(refs.length, 1) : 1;
         const types = resolveMediaTypes(displayAssets ?? []).filter(
           (type): type is "image" | "video" => type === "image" || type === "video",
@@ -164,7 +167,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
         return {
           assets: displayAssets ?? [],
-          supportsMulti: isFlexibleOperation,
+          supportsMulti,
           ref: refs[0] ?? null,
           refs,
           selection: {
@@ -184,28 +187,28 @@ export function AssetPanel(props: QuickGenPanelProps) {
         };
       },
     },
-    [displayAssets, isFlexibleOperation, panelInstanceId],
+    [displayAssets, isFlexibleOperation, operationType, panelInstanceId],
     { scope: capabilityScope },
   );
 
-  // Use store values directly for queue operations
-  const mainQueue = storeMainQueue;
-  const mainQueueIndex = storeMainQueueIndex;
-  const cycleQueue = storeCycleQueue;
-  const setMainQueueIndex = (idx: number) => storeSetQueueIndex('main', idx);
+  // Use store values directly for input operations
+  const operationInputs = ctx?.operationInputs ?? storeInputs;
+  const operationInputIndex = ctx?.operationInputIndex ?? storeInputIndex;
+  const cycleInputs = ctx?.cycleInputs ?? storeCycleInputs;
+  const setOperationInputIndex = ctx?.setOperationInputIndex ?? ((idx: number) => storeSetInputIndex(operationType, idx));
 
   // Stable callback for wheel handler
   const handleWheelRef = useRef<(e: WheelEvent) => void>();
   handleWheelRef.current = (e: WheelEvent) => {
-    if (mainQueue.length <= 1) return;
+    if (operationInputs.length <= 1) return;
 
     e.preventDefault();
 
     // Scroll up = next, scroll down = prev (reversed for natural feel)
     if (e.deltaY < 0) {
-      cycleQueue?.('main', 'next');
+      cycleInputs?.(operationType, 'next');
     } else if (e.deltaY > 0) {
-      cycleQueue?.('main', 'prev');
+      cycleInputs?.(operationType, 'prev');
     }
   };
 
@@ -223,16 +226,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
   }, []);
 
   const hasAsset = displayAssets.length > 0;
-  const isMultiAssetDisplay = displayAssets.length > 1;
-  const storeMultiAssetQueue = useQueueStore(s => s.multiAssetQueue);
-  const storeRemoveFromQueue = useQueueStore(s => s.removeFromQueue);
-  const storeUpdateLockedTimestamp = useQueueStore(s => s.updateLockedTimestamp);
+  const isMultiAssetDisplay = operationMeta?.multiAssetMode === 'required' || displayAssets.length > 1;
 
   if (!hasAsset) {
     return (
       <div className="h-full flex items-center justify-center p-3">
         <div className="text-xs text-neutral-500 italic text-center">
           {operationType === 'video_extend' ? 'Select video' :
+           operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
            isFlexibleOperation ? '+ Image (optional)' : 'Select image'}
         </div>
       </div>
@@ -244,14 +245,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
     return (
       <div ref={containerRef} className="h-full w-full p-2 overflow-x-auto">
         <div className="flex gap-1.5 h-full">
-          {storeMultiAssetQueue.map((queueItem, idx) => (
+          {operationInputs.map((inputItem, idx) => (
             <div key={idx} className="relative flex-shrink-0 h-full aspect-square">
               <CompactAssetCard
-                asset={queueItem.asset}
+                asset={inputItem.asset}
                 showRemoveButton
-                onRemove={() => storeRemoveFromQueue(queueItem.asset.id, 'multi')}
-                lockedTimestamp={queueItem.lockedTimestamp}
-                onLockTimestamp={(timestamp) => storeUpdateLockedTimestamp(queueItem.asset.id, timestamp, 'multi')}
+                onRemove={() => removeInput(operationType, inputItem.id)}
+                lockedTimestamp={inputItem.lockedTimestamp}
+                onLockTimestamp={(timestamp) => updateLockedTimestamp?.(operationType, inputItem.id, timestamp)}
                 hideFooter
                 fillHeight
               />
@@ -267,12 +268,12 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // Single-asset display: existing behavior
   // Get the current queue item based on index
-  const currentQueueIndex = Math.max(0, Math.min(mainQueueIndex - 1, mainQueue.length - 1));
-  const currentQueueItem = mainQueue[currentQueueIndex];
-  const currentAssetId = currentQueueItem?.asset?.id;
+  const currentInputIdx = Math.max(0, Math.min(operationInputIndex - 1, operationInputs.length - 1));
+  const currentInput = operationInputs[currentInputIdx];
+  const currentInputId = currentInput?.id;
 
   // Build queue items for grid popup - use index as part of key to ensure uniqueness
-  const queueItems = mainQueue.flatMap((item, idx) => {
+  const queueItems = operationInputs.flatMap((item, idx) => {
     if (!item?.asset) return [];
     const thumbUrl = item.asset.thumbnailUrl ?? item.asset.remoteUrl ?? item.asset.fileUrl ?? '';
     return [{
@@ -285,27 +286,27 @@ export function AssetPanel(props: QuickGenPanelProps) {
     <div ref={containerRef} className="h-full w-full p-2 relative">
       <CompactAssetCard
         asset={displayAssets[0]}
-        showRemoveButton={mainQueue.length > 0}
+        showRemoveButton={operationInputs.length > 0}
         onRemove={() => {
-          if (currentAssetId) {
-            removeFromQueue?.(currentAssetId, 'main');
+          if (currentInputId) {
+            removeInput?.(operationType, currentInputId);
           }
         }}
-        lockedTimestamp={currentQueueItem?.lockedTimestamp}
+        lockedTimestamp={currentInput?.lockedTimestamp}
         onLockTimestamp={
-          currentAssetId
+          currentInputId
             ? (timestamp) =>
-                updateLockedTimestamp?.(currentAssetId, timestamp, 'main')
+                updateLockedTimestamp?.(operationType, currentInputId, timestamp)
             : undefined
         }
         hideFooter
         fillHeight
-        currentIndex={mainQueueIndex}
-        totalCount={mainQueue.length}
-        onNavigatePrev={() => cycleQueue?.('main', 'prev')}
-        onNavigateNext={() => cycleQueue?.('main', 'next')}
+        currentIndex={operationInputIndex}
+        totalCount={operationInputs.length}
+        onNavigatePrev={() => cycleInputs?.(operationType, 'prev')}
+        onNavigateNext={() => cycleInputs?.(operationType, 'next')}
         queueItems={queueItems}
-        onSelectIndex={(idx) => setMainQueueIndex?.(idx + 1)} // Convert 0-based to 1-based
+        onSelectIndex={(idx) => setOperationInputIndex?.(idx + 1)} // Convert 0-based to 1-based
       />
     </div>
   );
@@ -344,9 +345,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
     operationType = controller.operationType,
     displayAssets = resolveDisplayAssets({
       operationType,
-      mainQueue: controller.mainQueue,
-      mainQueueIndex: controller.mainQueueIndex,
-      multiAssetQueue: controller.multiAssetQueue,
+      inputs: controller.operationInputs,
+      currentIndex: controller.operationInputIndex,
       lastSelectedAsset: controller.lastSelectedAsset,
       allowAnySelected,
     }),

@@ -26,6 +26,8 @@ export { ViewerAssetInputProvider } from './components/ViewerAssetInputProvider'
 export type { ViewerAssetInputProviderProps } from './components/ViewerAssetInputProvider';
 export { QuickGenPanelHost, QUICKGEN_PANEL_IDS, QUICKGEN_PRESETS } from './components/QuickGenPanelHost';
 export type { QuickGenPanelHostProps, QuickGenPanelHostRef } from './components/QuickGenPanelHost';
+export { QuickGenWidget } from './components/QuickGenWidget';
+export type { QuickGenWidgetProps } from './components/QuickGenWidget';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';
@@ -38,8 +40,8 @@ export { useRecentGenerations } from './hooks/useRecentGenerations';
 export { useGenerationScopeStores, GenerationScopeProvider } from './hooks/useGenerationScope';
 
 // Stores
-export { useGenerationQueueStore, getQueueForOperation } from './stores/generationQueueStore';
-export type { GenerationQueueState, QueuedAsset, EnqueueOptions, InputMode } from './stores/generationQueueStore';
+export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
+export type { GenerationInputsState, InputItem, AddInputOptions, OperationInputs } from './stores/generationInputStore';
 export { useGenerationSettingsStore, createGenerationSettingsStore } from './stores/generationSettingsStore';
 export {
   createGenerationSessionStore,
@@ -51,7 +53,7 @@ export type {
   GenerationSessionState,
   GenerationSessionStoreHook,
 } from './stores/generationSessionStore';
-export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationQueueStore } from './stores/generationScopeStores';
+export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore } from './stores/generationScopeStores';
 export {
   useGenerationsStore,
   generationsSelectors,
@@ -66,13 +68,10 @@ export * from './lib/core';
 
 // Lib - Multi-Asset Mode
 export {
-  resolveInputMode,
   resolveDisplayAssets,
   buildFallbackAsset,
 } from './lib/multiAssetMode';
 export type {
-  InputModeParams,
-  InputModeResult,
   DisplayAssetsParams,
   SelectedAssetLike,
 } from './lib/multiAssetMode';

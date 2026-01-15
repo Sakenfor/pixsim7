@@ -1,7 +1,8 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * QuickGenPanelHost
  *
- * Thin wrapper around SmartDockview for quickgen panel layouts.
+ * Thin wrapper around PanelHostDockview for quickgen panel layouts.
  * Handles common configuration: panels, scopes, default layout, storage key.
  *
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider, etc.)
@@ -13,15 +14,13 @@
  * - Scope selection UI (handled by parent widget)
  */
 
-import {
-  useCallback,
-  useEffect,
-  useState,
-  forwardRef,
-  useImperativeHandle,
-} from 'react';
-import { SmartDockview } from '@lib/dockview';
 import type { DockviewApi } from 'dockview-core';
+import { useCallback, forwardRef } from 'react';
+
+import {
+  PanelHostDockview,
+  type PanelHostDockviewRef,
+} from '@features/panels';
 
 /** Standard quickgen panel IDs from global registry */
 export const QUICKGEN_PANEL_IDS = {
@@ -52,15 +51,6 @@ export const QUICKGEN_PRESETS = {
   ] as const,
 } as const;
 
-/** Deprecated panel IDs for layout migration */
-const DEPRECATED_PANELS: string[] = [
-  'info',
-  'prompt',
-  'settings',
-  'viewer-quickgen-prompt',
-  'viewer-quickgen-settings',
-];
-
 export interface QuickGenPanelHostProps {
   /** Panel IDs to include. Use QUICKGEN_PRESETS or custom array. */
   panels: readonly string[];
@@ -68,14 +58,12 @@ export interface QuickGenPanelHostProps {
   storageKey: string;
   /** Panel manager ID for settings resolution */
   panelManagerId?: string;
-  /** Context object passed to panels via SmartDockview */
+  /** Context object passed to panels via dockview */
   context?: unknown;
   /** Custom default layout function. If not provided, uses auto-layout. */
   defaultLayout?: (api: DockviewApi) => void;
   /** Callback when dockview is ready */
   onReady?: (api: DockviewApi) => void;
-  /** Additional deprecated panel IDs for migration */
-  deprecatedPanels?: string[];
   /** Minimum panels before showing tabs (default: 1) */
   minPanelsForTabs?: number;
   /** Enable context menu (default: true) */
@@ -84,15 +72,10 @@ export interface QuickGenPanelHostProps {
   className?: string;
 }
 
-export interface QuickGenPanelHostRef {
-  /** Reset the layout to default (clears storage, remounts) */
-  resetLayout: () => void;
-  /** Get the dockview API (may be null before ready) */
-  getApi: () => DockviewApi | null;
-}
+export type QuickGenPanelHostRef = PanelHostDockviewRef;
 
 /**
- * Shared quickgen panel host with common SmartDockview configuration.
+ * Shared quickgen panel host with common dockview configuration.
  *
  * Usage (Viewer - simple):
  * ```tsx
@@ -129,78 +112,12 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
       context,
       defaultLayout: customDefaultLayout,
       onReady,
-      deprecatedPanels: additionalDeprecated,
       minPanelsForTabs = 1,
       enableContextMenu = true,
       className,
     },
     ref
   ) => {
-    const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
-    const [resetKey, setResetKey] = useState(0);
-
-    // Merge deprecated panels
-    const allDeprecated = additionalDeprecated
-      ? [...DEPRECATED_PANELS, ...additionalDeprecated]
-      : DEPRECATED_PANELS;
-
-    // Ensure required panels exist (handles stale layouts)
-    const ensurePanels = useCallback(
-      (api: DockviewApi) => {
-        for (const panelId of panels) {
-          if (!api.getPanel(panelId)) {
-            const position =
-              panelId === QUICKGEN_PANEL_IDS.settings && api.getPanel(QUICKGEN_PANEL_IDS.prompt)
-                ? { direction: 'right' as const, referencePanel: QUICKGEN_PANEL_IDS.prompt }
-                : panelId === QUICKGEN_PANEL_IDS.blocks && api.getPanel(QUICKGEN_PANEL_IDS.prompt)
-                  ? { direction: 'below' as const, referencePanel: QUICKGEN_PANEL_IDS.prompt }
-                  : undefined;
-
-            api.addPanel({
-              id: panelId,
-              component: panelId,
-              title: getPanelTitle(panelId),
-              position,
-            });
-          }
-        }
-      },
-      [panels]
-    );
-
-    const handleReady = useCallback(
-      (api: DockviewApi) => {
-        setDockviewApi(api);
-        ensurePanels(api);
-        onReady?.(api);
-      },
-      [ensurePanels, onReady]
-    );
-
-    // Re-check panels after layout load (handles stale persisted layouts)
-    useEffect(() => {
-      if (!dockviewApi) return;
-      requestAnimationFrame(() => ensurePanels(dockviewApi));
-    }, [dockviewApi, ensurePanels]);
-
-    // Reset layout: clear storage and remount
-    const resetLayout = useCallback(() => {
-      if (storageKey) {
-        localStorage.removeItem(storageKey);
-      }
-      setResetKey((k) => k + 1);
-    }, [storageKey]);
-
-    // Expose ref methods
-    useImperativeHandle(
-      ref,
-      () => ({
-        resetLayout,
-        getApi: () => dockviewApi,
-      }),
-      [resetLayout, dockviewApi]
-    );
-
     // Create default layout function for this panel set
     const createDefaultLayout = useCallback(
       (api: DockviewApi) => {
@@ -256,21 +173,35 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     );
 
     return (
-      <div className={className ?? 'h-full w-full'}>
-        <SmartDockview
-          key={resetKey}
-          panels={[...panels]}
-          storageKey={storageKey}
-          context={context}
-          defaultPanelScopes={['generation']}
-          panelManagerId={panelManagerId}
-          defaultLayout={createDefaultLayout}
-          minPanelsForTabs={minPanelsForTabs}
-          deprecatedPanels={allDeprecated}
-          onReady={handleReady}
-          enableContextMenu={enableContextMenu}
-        />
-      </div>
+      <PanelHostDockview
+        ref={ref}
+        panels={panels}
+        storageKey={storageKey}
+        context={context}
+        defaultPanelScopes={['generation']}
+        panelManagerId={panelManagerId}
+        defaultLayout={createDefaultLayout}
+        minPanelsForTabs={minPanelsForTabs}
+        onReady={onReady}
+        enableContextMenu={enableContextMenu}
+        className={className}
+        resolvePanelTitle={getPanelTitle}
+        resolvePanelPosition={(panelId, api) => {
+          if (
+            panelId === QUICKGEN_PANEL_IDS.settings &&
+            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+          ) {
+            return { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt };
+          }
+          if (
+            panelId === QUICKGEN_PANEL_IDS.blocks &&
+            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+          ) {
+            return { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt };
+          }
+          return undefined;
+        }}
+      />
     );
   }
 );

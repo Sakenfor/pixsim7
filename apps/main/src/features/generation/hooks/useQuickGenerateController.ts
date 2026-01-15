@@ -5,7 +5,7 @@ import { logEvent } from '@lib/utils/logging';
 
 import { extractFrame, fromAssetResponse } from '@features/assets';
 import { generateAsset } from '@features/controlCenter/lib/api';
-import { useGenerationsStore, createPendingGeneration, resolveInputMode } from '@features/generation';
+import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateBindings } from '@features/prompts';
 
@@ -20,14 +20,14 @@ import { buildGenerationRequest } from '../lib/quickGenerateLogic';
  *
  * Orchestrates QuickGenerateModule behavior:
  * - Reads/writes Control Center store state.
- * - Binds to queues and active asset via useQuickGenerateBindings.
+ * - Binds to inputs and active asset via useQuickGenerateBindings.
  * - Runs validation + parameter construction via buildGenerationRequest.
  * - Calls the generation API and seeds generationsStore.
  *
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
 export function useQuickGenerateController() {
-  const { useSessionStore, useQueueStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore } = useGenerationScopeStores();
 
   // Generation session state (scoped)
   const operationType = useSessionStore((s) => s.operationType);
@@ -43,8 +43,8 @@ export function useQuickGenerateController() {
   const prompt = useSessionStore((s) => s.prompt);
   const setPrompt = useSessionStore((s) => s.setPrompt);
 
-  // Bindings to active asset and queues
-  const bindings = useQuickGenerateBindings(operationType, setOperationType);
+  // Bindings to active asset and inputs
+  const bindings = useQuickGenerateBindings(operationType);
 
   // Local error + generation status
   const [error, setError] = useState<string | null>(null);
@@ -98,83 +98,63 @@ export function useQuickGenerateController() {
       const overrideParams = options?.overrideDynamicParams || {};
 
       // Merge dynamic params with any overrides
-      let modifiedDynamicParams = {
+      const modifiedDynamicParams = {
         ...bindings.dynamicParams,
         ...overrideParams,
       };
 
-      // Get current queue state directly from store to avoid stale React hook values
+      // Get current input state directly from store to avoid stale React hook values
       // This is critical for frame extraction and passing context to logic
-      const queueState = (useQueueStore as any).getState();
-      const currentMainQueue = queueState.mainQueue;
-      const currentMainQueueIndex = queueState.mainQueueIndex;
+      const inputState = (useInputStore as any).getState();
+      const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
+      const currentInput = inputState.getCurrentInput
+        ? inputState.getCurrentInput(operationType)
+        : null;
 
-      // Get current queue item based on index (1-based index, convert to 0-based)
-      const currentIdx = Math.max(0, Math.min(currentMainQueueIndex - 1, currentMainQueue.length - 1));
-      const currentQueueItem = currentMainQueue.length > 0 ? currentMainQueue[currentIdx] : null;
-
-      // NOTE: We no longer set source_asset_id from queue here.
-      // That inference happens in buildGenerationRequest via mainQueueCurrent context.
+      // NOTE: We no longer set source_asset_id from inputs here.
+      // That inference happens in buildGenerationRequest via currentInput context.
       // Controller only handles async operations (frame extraction).
 
       // For image_to_video: extract frame if video has locked timestamp
-      if (operationType === 'image_to_video' && currentQueueItem) {
-        if (currentQueueItem.lockedTimestamp !== undefined && currentQueueItem.asset.mediaType === 'video') {
+      if (operationType === 'image_to_video' && currentInput) {
+        if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
           const extractedFrame = fromAssetResponse(await extractFrame({
-            video_asset_id: currentQueueItem.asset.id,
-            timestamp: currentQueueItem.lockedTimestamp,
+            video_asset_id: currentInput.asset.id,
+            timestamp: currentInput.lockedTimestamp,
           }));
-          // Set extracted frame's asset ID - this overrides queue inference in logic
+          // Set extracted frame's asset ID - this overrides input inference in logic
           modifiedDynamicParams.source_asset_id = extractedFrame.id;
         }
       }
 
       // For video_transition: extract frames for videos with locked timestamps
-      const currentMultiAssetQueue = queueState.multiAssetQueue;
-      if (operationType === 'video_transition' && currentMultiAssetQueue.length > 0) {
+      const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
+      if (operationType === 'video_transition' && transitionInputs.length > 0) {
         const extractedAssetIds: number[] = [];
-        for (const queueItem of currentMultiAssetQueue) {
-          if (queueItem.lockedTimestamp !== undefined && queueItem.asset.mediaType === 'video') {
+        for (const inputItem of transitionInputs) {
+          if (inputItem.lockedTimestamp !== undefined && inputItem.asset.mediaType === 'video') {
             const extractedFrame = fromAssetResponse(await extractFrame({
-              video_asset_id: queueItem.asset.id,
-              timestamp: queueItem.lockedTimestamp,
+              video_asset_id: inputItem.asset.id,
+              timestamp: inputItem.lockedTimestamp,
             }));
             extractedAssetIds.push(extractedFrame.id);
           } else {
-            extractedAssetIds.push(queueItem.asset.id);
+            extractedAssetIds.push(inputItem.asset.id);
           }
         }
         modifiedDynamicParams.source_asset_ids = extractedAssetIds;
       }
-
-      const { inputMode } = resolveInputMode({
-        operationType,
-        multiAssetQueueLength: currentMultiAssetQueue.length,
-        operationInputModePrefs: queueState.operationInputModePrefs,
-      });
-
-      if (inputMode !== 'multi' && 'source_asset_ids' in modifiedDynamicParams) {
-        const nextParams = { ...modifiedDynamicParams };
-        delete nextParams.source_asset_ids;
-        modifiedDynamicParams = nextParams;
-      }
-
-      const sourceAssetIds = inputMode === 'multi' && Array.isArray(modifiedDynamicParams.source_asset_ids)
-        ? modifiedDynamicParams.source_asset_ids
-        : undefined;
 
       const buildResult = buildGenerationRequest({
         operationType,
         prompt,
         presetParams,
         dynamicParams: modifiedDynamicParams,
-        sourceAssetIds,
-        inputMode,
-        multiQueueAssets: inputMode === 'multi' ? currentMultiAssetQueue : undefined,
+        operationInputs: currentInputs,
         prompts: bindings.prompts,
         transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
-        mainQueueCurrent: currentQueueItem,
+        currentInput,
       });
 
       if (buildResult.error || !buildResult.params) {
@@ -212,7 +192,7 @@ export function useQuickGenerateController() {
         operationType,
         providerId,
         finalPrompt,
-        params: normalizedParams,
+        params: buildResult.params,
         status: result.status || 'pending',
       }));
 
@@ -248,7 +228,7 @@ export function useQuickGenerateController() {
     error,
     generationId,
 
-    // Bindings to assets/queues and params
+    // Bindings to assets/inputs and params
     ...bindings,
 
     // Actions

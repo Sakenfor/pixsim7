@@ -32,10 +32,11 @@ import {
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
-import { useGenerationQueueStore } from '@features/generation/stores/generationQueueStore';
+import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
 
 import {
   OPERATION_METADATA,
+  OPERATION_TYPES,
   type OperationType,
   type MediaType,
 } from '@/types/operations';
@@ -67,24 +68,21 @@ export interface MediaCardOverlayData {
 }
 
 function QueueStatusBadge({ assetId }: { assetId: number }) {
-  const mainQueue = useGenerationQueueStore((s) => s.mainQueue);
-  const multiQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
+  const inputsByOperation = useGenerationInputStore((s) => s.inputsByOperation);
+  const matchOperation = OPERATION_TYPES.find((operationType) =>
+    inputsByOperation[operationType]?.items.some((item) => item.asset.id === assetId),
+  );
 
-  const inMainQueue = mainQueue.find((q) => q.asset.id === assetId);
-  const inMultiQueue = multiQueue.find((q) => q.asset.id === assetId);
-  const queueEntry = inMainQueue || inMultiQueue;
+  if (!matchOperation) return null;
 
-  if (!queueEntry) return null;
-
-  const operation = queueEntry.operation;
-  const metadata = operation ? OPERATION_METADATA[operation] : null;
+  const metadata = OPERATION_METADATA[matchOperation];
   const label = metadata?.label || 'Queued';
   const icon = metadata?.icon || 'clock';
 
   return (
     <div
       className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-500 text-white shadow-sm"
-      title={`Queued for ${label}`}
+      title={`In inputs for ${label}`}
     >
       <Icon name={icon} className="w-3 h-3" />
       <span className="max-w-[60px] truncate">{label}</span>
@@ -125,19 +123,19 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
 
   // Get scoped stores (follows same scoping as the widget capability)
-  const { useSessionStore, useSettingsStore, useQueueStore } = useGenerationScopeStores();
+  const { useSessionStore, useSettingsStore, useInputStore } = useGenerationScopeStores();
   const scopedOperationType = useSessionStore((s) => s.operationType);
-  const scopedEnqueueAsset = useQueueStore((s) => s.enqueueAsset);
-  const scopedEnqueueAssets = useQueueStore((s) => s.enqueueAssets);
+  const scopedAddInput = useInputStore((s) => s.addInput);
+  const scopedAddInputs = useInputStore((s) => s.addInputs);
 
   // For widget open/close, use capability if available, else fall back to control center
   const setControlCenterOpenGlobal = useControlCenterStore((s) => s.setOpen);
   const setWidgetOpen = widgetContext?.setOpen ?? setControlCenterOpenGlobal;
 
-  // Operation type and queue actions come from scoped stores (via capability or scope context)
+  // Operation type and input actions come from scoped stores (via capability or scope context)
   const operationType = widgetContext?.operationType ?? scopedOperationType;
-  const enqueueAsset = widgetContext?.enqueueAsset ?? scopedEnqueueAsset;
-  const enqueueAssets = widgetContext?.enqueueAssets ?? scopedEnqueueAssets;
+  const addInput = widgetContext?.addInput ?? scopedAddInput;
+  const addInputs = widgetContext?.addInputs ?? scopedAddInputs;
   const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
   const scopedProviderId = useSessionStore((s) => s.providerId);
   const inferredProviderId = useProviderIdForModel(activeModel);
@@ -147,8 +145,6 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   const menuItems = buildGenerationMenuItems(id, mediaType, actions);
   const smartActionLabel = getSmartActionLabel(mediaType, operationType);
   const operationMetadata = OPERATION_METADATA[operationType];
-  const isOptionalMultiAsset = operationMetadata?.multiAssetMode === 'optional';
-  void isOptionalMultiAsset;
 
   // Use operation specs first, fall back to model heuristics.
   const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
@@ -159,7 +155,7 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
 
   // Reconstruct asset for slot picker
-  const queueAsset: AssetModel = {
+  const inputAsset: AssetModel = {
     id: cardProps.id,
     createdAt: cardProps.createdAt,
     description: cardProps.description ?? null,
@@ -211,15 +207,10 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isMenuOpen]);
 
-  const handleSmartAction = (e: React.MouseEvent) => {
-    // Normal click -> append to mainQueue (working set for single assets)
-    // Shift+click -> append to multiAssetQueue (for compositions)
-    const forceMulti = e.shiftKey;
-
-    enqueueAssets({
-      assets: [queueAsset],
+  const handleSmartAction = () => {
+    addInputs({
+      assets: [inputAsset],
       operationType,
-      forceMulti,
     });
     // Open the generation widget (nearest via capability, or global control center)
     setWidgetOpen(true);
@@ -231,12 +222,10 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   };
 
   const handleSelectSlot = (selectedAsset: AssetModel, slotIndex: number) => {
-    // Slot picker always targets multiAssetQueue (for arranging compositions)
-    enqueueAsset({
+    addInput({
       asset: selectedAsset,
       operationType,
       slotIndex,
-      forceMulti: true, // Always multi queue for slot picker
     });
   };
 
@@ -247,6 +236,7 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   const hasQuickGenerate = !!actions?.onQuickAdd;
 
   // Build button group items
+  const supportsSlots = operationMetadata?.multiAssetMode !== 'single';
   const buttonItems: ButtonGroupItem[] = [
     {
       id: 'menu',
@@ -258,10 +248,15 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
       id: 'smart-action',
       icon: <Icon name="zap" size={14} />,
       onClick: handleSmartAction,
-      title: `${smartActionLabel}\nShift: add to multi-asset\nHover: slot picker`,
-      expandContent: (
-        <SlotPickerContent asset={queueAsset} onSelectSlot={handleSelectSlot} maxSlots={maxSlots} />
-      ),
+      title: supportsSlots ? `${smartActionLabel}\nHover: slot picker` : smartActionLabel,
+      expandContent: supportsSlots ? (
+        <SlotPickerContent
+          asset={inputAsset}
+          operationType={operationType}
+          onSelectSlot={handleSelectSlot}
+          maxSlots={maxSlots}
+        />
+      ) : undefined,
       expandDelay: 150,
     },
   ];
@@ -692,43 +687,42 @@ function buildGenerationMenuItems(
 }
 
 /**
- * Slot picker content for selecting queue position in multiAssetQueue
- * Always shows/targets multiAssetQueue (for arranging multi-asset compositions)
+ * Slot picker content for selecting an input position in the current operation.
+ * Uses the operation's input list to preview filled slots.
  * Styled to match dock position selector
  */
 function SlotPickerContent({
   asset,
+  operationType,
   onSelectSlot,
   maxSlots: maxSlotsProp,
 }: {
   asset: AssetModel;
+  operationType: OperationType;
   onSelectSlot: (asset: AssetModel, slotIndex: number) => void;
   maxSlots?: number;
 }) {
-  const multiAssetQueue = useGenerationQueueStore((s) => s.multiAssetQueue);
+  const inputs = useGenerationInputStore((s) => s.inputsByOperation[operationType]?.items ?? []);
   const ccIsOpen = useControlCenterStore((s) => s.isOpen);
-
-  // Always show multiAssetQueue - slot picker is for arranging compositions
-  const queue = multiAssetQueue;
 
   // Max slots from prop (provider-specific) or default to 7 (Pixverse transition limit)
   const maxAllowed = maxSlotsProp ?? 7;
   // Show full slot range when max is known, otherwise show filled + 1 empty (min 3)
   const minVisibleSlots = maxSlotsProp ?? 3;
-  const visibleSlots = Math.min(Math.max(queue.length + 1, minVisibleSlots), maxAllowed);
+  const visibleSlots = Math.min(Math.max(inputs.length + 1, minVisibleSlots), maxAllowed);
   const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
       {slots.map((slotIndex, idx) => {
-        const queuedAsset = queue[slotIndex];
-        const isFilled = !!queuedAsset;
+        const inputItem = inputs[slotIndex];
+        const isFilled = !!inputItem;
         const isFirst = idx === 0;
         const isLast = idx === slots.length - 1;
         const thumbSrc = isFilled
-          ? queuedAsset.asset.thumbnailUrl ||
-            queuedAsset.asset.remoteUrl ||
-            queuedAsset.asset.fileUrl ||
+          ? inputItem.asset.thumbnailUrl ||
+            inputItem.asset.remoteUrl ||
+            inputItem.asset.fileUrl ||
             ''
           : '';
 
@@ -744,7 +738,7 @@ function SlotPickerContent({
                 ${isFirst ? 'rounded-t-full pt-0.5' : ''}
                 ${isLast ? 'rounded-b-full pb-0.5' : ''}
               `}
-              title={`Multi-asset slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
+              title={`Input slot ${slotIndex + 1}${isFilled ? ' (filled)' : ' (empty)'}`}
               type="button"
             >
               {isFilled ? (
@@ -783,8 +777,8 @@ export function createQuickAddButton(): OverlayWidget<MediaCardOverlayData> | nu
 }
 
 /**
- * Create queue status badge widget (top-right, below status)
- * Shows when asset is in the generation queue with operation type indicator
+ * Create input status badge widget (top-right, below status)
+ * Shows when asset is in the generation inputs with operation type indicator
  */
 export function createQueueStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id } = props;

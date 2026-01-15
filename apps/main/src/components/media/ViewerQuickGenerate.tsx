@@ -9,7 +9,7 @@
  * - "user": Uses current user settings from Control Center (global scope)
  * - "asset": Uses original generation settings from the asset (isolated scope)
  *
- * Uses QuickGenPanelHost for portable panel layout, wrapped with GenerationScopeProvider.
+ * Uses QuickGenWidget for portable panel layout with scoped stores.
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
@@ -29,10 +29,9 @@ import {
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
-  GenerationScopeProvider,
   GenerationSourceToggle,
   ViewerAssetInputProvider,
-  QuickGenPanelHost,
+  QuickGenWidget,
   QUICKGEN_PRESETS,
 } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
@@ -104,9 +103,9 @@ function ViewerGenerationContextProvider({
 
 /**
  * Inner component for the expanded quick generate content.
- * Rendered inside GenerationScopeProvider to access scoped stores.
+ * Rendered inside QuickGenWidget to access scoped stores.
  */
-function ViewerQuickGenerateContent({
+function ViewerQuickGenerateChrome({
   asset,
   alwaysExpanded,
   onCollapse,
@@ -191,19 +190,53 @@ function ViewerQuickGenerateContent({
         </div>
       )}
 
-      <div className="h-[360px] min-h-[280px]">
-        {/* Chrome: capability providers */}
-        <ViewerAssetInputProvider asset={asset} />
-        <ViewerGenerationContextProvider asset={asset} controlCenterOpen={controlCenterOpen} />
-
-        {/* Panels via shared host */}
-        <QuickGenPanelHost
-          panels={QUICKGEN_PRESETS.promptSettings}
-          storageKey="viewer-quickgen-layout-v3"
-          panelManagerId="viewerQuickGenerate"
-        />
-      </div>
+      {/* Chrome: capability providers */}
+      <ViewerAssetInputProvider asset={asset} />
+      <ViewerGenerationContextProvider asset={asset} controlCenterOpen={controlCenterOpen} />
     </div>
+  );
+}
+
+/**
+ * Inner component for the expanded quick generate content.
+ * Rendered inside QuickGenWidget to access scoped stores.
+ */
+function ViewerQuickGenerateContent({
+  asset,
+  alwaysExpanded,
+  onCollapse,
+  controlCenterOpen,
+  mode,
+  onModeChange,
+  scopeId,
+}: {
+  asset: ViewerAsset;
+  alwaysExpanded: boolean;
+  onCollapse: () => void;
+  controlCenterOpen: boolean;
+  mode: GenerationSourceMode;
+  onModeChange: (mode: GenerationSourceMode) => void;
+  scopeId: string;
+}) {
+  return (
+    <QuickGenWidget
+      scopeId={scopeId}
+      scopeLabel="Viewer Generation"
+      panels={QUICKGEN_PRESETS.promptSettings}
+      storageKey="viewer-quickgen-layout-v4"
+      panelManagerId="viewerQuickGenerate"
+      className="h-[360px] min-h-[280px] mt-2"
+      chrome={
+        <ViewerQuickGenerateChrome
+          asset={asset}
+          alwaysExpanded={alwaysExpanded}
+          onCollapse={onCollapse}
+          controlCenterOpen={controlCenterOpen}
+          mode={mode}
+          onModeChange={onModeChange}
+        />
+      }
+    />
   );
 }
 
@@ -246,17 +279,16 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show panel host with GenerationScopeProvider
+  // Expanded state - show panel host with QuickGenWidget
   return (
-    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
-      <ViewerQuickGenerateContent
-        asset={asset}
-        alwaysExpanded={alwaysExpanded}
-        onCollapse={() => setIsExpanded(false)}
-        controlCenterOpen={controlCenterOpen}
-        mode={mode}
-        onModeChange={setMode}
-      />
-    </GenerationScopeProvider>
+    <ViewerQuickGenerateContent
+      asset={asset}
+      alwaysExpanded={alwaysExpanded}
+      onCollapse={() => setIsExpanded(false)}
+      controlCenterOpen={controlCenterOpen}
+      mode={mode}
+      onModeChange={setMode}
+      scopeId={scopeId}
+    />
   );
 }

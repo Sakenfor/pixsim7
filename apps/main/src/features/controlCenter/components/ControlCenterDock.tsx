@@ -4,11 +4,11 @@ import { useRef, useMemo, useCallback } from 'react';
 import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
 
-import { SmartDockview } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { PanelHostDockview } from '@features/panels';
 import type { PanelDefinition } from '@features/panels';
 
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
@@ -65,7 +65,7 @@ export function ControlCenterDock() {
     return getEnabledCCPanels(enabledModules);
   }, [enabledModules]);
 
-  // Get panel IDs for SmartDockview
+  // Get panel IDs for dockview
   const panelIds = useMemo(() => panels.map(p => p.id), [panels]);
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
@@ -186,7 +186,7 @@ export function ControlCenterDock() {
           navigate={navigate}
         />
 
-      {/* Panel content via SmartDockview - uses native tabs */}
+      {/* Panel content via dockview - uses native tabs */}
       <div
         className={clsx(
           'flex-1 overflow-hidden',
@@ -194,7 +194,7 @@ export function ControlCenterDock() {
         )}
       >
         {panelIds.length > 0 ? (
-          <SmartDockview
+          <PanelHostDockview
             panels={panelIds}
             storageKey="dockview:control-center:v5"
             panelManagerId="controlCenter"
@@ -202,6 +202,7 @@ export function ControlCenterDock() {
             onReady={handleReady}
             className="h-full"
             enableContextMenu
+            resolvePanelTitle={(panelId) => panelSelectors.get(panelId)?.title ?? panelId}
           />
         ) : (
           <div className="h-full flex items-center justify-center text-neutral-500 text-sm">
