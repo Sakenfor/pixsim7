@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Set
 import yaml
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
-from pixsim7.backend.main.lib.registry.nested import NestedRegistry
+from pixsim7.backend.main.lib.registry.layered import LayeredNestedRegistry
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
@@ -80,9 +80,11 @@ class VocabularyRegistry:
         from pixsim7.backend.main.shared.ontology.vocabularies.config import VOCAB_CONFIGS
 
         # Storage for each vocab type (config-driven)
-        # Using NestedRegistry for consistent API across vocab types
-        self._vocabs: NestedRegistry[str, str, Any] = NestedRegistry(
+        # Using LayeredNestedRegistry for consistent API and pack layering
+        self._vocabs: LayeredNestedRegistry[str, str, Any] = LayeredNestedRegistry(
             name="vocabularies",
+            layer_order=["core"],
+            default_layer="core",
             allow_overwrite=False,  # Duplicate vocab items are errors
             log_operations=False,   # Too noisy for vocab loading
         )
@@ -178,6 +180,9 @@ class VocabularyRegistry:
         configs: Dict[str, Any],
     ) -> Dict[str, int]:
         """Load all vocab types from a directory."""
+        if not self._vocabs.has_layer(source):
+            self._vocabs.add_layer(source)
+
         counts = {}
         for vocab_name, config in configs.items():
             count = self._load_vocab_type(config, source, directory)
@@ -199,12 +204,12 @@ class VocabularyRegistry:
         count = 0
 
         for item_id, item_data in items.items():
-            if self._vocabs.has(config.name, item_id):
+            if self._vocabs.has(config.name, item_id, layer=source):
                 raise ValueError(
                     f"Duplicate {config.name} ID '{item_id}' from {source}"
                 )
             item = config.factory(item_id, item_data, source)
-            self._vocabs.register(config.name, item_id, item)
+            self._vocabs.register(config.name, item_id, item, layer=source)
             count += 1
 
         return count

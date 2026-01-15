@@ -18,6 +18,8 @@ from pixsim7.backend.main.lib.registry import (
     DEFAULT_NAME_PATTERN,
     DEFAULT_RESERVED_NAMES,
     SimpleRegistry,
+    LayeredRegistry,
+    LayeredNestedRegistry,
     DuplicateKeyError,
     KeyNotFoundError,
     create_registry,
@@ -487,6 +489,58 @@ class TestSimpleRegistry:
         assert len(registry) == 1
         assert registry.get("default") == 100
         assert not registry.has("custom")
+
+
+class TestLayeredRegistry:
+    """Tests for LayeredRegistry and LayeredNestedRegistry."""
+
+    def test_layered_precedence(self):
+        """Higher-precedence layers should override lower ones."""
+        registry = LayeredRegistry[str, int](
+            name="layered",
+            layer_order=["core", "plugin", "runtime"],
+            allow_overwrite=False,
+        )
+
+        registry.register("core", "key", 1)
+        registry.register("plugin", "key", 2)
+
+        assert registry.get("key") == 2
+        assert registry.resolve_layer("key") == "plugin"
+
+        registry.register("runtime", "key", 3)
+        assert registry.get("key") == 3
+        assert registry.resolve_layer("key") == "runtime"
+
+    def test_layered_duplicate_same_layer(self):
+        """Duplicate keys in the same layer should raise."""
+        registry = LayeredRegistry[str, int](
+            name="layered",
+            layer_order=["core"],
+            allow_overwrite=False,
+        )
+        registry.register("core", "key", 1)
+
+        with pytest.raises(DuplicateKeyError):
+            registry.register("core", "key", 2)
+
+    def test_layered_nested_default_layer(self):
+        """LayeredNestedRegistry should use default layer and resolve overrides."""
+        registry = LayeredNestedRegistry[str, str, str](
+            name="namespaced",
+            layer_order=["core"],
+            default_layer="core",
+            allow_overwrite=False,
+        )
+
+        registry.register("poses", "pose:standing", "core_pose")
+        assert registry.get("poses", "pose:standing") == "core_pose"
+
+        registry.add_layer("plugin")
+        registry.register("poses", "pose:standing", "plugin_pose", layer="plugin")
+
+        assert registry.get("poses", "pose:standing") == "plugin_pose"
+        assert registry.items_of("poses") == [("pose:standing", "plugin_pose")]
 
 
 class TestCreateRegistry:
