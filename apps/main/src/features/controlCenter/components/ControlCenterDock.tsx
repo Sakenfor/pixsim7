@@ -65,8 +65,8 @@ export function ControlCenterDock() {
     return getEnabledCCPanels(enabledModules);
   }, [enabledModules]);
 
-  // Get panel IDs for dockview
-  const panelIds = useMemo(() => panels.map(p => p.id), [panels]);
+  // Get panel IDs for dockview allowlist
+  const allowedPanelIds = useMemo(() => panels.map(p => p.id), [panels]);
 
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
   const { dragging, startResize } = useDockBehavior({
@@ -193,9 +193,10 @@ export function ControlCenterDock() {
           isVertical || isFloating ? 'text-sm' : ''
         )}
       >
-        {panelIds.length > 0 ? (
+        {allowedPanelIds.length > 0 ? (
           <PanelHostDockview
-            panels={panelIds}
+            dockId="control-center"
+            allowedPanels={allowedPanelIds}
             storageKey="dockview:control-center:v5"
             panelManagerId="controlCenter"
             minPanelsForTabs={2}

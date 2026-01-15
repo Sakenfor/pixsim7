@@ -120,15 +120,19 @@ export function AssetViewerDockview({
   className,
   panelManagerId,
 }: AssetViewerDockviewProps) {
-  const [viewerPanelIds, setViewerPanelIds] = useState<string[]>(() => {
-    const ids = panelSelectors.getIdsForScope('asset-viewer');
-    return ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS];
-  });
+  const [scopedPanelIds, setScopedPanelIds] = useState<string[]>(() =>
+    panelSelectors.getIdsForScope('asset-viewer')
+  );
+
+  const viewerPanelIds = useMemo(
+    () => (scopedPanelIds.length > 0 ? scopedPanelIds : [...DEFAULT_VIEWER_PANEL_IDS]),
+    [scopedPanelIds]
+  );
+  const useDockId = scopedPanelIds.length > 0;
 
   useEffect(() => {
     return panelSelectors.subscribe(() => {
-      const ids = panelSelectors.getIdsForScope('asset-viewer');
-      setViewerPanelIds(ids.length > 0 ? ids : [...DEFAULT_VIEWER_PANEL_IDS]);
+      setScopedPanelIds(panelSelectors.getIdsForScope('asset-viewer'));
     });
   }, []);
 
@@ -182,7 +186,8 @@ export function AssetViewerDockview({
 
   return (
     <PanelHostDockview
-      panels={viewerPanelIds}
+      panels={useDockId ? undefined : viewerPanelIds}
+      dockId={useDockId ? 'asset-viewer' : undefined}
       storageKey="dockview:asset-viewer:v5"
       context={context}
       defaultPanelScopes={['generation']}

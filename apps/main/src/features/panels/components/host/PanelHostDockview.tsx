@@ -14,7 +14,15 @@ type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
 
 export interface PanelHostDockviewProps {
   /** Panel IDs to include (registry-backed). */
-  panels: readonly string[];
+  panels?: readonly string[];
+  /** Dockview scope ID (filters panels by availableIn). */
+  dockId?: string;
+  /** Panel IDs to exclude when using dockId. */
+  excludePanels?: string[];
+  /** Optional allowlist of panels to include. */
+  allowedPanels?: string[];
+  /** Optional allowlist of panel categories to include. */
+  allowedCategories?: string[];
   /** Storage key for persisting layout. */
   storageKey: string;
   /** Panel manager ID for settings resolution and dockview registry. */
@@ -62,6 +70,10 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       enableContextMenu = true,
       className,
       defaultPanelScopes,
+      dockId,
+      excludePanels,
+      allowedPanels,
+      allowedCategories,
       resolvePanelTitle,
       resolvePanelPosition,
     },
@@ -72,7 +84,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
 
     const ensurePanels = useCallback(
       (api: DockviewApi) => {
-        for (const panelId of panels) {
+        for (const panelId of panels ?? []) {
           if (!api.getPanel(panelId)) {
             const position = resolvePanelPosition?.(panelId, api);
             api.addPanel({
@@ -117,11 +129,17 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       [resetLayout, dockviewApi]
     );
 
+    const resolvedPanels = panels && panels.length > 0 ? [...panels] : undefined;
+
     return (
       <div className={className ?? "h-full w-full"}>
         <SmartDockview
           key={resetKey}
-          panels={[...panels]}
+          panels={resolvedPanels}
+          dockId={resolvedPanels ? undefined : dockId}
+          excludePanels={resolvedPanels ? undefined : excludePanels}
+          allowedPanels={resolvedPanels ? undefined : allowedPanels}
+          allowedCategories={resolvedPanels ? undefined : allowedCategories}
           storageKey={storageKey}
           context={context}
           defaultPanelScopes={defaultPanelScopes}
