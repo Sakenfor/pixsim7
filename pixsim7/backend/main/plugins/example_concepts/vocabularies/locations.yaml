@@ -1,0 +1,12 @@
+# Example plugin locations vocabulary
+# Demonstrates adding new location concepts via plugins.
+version: "1.0.0"
+
+locations:
+  location:secret_garden:
+    label: "Secret Garden"
+    category: outdoor
+    indoor: false
+    romantic: true
+    private: true
+    keywords: [garden, hidden, secret, mysterious, moonlit]

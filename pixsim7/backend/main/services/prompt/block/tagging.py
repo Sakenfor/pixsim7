@@ -96,7 +96,11 @@ def normalize_tags(raw_tags: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(value, str):
                 # If the value looks like an ontology ID (contains ':'), collect it
                 if ":" in value and value.split(":")[0] in (
-                    "part", "region", "act", "state", "mood",
+                    # Core vocabulary prefixes
+                    "pose", "mood", "location", "rating", "role",
+                    "intimacy", "branch", "spatial", "influence_region",
+                    # Legacy/detailed prefixes (keep for compatibility)
+                    "part", "region", "act", "state",
                     "rel", "ori", "contact", "cam", "beat",
                     "intensity", "speed"
                 ):
@@ -141,7 +145,11 @@ def extract_ontology_ids_from_tags(tags: Dict[str, Any]) -> list[str]:
         if isinstance(value, str):
             # If the value looks like an ontology ID (contains ':'), collect it
             if ":" in value and value.split(":")[0] in (
-                "part", "region", "act", "state", "mood",
+                # Core vocabulary prefixes
+                "pose", "mood", "location", "rating", "role",
+                "intimacy", "branch", "spatial", "influence_region",
+                # Legacy/detailed prefixes (keep for compatibility)
+                "part", "region", "act", "state",
                 "rel", "ori", "contact", "cam", "beat",
                 "intensity", "speed"
             ):

@@ -245,7 +245,7 @@ async def get_ontology_info(
                 "parts": len(registry.all_parts()),
                 "spatial": len(registry.all_spatial()),
             },
-            "loaded_packs": [p.id for p in registry.loaded_packs],
+            "loaded_packs": [p.id for p in registry.packs],
         }
 
         logger.info(

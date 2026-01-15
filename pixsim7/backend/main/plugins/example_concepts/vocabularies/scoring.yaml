@@ -1,0 +1,8 @@
+# Example plugin scoring configuration
+# Plugin can contribute additional scoring weights
+version: "1.0.0"
+
+# Plugin scoring weight overrides
+# These can adjust how the plugin's concepts are scored
+weights:
+  example_concepts.mysterious_boost: 0.15

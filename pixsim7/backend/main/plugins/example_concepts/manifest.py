@@ -2,9 +2,16 @@
 Example Concepts Plugin
 
 Demonstrates the extensible action block concepts system:
-1. Adds new poses and moods via ontology pack (ontology_example.yaml)
+1. Adds new poses, moods, and locations via vocabulary files (vocabularies/*.yaml)
 2. Registers a custom scorer that boosts mysterious mood blocks
 3. Shows how to use block extensions for metadata
+
+Vocabulary files are auto-discovered from:
+  plugins/example_concepts/vocabularies/
+    - poses.yaml: standing_mysterious, leaning_mysterious
+    - moods.yaml: mysterious, seductive
+    - locations.yaml: secret_garden
+    - scoring.yaml: plugin-specific scoring weights
 
 This plugin serves as a reference implementation for extending action blocks.
 """

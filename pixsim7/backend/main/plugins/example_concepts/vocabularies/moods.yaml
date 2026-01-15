@@ -1,0 +1,17 @@
+# Example plugin moods vocabulary
+# Demonstrates adding new mood concepts via plugins.
+version: "1.0.0"
+
+moods:
+  mood:mysterious:
+    label: "Mysterious"
+    category: dramatic
+    tension_range: [4, 8]
+    keywords: [mysterious, enigmatic, cryptic, intriguing, dark]
+
+  mood:seductive:
+    label: "Seductive"
+    category: romantic
+    tension_range: [5, 9]
+    keywords: [seductive, alluring, tempting, enticing]
+    compatible_ratings: [rating:mature_implied, rating:restricted]

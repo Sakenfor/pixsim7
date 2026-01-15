@@ -3,7 +3,7 @@ Tests for the Extensible Action Block Concepts System.
 
 Tests:
 1. ConceptRef parsing and validation
-2. OntologyRegistry loading and plugin pack discovery
+2. VocabularyRegistry loading and plugin pack discovery
 3. ActionBlockTags with extensions
 4. Plugin filter/scorer registration
 5. Selection with plugin extensions
@@ -117,24 +117,24 @@ class TestConceptRef:
 
 
 # =============================================================================
-# TEST: OntologyRegistry
+# TEST: VocabularyRegistry
 # =============================================================================
 
-class TestOntologyRegistry:
-    """Tests for OntologyRegistry with plugin pack support."""
+class TestVocabularyRegistry:
+    """Tests for VocabularyRegistry with plugin pack support."""
 
     @pytest.fixture
     def registry(self):
         """Create a fresh registry for each test."""
-        from pixsim7.backend.main.domain.ontology import (
-            OntologyRegistry,
-            reset_ontology_registry,
+        from pixsim7.backend.main.shared.ontology.vocabularies import (
+            get_registry,
+            reset_registry,
         )
-        reset_ontology_registry()
-        return OntologyRegistry(strict_mode=False).load()
+        reset_registry()
+        return get_registry(strict_mode=False)
 
-    def test_registry_loads_core_ontology(self, registry):
-        """Test that core ontology is loaded."""
+    def test_registry_loads_core_vocabulary(self, registry):
+        """Test that core vocabulary is loaded."""
         # Core poses should exist
         assert registry.is_known_concept("pose", "standing_neutral")
         assert registry.is_known_concept("pose", "sitting_close")
@@ -148,7 +148,7 @@ class TestOntologyRegistry:
         assert registry.is_known_concept("location", "bedroom")
 
     def test_registry_loads_plugin_packs(self, registry):
-        """Test that plugin ontology packs are discovered and loaded."""
+        """Test that plugin vocabulary packs are discovered and loaded."""
         # Plugin concepts from example_concepts should exist
         assert registry.is_known_concept("pose", "standing_mysterious")
         assert registry.is_known_concept("mood", "mysterious")
@@ -161,11 +161,11 @@ class TestOntologyRegistry:
         assert pose.label == "Standing Neutral"
         assert pose.category == "standing"
 
-        # Plugin pose
-        pose2 = registry.get_pose("standing_mysterious")
+        # Plugin pose (uses canonical ID with prefix)
+        pose2 = registry.get_pose("pose:standing_mysterious")
         assert pose2 is not None
         assert pose2.category == "standing"
-        assert pose2.source == "example_concepts"
+        assert pose2.source == "plugin:example_concepts"
 
     def test_registry_pose_similarity(self, registry):
         """Test pose similarity scoring."""
@@ -210,13 +210,13 @@ class TestOntologyRegistry:
 
     def test_registry_strict_mode_validation(self):
         """Test strict mode concept validation."""
-        from pixsim7.backend.main.domain.ontology import (
-            OntologyRegistry,
-            reset_ontology_registry,
+        from pixsim7.backend.main.shared.ontology.vocabularies import (
+            get_registry,
+            reset_registry,
         )
-        reset_ontology_registry()
+        reset_registry()
 
-        registry = OntologyRegistry(strict_mode=True).load()
+        registry = get_registry(strict_mode=True)
 
         # Known concept should pass
         registry.validate_concept("pose", "standing_neutral")
@@ -227,38 +227,26 @@ class TestOntologyRegistry:
 
     def test_registry_non_strict_mode(self):
         """Test non-strict mode allows unknown concepts."""
-        from pixsim7.backend.main.domain.ontology import (
-            OntologyRegistry,
-            reset_ontology_registry,
+        from pixsim7.backend.main.shared.ontology.vocabularies import (
+            get_registry,
+            reset_registry,
         )
-        reset_ontology_registry()
+        reset_registry()
 
-        registry = OntologyRegistry(strict_mode=False).load()
+        registry = get_registry(strict_mode=False)
 
         # Should not raise for unknown concept
         registry.validate_concept("pose", "nonexistent_pose")
 
-    def test_registry_programmatic_pack_registration(self, registry):
-        """Test registering ontology pack at runtime."""
-        pack_data = {
-            "id": "runtime_test_pack",
-            "version": "1.0.0",
-            "action_blocks": {
-                "moods": [
-                    {"id": "mood:runtime_mood", "label": "Runtime Mood"}
-                ],
-            },
-        }
-
-        registry.register_plugin_pack(
-            plugin_id="test_plugin",
-            pack_data=pack_data,
+    def test_registry_plugin_packs_listed(self, registry):
+        """Test that loaded plugin packs are listed via registry.packs."""
+        packs = registry.packs
+        plugin_pack = next(
+            (p for p in packs if p.plugin_id == "example_concepts"),
+            None
         )
-
-        assert registry.is_known_concept("mood", "runtime_mood")
-        mood = registry.get_mood("mood:runtime_mood")
-        assert mood is not None
-        assert mood.source == "test_plugin"
+        assert plugin_pack is not None
+        assert plugin_pack.id == "plugin_example_concepts"
 
 
 # =============================================================================
@@ -569,12 +557,12 @@ class TestDemoPluginConcepts:
     @pytest.fixture
     def registry(self):
         """Create a fresh registry."""
-        from pixsim7.backend.main.domain.ontology import (
-            reset_ontology_registry,
-            get_ontology_registry,
+        from pixsim7.backend.main.shared.ontology.vocabularies import (
+            reset_registry,
+            get_registry,
         )
-        reset_ontology_registry()
-        return get_ontology_registry(strict_mode=False)
+        reset_registry()
+        return get_registry(strict_mode=False)
 
     def test_mysterious_pose_loaded(self, registry):
         """Test that mysterious pose from demo plugin is loaded."""
