@@ -14,10 +14,12 @@ Usage:
     mapping = registry.get('characterInstance->npc')
 """
 from typing import Dict, Optional
+
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.services.prompt.context.mapping import FieldMapping
 
 
-class MappingRegistry:
+class MappingRegistry(SimpleRegistry[str, Dict[str, FieldMapping]]):
     """Registry of FieldMapping configurations for different entity pairs
 
     Maps mapping IDs (e.g., "characterInstance->npc") to FieldMapping dictionaries
@@ -25,7 +27,7 @@ class MappingRegistry:
     """
 
     def __init__(self):
-        self._mappings: Dict[str, Dict[str, FieldMapping]] = {}
+        super().__init__(name="field_mappings", allow_overwrite=True)
 
     def register(self, mapping_id: str, field_mappings: Dict[str, FieldMapping]) -> None:
         """Register a FieldMapping config under a mapping ID
@@ -49,7 +51,7 @@ class MappingRegistry:
                 "Expected 'templateKind->runtimeKind' (e.g., 'characterInstance->npc')"
             )
 
-        self._mappings[mapping_id] = field_mappings
+        super().register(mapping_id, field_mappings)
 
     def get(self, mapping_id: str) -> Optional[Dict[str, FieldMapping]]:
         """Get FieldMapping config by mapping ID
@@ -60,7 +62,7 @@ class MappingRegistry:
         Returns:
             Dictionary of field mappings, or None if not registered
         """
-        return self._mappings.get(mapping_id)
+        return self.get_or_none(mapping_id)
 
     def list_mappings(self) -> Dict[str, Dict[str, FieldMapping]]:
         """List all registered mappings
@@ -68,7 +70,7 @@ class MappingRegistry:
         Returns:
             Copy of all registered mappings (mapping_id -> field_mappings)
         """
-        return self._mappings.copy()
+        return dict(self.items())
 
     def has_mapping(self, mapping_id: str) -> bool:
         """Check if a mapping ID is registered
@@ -79,7 +81,7 @@ class MappingRegistry:
         Returns:
             True if mapping exists, False otherwise
         """
-        return mapping_id in self._mappings
+        return self.has(mapping_id)
 
     def get_runtime_kinds(self, template_kind: str) -> list[str]:
         """Get all runtime kinds that have mappings for a template kind
@@ -96,7 +98,7 @@ class MappingRegistry:
         """
         runtime_kinds = []
         prefix = f"{template_kind}->"
-        for mapping_id in self._mappings:
+        for mapping_id in self.keys():
             if mapping_id.startswith(prefix):
                 runtime_kind = mapping_id.split('->')[-1]
                 runtime_kinds.append(runtime_kind)
@@ -139,8 +141,8 @@ class MappingRegistry:
         Returns:
             True if mapping was removed, False if it didn't exist
         """
-        if mapping_id in self._mappings:
-            del self._mappings[mapping_id]
+        if self.has(mapping_id):
+            super().unregister(mapping_id)
             return True
         return False
 

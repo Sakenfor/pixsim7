@@ -7,6 +7,7 @@ Used by parsers and intent mapping to support pack-defined extensions.
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.services.prompt.parser.ontology import ROLE_KEYWORDS
 
 
@@ -53,16 +54,19 @@ class PromptRoleDefinition:
         return [k.lower() for k in self.keywords]
 
 
-class PromptRoleRegistry:
+class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
     """Registry for prompt roles with keyword and alias support."""
 
     def __init__(self, roles: Optional[Iterable[PromptRoleDefinition]] = None):
-        self._roles: Dict[str, PromptRoleDefinition] = {}
         self._aliases: Dict[str, str] = {}
+        super().__init__(name="prompt_roles", allow_overwrite=True)
         if roles:
             self.register_roles(roles)
         else:
             self._register_builtin_roles()
+
+    def _get_item_key(self, role: PromptRoleDefinition) -> str:
+        return role.normalized_id()
 
     @classmethod
     def default(cls) -> "PromptRoleRegistry":
@@ -78,7 +82,7 @@ class PromptRoleRegistry:
                 aliases=list(role.aliases),
                 priority=role.priority,
             )
-            for role in self._roles.values()
+            for role in self.values()
         ]
         return PromptRoleRegistry(roles=roles)
 
@@ -94,7 +98,7 @@ class PromptRoleRegistry:
                 )
             )
 
-        if "other" not in self._roles:
+        if not self.has("other"):
             self.register_role(
                 PromptRoleDefinition(
                     id="other",
@@ -107,7 +111,7 @@ class PromptRoleRegistry:
 
     def register_role(self, role: PromptRoleDefinition, overwrite: bool = False) -> None:
         role_id = role.normalized_id()
-        if role_id in self._roles and not overwrite:
+        if self.has(role_id) and not overwrite:
             self._merge_role(role_id, role)
             return
 
@@ -119,12 +123,14 @@ class PromptRoleRegistry:
             aliases=[a.lower() for a in role.aliases],
             priority=role.priority,
         )
-        self._roles[role_id] = normalized
+        super().register(role_id, normalized)
         for alias in normalized.aliases:
             self._aliases[alias] = role_id
 
     def _merge_role(self, role_id: str, role: PromptRoleDefinition) -> None:
-        existing = self._roles[role_id]
+        existing = self.get_or_none(role_id)
+        if existing is None:
+            return
         if role.label and not existing.label:
             existing.label = role.label
         if role.description and not existing.description:
@@ -153,14 +159,14 @@ class PromptRoleRegistry:
 
     def has_role(self, role_id: str) -> bool:
         role_key = self.resolve_role_id(role_id)
-        return role_key in self._roles
+        return self.has(role_key)
 
     def get_role(self, role_id: str) -> Optional[PromptRoleDefinition]:
         role_key = self.resolve_role_id(role_id)
-        return self._roles.get(role_key)
+        return self.get_or_none(role_key)
 
     def list_roles(self, sort_by_priority: bool = True) -> List[PromptRoleDefinition]:
-        roles = list(self._roles.values())
+        roles = list(self.values())
         if sort_by_priority:
             roles.sort(key=lambda r: r.priority, reverse=True)
         return roles
@@ -169,10 +175,10 @@ class PromptRoleRegistry:
         return [role.id for role in self.list_roles(sort_by_priority=True)]
 
     def get_role_keywords(self) -> Dict[str, List[str]]:
-        return {role.id: list(role.keywords) for role in self._roles.values()}
+        return {role.id: list(role.keywords) for role in self.values()}
 
     def get_role_priorities(self) -> Dict[str, int]:
-        return {role.id: role.priority for role in self._roles.values()}
+        return {role.id: role.priority for role in self.values()}
 
     def apply_hints(self, hints: Dict[str, List[str]]) -> None:
         for key, words in hints.items():

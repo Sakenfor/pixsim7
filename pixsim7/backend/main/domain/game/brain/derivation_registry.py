@@ -5,16 +5,18 @@ Handles plugin registration, dependency resolution, and conditional
 execution based on available stats and world configuration.
 """
 
-from typing import Dict, List, Optional, Set, Any
 import logging
+from typing import Any, Dict, List, Optional, Set
+
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 
 from .derivation_plugin import DerivationPlugin
-from .types import DerivationContext, DerivationResult, BrainStatSnapshot
+from .types import BrainStatSnapshot, DerivationContext
 
 logger = logging.getLogger(__name__)
 
 
-class DerivationRegistry:
+class DerivationRegistry(SimpleRegistry[str, DerivationPlugin]):
     """
     Registry for brain derivation plugins.
 
@@ -26,13 +28,16 @@ class DerivationRegistry:
     """
 
     def __init__(self):
-        self._plugins: Dict[str, DerivationPlugin] = {}
+        super().__init__(name="derivation_plugins", allow_overwrite=True)
+
+    def _get_item_key(self, plugin: DerivationPlugin) -> str:
+        return plugin.id
 
     def register(self, plugin: DerivationPlugin) -> None:
         """Register a derivation plugin."""
-        if plugin.id in self._plugins:
+        if self.has(plugin.id):
             logger.warning(f"Overwriting derivation plugin: {plugin.id}")
-        self._plugins[plugin.id] = plugin
+        super().register(plugin.id, plugin)
         logger.info(
             f"Registered derivation plugin: {plugin.id} "
             f"(requires: {plugin.required_stats}, optional: {plugin.optional_stats})"
@@ -40,15 +45,16 @@ class DerivationRegistry:
 
     def unregister(self, plugin_id: str) -> None:
         """Unregister a derivation plugin."""
-        self._plugins.pop(plugin_id, None)
+        if self.has(plugin_id):
+            super().unregister(plugin_id)
 
     def get(self, plugin_id: str) -> Optional[DerivationPlugin]:
         """Get a plugin by ID."""
-        return self._plugins.get(plugin_id)
+        return self.get_or_none(plugin_id)
 
     def list_plugins(self) -> List[DerivationPlugin]:
         """List all registered plugins."""
-        return list(self._plugins.values())
+        return self.values()
 
     def get_applicable_plugins(
         self,
@@ -72,7 +78,7 @@ class DerivationRegistry:
         """
         applicable: List[DerivationPlugin] = []
 
-        for plugin in self._plugins.values():
+        for plugin in self.values():
             # Check world-level allowlist
             if allowed_plugin_ids is not None and plugin.id not in allowed_plugin_ids:
                 continue

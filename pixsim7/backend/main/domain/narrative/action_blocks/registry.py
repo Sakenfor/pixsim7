@@ -7,16 +7,18 @@ No business logic - that's in BlockSelector and strategies.
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Iterator
+from typing import Any, Dict, Iterator, List, Optional
 
 import pixsim_logging
+
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 
 from .types_unified import ActionBlock
 
 logger = pixsim_logging.get_logger()
 
 
-class BlockRegistry:
+class BlockRegistry(SimpleRegistry[str, ActionBlock]):
     """
     Pure storage for action blocks.
 
@@ -30,12 +32,15 @@ class BlockRegistry:
     """
 
     def __init__(self):
-        self._blocks: Dict[str, ActionBlock] = {}
         self._by_kind: Dict[str, List[str]] = {
             "single_state": [],
             "transition": [],
         }
         self._by_location: Dict[str, List[str]] = {}
+        super().__init__(name="action_blocks", allow_overwrite=True)
+
+    def _get_item_key(self, block: ActionBlock) -> str:
+        return block.id
 
     # =========================================================================
     # CRUD Operations
@@ -46,38 +51,31 @@ class BlockRegistry:
         block_id = block.id
 
         # Remove from indices if updating
-        if block_id in self._blocks:
+        if self.has(block_id):
             self._remove_from_indices(block_id)
 
         # Store block
-        self._blocks[block_id] = block
+        super().register(block_id, block)
 
         # Update indices
         self._add_to_indices(block)
 
-        logger.debug(f"Registered block: {block_id}")
-
     def get(self, block_id: str) -> Optional[ActionBlock]:
         """Get a block by ID."""
-        return self._blocks.get(block_id)
+        return self.get_or_none(block_id)
 
     def remove(self, block_id: str) -> bool:
         """Remove a block by ID. Returns True if removed."""
-        if block_id not in self._blocks:
+        if not self.has(block_id):
             return False
 
         self._remove_from_indices(block_id)
-        del self._blocks[block_id]
-        logger.debug(f"Removed block: {block_id}")
+        super().unregister(block_id)
         return True
-
-    def has(self, block_id: str) -> bool:
-        """Check if a block exists."""
-        return block_id in self._blocks
 
     def clear(self) -> None:
         """Remove all blocks."""
-        self._blocks.clear()
+        super().clear()
         self._by_kind = {"single_state": [], "transition": []}
         self._by_location.clear()
 
@@ -87,25 +85,25 @@ class BlockRegistry:
 
     def all(self) -> Iterator[ActionBlock]:
         """Iterate over all blocks."""
-        return iter(self._blocks.values())
+        return iter(self.values())
 
     def list_ids(self) -> List[str]:
         """Get all block IDs."""
-        return list(self._blocks.keys())
+        return self.keys()
 
     def count(self) -> int:
         """Get total number of blocks."""
-        return len(self._blocks)
+        return len(self)
 
     def by_kind(self, kind: str) -> List[ActionBlock]:
         """Get blocks by kind (single_state or transition)."""
         ids = self._by_kind.get(kind, [])
-        return [self._blocks[bid] for bid in ids if bid in self._blocks]
+        return [b for bid in ids if (b := self.get_or_none(bid)) is not None]
 
     def by_location(self, location: str) -> List[ActionBlock]:
         """Get blocks by location tag."""
         ids = self._by_location.get(location, [])
-        return [self._blocks[bid] for bid in ids if bid in self._blocks]
+        return [b for bid in ids if (b := self.get_or_none(bid)) is not None]
 
     # =========================================================================
     # Bulk Operations
@@ -167,12 +165,12 @@ class BlockRegistry:
     def to_dict(self) -> Dict[str, Any]:
         """Export all blocks as a dictionary."""
         return {
-            bid: block.model_dump() for bid, block in self._blocks.items()
+            bid: block.model_dump() for bid, block in self.items()
         }
 
     def to_list(self) -> List[Dict[str, Any]]:
         """Export all blocks as a list of dicts."""
-        return [block.model_dump() for block in self._blocks.values()]
+        return [block.model_dump() for block in self.values()]
 
     # =========================================================================
     # Internal
@@ -206,7 +204,7 @@ class BlockRegistry:
 
     def _remove_from_indices(self, block_id: str) -> None:
         """Remove block from indices."""
-        block = self._blocks.get(block_id)
+        block = self.get_or_none(block_id)
         if not block:
             return
 
