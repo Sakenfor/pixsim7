@@ -23,16 +23,17 @@ Located in `pixsim7/backend/main/lib/registry/`:
 | `NestedRegistry[NS, K, V]` | `nested.py` | Two-level namespace -> key -> value |
 | `LayeredRegistry[K, V]` | `layered.py` | Ordered layers with precedence resolution |
 | `LayeredNestedRegistry[NS, K, V]` | `layered.py` | Namespace + layered approach combined |
-| `PackRegistryBase[NS, K, V, M]` | `pack.py` | **Key abstraction for pack lifecycle** |
+| `PackRegistryBase[NS, K, V, M]` | `pack.py` | Pack lifecycle for **layered** registries |
+| `SimplePackRegistryBase[NS, K, V, M]` | `pack.py` | Pack lifecycle for **non-layered** registries (NEW) |
 | `WorldMergeMixin[P, T]` | `world_merge.py` | Merges package configs with world.meta overrides |
 
 ### 1.2 Domain-Specific Pack Registries
 
 | Registry | File Path | Manages | Base Class |
 |----------|-----------|---------|------------|
-| `CompositionPackageRegistry` | `domain/composition/package_registry.py` | Visual role definitions | `SimpleRegistry` |
-| `StatPackageRegistry` | `domain/game/stats/package_registry.py` | Stat definitions, derivation capabilities | `SimpleRegistry` + `WorldMergeMixin` |
-| `NpcSurfacePackageRegistry` | `domain/game/entities/npc_surfaces/package_registry.py` | NPC surface types (portrait, dialogue, closeup) | `SimpleRegistry` |
+| `CompositionPackageRegistry` | `domain/composition/package_registry.py` | Visual role definitions | `SimplePackRegistryBase` (MIGRATED) |
+| `StatPackageRegistry` | `domain/game/stats/package_registry.py` | Stat definitions, derivation capabilities | `SimplePackRegistryBase` + `WorldMergeMixin` (MIGRATED) |
+| `NpcSurfacePackageRegistry` | `domain/game/entities/npc_surfaces/package_registry.py` | NPC surface types (portrait, dialogue, closeup) | `SimplePackRegistryBase` (MIGRATED) |
 | `VocabularyRegistry` | `shared/ontology/vocabularies/registry.py` | Vocab items (poses, moods, roles, locations) | `LayeredNestedRegistry` + `PackRegistryBase` |
 | `SemanticPackDB` | `domain/semantic_pack.py` | Prompt bundles | SQLAlchemy (database model) |
 
@@ -50,7 +51,7 @@ Located in `pixsim7/backend/main/lib/registry/`:
 
 ## 2. PackRegistryBase Overlap Analysis
 
-### 2.1 PackRegistryBase Capabilities
+### 2.1 PackRegistryBase Capabilities (Layered)
 
 ```python
 class PackRegistryBase[NS, K, V, M]:
@@ -62,30 +63,49 @@ class PackRegistryBase[NS, K, V, M]:
 ```
 
 Key features:
-- Stores pack item indices for clean unload
+- Requires a **layered** backing registry (e.g., `LayeredNestedRegistry`)
+- Stores pack item indices with layer info for clean unload
 - Supports metadata storage per pack
 - `allow_overwrite=False` prevents re-registration
 - `allow_overwrite=True` auto-unloads before re-registering
 
-Note: `PackRegistryBase` assumes the backing registry supports layered
-registration (i.e., `register(..., layer=...)`). SimpleRegistry-based registries
-need an adapter or a different base to adopt it cleanly.
+### 2.2 SimplePackRegistryBase Capabilities (Non-Layered)
 
-### 2.2 Current Adoption Matrix
+```python
+class SimplePackRegistryBase[NS, K, V, M]:
+    def register_pack(pack_id, items, meta, allow_overwrite) -> None
+    def unregister_pack(pack_id) -> M
+    def list_packs() -> List[M]
+    def has_pack(pack_id) -> bool
+    def pack_items(pack_id) -> List[SimplePackItemRef]
+    # Registry-like helpers:
+    def get(pack_id) -> M
+    def keys() -> List[str]
+    def values() -> List[M]
+    def clear() -> None
+```
 
-| Feature | PackRegistryBase | Composition | Stats | NpcSurface | Vocabulary |
-|---------|-----------------|-------------|-------|------------|------------|
-| `register_pack()` | Yes | No | No | No | Yes |
-| `unregister_pack()` | Yes | No | No | No | Yes |
-| `list_packs()` with metadata | Yes | No | No | No | Yes |
-| Layer precedence | Depends on backing registry | No | No | No | Yes |
-| Pack item tracking | Yes | No | No | No | Yes |
-| Clean unload support | Yes | No | No | No | Yes |
+Key features:
+- **No layer support** - designed for simple registries
+- Item hooks: `_register_item()` / `_unregister_item()` (no-ops by default, override in subclass)
+- Extends `RegistryBase` and `RegistryObserverMixin`
+- Used by: `CompositionPackageRegistry`, `StatPackageRegistry`, `NpcSurfacePackageRegistry`
 
-**Finding**: Only `VocabularyRegistry` uses `PackRegistryBase`. The three domain registries lack:
-- Explicit unload support
-- Layer-based override resolution
-- Centralized pack item tracking for cleanup
+### 2.3 Current Adoption Matrix
+
+| Feature | PackRegistryBase | SimplePackRegistryBase | Composition | Stats | NpcSurface | Vocabulary |
+|---------|-----------------|------------------------|-------------|-------|------------|------------|
+| `register_pack()` | Yes | Yes | Yes | Yes | Yes | Yes |
+| `unregister_pack()` | Yes | Yes | Yes | Yes | Yes | Yes |
+| `list_packs()` | Yes | Yes | Yes | Yes | Yes | Yes |
+| `has_pack()` | Yes | Yes | Yes | Yes | Yes | Yes |
+| `pack_items()` | Yes | Yes | Yes | Yes | Yes | Yes |
+| Layer precedence | Yes | No | No | No | No | Yes |
+| Clean unload support | Yes | Yes | Yes | Yes | Yes | Yes |
+
+**Status**: All domain registries now use pack registry base classes:
+- `VocabularyRegistry` uses `PackRegistryBase` (with `LayeredNestedRegistry`)
+- `CompositionPackageRegistry`, `StatPackageRegistry`, `NpcSurfacePackageRegistry` use `SimplePackRegistryBase`
 
 ---
 
@@ -150,65 +170,78 @@ pack_id: str  # Identifier for the pack
 
 ```
 RegistryBase
--> SimpleRegistry[K, V]
-   -> CompositionPackageRegistry[str, CompositionPackage]
-   -> StatPackageRegistry[str, StatPackage] (+ WorldMergeMixin)
-   -> NpcSurfacePackageRegistry[str, NpcSurfacePackage]
-   -> ProviderRegistry[str, Provider]
-   -> MetricRegistry[MetricType, MetricEvaluator]
-   -> GameActionRegistry[str, GameActionMeta]
-
--> NestedRegistry[NS, K, V]
-
--> LayeredRegistry[K, V]
-
--> LayeredNestedRegistry[NS, K, V]
-   -> VocabularyRegistry (internal storage)
+├── SimpleRegistry[K, V]
+│   ├── ProviderRegistry[str, Provider]
+│   ├── MetricRegistry[MetricType, MetricEvaluator]
+│   └── GameActionRegistry[str, GameActionMeta]
+│
+├── SimplePackRegistryBase[NS, K, V, M]  (NEW)
+│   ├── CompositionPackageRegistry (MIGRATED)
+│   ├── StatPackageRegistry (+ WorldMergeMixin) (MIGRATED)
+│   └── NpcSurfacePackageRegistry (MIGRATED)
+│
+├── NestedRegistry[NS, K, V]
+│
+├── LayeredRegistry[K, V]
+│
+└── LayeredNestedRegistry[NS, K, V]
+    └── VocabularyRegistry (internal storage)
 
 PackRegistryBase[NS, K, V, M]
--> VocabularyRegistry (pack lifecycle)
+└── VocabularyRegistry (pack lifecycle)
 
 WorldMergeMixin[P, T]
--> StatPackageRegistry (world.meta merging)
+└── StatPackageRegistry (world.meta merging)
 ```
 
 
 ---
 
-## 6. Missing Tests & Edge Cases
+## 6. Test Coverage
 
-### 6.1 PackRegistryBase (CRITICAL - No Tests Found)
+### 6.1 PackRegistryBase & SimplePackRegistryBase (COMPLETE)
 
-```python
-# Required test cases:
-def test_register_pack_stores_items_correctly(): ...
-def test_unregister_pack_removes_all_items(): ...
-def test_unregister_pack_returns_metadata(): ...
-def test_register_pack_allow_overwrite_false_raises_on_duplicate(): ...
-def test_register_pack_allow_overwrite_true_unloads_first(): ...
-def test_list_packs_returns_correct_metadata(): ...
-def test_has_pack_returns_correct_boolean(): ...
-def test_pack_items_returns_all_registered_items(): ...
-def test_cross_pack_item_override_respects_layer_order(): ...
-```
+Tests added in `backend/main/tests/test_pack_registry.py`:
 
-### 6.2 Domain Registry Gaps
+**SimplePackRegistryBase tests (18 tests):**
+- `test_register_pack_stores_items` - Items stored via `_register_item` hook
+- `test_register_pack_tracks_item_refs` - Pack items tracked for unload
+- `test_register_pack_stores_metadata` - Metadata stored and returned
+- `test_unregister_pack_removes_items` - Items removed via `_unregister_item` hook
+- `test_unregister_pack_returns_metadata` - Returns pack metadata
+- `test_has_pack` - Pack existence check
+- `test_allow_overwrite_false_raises_on_duplicate` - DuplicateKeyError raised
+- `test_allow_overwrite_true_replaces_pack` - Auto-unload and re-register
+- `test_allow_overwrite_per_call_override` - Per-call override of default
+- `test_get_metadata` / `test_get_raises_on_missing` / `test_get_or_none`
+- `test_keys_values_items` / `test_clear` / `test_len_and_contains`
+- `test_observer_notifications` - Listener events for pack operations
+- `test_register_pack_empty_items` - Empty pack tracking
+
+**PackRegistryBase tests (11 tests):**
+- `test_register_pack_stores_items_in_layer` - Items in correct layer
+- `test_pack_items_returns_refs_with_layer` - Refs include layer info
+- `test_unregister_pack_removes_items_from_layer` - Layer-specific removal
+- `test_layer_precedence_higher_wins` - Higher layers override lower
+- `test_cross_layer_override_restore` - Unload restores lower layer item
+- `test_allow_overwrite_false_raises` / `test_allow_overwrite_true_replaces`
+- `test_list_packs_returns_all_metadata` / `test_has_pack`
+- `test_register_pack_no_metadata` / `test_unregister_nonexistent_returns_none`
+
+**VocabularyRegistry runtime pack tests (7 tests):**
+- `test_register_runtime_pack` - Runtime vocab item registration
+- `test_unregister_runtime_pack` - Runtime item removal
+- `test_runtime_pack_layer_precedence` - Override and restore behavior
+- `test_packs_property_includes_runtime` - Pack listing
+- `test_register_pack_allow_overwrite` - Pack replacement
+- `test_register_pack_rebuilds_indices` / `test_unregister_pack_rebuilds_indices`
+
+### 6.2 Remaining Test Gaps
 
 | Registry | Missing Test Coverage |
 |----------|----------------------|
-| `CompositionPackageRegistry` | Override behavior, duplicate role IDs, unload cleanup |
-| `StatPackageRegistry` | WorldMergeMixin edge cases, circular derivations, partial merge failures |
-| `NpcSurfacePackageRegistry` | Package replacement, surface type conflicts |
-| `VocabularyRegistry` | Layer precedence resolution, plugin pack unload, cross-pack overrides |
-
-### 6.3 Edge Cases to Test
-
-1. **Unload cleanup**: Verify all items removed when pack unregistered
-2. **Cross-pack overrides**: Item in pack A overridden by pack B, then B unloaded - does A's item restore?
-3. **Metadata lists**: `list_packs()` accuracy after register/unregister cycles
-4. **Layer precedence**: Core vs plugin pack resolution order
-5. **Error handling**: Malformed package data, missing required fields
-6. **Circular dependencies**: Derivation capabilities referencing each other
+| `StatPackageRegistry` | WorldMergeMixin edge cases, circular derivations |
+| Domain registries | Integration tests with actual YAML packages |
 
 ---
 
@@ -265,21 +298,24 @@ class PackRegistry(Protocol[P, I, M]):
 ## 8. Action Items
 
 ### High Priority
-- [ ] Add comprehensive test suite for `PackRegistryBase` in `lib/registry/pack.py`
+- [x] Add comprehensive test suite for `PackRegistryBase` in `lib/registry/pack.py`
+- [x] Add comprehensive test suite for `SimplePackRegistryBase`
+- [x] Decide on adapter or layered backing for migrating SimpleRegistry-based registries
+  - **Decision**: Created `SimplePackRegistryBase` as non-layered alternative
 - [ ] Document override semantics for each registry
-- [ ] Decide on adapter or layered backing for migrating SimpleRegistry-based registries
 
 ### Medium Priority
-- [ ] Migrate `StatPackageRegistry` to use `PackRegistryBase`
-- [ ] Migrate `CompositionPackageRegistry` to use `PackRegistryBase`
-- [ ] Migrate `NpcSurfacePackageRegistry` to use `PackRegistryBase`
-- [ ] Add runtime pack API tests for `VocabularyRegistry` register/unregister
+- [x] Migrate `StatPackageRegistry` to use `SimplePackRegistryBase`
+- [x] Migrate `CompositionPackageRegistry` to use `SimplePackRegistryBase`
+- [x] Migrate `NpcSurfacePackageRegistry` to use `SimplePackRegistryBase`
+- [x] Add runtime pack API tests for `VocabularyRegistry` register/unregister
 
 ### Low Priority
 - [ ] Standardize "pack" vs "package" naming across codebase
 - [ ] Add type hints for pack metadata generics
 - [ ] Create shared Protocol for pack registry interface
-- [ ] Evaluate cross-pack override/unload behavior (restore previous item)
+- [x] Evaluate cross-pack override/unload behavior (restore previous item)
+  - **Result**: Tested in `test_cross_layer_override_restore` - works correctly
 
 ---
 
@@ -288,10 +324,12 @@ class PackRegistry(Protocol[P, I, M]):
 | Category | Path |
 |----------|------|
 | Base registries | `backend/main/lib/registry/*.py` |
+| Pack registry bases | `backend/main/lib/registry/pack.py` |
 | Composition | `backend/main/domain/composition/package_registry.py` |
 | Stats | `backend/main/domain/game/stats/package_registry.py` |
 | NPC Surfaces | `backend/main/domain/game/entities/npc_surfaces/package_registry.py` |
 | Vocabularies | `backend/main/shared/ontology/vocabularies/registry.py` |
 | Semantic Packs | `backend/main/domain/semantic_pack.py` |
-| Existing tests | `backend/main/tests/test_registry_utilities.py` |
-| Existing tests | `backend/main/tests/test_composition_packages.py` |
+| Pack registry tests | `backend/main/tests/test_pack_registry.py` (NEW) |
+| Registry utilities tests | `backend/main/tests/test_registry_utilities.py` |
+| Composition tests | `backend/main/tests/test_composition_packages.py` |
