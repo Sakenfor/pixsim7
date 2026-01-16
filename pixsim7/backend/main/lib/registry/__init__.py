@@ -66,6 +66,10 @@ from .layered import (
     LayeredRegistry,
     LayeredNestedRegistry,
 )
+from .pack import (
+    PackRegistryBase,
+    PackItemRef,
+)
 from .world_merge import (
     WorldMergeMixin,
     MergeStrategy,
@@ -101,6 +105,9 @@ __all__ = [
     # Layered registry
     "LayeredRegistry",
     "LayeredNestedRegistry",
+    # Pack registry
+    "PackRegistryBase",
+    "PackItemRef",
     # World merge
     "WorldMergeMixin",
     "MergeStrategy",

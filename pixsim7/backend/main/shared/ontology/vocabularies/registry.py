@@ -11,6 +11,7 @@ import yaml
 
 from pixsim7.backend.main.lib.registry.simple import SimpleRegistry
 from pixsim7.backend.main.lib.registry.layered import LayeredNestedRegistry
+from pixsim7.backend.main.lib.registry.pack import PackRegistryBase
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
@@ -124,6 +125,10 @@ class VocabularyRegistry:
 
         # Plugin tracking
         self._packs: List[VocabPackInfo] = []
+        self._pack_registry = PackRegistryBase(
+            registry=self._vocabs,
+            name="vocab_packs",
+        )
         self._loaded = False
 
     @property
@@ -608,7 +613,7 @@ class VocabularyRegistry:
     @property
     def packs(self) -> List[VocabPackInfo]:
         self._ensure_loaded()
-        return self._packs
+        return [*self._packs, *self._pack_registry.list_packs()]
 
     # =========================================================================
     # Pose Helpers
@@ -954,6 +959,99 @@ class VocabularyRegistry:
                     seen_ids.add(item_id)
 
         return matched_ids
+
+    # =========================================================================
+    # Runtime Pack API
+    # =========================================================================
+
+    def register_pack(
+        self,
+        pack_id: str,
+        data: Dict[str, Any],
+        *,
+        layer: Optional[str] = None,
+        label: str = "",
+        version: Optional[str] = None,
+        plugin_id: Optional[str] = None,
+        source_path: Optional[str] = None,
+        allow_overwrite: bool = False,
+    ) -> VocabPackInfo:
+        """
+        Register a vocab pack at runtime.
+
+        Args:
+            pack_id: Unique pack identifier.
+            data: Dict matching vocab YAML structure (e.g., {"poses": {...}}).
+            layer: Layer name for precedence. Defaults to "runtime:{pack_id}".
+            label: Optional human-readable label.
+            version: Optional version string.
+            plugin_id: Optional plugin id that registered the pack.
+            source_path: Optional source path string (for debugging).
+            allow_overwrite: If True, replaces an existing pack with same id.
+        """
+        self._ensure_loaded()
+
+        if not layer:
+            layer = f"runtime:{pack_id}"
+
+        if not self._vocabs.has_layer(layer):
+            self._vocabs.add_layer(layer)
+
+        configs = self._configs()
+        items: List[tuple[str, str, Any]] = []
+        counts: Dict[str, int] = {}
+        source = layer if layer.endswith(f":{pack_id}") else f"{layer}:{pack_id}"
+
+        for vocab_name, config in configs.items():
+            raw = data.get(config.yaml_key) or data.get(vocab_name)
+            if not raw:
+                continue
+
+            if not isinstance(raw, dict):
+                raise ValueError(
+                    f"Pack '{pack_id}' vocab '{vocab_name}' must be a dict"
+                )
+
+            if not self._vocabs.has_namespace(config.name):
+                self._vocabs.add_namespace(config.name)
+
+            count = 0
+            for item_id, item_data in raw.items():
+                item = config.factory(item_id, item_data, source)
+                items.append((config.name, item_id, item))
+                count += 1
+            counts[config.name] = count
+
+        pack_info = VocabPackInfo(
+            id=pack_id,
+            source_path=source_path,
+            plugin_id=plugin_id,
+            version=version,
+            label=label,
+            concepts_added=counts,
+        )
+
+        self._pack_registry.register_pack(
+            pack_id,
+            items,
+            layer=layer,
+            meta=pack_info,
+            allow_overwrite=allow_overwrite,
+        )
+
+        # Update indices after runtime changes
+        self._build_pose_indices()
+        self._build_keyword_index()
+
+        return pack_info
+
+    def unregister_pack(self, pack_id: str) -> Optional[VocabPackInfo]:
+        """Unload a runtime pack by id."""
+        removed = self._pack_registry.unregister_pack(pack_id)
+        if removed:
+            self._build_pose_indices()
+            self._build_keyword_index()
+        return removed
 
 
 # =============================================================================
