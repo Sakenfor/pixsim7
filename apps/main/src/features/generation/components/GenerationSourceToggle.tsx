@@ -9,18 +9,24 @@
  * Usage: Render in widget header/chrome, inside a GenerationScopeProvider.
  */
 
-import { useState, useEffect, useCallback } from 'react';
 import { Icon } from '@lib/icons';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+
 import { getGeneration } from '@lib/api/generations';
-import { fromGenerationResponse, type GenerationModel } from '../models';
-import { useGenerationScopeStores } from '../hooks/useGenerationScope';
+
 import {
   CAP_GENERATION_SOURCE,
   useProvideCapability,
   type GenerationSourceMode,
   type GenerationSourceContext,
 } from '@features/contextHub';
+
 import type { OperationType } from '@/types/operations';
+
+import { useGenerationScopeStores } from '../hooks/useGenerationScope';
+import { fromGenerationResponse, type GenerationModel } from '../models';
+
+const EMPTY_PARAMS: Record<string, unknown> = {};
 
 export interface GenerationSourceToggleProps {
   /** Current mode (controlled) */
@@ -141,24 +147,27 @@ export function GenerationSourceToggle({
     onModeChange('user');
   }, [onModeChange]);
 
-  // Build capability value
-  const capabilityValue: GenerationSourceContext = {
+  const sourceGenerationSummary = useMemo(() => {
+    if (!sourceGeneration) return null;
+    return {
+      id: sourceGeneration.id,
+      prompt: sourceGeneration.finalPrompt || '',
+      operationType: sourceGeneration.operationType,
+      providerId: sourceGeneration.providerId,
+      params: sourceGeneration.canonicalParams ?? sourceGeneration.rawParams ?? EMPTY_PARAMS,
+    };
+  }, [sourceGeneration]);
+
+  // Build capability value (memoized to avoid useSyncExternalStore loops)
+  const capabilityValue: GenerationSourceContext = useMemo(() => ({
     mode,
     setMode: handleModeChange,
     available,
     loading,
     error,
-    sourceGeneration: sourceGeneration
-      ? {
-          id: sourceGeneration.id,
-          prompt: sourceGeneration.finalPrompt || '',
-          operationType: sourceGeneration.operationType,
-          providerId: sourceGeneration.providerId,
-          params: sourceGeneration.canonicalParams || sourceGeneration.rawParams || {},
-        }
-      : null,
+    sourceGeneration: sourceGenerationSummary,
     resetToUser,
-  };
+  }), [mode, handleModeChange, available, loading, error, sourceGenerationSummary, resetToUser]);
 
   useProvideCapability<GenerationSourceContext>(
     CAP_GENERATION_SOURCE,
@@ -169,7 +178,7 @@ export function GenerationSourceToggle({
       isAvailable: () => true,
       getValue: () => capabilityValue,
     },
-    [mode, available, loading, error, sourceGeneration, scopeId]
+    [capabilityValue, scopeId]
   );
 
   return (

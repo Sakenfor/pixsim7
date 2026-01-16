@@ -17,13 +17,16 @@ import { PromptCompanionHost } from '@lib/ui';
 import type { AssetModel } from '@features/assets';
 import {
   CAP_PROMPT_BOX,
+  CAP_GENERATION_WIDGET,
   CAP_ASSET_INPUT,
   CAP_GENERATE_ACTION,
   useCapability,
+  usePanelContext,
   useProvideCapability,
   type PromptBoxContext,
   type AssetInputContext,
   type GenerateActionContext,
+  type GenerationWidgetContext,
 } from '@features/contextHub';
 import {
   QUICKGEN_PROMPT_COMPONENT_ID,
@@ -33,6 +36,7 @@ import {
 } from '@features/controlCenter/lib/quickGenerateComponentSettings';
 import {
   GenerationSettingsPanel,
+  type InputItem,
   useGenerationScopeStores,
   resolveDisplayAssets,
 } from '@features/generation';
@@ -75,16 +79,20 @@ export interface QuickGenPanelContext {
   error?: string | null;
 
   // Settings panel
-  renderSettingsPanel: () => React.ReactNode;
+  renderSettingsPanel?: () => React.ReactNode;
+
+  // Target toggle
+  targetProviderId?: string;
 }
 
 // Panel props with injected context from SmartDockview
 export interface QuickGenPanelProps extends IDockviewPanelProps {
-  context?: QuickGenPanelContext;
+  context?: Partial<QuickGenPanelContext>;
   panelId: string;
 }
 
 const FLEXIBLE_OPERATIONS = new Set<OperationType>(['image_to_video', 'image_to_image']);
+const EMPTY_INPUTS: InputItem[] = [];
 
 /**
  * Asset Panel - Shows selected/queued assets
@@ -113,7 +121,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const removeInput = ctxRemoveInput ?? controller.removeInput;
   const storeUpdateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
   const updateLockedTimestamp = ctxUpdateLockedTimestamp ?? storeUpdateLockedTimestamp;
-  const storeInputs = useInputStore(s => s.inputsByOperation[operationType]?.items ?? []);
+  const storeInputs = useInputStore(s => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
   const storeInputIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
   const storeSetInputIndex = useInputStore(s => s.setInputIndex);
   const storeCycleInputs = useInputStore(s => s.cycleInputs);
@@ -416,9 +424,11 @@ export function PromptPanel(props: QuickGenPanelProps) {
  * Settings Panel - Generation settings and controls
  */
 export function SettingsPanel(props: QuickGenPanelProps) {
-  const ctx = props.context;
+  const panelContext = usePanelContext<QuickGenPanelContext>();
+  const ctx = props.context ?? panelContext ?? undefined;
   const controller = useQuickGenerateController();
   const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
+  const { provider: generationWidgetProvider } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
   const scopeInstanceId = useScopeInstanceId("generation");
   const dockviewId = useDockviewId();
@@ -437,6 +447,9 @@ export function SettingsPanel(props: QuickGenPanelProps) {
 
   const renderSettingsPanel = ctx?.renderSettingsPanel;
   const useDefaultPanel = !renderSettingsPanel || typeof renderSettingsPanel !== 'function';
+  const derivedTargetProviderId = dockviewId ? `generation-widget:${dockviewId}` : undefined;
+  const targetProviderId =
+    ctx?.targetProviderId ?? generationWidgetProvider?.id ?? derivedTargetProviderId;
 
   const metadata = OPERATION_METADATA[controller.operationType];
   const requiresPrompt = metadata?.promptRequired ?? false;
@@ -472,6 +485,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           canGenerate={canGenerate}
           onGenerate={controller.generate}
           error={controller.error}
+          targetProviderId={targetProviderId}
         />
       </div>
     );

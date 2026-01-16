@@ -22,7 +22,7 @@ import type { QuickGenPanelContext } from './QuickGeneratePanels';
 
 export interface QuickGenerateDockviewProps {
   /** Shared context passed to all panel components */
-  context: QuickGenPanelContext;
+  context: Partial<QuickGenPanelContext>;
   /** Whether to show the asset panel in layout */
   showAssetPanel: boolean;
   /** Callback when dockview is ready */

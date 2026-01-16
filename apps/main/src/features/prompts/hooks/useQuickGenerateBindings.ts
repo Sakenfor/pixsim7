@@ -25,6 +25,8 @@ export interface QuickGenerateBindings {
   setInputIndex: (operationType: OperationType, index: number) => void;
 }
 
+const EMPTY_INPUTS: InputItem[] = [];
+
 /**
  * Hook: useQuickGenerateBindings
  *
@@ -43,13 +45,13 @@ export function useQuickGenerateBindings(
   const { useSettingsStore, useInputStore } = useGenerationScopeStores();
 
   const operationInputs = useInputStore(
-    s => s.inputsByOperation[operationType]?.items ?? []
+    s => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS
   );
   const operationInputIndex = useInputStore(
     s => s.inputsByOperation[operationType]?.currentIndex ?? 1
   );
   const transitionInputs = useInputStore(
-    s => s.inputsByOperation.video_transition?.items ?? []
+    s => s.inputsByOperation.video_transition?.items ?? EMPTY_INPUTS
   );
 
   const removeInput = useInputStore(s => s.removeInput);

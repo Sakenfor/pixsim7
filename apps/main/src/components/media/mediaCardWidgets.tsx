@@ -9,7 +9,7 @@
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 import { Icon } from '@lib/icons';
 import { ButtonGroup, type ButtonGroupItem } from '@pixsim7/shared.ui';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 import { createBindingFromValue } from '@lib/editing-core';
 import type { OverlayWidget } from '@lib/ui/overlay';
@@ -30,7 +30,12 @@ import {
   type GenerationWidgetContext,
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { getStatusConfig, getStatusBadgeClasses } from '@features/generation';
+import {
+  getStatusConfig,
+  getStatusBadgeClasses,
+  getGenerationInputStore,
+  type InputItem,
+} from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
 
@@ -44,6 +49,7 @@ import {
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
 
+const EMPTY_INPUTS: InputItem[] = [];
 
 
 export interface MediaCardOverlayData {
@@ -120,7 +126,8 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Use capability to get nearest generation widget, with global fallback
-  const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
+  const { value: widgetContext, provider: widgetProvider } =
+    useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
 
   // Get scoped stores (follows same scoping as the widget capability)
   const { useSessionStore, useSettingsStore, useInputStore } = useGenerationScopeStores();
@@ -144,6 +151,8 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
 
   const menuItems = buildGenerationMenuItems(id, mediaType, actions);
   const smartActionLabel = getSmartActionLabel(mediaType, operationType);
+  const targetLabel = widgetProvider?.label ?? widgetContext?.widgetId;
+  const targetInfo = targetLabel ? `\nTarget: ${targetLabel}` : '';
   const operationMetadata = OPERATION_METADATA[operationType];
 
   // Use operation specs first, fall back to model heuristics.
@@ -237,6 +246,7 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
 
   // Build button group items
   const supportsSlots = operationMetadata?.multiAssetMode !== 'single';
+  const inputScopeId = widgetContext?.scopeId;
   const buttonItems: ButtonGroupItem[] = [
     {
       id: 'menu',
@@ -248,13 +258,16 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
       id: 'smart-action',
       icon: <Icon name="zap" size={14} />,
       onClick: handleSmartAction,
-      title: supportsSlots ? `${smartActionLabel}\nHover: slot picker` : smartActionLabel,
+      title: supportsSlots
+        ? `${smartActionLabel}${targetInfo}\nHover: slot picker`
+        : `${smartActionLabel}${targetInfo}`,
       expandContent: supportsSlots ? (
         <SlotPickerContent
           asset={inputAsset}
           operationType={operationType}
           onSelectSlot={handleSelectSlot}
           maxSlots={maxSlots}
+          inputScopeId={inputScopeId}
         />
       ) : undefined,
       expandDelay: 150,
@@ -696,13 +709,19 @@ function SlotPickerContent({
   operationType,
   onSelectSlot,
   maxSlots: maxSlotsProp,
+  inputScopeId,
 }: {
   asset: AssetModel;
   operationType: OperationType;
   onSelectSlot: (asset: AssetModel, slotIndex: number) => void;
   maxSlots?: number;
+  inputScopeId?: string;
 }) {
-  const inputs = useGenerationInputStore((s) => s.inputsByOperation[operationType]?.items ?? []);
+  const inputStore = useMemo(
+    () => (inputScopeId ? getGenerationInputStore(inputScopeId) : useGenerationInputStore),
+    [inputScopeId],
+  );
+  const inputs = inputStore((s) => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
   const ccIsOpen = useControlCenterStore((s) => s.isOpen);
 
   // Max slots from prop (provider-specific) or default to 7 (Pixverse transition limit)

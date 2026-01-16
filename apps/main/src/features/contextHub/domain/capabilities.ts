@@ -224,6 +224,8 @@ export interface GenerationWidgetContext {
   isOpen: boolean;
   /** Open/close the widget */
   setOpen: (open: boolean) => void;
+  /** Scope id for the widget's generation stores */
+  scopeId?: string;
   /** Current operation type (image_to_video, text_to_image, etc.) */
   operationType: OperationType;
   /** Update the operation type (if supported by the widget) */

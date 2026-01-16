@@ -9,38 +9,43 @@
  * - "user": Uses current user settings from Control Center (global scope)
  * - "asset": Uses original generation settings from the asset (isolated scope)
  *
- * Uses QuickGenWidget for portable panel layout with scoped stores.
+ * Uses QuickGenPanelHost with GenerationScopeProvider for scoped panel layout.
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
 import { Icon } from '@lib/icons';
 import { Ref } from '@pixsim7/shared.types';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import type { ViewerAsset } from '@features/assets';
 import {
   CAP_GENERATION_CONTEXT,
+  CAP_GENERATION_WIDGET,
   useProvideCapability,
   useCapability,
   CAP_GENERATION_SOURCE,
   type GenerationContextSummary,
   type GenerationSourceMode,
   type GenerationSourceContext,
+  type GenerationWidgetContext,
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
+  GenerationScopeProvider,
   GenerationSourceToggle,
   ViewerAssetInputProvider,
-  QuickGenWidget,
+  QuickGenPanelHost,
   QUICKGEN_PRESETS,
+  useGenerationScopeStores,
 } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 
-import type { OperationType } from '@/types/operations';
+import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 
 
 const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
+const VIEWER_WIDGET_ID = 'generation-widget:viewerQuickGenerate';
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
@@ -103,7 +108,7 @@ function ViewerGenerationContextProvider({
 
 /**
  * Inner component for the expanded quick generate content.
- * Rendered inside QuickGenWidget to access scoped stores.
+ * Rendered inside the viewer scope to access scoped stores.
  */
 function ViewerQuickGenerateChrome({
   asset,
@@ -128,6 +133,54 @@ function ViewerQuickGenerateChrome({
   // Control Center controller (reads from current scope)
   const controller = useQuickGenerateController();
   const { setOperationType, setDynamicParams } = controller;
+
+  const { useInputStore, id: scopeId } = useGenerationScopeStores();
+  const scopedAddInput = useInputStore((s) => s.addInput);
+  const scopedAddInputs = useInputStore((s) => s.addInputs);
+  const setOpen = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        onCollapse();
+      }
+    },
+    [onCollapse],
+  );
+  const generationWidgetValue = useMemo<GenerationWidgetContext>(
+    () => ({
+      isOpen: true,
+      setOpen,
+      scopeId,
+      operationType: controller.operationType,
+      setOperationType: controller.setOperationType,
+      addInput: scopedAddInput,
+      addInputs: scopedAddInputs,
+      widgetId: 'viewerQuickGenerate',
+    }),
+    [
+      setOpen,
+      scopeId,
+      controller.operationType,
+      controller.setOperationType,
+      scopedAddInput,
+      scopedAddInputs,
+    ],
+  );
+  const generationWidgetProvider = useMemo(
+    () => ({
+      id: VIEWER_WIDGET_ID,
+      label: 'Viewer Quick Generate',
+      priority: 45,
+      exposeToContextMenu: true,
+      isAvailable: () => true,
+      getValue: () => generationWidgetValue,
+    }),
+    [generationWidgetValue],
+  );
+
+  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
+  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
+    scope: 'root',
+  });
 
   // Auto-set operation type based on asset type (when in user mode)
   useEffect(() => {
@@ -197,9 +250,32 @@ function ViewerQuickGenerateChrome({
   );
 }
 
+function ViewerQuickGeneratePanels() {
+  const { useSessionStore } = useGenerationScopeStores();
+  const operationType = useSessionStore((s) => s.operationType);
+  const metadata = OPERATION_METADATA[operationType];
+  const supportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
+  const panels = supportsInputs ? QUICKGEN_PRESETS.full : QUICKGEN_PRESETS.promptSettings;
+  const storageKey = supportsInputs
+    ? 'viewer-quickgen-layout-v5:with-asset'
+    : 'viewer-quickgen-layout-v5:no-asset';
+
+  return (
+    <QuickGenPanelHost
+      key={storageKey}
+      panels={panels}
+      storageKey={storageKey}
+      panelManagerId="viewerQuickGenerate"
+      context={{ targetProviderId: VIEWER_WIDGET_ID }}
+      className="h-[360px] min-h-[280px] mt-2"
+      minPanelsForTabs={2}
+    />
+  );
+}
+
 /**
  * Inner component for the expanded quick generate content.
- * Rendered inside QuickGenWidget to access scoped stores.
+ * Rendered inside the viewer scope to access scoped stores.
  */
 function ViewerQuickGenerateContent({
   asset,
@@ -219,24 +295,17 @@ function ViewerQuickGenerateContent({
   scopeId: string;
 }) {
   return (
-    <QuickGenWidget
-      scopeId={scopeId}
-      scopeLabel="Viewer Generation"
-      panels={QUICKGEN_PRESETS.promptSettings}
-      storageKey="viewer-quickgen-layout-v4"
-      panelManagerId="viewerQuickGenerate"
-      className="h-[360px] min-h-[280px] mt-2"
-      chrome={
-        <ViewerQuickGenerateChrome
-          asset={asset}
-          alwaysExpanded={alwaysExpanded}
-          onCollapse={onCollapse}
-          controlCenterOpen={controlCenterOpen}
-          mode={mode}
-          onModeChange={onModeChange}
-        />
-      }
-    />
+    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
+      <ViewerQuickGenerateChrome
+        asset={asset}
+        alwaysExpanded={alwaysExpanded}
+        onCollapse={onCollapse}
+        controlCenterOpen={controlCenterOpen}
+        mode={mode}
+        onModeChange={onModeChange}
+      />
+      <ViewerQuickGeneratePanels />
+    </GenerationScopeProvider>
   );
 }
 
@@ -279,7 +348,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show panel host with QuickGenWidget
+  // Expanded state - show panel host with viewer scope
   return (
     <ViewerQuickGenerateContent
       asset={asset}

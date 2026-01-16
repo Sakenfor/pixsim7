@@ -194,7 +194,73 @@ function PanelProperties({
 }
 
 /**
+ * Check if an object is a simple flat context (all scalar values).
+ * Used to decide whether to flatten it for display.
+ */
+function isSimpleFlatContext(obj: unknown): obj is Record<string, unknown> {
+  if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
+  return Object.values(obj).every(
+    (v) => v === null || typeof v !== 'object' || Array.isArray(v)
+  );
+}
+
+/**
+ * Format a key for display (e.g., "source_site" -> "Source Site").
+ */
+function formatKeyLabel(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/**
+ * Extract displayable entries from an object, flattening simple context objects.
+ */
+function extractDisplayableEntries(
+  obj: Record<string, unknown>
+): Array<{ key: string; label: string; value: unknown }> {
+  const entries: Array<{ key: string; label: string; value: unknown }> = [];
+
+  for (const [key, value] of Object.entries(obj)) {
+    // Skip internal keys
+    if (key.startsWith('_')) continue;
+    // Skip functions
+    if (typeof value === 'function') continue;
+
+    // For simple flat objects (like uploadContext), flatten one level
+    if (isSimpleFlatContext(value)) {
+      for (const [subKey, subValue] of Object.entries(value)) {
+        if (subKey.startsWith('_')) continue;
+        if (subValue === null || subValue === undefined) continue;
+        // Skip nested objects within context
+        if (typeof subValue === 'object' && !Array.isArray(subValue)) continue;
+        entries.push({
+          key: `${key}.${subKey}`,
+          label: formatKeyLabel(subKey),
+          value: subValue,
+        });
+      }
+      continue;
+    }
+
+    // Skip complex nested objects
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) continue;
+
+    entries.push({
+      key,
+      label: formatKeyLabel(key),
+      value,
+    });
+  }
+
+  return entries;
+}
+
+/**
  * Renders generic item properties from data object.
+ * Flattens simple nested objects (like uploadContext) one level deep.
+ * For asset contexts, unwraps the asset object from the data wrapper.
  */
 function ItemProperties({ data, contextType }: { data?: Record<string, unknown>; contextType: string }) {
   if (!data || Object.keys(data).length === 0) {
@@ -205,13 +271,17 @@ function ItemProperties({ data, contextType }: { data?: Record<string, unknown>;
     );
   }
 
-  // Filter out internal/complex properties
-  const displayableEntries = Object.entries(data).filter(([key, value]) => {
-    if (key.startsWith('_')) return false;
-    if (typeof value === 'function') return false;
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) return false;
-    return true;
-  });
+  // For asset contexts, the data structure is { asset: {...}, selection: [...] }
+  // Unwrap to display the asset's properties directly
+  const targetData =
+    (contextType === 'asset' || contextType === 'asset-card') &&
+    data.asset &&
+    typeof data.asset === 'object' &&
+    !Array.isArray(data.asset)
+      ? (data.asset as Record<string, unknown>)
+      : data;
+
+  const displayableEntries = extractDisplayableEntries(targetData);
 
   if (displayableEntries.length === 0) {
     return (
@@ -223,10 +293,10 @@ function ItemProperties({ data, contextType }: { data?: Record<string, unknown>;
 
   return (
     <div className="space-y-1">
-      {displayableEntries.map(([key, value]) => (
+      {displayableEntries.map(({ key, label, value }) => (
         <PropertyRow
           key={key}
-          label={key}
+          label={label}
           value={formatValue(value)}
           mono={typeof value === 'string' || typeof value === 'number'}
         />

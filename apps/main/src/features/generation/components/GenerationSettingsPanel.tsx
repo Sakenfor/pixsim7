@@ -21,9 +21,16 @@ import {
   ArrowUpDown,
   ZoomIn,
   Gauge,
+  Target,
 } from 'lucide-react';
 import { useMemo, useEffect } from 'react';
 
+import {
+  CAP_GENERATION_WIDGET,
+  useContextHubHostId,
+  useContextHubOverridesStore,
+  useContextHubState,
+} from '@features/contextHub';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
 
@@ -119,6 +126,8 @@ export interface GenerationSettingsPanelProps {
   showOperationType?: boolean;
   /** Whether to show provider selector (default: true) */
   showProvider?: boolean;
+  /** Optional widget provider id to target this panel for quick add */
+  targetProviderId?: string;
   /** Whether generation is in progress */
   generating: boolean;
   /** Whether the Go button should be enabled */
@@ -143,6 +152,7 @@ export interface GenerationSettingsPanelProps {
 export function GenerationSettingsPanel({
   showOperationType = true,
   showProvider = true,
+  targetProviderId,
   generating,
   canGenerate,
   onGenerate,
@@ -156,6 +166,30 @@ export function GenerationSettingsPanel({
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
+  const hub = useContextHubState();
+  const hostId = useContextHubHostId();
+  const preferredProviderId = useContextHubOverridesStore(
+    (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET, hostId)
+  );
+  const setPreferredProvider = useContextHubOverridesStore((state) => state.setPreferredProvider);
+  const clearOverride = useContextHubOverridesStore((state) => state.clearOverride);
+  const resolvedTargetProviderId = useMemo(() => {
+    if (targetProviderId) return targetProviderId;
+    if (!hub) return undefined;
+
+    let current = hub;
+    while (current) {
+      const provider = current.registry.getBest(CAP_GENERATION_WIDGET);
+      if (provider?.id) {
+        return provider.id;
+      }
+      current = current.parent;
+    }
+
+    return undefined;
+  }, [hub, targetProviderId]);
+  const isTargeted = !!resolvedTargetProviderId && preferredProviderId === resolvedTargetProviderId;
+  const canTarget = !!resolvedTargetProviderId;
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
@@ -288,25 +322,52 @@ export function GenerationSettingsPanel({
     }
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
+  const showTargetButton = canTarget;
+  const showOperationRow = showOperationType || showTargetButton;
+
   return (
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
         {/* Operation type */}
-        {showOperationType && (
-          <div className="flex gap-1">
-            <select
-              value={operationType}
-              onChange={(e) => setOperationType(e.target.value as any)}
-              disabled={generating}
-              className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
-            >
-              <option value="image_to_image">Image</option>
-              <option value="image_to_video">Video</option>
-              <option value="video_extend">Extend</option>
-              <option value="video_transition">Transition</option>
-              <option value="fusion">Fusion</option>
-            </select>
+        {showOperationRow && (
+          <div className={clsx('flex gap-1', !showOperationType && 'justify-end')}>
+            {showOperationType && (
+              <select
+                value={operationType}
+                onChange={(e) => setOperationType(e.target.value as any)}
+                disabled={generating}
+                className="flex-1 px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
+              >
+                <option value="image_to_image">Image</option>
+                <option value="image_to_video">Video</option>
+                <option value="video_extend">Extend</option>
+                <option value="video_transition">Transition</option>
+                <option value="fusion">Fusion</option>
+              </select>
+            )}
+            {showTargetButton && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!resolvedTargetProviderId) return;
+                  if (isTargeted) {
+                    clearOverride(CAP_GENERATION_WIDGET, hostId);
+                    return;
+                  }
+                  setPreferredProvider(CAP_GENERATION_WIDGET, resolvedTargetProviderId, hostId);
+                }}
+                className={clsx(
+                  'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
+                  isTargeted
+                    ? 'bg-blue-600 border-blue-600 text-white'
+                    : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'
+                )}
+                title={isTargeted ? 'Targeted for quick add' : 'Target this quick generate for quick add'}
+              >
+                <Target size={12} />
+              </button>
+            )}
           </div>
         )}
 

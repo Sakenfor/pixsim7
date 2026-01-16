@@ -59,6 +59,7 @@ const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-setti
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
 const GENERATION_SCOPE_ID = 'generation';
 const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
+const CONTROL_CENTER_WIDGET_ID = 'generation-widget:controlCenter';
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
 
@@ -177,7 +178,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   const workbench = useGenerationWorkbench({ operationType });
 
   // Get scoped input store for all input operations
-  const { useInputStore } = useGenerationScopeStores();
+  const { useInputStore, id: scopeId } = useGenerationScopeStores();
   const updateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
   const operationMetadata = OPERATION_METADATA[operationType];
   const isMultiAssetOp = operationMetadata?.multiAssetMode !== 'single';
@@ -237,18 +238,19 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     () => ({
       isOpen: ccIsOpen,
       setOpen: ccSetOpen,
+      scopeId,
       operationType,
       setOperationType,
       addInput: scopedAddInput,
       addInputs: scopedAddInputs,
       widgetId: 'controlCenter',
     }),
-    [ccIsOpen, ccSetOpen, operationType, setOperationType, scopedAddInput, scopedAddInputs],
+    [ccIsOpen, ccSetOpen, scopeId, operationType, setOperationType, scopedAddInput, scopedAddInputs],
   );
 
   const generationWidgetProvider = useMemo(
     () => ({
-      id: 'generation-widget:controlCenter',
+      id: CONTROL_CENTER_WIDGET_ID,
       label: 'Control Center',
       priority: 50,
       exposeToContextMenu: true,
@@ -259,6 +261,9 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   );
 
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
+  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
+    scope: 'root',
+  });
 
   // Always show asset panel for these operations (to show inputs or allow drag-drop)
   const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
@@ -369,6 +374,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       canGenerate={canGenerate}
       onGenerate={generate}
       error={error}
+      targetProviderId={CONTROL_CENTER_WIDGET_ID}
     />
   ), [generating, canGenerate, generate, error]);
 
@@ -395,7 +401,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     paramSpecs: workbench.paramSpecs,
     generating,
     error,
-    renderSettingsPanel,
+    targetProviderId: CONTROL_CENTER_WIDGET_ID,
   }), [
     displayAssets,
     operationInputs,
@@ -413,7 +419,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     workbench.paramSpecs,
     generating,
     error,
-    renderSettingsPanel,
+    CONTROL_CENTER_WIDGET_ID,
   ]);
 
   // Listen to global panel layout reset trigger
