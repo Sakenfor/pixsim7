@@ -267,16 +267,19 @@ class PackRegistry(Protocol[P, I, M]):
 ### High Priority
 - [ ] Add comprehensive test suite for `PackRegistryBase` in `lib/registry/pack.py`
 - [ ] Document override semantics for each registry
+- [ ] Decide on adapter or layered backing for migrating SimpleRegistry-based registries
 
 ### Medium Priority
 - [ ] Migrate `StatPackageRegistry` to use `PackRegistryBase`
 - [ ] Migrate `CompositionPackageRegistry` to use `PackRegistryBase`
 - [ ] Migrate `NpcSurfacePackageRegistry` to use `PackRegistryBase`
+- [ ] Add runtime pack API tests for `VocabularyRegistry` register/unregister
 
 ### Low Priority
 - [ ] Standardize "pack" vs "package" naming across codebase
 - [ ] Add type hints for pack metadata generics
 - [ ] Create shared Protocol for pack registry interface
+- [ ] Evaluate cross-pack override/unload behavior (restore previous item)
 
 ---
 
