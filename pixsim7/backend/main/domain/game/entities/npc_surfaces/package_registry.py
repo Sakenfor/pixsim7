@@ -6,7 +6,7 @@ package is a reusable bundle of surface type definitions (e.g. portrait,
 closeup, dialogue) plus light metadata that tools and worlds can discover
 and use.
 
-Uses SimpleRegistry base class for standard registry operations.
+Uses SimplePackRegistryBase for standard pack lifecycle operations.
 
 This module is intentionally world-agnostic: it does not depend on GameWorld
 or GameSession. Worlds/projects can choose which surface packages they use
@@ -31,7 +31,7 @@ from typing import Dict, List, Tuple, Optional, Any
 from pydantic import BaseModel, Field
 import logging
 
-from pixsim7.backend.main.lib.registry import SimpleRegistry
+from pixsim7.backend.main.lib.registry import SimplePackRegistryBase
 
 logger = logging.getLogger(__name__)
 
@@ -62,18 +62,17 @@ class NpcSurfacePackage(BaseModel):
     )
 
 
-class NpcSurfacePackageRegistry(SimpleRegistry[str, NpcSurfacePackage]):
+class NpcSurfacePackageRegistry(
+    SimplePackRegistryBase[str, str, Dict[str, Any], NpcSurfacePackage]
+):
     """
     Registry for NPC surface packages.
 
-    Extends SimpleRegistry with surface-specific query methods.
+    Extends SimplePackRegistryBase with surface-specific query methods.
     """
 
     def __init__(self) -> None:
         super().__init__(name="NpcSurfacePackageRegistry", log_operations=False)
-
-    def _get_item_key(self, item: NpcSurfacePackage) -> str:
-        return item.id
 
     def _on_reset(self) -> None:
         """Reset the core package registration flag."""
@@ -82,7 +81,7 @@ class NpcSurfacePackageRegistry(SimpleRegistry[str, NpcSurfacePackage]):
 
     def register_package(self, pkg: NpcSurfacePackage) -> None:
         """Register or overwrite an NPC surface package."""
-        existing = self._items.get(pkg.id)
+        existing = self._pack_meta.get(pkg.id)
         if existing:
             logger.warning(
                 "Overwriting existing NPC surface package",
@@ -92,7 +91,7 @@ class NpcSurfacePackageRegistry(SimpleRegistry[str, NpcSurfacePackage]):
                     "new_plugin": pkg.source_plugin_id
                 },
             )
-        self._items[pkg.id] = pkg
+        self.register_pack(pkg.id, meta=pkg, items=(), allow_overwrite=True)
         logger.info(
             "Registered NPC surface package",
             extra={
@@ -111,7 +110,7 @@ class NpcSurfacePackageRegistry(SimpleRegistry[str, NpcSurfacePackage]):
         Returns a list of (NpcSurfacePackage, surface_type_metadata) pairs.
         """
         results: List[Tuple[NpcSurfacePackage, Dict[str, Any]]] = []
-        for pkg in self._items.values():
+        for pkg in self._pack_meta.values():
             if surface_type_id in pkg.surface_types:
                 results.append((pkg, pkg.surface_types[surface_type_id]))
         return results
@@ -136,7 +135,7 @@ def list_npc_surface_packages() -> Dict[str, NpcSurfacePackage]:
     """Return a snapshot of all registered NPC surface packages."""
     return {
         key: pkg.model_copy(deep=True)
-        for key, pkg in _registry._items.items()
+        for key, pkg in _registry.items()
     }
 
 

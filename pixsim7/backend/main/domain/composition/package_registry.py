@@ -4,7 +4,7 @@ Composition Package Registry
 Manages registration and lookup of composition packages.
 Packages contribute roles that can be used in image/video generation.
 
-Uses SimpleRegistry base class for standard registry operations.
+Uses SimplePackRegistryBase for standard pack lifecycle operations.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from pixsim7.backend.main.lib.registry import SimpleRegistry
+from pixsim7.backend.main.lib.registry import SimplePackRegistryBase
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +82,17 @@ class CompositionPackage:
     """Package version"""
 
 
-class CompositionPackageRegistry(SimpleRegistry[str, CompositionPackage]):
+class CompositionPackageRegistry(
+    SimplePackRegistryBase[str, str, CompositionRoleDefinition, CompositionPackage]
+):
     """
     Registry for composition packages.
 
-    Extends SimpleRegistry with composition-specific query methods.
+    Extends SimplePackRegistryBase with composition-specific query methods.
     """
 
     def __init__(self) -> None:
         super().__init__(name="CompositionPackageRegistry", log_operations=False)
-
-    def _get_item_key(self, item: CompositionPackage) -> str:
-        return item.id
 
     def _on_reset(self) -> None:
         """Reset the core package registration flag."""
@@ -102,7 +101,7 @@ class CompositionPackageRegistry(SimpleRegistry[str, CompositionPackage]):
 
     def register_package(self, pkg: CompositionPackage) -> None:
         """Register or update a composition package."""
-        existing = self._items.get(pkg.id)
+        existing = self._pack_meta.get(pkg.id)
         if existing:
             logger.info(
                 f"Replacing composition package '{pkg.id}' "
@@ -113,7 +112,7 @@ class CompositionPackageRegistry(SimpleRegistry[str, CompositionPackage]):
                 f"Registering composition package '{pkg.id}' "
                 f"with {len(pkg.roles)} roles (plugin={pkg.plugin_id})"
             )
-        self._items[pkg.id] = pkg
+        self.register_pack(pkg.id, meta=pkg, items=(), allow_overwrite=True)
 
     def get_available_roles(
         self,
@@ -137,10 +136,10 @@ class CompositionPackageRegistry(SimpleRegistry[str, CompositionPackage]):
             if self.has("core.base") and "core.base" not in package_ids:
                 package_ids = ["core.base", *package_ids]
         else:
-            package_ids = list(self._items.keys())
+            package_ids = list(self._pack_meta.keys())
 
         for pkg_id in package_ids:
-            pkg = self._items.get(pkg_id)
+            pkg = self._pack_meta.get(pkg_id)
             if not pkg:
                 logger.warning(f"Composition package '{pkg_id}' not found, skipping")
                 continue
@@ -196,7 +195,7 @@ def list_composition_packages() -> Dict[str, CompositionPackage]:
     """Return a snapshot of all registered composition packages."""
     import copy
 
-    return {key: copy.deepcopy(pkg) for key, pkg in _registry._items.items()}
+    return {key: copy.deepcopy(pkg) for key, pkg in _registry.items()}
 
 
 def get_available_roles(

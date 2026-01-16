@@ -6,7 +6,7 @@ is a reusable bundle of StatDefinition objects (e.g. relationships,
 combat, economy) plus light metadata that tools and worlds can
 discover and install.
 
-Uses SimpleRegistry for basic registry operations and WorldMergeMixin
+Uses SimplePackRegistryBase for basic registry operations and WorldMergeMixin
 for merging package definitions with world overrides.
 
 This module is intentionally world-agnostic: it does not depend on
@@ -28,7 +28,7 @@ from typing import Dict, Iterable, List, Tuple, Optional, Set
 from pydantic import BaseModel, Field
 import logging
 
-from pixsim7.backend.main.lib.registry import SimpleRegistry, WorldMergeMixin, merge_by_id
+from pixsim7.backend.main.lib.registry import SimplePackRegistryBase, WorldMergeMixin, merge_by_id
 from .schemas import StatDefinition
 from .derivation_schemas import DerivationCapability
 
@@ -115,11 +115,14 @@ class StatPackage(BaseModel):
         return applicable
 
 
-class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[StatPackage, StatDefinition]):
+class StatPackageRegistry(
+    SimplePackRegistryBase[str, str, StatDefinition, StatPackage],
+    WorldMergeMixin[StatPackage, StatDefinition],
+):
     """
     Registry for stat packages with world config merging support.
 
-    Extends SimpleRegistry for basic operations and WorldMergeMixin
+    Extends SimplePackRegistryBase for basic operations and WorldMergeMixin
     for merging package definitions with world overrides.
     """
 
@@ -130,9 +133,6 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
     def __init__(self) -> None:
         super().__init__(name="StatPackageRegistry", log_operations=False)
 
-    def _get_item_key(self, item: StatPackage) -> str:
-        return item.id
-
     def _on_reset(self) -> None:
         """Reset the core package registration flag."""
         from . import reset_core_stat_packages_registration
@@ -140,7 +140,7 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
 
     def register_package(self, pkg: StatPackage) -> None:
         """Register or overwrite a stat package."""
-        existing = self._items.get(pkg.id)
+        existing = self._pack_meta.get(pkg.id)
         if existing:
             logger.warning(
                 "Overwriting existing stat package",
@@ -150,7 +150,7 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
                     "new_plugin": pkg.source_plugin_id,
                 },
             )
-        self._items[pkg.id] = pkg
+        self.register_pack(pkg.id, meta=pkg, items=(), allow_overwrite=True)
         logger.info(
             "Registered stat package",
             extra={
@@ -166,7 +166,7 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
 
     def _get_packages(self) -> Iterable[StatPackage]:
         """Return all registered packages."""
-        return self._items.values()
+        return self._pack_meta.values()
 
     def _collect_base_items(self, package: StatPackage) -> Dict[str, StatDefinition]:
         """Extract definitions from a package."""
@@ -196,7 +196,7 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
         Returns a list of (StatPackage, StatDefinition) pairs.
         """
         results: List[Tuple[StatPackage, StatDefinition]] = []
-        for pkg in self._items.values():
+        for pkg in self._pack_meta.values():
             if stat_definition_id in pkg.definitions:
                 results.append((pkg, pkg.definitions[stat_definition_id]))
         return results
@@ -207,9 +207,9 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
         """Get all semantic types provided by registered packages."""
         types: Set[str] = set()
         packages = (
-            self._items.values()
+            self._pack_meta.values()
             if package_ids is None
-            else [self._items[pid] for pid in package_ids if pid in self._items]
+            else [self._pack_meta[pid] for pid in package_ids if pid in self._pack_meta]
         )
         for pkg in packages:
             types.update(pkg.get_provided_semantic_types())
@@ -225,9 +225,9 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
 
         results: List[Tuple[StatPackage, StatDefinition, StatAxis]] = []
         packages = (
-            self._items.values()
+            self._pack_meta.values()
             if package_ids is None
-            else [self._items[pid] for pid in package_ids if pid in self._items]
+            else [self._pack_meta[pid] for pid in package_ids if pid in self._pack_meta]
         )
 
         for pkg in packages:
@@ -252,7 +252,7 @@ class StatPackageRegistry(SimpleRegistry[str, StatPackage], WorldMergeMixin[Stat
         # Find all derivations that can run
         applicable: List[Tuple[StatPackage, DerivationCapability]] = []
         for pid in package_ids:
-            pkg = self._items.get(pid)
+            pkg = self._pack_meta.get(pid)
             if not pkg:
                 continue
 
@@ -289,7 +289,7 @@ def list_stat_packages() -> Dict[str, StatPackage]:
     """Return a snapshot of all registered stat packages (deep-copied)."""
     return {
         key: pkg.model_copy(deep=True)
-        for key, pkg in _registry._items.items()
+        for key, pkg in _registry.items()
     }
 
 
