@@ -9,12 +9,11 @@ Analyzer ID convention:
 - asset:faces, asset:scene, asset:motion       → media analysis (future)
 """
 
-import logging
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 from pydantic import BaseModel, Field
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 
 
 class AnalyzerKind(str, Enum):
@@ -46,7 +45,7 @@ class AnalyzerInfo(BaseModel):
     is_legacy: bool = False  # Legacy aliases
 
 
-class AnalyzerRegistry:
+class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
     """
     Unified registry for all analyzers (prompt and asset).
 
@@ -58,11 +57,13 @@ class AnalyzerRegistry:
     """
 
     def __init__(self):
-        self._analyzers: Dict[str, AnalyzerInfo] = {}
-        self._by_plugin: Dict[str, set[str]] = {}
-        self._register_builtins()
+        self._by_plugin: Dict[str, Set[str]] = {}
+        super().__init__(name="analyzers", allow_overwrite=True, seed_on_init=True)
 
-    def _register_builtins(self) -> None:
+    def _get_item_key(self, analyzer: AnalyzerInfo) -> str:
+        return analyzer.id
+
+    def _seed_defaults(self) -> None:
         """Register built-in analyzers."""
         # Simple parser (default for prompts)
         self.register(AnalyzerInfo(
@@ -133,12 +134,16 @@ class AnalyzerRegistry:
             is_legacy=True,
         ))
 
+    def _on_reset(self) -> None:
+        """Clear plugin index on reset."""
+        self._by_plugin.clear()
+
     def register(self, analyzer: AnalyzerInfo) -> None:
         """Register an analyzer."""
-        existing = self._analyzers.get(analyzer.id)
+        existing = self.get_or_none(analyzer.id)
         if existing and existing.source_plugin_id != analyzer.source_plugin_id:
-            logger.warning(
-                "analyzer_registry_overwrite",
+            self._log_debug(
+                "Overwriting analyzer from different plugin",
                 analyzer_id=analyzer.id,
                 previous_plugin=existing.source_plugin_id,
                 new_plugin=analyzer.source_plugin_id,
@@ -146,33 +151,34 @@ class AnalyzerRegistry:
             if existing.source_plugin_id:
                 self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer.id)
 
-        self._analyzers[analyzer.id] = analyzer
+        # Call base class register directly (not register_item to avoid recursion)
+        super().register(analyzer.id, analyzer)
 
         if analyzer.source_plugin_id:
             self._by_plugin.setdefault(analyzer.source_plugin_id, set()).add(analyzer.id)
 
     def unregister(self, analyzer_id: str) -> bool:
         """Unregister an analyzer. Returns True if found."""
-        if analyzer_id in self._analyzers:
-            existing = self._analyzers[analyzer_id]
+        existing = self.get_or_none(analyzer_id)
+        if existing:
             if existing.source_plugin_id:
                 self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer_id)
-            del self._analyzers[analyzer_id]
+            super().unregister(analyzer_id)
             return True
         return False
 
     def get(self, analyzer_id: str) -> Optional[AnalyzerInfo]:
         """Get analyzer by ID."""
-        return self._analyzers.get(analyzer_id)
+        return self.get_or_none(analyzer_id)
 
     def list_all(self) -> List[AnalyzerInfo]:
         """List all registered analyzers."""
-        return list(self._analyzers.values())
+        return self.values()
 
     def list_enabled(self, include_legacy: bool = False) -> List[AnalyzerInfo]:
         """List only enabled analyzers, optionally excluding legacy."""
         return [
-            a for a in self._analyzers.values()
+            a for a in self.values()
             if a.enabled and (include_legacy or not a.is_legacy)
         ]
 
@@ -183,7 +189,7 @@ class AnalyzerRegistry:
     ) -> List[AnalyzerInfo]:
         """List analyzers for a specific target (prompt or asset)."""
         return [
-            a for a in self._analyzers.values()
+            a for a in self.values()
             if a.target == target and a.enabled and (include_legacy or not a.is_legacy)
         ]
 
@@ -197,11 +203,11 @@ class AnalyzerRegistry:
 
     def list_ids(self) -> List[str]:
         """List all analyzer IDs."""
-        return list(self._analyzers.keys())
+        return self.keys()
 
     def get_default(self, target: Optional[AnalyzerTarget] = None) -> Optional[AnalyzerInfo]:
         """Get the default analyzer, optionally for a specific target."""
-        for analyzer in self._analyzers.values():
+        for analyzer in self.values():
             if analyzer.is_default:
                 if target is None or analyzer.target == target:
                     return analyzer
@@ -218,11 +224,11 @@ class AnalyzerRegistry:
         Returns True if the analyzer was found and set as default.
         """
         analyzer_id = self.resolve_legacy(analyzer_id)
-        analyzer = self._analyzers.get(analyzer_id)
+        analyzer = self.get_or_none(analyzer_id)
         if not analyzer:
             return False
 
-        for entry in self._analyzers.values():
+        for entry in self.values():
             if entry.target == analyzer.target:
                 entry.is_default = False
 
@@ -231,7 +237,7 @@ class AnalyzerRegistry:
 
     def is_valid_id(self, analyzer_id: str) -> bool:
         """Check if analyzer ID is valid (registered)."""
-        return analyzer_id in self._analyzers
+        return self.has(analyzer_id)
 
     def resolve_legacy(self, analyzer_id: str) -> str:
         """Resolve legacy analyzer ID to canonical ID."""
@@ -245,8 +251,8 @@ class AnalyzerRegistry:
     def register_plugin_analyzer(self, plugin_id: str, analyzer: AnalyzerInfo) -> None:
         """Register a single analyzer on behalf of a plugin."""
         if analyzer.source_plugin_id and analyzer.source_plugin_id != plugin_id:
-            logger.warning(
-                "analyzer_registry_plugin_mismatch",
+            self._log_debug(
+                "Plugin ID mismatch",
                 analyzer_id=analyzer.id,
                 provided_plugin=analyzer.source_plugin_id,
                 expected_plugin=plugin_id,
@@ -268,7 +274,7 @@ class AnalyzerRegistry:
     def list_by_plugin(self, plugin_id: str) -> List[AnalyzerInfo]:
         """List analyzers registered by a specific plugin."""
         ids = self._by_plugin.get(plugin_id, set())
-        return [self._analyzers[analyzer_id] for analyzer_id in ids]
+        return [a for a in self.values() if a.id in ids]
 
     def unregister_by_plugin(self, plugin_id: str) -> int:
         """Unregister all analyzers registered by a plugin."""

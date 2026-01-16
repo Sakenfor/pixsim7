@@ -12,6 +12,7 @@ from typing import Any, Awaitable, Callable, Iterable, Optional
 from sqlalchemy import select, func, distinct
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim7.backend.main.lib.registry import SimpleRegistry
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.assets.upload_attribution import UPLOAD_METHOD_LABELS
 from pixsim7.backend.main.shared.upload_context_schema import get_upload_context_filter_specs
@@ -36,12 +37,15 @@ class FilterSpec:
     ] | None = None
 
 
-class AssetFilterRegistry:
+class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
     def __init__(self) -> None:
-        self._filters: dict[str, FilterSpec] = {}
+        super().__init__(name="asset_filters", allow_overwrite=True, log_operations=False)
+
+    def _get_item_key(self, spec: FilterSpec) -> str:
+        return spec.key
 
     def register(self, spec: FilterSpec) -> None:
-        self._filters[spec.key] = spec
+        super().register(spec.key, spec)
 
     def list_filters(
         self,
@@ -50,16 +54,16 @@ class AssetFilterRegistry:
         context: dict[str, Any] | None = None,
     ) -> list[FilterSpec]:
         if not include:
-            specs = list(self._filters.values())
+            specs = self.values()
         else:
             include_set = {key for key in include if key}
-            specs = [spec for key, spec in self._filters.items() if key in include_set]
+            specs = [spec for spec in self.values() if spec.key in include_set]
         if context is None:
             return specs
         return [spec for spec in specs if _matches_depends_on(spec, context)]
 
     def get_spec(self, key: str) -> FilterSpec | None:
-        return self._filters.get(key)
+        return self.get_or_none(key)
 
     async def build_options(
         self,
