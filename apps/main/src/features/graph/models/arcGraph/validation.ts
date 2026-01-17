@@ -218,7 +218,20 @@ export function validateArcGraph(
     nodeIds.add(node.id);
   }
 
-  // Structural validation: invalid edges
+  // Structural validation: duplicate edge IDs
+  const edgeIds = new Set<string>();
+  for (const edge of arcGraph.edges) {
+    if (edgeIds.has(edge.id)) {
+      issues.push({
+        type: 'invalid-requirements' as ArcValidationIssueType,
+        severity: 'error',
+        message: `Duplicate edge ID: ${edge.id}`,
+      });
+    }
+    edgeIds.add(edge.id);
+  }
+
+  // Structural validation: invalid edge references
   for (const edge of arcGraph.edges) {
     if (!nodeIds.has(edge.from)) {
       issues.push({
