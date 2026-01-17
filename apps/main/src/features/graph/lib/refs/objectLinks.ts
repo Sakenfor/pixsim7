@@ -12,7 +12,7 @@
 import {
   createMappingId,
   createTemplateRefKey,
-} from '@pixsim7/shared.logic-core/links';
+} from '@pixsim7/core.links';
 import type {
   TemplateRef,
   TemplateKind,
@@ -257,7 +257,7 @@ export function buildRuntimeLinkMap(
 }
 
 // ============================================================================
-// Re-exports from @shared/types and @pixsim7/shared.logic-core/links
+// Re-exports from @shared/types and @pixsim7/core.links
 // ============================================================================
 
 export type { TemplateRef, TemplateKind, RuntimeKind, SyncDirection } from '@shared/types';
@@ -265,4 +265,4 @@ export {
   createMappingId,
   createTemplateRefKey,
   parseTemplateRefKey,
-} from '@pixsim7/shared.logic-core/links';
+} from '@pixsim7/core.links';

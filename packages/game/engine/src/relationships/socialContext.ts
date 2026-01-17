@@ -16,7 +16,7 @@ import {
   CONTENT_RATING_ORDER,
   clampContentRating,
   getContentRatingIndex,
-} from '@pixsim7/shared.logic-core/contentRating';
+} from '@pixsim7/shared.content-rating';
 import { getNpcRelationshipState } from '../session/state';
 
 /**

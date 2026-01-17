@@ -11,7 +11,7 @@ import type {
   ExecuteInteractionResponse,
   TemplateKind,
 } from '@pixsim7/shared.types';
-import { createTemplateRefKey } from '@pixsim7/shared.logic-core/links';
+import { createTemplateRefKey } from '@pixsim7/core.links';
 import type {
   GameRuntime as IGameRuntime,
   GameRuntimeConfig,

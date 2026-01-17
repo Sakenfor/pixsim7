@@ -8,7 +8,7 @@
  */
 
 export { PROMPT_SEGMENT_ROLES } from '@pixsim7/shared.types/prompt';
-export { isValidPromptSegmentRole } from '@pixsim7/shared.logic-core/prompt';
+export { isValidPromptSegmentRole } from '@pixsim7/core.prompt';
 
 export type {
   PromptSegmentRole,
