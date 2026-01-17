@@ -7,7 +7,6 @@
 export * from './stats';
 export * from './contentRating';
 export * from './worldConfig';
-export * from './composition';
 export * from './prompt';
 export * from './game';
 export * from './characterGraph';

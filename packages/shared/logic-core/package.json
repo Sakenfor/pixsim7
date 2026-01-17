@@ -26,11 +26,6 @@
       "require": "./src/worldConfig.ts",
       "types": "./src/worldConfig.ts"
     },
-    "./composition": {
-      "import": "./src/composition.ts",
-      "require": "./src/composition.ts",
-      "types": "./src/composition.ts"
-    },
     "./prompt": {
       "import": "./src/prompt.ts",
       "require": "./src/prompt.ts",
