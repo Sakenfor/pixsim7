@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.graph-core
+ * @pixsim7/shared.graph.core
  *
  * Node type registry and registrars for scene/arc graphs.
  * This package contains runtime code for node type management.

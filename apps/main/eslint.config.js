@@ -116,19 +116,19 @@ export default defineConfig([
                 '@features/generation/lib/core/normalizeProviderParams',
                 '@features/generation/lib/generationTypes',
               ],
-              message: 'Import from @pixsim7/shared.generation-core instead of legacy @features/generation paths.',
+              message: 'Import from @pixsim7/shared.generation.core instead of legacy @features/generation paths.',
             },
             {
               group: [
                 '@features/assets/lib/assetMediaType',
                 '@features/assets/lib/assetCardActions',
               ],
-              message: 'Import from @pixsim7/shared.assets-core instead of legacy @features/assets paths.',
+              message: 'Import from @pixsim7/shared.assets.core instead of legacy @features/assets paths.',
             },
             {
               group: ['@features/contextHub/types'],
               importNames: ['CapabilityKey', 'CapabilityProvider', 'CapabilitySnapshot', 'CapabilityScope'],
-              message: 'Import core capability types from @pixsim7/shared.capabilities-core instead of @features/contextHub.',
+              message: 'Import core capability types from @pixsim7/shared.capabilities.core instead of @features/contextHub.',
             },
           ],
         },

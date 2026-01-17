@@ -7,7 +7,7 @@
 
 /* eslint-disable react-refresh/only-export-components -- widget factory pattern */
 
-import { formatTime } from '@pixsim7/shared.media-core';
+import { formatTime } from '@pixsim7/shared.media.core';
 import { clampUnit, getProgressPercent, getTimeFromPercent } from '@pixsim7/shared.player.core';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 

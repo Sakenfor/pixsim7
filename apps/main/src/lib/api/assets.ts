@@ -10,7 +10,7 @@ import type {
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
 } from '@pixsim7/shared.api-client/domains';
-import { getFilenameFromUrl } from '@pixsim7/shared.media-core';
+import { getFilenameFromUrl } from '@pixsim7/shared.media.core';
 // Only import types used in this file; others are re-exported below
 
 import { pixsimClient } from './client';

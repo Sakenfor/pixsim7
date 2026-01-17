@@ -38,7 +38,7 @@ import {
   type StatTier,
   type StatLevel,
 } from '@pixsim7/shared.types';
-import { deepMerge } from '@pixsim7/shared.helpers-core';
+import { deepMerge } from '@pixsim7/shared.helpers.core';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 

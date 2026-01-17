@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.media-core
+ * @pixsim7/shared.media.core
  *
  * Shared media utilities for players and capture workflows.
  * Pure TypeScript, no DOM dependencies.

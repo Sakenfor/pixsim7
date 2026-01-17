@@ -7,7 +7,7 @@ import {
   getSourceSiteFromUrl,
   getExtension,
   getLocalSourceFolder as getLocalSourceFolderShared,
-} from '@pixsim7/shared.media-core';
+} from '@pixsim7/shared.media.core';
 
 (function() {
   'use strict';

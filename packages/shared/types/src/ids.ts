@@ -15,8 +15,8 @@
  * // Ref types (NpcRef, SceneIdRef, etc.) - from @shared/types
  * import type { NpcRef, SceneIdRef } from '@shared/types';
  *
- * // Ref runtime functions (Ref builder, guards, parsers) - from @pixsim7/shared.ref-core
- * import { Ref, isNpcRef, parseRef, extractNpcId } from '@pixsim7/shared.ref-core';
+ * // Ref runtime functions (Ref builder, guards, parsers) - from @pixsim7/shared.ref.core
+ * import { Ref, isNpcRef, parseRef, extractNpcId } from '@pixsim7/shared.ref.core';
  * const ref = Ref.npc(123);  // "npc:123"
  * const id = extractNpcId(ref);  // number | null
  * const brandedId = id !== null ? NpcId(id) : null;  // NpcId | null
@@ -46,7 +46,7 @@
 // REF TYPES FROM REF-CORE
 // ============================================================================
 // Re-export ref types for convenience. For Ref builders/guards/parsers, import from
-// @pixsim7/shared.ref-core. Use branded type constructors (e.g., NpcId()) to cast
+// @pixsim7/shared.ref.core. Use branded type constructors (e.g., NpcId()) to cast
 // parsed numeric IDs to branded types.
 
 export type {
@@ -66,10 +66,10 @@ export type {
   EntityRef,
   RefParseErrorReason,
   RefParseResult,
-} from '@pixsim7/shared.ref-core';
+} from '@pixsim7/shared.ref.core';
 
 // Import for internal type use
-import type { SceneType } from '@pixsim7/shared.ref-core';
+import type { SceneType } from '@pixsim7/shared.ref.core';
 
 // ============================================================================
 // BRANDED BASE TYPES

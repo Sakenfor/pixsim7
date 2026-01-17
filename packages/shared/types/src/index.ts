@@ -11,7 +11,7 @@ export * from './ids';
 export * as IDs from './ids';
 
 // Runtime ref builders (Ref.*)
-export { Ref } from '@pixsim7/shared.ref-core';
+export { Ref } from '@pixsim7/shared.ref.core';
 
 // ===================
 // Scene Graph Types
@@ -68,7 +68,7 @@ export * from './generation'
 // ===================
 // Node Type Registry
 // ===================
-// NOTE: Node type registry and registrars moved to @pixsim7/shared.graph-core
+// NOTE: Node type registry and registrars moved to @pixsim7/shared.graph.core
 // Import from there for NodeTypeRegistry, registerBuiltinNodeTypes, etc.
 export type {
   NodeTypeDefinition,

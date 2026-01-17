@@ -2,7 +2,7 @@
  * App capability registry implementation - pure TypeScript, no React/DOM dependencies.
  */
 
-import { createRegistry } from '@pixsim7/shared.helpers-core';
+import { createRegistry } from '@pixsim7/shared.helpers.core';
 
 import type {
   AppActionCapability,

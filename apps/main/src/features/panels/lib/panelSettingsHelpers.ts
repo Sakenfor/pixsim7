@@ -6,7 +6,7 @@
  */
 
 import { useMemo, useCallback, useRef, useEffect } from 'react';
-import { deepMerge } from '@pixsim7/shared.helpers-core';
+import { deepMerge } from '@pixsim7/shared.helpers.core';
 import type { PanelSettingsUpdateHelpers } from './panelRegistry';
 import type { PanelId } from '@features/workspace';
 

@@ -1,4 +1,4 @@
-import type { CapabilityProvider } from "@pixsim7/shared.capabilities-core";
+import type { CapabilityProvider } from "@pixsim7/shared.capabilities.core";
 import { useEffect, useMemo, useRef } from "react";
 
 import {

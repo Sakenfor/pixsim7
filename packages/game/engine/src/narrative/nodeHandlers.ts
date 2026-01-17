@@ -28,7 +28,7 @@
  * ```
  */
 
-import { createRegistry, type Registry } from '@pixsim7/shared.helpers-core';
+import { createRegistry, type Registry } from '@pixsim7/shared.helpers.core';
 import type {
   GameSessionDTO,
   NarrativeNode,

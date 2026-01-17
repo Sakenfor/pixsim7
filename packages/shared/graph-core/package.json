@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.graph-core",
+  "name": "@pixsim7/shared.graph.core",
   "version": "0.0.1",
   "private": true,
   "main": "src/index.ts",

@@ -5,7 +5,7 @@
  */
 
 import { createToolInstance, getTool, type InteractiveTool } from '@pixsim7/scene.gizmos';
-import { deepMerge } from '@pixsim7/shared.helpers-core';
+import { deepMerge } from '@pixsim7/shared.helpers.core';
 
 import { useToolConfigStore, type ToolOverrides } from '../../stores/toolConfigStore';
 

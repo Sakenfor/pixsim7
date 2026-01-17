@@ -1,4 +1,4 @@
-import { createRegistry, type Registry } from '@pixsim7/shared.helpers-core';
+import { createRegistry, type Registry } from '@pixsim7/shared.helpers.core';
 import type { GameSessionDTO } from '@pixsim7/shared.types';
 
 export type HelperFunction = (

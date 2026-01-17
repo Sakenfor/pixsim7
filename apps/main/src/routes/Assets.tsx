@@ -1,4 +1,4 @@
-import { Ref } from '@pixsim7/shared.ref-core';
+import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
 import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';

@@ -10,7 +10,7 @@ import {
   buildCaptureFilename,
   getFilenameFromUrl,
   getSourceSiteFromUrl,
-} from '@pixsim7/shared.media-core';
+} from '@pixsim7/shared.media.core';
 import { useToast } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo, type RefObject } from 'react';
 

@@ -21,6 +21,145 @@ importers:
         specifier: ^2.8.0
         version: 2.8.2
 
+  apps/devtools:
+    dependencies:
+      '@pixsim7/core.composer':
+        specifier: workspace:*
+        version: link:../../packages/core/composer
+      '@pixsim7/game.components':
+        specifier: workspace:*
+        version: link:../../packages/game/components
+      '@pixsim7/game.engine':
+        specifier: workspace:*
+        version: link:../../packages/game/engine
+      '@pixsim7/game.react':
+        specifier: workspace:*
+        version: link:../../packages/game/react
+      '@pixsim7/graphics.geometry':
+        specifier: workspace:*
+        version: link:../../packages/graphics/geometry
+      '@pixsim7/pixcubes':
+        specifier: workspace:*
+        version: link:../../packages/pixcubes
+      '@pixsim7/scene.gizmos':
+        specifier: workspace:*
+        version: link:../../packages/scene/gizmos
+      '@pixsim7/scene.shapes':
+        specifier: workspace:*
+        version: link:../../packages/scene/shapes
+      '@pixsim7/shared.api-client':
+        specifier: workspace:*
+        version: link:../../packages/shared/api-client
+      '@pixsim7/shared.assets.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/assets-core
+      '@pixsim7/shared.capabilities.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/capabilities-core
+      '@pixsim7/shared.generation.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/generation-core
+      '@pixsim7/shared.helpers.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/helpers-core
+      '@pixsim7/shared.ref.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/ref-core
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../packages/shared/types
+      '@pixsim7/shared.ui':
+        specifier: workspace:*
+        version: link:../../packages/shared/ui
+      '@react-spring/three':
+        specifier: ^10.0.3
+        version: 10.0.3(@react-three/fiber@9.4.0(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(three@0.181.2))(react@19.2.0)(three@0.181.2)
+      '@react-three/drei':
+        specifier: ^10.7.7
+        version: 10.7.7(@react-three/fiber@9.4.0(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(three@0.181.2))(@types/react@19.2.6)(@types/three@0.181.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(three@0.181.2)
+      '@react-three/fiber':
+        specifier: ^9.4.0
+        version: 9.4.0(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)(three@0.181.2)
+      axios:
+        specifier: ^1.13.2
+        version: 1.13.2
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      dockview:
+        specifier: ^4.11.0
+        version: 4.11.0(react@19.2.0)
+      dockview-core:
+        specifier: ^4.11.0
+        version: 4.11.0
+      lucide-react:
+        specifier: ^0.553.0
+        version: 0.553.0(react@19.2.0)
+      react:
+        specifier: ^19.2.0
+        version: 19.2.0
+      react-dom:
+        specifier: ^19.2.0
+        version: 19.2.0(react@19.2.0)
+      react-draggable:
+        specifier: ^4.5.0
+        version: 4.5.0(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      react-rnd:
+        specifier: ^10.5.2
+        version: 10.5.2(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      react-router-dom:
+        specifier: ^7.9.5
+        version: 7.9.6(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      reactflow:
+        specifier: ^11.11.4
+        version: 11.11.4(@types/react@19.2.6)(react-dom@19.2.0(react@19.2.0))(react@19.2.0)
+      three:
+        specifier: ^0.181.2
+        version: 0.181.2
+      zundo:
+        specifier: ^2.3.0
+        version: 2.3.0(zustand@5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0)))
+      zustand:
+        specifier: ^5.0.8
+        version: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+    devDependencies:
+      '@pixsim7/shared.config':
+        specifier: workspace:*
+        version: link:../../packages/shared/config
+      '@types/node':
+        specifier: ^24.10.0
+        version: 24.10.1
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      '@types/react-dom':
+        specifier: ^19.2.2
+        version: 19.2.3(@types/react@19.2.6)
+      '@types/three':
+        specifier: ^0.181.0
+        version: 0.181.0
+      '@vitejs/plugin-react':
+        specifier: ^5.1.0
+        version: 5.1.1(vite@7.2.4(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2))
+      autoprefixer:
+        specifier: ^10.4.20
+        version: 10.4.22(postcss@8.5.6)
+      postcss:
+        specifier: ^8.4.49
+        version: 8.5.6
+      tailwindcss:
+        specifier: ^3.4.14
+        version: 3.4.18(tsx@4.20.6)(yaml@2.8.2)
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^7.2.2
+        version: 7.2.4(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2)
+      vite-tsconfig-paths:
+        specifier: ^5.0.1
+        version: 5.1.4(typescript@5.9.3)(vite@7.2.4(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2))
+
   apps/game:
     dependencies:
       '@babylonjs/core':
@@ -111,22 +250,25 @@ importers:
       '@pixsim7/shared.api-client':
         specifier: workspace:*
         version: link:../../packages/shared/api-client
-      '@pixsim7/shared.assets-core':
+      '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets-core
-      '@pixsim7/shared.capabilities-core':
+      '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities-core
-      '@pixsim7/shared.generation-core':
+      '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation-core
-      '@pixsim7/shared.helpers-core':
+      '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../packages/shared/helpers-core
-      '@pixsim7/shared.logic-core':
+      '@pixsim7/shared.media.core':
         specifier: workspace:*
-        version: link:../../packages/shared/logic-core
-      '@pixsim7/shared.ref-core':
+        version: link:../../packages/shared/media-core
+      '@pixsim7/shared.player.core':
+        specifier: workspace:*
+        version: link:../../packages/shared/player-core
+      '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref-core
       '@pixsim7/shared.types':
@@ -259,12 +401,88 @@ importers:
       '@pixsim7/graphics.geometry':
         specifier: workspace:*
         version: link:../packages/graphics/geometry
+      '@pixsim7/shared.media.core':
+        specifier: workspace:*
+        version: link:../packages/shared/media-core
+      '@pixsim7/shared.player.core':
+        specifier: workspace:*
+        version: link:../packages/shared/player-core
     devDependencies:
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
 
+  packages/core/brain:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/core/composer:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/game:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/links:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/prompt:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/scene-composition:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/stats:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/core/world:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -306,13 +524,10 @@ importers:
 
   packages/game/engine:
     dependencies:
-      '@pixsim7/shared.helpers-core':
+      '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../shared/helpers-core
-      '@pixsim7/shared.logic-core':
-        specifier: workspace:*
-        version: link:../../shared/logic-core
-      '@pixsim7/shared.ref-core':
+      '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../shared/ref-core
       '@pixsim7/shared.types':
@@ -436,9 +651,6 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../game/engine
-      '@pixsim7/shared.logic-core':
-        specifier: workspace:*
-        version: link:../../shared/logic-core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -470,9 +682,15 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/shared/async:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/shared/capabilities-core:
     dependencies:
-      '@pixsim7/shared.helpers-core':
+      '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../helpers-core
       '@pixsim7/shared.types':
@@ -484,6 +702,16 @@ importers:
         version: 5.9.3
 
   packages/shared/config: {}
+
+  packages/shared/content-rating:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/shared/generation-core:
     dependencies:
@@ -505,20 +733,25 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/shared/graph-utilities:
+    devDependencies:
+      typescript:
+        specifier: ^5.3.3
+        version: 5.9.3
+
   packages/shared/helpers-core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/logic-core:
-    dependencies:
-      '@pixsim7/shared.ref-core':
-        specifier: workspace:*
-        version: link:../ref-core
-      '@pixsim7/shared.types':
-        specifier: workspace:*
-        version: link:../types
+  packages/shared/media-core:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/player-core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -533,9 +766,15 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.10.1)
 
+  packages/shared/time:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/shared/types:
     dependencies:
-      '@pixsim7/shared.ref-core':
+      '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../ref-core
       zod:
@@ -4402,7 +4641,7 @@ snapshots:
       tunnel-rat: 0.1.2(@types/react@19.2.6)(react@19.2.0)
       use-sync-external-store: 1.6.0(react@19.2.0)
       utility-types: 3.11.0
-      zustand: 5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+      zustand: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
     optionalDependencies:
       react-dom: 19.2.0(react@19.2.0)
     transitivePeerDependencies:
@@ -4425,7 +4664,7 @@ snapshots:
       suspend-react: 0.1.3(react@19.2.0)
       three: 0.181.2
       use-sync-external-store: 1.6.0(react@19.2.0)
-      zustand: 5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+      zustand: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
     optionalDependencies:
       react-dom: 19.2.0(react@19.2.0)
     transitivePeerDependencies:
@@ -7214,6 +7453,10 @@ snapshots:
   zundo@2.3.0(zustand@5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))):
     dependencies:
       zustand: 5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+
+  zundo@2.3.0(zustand@5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))):
+    dependencies:
+      zustand: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
 
   zustand@4.5.7(@types/react@19.2.6)(react@19.2.0):
     dependencies:

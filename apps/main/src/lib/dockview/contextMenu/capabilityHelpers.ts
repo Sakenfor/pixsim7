@@ -7,7 +7,7 @@
  * See types.ts for documentation on SNAPSHOT vs LIVE STATE patterns.
  */
 
-import type { CapabilityKey, CapabilityProvider } from '@pixsim7/shared.capabilities-core';
+import type { CapabilityKey, CapabilityProvider } from '@pixsim7/shared.capabilities.core';
 
 import type { ContextHubState } from '@features/contextHub';
 

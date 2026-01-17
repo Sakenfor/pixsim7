@@ -28,7 +28,7 @@ import {
   isSceneIdRef,
   isLocationRef,
   isAssetRef,
-} from '@pixsim7/shared.ref-core';
+} from '@pixsim7/shared.ref.core';
 
 // ID branding from shared/types
 import {
@@ -464,7 +464,7 @@ export {
   type SceneId,
   type LocationId,
   type AssetId,
-  // Ref types from @pixsim7/shared.ref-core
+  // Ref types from @pixsim7/shared.ref.core
   type NpcRef,
   type CharacterRef,
   type InstanceRef,

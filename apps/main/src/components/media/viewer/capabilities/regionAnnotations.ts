@@ -13,7 +13,7 @@
  * - Asset viewer panel context
  */
 
-import type { CapabilityProvider } from '@pixsim7/shared.capabilities-core';
+import type { CapabilityProvider } from '@pixsim7/shared.capabilities.core';
 import { useCallback, useMemo } from 'react';
 
 import {

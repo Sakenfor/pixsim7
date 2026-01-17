@@ -1,4 +1,4 @@
-import { Ref, isAssetRef } from '@pixsim7/shared.ref-core';
+import { Ref, isAssetRef } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
 
 const NUMERIC_ID_PATTERN = /^\d+$/;

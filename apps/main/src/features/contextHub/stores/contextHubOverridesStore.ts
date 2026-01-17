@@ -1,4 +1,4 @@
-import type { CapabilityKey } from "@pixsim7/shared.capabilities-core";
+import type { CapabilityKey } from "@pixsim7/shared.capabilities.core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 

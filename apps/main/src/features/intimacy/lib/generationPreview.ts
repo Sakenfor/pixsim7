@@ -9,7 +9,7 @@
  * @see frontend/src/lib/api/generations.ts - API client
  */
 
-import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
+import { normalizeProviderParams } from '@pixsim7/shared.generation.core';
 
 import { createGeneration, getGeneration } from '@lib/api/generations';
 import type {

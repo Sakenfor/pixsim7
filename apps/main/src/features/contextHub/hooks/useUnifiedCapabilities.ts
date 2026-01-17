@@ -1,4 +1,4 @@
-import type { CapabilityKey } from "@pixsim7/shared.capabilities-core";
+import type { CapabilityKey } from "@pixsim7/shared.capabilities.core";
 import { useMemo, useSyncExternalStore } from "react";
 
 import type {

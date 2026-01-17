@@ -5,7 +5,7 @@
  * Manages model loading, zone configuration, and animation playback.
  */
 
-import { getFilenameFromUrl } from '@pixsim7/shared.media-core';
+import { getFilenameFromUrl } from '@pixsim7/shared.media.core';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 

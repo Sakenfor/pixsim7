@@ -1,4 +1,4 @@
-import { resolveMediaTypes } from "@pixsim7/shared.assets-core";
+import { resolveMediaTypes } from "@pixsim7/shared.assets.core";
 import type { AssetRef } from "@pixsim7/shared.types";
 
 import type { ViewerAsset } from "@features/assets";

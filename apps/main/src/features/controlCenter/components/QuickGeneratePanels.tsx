@@ -4,8 +4,8 @@
  * Simple, lightweight panel components for use in QuickGenerateModule's SmartDockview instance.
  * Panels receive context via SmartDockview's injected props.
  */
-import { resolveMediaTypes } from '@pixsim7/shared.assets-core';
-import { Ref } from '@pixsim7/shared.ref-core';
+import { resolveMediaTypes } from '@pixsim7/shared.assets.core';
+import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
 import { PromptInput } from '@pixsim7/shared.ui';
 import type { IDockviewPanelProps } from 'dockview-core';

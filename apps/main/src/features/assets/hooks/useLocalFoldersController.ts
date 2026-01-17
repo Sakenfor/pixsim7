@@ -11,7 +11,7 @@ import { uploadAsset } from '@lib/api/upload';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
-import { computeFileSha256 } from '@pixsim7/shared.helpers-core';
+import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import { useAuthStore } from '@/stores/authStore';
 
 import {

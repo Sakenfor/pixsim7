@@ -7,7 +7,7 @@
  */
 
 import { Icon } from '@lib/icons';
-import { Ref } from '@pixsim7/shared.ref-core';
+import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
 import { useEffect, useMemo, useRef } from 'react';
 

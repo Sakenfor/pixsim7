@@ -13,7 +13,7 @@
  */
 
 import type { NpcId, WorldId, SceneId, AssetId, GenerationId, CharacterId, InstanceId } from './ids';
-import { Ref } from '@pixsim7/shared.ref-core';
+import { Ref } from '@pixsim7/shared.ref.core';
 
 // ============================================================================
 // Node Types

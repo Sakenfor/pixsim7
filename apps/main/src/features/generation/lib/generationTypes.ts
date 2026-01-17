@@ -1,6 +1,6 @@
 /**
  * Generation Types - Re-export from shared package
- * @deprecated Import from @pixsim7/shared.generation-core instead
+ * @deprecated Import from @pixsim7/shared.generation.core instead
  */
 export type {
   GenerationStrategy,
@@ -23,4 +23,4 @@ export type {
   NpcResponseParams,
   NpcResponseContent,
   CacheKeyComputeFn,
-} from '@pixsim7/shared.generation-core';
+} from '@pixsim7/shared.generation.core';

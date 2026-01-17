@@ -8,7 +8,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
-import { toSnakeCaseDeep } from '@pixsim7/shared.helpers-core';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../lib/core/types';
 

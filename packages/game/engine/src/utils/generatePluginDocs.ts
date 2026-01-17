@@ -61,7 +61,7 @@ function generatePluginDocs(): string {
   sections.push('## 🚀 Adding Your Own Plugins\n');
   sections.push('### Creating a Custom Node Type\n');
   sections.push('```typescript');
-  sections.push("import { nodeTypeRegistry } from '@pixsim7/shared.graph-core';");
+  sections.push("import { nodeTypeRegistry } from '@pixsim7/shared.graph.core';");
   sections.push('');
   sections.push('nodeTypeRegistry.register({');
   sections.push("  id: 'my_custom_node',");

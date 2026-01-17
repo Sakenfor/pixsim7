@@ -15,7 +15,7 @@ import {
   type AppFeatureCapability,
   type AppRouteCapability,
   type AppStateCapability,
-} from '@pixsim7/shared.capabilities-core/app';
+} from '@pixsim7/shared.capabilities.core/app';
 import { ActionDefinitionSchema } from '@shared/types';
 import type {
   ActionContext,

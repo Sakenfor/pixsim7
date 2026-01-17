@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.generation-core
+ * @pixsim7/shared.generation.core
  *
  * Pure generation logic shared across frontends.
  * No React, Zustand, DOM, or app-specific dependencies.

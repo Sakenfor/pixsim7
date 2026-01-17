@@ -1,4 +1,4 @@
-import { normalizeProviderParams } from '@pixsim7/shared.generation-core';
+import { normalizeProviderParams } from '@pixsim7/shared.generation.core';
 
 import type { SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import type { InputItem } from '@features/generation';

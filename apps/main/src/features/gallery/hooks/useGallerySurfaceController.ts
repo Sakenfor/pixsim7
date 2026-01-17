@@ -1,4 +1,4 @@
-import { createAssetActions } from '@pixsim7/shared.assets-core';
+import { createAssetActions } from '@pixsim7/shared.assets.core';
 import { useState, useCallback, useMemo } from 'react';
 
 import { useAssets, useAsset, useAssetDetailStore, type AssetModel, type AssetFilters } from '@features/assets';

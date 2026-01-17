@@ -5,7 +5,7 @@
  * components that use the capability registry.
  */
 
-import { createAppCapabilityRegistry, type AppCapabilityRegistry } from '@pixsim7/shared.capabilities-core/app';
+import { createAppCapabilityRegistry, type AppCapabilityRegistry } from '@pixsim7/shared.capabilities.core/app';
 
 import type {
   FeatureCapability,

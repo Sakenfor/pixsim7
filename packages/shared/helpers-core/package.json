@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.helpers-core",
+  "name": "@pixsim7/shared.helpers.core",
   "version": "0.0.1",
   "private": true,
   "description": "Core helper registry - pure TypeScript, no React/DOM dependencies",

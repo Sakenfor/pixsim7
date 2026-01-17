@@ -7,7 +7,7 @@
  * Services are injected via props to keep the system decoupled and testable.
  */
 
-import type { CapabilityKey, CapabilityProvider } from '@pixsim7/shared.capabilities-core';
+import type { CapabilityKey, CapabilityProvider } from '@pixsim7/shared.capabilities.core';
 import type { DockviewApi } from 'dockview-core';
 import {
   useState,

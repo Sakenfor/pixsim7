@@ -8,7 +8,7 @@
  * provider selection. See types.ts for capability access pattern documentation.
  */
 
-import type { CapabilityKey, CapabilityProvider } from "@pixsim7/shared.capabilities-core";
+import type { CapabilityKey, CapabilityProvider } from "@pixsim7/shared.capabilities.core";
 
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 

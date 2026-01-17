@@ -5,7 +5,7 @@
  * Displays available animation clips and allows play/pause/seek operations.
  */
 
-import { formatTime } from '@pixsim7/shared.media-core';
+import { formatTime } from '@pixsim7/shared.media.core';
 import { Select } from '@pixsim7/shared.ui';
 import { useCallback, useRef, useState } from 'react';
 
