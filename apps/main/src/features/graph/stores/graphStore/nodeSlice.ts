@@ -1,4 +1,5 @@
 import type { DraftSceneNode } from '@domain/sceneBuilder';
+import { addNode as addNodeUtil, updateNode as updateNodeUtil, removeNodeWithEdges } from '@pixsim7/shared.graph-utilities';
 
 import type { StateCreator, NodeManagementState, GraphState } from './types';
 
@@ -20,14 +21,14 @@ export const createNodeSlice: StateCreator<NodeManagementState> = (set) => ({
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
+        const updatedScene = addNodeUtil(scene, node);
+
         return {
           scenes: {
             ...state.scenes,
             [state.currentSceneId]: {
-              ...scene,
-              nodes: [...scene.nodes, node],
+              ...updatedScene,
               startNodeId: scene.startNodeId || node.id,
-              updatedAt: new Date().toISOString(),
             },
           },
         };
@@ -45,20 +46,12 @@ export const createNodeSlice: StateCreator<NodeManagementState> = (set) => ({
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const nodeExists = scene.nodes.some((n) => n.id === id);
-        if (!nodeExists) {
-          console.warn(`[nodeSlice] Node not found: ${id}`);
-          return state;
-        }
+        const updatedScene = updateNodeUtil(scene, id, patch);
 
         return {
           scenes: {
             ...state.scenes,
-            [state.currentSceneId]: {
-              ...scene,
-              nodes: scene.nodes.map((n) => (n.id === id ? { ...n, ...patch } as DraftSceneNode : n)),
-              updatedAt: new Date().toISOString(),
-            },
+            [state.currentSceneId]: updatedScene,
           },
         } as Partial<GraphState>;
       },
@@ -75,18 +68,14 @@ export const createNodeSlice: StateCreator<NodeManagementState> = (set) => ({
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const nodes = scene.nodes.filter((n) => n.id !== id);
-        const edges = scene.edges.filter((e) => e.from !== id && e.to !== id);
+        const updatedScene = removeNodeWithEdges(scene, id);
 
         return {
           scenes: {
             ...state.scenes,
             [state.currentSceneId]: {
-              ...scene,
-              nodes,
-              edges,
-              startNodeId: scene.startNodeId === id ? nodes[0]?.id : scene.startNodeId,
-              updatedAt: new Date().toISOString(),
+              ...updatedScene,
+              startNodeId: scene.startNodeId === id ? updatedScene.nodes[0]?.id : scene.startNodeId,
             },
           },
         };
