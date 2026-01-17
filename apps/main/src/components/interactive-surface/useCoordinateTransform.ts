@@ -10,6 +10,7 @@ import {
   calculateImageRect as calculateImageRectPure,
   clampNormalized as clampNormalizedPure,
   createCoordinateTransform,
+  createMediaTransform,
   distance,
   lerp,
   interpolateStroke as interpolateStrokePure,
@@ -58,10 +59,26 @@ export function useCoordinateTransform(
     [containerDimensions, imageDimensions, viewState]
   );
 
-  const transform = useMemo(
-    () => createCoordinateTransform(imageRect),
-    [imageRect]
-  );
+  const baseTransform = useMemo(() => {
+    if (
+      containerDimensions.width <= 0 ||
+      containerDimensions.height <= 0 ||
+      imageDimensions.width <= 0 ||
+      imageDimensions.height <= 0
+    ) {
+      return null;
+    }
+    return createMediaTransform(containerDimensions, imageDimensions, viewState.fitMode);
+  }, [containerDimensions, imageDimensions, viewState.fitMode]);
+
+  const transform = useMemo(() => {
+    const useBase =
+      baseTransform &&
+      viewState.zoom === 1 &&
+      viewState.pan.x === 0 &&
+      viewState.pan.y === 0;
+    return useBase ? baseTransform : createCoordinateTransform(imageRect);
+  }, [baseTransform, imageRect, viewState.zoom, viewState.pan.x, viewState.pan.y]);
 
   /**
    * Convert screen coordinates to normalized (0-1) image coordinates
