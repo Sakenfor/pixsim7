@@ -4795,10 +4795,10 @@ export interface paths {
         };
         /**
          * Get Ontology Info
-         * @description Get basic ontology information.
+         * @description Get basic vocabulary information.
          *
          *     Returns:
-         *         Ontology metadata (version, label, description)
+         *         Vocabulary metadata and counts
          */
         readonly get: operations["get_ontology_info_api_v1_dev_ontology_info_get"];
         readonly put?: never;
@@ -4818,11 +4818,11 @@ export interface paths {
         };
         /**
          * Get Ontology Usage
-         * @description Get ontology IDs and their usage in ActionBlocks.
+         * @description Get vocabulary IDs and their usage in ActionBlocks.
          *
          *     Returns:
-         *         Complete ontology usage report with:
-         *         - List of all ontology IDs
+         *         Complete vocabulary usage report with:
+         *         - List of all vocabulary IDs
          *         - Usage counts per ID
          *         - Example ActionBlock IDs using each ID
          */
@@ -15520,7 +15520,7 @@ export interface components {
         };
         /**
          * OntologyIdUsage
-         * @description Usage statistics for a single ontology ID.
+         * @description Usage statistics for a single vocabulary ID.
          */
         readonly OntologyIdUsage: {
             /**
@@ -15544,17 +15544,17 @@ export interface components {
         };
         /**
          * OntologyUsageResponse
-         * @description Complete ontology usage report.
+         * @description Complete vocabulary usage report.
          */
         readonly OntologyUsageResponse: {
             /** Ids */
             readonly ids: readonly components["schemas"]["OntologyIdUsage"][];
-            /** Ontology Version */
-            readonly ontology_version: string;
             /** Total Action Blocks Scanned */
             readonly total_action_blocks_scanned: number;
             /** Total Ids */
             readonly total_ids: number;
+            /** Vocabulary Version */
+            readonly vocabulary_version: string;
         };
         /**
          * OperationType
