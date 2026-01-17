@@ -207,3 +207,11 @@ export {
   fitDimensions,
   coverDimensions,
 } from './fit';
+
+// ============================================================================
+// Media Transforms
+// ============================================================================
+
+export type { MediaTransform } from './media';
+
+export { createMediaTransform } from './media';
