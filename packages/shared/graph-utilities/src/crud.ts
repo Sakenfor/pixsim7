@@ -169,3 +169,65 @@ export function removeNodeWithEdges<
     updatedAt: new Date().toISOString(),
   };
 }
+
+/**
+ * Find a node by ID and type (with type predicate for type safety)
+ */
+export function findNodeByType<TNode extends NodeWithId & { type: string }>(
+  nodes: TNode[],
+  nodeId: string,
+  type: string
+): TNode | undefined {
+  return nodes.find(n => n.id === nodeId && n.type === type);
+}
+
+/**
+ * Filter nodes by type
+ */
+export function filterNodesByType<TNode extends NodeWithId & { type: string }>(
+  nodes: TNode[],
+  type: string
+): TNode[] {
+  return nodes.filter(n => n.type === type);
+}
+
+/**
+ * Find edge connecting two specific nodes
+ */
+export function findEdgeByNodes<TEdge extends EdgeWithFromTo>(
+  edges: TEdge[],
+  fromId: string,
+  toId: string
+): TEdge | undefined {
+  return edges.find(e => e.from === fromId && e.to === toId);
+}
+
+/**
+ * Get all edges connected to a node (both incoming and outgoing)
+ */
+export function getNodeEdges<TEdge extends EdgeWithFromTo>(
+  edges: TEdge[],
+  nodeId: string
+): TEdge[] {
+  return edges.filter(e => e.from === nodeId || e.to === nodeId);
+}
+
+/**
+ * Get edges pointing to a node (incoming)
+ */
+export function getIncomingEdges<TEdge extends EdgeWithFromTo>(
+  edges: TEdge[],
+  nodeId: string
+): TEdge[] {
+  return edges.filter(e => e.to === nodeId);
+}
+
+/**
+ * Get edges from a node (outgoing)
+ */
+export function getOutgoingEdges<TEdge extends EdgeWithFromTo>(
+  edges: TEdge[],
+  nodeId: string
+): TEdge[] {
+  return edges.filter(e => e.from === nodeId);
+}

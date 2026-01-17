@@ -22,87 +22,11 @@ export function createEmptyArcGraph(title: string): ArcGraph {
 }
 
 /**
- * Add a node to an arc graph
+ * NOTE: Basic CRUD operations (addNode, updateNode, removeNode, addEdge, removeEdge)
+ * and edge query utilities (getNodeEdges, getIncomingEdges, getOutgoingEdges) are
+ * available in @pixsim7/shared.graph-utilities and should be used instead of
+ * arc-specific implementations.
  */
-export function addNodeToGraph(graph: ArcGraph, node: ArcGraphNode): ArcGraph {
-  return {
-    ...graph,
-    nodes: [...graph.nodes, node],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Update a node in an arc graph
- */
-export function updateNodeInGraph(
-  graph: ArcGraph,
-  nodeId: string,
-  updates: Partial<ArcGraphNode>
-): ArcGraph {
-  return {
-    ...graph,
-    nodes: graph.nodes.map(node =>
-      node.id === nodeId ? { ...node, ...updates } : node
-    ),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Remove a node from an arc graph
- */
-export function removeNodeFromGraph(graph: ArcGraph, nodeId: string): ArcGraph {
-  return {
-    ...graph,
-    nodes: graph.nodes.filter(node => node.id !== nodeId),
-    edges: graph.edges.filter(edge => edge.from !== nodeId && edge.to !== nodeId),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Add an edge to an arc graph
- */
-export function addEdgeToGraph(graph: ArcGraph, edge: ArcGraphEdge): ArcGraph {
-  return {
-    ...graph,
-    edges: [...graph.edges, edge],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Remove an edge from an arc graph
- */
-export function removeEdgeFromGraph(graph: ArcGraph, edgeId: string): ArcGraph {
-  return {
-    ...graph,
-    edges: graph.edges.filter(edge => edge.id !== edgeId),
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-/**
- * Get all edges connected to a node
- */
-export function getNodeEdges(graph: ArcGraph, nodeId: string): ArcGraphEdge[] {
-  return graph.edges.filter(edge => edge.from === nodeId || edge.to === nodeId);
-}
-
-/**
- * Get incoming edges for a node
- */
-export function getIncomingEdges(graph: ArcGraph, nodeId: string): ArcGraphEdge[] {
-  return graph.edges.filter(edge => edge.to === nodeId);
-}
-
-/**
- * Get outgoing edges for a node
- */
-export function getOutgoingEdges(graph: ArcGraph, nodeId: string): ArcGraphEdge[] {
-  return graph.edges.filter(edge => edge.from === nodeId);
-}
 
 /**
  * Validate arc graph structure

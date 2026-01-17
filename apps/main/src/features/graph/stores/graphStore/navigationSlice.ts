@@ -1,3 +1,5 @@
+import { findNode, findNodeByType } from '@pixsim7/shared.graph-utilities';
+
 import { logEvent } from '@lib/utils/logging';
 
 import type { NodeGroupData } from '@domain/sceneBuilder';
@@ -46,7 +48,7 @@ export const createNavigationSlice: StateCreator<NavigationState> = (set, get) =
     if (!scene) return;
 
     // Verify group exists
-    const groupNode = scene.nodes.find((n) => n.id === groupId && n.type === 'node_group');
+    const groupNode = findNodeByType(scene.nodes, groupId, 'node_group');
     if (!groupNode) {
       console.warn(`[navigationSlice] Group not found: ${groupId}`);
       return;
@@ -112,7 +114,7 @@ export const createNavigationSlice: StateCreator<NavigationState> = (set, get) =
 
     // Add each group in the navigation stack
     state.navigationStack.forEach((groupId) => {
-      const groupNode = scene.nodes.find((n) => n.id === groupId) as NodeGroupData | undefined;
+      const groupNode = findNode(scene.nodes, groupId) as NodeGroupData | undefined;
       if (groupNode) {
         breadcrumbs.push({
           id: groupId,

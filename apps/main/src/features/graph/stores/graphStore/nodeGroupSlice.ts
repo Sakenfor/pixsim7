@@ -1,4 +1,5 @@
 import { useToastStore } from '@pixsim7/shared.ui';
+import { findNode, hasNode, findNodeByType, filterNodesByType } from '@pixsim7/shared.graph-utilities';
 
 import { logEvent } from '@lib/utils/logging';
 
@@ -69,7 +70,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
     if (!scene) return null;
 
     // Validate all nodes exist
-    const validNodeIds = nodeIds.filter((id) => scene.nodes.some((n) => n.id === id));
+    const validNodeIds = nodeIds.filter((id) => hasNode(scene.nodes, id));
     if (validNodeIds.length === 0) {
       const errorMsg = 'No valid nodes to group';
       console.warn('[nodeGroupSlice]', errorMsg);
@@ -87,7 +88,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
     // Calculate group position (center of all contained nodes)
     const positions = validNodeIds
       .map((id) => {
-        const node = scene.nodes.find((n) => n.id === id);
+        const node = findNode(scene.nodes, id);
         return node?.metadata?.position as { x: number; y: number } | undefined;
       })
       .filter(Boolean) as Array<{ x: number; y: number }>;
@@ -105,7 +106,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
       icon: options.icon || '📁',
       description: options.description,
       metadata: {
-        label: options.label || `Group ${scene.nodes.filter((n) => n.type === 'node_group').length + 1}`,
+        label: options.label || `Group ${filterNodesByType(scene.nodes, 'node_group').length + 1}`,
         position: { x: avgX, y: avgY },
       },
     };
@@ -142,9 +143,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const groupNode = scene.nodes.find((n) => n.id === groupId && n.type === 'node_group') as
-          | NodeGroupData
-          | undefined;
+        const groupNode = findNodeByType(scene.nodes, groupId, 'node_group') as NodeGroupData | undefined;
         if (!groupNode) {
           const errorMsg = `Group '${groupId}' not found`;
           console.warn('[nodeGroupSlice]', errorMsg);
@@ -157,7 +156,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         }
 
         // Validate nodes exist
-        const validNodeIds = nodeIds.filter((id) => scene.nodes.some((n) => n.id === id));
+        const validNodeIds = nodeIds.filter((id) => hasNode(scene.nodes, id));
 
         // Show warning if some nodes were invalid
         if (validNodeIds.length < nodeIds.length) {
@@ -197,9 +196,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const groupNode = scene.nodes.find((n) => n.id === groupId && n.type === 'node_group') as
-          | NodeGroupData
-          | undefined;
+        const groupNode = findNodeByType(scene.nodes, groupId, 'node_group') as NodeGroupData | undefined;
         if (!groupNode) return state;
 
         const newChildIds = groupNode.childNodeIds.filter((id) => !nodeIds.includes(id));
@@ -231,9 +228,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const groupNode = scene.nodes.find((n) => n.id === groupId && n.type === 'node_group') as
-          | NodeGroupData
-          | undefined;
+        const groupNode = findNodeByType(scene.nodes, groupId, 'node_group') as NodeGroupData | undefined;
         if (!groupNode) return state;
 
         let nodesToRemove = [groupId];
@@ -286,9 +281,7 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
         const scene = state.scenes[state.currentSceneId];
         if (!scene) return state;
 
-        const groupNode = scene.nodes.find((n) => n.id === groupId && n.type === 'node_group') as
-          | NodeGroupData
-          | undefined;
+        const groupNode = findNodeByType(scene.nodes, groupId, 'node_group') as NodeGroupData | undefined;
         if (!groupNode) return state;
 
         return {
@@ -333,9 +326,8 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
     const scene = state.scenes[state.currentSceneId];
     if (!scene) return null;
 
-    const groupNode = scene.nodes.find(
-      (n) => n.type === 'node_group' && (n as NodeGroupData).childNodeIds.includes(nodeId)
-    ) as NodeGroupData | undefined;
+    const groups = filterNodesByType(scene.nodes, 'node_group') as NodeGroupData[];
+    const groupNode = groups.find((g) => g.childNodeIds.includes(nodeId));
 
     return groupNode || null;
   },
@@ -347,6 +339,6 @@ export const createNodeGroupSlice: StateCreator<NodeGroupManagementState> = (set
     const scene = state.scenes[state.currentSceneId];
     if (!scene) return [];
 
-    return scene.nodes.filter((n) => n.type === 'node_group') as NodeGroupData[];
+    return filterNodesByType(scene.nodes, 'node_group') as NodeGroupData[];
   },
 });

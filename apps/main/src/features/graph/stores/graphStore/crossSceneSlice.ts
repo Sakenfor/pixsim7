@@ -1,3 +1,5 @@
+import { filterNodesByType } from '@pixsim7/shared.graph-utilities';
+
 import type { StateCreator, CrossSceneState } from './types';
 
 /**
@@ -16,9 +18,8 @@ export const createCrossSceneSlice: StateCreator<CrossSceneState> = (_set, get) 
       const callers: Array<{ sceneId: string; nodeIds: string[] }> = [];
 
       Object.values(state.scenes).forEach((scene) => {
-        const callNodes = scene.nodes.filter(
-          (n) => n.type === 'scene_call' && n.targetSceneId === sceneId
-        );
+        const callNodes = filterNodesByType(scene.nodes, 'scene_call')
+          .filter((n) => n.targetSceneId === sceneId);
 
         if (callNodes.length > 0) {
           callers.push({
@@ -36,18 +37,12 @@ export const createCrossSceneSlice: StateCreator<CrossSceneState> = (_set, get) 
       const scene = state.scenes[sceneId];
       if (!scene) return [];
 
-      const calls: Array<{ targetSceneId: string; nodeId: string }> = [];
+      const sceneCallNodes = filterNodesByType(scene.nodes, 'scene_call');
 
-      scene.nodes.forEach((node) => {
-        if (node.type === 'scene_call') {
-          calls.push({
-            targetSceneId: node.targetSceneId,
-            nodeId: node.id,
-          });
-        }
-      });
-
-      return calls;
+      return sceneCallNodes.map((node) => ({
+        targetSceneId: node.targetSceneId,
+        nodeId: node.id,
+      }));
     },
 
     validateSceneCall: (callNode) => {
