@@ -19,14 +19,19 @@ export function formatTime(seconds: number): string {
 
 export function getFilenameFromUrl(url?: string): string | null {
   if (!url) return null;
+  let parsed: URL;
   try {
-    const parsed = new URL(url);
-    const parts = parsed.pathname.split('/').filter(Boolean);
-    if (parts.length === 0) return null;
-    return decodeURIComponent(parts[parts.length - 1]);
+    parsed = new URL(url);
   } catch {
-    return null;
+    try {
+      parsed = new URL(url, 'http://localhost');
+    } catch {
+      return null;
+    }
   }
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  if (parts.length === 0) return null;
+  return decodeURIComponent(parts[parts.length - 1]);
 }
 
 export function getSourceSiteFromUrl(url?: string): string | null {

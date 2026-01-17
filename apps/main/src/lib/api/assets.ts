@@ -5,12 +5,13 @@
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
 import { createAssetsApi } from '@pixsim7/shared.api-client/domains';
-// Only import types used in this file; others are re-exported below
 import type {
   AssetResponse,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
 } from '@pixsim7/shared.api-client/domains';
+import { getFilenameFromUrl } from '@pixsim7/shared.media-core';
+// Only import types used in this file; others are re-exported below
 
 import { pixsimClient } from './client';
 
@@ -77,8 +78,7 @@ export async function downloadAsset(asset: AssetResponse): Promise<void> {
   const link = document.createElement('a');
   link.href = downloadUrl;
 
-  const urlParts = downloadUrl.split('/');
-  const filename = urlParts[urlParts.length - 1] || `asset_${asset.id}`;
+  const filename = getFilenameFromUrl(downloadUrl) || `asset_${asset.id}`;
   link.download = filename;
 
   document.body.appendChild(link);

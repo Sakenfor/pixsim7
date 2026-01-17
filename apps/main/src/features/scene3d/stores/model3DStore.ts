@@ -5,6 +5,7 @@
  * Manages model loading, zone configuration, and animation playback.
  */
 
+import { getFilenameFromUrl } from '@pixsim7/shared.media-core';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -179,7 +180,7 @@ export const useModel3DStore = create<Model3DState>()(
       loadModel: (url, fileName) => {
         set({
           modelUrl: url,
-          modelFileName: fileName || url.split('/').pop() || 'model.glb',
+          modelFileName: fileName || getFilenameFromUrl(url) || 'model.glb',
           isLoading: true,
           error: null,
           parseResult: null,
