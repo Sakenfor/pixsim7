@@ -13,7 +13,7 @@ import type {
   ExecuteInteractionResponse,
   NpcInteractionInstance,
 } from '@lib/registries';
-import { toSnakeCaseDeep } from '@lib/utils';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers-core';
 
 import { apiClient } from './client';
 

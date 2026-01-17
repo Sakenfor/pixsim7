@@ -13,7 +13,7 @@ import type {
   GenerationSocialContext,
 } from '@pixsim7/shared.api-client/domains';
 
-import { toSnakeCaseDeep } from '@lib/utils';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers-core';
 
 import { usePromptSettingsStore } from '@features/prompts';
 

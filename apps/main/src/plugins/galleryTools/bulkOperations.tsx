@@ -13,7 +13,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
-import { toSnakeCaseDeep } from '@lib/utils';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers-core';
 
 import type { GalleryToolPlugin, GalleryToolContext } from '../../lib/gallery/types';
 

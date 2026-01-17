@@ -8,7 +8,7 @@
 import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
-import { toSnakeCaseDeep } from '@lib/utils';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers-core';
 
 import type {
   InteractionPlugin,

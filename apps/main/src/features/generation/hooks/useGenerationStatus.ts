@@ -7,7 +7,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getGeneration } from '@lib/api/generations';
 import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
-import { pollUntil } from '@lib/utils';
+import { pollUntil } from '@pixsim7/shared.async';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 export interface UseGenerationStatusOptions {

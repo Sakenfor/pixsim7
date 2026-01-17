@@ -11,7 +11,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import { authService } from '@lib/auth';
 
 import { useLocalFolders } from '@/features/assets/stores/localFoldersStore';
-import { computeFileSha256 } from '@/lib/utils';
+import { computeFileSha256 } from '@pixsim7/shared.helpers-core';
 import { useAuthStore } from '@/stores/authStore';
 
 export function LocalFoldersStatus() {

@@ -24,7 +24,7 @@ import {
   type GenerationConfig,
 } from '@lib/api/generations';
 import { getAsset as getAssetApi } from '@features/assets/lib/api';
-import { pollUntil } from '@lib/utils';
+import { pollUntil } from '@pixsim7/shared.async';
 
 // ============================================================================
 // Types
