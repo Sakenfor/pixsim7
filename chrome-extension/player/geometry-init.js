@@ -10,6 +10,7 @@ import {
   getPathRect,
   distance,
   simplifyPath,
+  createMediaTransform,
 } from '@pixsim7/graphics.geometry';
 
 // Set global immediately on module evaluation
@@ -19,4 +20,5 @@ window.PXS7Geometry = {
   getPathRect,
   distance,
   simplifyPath,
+  createMediaTransform,
 };

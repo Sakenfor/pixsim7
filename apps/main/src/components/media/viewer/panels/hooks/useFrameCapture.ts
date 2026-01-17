@@ -5,6 +5,7 @@
  * Handles region selection, upload context assembly, and the capture workflow.
  */
 
+import { clampRectNormalized, denormalizeRect } from '@pixsim7/graphics.geometry';
 import { useToast } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo, type RefObject } from 'react';
 
@@ -140,20 +141,14 @@ export function useFrameCapture({
         throw new Error('Failed to capture frame.');
       }
 
-      const clamp = (value: number, min: number, max: number) =>
-        Math.min(max, Math.max(min, value));
-
       let regionBounds = null;
       if (captureRegion?.type === 'rect' && captureRegion.bounds) {
-        const boundedX = clamp(captureRegion.bounds.x, 0, 1);
-        const boundedY = clamp(captureRegion.bounds.y, 0, 1);
-        const boundedWidth = clamp(captureRegion.bounds.width, 0, 1);
-        const boundedHeight = clamp(captureRegion.bounds.height, 0, 1);
-
-        const sx = Math.round(boundedX * video.videoWidth);
-        const sy = Math.round(boundedY * video.videoHeight);
-        const sw = Math.round(boundedWidth * video.videoWidth);
-        const sh = Math.round(boundedHeight * video.videoHeight);
+        const clamped = clampRectNormalized(captureRegion.bounds);
+        const denormalized = denormalizeRect(clamped, video.videoWidth, video.videoHeight);
+        const sx = Math.round(denormalized.x);
+        const sy = Math.round(denormalized.y);
+        const sw = Math.round(denormalized.width);
+        const sh = Math.round(denormalized.height);
         if (sw > 1 && sh > 1) {
           regionBounds = { sx, sy, sw, sh };
         }

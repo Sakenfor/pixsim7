@@ -15,6 +15,7 @@
     getPathRect,
     distance,
     simplifyPath,
+    createMediaTransform,
   } = window.PXS7Geometry;
 
   // Polygon state
@@ -31,66 +32,49 @@
   }
 
   // ===== Coordinate conversion =====
-  function screenToVideoCoords(screenX, screenY) {
-    const displayEl = getDisplayElement();
+  function getMediaTransform() {
     const dims = getMediaDimensions();
-    const displayRect = displayEl.getBoundingClientRect();
-    const mediaAspect = dims.width / dims.height;
-    const containerAspect = displayRect.width / displayRect.height;
+    if (!dims.width || !dims.height) return null;
+    const containerRect = elements.videoContainer.getBoundingClientRect();
+    if (!containerRect.width || !containerRect.height) return null;
+    return createMediaTransform(
+      { width: containerRect.width, height: containerRect.height },
+      { width: dims.width, height: dims.height },
+      'contain'
+    );
+  }
 
-    let renderWidth, renderHeight, offsetX, offsetY;
-
-    if (mediaAspect > containerAspect) {
-      renderWidth = displayRect.width;
-      renderHeight = displayRect.width / mediaAspect;
-      offsetX = 0;
-      offsetY = (displayRect.height - renderHeight) / 2;
-    } else {
-      renderHeight = displayRect.height;
-      renderWidth = displayRect.height * mediaAspect;
-      offsetX = (displayRect.width - renderWidth) / 2;
-      offsetY = 0;
-    }
-
-    const relX = screenX - displayRect.left - offsetX;
-    const relY = screenY - displayRect.top - offsetY;
-
+  function screenToVideoCoords(screenX, screenY) {
+    const transform = getMediaTransform();
+    if (!transform) return { x: 0, y: 0 };
+    const dims = getMediaDimensions();
+    const containerRect = elements.videoContainer.getBoundingClientRect();
+    const screenPoint = {
+      x: screenX - containerRect.left,
+      y: screenY - containerRect.top,
+    };
+    const contentPoint = transform.toContent(screenPoint);
     return {
-      x: Math.max(0, Math.min(dims.width, (relX / renderWidth) * dims.width)),
-      y: Math.max(0, Math.min(dims.height, (relY / renderHeight) * dims.height))
+      x: Math.max(0, Math.min(dims.width, contentPoint.x)),
+      y: Math.max(0, Math.min(dims.height, contentPoint.y)),
     };
   }
 
   function videoToScreenCoords(videoX, videoY, videoW, videoH) {
-    const displayEl = getDisplayElement();
-    const dims = getMediaDimensions();
-    const displayRect = displayEl.getBoundingClientRect();
-    const containerRect = elements.videoContainer.getBoundingClientRect();
-    const mediaAspect = dims.width / dims.height;
-    const containerAspect = displayRect.width / displayRect.height;
+    const transform = getMediaTransform();
+    if (!transform) return { left: 0, top: 0, width: 0, height: 0 };
 
-    let renderWidth, renderHeight, offsetX, offsetY;
-
-    if (mediaAspect > containerAspect) {
-      renderWidth = displayRect.width;
-      renderHeight = displayRect.width / mediaAspect;
-      offsetX = 0;
-      offsetY = (displayRect.height - renderHeight) / 2;
-    } else {
-      renderHeight = displayRect.height;
-      renderWidth = displayRect.height * mediaAspect;
-      offsetX = (displayRect.width - renderWidth) / 2;
-      offsetY = 0;
-    }
-
-    const scaleX = renderWidth / dims.width;
-    const scaleY = renderHeight / dims.height;
+    const topLeft = transform.toScreenFromContent({ x: videoX, y: videoY });
+    const bottomRight = transform.toScreenFromContent({
+      x: videoX + videoW,
+      y: videoY + videoH,
+    });
 
     return {
-      left: (displayRect.left - containerRect.left) + offsetX + (videoX * scaleX),
-      top: (displayRect.top - containerRect.top) + offsetY + (videoY * scaleY),
-      width: videoW * scaleX,
-      height: videoH * scaleY
+      left: topLeft.x,
+      top: topLeft.y,
+      width: bottomRight.x - topLeft.x,
+      height: bottomRight.y - topLeft.y,
     };
   }
 
