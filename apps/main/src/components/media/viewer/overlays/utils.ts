@@ -4,6 +4,8 @@
  * Shared helpers for overlay components.
  */
 
+import { denormalizeRect } from '@pixsim7/graphics.geometry';
+
 import type { AssetRegion } from '@features/mediaViewer';
 
 /**
@@ -50,8 +52,13 @@ export function getRegionPixelDimensions(
 ): { width: number; height: number } | null {
   if (!bounds || !videoDimensions) return null;
 
-  const pw = Math.round(bounds.width * videoDimensions.width);
-  const ph = Math.round(bounds.height * videoDimensions.height);
+  const rect = denormalizeRect(
+    { x: 0, y: 0, width: bounds.width, height: bounds.height },
+    videoDimensions.width,
+    videoDimensions.height
+  );
+  const pw = Math.round(rect.width);
+  const ph = Math.round(rect.height);
 
   if (pw < 1 || ph < 1) return null;
   return { width: pw, height: ph };
