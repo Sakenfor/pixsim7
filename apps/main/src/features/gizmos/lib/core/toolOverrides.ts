@@ -5,38 +5,9 @@
  */
 
 import { createToolInstance, getTool, type InteractiveTool } from '@pixsim7/scene.gizmos';
+import { deepMerge } from '@pixsim7/shared.helpers-core';
 
 import { useToolConfigStore, type ToolOverrides } from '../../stores/toolConfigStore';
-
-/**
- * Deep merge helper that properly handles nested objects
- */
-function deepMerge<T extends object>(base: T, overrides: Partial<T>): T {
-  const result = { ...base } as T;
-
-  for (const key in overrides) {
-    if (Object.prototype.hasOwnProperty.call(overrides, key)) {
-      const baseValue = base[key];
-      const overrideValue = overrides[key];
-
-      if (
-        overrideValue !== undefined &&
-        typeof baseValue === 'object' &&
-        baseValue !== null &&
-        typeof overrideValue === 'object' &&
-        overrideValue !== null &&
-        !Array.isArray(baseValue)
-      ) {
-        // Recursively merge objects
-        result[key] = deepMerge(baseValue as object, overrideValue as object) as T[Extract<keyof T, string>];
-      } else if (overrideValue !== undefined) {
-        result[key] = overrideValue as T[Extract<keyof T, string>];
-      }
-    }
-  }
-
-  return result;
-}
 
 /**
  * Apply console overrides to a tool definition

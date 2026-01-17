@@ -6,6 +6,7 @@
  */
 
 import { useMemo, useCallback, useRef, useEffect } from 'react';
+import { deepMerge } from '@pixsim7/shared.helpers-core';
 import type { PanelSettingsUpdateHelpers } from './panelRegistry';
 import type { PanelId } from '@features/workspace';
 
@@ -33,33 +34,6 @@ function deepSet<T extends Record<string, any>>(
 
   const lastKey = pathArray[pathArray.length - 1];
   current[lastKey] = value;
-
-  return result;
-}
-
-/**
- * Deep merge two objects
- */
-function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-
-  for (const key in source) {
-    const sourceValue = source[key];
-    const targetValue = result[key];
-
-    if (
-      sourceValue !== null &&
-      typeof sourceValue === 'object' &&
-      !Array.isArray(sourceValue) &&
-      targetValue !== null &&
-      typeof targetValue === 'object' &&
-      !Array.isArray(targetValue)
-    ) {
-      result[key] = deepMerge(targetValue, sourceValue);
-    } else {
-      result[key] = sourceValue as any;
-    }
-  }
 
   return result;
 }

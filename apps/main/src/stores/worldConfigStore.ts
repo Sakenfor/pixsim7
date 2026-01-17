@@ -38,6 +38,7 @@ import {
   type StatTier,
   type StatLevel,
 } from '@pixsim7/shared.types';
+import { deepMerge } from '@pixsim7/shared.helpers-core';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -108,39 +109,6 @@ export interface GatingProfile {
   tiers: Readonly<StatTier[]>;
   /** Intimacy levels with conditions */
   levels: Readonly<StatLevel[]>;
-}
-
-// =============================================================================
-// Utility: Deep Merge for Plugin Configs
-// =============================================================================
-
-function deepMerge<T extends Record<string, unknown>>(base: T, override: Partial<T>): T {
-  const result = { ...base };
-
-  for (const key of Object.keys(override) as Array<keyof T>) {
-    const overrideValue = override[key];
-    const baseValue = base[key];
-
-    if (
-      overrideValue !== undefined &&
-      typeof overrideValue === 'object' &&
-      overrideValue !== null &&
-      !Array.isArray(overrideValue) &&
-      typeof baseValue === 'object' &&
-      baseValue !== null &&
-      !Array.isArray(baseValue)
-    ) {
-      // Recursively merge nested objects
-      result[key] = deepMerge(
-        baseValue as Record<string, unknown>,
-        overrideValue as Record<string, unknown>
-      ) as T[keyof T];
-    } else if (overrideValue !== undefined) {
-      result[key] = overrideValue as T[keyof T];
-    }
-  }
-
-  return result;
 }
 
 // =============================================================================

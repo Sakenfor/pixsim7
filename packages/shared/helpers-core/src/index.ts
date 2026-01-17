@@ -53,3 +53,6 @@ export { toSnakeCaseKey, toSnakeCaseDeep, toSnakeCaseShallow } from './case';
 
 // Hash utilities
 export { computeFileSha256 } from './hash';
+
+// Object utilities
+export { deepMerge } from './object';
