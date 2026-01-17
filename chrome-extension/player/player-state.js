@@ -1,6 +1,13 @@
 /**
  * Player State - Shared state and DOM elements
  */
+import {
+  formatTime,
+  getDisplayNameFromUrl,
+  getSourceSiteFromUrl,
+  getLocalSourceFolder as getLocalSourceFolderShared,
+} from '@pixsim7/shared.media-core';
+
 (function() {
   'use strict';
 
@@ -116,49 +123,20 @@
     }, 3000);
   }
 
-  function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-
   function getExtension(filename) {
     return filename.split('.').pop()?.toLowerCase() || '';
   }
 
   function getVideoNameFromUrl(url) {
-    if (!url) return 'Video';
-    try {
-      const parsed = new URL(url);
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      if (parts.length > 0) {
-        return decodeURIComponent(parts[parts.length - 1]);
-      }
-      return parsed.hostname || 'Video';
-    } catch (e) {
-      const fallback = url.split('/').filter(Boolean).pop();
-      return fallback || 'Video';
-    }
+    return getDisplayNameFromUrl(url, 'Video');
   }
 
   function getSourceSite(url) {
-    if (!url) return null;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return null;
-      }
-      return parsed.hostname || null;
-    } catch (e) {
-      return null;
-    }
+    return getSourceSiteFromUrl(url);
   }
 
   function getLocalSourceFolder(relativePath) {
-    if (!relativePath) return null;
-    const normalized = relativePath.replace(/\\/g, '/');
-    const parts = normalized.split('/').filter(Boolean);
-    return parts.length > 1 ? parts[0] : null;
+    return getLocalSourceFolderShared(relativePath);
   }
 
   function setLocalVideoContext(name, sourceFolder) {

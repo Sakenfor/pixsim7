@@ -24,6 +24,7 @@ const playerConfig = {
   // Resolve workspace packages
   alias: {
     '@pixsim7/graphics.geometry': path.resolve(__dirname, '../packages/graphics/geometry/src/index.ts'),
+    '@pixsim7/shared.media-core': path.resolve(__dirname, '../packages/shared/media-core/src/index.ts'),
   },
   loader: {
     '.ts': 'ts',

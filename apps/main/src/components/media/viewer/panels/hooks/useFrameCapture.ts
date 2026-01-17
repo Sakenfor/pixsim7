@@ -6,6 +6,11 @@
  */
 
 import { clampRectNormalized, denormalizeRect } from '@pixsim7/graphics.geometry';
+import {
+  buildCaptureFilename,
+  getFilenameFromUrl,
+  getSourceSiteFromUrl,
+} from '@pixsim7/shared.media-core';
 import { useToast } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo, type RefObject } from 'react';
 
@@ -84,40 +89,11 @@ export function useFrameCapture({
     }
   }, [asset]);
 
-  // Extract hostname from URL for source_site
-  const getSourceSiteFromUrl = useCallback((url?: string): string | null => {
-    if (!url) return null;
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-        return null;
-      }
-      return parsed.hostname || null;
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // Extract filename from URL
-  const getFilenameFromUrl = useCallback((url?: string): string | null => {
-    if (!url) return null;
-    try {
-      const parsed = new URL(url);
-      const parts = parsed.pathname.split('/').filter(Boolean);
-      if (parts.length === 0) return null;
-      return decodeURIComponent(parts[parts.length - 1]);
-    } catch {
-      return null;
-    }
-  }, []);
-
-  // Build capture filename from source and time
-  const buildCaptureFilename = useCallback((sourceName: string | null, timeSec: number): string => {
-    const base = sourceName?.replace(/\.[^/.]+$/, '') || 'capture';
-    const safeBase = base.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '') || 'capture';
-    const timeTag = Math.max(0, Math.floor(timeSec * 1000));
-    return `${safeBase}_frame_${timeTag}.jpg`;
-  }, []);
+  const buildCaptureFilenameFromSource = useCallback(
+    (sourceName: string | null, timeSec: number): string =>
+      buildCaptureFilename(sourceName, timeSec),
+    []
+  );
 
   // Main capture function
   const captureFrame = useCallback(async () => {
@@ -237,7 +213,7 @@ export function useFrameCapture({
 
       const uploadResult = await uploadAsset({
         file: blob,
-        filename: buildCaptureFilename(sourceFilename, video.currentTime),
+        filename: buildCaptureFilenameFromSource(sourceFilename, video.currentTime),
         providerId,
         uploadMethod: 'video_capture',
         uploadContext,
@@ -265,7 +241,7 @@ export function useFrameCapture({
   }, [
     asset,
     captureRegion,
-    buildCaptureFilename,
+    buildCaptureFilenameFromSource,
     getFilenameFromUrl,
     getSourceSiteFromUrl,
     resolveCaptureProviderId,

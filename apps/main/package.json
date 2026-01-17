@@ -22,6 +22,7 @@
     "@pixsim7/shared.api-client": "workspace:*",
     "@pixsim7/shared.capabilities-core": "workspace:*",
     "@pixsim7/graphics.geometry": "workspace:*",
+    "@pixsim7/shared.media-core": "workspace:*",
     "@pixsim7/shared.ref-core": "workspace:*",
     "@pixsim7/game.components": "workspace:*",
     "@pixsim7/game.engine": "workspace:*",
