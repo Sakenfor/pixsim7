@@ -173,6 +173,7 @@ def _startup_trace(message: str) -> None:
 
 class LauncherWindow(QWidget):
     health_check_signal = Signal(str, HealthStatus)
+    service_selected = Signal(str)  # Emitted when a service card is selected
 
     def __init__(self):
         super().__init__()
@@ -752,6 +753,7 @@ class LauncherWindow(QWidget):
 
         # Select new card
         self.selected_service_key = key
+        self.service_selected.emit(key)
         sp = self.processes.get(key)
         if key in self.cards:
             self.cards[key].set_selected(True)

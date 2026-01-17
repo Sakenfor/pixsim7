@@ -55,6 +55,9 @@ class SettingsPanel(QWidget):
         self._selected_service_id = None
         self._endpoint_rows = {}
         self._init_ui()
+        # Connect to parent's service selection signal if available
+        if parent and hasattr(parent, "service_selected"):
+            parent.service_selected.connect(self._on_service_selected)
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -1148,6 +1151,10 @@ class SettingsPanel(QWidget):
             if env_key and cfg.get("id"):
                 mapping[env_key] = cfg.get("id")
         return mapping
+
+    def _on_service_selected(self, key: str) -> None:
+        """Called when a service card is selected in the launcher."""
+        self._sync_selected_service()
 
     def _sync_selected_service(self) -> None:
         self._selected_service_id = self._resolve_selected_service_id()
