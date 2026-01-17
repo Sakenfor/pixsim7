@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@pixsim7/graphics.geometry": "workspace:*",
-    "@pixsim7/shared.media-core": "workspace:*"
+    "@pixsim7/shared.media-core": "workspace:*",
+    "@pixsim7/shared.player.core": "workspace:*"
   },
   "devDependencies": {
     "esbuild": "^0.24.0"

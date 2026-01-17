@@ -1,6 +1,16 @@
 /**
  * Player Controls - Playback controls and keyboard shortcuts
  */
+import {
+  clampFps,
+  clampVolume,
+  getFrameFromTime,
+  getProgressPercent,
+  getSkipSeconds,
+  getTimeFromFrame,
+  getTimeFromPercent,
+} from '@pixsim7/shared.player.core';
+
 (function() {
   'use strict';
 
@@ -14,9 +24,9 @@
     const total = formatTime(video.duration || 0);
     elements.timeDisplay.textContent = `${current} / ${total}`;
 
-    const pct = video.duration ? (video.currentTime / video.duration) * 100 : 0;
+    const pct = getProgressPercent(video.currentTime, video.duration || 0);
     elements.seekFill.style.width = `${pct}%`;
-    elements.frameInput.value = Math.round(video.currentTime * state.currentFps);
+    elements.frameInput.value = getFrameFromTime(video.currentTime, state.currentFps);
   }
 
   function updateVideoInfo(name = '') {
@@ -33,9 +43,15 @@
 
   // ===== Skip amount =====
   function getSkipAmount(e) {
-    if (e.shiftKey) return state.skipShiftFrames / state.currentFps;
-    if (e.ctrlKey || e.metaKey) return state.skipCtrlAmount;
-    return state.skipNormalAmount;
+    return getSkipSeconds(
+      {
+        normalSeconds: state.skipNormalAmount,
+        ctrlSeconds: state.skipCtrlAmount,
+        shiftFrames: state.skipShiftFrames,
+      },
+      state.currentFps,
+      e
+    );
   }
 
   // ===== Event handlers =====
@@ -63,7 +79,7 @@
     const rect = elements.seekBar.getBoundingClientRect();
     const pct = (e.clientX - rect.left) / rect.width;
     window.PXS7Player.history?.addToSeekHistory(elements.video.currentTime);
-    elements.video.currentTime = pct * elements.video.duration;
+    elements.video.currentTime = getTimeFromPercent(pct, elements.video.duration);
   });
 
   elements.speedSelect.addEventListener('change', () => {
@@ -71,14 +87,14 @@
   });
 
   elements.fpsInput.addEventListener('change', () => {
-    state.currentFps = Math.max(1, Math.min(120, parseInt(elements.fpsInput.value) || 30));
+    state.currentFps = clampFps(parseInt(elements.fpsInput.value) || 30);
     elements.fpsInput.value = state.currentFps;
   });
 
   elements.frameInput.addEventListener('change', () => {
     const frame = parseInt(elements.frameInput.value) || 0;
     window.PXS7Player.history?.addToSeekHistory(elements.video.currentTime);
-    elements.video.currentTime = frame / state.currentFps;
+    elements.video.currentTime = getTimeFromFrame(frame, state.currentFps);
   });
 
   // ===== Settings Panel =====
@@ -121,7 +137,7 @@
   }
 
   function setVolume(vol) {
-    state.volume = Math.max(0, Math.min(1, vol));
+    state.volume = clampVolume(vol);
     elements.video.volume = state.volume;
     if (elements.volumeSlider) {
       elements.volumeSlider.value = Math.round(state.volume * 100);
