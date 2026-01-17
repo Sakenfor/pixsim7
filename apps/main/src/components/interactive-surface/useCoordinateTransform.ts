@@ -9,6 +9,7 @@
 import {
   calculateImageRect as calculateImageRectPure,
   clampNormalized as clampNormalizedPure,
+  createCoordinateTransform,
   distance,
   lerp,
   interpolateStroke as interpolateStrokePure,
@@ -57,35 +58,25 @@ export function useCoordinateTransform(
     [containerDimensions, imageDimensions, viewState]
   );
 
+  const transform = useMemo(
+    () => createCoordinateTransform(imageRect),
+    [imageRect]
+  );
+
   /**
    * Convert screen coordinates to normalized (0-1) image coordinates
    */
   const screenToNormalized = useCallback(
-    (screen: ScreenPoint): NormalizedPoint => {
-      // Position relative to image top-left
-      const relativeX = screen.x - imageRect.x;
-      const relativeY = screen.y - imageRect.y;
-
-      // Normalize to 0-1 range
-      const normalizedX = relativeX / imageRect.width;
-      const normalizedY = relativeY / imageRect.height;
-
-      return { x: normalizedX, y: normalizedY };
-    },
-    [imageRect]
+    (screen: ScreenPoint): NormalizedPoint => transform.toNormalized(screen),
+    [transform]
   );
 
   /**
    * Convert normalized (0-1) coordinates to screen coordinates
    */
   const normalizedToScreen = useCallback(
-    (normalized: NormalizedPoint): ScreenPoint => {
-      const screenX = normalized.x * imageRect.width + imageRect.x;
-      const screenY = normalized.y * imageRect.height + imageRect.y;
-
-      return { x: screenX, y: screenY };
-    },
-    [imageRect]
+    (normalized: NormalizedPoint): ScreenPoint => transform.toScreen(normalized),
+    [transform]
   );
 
   /**
