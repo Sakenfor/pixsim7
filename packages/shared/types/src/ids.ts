@@ -15,11 +15,11 @@
  * // Ref types (NpcRef, SceneIdRef, etc.) - from @shared/types
  * import type { NpcRef, SceneIdRef } from '@shared/types';
  *
- * // Ref runtime functions (Ref builder, guards) - from @pixsim7/shared.ref-core
- * // Branded parse helpers (parseRef, extractNpcId, etc.) - from @pixsim7/shared.logic-core/ids
- * import { Ref, isNpcRef } from '@pixsim7/shared.ref-core';
- * import { parseRef, extractNpcId } from '@pixsim7/shared.logic-core/ids';
+ * // Ref runtime functions (Ref builder, guards, parsers) - from @pixsim7/shared.ref-core
+ * import { Ref, isNpcRef, parseRef, extractNpcId } from '@pixsim7/shared.ref-core';
  * const ref = Ref.npc(123);  // "npc:123"
+ * const id = extractNpcId(ref);  // number | null
+ * const brandedId = id !== null ? NpcId(id) : null;  // NpcId | null
  * ```
  *
  * ## Design Principles
@@ -45,9 +45,9 @@
 // ============================================================================
 // REF TYPES FROM REF-CORE
 // ============================================================================
-// Re-export ref types for convenience. For Ref builders/guards, import from
-// @pixsim7/shared.ref-core. For branded parse helpers, import from
-// @pixsim7/shared.logic-core/ids.
+// Re-export ref types for convenience. For Ref builders/guards/parsers, import from
+// @pixsim7/shared.ref-core. Use branded type constructors (e.g., NpcId()) to cast
+// parsed numeric IDs to branded types.
 
 export type {
   NpcRef,

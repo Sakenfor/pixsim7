@@ -46,11 +46,6 @@
       "require": "./src/characterGraph.ts",
       "types": "./src/characterGraph.ts"
     },
-    "./ids": {
-      "import": "./src/ids.ts",
-      "require": "./src/ids.ts",
-      "types": "./src/ids.ts"
-    },
     "./brain": {
       "import": "./src/brain.ts",
       "require": "./src/brain.ts",
