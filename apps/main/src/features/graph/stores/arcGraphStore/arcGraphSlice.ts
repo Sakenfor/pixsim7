@@ -1,4 +1,13 @@
 import { createEmptyArcGraph, type ArcGraph } from '@features/graph/models/arcGraph';
+import {
+  removeGraphFromCollection,
+  duplicateGraph,
+  renameGraph,
+  getGraph,
+  listGraphs,
+  updateGraphInCollection,
+  generateGraphId,
+} from '@pixsim7/shared.graph-utilities';
 
 import type { ArcStateCreator, ArcGraphManagementState } from './types';
 
@@ -28,39 +37,25 @@ export const createArcGraphSlice: ArcStateCreator<ArcGraphManagementState> = (se
   },
 
   deleteArcGraph: (graphId: string) => {
-    set((state) => {
-      const rest = { ...state.arcGraphs };
-      delete rest[graphId];
-      return {
-        arcGraphs: rest,
-        currentArcGraphId: state.currentArcGraphId === graphId ? null : state.currentArcGraphId,
-      };
-    }, false, 'deleteArcGraph');
+    set((state) => ({
+      arcGraphs: removeGraphFromCollection(state.arcGraphs, graphId),
+      currentArcGraphId: state.currentArcGraphId === graphId ? null : state.currentArcGraphId,
+    }), false, 'deleteArcGraph');
   },
 
   duplicateArcGraph: (graphId: string, newTitle?: string) => {
-    const original = get().arcGraphs[graphId];
-    if (!original) {
+    const state = get();
+    const newGraphId = generateGraphId('arc');
+    const newGraphs = duplicateGraph(state.arcGraphs, graphId, newGraphId, newTitle);
+
+    if (!newGraphs) {
       console.error(`Arc graph ${graphId} not found`);
       return '';
     }
 
-    const duplicate: ArcGraph = {
-      ...original,
-      id: crypto.randomUUID(),
-      title: newTitle || `${original.title} (Copy)`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    set({ arcGraphs: newGraphs }, false, 'duplicateArcGraph');
 
-    set((state) => ({
-      arcGraphs: {
-        ...state.arcGraphs,
-        [duplicate.id]: duplicate,
-      },
-    }), false, 'duplicateArcGraph');
-
-    return duplicate.id;
+    return newGraphId;
   },
 
   loadArcGraph: (graphId: string) => {
@@ -75,51 +70,35 @@ export const createArcGraphSlice: ArcStateCreator<ArcGraphManagementState> = (se
 
   getCurrentArcGraph: () => {
     const { currentArcGraphId, arcGraphs } = get();
-    return currentArcGraphId ? arcGraphs[currentArcGraphId] || null : null;
+    return currentArcGraphId ? getGraph(arcGraphs, currentArcGraphId) : null;
   },
 
   getArcGraph: (graphId: string) => {
-    return get().arcGraphs[graphId] || null;
+    return getGraph(get().arcGraphs, graphId);
   },
 
   listArcGraphs: () => {
-    return Object.values(get().arcGraphs);
+    return listGraphs(get().arcGraphs);
   },
 
   renameArcGraph: (graphId: string, newTitle: string) => {
-    set((state) => {
-      const graph = state.arcGraphs[graphId];
-      if (!graph) return state;
-
-      return {
-        arcGraphs: {
-          ...state.arcGraphs,
-          [graphId]: {
-            ...graph,
-            title: newTitle,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      };
-    }, false, 'renameArcGraph');
+    set(
+      (state) => ({
+        arcGraphs: renameGraph(state.arcGraphs, graphId, newTitle),
+      }),
+      false,
+      'renameArcGraph'
+    );
   },
 
   updateArcGraphMetadata: (graphId: string, metadata: Partial<ArcGraph>) => {
-    set((state) => {
-      const graph = state.arcGraphs[graphId];
-      if (!graph) return state;
-
-      return {
-        arcGraphs: {
-          ...state.arcGraphs,
-          [graphId]: {
-            ...graph,
-            ...metadata,
-            updatedAt: new Date().toISOString(),
-          },
-        },
-      };
-    }, false, 'updateArcGraphMetadata');
+    set(
+      (state) => ({
+        arcGraphs: updateGraphInCollection(state.arcGraphs, graphId, metadata),
+      }),
+      false,
+      'updateArcGraphMetadata'
+    );
   },
 });
 

@@ -1,4 +1,13 @@
 import type { DraftScene } from '@domain/sceneBuilder';
+import {
+  generateGraphId,
+  removeGraphFromCollection,
+  duplicateGraph,
+  renameGraph,
+  getGraph,
+  listGraphs,
+  getGraphIds,
+} from '@pixsim7/shared.graph-utilities';
 
 import type { StateCreator, SceneManagementState } from './types';
 
@@ -13,7 +22,7 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
   sceneMetadata: {},
 
   createScene: (title, options = {}) => {
-    const sceneId = `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const sceneId = generateGraphId('scene');
     const now = new Date().toISOString();
 
     const newScene: DraftScene = {
@@ -82,9 +91,7 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
         return state;
       }
 
-      const newScenes = { ...state.scenes };
-      delete newScenes[sceneId];
-
+      const newScenes = removeGraphFromCollection(state.scenes, sceneId);
       const newMetadata = { ...state.sceneMetadata };
       delete newMetadata[sceneId];
 
@@ -98,31 +105,19 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
 
   duplicateScene: (sceneId, newTitle) => {
     const state = get();
-    const originalScene = state.scenes[sceneId];
-    if (!originalScene) {
+    const newSceneId = generateGraphId('scene');
+    const newScenes = duplicateGraph(state.scenes, sceneId, newSceneId, newTitle);
+
+    if (!newScenes) {
       console.warn(`[sceneSlice] Scene not found: ${sceneId}`);
       return '';
     }
 
-    const newSceneId = `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const now = new Date().toISOString();
-
-    const duplicated: DraftScene = {
-      ...originalScene,
-      id: newSceneId,
-      title: newTitle || `${originalScene.title} (Copy)`,
-      createdAt: now,
-      updatedAt: now,
-    };
-
     set(
-      (state) => ({
-        scenes: {
-          ...state.scenes,
-          [newSceneId]: duplicated,
-        },
+      {
+        scenes: newScenes,
         currentSceneId: newSceneId,
-      }),
+      },
       false,
       'duplicateScene'
     );
@@ -137,38 +132,27 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
   getCurrentScene: () => {
     const state = get();
     if (!state.currentSceneId) return null;
-    return state.scenes[state.currentSceneId] || null;
+    return getGraph(state.scenes, state.currentSceneId);
   },
 
   getScene: (sceneId) => {
     const state = get();
-    return state.scenes[sceneId] || null;
+    return getGraph(state.scenes, sceneId);
   },
 
   listScenes: () => {
     const state = get();
-    return Object.values(state.scenes).sort((a, b) =>
+    const scenes = listGraphs(state.scenes);
+    return scenes.sort((a, b) =>
       (a.createdAt || '').localeCompare(b.createdAt || '')
     );
   },
 
   renameScene: (sceneId, newTitle) => {
     set(
-      (state) => {
-        const scene = state.scenes[sceneId];
-        if (!scene) return state;
-
-        return {
-          scenes: {
-            ...state.scenes,
-            [sceneId]: {
-              ...scene,
-              title: newTitle,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        };
-      },
+      (state) => ({
+        scenes: renameGraph(state.scenes, sceneId, newTitle),
+      }),
       false,
       'renameScene'
     );
@@ -183,6 +167,6 @@ export const createSceneSlice: StateCreator<SceneManagementState> = (set, get) =
    */
   getSceneIds: () => {
     const { scenes } = get();
-    return new Set(Object.keys(scenes));
+    return new Set(getGraphIds(scenes));
   },
 });
