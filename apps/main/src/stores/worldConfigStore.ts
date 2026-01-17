@@ -17,13 +17,13 @@
 import {
   getRelationshipTierOrder,
   getIntimacyLevelOrder,
-} from '@pixsim7/shared.logic-core/stats';
+} from '@pixsim7/core.stats';
 import {
   parseStatsConfig,
   parseManifest,
   parseIntimacyGating,
   getTurnDeltaFromPreset,
-} from '@pixsim7/shared.logic-core/worldConfig';
+} from '@pixsim7/core.world';
 import type { GameWorldDetail } from '@pixsim7/shared.types';
 import {
   DEFAULT_WORLD_STATS_CONFIG,

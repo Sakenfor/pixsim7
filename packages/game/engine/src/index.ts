@@ -37,7 +37,7 @@ export {
   getAxisValue,
   getAxisTier,
   isInCriticalState,
-} from '@pixsim7/shared.logic-core/brain';
+} from '@pixsim7/core.brain';
 
 // ===== Relationships =====
 
@@ -49,14 +49,14 @@ export {
 } from './relationships/computation';
 
 // Preview API (recommended for editor/tooling)
-// Re-exported from @pixsim7/shared.logic-core/stats
+// Re-exported from @pixsim7/core.stats
 export {
   previewRelationshipTier,
   previewIntimacyLevel,
   configurePreviewApi,
   resetPreviewApiConfig,
   getPreviewApiConfig,
-} from '@pixsim7/shared.logic-core/stats';
+} from '@pixsim7/core.stats';
 
 // ===== Metrics Preview =====
 

@@ -11,7 +11,7 @@
  * @see claude-tasks/109-intimacy-and-content-gating-stat-integration.md
  */
 
-import { parseIntimacyGating } from '@pixsim7/shared.logic-core/worldConfig';
+import { parseIntimacyGating } from '@pixsim7/core.world';
 import {
   type IntimacyBand,
   type ContentRating,
@@ -61,7 +61,7 @@ export interface InteractionGatingResult {
 /**
  * Get effective intimacy gating config
  *
- * @deprecated Use parseIntimacyGating directly from @pixsim7/shared.logic-core/worldConfig
+ * @deprecated Use parseIntimacyGating directly from @pixsim7/core.world
  */
 export const getIntimacyGatingConfig = parseIntimacyGating;
 

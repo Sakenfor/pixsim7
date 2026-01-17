@@ -6,7 +6,7 @@
  * - Relationship value extraction
  *
  * For tier/intimacy computation tests, see preview.test.ts which tests
- * the @pixsim7/shared.logic-core/stats preview API.
+ * the @pixsim7/core.stats preview API.
  */
 
 import type { GameSessionDTO } from '@pixsim7/shared.types';

@@ -162,7 +162,7 @@ export interface DerivedStatPreviewResult {
  *
  * Wire from shared.logic-core stats previewClient in apps/main:
  * ```ts
- * import { previewDerivedStat } from '@pixsim7/shared.logic-core/stats';
+ * import { previewDerivedStat } from '@pixsim7/core.stats';
  *
  * const core = createPixSim7Core({
  *   derivedStatPreviewProvider: {

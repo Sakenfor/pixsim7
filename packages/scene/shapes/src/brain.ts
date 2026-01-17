@@ -6,7 +6,7 @@
  */
 
 import type { BrainState } from '@pixsim7/shared.types';
-import { getMood, getAxisValue, hasStat } from '@pixsim7/shared.logic-core/brain';
+import { getMood, getAxisValue, hasStat } from '@pixsim7/core.brain';
 
 export type BrainFace =
   | 'cortex'

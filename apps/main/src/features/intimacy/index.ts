@@ -53,7 +53,7 @@ export {
 export {
   DEFAULT_INTIMACY_GATING,
 } from '@pixsim7/shared.types';
-export { parseIntimacyGating } from '@pixsim7/shared.logic-core/worldConfig';
+export { parseIntimacyGating } from '@pixsim7/core.world';
 
 export {
   checkGate,

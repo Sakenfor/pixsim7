@@ -33,7 +33,7 @@ export {
   getPersonaTags,
   getIntimacyLevel,
   getRelationshipFlags,
-} from '@pixsim7/shared.logic-core/brain';
+} from '@pixsim7/core.brain';
 
 // ============================================================================
 // Event System

@@ -11,40 +11,20 @@
       "require": "./src/index.ts",
       "types": "./src/index.ts"
     },
-    "./stats": {
-      "import": "./src/stats/index.ts",
-      "require": "./src/stats/index.ts",
-      "types": "./src/stats/index.ts"
-    },
     "./contentRating": {
       "import": "./src/contentRating.ts",
       "require": "./src/contentRating.ts",
       "types": "./src/contentRating.ts"
-    },
-    "./worldConfig": {
-      "import": "./src/worldConfig.ts",
-      "require": "./src/worldConfig.ts",
-      "types": "./src/worldConfig.ts"
     },
     "./prompt": {
       "import": "./src/prompt.ts",
       "require": "./src/prompt.ts",
       "types": "./src/prompt.ts"
     },
-    "./game": {
-      "import": "./src/game.ts",
-      "require": "./src/game.ts",
-      "types": "./src/game.ts"
-    },
     "./characterGraph": {
       "import": "./src/characterGraph.ts",
       "require": "./src/characterGraph.ts",
       "types": "./src/characterGraph.ts"
-    },
-    "./brain": {
-      "import": "./src/brain.ts",
-      "require": "./src/brain.ts",
-      "types": "./src/brain.ts"
     },
     "./links": {
       "import": "./src/links.ts",
