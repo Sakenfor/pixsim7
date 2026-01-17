@@ -1,4 +1,5 @@
 import { logEvent } from '@lib/utils/logging';
+import { exportGraph, exportProject, importGraph, importProject, createBasicValidator } from '@pixsim7/shared.graph-utilities';
 
 import type { DraftScene } from '@domain/sceneBuilder';
 
@@ -18,88 +19,73 @@ export const createImportExportSlice: StateCreator<ImportExportState> = (set, ge
       return null;
     }
 
-    const exportData = {
-      ...scene,
-      exportedAt: new Date().toISOString(),
-      exportedBy: 'scene-builder-v2',
-    };
-
-    return JSON.stringify(exportData, null, 2);
+    return exportGraph(scene, { exportedBy: 'scene-builder-v2' });
   },
 
   exportProject: () => {
     const state = get();
 
-    const exportData = {
+    return exportProject(state.scenes, {
       version: 2,
-      scenes: state.scenes,
       sceneMetadata: state.sceneMetadata,
-      exportedAt: new Date().toISOString(),
       exportedBy: 'scene-builder-v2',
-    };
-
-    return JSON.stringify(exportData, null, 2);
+    });
   },
 
   importScene: (jsonString) => {
-    try {
-      const data = JSON.parse(jsonString);
+    const validateScene = createBasicValidator<DraftScene>(['id', 'title', 'nodes']);
 
-      // Validate basic structure
-      if (!data.id || !data.title || !Array.isArray(data.nodes)) {
-        throw new Error('Invalid scene format');
-      }
+    const importedScene = importGraph<DraftScene>(jsonString, {
+      validate: validateScene,
+      generateId: () => `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    });
 
-      // Generate new ID to avoid conflicts
-      const newSceneId = `scene_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const importedScene: DraftScene = {
-        ...data,
-        id: newSceneId,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      set(
-        (state) => ({
-          scenes: {
-            ...state.scenes,
-            [newSceneId]: importedScene,
-          },
-          currentSceneId: newSceneId,
-        }),
-        false,
-        'importScene'
-      );
-
-      logEvent('DEBUG', 'scene_imported', { sceneId: newSceneId, title: importedScene.title });
-      return newSceneId;
-    } catch (error) {
-      console.error('[importExportSlice] Import failed:', error);
+    if (!importedScene) {
+      console.error('[importExportSlice] Import failed');
       return null;
     }
+
+    set(
+      (state) => ({
+        scenes: {
+          ...state.scenes,
+          [importedScene.id]: importedScene,
+        },
+        currentSceneId: importedScene.id,
+      }),
+      false,
+      'importScene'
+    );
+
+    logEvent('DEBUG', 'scene_imported', { sceneId: importedScene.id, title: importedScene.title });
+    return importedScene.id;
   },
 
   importProject: (jsonString) => {
-    try {
-      const data = JSON.parse(jsonString);
+    const validateProject = (data: any) => {
+      return data.scenes && typeof data.scenes === 'object';
+    };
 
-      if (!data.scenes || typeof data.scenes !== 'object') {
-        throw new Error('Invalid project format');
-      }
+    const scenes = importProject<DraftScene>(jsonString, 'scenes', validateProject);
 
-      set(
-        {
-          scenes: data.scenes,
-          sceneMetadata: data.sceneMetadata || {},
-          currentSceneId: Object.keys(data.scenes)[0] || null,
-        },
-        false,
-        'importProject'
-      );
-
-      logEvent('DEBUG', 'project_imported', { sceneCount: Object.keys(data.scenes).length });
-    } catch (error) {
-      console.error('[importExportSlice] Project import failed:', error);
+    if (!scenes) {
+      console.error('[importExportSlice] Project import failed');
+      return;
     }
+
+    // Parse metadata if present
+    const data = JSON.parse(jsonString);
+
+    set(
+      {
+        scenes,
+        sceneMetadata: data.sceneMetadata || {},
+        currentSceneId: Object.keys(scenes)[0] || null,
+      },
+      false,
+      'importProject'
+    );
+
+    logEvent('DEBUG', 'project_imported', { sceneCount: Object.keys(scenes).length });
   },
 });

@@ -1,4 +1,12 @@
 import { useToastStore } from '@pixsim7/shared.ui';
+import {
+  addNode,
+  updateNode,
+  removeNodeWithEdges,
+  addEdge,
+  removeEdge,
+  findNode,
+} from '@pixsim7/shared.graph-utilities';
 
 import { validateArcGraphReferences, type ArcGraphEdge, type ArcGraphNode } from '@features/graph/models/arcGraph';
 
@@ -39,7 +47,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     // Validate scene reference if present
     if (node.type !== 'arc_group' && node.sceneId) {
       const sceneIds = useGraphStore.getState().getSceneIds();
-      const updatedGraph = { ...graph, nodes: [...graph.nodes, node] };
+      const updatedGraph = addNode(graph, node);
       const issues = validateArcGraphReferences(updatedGraph, sceneIds);
 
       const errors = issues.filter(i => i.severity === 'error');
@@ -53,14 +61,12 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       }
     }
 
+    const updatedGraph = addNode(graph, node);
+
     set((state) => ({
       arcGraphs: {
         ...state.arcGraphs,
-        [currentArcGraphId]: {
-          ...graph,
-          nodes: [...graph.nodes, node],
-          updatedAt: new Date().toISOString(),
-        },
+        [currentArcGraphId]: updatedGraph,
       },
     }), false, 'addArcNode');
   },
@@ -93,12 +99,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     // Validate scene reference if sceneId is being updated
     if ('sceneId' in patch && patch.sceneId) {
       const sceneIds = useGraphStore.getState().getSceneIds();
-      const updatedGraph = {
-        ...graph,
-        nodes: graph.nodes.map((n) =>
-          n.id === id ? { ...n, ...patch } : n
-        ),
-      };
+      const updatedGraph = updateNode(graph, id, patch);
       const issues = validateArcGraphReferences(updatedGraph, sceneIds);
 
       const errors = issues.filter(i => i.severity === 'error');
@@ -112,16 +113,12 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       }
     }
 
+    const updatedGraph = updateNode(graph, id, patch);
+
     set((state) => ({
       arcGraphs: {
         ...state.arcGraphs,
-        [currentArcGraphId]: {
-          ...graph,
-          nodes: graph.nodes.map((n) =>
-            n.id === id ? { ...n, ...patch } : n
-          ),
-          updatedAt: new Date().toISOString(),
-        },
+        [currentArcGraphId]: updatedGraph,
       },
     }), false, 'updateArcNode');
   },
@@ -151,15 +148,14 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       return;
     }
 
+    const updatedGraph = removeNodeWithEdges(graph, id);
+
     set((state) => ({
       arcGraphs: {
         ...state.arcGraphs,
         [currentArcGraphId]: {
-          ...graph,
-          nodes: graph.nodes.filter((n) => n.id !== id),
-          edges: graph.edges.filter((e) => e.from !== id && e.to !== id),
+          ...updatedGraph,
           startNodeId: graph.startNodeId === id ? undefined : graph.startNodeId,
-          updatedAt: new Date().toISOString(),
         },
       },
     }), false, 'removeArcNode');
@@ -197,14 +193,12 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       meta,
     };
 
+    const updatedGraph = addEdge(graph, edge);
+
     set((state) => ({
       arcGraphs: {
         ...state.arcGraphs,
-        [currentArcGraphId]: {
-          ...graph,
-          edges: [...graph.edges, edge],
-          updatedAt: new Date().toISOString(),
-        },
+        [currentArcGraphId]: updatedGraph,
       },
     }), false, 'connectArcNodes');
   },
@@ -234,14 +228,12 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       return;
     }
 
+    const updatedGraph = removeEdge(graph, edgeId);
+
     set((state) => ({
       arcGraphs: {
         ...state.arcGraphs,
-        [currentArcGraphId]: {
-          ...graph,
-          edges: graph.edges.filter((e) => e.id !== edgeId),
-          updatedAt: new Date().toISOString(),
-        },
+        [currentArcGraphId]: updatedGraph,
       },
     }), false, 'removeArcEdge');
   },
@@ -290,7 +282,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     const graph = arcGraphs[currentArcGraphId];
     if (!graph) return null;
 
-    return graph.nodes.find((n) => n.id === id) || null;
+    return findNode(graph.nodes, id) || null;
   },
 });
 

@@ -1,5 +1,7 @@
-import { exportArcGraph as exportGraph, importArcGraph as importGraph } from '@features/graph/models/arcGraph';
+import { exportArcGraph as exportArcGraphModel, importArcGraph as importArcGraphModel } from '@features/graph/models/arcGraph';
+import { exportGraph, exportProject, importProject } from '@pixsim7/shared.graph-utilities';
 
+import type { ArcGraph } from '@features/graph/models/arcGraph';
 import type { ArcStateCreator, ArcImportExportState } from './types';
 
 /**
@@ -14,17 +16,19 @@ export const createArcImportExportSlice: ArcStateCreator<ArcImportExportState> =
       return null;
     }
 
-    return exportGraph(graph);
+    // Use model-specific export if it exists, otherwise use generic
+    return exportArcGraphModel ? exportArcGraphModel(graph) : exportGraph(graph);
   },
 
   exportArcProject: () => {
     const { arcGraphs } = get();
-    return JSON.stringify({ arcGraphs }, null, 2);
+    return exportProject(arcGraphs);
   },
 
   importArcGraph: (jsonString: string) => {
     try {
-      const graph = importGraph(jsonString);
+      // Use model-specific import for validation
+      const graph = importArcGraphModel(jsonString);
 
       set((state) => ({
         arcGraphs: {
@@ -42,18 +46,18 @@ export const createArcImportExportSlice: ArcStateCreator<ArcImportExportState> =
   },
 
   importArcProject: (jsonString: string) => {
-    try {
-      const data = JSON.parse(jsonString);
-      const { arcGraphs } = data;
+    const validateProject = (data: any) => {
+      return data.arcGraphs && typeof data.arcGraphs === 'object';
+    };
 
-      if (!arcGraphs || typeof arcGraphs !== 'object') {
-        throw new Error('Invalid arc project format');
-      }
+    const arcGraphs = importProject<ArcGraph>(jsonString, 'arcGraphs', validateProject);
 
-      set({ arcGraphs }, false, 'importArcProject');
-    } catch (error) {
-      console.error('Failed to import arc project:', error);
+    if (!arcGraphs) {
+      console.error('Failed to import arc project');
+      return;
     }
+
+    set({ arcGraphs }, false, 'importArcProject');
   },
 });
 
