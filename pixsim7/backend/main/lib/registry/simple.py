@@ -83,8 +83,9 @@ class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
         allow_overwrite: bool = True,
         seed_on_init: bool = False,
         log_operations: bool = True,
+        plugin_aware: bool = False,
     ):
-        super().__init__(name=name, log_operations=log_operations)
+        super().__init__(name=name, log_operations=log_operations, plugin_aware=plugin_aware)
         self._allow_overwrite = allow_overwrite
         self._items: Dict[K, V] = {}
 

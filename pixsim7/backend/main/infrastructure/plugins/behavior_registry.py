@@ -232,6 +232,24 @@ class BehaviorExtensionRegistry:
         self._trait_effect_mappings: Dict[str, Dict[str, List[Dict]]] = {}  # Phase 4
         self._locked = False  # Lock registry after initialization
 
+        # Registry metadata for dynamic operations (name -> dict)
+        # All items in these registries have a `plugin_id` attribute
+        self._sub_registries: Dict[str, Dict[str, Any]] = {
+            "conditions": self._conditions,
+            "effects": self._effects,
+            "simulation_configs": self._simulation_configs,
+            "component_schemas": self._component_schemas,
+            "scoring_factors": self._scoring_factors,
+            "tag_effects": self._tag_effects,
+            "behavior_profiles": self._behavior_profiles,
+            # Note: _trait_effect_mappings excluded - items don't have plugin_id
+        }
+
+    @property
+    def name(self) -> str:
+        """Registry name for plugin tracking."""
+        return "behavior_extensions"
+
     # ===== CONDITION REGISTRATION =====
 
     def register_condition(
@@ -1358,13 +1376,8 @@ class BehaviorExtensionRegistry:
 
     def clear(self):
         """Clear all registrations (for testing)"""
-        self._conditions.clear()
-        self._effects.clear()
-        self._simulation_configs.clear()
-        self._component_schemas.clear()
-        self._scoring_factors.clear()
-        self._tag_effects.clear()
-        self._behavior_profiles.clear()
+        for registry in self._sub_registries.values():
+            registry.clear()
         self._trait_effect_mappings.clear()
         logger.info("Behavior extension registry cleared")
 
@@ -1388,39 +1401,17 @@ class BehaviorExtensionRegistry:
                 "Cannot unregister by plugin - registry is locked",
                 plugin_id=plugin_id,
             )
-            return {
-                "conditions": 0,
-                "effects": 0,
-                "simulation_configs": 0,
-                "component_schemas": 0,
-                "scoring_factors": 0,
-                "tag_effects": 0,
-                "behavior_profiles": 0,
-                "trait_effect_mappings": 0,
-            }
+            return {name: 0 for name in self._sub_registries}
 
         counts = {}
-
-        # Helper to remove items by plugin_id
-        def remove_by_plugin(registry: Dict, attr: str = "plugin_id") -> int:
+        for name, registry in self._sub_registries.items():
             to_remove = [
                 key for key, item in registry.items()
-                if getattr(item, attr, None) == plugin_id
+                if getattr(item, "plugin_id", None) == plugin_id
             ]
             for key in to_remove:
                 del registry[key]
-            return len(to_remove)
-
-        counts["conditions"] = remove_by_plugin(self._conditions)
-        counts["effects"] = remove_by_plugin(self._effects)
-        counts["simulation_configs"] = remove_by_plugin(self._simulation_configs)
-        counts["component_schemas"] = remove_by_plugin(self._component_schemas)
-        counts["scoring_factors"] = remove_by_plugin(self._scoring_factors)
-        counts["tag_effects"] = remove_by_plugin(self._tag_effects)
-        counts["behavior_profiles"] = remove_by_plugin(self._behavior_profiles)
-
-        # trait_effect_mappings doesn't have plugin_id metadata, skip for now
-        counts["trait_effect_mappings"] = 0
+            counts[name] = len(to_remove)
 
         total = sum(counts.values())
         if total > 0:
@@ -1436,42 +1427,26 @@ class BehaviorExtensionRegistry:
 
     def get_stats(self) -> Dict[str, Any]:
         """Get registry statistics"""
-        return {
-            "locked": self._locked,
-            "conditions": {
-                "total": len(self._conditions),
-                "by_plugin": self._count_by_plugin(self._conditions.values()),
-            },
-            "effects": {
-                "total": len(self._effects),
-                "by_plugin": self._count_by_plugin(self._effects.values()),
-            },
-            "simulation_configs": {
-                "total": len(self._simulation_configs),
-                "by_plugin": self._count_by_plugin(self._simulation_configs.values()),
-            },
-            "component_schemas": {
-                "total": len(self._component_schemas),
-                "by_plugin": self._count_by_plugin(self._component_schemas.values()),
-                "total_metrics": sum(len(s.metrics) for s in self._component_schemas.values()),
-            },
-            "scoring_factors": {
-                "total": len(self._scoring_factors),
-                "by_plugin": self._count_by_plugin(self._scoring_factors.values()),
-            },
-            "tag_effects": {
-                "total": len(self._tag_effects),
-                "by_plugin": self._count_by_plugin(self._tag_effects.values()),
-            },
-            "behavior_profiles": {
-                "total": len(self._behavior_profiles),
-                "by_plugin": self._count_by_plugin(self._behavior_profiles.values()),
-            },
-            "trait_effect_mappings": {
-                "total": len(self._trait_effect_mappings),
-                "traits": list(self._trait_effect_mappings.keys()),
-            },
+        stats: Dict[str, Any] = {"locked": self._locked}
+
+        for name, registry in self._sub_registries.items():
+            stats[name] = {
+                "total": len(registry),
+                "by_plugin": self._count_by_plugin(registry.values()),
+            }
+
+        # Special case: component_schemas has additional metrics count
+        stats["component_schemas"]["total_metrics"] = sum(
+            len(s.metrics) for s in self._component_schemas.values()
+        )
+
+        # Special case: trait_effect_mappings not in _sub_registries
+        stats["trait_effect_mappings"] = {
+            "total": len(self._trait_effect_mappings),
+            "traits": list(self._trait_effect_mappings.keys()),
         }
+
+        return stats
 
     def _count_by_plugin(self, items) -> Dict[str, int]:
         """Count items by plugin_id"""
@@ -1486,6 +1461,10 @@ class BehaviorExtensionRegistry:
 
 # Global registry instance (singleton)
 behavior_registry = BehaviorExtensionRegistry()
+
+# Register with central plugin tracking (BehaviorExtensionRegistry doesn't inherit RegistryBase)
+from pixsim7.backend.main.lib.registry.base import RegistryBase
+RegistryBase.register_plugin_aware(behavior_registry)
 
 
 # ===== HELPER FUNCTIONS FOR BEHAVIOR SYSTEM =====

@@ -58,7 +58,7 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
 
     def __init__(self):
         self._by_plugin: Dict[str, Set[str]] = {}
-        super().__init__(name="analyzers", allow_overwrite=True, seed_on_init=True)
+        super().__init__(name="analyzers", allow_overwrite=True, seed_on_init=True, plugin_aware=True)
 
     def _get_item_key(self, analyzer: AnalyzerInfo) -> str:
         return analyzer.id
