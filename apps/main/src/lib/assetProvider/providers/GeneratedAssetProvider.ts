@@ -24,7 +24,7 @@ import {
   type GenerationConfig,
 } from '@lib/api/generations';
 import { getAsset as getAssetApi } from '@features/assets/lib/api';
-import { pollUntil } from '@lib/utils/polling/pollUntil';
+import { pollUntil } from '@lib/utils';
 
 // ============================================================================
 // Types

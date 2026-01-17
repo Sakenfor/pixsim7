@@ -14,11 +14,11 @@ export { debugFlags } from './debugFlags';
 // Storage
 export { createBackendStorage } from './storage';
 
-// Hash utilities
-export { computeFileSha256 } from './hash';
+// Hash utilities (from shared.helpers-core)
+export { computeFileSha256 } from '@pixsim7/shared.helpers-core';
 
-// Case conversion utilities
-export { toSnakeCaseDeep, toSnakeCaseKey, toSnakeCaseShallow } from './case';
+// Case conversion utilities (from shared.helpers-core)
+export { toSnakeCaseDeep, toSnakeCaseKey, toSnakeCaseShallow } from '@pixsim7/shared.helpers-core';
 
 // Zustand persistence workaround
 export { manuallyRehydrateStore, exposeStoreForDebugging } from './zustandPersist';
@@ -29,5 +29,5 @@ export * from './time';
 // Validation utilities
 export * from './validation';
 
-// Polling utilities
-export * from './polling';
+// Polling utilities (from shared.async)
+export * from '@pixsim7/shared.async';

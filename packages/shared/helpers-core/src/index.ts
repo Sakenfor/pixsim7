@@ -47,3 +47,9 @@ export type {
 
 // Factory
 export { createRegistry, createHelperRegistry } from './registry';
+
+// Case conversion utilities
+export { toSnakeCaseKey, toSnakeCaseDeep, toSnakeCaseShallow } from './case';
+
+// Hash utilities
+export { computeFileSha256 } from './hash';

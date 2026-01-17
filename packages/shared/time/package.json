@@ -1,0 +1,24 @@
+{
+  "name": "@pixsim7/shared.time",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Time formatting utilities for human-readable durations (framework-agnostic)",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  }
+}

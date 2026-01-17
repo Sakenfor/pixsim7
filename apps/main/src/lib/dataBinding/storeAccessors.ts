@@ -7,6 +7,7 @@
 
 import { useWorkspaceStore } from '@features/workspace';
 import { useGameStateStore } from '../../stores/gameStateStore';
+import { resolvePath } from '@lib/editing-core';
 
 /**
  * Whitelisted store IDs
@@ -74,48 +75,6 @@ class StoreAccessorRegistry {
  */
 export const storeAccessorRegistry = new StoreAccessorRegistry();
 
-/**
- * Safe path accessor for nested object properties
- * Handles undefined/null gracefully and supports dot notation
- *
- * Examples:
- * - getValueByPath({a: {b: 1}}, 'a.b') => 1
- * - getValueByPath({a: {b: 1}}, 'a.c') => undefined
- * - getValueByPath(null, 'a.b') => undefined
- */
-export function getValueByPath(obj: unknown, path: string): unknown {
-  if (!obj || typeof obj !== 'object') {
-    return undefined;
-  }
-
-  if (!path || path.trim() === '') {
-    return obj;
-  }
-
-  const parts = path.split('.');
-  let current: any = obj;
-
-  for (const part of parts) {
-    if (current === null || current === undefined) {
-      return undefined;
-    }
-
-    // Handle array access (e.g., 'items[0]' or 'items.0')
-    const arrayMatch = part.match(/^(\w+)\[(\d+)\]$/);
-    if (arrayMatch) {
-      const [, key, index] = arrayMatch;
-      current = current[key];
-      if (!Array.isArray(current)) {
-        return undefined;
-      }
-      current = current[parseInt(index, 10)];
-    } else {
-      current = current[part];
-    }
-  }
-
-  return current;
-}
 
 /**
  * Get a value from a store by ID and path
@@ -132,7 +91,7 @@ export function getStoreValue(storeId: StoreId, path?: string): unknown {
     return snapshot;
   }
 
-  return getValueByPath(snapshot, path);
+  return resolvePath(snapshot, path);
 }
 
 /**

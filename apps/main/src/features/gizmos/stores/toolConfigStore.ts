@@ -8,6 +8,7 @@
 
 import type { InteractiveTool } from '@pixsim7/scene.gizmos';
 import { create } from 'zustand';
+import { resolvePath } from '@lib/editing-core';
 
 /** Deep partial type for nested overrides */
 type DeepPartial<T> = {
@@ -79,18 +80,6 @@ function setByPath(obj: Record<string, unknown>, path: string, value: unknown): 
   return result;
 }
 
-/** Helper to get a nested value by dot notation path */
-function getByPath(obj: Record<string, unknown>, path: string): unknown {
-  const parts = path.split('.');
-  let current: unknown = obj;
-
-  for (const part of parts) {
-    if (current === undefined || current === null) return undefined;
-    current = (current as Record<string, unknown>)[part];
-  }
-
-  return current;
-}
 
 /** Built-in presets */
 const defaultPresets: ToolPreset[] = [
@@ -164,7 +153,7 @@ export const useToolConfigStore = create<ToolConfigState & ToolConfigActions>((s
 
   setParameter: (toolId, path, value) => {
     const current = get().overrides[toolId] || {};
-    const oldValue = getByPath(current as Record<string, unknown>, path);
+    const oldValue = resolvePath(current as Record<string, unknown>, path);
     const newOverrides = setByPath(current as Record<string, unknown>, path, value) as ToolOverrides;
 
     set((state) => ({
