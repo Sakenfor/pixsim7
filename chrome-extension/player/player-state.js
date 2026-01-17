@@ -5,6 +5,7 @@ import {
   formatTime,
   getDisplayNameFromUrl,
   getSourceSiteFromUrl,
+  getExtension,
   getLocalSourceFolder as getLocalSourceFolderShared,
 } from '@pixsim7/shared.media-core';
 
@@ -121,10 +122,6 @@ import {
     toastTimeout = setTimeout(() => {
       elements.toast.className = 'toast';
     }, 3000);
-  }
-
-  function getExtension(filename) {
-    return filename.split('.').pop()?.toLowerCase() || '';
   }
 
   function getVideoNameFromUrl(url) {

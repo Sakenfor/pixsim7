@@ -61,6 +61,10 @@ export function getLocalSourceFolder(relativePath?: string): string | null {
   return parts.length > 1 ? parts[0] : null;
 }
 
+export function getExtension(filename: string): string {
+  return filename.split('.').pop()?.toLowerCase() || '';
+}
+
 export function buildCaptureFilename(sourceName: string | null, timeSec: number): string {
   const base = sourceName?.replace(/\.[^/.]+$/, '') || 'capture';
   const safeBase = base.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '') || 'capture';
@@ -74,5 +78,6 @@ export default {
   getSourceSiteFromUrl,
   getDisplayNameFromUrl,
   getLocalSourceFolder,
+  getExtension,
   buildCaptureFilename,
 };
