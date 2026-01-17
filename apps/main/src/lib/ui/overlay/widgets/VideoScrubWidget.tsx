@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { formatTime } from '@pixsim7/shared.media-core';
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
@@ -64,20 +65,6 @@ export interface VideoScrubWidgetConfig {
 
   /** Callback when clicked (not dragged) - used to open viewer */
   onClick?: (data: any) => void;
-}
-
-/**
- * Format seconds to MM:SS or HH:MM:SS
- */
-function formatTime(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-
-  if (hrs > 0) {
-    return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  }
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 /**
