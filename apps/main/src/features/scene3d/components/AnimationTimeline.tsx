@@ -5,19 +5,11 @@
  * Displays available animation clips and allows play/pause/seek operations.
  */
 
+import { formatTime } from '@pixsim7/shared.media-core';
 import { Select } from '@pixsim7/shared.ui';
 import { useCallback, useRef, useState } from 'react';
 
 import { useModel3DStore } from '../stores/model3DStore';
-
-/**
- * Format seconds to MM:SS display.
- */
-function formatTime(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 /**
  * Speed presets for playback.
