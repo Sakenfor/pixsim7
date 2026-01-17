@@ -4,7 +4,7 @@
  * Registers keyboard shortcuts defined on capability actions.
  */
 
-import { parseShortcutString, getShortcutSignature } from '@pixsim7/shared.helpers-core';
+import { parseShortcutString, getShortcutSignature } from '@pixsim7/shared.ui';
 import { useMemo } from 'react';
 
 import { useActions } from '@lib/capabilities';
