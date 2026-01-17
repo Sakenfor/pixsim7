@@ -1,3 +1,4 @@
+import { createRegistry, type Registry } from '@pixsim7/shared.helpers-core';
 import type { GameSessionDTO } from '@pixsim7/shared.types';
 
 export type HelperFunction = (
@@ -94,11 +95,14 @@ export interface RegistryOptions {
 }
 
 export class SessionHelperRegistry {
-  private helpers = new Map<string, HelperDefinition>();
-  private options: RegistryOptions;
+  private registry: Registry<string, HelperDefinition>;
 
   constructor(options: RegistryOptions = {}) {
-    this.options = options;
+    this.registry = createRegistry<string, HelperDefinition>({
+      label: 'SessionHelperRegistry',
+      strictMode: options.strict ?? false,
+      warnOnOverwrite: !options.strict,
+    });
   }
 
   register(def: HelperDefinition) {
@@ -127,24 +131,16 @@ export class SessionHelperRegistry {
       console.debug(`Helper "${def.name}" has no description`);
     }
 
-    // Check for duplicates
-    if (this.helpers.has(def.name)) {
-      const message = `Helper "${def.name}" already registered`;
-      if (this.options.strict) {
-        throw new Error(message);
-      }
-      console.warn(`${message}, overwriting`);
-    }
-
-    this.helpers.set(def.name, def);
+    // Register using base registry (handles duplicates based on strictMode)
+    this.registry.register(def.name, def);
   }
 
   get(name: string): HelperDefinition | undefined {
-    return this.helpers.get(name);
+    return this.registry.get(name);
   }
 
   getAll(): HelperDefinition[] {
-    return Array.from(this.helpers.values());
+    return Array.from(this.registry.getAll().values());
   }
 
   getByCategory(category: string): HelperDefinition[] {
@@ -153,7 +149,7 @@ export class SessionHelperRegistry {
 
   /** Remove a helper by name */
   unregister(name: string): boolean {
-    return this.helpers.delete(name);
+    return this.registry.unregister(name);
   }
 
   /** Execute a helper by name */
@@ -169,7 +165,7 @@ export class SessionHelperRegistry {
   buildHelpersObject(session: GameSessionDTO): Record<string, (...args: any[]) => any> {
     const obj: Record<string, any> = {};
 
-    for (const [name, def] of this.helpers.entries()) {
+    for (const [name, def] of this.registry.getAll().entries()) {
       obj[name] = (...args: any[]) => def.fn(session, ...args);
     }
 

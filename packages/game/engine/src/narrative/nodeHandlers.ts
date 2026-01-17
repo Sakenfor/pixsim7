@@ -28,6 +28,7 @@
  * ```
  */
 
+import { createRegistry, type Registry } from '@pixsim7/shared.helpers-core';
 import type {
   GameSessionDTO,
   NarrativeNode,
@@ -145,7 +146,15 @@ export type SimpleNodeHandler = (context: NodeExecutionContext) => NodeHandlerRe
  * Maps node type strings to handler implementations.
  */
 export class NodeHandlerRegistry {
-  private handlers: Map<string, NodeHandler> = new Map();
+  private registry: Registry<string, NodeHandler>;
+
+  constructor() {
+    this.registry = createRegistry<string, NodeHandler>({
+      label: 'NodeHandlerRegistry',
+      warnOnOverwrite: true,
+      strictMode: false,
+    });
+  }
 
   /**
    * Register a handler for a node type.
@@ -154,11 +163,10 @@ export class NodeHandlerRegistry {
    * @param handler - Handler implementation or simple execute function
    */
   register(nodeType: string, handler: NodeHandler | SimpleNodeHandler): void {
-    if (typeof handler === 'function') {
-      this.handlers.set(nodeType, { execute: handler });
-    } else {
-      this.handlers.set(nodeType, handler);
-    }
+    const normalizedHandler = typeof handler === 'function'
+      ? { execute: handler }
+      : handler;
+    this.registry.register(nodeType, normalizedHandler);
   }
 
   /**
@@ -168,28 +176,28 @@ export class NodeHandlerRegistry {
    * @returns Handler or undefined if not registered
    */
   get(nodeType: string): NodeHandler | undefined {
-    return this.handlers.get(nodeType);
+    return this.registry.get(nodeType);
   }
 
   /**
    * Check if a handler is registered.
    */
   has(nodeType: string): boolean {
-    return this.handlers.has(nodeType);
+    return this.registry.has(nodeType);
   }
 
   /**
    * Remove a handler.
    */
   unregister(nodeType: string): boolean {
-    return this.handlers.delete(nodeType);
+    return this.registry.unregister(nodeType);
   }
 
   /**
    * Get all registered node types.
    */
   getRegisteredTypes(): string[] {
-    return Array.from(this.handlers.keys());
+    return this.registry.keys();
   }
 
   /**

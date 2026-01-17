@@ -18,6 +18,7 @@
  * - onSceneStarted / onSceneEnded - Scene lifecycle
  */
 
+import { createRegistry, type Registry } from '@pixsim7/shared.helpers-core';
 import type {
   GamePlugin,
   GameEvent,
@@ -35,12 +36,17 @@ import type {
  * Pure TypeScript class with no React dependencies.
  */
 export class PluginRegistry implements IPluginRegistry {
-  private plugins: Map<string, GamePlugin> = new Map();
+  private registry: Registry<string, GamePlugin>;
   private eventListeners: Map<string, Set<(event: GameEvent) => void>> = new Map();
   private debug: boolean;
 
   constructor(options?: { debug?: boolean }) {
     this.debug = options?.debug ?? false;
+    this.registry = createRegistry<string, GamePlugin>({
+      label: 'PluginRegistry',
+      warnOnOverwrite: true,
+      strictMode: false,
+    });
   }
 
   private log(message: string): void {
@@ -57,7 +63,7 @@ export class PluginRegistry implements IPluginRegistry {
     if (!plugin.runIn) {
       plugin.runIn = 'both';
     }
-    this.plugins.set(plugin.id, plugin);
+    this.registry.register(plugin.id, plugin);
     this.log(`Registered plugin: ${plugin.id}`);
   }
 
@@ -65,7 +71,7 @@ export class PluginRegistry implements IPluginRegistry {
    * Unregister a plugin
    */
   unregisterPlugin(id: string): void {
-    this.plugins.delete(id);
+    this.registry.unregister(id);
     this.log(`Unregistered plugin: ${id}`);
   }
 
@@ -73,21 +79,21 @@ export class PluginRegistry implements IPluginRegistry {
    * Get all registered plugins
    */
   getPlugins(): GamePlugin[] {
-    return Array.from(this.plugins.values());
+    return Array.from(this.registry.getAll().values());
   }
 
   /**
    * Get a specific plugin
    */
   getPlugin(id: string): GamePlugin | undefined {
-    return this.plugins.get(id);
+    return this.registry.get(id);
   }
 
   /**
    * Enable/disable a plugin
    */
   setPluginEnabled(id: string, enabled: boolean): void {
-    const plugin = this.plugins.get(id);
+    const plugin = this.registry.get(id);
     if (plugin) {
       plugin.enabled = enabled;
       this.log(`Plugin ${id} enabled: ${enabled}`);
@@ -107,7 +113,7 @@ export class PluginRegistry implements IPluginRegistry {
    * Run beforeTick hooks
    */
   async runBeforeTick(context: GameTickContext): Promise<void> {
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!this.shouldRunInContext(plugin, context.origin)) continue;
       if (!plugin.hooks.beforeTick) continue;
 
@@ -125,7 +131,7 @@ export class PluginRegistry implements IPluginRegistry {
   async runOnTick(context: GameTickContext): Promise<GameEvent[]> {
     const allEvents: GameEvent[] = [];
 
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!this.shouldRunInContext(plugin, context.origin)) continue;
       if (!plugin.hooks.onTick) continue;
 
@@ -158,7 +164,7 @@ export class PluginRegistry implements IPluginRegistry {
    * Run afterTick hooks
    */
   async runAfterTick(context: GameTickContext, events: GameEvent[]): Promise<void> {
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!this.shouldRunInContext(plugin, context.origin)) continue;
       if (!plugin.hooks.afterTick) continue;
 
@@ -176,7 +182,7 @@ export class PluginRegistry implements IPluginRegistry {
   async runSessionLoaded(context: SessionLoadedContext): Promise<GameEvent[]> {
     const allEvents: GameEvent[] = [];
 
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!plugin.enabled || !plugin.hooks.onSessionLoaded) continue;
 
       try {
@@ -196,7 +202,7 @@ export class PluginRegistry implements IPluginRegistry {
   async runLocationEntered(context: LocationEnteredContext): Promise<GameEvent[]> {
     const allEvents: GameEvent[] = [];
 
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!plugin.enabled || !plugin.hooks.onLocationEntered) continue;
 
       try {
@@ -216,7 +222,7 @@ export class PluginRegistry implements IPluginRegistry {
   async runSceneStarted(context: SceneContext): Promise<GameEvent[]> {
     const allEvents: GameEvent[] = [];
 
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!plugin.enabled || !plugin.hooks.onSceneStarted) continue;
 
       try {
@@ -236,7 +242,7 @@ export class PluginRegistry implements IPluginRegistry {
   async runSceneEnded(context: SceneContext): Promise<GameEvent[]> {
     const allEvents: GameEvent[] = [];
 
-    for (const plugin of this.plugins.values()) {
+    for (const plugin of this.registry.getAll().values()) {
       if (!plugin.enabled || !plugin.hooks.onSceneEnded) continue;
 
       try {
@@ -292,7 +298,7 @@ export class PluginRegistry implements IPluginRegistry {
    * Clear all plugins and listeners
    */
   clear(): void {
-    this.plugins.clear();
+    this.registry.clear();
     this.eventListeners.clear();
     this.log('Registry cleared');
   }
