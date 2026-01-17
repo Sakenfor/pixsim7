@@ -1368,6 +1368,70 @@ class BehaviorExtensionRegistry:
         self._trait_effect_mappings.clear()
         logger.info("Behavior extension registry cleared")
 
+    def unregister_by_plugin(self, plugin_id: str) -> Dict[str, int]:
+        """
+        Unregister all extensions from a specific plugin.
+
+        Use this when a plugin is disabled or unloaded to clean up
+        all its registered extensions.
+
+        Args:
+            plugin_id: Plugin ID to unregister
+
+        Returns:
+            Dict with counts of removed items per extension type
+
+        Note: Respects lock - returns empty counts if locked.
+        """
+        if self._locked:
+            logger.warning(
+                "Cannot unregister by plugin - registry is locked",
+                plugin_id=plugin_id,
+            )
+            return {
+                "conditions": 0,
+                "effects": 0,
+                "simulation_configs": 0,
+                "component_schemas": 0,
+                "scoring_factors": 0,
+                "tag_effects": 0,
+                "behavior_profiles": 0,
+                "trait_effect_mappings": 0,
+            }
+
+        counts = {}
+
+        # Helper to remove items by plugin_id
+        def remove_by_plugin(registry: Dict, attr: str = "plugin_id") -> int:
+            to_remove = [
+                key for key, item in registry.items()
+                if getattr(item, attr, None) == plugin_id
+            ]
+            for key in to_remove:
+                del registry[key]
+            return len(to_remove)
+
+        counts["conditions"] = remove_by_plugin(self._conditions)
+        counts["effects"] = remove_by_plugin(self._effects)
+        counts["simulation_configs"] = remove_by_plugin(self._simulation_configs)
+        counts["component_schemas"] = remove_by_plugin(self._component_schemas)
+        counts["scoring_factors"] = remove_by_plugin(self._scoring_factors)
+        counts["tag_effects"] = remove_by_plugin(self._tag_effects)
+        counts["behavior_profiles"] = remove_by_plugin(self._behavior_profiles)
+
+        # trait_effect_mappings doesn't have plugin_id metadata, skip for now
+        counts["trait_effect_mappings"] = 0
+
+        total = sum(counts.values())
+        if total > 0:
+            logger.info(
+                "Unregistered plugin extensions",
+                plugin_id=plugin_id,
+                **counts,
+            )
+
+        return counts
+
     # ===== STATISTICS =====
 
     def get_stats(self) -> Dict[str, Any]:

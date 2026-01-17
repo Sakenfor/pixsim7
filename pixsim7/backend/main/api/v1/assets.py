@@ -1316,9 +1316,49 @@ async def upload_asset_from_url(
             pass
         raise HTTPException(status_code=500, detail=f"Failed to save to local storage: {e}")
 
-    # Step 3: Create asset in database with content-addressed storage key
-    placeholder_provider_asset_id = f"local_{sha256[:16]}"
+    # Step 3: Try to upload to provider FIRST (before creating asset)
+    # This prevents emitting asset:created event for assets that fail provider upload
+    from pixsim7.backend.main.services.upload.upload_service import UploadService
+    upload_service = UploadService(db, account_service)
 
+    provider_upload_result = None
+    provider_upload_error = None
+
+    try:
+        provider_upload_result = await upload_service.upload(
+            provider_id=request.provider_id,
+            media_type=media_type,
+            tmp_path=final_local_path  # Upload from saved file
+        )
+        logger.info(
+            "provider_upload_success",
+            provider_id=request.provider_id,
+            external_url=provider_upload_result.external_url,
+            provider_asset_id=provider_upload_result.provider_asset_id,
+        )
+    except Exception as e:
+        provider_upload_error = str(e)
+        logger.warning(
+            "provider_upload_failed",
+            provider_id=request.provider_id,
+            error=provider_upload_error,
+            ensure_asset=request.ensure_asset,
+            exc_info=True,
+        )
+
+        # If caller does NOT want a local-only asset, fail immediately without creating asset
+        if not request.ensure_asset:
+            # Clean up temp files
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=502,
+                detail=f"Provider upload failed: {provider_upload_error}",
+            )
+
+    # Step 4: Create asset in database (only after provider upload attempt)
     # Determine upload method (canonical source)
     upload_method = infer_upload_method(
         upload_method=request.upload_method,
@@ -1342,14 +1382,28 @@ async def upload_asset_from_url(
     if upload_attribution:
         media_metadata["upload_attribution"] = upload_attribution
 
+    # Determine provider_asset_id and remote_url based on upload result
+    if provider_upload_result:
+        provider_asset_id = provider_upload_result.provider_asset_id or f"local_{sha256[:16]}"
+        remote_url = None
+        if provider_upload_result.external_url:
+            if provider_upload_result.external_url.startswith("http://") or provider_upload_result.external_url.startswith("https://"):
+                remote_url = provider_upload_result.external_url
+        provider_upload_note = provider_upload_result.note or "Uploaded to provider successfully"
+    else:
+        # Provider upload failed but ensure_asset=true, create local-only asset
+        provider_asset_id = f"local_{sha256[:16]}"
+        remote_url = None
+        provider_upload_note = f"Asset saved locally; provider upload failed: {provider_upload_error}"
+
     try:
         asset = await add_asset(
             db,
             user_id=user.id,
             media_type=media_type,
             provider_id=request.provider_id,
-            provider_asset_id=placeholder_provider_asset_id,
-            remote_url=None,  # Will be set after provider upload
+            provider_asset_id=provider_asset_id,
+            remote_url=remote_url,
             local_path=final_local_path,  # Content-addressed path
             stored_key=stored_key,  # Stable storage key
             sync_status=SyncStatus.DOWNLOADED,  # Already have it locally!
@@ -1365,7 +1419,13 @@ async def upload_asset_from_url(
             upload_method=upload_method,
             upload_context=normalized_context or None,
         )
-        # TODO: Add "user_upload" and "from_url" tags using TagService after asset creation
+
+        logger.info(
+            "asset_created",
+            asset_id=asset.id,
+            provider_id=request.provider_id,
+            provider_upload_succeeded=provider_upload_result is not None,
+        )
 
     except Exception as e:
         # Clean up temp files on failure
@@ -1391,74 +1451,7 @@ async def upload_asset_from_url(
         except Exception:
             pass
 
-    # Step 4: Try to upload to provider (BEST-EFFORT, non-blocking)
-    # If this fails, the asset is still accessible via local storage
-    provider_upload_result = None
-    provider_upload_note = None
-
-    try:
-        from pixsim7.backend.main.services.upload.upload_service import UploadService
-        upload_service = UploadService(db, account_service)
-
-        result = await upload_service.upload(
-            provider_id=request.provider_id,
-            media_type=media_type,
-            tmp_path=final_local_path  # Upload from saved file
-        )
-
-        # Update asset with provider information if upload succeeded
-        if result.external_url:
-            # Only set remote_url if it's a valid HTTP(S) URL
-            if result.external_url.startswith("http://") or result.external_url.startswith("https://"):
-                asset.remote_url = result.external_url
-                # Note: thumbnail_url will be computed from remote_url in AssetResponse
-
-        if result.provider_asset_id:
-            asset.provider_asset_id = result.provider_asset_id
-
-        await db.commit()
-        await db.refresh(asset)
-
-        provider_upload_result = result
-        provider_upload_note = result.note or "Uploaded to provider successfully"
-
-        logger.info(
-            "provider_upload_success",
-            asset_id=asset.id,
-            provider_id=request.provider_id,
-            external_url=result.external_url,
-            provider_asset_id=result.provider_asset_id,
-        )
-
-    except Exception as e:
-        # Provider upload failed.
-        logger.warning(
-            "provider_upload_failed_but_asset_saved",
-            asset_id=asset.id,
-            provider_id=request.provider_id,
-            error=str(e),
-            exc_info=True,
-        )
-        provider_upload_note = f"Asset saved locally; provider upload failed: {str(e)}"
-
-        # If the caller does NOT want a local-only asset, roll back and
-        # propagate an error instead of keeping the asset.
-        if not request.ensure_asset:
-            try:
-                await asset_service.delete_asset(asset.id, user)
-            except Exception as delete_err:
-                logger.error(
-                    "asset_delete_after_provider_failure_failed",
-                    asset_id=asset.id,
-                    provider_id=request.provider_id,
-                    error=str(delete_err),
-                )
-            raise HTTPException(
-                status_code=502,
-                detail=f"Provider upload failed: {str(e)}",
-            )
-
-    # Clean up temp file
+    # Clean up original temp file
     try:
         os.unlink(tmp_path)
     except Exception as e:
