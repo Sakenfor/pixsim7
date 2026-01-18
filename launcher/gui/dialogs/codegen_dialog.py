@@ -6,8 +6,7 @@ Provides Run and Check buttons for each generator that supports them.
 """
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QGroupBox, QScrollArea, QWidget, QFrame, QButtonGroup,
-    QToolButton, QMenu
+    QTextEdit, QWidget, QFrame, QToolButton, QMenu, QComboBox
 )
 from PySide6.QtCore import Qt, QThread, Signal
 import subprocess
@@ -298,253 +297,23 @@ class CodegenBatchWorker(QThread):
         self.batch_finished.emit(overall_success, summary)
 
 
-class CodegenTaskWidget(QFrame):
-    """Widget for a single codegen task with Run/Check buttons."""
-
-    run_requested = Signal(str, str, bool)  # task_id, script, check_mode
-
-    def __init__(self, task, parent=None):
-        super().__init__(parent)
-        self.task = task
-        self._setup_ui()
-
-    def _setup_ui(self):
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {theme.BG_TERTIARY};
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: {theme.RADIUS_MD}px;
-            }}
-        """)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 8)
-        layout.setSpacing(12)
-
-        # Left side: ID and description
-        info_layout = QVBoxLayout()
-        info_layout.setSpacing(2)
-
-        id_label = QLabel(self.task['id'])
-        id_label.setStyleSheet(f"font-weight: bold; color: {theme.TEXT_PRIMARY}; font-size: 10pt;")
-        info_layout.addWidget(id_label)
-
-        desc_label = QLabel(self.task['description'])
-        desc_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
-        desc_label.setWordWrap(True)
-        info_layout.addWidget(desc_label)
-
-        layout.addLayout(info_layout, 1)
-
-        # Right side: buttons
-        self.btn_run = QPushButton("Run")
-        self.btn_run.setToolTip(f"Run: {self.task['script']}")
-        self.btn_run.setFixedWidth(70)
-        self.btn_run.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {theme.ACCENT_SUCCESS};
-                color: white;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #56d364; }}
-            QPushButton:disabled {{ background-color: {theme.BG_TERTIARY}; color: {theme.TEXT_SECONDARY}; }}
-        """)
-        self.btn_run.clicked.connect(self._on_run)
-        layout.addWidget(self.btn_run)
-
-        if self.task.get('supportsCheck'):
-            self.btn_check = QPushButton("Check")
-            self.btn_check.setToolTip("Verify generated output is up-to-date")
-            self.btn_check.setFixedWidth(70)
-            self.btn_check.clicked.connect(self._on_check)
-            layout.addWidget(self.btn_check)
-        else:
-            self.btn_check = None
-
-    def _on_run(self):
-        self.run_requested.emit(self.task['id'], self.task['script'], False)
-
-    def _on_check(self):
-        self.run_requested.emit(self.task['id'], self.task['script'], True)
-
-    def set_enabled(self, enabled):
-        self.btn_run.setEnabled(enabled)
-        if self.btn_check:
-            self.btn_check.setEnabled(enabled)
-
-
-class CodegenGroupWidget(QFrame):
-    """Header widget for a group of codegen tasks."""
-
-    run_requested = Signal(str, bool)  # group, check_mode
-    selected = Signal(str)  # group
-
-    def __init__(self, group_id, label, count, show_actions=True, parent=None):
-        super().__init__(parent)
-        self.group_id = group_id
-        self.label = label
-        self.count = count
-        self.show_actions = show_actions
-        self._setup_ui()
-
-    def _setup_ui(self):
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setStyleSheet(f"""
-            QFrame {{
-                background-color: {theme.BG_SECONDARY};
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: {theme.RADIUS_MD}px;
-            }}
-        """)
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 6, 10, 6)
-        layout.setSpacing(10)
-
-        self.btn_select = QPushButton(f"{self.label} ({self.count})")
-        self.btn_select.setCheckable(True)
-        self.btn_select.setStyleSheet(f"""
-            QPushButton {{
-                text-align: left;
-                padding: 4px 6px;
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: {theme.RADIUS_MD}px;
-                color: {theme.TEXT_PRIMARY};
-                background-color: {theme.BG_TERTIARY};
-                font-weight: bold;
-                font-size: 9.5pt;
-            }}
-            QPushButton:checked {{
-                background-color: {theme.ACCENT_PRIMARY};
-                color: white;
-            }}
-        """)
-        self.btn_select.clicked.connect(lambda: self.selected.emit(self.group_id))
-        layout.addWidget(self.btn_select, 1)
-
-        if self.show_actions:
-            self.btn_run = QPushButton("Run")
-            self.btn_run.setToolTip(f"Run all generators in group: {self.group_id}")
-            self.btn_run.setFixedWidth(64)
-            self.btn_run.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {theme.ACCENT_SUCCESS};
-                    color: white;
-                    font-weight: bold;
-                }}
-                QPushButton:hover {{ background-color: #56d364; }}
-                QPushButton:disabled {{ background-color: {theme.BG_TERTIARY}; color: {theme.TEXT_SECONDARY}; }}
-            """)
-            self.btn_run.clicked.connect(lambda: self.run_requested.emit(self.group_id, False))
-            layout.addWidget(self.btn_run)
-
-            self.btn_check = QPushButton("Check")
-            self.btn_check.setToolTip(f"Check all generators in group: {self.group_id}")
-            self.btn_check.setFixedWidth(64)
-            self.btn_check.clicked.connect(lambda: self.run_requested.emit(self.group_id, True))
-            layout.addWidget(self.btn_check)
-        else:
-            self.btn_run = None
-            self.btn_check = None
-
-    def set_enabled(self, enabled):
-        self.btn_select.setEnabled(enabled)
-        if self.btn_run:
-            self.btn_run.setEnabled(enabled)
-        if self.btn_check:
-            self.btn_check.setEnabled(enabled)
-
-
-class CodegenTaskEntryWidget(QFrame):
-    """Sidebar entry for a codegen task with status dot."""
-
-    def __init__(self, task_id, description, parent=None):
-        super().__init__(parent)
-        self.task_id = task_id
-        self.description = description
-        self._status = None
-        self.button = None
-        self._dot = None
-        self._setup_ui()
-
-    def _setup_ui(self):
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        self._dot = QFrame()
-        self._dot.setFixedSize(8, 8)
-        layout.addWidget(self._dot)
-
-        self.button = QPushButton(self.task_id)
-        self.button.setCheckable(True)
-        self.button.setToolTip(self.description or "")
-        self.button.setStyleSheet(f"""
-            QPushButton {{
-                text-align: left;
-                padding: 4px 6px;
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: {theme.RADIUS_SM}px;
-                color: {theme.TEXT_PRIMARY};
-                background-color: {theme.BG_TERTIARY};
-                font-size: 9pt;
-            }}
-            QPushButton:checked {{
-                background-color: {theme.ACCENT_PRIMARY};
-                color: white;
-            }}
-        """)
-        layout.addWidget(self.button, 1)
-        self.set_status(None)
-
-    def set_status(self, status):
-        self._status = status
-        if status is None:
-            color = theme.BORDER_DEFAULT
-            tooltip = "Not checked"
-        elif status:
-            color = theme.ACCENT_SUCCESS
-            tooltip = "Check passed"
-        else:
-            color = theme.ACCENT_ERROR
-            tooltip = "Check failed"
-
-        self._dot.setStyleSheet(
-            f"background-color: {color}; border-radius: {theme.RADIUS_ROUND}px;"
-        )
-        self._dot.setToolTip(tooltip)
-
-    def set_enabled(self, enabled):
-        self.button.setEnabled(enabled)
-
-
 class CodegenToolsWidget(QWidget):
     """Embeddable widget for codegen tools.
 
-    Can be used inline in a tab or wrapped in a dialog.
+    Simplified version with dropdown selector instead of sidebar.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._worker = None
-        self._group_widgets = []
-        self._group_headers = {}
-        self._group_task_containers = {}
-        self._task_buttons = {}
-        self._task_entries = {}
-        self._task_button_group = None
         self._tasks_by_id = {}
-        self._group_tasks = {}
-        self._active_group = "all"
         self._selected_task_id = None
-        self._task_status = {}
         self._setup_ui()
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setSpacing(8)
-        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 12, 16, 12)
 
         # Parse manifest
         tasks = parse_codegen_manifest()
@@ -556,215 +325,126 @@ class CodegenToolsWidget(QWidget):
             layout.addStretch()
             return
 
-        # Header row (count only)
-        batch_row = QHBoxLayout()
-        batch_row.addStretch()
+        # Header
+        header = QLabel("Code Generation")
+        header.setStyleSheet(f"font-size: 13pt; font-weight: bold; color: {theme.TEXT_PRIMARY};")
+        layout.addWidget(header)
 
-        task_count = QLabel(f"{len(tasks)} generators")
-        task_count.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
-        batch_row.addWidget(task_count)
-
-        layout.addLayout(batch_row)
-
-        # Group tasks
+        # Store tasks
         self._tasks_by_id = {task['id']: task for task in tasks}
-        self._task_status = {task['id']: None for task in tasks}
-        grouped = {}
-        group_order = []
+
+        # Generator selector row
+        selector_row = QHBoxLayout()
+        selector_row.setSpacing(8)
+
+        selector_row.addWidget(QLabel("Generator:"))
+
+        self._task_combo = QComboBox()
+        self._task_combo.setMinimumWidth(200)
         for task in tasks:
-            group = task['groups'][0] if task.get('groups') else "other"
-            if group not in grouped:
-                grouped[group] = []
-                group_order.append(group)
-            grouped[group].append(task)
-        self._group_tasks = grouped
+            self._task_combo.addItem(task['id'], task['id'])
+        self._task_combo.currentIndexChanged.connect(self._on_task_selected)
+        selector_row.addWidget(self._task_combo, 1)
 
-        def group_label(group_id: str) -> str:
-            if group_id == "other":
-                return "Other"
-            return group_id.replace("-", " ").title()
+        layout.addLayout(selector_row)
 
-        # Group sidebar + details panel
-        body_row = QHBoxLayout()
-        body_row.setSpacing(12)
-
-        sidebar = QFrame()
-        sidebar.setFixedWidth(260)
-        sidebar.setStyleSheet(f"""
+        # Details frame
+        details_frame = QFrame()
+        details_frame.setFrameShape(QFrame.StyledPanel)
+        details_frame.setStyleSheet(f"""
             QFrame {{
-                background-color: {theme.BG_SECONDARY};
+                background-color: {theme.BG_TERTIARY};
                 border: 1px solid {theme.BORDER_DEFAULT};
                 border-radius: {theme.RADIUS_MD}px;
             }}
         """)
+        details_layout = QVBoxLayout(details_frame)
+        details_layout.setContentsMargins(12, 10, 12, 10)
+        details_layout.setSpacing(4)
 
-        sidebar_scroll = QScrollArea()
-        sidebar_scroll.setWidgetResizable(True)
-        sidebar_scroll.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
-
-        sidebar_content = QWidget()
-        sidebar_layout = QVBoxLayout(sidebar_content)
-        sidebar_layout.setContentsMargins(10, 10, 10, 10)
-        sidebar_layout.setSpacing(6)
-
-        group_buttons = QButtonGroup(self)
-        group_buttons.setExclusive(True)
-
-        task_buttons = QButtonGroup(self)
-        task_buttons.setExclusive(True)
-        self._task_button_group = task_buttons
-
-        total_tasks = len(tasks)
-        all_header = CodegenGroupWidget("all", "All", total_tasks, show_actions=False)
-        all_header.selected.connect(self._set_group_filter)
-        self._group_headers["all"] = all_header
-        self._group_widgets.append(all_header)
-        group_buttons.addButton(all_header.btn_select)
-        sidebar_layout.addWidget(all_header)
-
-        for group_id in group_order:
-            group_tasks = grouped[group_id]
-            header = CodegenGroupWidget(
-                group_id,
-                group_label(group_id),
-                len(group_tasks),
-                show_actions=False
-            )
-            header.selected.connect(self._set_group_filter)
-            self._group_headers[group_id] = header
-            self._group_widgets.append(header)
-            group_buttons.addButton(header.btn_select)
-            sidebar_layout.addWidget(header)
-
-            task_container = QWidget()
-            task_layout = QVBoxLayout(task_container)
-            task_layout.setContentsMargins(16, 4, 0, 4)
-            task_layout.setSpacing(4)
-
-            for task in group_tasks:
-                task_id = task['id']
-                entry = CodegenTaskEntryWidget(task_id, task.get('description', ''))
-                entry.button.clicked.connect(lambda _checked, tid=task_id: self._select_task(tid))
-                self._task_buttons[task_id] = entry.button
-                self._task_entries[task_id] = entry
-                task_buttons.addButton(entry.button)
-                task_layout.addWidget(entry)
-
-            task_container.setVisible(False)
-            sidebar_layout.addWidget(task_container)
-            self._group_task_containers[group_id] = task_container
-
-        sidebar_layout.addStretch()
-        sidebar_scroll.setWidget(sidebar_content)
-
-        sidebar_layout_container = QVBoxLayout(sidebar)
-        sidebar_layout_container.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout_container.addWidget(sidebar_scroll)
-
-        details = QFrame()
-        details.setStyleSheet(f"""
-            QFrame {{
-                background-color: {theme.BG_SECONDARY};
-                border: 1px solid {theme.BORDER_DEFAULT};
-                border-radius: {theme.RADIUS_MD}px;
-            }}
-        """)
-        details_layout = QVBoxLayout(details)
-        details_layout.setContentsMargins(14, 12, 14, 12)
-        details_layout.setSpacing(8)
-
-        self._details_title = QLabel("Select a generator")
-        self._details_title.setStyleSheet(f"font-weight: bold; color: {theme.TEXT_PRIMARY}; font-size: 10.5pt;")
-        details_layout.addWidget(self._details_title)
-
-        self._details_desc = QLabel("Pick a task from the left to view details.")
+        self._details_desc = QLabel("")
         self._details_desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
         self._details_desc.setWordWrap(True)
         details_layout.addWidget(self._details_desc)
 
         self._details_script = QLabel("")
-        self._details_script.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 8.5pt;")
-        self._details_script.setWordWrap(True)
+        self._details_script.setStyleSheet(f"color: {theme.TEXT_DISABLED}; font-size: 8pt;")
         details_layout.addWidget(self._details_script)
 
         self._details_groups = QLabel("")
-        self._details_groups.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 8.5pt;")
-        self._details_groups.setWordWrap(True)
+        self._details_groups.setStyleSheet(f"color: {theme.TEXT_DISABLED}; font-size: 8pt;")
         details_layout.addWidget(self._details_groups)
 
-        details_layout.addStretch()
+        layout.addWidget(details_frame)
 
-        details_actions = QHBoxLayout()
+        # Action buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(8)
 
-        self._details_run = QToolButton()
-        self._details_run.setText("Run")
-        self._details_run.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._details_run.setPopupMode(QToolButton.MenuButtonPopup)
-        self._details_run.setToolTip("Run selected generator")
-        self._details_run.setStyleSheet(f"""
+        self._btn_run = QToolButton()
+        self._btn_run.setText("Run")
+        self._btn_run.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_run.setPopupMode(QToolButton.MenuButtonPopup)
+        self._btn_run.setToolTip("Run selected generator")
+        self._btn_run.setStyleSheet(f"""
             QToolButton {{
                 background-color: {theme.ACCENT_SUCCESS};
                 color: white;
                 font-weight: bold;
-                border: 1px solid {theme.ACCENT_SUCCESS};
                 border-radius: {theme.RADIUS_MD}px;
-                padding: 4px 10px;
+                padding: 6px 16px;
             }}
             QToolButton:hover {{ background-color: #56d364; }}
             QToolButton:disabled {{ background-color: {theme.BG_TERTIARY}; color: {theme.TEXT_SECONDARY}; }}
+            QToolButton::menu-button {{
+                border-left: 1px solid rgba(255,255,255,0.3);
+                width: 16px;
+            }}
         """)
-        self._details_run.clicked.connect(lambda: self._run_selected(False))
+        self._btn_run.clicked.connect(lambda: self._run_selected(False))
         run_menu = QMenu(self)
         run_menu.addAction("Run All", self._run_all)
-        self._details_run.setMenu(run_menu)
-        details_actions.addWidget(self._details_run)
+        self._btn_run.setMenu(run_menu)
+        btn_row.addWidget(self._btn_run)
 
-        self._details_check = QToolButton()
-        self._details_check.setText("Check")
-        self._details_check.setToolButtonStyle(Qt.ToolButtonTextOnly)
-        self._details_check.setPopupMode(QToolButton.MenuButtonPopup)
-        self._details_check.setToolTip("Check selected generator")
-        self._details_check.setStyleSheet(f"""
+        self._btn_check = QToolButton()
+        self._btn_check.setText("Check")
+        self._btn_check.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        self._btn_check.setPopupMode(QToolButton.MenuButtonPopup)
+        self._btn_check.setToolTip("Check selected generator")
+        self._btn_check.setStyleSheet(f"""
             QToolButton {{
                 background-color: {theme.BG_TERTIARY};
                 color: {theme.TEXT_PRIMARY};
                 border: 1px solid {theme.BORDER_DEFAULT};
                 border-radius: {theme.RADIUS_MD}px;
-                padding: 4px 10px;
+                padding: 6px 16px;
             }}
-            QToolButton:hover {{
-                background-color: {theme.BG_HOVER};
-                border: 1px solid {theme.BORDER_FOCUS};
-            }}
-            QToolButton:disabled {{
-                background-color: {theme.BG_SECONDARY};
-                color: {theme.TEXT_SECONDARY};
-                border: 1px solid {theme.BORDER_SUBTLE};
+            QToolButton:hover {{ background-color: {theme.BG_HOVER}; }}
+            QToolButton:disabled {{ background-color: {theme.BG_SECONDARY}; color: {theme.TEXT_SECONDARY}; }}
+            QToolButton::menu-button {{
+                border-left: 1px solid {theme.BORDER_DEFAULT};
+                width: 16px;
             }}
         """)
-        self._details_check.clicked.connect(lambda: self._run_selected(True))
+        self._btn_check.clicked.connect(lambda: self._run_selected(True))
         check_menu = QMenu(self)
         check_menu.addAction("Check All", self._check_all)
-        self._details_check.setMenu(check_menu)
-        details_actions.addWidget(self._details_check)
+        self._btn_check.setMenu(check_menu)
+        btn_row.addWidget(self._btn_check)
 
-        details_actions.addStretch()
-        details_layout.addLayout(details_actions)
-
-        body_row.addWidget(sidebar)
-        body_row.addWidget(details, 1)
-
-        layout.addLayout(body_row, 1)
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
         # Output
         self._output = QTextEdit()
         self._output.setReadOnly(True)
-        self._output.setMaximumHeight(120)
+        self._output.setMaximumHeight(140)
         self._output.setStyleSheet(f"""
             QTextEdit {{
                 background-color: {theme.BG_TERTIARY};
                 color: {theme.TEXT_PRIMARY};
-                font-family: 'Consolas', 'Courier New', monospace;
+                font-family: 'Consolas', monospace;
                 font-size: 9pt;
                 border: 1px solid {theme.BORDER_DEFAULT};
                 border-radius: {theme.RADIUS_MD}px;
@@ -772,44 +452,40 @@ class CodegenToolsWidget(QWidget):
         """)
         self._output.setPlainText("Ready.")
         layout.addWidget(self._output)
-        self._details_run.setEnabled(False)
-        self._details_check.setEnabled(False)
-        self._set_group_filter("all")
+
+        layout.addStretch()
+
+        # Select first task
         if tasks:
             self._select_task(tasks[0]['id'])
 
+    def _on_task_selected(self, index):
+        task_id = self._task_combo.itemData(index)
+        if task_id:
+            self._select_task(task_id)
+
+    def _select_task(self, task_id: str):
+        task = self._tasks_by_id.get(task_id)
+        if not task:
+            return
+        self._selected_task_id = task_id
+
+        self._details_desc.setText(task.get('description', ''))
+        script = task.get('script', '')
+        self._details_script.setText(f"Script: {script}" if script else "")
+        groups = task.get('groups') or []
+        self._details_groups.setText(f"Groups: {', '.join(groups)}" if groups else "")
+
     def _set_all_enabled(self, enabled):
-        for entry in self._task_entries.values():
-            entry.set_enabled(enabled)
-        for header in self._group_widgets:
-            header.set_enabled(enabled)
-        if self._details_run:
-            self._details_run.setEnabled(enabled and self._selected_task_id is not None)
-        if self._details_check:
-            self._details_check.setEnabled(enabled and self._selected_task_id is not None)
+        self._task_combo.setEnabled(enabled)
+        self._btn_run.setEnabled(enabled)
+        self._btn_check.setEnabled(enabled)
 
     def _on_worker_finished(self, task_id, success, message):
         self._set_all_enabled(True)
-        check_mode = bool(self._worker and getattr(self._worker, "check_mode", False))
-        run_all = bool(self._worker and getattr(self._worker, "_run_all", False))
-        group = self._worker.group if self._worker else None
-        if check_mode and not run_all and not group and task_id in self._tasks_by_id:
-            self._set_task_status(task_id, success)
         status = "[OK]" if success else "[FAILED]"
         self._output.setPlainText(f"{task_id} {status}\n\n{message}")
         self._worker = None
-
-    def _run_task(self, task_id, script, check_mode):
-        if self._worker and self._worker.isRunning():
-            return
-
-        mode_str = "Checking" if check_mode else "Running"
-        self._output.setPlainText(f"{mode_str}: {task_id}...")
-        self._set_all_enabled(False)
-
-        self._worker = CodegenWorker(task_id, script, check_mode, parent=self)
-        self._worker.finished.connect(self._on_worker_finished)
-        self._worker.start()
 
     def _run_selected(self, check_mode: bool):
         if not self._selected_task_id:
@@ -820,96 +496,17 @@ class CodegenToolsWidget(QWidget):
         if check_mode and not task.get('supportsCheck'):
             self._output.setPlainText(f"{task['id']} does not support check.")
             return
-        self._run_task(task['id'], task['script'], check_mode)
 
-    def _select_task(self, task_id: str):
-        task = self._tasks_by_id.get(task_id)
-        if not task:
-            return
-        self._selected_task_id = task_id
-        btn = self._task_buttons.get(task_id)
-        if btn and not btn.isChecked():
-            btn.setChecked(True)
-
-        self._details_title.setText(task_id)
-        self._details_desc.setText(task.get('description', ''))
-        script = task.get('script', '')
-        self._details_script.setText(f"Script: {script}" if script else "")
-        groups = task.get('groups') or []
-        groups_label = ", ".join(groups) if groups else "other"
-        self._details_groups.setText(f"Groups: {groups_label}")
-        self._details_run.setEnabled(True)
-        self._details_check.setEnabled(True)
-        if task.get('supportsCheck'):
-            self._details_check.setToolTip("Check selected generator")
-        else:
-            self._details_check.setToolTip("Selected generator does not support check")
-
-    def _run_group(self, group_id, check_mode):
         if self._worker and self._worker.isRunning():
             return
 
         mode_str = "Checking" if check_mode else "Running"
-        self._output.setPlainText(f"{mode_str} group: {group_id}...")
+        self._output.setPlainText(f"{mode_str}: {task['id']}...")
         self._set_all_enabled(False)
 
-        self._worker = CodegenWorker(
-            f"group:{group_id}",
-            "",
-            check_mode,
-            group=group_id,
-            parent=self,
-        )
+        self._worker = CodegenWorker(task['id'], task['script'], check_mode, parent=self)
         self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
-
-    def _set_task_status(self, task_id, status):
-        if task_id not in self._task_status:
-            return
-        self._task_status[task_id] = status
-        entry = self._task_entries.get(task_id)
-        if entry:
-            entry.set_status(status)
-
-    def _on_batch_task_finished(self, task_id, success, message):
-        self._set_task_status(task_id, success)
-        status = "[OK]" if success else "[FAILED]"
-        if message:
-            self._output.setPlainText(f"{task_id} {status}\n\n{message}")
-        else:
-            self._output.setPlainText(f"{task_id} {status}")
-
-    def _on_batch_finished(self, success, summary):
-        self._set_all_enabled(True)
-        status = "OK" if success else "FAILED"
-        if summary:
-            self._output.setPlainText(f"Check All [{status}]\n\n{summary}")
-        else:
-            self._output.setPlainText(f"Check All [{status}]")
-        self._worker = None
-
-    def _set_group_filter(self, group_id: str):
-        self._active_group = group_id
-        header = self._group_headers.get(group_id)
-        if header:
-            header.btn_select.setChecked(True)
-        if group_id == "all":
-            for container in self._group_task_containers.values():
-                container.setVisible(True)
-        else:
-            for gid, container in self._group_task_containers.items():
-                container.setVisible(gid == group_id)
-
-        if group_id == "all":
-            if not self._selected_task_id and self._tasks_by_id:
-                first = next(iter(self._tasks_by_id.keys()))
-                self._select_task(first)
-            return
-
-        group_tasks = self._group_tasks.get(group_id, [])
-        group_ids = {task['id'] for task in group_tasks}
-        if group_tasks and self._selected_task_id not in group_ids:
-            self._select_task(group_tasks[0]['id'])
 
     def _run_all(self):
         if self._worker and self._worker.isRunning():
@@ -930,9 +527,9 @@ class CodegenToolsWidget(QWidget):
         self._output.setPlainText("Checking all codegen tasks...")
         self._set_all_enabled(False)
 
-        self._worker = CodegenBatchWorker(list(self._tasks_by_id.values()), True, self)
-        self._worker.task_finished.connect(self._on_batch_task_finished)
-        self._worker.batch_finished.connect(self._on_batch_finished)
+        self._worker = CodegenWorker("all", "", True, self)
+        self._worker._run_all = True
+        self._worker.finished.connect(self._on_worker_finished)
         self._worker.start()
 
 

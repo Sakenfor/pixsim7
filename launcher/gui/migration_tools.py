@@ -7,6 +7,7 @@ from __future__ import annotations
 import subprocess
 import os
 import sys
+import re
 import shutil
 from dataclasses import dataclass
 from typing import Optional
@@ -119,25 +120,48 @@ def check_migration_safety() -> tuple[bool, str]:
     return True, "Pre-migration checks passed. Safe to proceed."
 
 
+def _filter_alembic_output(text: str) -> str:
+    """Filter out debug/logging lines from alembic output."""
+    lines = []
+    for line in text.strip().split('\n'):
+        line_lower = line.lower()
+        # Skip debug, info, warning log lines
+        # Formats: "[debug]", "[debug    ]", "INFO:", "DEBUG:", timestamp prefixed lines
+        is_log_line = (
+            '[debug' in line_lower or
+            '[info' in line_lower or
+            '[warning' in line_lower or
+            '[error' in line_lower or
+            line.startswith('INFO:') or
+            line.startswith('DEBUG:') or
+            line.startswith('WARNING:') or
+            # Skip timestamp-prefixed log lines (e.g., "2026-01-18 19:01:31 [debug")
+            (len(line) > 20 and line[4] == '-' and line[7] == '-' and '[' in line[:30])
+        )
+        if line and not is_log_line:
+            lines.append(line)
+    return '\n'.join(lines)
+
+
 def get_current_revision() -> str:
     code, out, err = _run_alembic('current')
     if code != 0:
         return f"error: {err.strip() or out.strip()}"
-    return out.strip() or '(no revision)'
+    return _filter_alembic_output(out) or '(no revision)'
 
 
 def get_heads() -> str:
     code, out, err = _run_alembic('heads')
     if code != 0:
         return f"error: {err.strip() or out.strip()}"
-    return out.strip() or '(no heads)'
+    return _filter_alembic_output(out) or '(no heads)'
 
 
 def get_history(limit: int = 20) -> str:
     code, out, err = _run_alembic('history', f'-n {limit}')
     if code != 0:
         return f"error: {err.strip() or out.strip()}"
-    return out.strip()
+    return _filter_alembic_output(out) or '(no history)'
 
 
 def check_for_conflicts() -> tuple[bool, str]:
@@ -312,7 +336,7 @@ def parse_heads() -> tuple[list[MigrationHead], Optional[str]]:
         if not parts:
             continue
 
-        revision = parts[0]
+        revision = parts[0].lower()  # Normalize to lowercase
         is_head = '(head)' in line
         is_mergepoint = '(mergepoint)' in line
 
@@ -435,6 +459,25 @@ def validate_revision_ids() -> tuple[bool, list[str]]:
     return len(problematic) == 0, problematic
 
 
+def _extract_revision_id(text: str) -> Optional[str]:
+    """Extract a revision ID from text."""
+    if not text:
+        return None
+    # First try date-based format: 20260117_0001
+    match = re.search(r'\b(\d{8}_\d{4})\b', text)
+    if match:
+        return match.group(1)
+    # Then try hex format: a786922d98aa
+    match = re.search(r'\b([a-f0-9]{8,})\b', text.lower())
+    if match:
+        return match.group(1)
+    # Fallback: take first word if it looks like an ID
+    first_word = text.split()[0] if text.split() else None
+    if first_word and not first_word.startswith('('):
+        return first_word.lower()
+    return None
+
+
 def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     """
     Parse alembic history into structured MigrationNode objects.
@@ -447,9 +490,8 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     if code != 0:
         return [], f"Cannot get current revision: {err.strip() or current_out.strip()}"
 
-    current_rev = None
-    if current_out.strip():
-        current_rev = current_out.strip().split()[0]
+    current_filtered = _filter_alembic_output(current_out)
+    current_rev = _extract_revision_id(current_filtered)
 
     # Get heads
     heads_list, heads_err = parse_heads()
@@ -463,10 +505,13 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     if code != 0:
         return [], f"Cannot get history: {err.strip() or history_out.strip()}"
 
+    # Filter out debug/logging lines
+    history_filtered = _filter_alembic_output(history_out)
+
     migrations = []
     current_migration = None
 
-    for line in history_out.split('\n'):
+    for line in history_filtered.split('\n'):
         line_stripped = line.strip()
 
         # Look for revision lines like "Rev: a786922d98aa (head)"
@@ -480,7 +525,7 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
             if not parts:
                 continue
 
-            revision = parts[0]
+            revision = parts[0].lower()  # Normalize to lowercase
             is_head = '(head)' in line_stripped
             is_mergepoint = '(mergepoint)' in line_stripped
             is_branchpoint = '(branchpoint)' in line_stripped
@@ -509,16 +554,25 @@ def parse_migration_history() -> tuple[list[MigrationNode], Optional[str]]:
     if current_migration:
         migrations.append(current_migration)
 
-    # Mark all migrations before current as applied
+    # migrations list is newest-first (from alembic history output)
+    # Mark current and all OLDER migrations as applied
+    # We need to find current_rev and mark it + everything after it (older) as applied
     found_current = False
-    for migration in reversed(migrations):
-        if migration.revision == current_rev:
+    for migration in migrations:  # newest to oldest
+        # Compare revisions - both are normalized to lowercase
+        # Handle partial matches (short rev vs full rev)
+        rev = migration.revision
+        rev_matches = False
+        if current_rev:
+            rev_matches = (
+                rev == current_rev or
+                rev.startswith(current_rev) or
+                current_rev.startswith(rev)
+            )
+        if rev_matches:
             found_current = True
-            migration.is_applied = True
-        elif found_current:
-            migration.is_applied = True
-        else:
-            migration.is_applied = False
+        migration.is_applied = found_current
+        migration.is_current = rev_matches
 
     return list(reversed(migrations)), None  # Return oldest to newest
 

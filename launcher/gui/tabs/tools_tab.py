@@ -4,46 +4,26 @@ Tools and Settings Tabs for Launcher
 Creates the tools and settings tabs with organized sections.
 """
 
-import os
-import subprocess
-import sys
-
-from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QPushButton,
-    QHBoxLayout,
-    QLineEdit,
-    QLabel,
-    QMessageBox,
-)
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QPushButton
 
 try:
     from .. import theme
-    from ..config import ROOT
-    from ..dialogs.simple_git_dialog import show_simple_git_dialog
-    from ..dialogs.git_tools_dialog import show_git_tools_dialog
-    from ..dialogs.log_management_dialog import show_log_management_dialog
     from ..dialogs.codegen_dialog import CodegenToolsWidget
-    from ..widgets.database_browser_widget import DatabaseBrowserWidget
     from ..widgets.migrations_widget import MigrationsWidget
+    from ..widgets.git_workflow_widget import GitWorkflowWidget
+    from ..widgets.git_tools_widget import GitToolsWidget
+    from ..widgets.log_management_widget import LogManagementWidget
     from ..widgets.settings_panel import SettingsPanel
-    from ..widgets.tab_builder import (
-        TabBuilder, create_page, create_styled_frame, create_section_label
-    )
+    from ..widgets.tab_builder import TabBuilder
 except ImportError:
     import theme
-    from config import ROOT
-    from dialogs.simple_git_dialog import show_simple_git_dialog
-    from dialogs.git_tools_dialog import show_git_tools_dialog
-    from dialogs.log_management_dialog import show_log_management_dialog
     from dialogs.codegen_dialog import CodegenToolsWidget
-    from widgets.database_browser_widget import DatabaseBrowserWidget
     from widgets.migrations_widget import MigrationsWidget
+    from widgets.git_workflow_widget import GitWorkflowWidget
+    from widgets.git_tools_widget import GitToolsWidget
+    from widgets.log_management_widget import LogManagementWidget
     from widgets.settings_panel import SettingsPanel
-    from widgets.tab_builder import (
-        TabBuilder, create_page, create_styled_frame, create_section_label
-    )
+    from widgets.tab_builder import TabBuilder
 
 
 class ToolsTab:
@@ -65,177 +45,42 @@ class ToolsTab:
             QWidget: The tools tab widget
         """
         builder = TabBuilder()
-        builder.add_page("Database", lambda: ToolsTab._create_database_page(launcher))
-        builder.add_page("Development", lambda: ToolsTab._create_development_page(launcher))
-        builder.add_page("Codegen", lambda: CodegenToolsWidget())
+
+        # Database tools
+        builder.add_page(
+            "Migrations",
+            lambda: MigrationsWidget(parent=None, notify_target=launcher),
+            category="Database"
+        )
+
+        # Development tools
+        builder.add_page(
+            "Workflow",
+            lambda: GitWorkflowWidget(parent=None, notify_target=launcher),
+            category="Git"
+        )
+        builder.add_page(
+            "Groups",
+            lambda: GitToolsWidget(parent=None, notify_target=launcher),
+            category="Git"
+        )
+        builder.add_page(
+            "Console Logs",
+            lambda: LogManagementWidget(
+                parent=None,
+                processes_provider=lambda: getattr(launcher, "processes", {}),
+                notify_target=launcher
+            ),
+            category="Logs"
+        )
+        builder.add_page(
+            "Codegen",
+            lambda: CodegenToolsWidget(),
+            category="Development"
+        )
 
         container, _, _ = builder.build()
         return container
-
-    @staticmethod
-    def _create_database_page(launcher) -> QWidget:
-        """Create the Database tools page."""
-        page, layout = create_page("Database Tools", "Manage schema, data access, and imports.")
-
-        builder = TabBuilder(sidebar_width=180)
-        builder.add_page("Migrations", lambda: ToolsTab._create_migrations_tab(launcher))
-        builder.add_page("Browser", lambda: ToolsTab._create_db_browser_tab(launcher))
-        builder.add_page("Import", lambda: ToolsTab._create_import_tab(launcher))
-
-        container, _, _ = builder.build()
-        layout.addWidget(container)
-        return page
-
-    @staticmethod
-    def _create_migrations_tab(launcher) -> QWidget:
-        page, layout = create_page(
-            "Database Migrations",
-            "Review migration status and apply schema updates.",
-        )
-        widget = MigrationsWidget(parent=page, notify_target=launcher)
-        layout.addWidget(widget)
-        layout.addStretch()
-        return page
-
-    @staticmethod
-    def _create_db_browser_tab(launcher) -> QWidget:
-        page, layout = create_page(
-            "Database Browser",
-            "Browse accounts, copy passwords, and export to CSV.",
-        )
-        widget = DatabaseBrowserWidget(parent=page)
-        layout.addWidget(widget)
-        layout.addStretch()
-        return page
-
-    @staticmethod
-    def _create_import_tab(launcher) -> QWidget:
-        page, layout = create_page(
-            "Import Accounts",
-            "Import provider accounts from the PixSim6 database.",
-        )
-        frame, frame_layout = create_styled_frame()
-
-        info = QLabel(
-            "This will import credentials, credits, and usage stats. "
-            "Both databases must be running."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
-        frame_layout.addWidget(info)
-
-        row = QHBoxLayout()
-        row_label = QLabel("Username:")
-        row_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 9pt;")
-        row.addWidget(row_label)
-
-        username_input = QLineEdit()
-        username_input.setPlaceholderText("sakenfor")
-        row.addWidget(username_input, 1)
-        frame_layout.addLayout(row)
-
-        def run_import():
-            username = username_input.text().strip()
-            if not username:
-                QMessageBox.information(page, "Import Accounts", "Enter a username first.")
-                return
-
-            reply = QMessageBox.question(
-                page,
-                "Import Accounts",
-                f"Import all accounts from PixSim6 to user '{username}'?\n\n"
-                "This will:\n"
-                "- Import credentials (JWT, API keys, cookies)\n"
-                "- Import credits and usage stats\n"
-                "- Skip duplicates automatically\n\n"
-                "Both databases must be running.",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            )
-
-            if reply != QMessageBox.StandardButton.Yes:
-                return
-
-            script_path = os.path.join(ROOT, "scripts", "import_accounts_from_pixsim6.py")
-            try:
-                result = subprocess.run(
-                    [sys.executable, script_path, "--username", username],
-                    capture_output=True,
-                    text=True,
-                    cwd=ROOT,
-                )
-            except Exception as exc:
-                QMessageBox.critical(page, "Import Failed", f"Failed to run import:\n{exc}")
-                return
-
-            if result.returncode == 0:
-                msg = "Successfully imported accounts."
-                if result.stdout:
-                    msg = f"{msg} {result.stdout.strip()}"
-                if hasattr(launcher, "notify"):
-                    launcher.notify(msg)
-                else:
-                    QMessageBox.information(page, "Import Complete", msg)
-            else:
-                QMessageBox.warning(
-                    page,
-                    "Import Failed",
-                    f"Import failed:\n\n{result.stderr or result.stdout}",
-                )
-
-        btn = QPushButton("Run Import")
-        btn.setToolTip("Import accounts from the PixSim6 database")
-        btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-        btn.clicked.connect(run_import)
-        launcher.register_widget("btn_import_accounts", btn)
-        frame_layout.addWidget(btn)
-
-        layout.addWidget(frame)
-        layout.addStretch()
-        return page
-
-    @staticmethod
-    def _create_development_page(launcher) -> QWidget:
-        """Create the Development tools page."""
-        page, layout = create_page("Development Tools")
-
-        def make_button(key, label, tooltip, handler):
-            btn = QPushButton(label)
-            btn.setToolTip(tooltip)
-            btn.setMinimumHeight(theme.BUTTON_HEIGHT_LG)
-            btn.clicked.connect(handler)
-            launcher.register_widget(key, btn)
-            return btn
-
-        # Git tools frame
-        git_frame, git_layout = create_styled_frame()
-        git_layout.addWidget(create_section_label("Git"))
-
-        git_layout.addWidget(make_button(
-            'btn_git_workflow', 'Git Workflow',
-            "Simple git operations: commit, push, pull, merge, cleanup",
-            lambda: show_simple_git_dialog(launcher)
-        ))
-        git_layout.addWidget(make_button(
-            'btn_git_tools', 'Advanced Git Tools',
-            "Structured commit helper (grouped commits)",
-            lambda: show_git_tools_dialog(launcher)
-        ))
-
-        layout.addWidget(git_frame)
-
-        # Logging frame
-        log_frame, log_layout = create_styled_frame()
-        log_layout.addWidget(create_section_label("Logging"))
-
-        log_layout.addWidget(make_button(
-            'btn_log_management', 'Log Management',
-            "Manage, archive, and export console logs",
-            lambda: show_log_management_dialog(launcher, launcher.processes)
-        ))
-
-        layout.addWidget(log_frame)
-        layout.addStretch()
-        return page
 
     @staticmethod
     def create_settings(launcher):

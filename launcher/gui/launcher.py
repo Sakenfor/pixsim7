@@ -11,7 +11,7 @@ from urllib.parse import quote
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QListWidget, QListWidgetItem,
     QTextEdit, QSplitter, QMessageBox, QDialog, QFormLayout, QLineEdit, QCheckBox, QDialogButtonBox,
-    QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu
+    QScrollArea, QFrame, QGridLayout, QTabWidget, QMenu, QComboBox, QStackedWidget
 )
 from PySide6.QtCore import Qt, QProcess, QTimer, Signal, QSize, QThread, QUrl
 from PySide6.QtGui import QColor, QTextCursor, QFont, QPalette, QShortcut, QKeySequence, QAction, QCursor
@@ -70,9 +70,11 @@ except Exception:
 try:
     from .widgets.service_card import ServiceCard
     from .widgets.notification_bar import NotificationBar
+    from .widgets.databases_widget import DatabaseCardWidget, discover_databases
 except Exception:
     from widgets.service_card import ServiceCard
     from widgets.notification_bar import NotificationBar
+    from widgets.databases_widget import DatabaseCardWidget, discover_databases
 
 try:
     from .clickable_fields import get_field, ActionType
@@ -338,13 +340,45 @@ class LauncherWindow(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD, theme.SPACING_MD)
 
-        header = QLabel("Services")
+        # Header row with view selector dropdown
+        header_row = QHBoxLayout()
+        self.view_selector = QComboBox()
+        self.view_selector.addItem("Services")
+        self.view_selector.addItem("Databases")
         header_font = QFont()
         header_font.setPointSize(13)
         header_font.setBold(True)
-        header.setFont(header_font)
-        header_row = QHBoxLayout()
-        header_row.addWidget(header)
+        self.view_selector.setFont(header_font)
+        self.view_selector.setStyleSheet(
+            f"""
+            QComboBox {{
+                background-color: transparent;
+                border: none;
+                color: {theme.TEXT_PRIMARY};
+                padding: 2px 8px 2px 0px;
+                min-width: 120px;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 5px solid transparent;
+                border-right: 5px solid transparent;
+                border-top: 6px solid {theme.TEXT_SECONDARY};
+                margin-right: 5px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {theme.BG_TERTIARY};
+                color: {theme.TEXT_PRIMARY};
+                selection-background-color: {theme.ACCENT_PRIMARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                outline: none;
+            }}
+            """
+        )
+        header_row.addWidget(self.view_selector)
         header_row.addStretch()
         self.btn_settings = QPushButton(ICON_SETTINGS)
         self.btn_settings.setFixedSize(theme.ICON_BUTTON_MD, theme.ICON_BUTTON_MD)
@@ -358,10 +392,14 @@ class LauncherWindow(QWidget):
         header_row.addWidget(self.btn_reload_ui)
         left_layout.addLayout(header_row)
 
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setFrameShape(QFrame.NoFrame)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        # Stacked widget for switching between Services and Databases views
+        self.left_panel_stack = QStackedWidget()
+
+        # Services view
+        services_scroll = QScrollArea()
+        services_scroll.setWidgetResizable(True)
+        services_scroll.setFrameShape(QFrame.NoFrame)
+        services_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         cards_container = QWidget()
         cards_layout = QVBoxLayout(cards_container)
@@ -386,8 +424,43 @@ class LauncherWindow(QWidget):
             cards_layout.addWidget(card)
 
         cards_layout.addStretch()
-        scroll_area.setWidget(cards_container)
-        left_layout.addWidget(scroll_area, stretch=1)
+        services_scroll.setWidget(cards_container)
+        self.left_panel_stack.addWidget(services_scroll)
+
+        # Databases view
+        databases_scroll = QScrollArea()
+        databases_scroll.setWidgetResizable(True)
+        databases_scroll.setFrameShape(QFrame.NoFrame)
+        databases_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        db_container = QWidget()
+        db_layout = QVBoxLayout(db_container)
+        db_layout.setSpacing(8)
+        db_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.db_cards = {}
+        self.selected_database = None
+        databases = discover_databases()
+        if databases:
+            for db_info in databases:
+                card = DatabaseCardWidget(db_info, db_container)
+                self.db_cards[db_info.env_key] = card
+                card.clicked.connect(self._select_database)
+                db_layout.addWidget(card)
+        else:
+            no_db_label = QLabel("No databases configured.\nSet DATABASE_URL in .env")
+            no_db_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; padding: 20px;")
+            no_db_label.setAlignment(Qt.AlignCenter)
+            db_layout.addWidget(no_db_label)
+
+        db_layout.addStretch()
+        databases_scroll.setWidget(db_container)
+        self.left_panel_stack.addWidget(databases_scroll)
+
+        # Connect view selector to stack
+        self.view_selector.currentIndexChanged.connect(self.left_panel_stack.setCurrentIndex)
+
+        left_layout.addWidget(self.left_panel_stack, stretch=1)
 
         btn_row1 = QHBoxLayout()
         self.btn_all = QPushButton('? Start All')
@@ -783,6 +856,17 @@ class LauncherWindow(QWidget):
                 self.db_log_viewer.service_combo.setCurrentIndex(idx)
                 _startup_trace("_select_service db viewer synced")
         _startup_trace(f"_select_service end ({key})")
+
+    def _select_database(self, env_key: str):
+        """Select a database card."""
+        # Deselect previous database card
+        if self.selected_database and self.selected_database in self.db_cards:
+            self.db_cards[self.selected_database].set_selected(False)
+
+        # Select new database card
+        self.selected_database = env_key
+        if env_key in self.db_cards:
+            self.db_cards[env_key].set_selected(True)
 
     def _start_service(self, key: str):
         """Start a specific service."""
