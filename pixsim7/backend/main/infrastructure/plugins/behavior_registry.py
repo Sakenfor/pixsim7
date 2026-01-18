@@ -16,6 +16,8 @@ from typing import Callable, Any, Optional, Dict, List
 from dataclasses import dataclass
 import structlog
 
+from pixsim7.backend.main.lib.registry.group import RegistryGroup
+
 logger = structlog.get_logger(__name__)
 
 
@@ -244,6 +246,9 @@ class BehaviorExtensionRegistry:
             "behavior_profiles": self._behavior_profiles,
             # Note: _trait_effect_mappings excluded - items don't have plugin_id
         }
+        self._registry_group = RegistryGroup("behavior_extensions")
+        for name, registry in self._sub_registries.items():
+            self._registry_group.register_registry(name, registry, plugin_attr="plugin_id")
 
     @property
     def name(self) -> str:
@@ -1403,15 +1408,7 @@ class BehaviorExtensionRegistry:
             )
             return {name: 0 for name in self._sub_registries}
 
-        counts = {}
-        for name, registry in self._sub_registries.items():
-            to_remove = [
-                key for key, item in registry.items()
-                if getattr(item, "plugin_id", None) == plugin_id
-            ]
-            for key in to_remove:
-                del registry[key]
-            counts[name] = len(to_remove)
+        counts = self._registry_group.unregister_by_plugin(plugin_id)
 
         total = sum(counts.values())
         if total > 0:
