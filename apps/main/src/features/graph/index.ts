@@ -66,6 +66,13 @@ export type { ArcGraphState } from './stores/arcGraphStore';
 
 // Hooks
 export { useLineageGraph } from './hooks/useLineageGraph';
+export { useSceneValidation, useNodeValidation, type IndexedValidationResult } from './hooks/useSceneValidation';
+export { type ValidationContextValue, type NodeValidation } from './hooks/validationTypes';
+export { ValidationProvider } from './hooks/ValidationContext';
+export { useValidationContext, useValidationContextOptional } from './hooks/useValidationContext';
+
+// Store Selectors
+export * from './stores/graphStore/selectors';
 
 // Lib - Editor Core APIs (explicit - these are the main APIs)
 export { graphEditorRegistry, graphEditorSelectors } from './lib/editor/registry';

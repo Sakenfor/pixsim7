@@ -1,8 +1,13 @@
-import { memo, useState } from 'react';
+import { memo, useState, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
+import { useShallow } from 'zustand/react/shallow';
+
 import { logEvent } from '@lib/utils/logging';
+
 import type { NodeGroupData } from '@domain/sceneBuilder';
+
+import { useGraphStore } from '../../stores/graphStore';
+import { selectNodeGroupActions, selectNavigationActions } from '../../stores/graphStore/selectors';
 
 interface NodeGroupNodeData {
   label: string;
@@ -24,13 +29,17 @@ interface NodeGroupNodeData {
  * - Zoom navigation
  */
 export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeData>) => {
-  const toggleGroupCollapsed = useGraphStore((s: GraphState) => s.toggleGroupCollapsed);
-  const getGroupChildren = useGraphStore((s: GraphState) => s.getGroupChildren);
-  const zoomIntoGroup = useGraphStore((s: GraphState) => s.zoomIntoGroup);
+  // Use selectors with useShallow for stable action references
+  const { toggleGroupCollapsed, getGroupChildren } = useGraphStore(
+    useShallow(selectNodeGroupActions)
+  );
+  const { zoomIntoGroup } = useGraphStore(useShallow(selectNavigationActions));
   const [isHovered, setIsHovered] = useState(false);
 
   const groupNode = data.draftNode;
-  const childNodes = getGroupChildren(id);
+
+  // Memoize getGroupChildren call - only recalculate when id changes
+  const childNodes = useMemo(() => getGroupChildren(id), [getGroupChildren, id]);
 
   const handleToggleCollapse = (e: React.MouseEvent) => {
     e.stopPropagation();

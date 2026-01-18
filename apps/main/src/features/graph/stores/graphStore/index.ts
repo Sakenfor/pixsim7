@@ -1,18 +1,22 @@
 import { create } from 'zustand';
 import { persist, devtools } from 'zustand/middleware';
-import type { GraphState } from './types';
-import type { DraftSceneNode } from '@domain/sceneBuilder';
+
+import { createBackendStorage } from '@lib/backendStorage';
 import { sceneNodeTypeRegistry, type Scene } from '@lib/registries';
-import { createSceneSlice } from './sceneSlice';
-import { createSignatureSlice } from './signatureSlice';
-import { createNodeSlice } from './nodeSlice';
-import { createNodeGroupSlice } from './nodeGroupSlice';
-import { createNavigationSlice } from './navigationSlice';
+import { logEvent } from '@lib/utils/logging';
+
+import { createTemporalStore, graphStorePartialize } from '@/stores/_shared/temporal';
+
+import type { DraftSceneNode } from '@domain/sceneBuilder';
+
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
-import { logEvent } from '@lib/utils/logging';
-import { createBackendStorage } from '@lib/backendStorage';
-import { createTemporalStore, graphStorePartialize } from '@/stores/_shared/temporal';
+import { createNavigationSlice } from './navigationSlice';
+import { createNodeGroupSlice } from './nodeGroupSlice';
+import { createNodeSlice } from './nodeSlice';
+import { createSceneSlice } from './sceneSlice';
+import { createSignatureSlice } from './signatureSlice';
+import type { GraphState } from './types';
 
 /**
  * Graph Store - Multi-Scene Architecture (Modular)
@@ -162,3 +166,6 @@ export const useGraphStoreCanRedo = () => useGraphStore.temporal.getState().futu
 
 // Re-export types for convenience
 export type { GraphState, NodeGroupManagementState, NavigationState } from './types';
+
+// Re-export selectors for convenience
+export * from './selectors';

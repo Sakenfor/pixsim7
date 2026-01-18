@@ -1,11 +1,15 @@
 import { memo, useState, useCallback, useMemo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
-import { getNodePorts, getPortPosition } from '@domain/sceneBuilder/portConfig';
-import { validateScene } from '@domain/sceneBuilder/validation';
-import { nodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
+import { useShallow } from 'zustand/react/shallow';
 
 import type { DraftSceneNode } from '@domain/sceneBuilder';
+import { getNodePorts, getPortPosition } from '@domain/sceneBuilder/portConfig';
+
+import { useValidationContextOptional } from '../../hooks/useValidationContext';
+import { nodeRendererRegistry } from '../../lib/editor/nodeRendererRegistry';
+import { useGraphStore } from '../../stores/graphStore';
+import { selectNodeActions } from '../../stores/graphStore/selectors';
+
 
 interface SceneNodeData {
   label: string;
@@ -15,31 +19,29 @@ interface SceneNodeData {
 }
 
 export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>) => {
-  const updateNode = useGraphStore((s: GraphState) => s.updateNode);
-  const getCurrentScene = useGraphStore((s: GraphState) => s.getCurrentScene);
+  // Use selector with useShallow for stable action references
+  const { updateNode } = useGraphStore(useShallow(selectNodeActions));
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(data.label);
-
-  // Get current scene
-  const currentScene = getCurrentScene();
 
   // Get dynamic port configuration for this node type
   const portConfig = getNodePorts(data.draftNode);
 
-  // Check if this node has validation issues
-  const nodeIssues = useMemo(() => {
-    if (!currentScene) return [];
-    const validation = validateScene(currentScene);
-    return validation.issues.filter(issue => issue.nodeId === id);
-  }, [currentScene, id]);
+  // Get validation from context (O(1) lookup instead of O(n) full validation)
+  const validationContext = useValidationContextOptional();
+  const { issues: nodeIssues, highestSeverity } = useMemo(() => {
+    if (validationContext) {
+      return validationContext.getNodeIssues(id);
+    }
+    // Fallback when no validation context (shouldn't happen in normal usage)
+    return { issues: [], highestSeverity: null };
+  }, [validationContext, id]);
 
-  // Determine highest severity issue
-  const highestSeverity = useMemo(() => {
-    if (nodeIssues.some(i => i.severity === 'error')) return 'error';
-    if (nodeIssues.some(i => i.severity === 'warning')) return 'warning';
-    if (nodeIssues.some(i => i.severity === 'info')) return 'info';
-    return null;
-  }, [nodeIssues]);
+  // Memoize renderer lookup - only changes when nodeType changes
+  const renderer = useMemo(
+    () => nodeRendererRegistry.getOrDefault(data.nodeType),
+    [data.nodeType]
+  );
 
   const handleDoubleClick = useCallback(() => {
     setIsEditing(true);
@@ -127,45 +129,22 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
         )}
       </div>
 
-      {/* Body - Dynamic Renderer from Registry */}
-      {(() => {
-        try {
-          // Get renderer for this node type
-          const renderer = nodeRendererRegistry.getOrDefault(data.nodeType);
-          const RendererComponent = renderer?.component;
-
-          if (!RendererComponent) {
-            console.error(`[SceneNode] No renderer component available for node type '${data.nodeType}'`);
-            return (
-              <div className="px-3 py-3 text-center">
-                <div className="text-red-500 text-xs font-medium">⚠️ Renderer Missing</div>
-                <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                  Type: {data.nodeType}
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <RendererComponent
-              node={data.draftNode}
-              isSelected={selected}
-              isStart={data.isStart}
-              hasErrors={highestSeverity === 'error'}
-            />
-          );
-        } catch (error) {
-          console.error(`[SceneNode] Error rendering node '${id}':`, error);
-          return (
-            <div className="px-3 py-3 text-center">
-              <div className="text-red-500 text-xs font-medium">⚠️ Render Error</div>
-              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                {error instanceof Error ? error.message : 'Unknown error'}
-              </div>
-            </div>
-          );
-        }
-      })()}
+      {/* Body - Dynamic Renderer from Registry (memoized lookup) */}
+      {renderer?.component ? (
+        <renderer.component
+          node={data.draftNode}
+          isSelected={selected}
+          isStart={data.isStart}
+          hasErrors={highestSeverity === 'error'}
+        />
+      ) : (
+        <div className="px-3 py-3 text-center">
+          <div className="text-red-500 text-xs font-medium">Renderer Missing</div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+            Type: {data.nodeType}
+          </div>
+        </div>
+      )}
 
       {/* Dynamic Input Handles */}
       {portConfig.inputs.map((port, index) => (

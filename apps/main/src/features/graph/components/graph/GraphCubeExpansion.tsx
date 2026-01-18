@@ -1,43 +1,20 @@
-import { useMemo } from 'react';
-
 import type { ExpansionComponentProps } from '@features/cubes';
 
-import { useGraphStore, type GraphState } from '../../stores/graphStore';
+import { useGraphStore } from '../../stores/graphStore';
+import { selectGraphStats } from '../../stores/graphStore/selectors';
+
 /**
  * Graph status expansion for cube
  * Shows compact summary of scenes and nodes.
+ *
+ * Performance: Uses selectGraphStats which computes stats in a single selector,
+ * avoiding multiple store subscriptions and redundant computations.
  */
 export function GraphCubeExpansion(_props: ExpansionComponentProps) {
   void _props;
-  const scenes = useGraphStore((s: GraphState) => s.scenes);
-  const currentSceneId = useGraphStore((s: GraphState) => s.currentSceneId);
 
-  const stats = useMemo(() => {
-    const sceneList = Object.values(scenes);
-    const sceneCount = sceneList.length;
-
-    const currentScene = currentSceneId ? scenes[currentSceneId] : null;
-    const nodeCount = currentScene?.nodes?.length ?? 0;
-
-    let edgeCount = 0;
-    if (currentScene?.edges && currentScene.edges.length > 0) {
-      edgeCount = currentScene.edges.length;
-    } else if (currentScene?.nodes) {
-      currentScene.nodes.forEach((node) => {
-        const legacyNode = node as { connections?: string[] };
-        if (Array.isArray(legacyNode.connections)) {
-          edgeCount += legacyNode.connections.length;
-        }
-      });
-    }
-
-    return {
-      sceneCount,
-      nodeCount,
-      edgeCount,
-      title: currentScene?.title || 'Untitled Scene',
-    };
-  }, [scenes, currentSceneId]);
+  // Single selector that computes all stats - avoids multiple subscriptions
+  const stats = useGraphStore(selectGraphStats);
 
   return (
     <div className="p-3 space-y-3">

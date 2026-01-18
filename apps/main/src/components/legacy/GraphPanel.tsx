@@ -10,26 +10,35 @@ import ReactFlow, {
   useReactFlow,
   type NodeTypes,
   type NodeChange,
-  type EdgeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
-import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type NodeType } from '@features/graph';
-import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
-import { useSelectionStore } from '@features/graph';
-import { logEvent } from '@lib/utils/logging';
-import { Breadcrumbs } from '../navigation/Breadcrumbs';
-import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
-import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
-import { previewBridge } from '@lib/preview-bridge';
-import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
-import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';
-import { WorldContextSelector } from '@/components/game/WorldContextSelector';
+import { ReactFlowProvider } from 'reactflow';
+
 import { nodeTypeRegistry } from '@lib/registries';
+import { logEvent } from '@lib/utils/logging';
+
+import type { GraphTemplate } from '@features/graph' // graphTemplates';
+import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type NodeType } from '@features/graph';
+import { useSelectionStore } from '@features/graph';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
+
 import { captureTemplate, applyTemplate } from '@features/graph' // graphTemplates';
-import type { GraphTemplate } from '@features/graph' // graphTemplates';
+import { WorldContextSelector } from '@/components/game/WorldContextSelector';
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
+import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
+import { Breadcrumbs } from '../navigation/Breadcrumbs';
+
+import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
+
+import { previewBridge } from '@lib/preview-bridge';
+
+import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
+import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';
+
+
+
 import { useWorldContextStore } from '@features/scene';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
 import { graphClipboard } from '@features/graph' // clipboard';
@@ -200,7 +209,7 @@ export function GraphPanel() {
           toPort: targetHandle,
         });
         toast.success(`Connected ${connection.source} → ${connection.target} (${sourceHandle})`);
-      } catch (error) {
+      } catch {
         toast.error('Failed to connect nodes');
       }
     },
@@ -318,7 +327,7 @@ export function GraphPanel() {
           });
 
           toast.success(`Created scene call to "${sceneTitle}"`);
-        } catch (error) {
+        } catch {
           toast.error('Failed to create scene call node');
         }
         return;
@@ -354,7 +363,7 @@ export function GraphPanel() {
       removeNode(selectedNodeId);
       toast.success(`Deleted ${selectedNodeId}`);
       setSelectedNodeId(null);
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete node');
     }
   }, [selectedNodeId, toast, removeNode, setSelectedNodeId]);
@@ -529,7 +538,7 @@ export function GraphPanel() {
       }
 
       try {
-        let parameterValues: Record<string, string | number | boolean> = {};
+        const parameterValues: Record<string, string | number | boolean> = {};
 
         // Phase 10: Prompt for parameter values if template has parameters
         if (template.parameters && template.parameters.length > 0) {
@@ -915,12 +924,15 @@ export function GraphPanel() {
 }
 
 // Wrap with ReactFlowProvider for useReactFlow hook
-import { ReactFlowProvider } from 'reactflow';
+
+import { ValidationProvider } from '@features/graph';
 
 export function GraphPanelWithProvider() {
   return (
     <ReactFlowProvider>
-      <GraphPanel />
+      <ValidationProvider>
+        <GraphPanel />
+      </ValidationProvider>
     </ReactFlowProvider>
   );
 }
