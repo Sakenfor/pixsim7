@@ -107,10 +107,12 @@ class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
         Raises:
             DuplicateKeyError: If key exists and allow_overwrite=False.
         """
-        if not self._allow_overwrite and key in self._items:
+        previous = self._items.get(key)
+        if not self._allow_overwrite and previous is not None:
             raise DuplicateKeyError(str(key), self._name)
 
         self._items[key] = item
+        self._on_register(key, item, previous)
 
         if self._log_operations:
             logger.debug(f"Registered item in {self._name}", key=str(key))
@@ -172,6 +174,8 @@ class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
             The removed item, or None if key not found.
         """
         item = self._items.pop(key, None)
+        if item is not None:
+            self._on_unregister(key, item)
 
         if item is not None and self._log_operations:
             logger.debug(f"Unregistered item from {self._name}", key=str(key))
@@ -183,7 +187,10 @@ class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
     def clear(self) -> None:
         """Remove all items from the registry."""
         count = len(self._items)
+        items = dict(self._items)
         self._items.clear()
+        if count > 0:
+            self._on_clear(items)
 
         if self._log_operations and count > 0:
             logger.debug(f"Cleared {count} items from {self._name}")
@@ -290,6 +297,18 @@ class SimpleRegistry(RegistryObserverMixin, RegistryBase, Generic[K, V]):
         raise NotImplementedError(
             f"{self._name}._get_item_key() must be overridden to use register_item()"
         )
+
+    def _on_register(self, key: K, item: V, previous: Optional[V]) -> None:
+        """Hook for index updates after registering an item."""
+        return None
+
+    def _on_unregister(self, key: K, item: V) -> None:
+        """Hook for index updates after unregistering an item."""
+        return None
+
+    def _on_clear(self, items: Dict[K, V]) -> None:
+        """Hook for index updates after clearing items."""
+        return None
 
 
 # =============================================================================

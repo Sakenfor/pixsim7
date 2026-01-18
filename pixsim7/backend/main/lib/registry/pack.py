@@ -5,10 +5,11 @@ Pack registry helpers for layered registries.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Generic, Iterable, List, Optional, Sequence, Tuple, TypeVar
+from typing import Callable, Dict, Generic, Iterable, List, Optional, Sequence, Tuple, TypeVar
 
 from pixsim7.backend.main.lib.registry.errors import DuplicateKeyError, KeyNotFoundError
 from pixsim7.backend.main.lib.registry.base import RegistryBase, RegistryObserverMixin
+from pixsim7.backend.main.lib.registry.ownership import get_plugin_owner
 
 NS = TypeVar("NS")
 K = TypeVar("K")
@@ -44,11 +45,21 @@ class PackRegistryBase(Generic[NS, K, V, M]):
         *,
         registry,
         name: str,
+        plugin_aware: bool = False,
+        plugin_id_getter: Optional[Callable[[M], Optional[str]]] = None,
     ):
         self._registry = registry
         self._name = name
         self._pack_index: Dict[str, List[PackItemRef[NS, K]]] = {}
         self._pack_meta: Dict[str, M] = {}
+        self._plugin_id_getter = plugin_id_getter
+
+        if plugin_aware:
+            RegistryBase.register_plugin_aware(self)
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     def register_pack(
         self,
@@ -90,6 +101,22 @@ class PackRegistryBase(Generic[NS, K, V, M]):
     def pack_items(self, pack_id: str) -> Iterable[PackItemRef[NS, K]]:
         return list(self._pack_index.get(pack_id, []))
 
+    def unregister_by_plugin(self, plugin_id: str) -> int:
+        """Unregister all packs owned by a plugin."""
+        to_remove = [
+            pack_id
+            for pack_id, meta in self._pack_meta.items()
+            if self._get_pack_plugin_id(meta) == plugin_id
+        ]
+        for pack_id in to_remove:
+            self.unregister_pack(pack_id)
+        return len(to_remove)
+
+    def _get_pack_plugin_id(self, meta: M) -> Optional[str]:
+        if self._plugin_id_getter is not None:
+            return self._plugin_id_getter(meta)
+        return get_plugin_owner(meta)
+
 
 class SimplePackRegistryBase(RegistryObserverMixin, RegistryBase, Generic[NS, K, V, M]):
     """
@@ -107,11 +134,18 @@ class SimplePackRegistryBase(RegistryObserverMixin, RegistryBase, Generic[NS, K,
         allow_overwrite: bool = True,
         seed_on_init: bool = False,
         log_operations: bool = True,
+        plugin_aware: bool = False,
+        plugin_id_getter: Optional[Callable[[M], Optional[str]]] = None,
     ):
-        super().__init__(name=name, log_operations=log_operations)
+        super().__init__(
+            name=name,
+            log_operations=log_operations,
+            plugin_aware=plugin_aware,
+        )
         self._allow_overwrite = allow_overwrite
         self._pack_index: Dict[str, List[SimplePackItemRef[NS, K]]] = {}
         self._pack_meta: Dict[str, M] = {}
+        self._plugin_id_getter = plugin_id_getter
 
         if seed_on_init:
             self._seed_defaults()
@@ -218,6 +252,17 @@ class SimplePackRegistryBase(RegistryObserverMixin, RegistryBase, Generic[NS, K,
     def __contains__(self, pack_id: str) -> bool:
         return pack_id in self._pack_meta
 
+    def unregister_by_plugin(self, plugin_id: str) -> int:
+        """Unregister all packs owned by a plugin."""
+        to_remove = [
+            pack_id
+            for pack_id, meta in self._pack_meta.items()
+            if self._get_pack_plugin_id(meta) == plugin_id
+        ]
+        for pack_id in to_remove:
+            self.unregister_pack(pack_id)
+        return len(to_remove)
+
     # =========================================================================
     # Item hooks (override in subclasses as needed)
     # =========================================================================
@@ -227,3 +272,8 @@ class SimplePackRegistryBase(RegistryObserverMixin, RegistryBase, Generic[NS, K,
 
     def _unregister_item(self, namespace: NS, key: K) -> None:
         return None
+
+    def _get_pack_plugin_id(self, meta: M) -> Optional[str]:
+        if self._plugin_id_getter is not None:
+            return self._plugin_id_getter(meta)
+        return get_plugin_owner(meta)

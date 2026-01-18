@@ -413,6 +413,11 @@ class LayeredNestedRegistry(RegistryBase, Generic[NS, K, V]):
     def reset(self) -> None:
         self.clear()
 
+    def clear_layer(self, layer: str) -> None:
+        for registry in self._namespaces.values():
+            if registry.has_layer(layer):
+                registry.clear_layer(layer)
+
     # =========================================================================
     # Dunder Methods
     # =========================================================================

@@ -11,6 +11,8 @@ logger = structlog.get_logger(__name__)
 
 RegistryListener = Callable[[str, Dict[str, Any]], None]
 
+from pixsim7.backend.main.lib.registry.cleanup import RegistryCleanupResult
+
 
 class RegistryBase:
     """Shared base for registry implementations."""
@@ -31,7 +33,11 @@ class RegistryBase:
         self._plugin_aware = plugin_aware
 
         if plugin_aware:
-            RegistryBase._plugin_aware_registries.append(self)
+            manager = _get_registry_manager()
+            if manager:
+                manager.register(self)
+            else:
+                RegistryBase._plugin_aware_registries.append(self)
 
     @property
     def name(self) -> str:
@@ -83,17 +89,24 @@ class RegistryBase:
         Use this for registries that don't inherit from RegistryBase
         but implement unregister_by_plugin().
         """
-        if registry not in cls._plugin_aware_registries:
+        manager = _get_registry_manager()
+        if manager:
+            manager.register(registry)
+        elif registry not in cls._plugin_aware_registries:
             cls._plugin_aware_registries.append(registry)
 
     @classmethod
-    def unregister_plugin_from_all(cls, plugin_id: str) -> Dict[str, Any]:
+    def unregister_plugin_from_all(cls, plugin_id: str) -> RegistryCleanupResult:
         """
         Remove all extensions from a plugin across ALL plugin-aware registries.
 
         Returns dict mapping registry name to removal counts.
         """
+        manager = _get_registry_manager()
+        if manager:
+            return manager.unregister_plugin_from_all(plugin_id)
         results: Dict[str, Any] = {}
+        errors: Dict[str, str] = {}
         for registry in cls._plugin_aware_registries:
             try:
                 results[registry.name] = registry.unregister_by_plugin(plugin_id)
@@ -110,12 +123,24 @@ class RegistryBase:
                     error=str(e),
                 )
                 results[registry.name] = {"error": str(e)}
-        return results
+                errors[registry.name] = str(e)
+        return RegistryCleanupResult(registries=results, errors=errors)
 
     @classmethod
     def list_plugin_aware_registries(cls) -> List[str]:
         """List names of all plugin-aware registries."""
+        manager = _get_registry_manager()
+        if manager:
+            return manager.list_registries()
         return [r.name for r in cls._plugin_aware_registries]
+
+
+def _get_registry_manager():
+    try:
+        from pixsim7.backend.main.lib.registry.manager import get_registry_manager
+    except Exception:
+        return None
+    return get_registry_manager()
 
 
 class RegistryObserverMixin:

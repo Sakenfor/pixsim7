@@ -59,6 +59,21 @@ from .base import (
     RegistryBase,
     RegistryObserverMixin,
 )
+from .cleanup import (
+    RegistryCleanupResult,
+)
+from .group import (
+    RegistryGroup,
+)
+from .manager import (
+    RegistryManager,
+    get_registry_manager,
+    set_registry_manager,
+)
+from .ownership import (
+    PluginOwned,
+    get_plugin_owner,
+)
 from .nested import (
     NestedRegistry,
 )
@@ -102,6 +117,13 @@ __all__ = [
     # Base and mixins
     "RegistryBase",
     "RegistryObserverMixin",
+    "RegistryCleanupResult",
+    "RegistryGroup",
+    "RegistryManager",
+    "get_registry_manager",
+    "set_registry_manager",
+    "PluginOwned",
+    "get_plugin_owner",
     # Nested registry
     "NestedRegistry",
     # Layered registry
