@@ -343,11 +343,35 @@ class Settings(BaseSettings):
             DOMAIN_MODELS_DIR="/opt/pixsim/models"  # Absolute path
         """
         if isinstance(v, str):
-            return Path(v)
+            candidate = Path(v)
+            if candidate.is_absolute():
+                return candidate
+
+            # Prefer relative-to-CWD if it already exists.
+            if candidate.exists():
+                return candidate.resolve()
+
+            # Fallback: resolve relative to repo root (helps when running from subdirs).
+            repo_root = _resolve_repo_root()
+            repo_candidate = repo_root / candidate
+            if repo_candidate.exists():
+                return repo_candidate
+
+            return candidate
         elif isinstance(v, Path):
             return v
         else:
             raise ValueError(f"Expected str or Path, got {type(v)}")
+
+
+def _resolve_repo_root() -> Path:
+    """Best-effort repo root resolver for stable plugin path discovery."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pixsim7").exists() and (parent / "apps").exists():
+            return parent
+    # Fallback to a stable parent depth if repo markers are missing.
+    return here.parents[4] if len(here.parents) > 4 else here.parent
 
     @property
     def async_database_url(self) -> str:

@@ -238,6 +238,17 @@ def setup_analyzer_plugins() -> None:
     logger.info("analyzer_plugin_hooks_registered")
 
 
+def setup_registry_cleanup_hooks() -> None:
+    """
+    Register plugin hooks for registry cleanup on plugin disable.
+    """
+    from pixsim7.backend.main.infrastructure.plugins.registry_cleanup import (
+        setup_registry_cleanup_hooks as setup_hooks,
+    )
+    setup_hooks()
+    logger.info("registry_cleanup_hooks_registered")
+
+
 def setup_event_handlers() -> None:
     """
     Register event handlers and WebSocket handlers.
@@ -471,6 +482,10 @@ async def setup_plugins(
     - Returns managers for app.state attachment
     """
     from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
+    from pixsim7.backend.main.lib.registry import RegistryManager, set_registry_manager
+
+    registry_manager = RegistryManager()
+    set_registry_manager(registry_manager, migrate=True)
 
     # Initialize feature plugins (includes external plugins)
     plugin_manager = init_plugin_manager(
@@ -478,7 +493,8 @@ async def setup_plugins(
         str(plugins_dir),
         plugin_type="feature",
         fail_fast=fail_fast,
-        external_plugins_dir=str(external_plugins_dir) if external_plugins_dir else None
+        external_plugins_dir=str(external_plugins_dir) if external_plugins_dir else None,
+        registry_manager=registry_manager,
     )
     logger.info(
         "feature_plugins_loaded",
@@ -492,7 +508,8 @@ async def setup_plugins(
         app,
         str(routes_dir),
         plugin_type="route",
-        fail_fast=fail_fast
+        fail_fast=fail_fast,
+        registry_manager=registry_manager,
     )
     logger.info(
         "route_plugins_loaded",
