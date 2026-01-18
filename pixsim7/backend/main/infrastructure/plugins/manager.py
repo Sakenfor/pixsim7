@@ -35,6 +35,9 @@ from pixsim7.backend.main.lib.registry import (
     NameValidator,
     DEFAULT_NAME_PATTERN,
     DEFAULT_RESERVED_NAMES,
+    RegistryManager,
+    get_registry_manager,
+    set_registry_manager,
 )
 from .types import PluginManifest, BackendPlugin, plugin_hooks, PluginEvents
 from .permissions import (
@@ -58,19 +61,29 @@ class PluginManager:
     - Hook system
     """
 
-    def __init__(self, app: FastAPI, plugin_type: str = "feature"):
+    def __init__(
+        self,
+        app: FastAPI,
+        plugin_type: str = "feature",
+        registry_manager: Optional[RegistryManager] = None,
+    ):
         """
         Initialize plugin manager.
 
         Args:
             app: FastAPI application instance
             plugin_type: Plugin type for module namespacing ("feature" or "route")
+            registry_manager: Optional RegistryManager override
         """
         self.app = app
         self.plugin_type = plugin_type
+        self.registry_manager = registry_manager or get_registry_manager()
+        if registry_manager:
+            set_registry_manager(registry_manager, migrate=True)
         self.plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {manifest, router, module}
         self.load_order: list[str] = []
         self.failed_plugins: dict[str, dict[str, Any]] = {}  # plugin_id -> {error_message, manifest?, required?}
+        self._child_managers: dict[str, "PluginManager"] = {}
 
         # Use shared name validator for plugin discovery
         self._name_validator = NameValidator(
@@ -135,7 +148,49 @@ class PluginManager:
         # Return tuples of (name, package_dir) for compatibility with load_external_plugin
         return [(m.name, m.package_dir) for m in manifests]
 
-    def load_external_plugin(self, plugin_name: str, backend_dir: Path) -> bool:
+    def _apply_id_prefix(
+        self,
+        manifest: PluginManifest,
+        id_prefix: Optional[str],
+        *,
+        dependency_ids: Optional[set[str]] = None,
+    ) -> str:
+        if not id_prefix:
+            return manifest.id
+
+        canonical_id = f"{id_prefix}.{manifest.id}"
+        manifest.id = canonical_id
+
+        def _prefix(dep: str) -> str:
+            if dep.startswith(f"{id_prefix}."):
+                return dep
+            if dependency_ids is not None and dep not in dependency_ids:
+                return dep
+            return f"{id_prefix}.{dep}"
+
+        if manifest.dependencies:
+            manifest.dependencies = [_prefix(dep) for dep in manifest.dependencies]
+        if manifest.depends_on:
+            manifest.depends_on = [_prefix(dep) for dep in manifest.depends_on]
+
+        return canonical_id
+
+    def register_child_manager(self, parent_id: str, manager: "PluginManager") -> None:
+        """Attach a child plugin manager to a parent plugin."""
+        self._child_managers[parent_id] = manager
+
+    def get_child_manager(self, parent_id: str) -> Optional["PluginManager"]:
+        """Get a child plugin manager for a parent plugin."""
+        return self._child_managers.get(parent_id)
+
+    def load_external_plugin(
+        self,
+        plugin_name: str,
+        backend_dir: Path,
+        *,
+        id_prefix: Optional[str] = None,
+        dependency_ids: Optional[set[str]] = None,
+    ) -> bool:
         """
         Load an external plugin from packages/plugins/{name}/backend/.
 
@@ -230,8 +285,11 @@ class PluginManager:
                     manifest_id=manifest.id,
                 )
 
-            # Use manifest ID as the canonical plugin ID
-            canonical_id = manifest.id
+            canonical_id = self._apply_id_prefix(
+                manifest,
+                id_prefix,
+                dependency_ids=dependency_ids,
+            )
 
             # Continue with standard plugin loading (validation, registration, etc.)
             return self._finalize_plugin_load(
@@ -393,7 +451,14 @@ class PluginManager:
 
         return True
 
-    def load_plugin(self, plugin_name: str, plugin_dir: str | Path) -> bool:
+    def load_plugin(
+        self,
+        plugin_name: str,
+        plugin_dir: str | Path,
+        *,
+        id_prefix: Optional[str] = None,
+        dependency_ids: Optional[set[str]] = None,
+    ) -> bool:
         """
         Load a single plugin from directory.
 
@@ -473,13 +538,19 @@ class PluginManager:
                 }
                 return False
 
+            canonical_id = self._apply_id_prefix(
+                manifest,
+                id_prefix,
+                dependency_ids=dependency_ids,
+            )
+
             # Validate and expand permissions
             expanded_permissions = expand_permission_groups(manifest.permissions)
             validation = validate_permissions(expanded_permissions, allow_unknown=True)
 
             if not validation.valid:
                 logger.error(
-                    f"Plugin {manifest.id} has invalid permissions",
+                    f"Plugin {canonical_id} has invalid permissions",
                     unknown=validation.unknown,
                 )
                 self.failed_plugins[plugin_name] = {
@@ -492,24 +563,24 @@ class PluginManager:
             # Warn about unknown permissions (possible typos) even when allowed
             for unknown_perm in validation.unknown:
                 logger.warning(
-                    f"Plugin '{manifest.id}' uses unknown permission (possible typo)",
-                    plugin_id=manifest.id,
+                    f"Plugin '{canonical_id}' uses unknown permission (possible typo)",
+                    plugin_id=canonical_id,
                     permission=unknown_perm,
                 )
 
             # Log permission warnings
             for warning in validation.warnings:
                 logger.warning(
-                    f"Plugin {manifest.id}: {warning}",
-                    plugin_id=manifest.id,
+                    f"Plugin {canonical_id}: {warning}",
+                    plugin_id=canonical_id,
                 )
 
             # Store validated permissions back in manifest
             manifest.permissions = validation.granted
 
             logger.debug(
-                f"Plugin {manifest.id} permissions validated",
-                plugin_id=manifest.id,
+                f"Plugin {canonical_id} permissions validated",
+                plugin_id=canonical_id,
                 permissions=validation.granted,
                 warnings=len(validation.warnings),
             )
@@ -520,19 +591,19 @@ class PluginManager:
             # Apply allowlist: if set, anything not in the list is disabled
             allowlist = getattr(settings, "plugin_allowlist", None)
             if allowlist:
-                if manifest.id not in allowlist:
+                if canonical_id not in allowlist:
                     effective_enabled = False
 
             # Apply denylist override
             denylist = getattr(settings, "plugin_denylist", []) or []
-            if manifest.id in denylist:
+            if canonical_id in denylist:
                 effective_enabled = False
 
             # Persist effective state back to manifest so downstream checks see it
             manifest.enabled = effective_enabled
 
             # Store plugin
-            self.plugins[manifest.id] = {
+            self.plugins[canonical_id] = {
                 'manifest': manifest,
                 'router': router,
                 'module': module,
@@ -542,18 +613,18 @@ class PluginManager:
 
             logger.info(
                 f"Loaded plugin: {manifest.name} v{manifest.version}",
-                plugin_id=manifest.id,
+                plugin_id=canonical_id,
             )
 
             # Call on_load hook if defined and plugin is enabled
             if effective_enabled and hasattr(module, 'on_load'):
                 try:
                     module.on_load(self.app)
-                    logger.debug(f"Called on_load for {manifest.id}")
+                    logger.debug(f"Called on_load for {canonical_id}")
                 except Exception as e:
-                    logger.error(f"Error in on_load for {manifest.id}: {e}", exc_info=True)
+                    logger.error(f"Error in on_load for {canonical_id}: {e}", exc_info=True)
                     # Unload plugin if on_load fails
-                    self.plugins.pop(manifest.id, None)
+                    self.plugins.pop(canonical_id, None)
                     self.failed_plugins[plugin_name] = {
                         'error': f"on_load hook failed: {e}",
                         'required': manifest.required,
@@ -561,33 +632,33 @@ class PluginManager:
                     }
                     if manifest.required:
                         raise RuntimeError(
-                            f"Required plugin '{manifest.id}' failed on_load: {e}"
+                            f"Required plugin '{canonical_id}' failed on_load: {e}"
                         )
                     return False
             elif hasattr(module, 'on_load') and not effective_enabled:
                 logger.debug(
-                    f"Skipping on_load for disabled plugin: {manifest.id}"
+                    f"Skipping on_load for disabled plugin: {canonical_id}"
                 )
 
             # Allow plugins to register stat packages or other extensions
             # during load. Handlers receive the plugin ID so they can tag
             # ownership metadata if needed.
-            plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=manifest.id)
-            plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=manifest.id)
+            plugin_hooks.emit_sync(PluginEvents.STAT_PACKAGES_REGISTER, plugin_id=canonical_id)
+            plugin_hooks.emit_sync(PluginEvents.NPC_SURFACES_REGISTER, plugin_id=canonical_id)
             plugin_hooks.emit_sync(
                 PluginEvents.ANALYZERS_REGISTER,
-                plugin_id=manifest.id,
-                plugin=self.plugins[manifest.id],
+                plugin_id=canonical_id,
+                plugin=self.plugins[canonical_id],
             )
 
             # Emit event (sync context)
-            plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, manifest.id)
+            plugin_hooks.emit_sync(PluginEvents.PLUGIN_LOADED, canonical_id)
 
             # Log load time metrics
             load_duration_ms = (time.perf_counter() - start_time) * 1000
             logger.info(
                 "Plugin load completed",
-                plugin_id=manifest.id,
+                plugin_id=canonical_id,
                 duration_ms=round(load_duration_ms, 2),
             )
 
@@ -750,6 +821,10 @@ class PluginManager:
             # Emit event
             await plugin_hooks.emit(PluginEvents.PLUGIN_ENABLED, plugin_id)
 
+            child_manager = self._child_managers.get(plugin_id)
+            if child_manager:
+                await child_manager.enable_all()
+
     async def disable_all(self) -> None:
         """
         Disable all plugins (call on_disable hooks).
@@ -761,6 +836,10 @@ class PluginManager:
             plugin = self.plugins.get(plugin_id)
             if not plugin or not plugin['enabled']:
                 continue
+
+            child_manager = self._child_managers.get(plugin_id)
+            if child_manager:
+                await child_manager.disable_all()
 
             # Call on_disable hook if defined
             module = plugin['module']
@@ -775,6 +854,54 @@ class PluginManager:
 
             # Emit event
             await plugin_hooks.emit(PluginEvents.PLUGIN_DISABLED, plugin_id)
+
+    async def load_child_plugins(
+        self,
+        parent_id: str,
+        plugin_dir: str | Path,
+        *,
+        prefix_ids: bool = True,
+        external_plugins_dir: str | Path | None = None,
+    ) -> "PluginManager":
+        """
+        Load child plugins for a parent plugin under a namespaced ID prefix.
+        """
+        if parent_id not in self.plugins:
+            raise ValueError(f"Parent plugin '{parent_id}' is not loaded")
+
+        child_manager = PluginManager(
+            self.app,
+            plugin_type=self.plugin_type,
+            registry_manager=self.registry_manager,
+        )
+
+        discovered = child_manager.discover_plugins(plugin_dir)
+        external_discovered: list[tuple[str, Path]] = []
+        if external_plugins_dir:
+            external_discovered = child_manager.discover_external_plugins(external_plugins_dir)
+
+        child_ids = set(discovered)
+        child_ids.update([name for name, _ in external_discovered])
+
+        for plugin_name in discovered:
+            child_manager.load_plugin(
+                plugin_name,
+                plugin_dir,
+                id_prefix=parent_id if prefix_ids else None,
+                dependency_ids=child_ids if prefix_ids else None,
+            )
+
+        for plugin_name, backend_dir in external_discovered:
+            child_manager.load_external_plugin(
+                plugin_name,
+                backend_dir,
+                id_prefix=parent_id if prefix_ids else None,
+                dependency_ids=child_ids if prefix_ids else None,
+            )
+
+        child_manager.register_all()
+        self.register_child_manager(parent_id, child_manager)
+        return child_manager
 
     def get_plugin(self, plugin_id: str) -> Optional[dict]:
         """Get plugin info by ID"""
@@ -925,7 +1052,8 @@ def init_plugin_manager(
     plugin_type: str = "feature",
     fail_fast: bool = False,
     print_health: bool = True,
-    external_plugins_dir: str | Path | None = None
+    external_plugins_dir: str | Path | None = None,
+    registry_manager: Optional[RegistryManager] = None,
 ) -> PluginManager:
     """
     Initialize a plugin manager instance.
@@ -943,6 +1071,7 @@ def init_plugin_manager(
         external_plugins_dir: Optional directory containing external plugin packages
                               (e.g., packages/plugins/). Each subdirectory should have
                               a backend/ folder with manifest.py.
+        registry_manager: Optional RegistryManager override for registry cleanup coordination.
 
     Usage in main.py:
         from pixsim7.backend.main.infrastructure.plugins import init_plugin_manager
@@ -955,7 +1084,11 @@ def init_plugin_manager(
         )
         routes_manager = init_plugin_manager(app, "pixsim7/backend/main/routes", plugin_type="route")
     """
-    manager = PluginManager(app, plugin_type=plugin_type)
+    manager = PluginManager(
+        app,
+        plugin_type=plugin_type,
+        registry_manager=registry_manager,
+    )
 
     # Auto-discover core plugins
     discovered = manager.discover_plugins(plugin_dir)
