@@ -5,9 +5,11 @@
  * Part of Task 51 Phase 51.2 - Resolution Engine & Caching
  */
 
-import { useWorkspaceStore } from '@features/workspace';
-import { useGameStateStore } from '../../stores/gameStateStore';
 import { resolvePath } from '@lib/editing-core';
+
+import { useWorkspaceStore } from '@features/workspace';
+
+import { useGameStateStore } from '../../stores/gameStateStore';
 
 /**
  * Whitelisted store IDs
@@ -75,6 +77,20 @@ class StoreAccessorRegistry {
  */
 export const storeAccessorRegistry = new StoreAccessorRegistry();
 
+
+/**
+ * Get a value from an object by path
+ * General-purpose utility for resolving nested property paths
+ */
+export function getValueByPath(obj: unknown, path: string): unknown {
+  if (obj === null || obj === undefined) {
+    return undefined;
+  }
+  if (!path) {
+    return obj;
+  }
+  return resolvePath(obj, path);
+}
 
 /**
  * Get a value from a store by ID and path

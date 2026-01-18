@@ -5,6 +5,11 @@
  * Call registerAllWidgets() during app initialization.
  */
 
+import { registerBuiltInWidgets } from '../builtIn';
+
+import { registerBlockWidgets } from './blockWidgets';
+import { registerOverlayWidgets } from './overlayWidgets';
+
 export {
   overlayWidgetDefinitions,
   registerOverlayWidgets,
@@ -46,10 +51,6 @@ export {
  * - registerAllLegacyWidgets() adapters
  */
 export function registerAllWidgets(): void {
-  const { registerOverlayWidgets } = require('./overlayWidgets');
-  const { registerBlockWidgets } = require('./blockWidgets');
-  const { registerBuiltInWidgets } = require('../builtIn');
-
   registerOverlayWidgets();
   registerBlockWidgets();
   registerBuiltInWidgets();

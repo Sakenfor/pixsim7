@@ -2,7 +2,7 @@ import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-import { addDockviewPanel, focusPanel } from "@lib/dockview";
+import { addDockviewPanel, focusPanel, getDockviewHost } from "@lib/dockview";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
@@ -268,26 +268,21 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
         set({ closedPanels });
 
-        // Actually restore the panel to the workspace dockview
-        import("@features/panels/lib/PanelManager").then(({ panelManager }) => {
-          const api = panelManager.getPanelState("workspace")?.dockview?.api;
-          if (!api) {
-            console.warn(`[restorePanel] Workspace dockview not available`);
-            return;
-          }
+        const api = getDockviewHost("workspace")?.api;
+        if (!api) {
+          console.warn(`[restorePanel] Workspace dockview not available`);
+          return;
+        }
 
-          // Check if panel already exists
-          if (focusPanel(api, panelId)) {
-            return;
-          }
+        // Check if panel already exists
+        if (focusPanel(api, panelId)) {
+          return;
+        }
 
         addDockviewPanel(api, panelId, {
           allowMultiple: false,
           position: { direction: "right" },
         });
-      }).catch((error) => {
-        console.error("[restorePanel] Failed to import panel manager:", error);
-      });
       },
 
       clearClosedPanels: () => set({ closedPanels: [] }),

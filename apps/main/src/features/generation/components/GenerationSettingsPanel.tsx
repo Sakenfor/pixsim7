@@ -27,9 +27,7 @@ import { useMemo, useEffect } from 'react';
 
 import {
   CAP_GENERATION_WIDGET,
-  useContextHubHostId,
   useContextHubOverridesStore,
-  useContextHubState,
 } from '@features/contextHub';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
@@ -166,28 +164,15 @@ export function GenerationSettingsPanel({
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
-  const hub = useContextHubState();
-  const hostId = useContextHubHostId();
   const preferredProviderId = useContextHubOverridesStore(
-    (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET, hostId)
+    (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET)
   );
   const setPreferredProvider = useContextHubOverridesStore((state) => state.setPreferredProvider);
   const clearOverride = useContextHubOverridesStore((state) => state.clearOverride);
   const resolvedTargetProviderId = useMemo(() => {
-    if (targetProviderId) return targetProviderId;
-    if (!hub) return undefined;
-
-    let current = hub;
-    while (current) {
-      const provider = current.registry.getBest(CAP_GENERATION_WIDGET);
-      if (provider?.id) {
-        return provider.id;
-      }
-      current = current.parent;
-    }
-
-    return undefined;
-  }, [hub, targetProviderId]);
+    if (!targetProviderId) return undefined;
+    return targetProviderId;
+  }, [targetProviderId]);
   const isTargeted = !!resolvedTargetProviderId && preferredProviderId === resolvedTargetProviderId;
   const canTarget = !!resolvedTargetProviderId;
 
@@ -352,10 +337,10 @@ export function GenerationSettingsPanel({
                 onClick={() => {
                   if (!resolvedTargetProviderId) return;
                   if (isTargeted) {
-                    clearOverride(CAP_GENERATION_WIDGET, hostId);
+                    clearOverride(CAP_GENERATION_WIDGET);
                     return;
                   }
-                  setPreferredProvider(CAP_GENERATION_WIDGET, resolvedTargetProviderId, hostId);
+                  setPreferredProvider(CAP_GENERATION_WIDGET, resolvedTargetProviderId);
                 }}
                 className={clsx(
                   'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
