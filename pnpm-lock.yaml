@@ -223,9 +223,27 @@ importers:
 
   apps/main:
     dependencies:
+      '@pixsim7/core.brain':
+        specifier: workspace:*
+        version: link:../../packages/core/brain
       '@pixsim7/core.composer':
         specifier: workspace:*
         version: link:../../packages/core/composer
+      '@pixsim7/core.links':
+        specifier: workspace:*
+        version: link:../../packages/core/links
+      '@pixsim7/core.prompt':
+        specifier: workspace:*
+        version: link:../../packages/core/prompt
+      '@pixsim7/core.scene-composition':
+        specifier: workspace:*
+        version: link:../../packages/core/scene-composition
+      '@pixsim7/core.stats':
+        specifier: workspace:*
+        version: link:../../packages/core/stats
+      '@pixsim7/core.world':
+        specifier: workspace:*
+        version: link:../../packages/core/world
       '@pixsim7/game.components':
         specifier: workspace:*
         version: link:../../packages/game/components
@@ -253,12 +271,21 @@ importers:
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets-core
+      '@pixsim7/shared.async':
+        specifier: workspace:*
+        version: link:../../packages/shared/async
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities-core
+      '@pixsim7/shared.content-rating':
+        specifier: workspace:*
+        version: link:../../packages/shared/content-rating
       '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation-core
+      '@pixsim7/shared.graph-utilities':
+        specifier: workspace:*
+        version: link:../../packages/shared/graph-utilities
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../packages/shared/helpers-core
@@ -271,6 +298,9 @@ importers:
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref-core
+      '@pixsim7/shared.time':
+        specifier: workspace:*
+        version: link:../../packages/shared/time
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../packages/shared/types
@@ -524,6 +554,18 @@ importers:
 
   packages/game/engine:
     dependencies:
+      '@pixsim7/core.brain':
+        specifier: workspace:*
+        version: link:../../core/brain
+      '@pixsim7/core.links':
+        specifier: workspace:*
+        version: link:../../core/links
+      '@pixsim7/core.stats':
+        specifier: workspace:*
+        version: link:../../core/stats
+      '@pixsim7/shared.content-rating':
+        specifier: workspace:*
+        version: link:../../shared/content-rating
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../shared/helpers-core
@@ -648,6 +690,9 @@ importers:
 
   packages/scene/shapes:
     dependencies:
+      '@pixsim7/core.brain':
+        specifier: workspace:*
+        version: link:../../core/brain
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../game/engine
