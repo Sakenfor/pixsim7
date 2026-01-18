@@ -72,7 +72,12 @@ class NpcSurfacePackageRegistry(
     """
 
     def __init__(self) -> None:
-        super().__init__(name="NpcSurfacePackageRegistry", log_operations=False)
+        super().__init__(
+            name="NpcSurfacePackageRegistry",
+            log_operations=False,
+            plugin_aware=True,
+            plugin_id_getter=lambda pkg: pkg.source_plugin_id,
+        )
 
     def _on_reset(self) -> None:
         """Reset the core package registration flag."""
@@ -100,6 +105,10 @@ class NpcSurfacePackageRegistry(
                 "source_plugin_id": pkg.source_plugin_id,
             },
         )
+
+    def unregister_packages_by_plugin(self, plugin_id: str) -> int:
+        """Unregister all NPC surface packages owned by a plugin."""
+        return self.unregister_by_plugin(plugin_id)
 
     def find_surface_types(
         self, surface_type_id: str
@@ -149,3 +158,8 @@ def find_surface_types(
 def clear_npc_surface_packages() -> None:
     """Clear all registered packages. Mainly for testing."""
     _registry.reset()  # Calls _on_reset() to reset registration flag
+
+
+def unregister_npc_surface_packages_by_plugin(plugin_id: str) -> int:
+    """Unregister all NPC surface packages owned by a plugin."""
+    return _registry.unregister_packages_by_plugin(plugin_id)

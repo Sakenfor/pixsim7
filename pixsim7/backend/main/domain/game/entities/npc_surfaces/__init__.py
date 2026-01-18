@@ -46,6 +46,7 @@ from .package_registry import (
     list_npc_surface_packages,
     find_surface_types,
     clear_npc_surface_packages,
+    unregister_npc_surface_packages_by_plugin,
 )
 from .core_surfaces import (
     register_core_surface_packages,
@@ -68,6 +69,7 @@ __all__ = [
     "list_npc_surface_packages",
     "find_surface_types",
     "clear_npc_surface_packages",
+    "unregister_npc_surface_packages_by_plugin",
     "register_core_surface_packages",
     "reset_core_surface_registration",
     "validate_expression_meta",

@@ -124,8 +124,6 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
             priority=role.priority,
         )
         super().register(role_id, normalized)
-        for alias in normalized.aliases:
-            self._aliases[alias] = role_id
 
     def _merge_role(self, role_id: str, role: PromptRoleDefinition) -> None:
         existing = self.get_or_none(role_id)
@@ -196,6 +194,27 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                     )
                 )
             self._merge_role(role_id, PromptRoleDefinition(id=role_id, label=role_id, keywords=words))
+
+    def _on_register(
+        self,
+        key: str,
+        item: PromptRoleDefinition,
+        previous: Optional[PromptRoleDefinition],
+    ) -> None:
+        if previous:
+            for alias in list(self._aliases):
+                if self._aliases.get(alias) == key:
+                    del self._aliases[alias]
+        for alias in item.aliases:
+            self._aliases[alias] = key
+
+    def _on_unregister(self, key: str, item: PromptRoleDefinition) -> None:
+        for alias in list(self._aliases):
+            if self._aliases.get(alias) == key:
+                del self._aliases[alias]
+
+    def _on_clear(self, items: Dict[str, PromptRoleDefinition]) -> None:
+        self._aliases.clear()
 
     def register_roles_from_pack_extra(self, extra: Dict[str, object]) -> None:
         roles = extra.get("roles")

@@ -64,6 +64,7 @@ from .package_registry import (
     find_axes_by_semantic_type,
     get_applicable_derivations,
     clear_stat_packages,
+    unregister_stat_packages_by_plugin,
     # World config builder
     get_merged_stats_config,
     get_world_config,
@@ -242,4 +243,5 @@ __all__ = [
     "reset_core_stat_packages_registration",
     "setup_stat_package_hooks",
     "clear_stat_packages",
+    "unregister_stat_packages_by_plugin",
 ]

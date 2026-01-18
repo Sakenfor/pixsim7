@@ -140,32 +140,38 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
 
     def register(self, analyzer: AnalyzerInfo) -> None:
         """Register an analyzer."""
-        existing = self.get_or_none(analyzer.id)
-        if existing and existing.source_plugin_id != analyzer.source_plugin_id:
-            self._log_debug(
-                "Overwriting analyzer from different plugin",
-                analyzer_id=analyzer.id,
-                previous_plugin=existing.source_plugin_id,
-                new_plugin=analyzer.source_plugin_id,
-            )
-            if existing.source_plugin_id:
-                self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer.id)
-
-        # Call base class register directly (not register_item to avoid recursion)
         super().register(analyzer.id, analyzer)
-
-        if analyzer.source_plugin_id:
-            self._by_plugin.setdefault(analyzer.source_plugin_id, set()).add(analyzer.id)
 
     def unregister(self, analyzer_id: str) -> bool:
         """Unregister an analyzer. Returns True if found."""
-        existing = self.get_or_none(analyzer_id)
-        if existing:
-            if existing.source_plugin_id:
-                self._by_plugin.get(existing.source_plugin_id, set()).discard(analyzer_id)
-            super().unregister(analyzer_id)
-            return True
-        return False
+        removed = super().unregister(analyzer_id)
+        return removed is not None
+
+    def _on_register(
+        self,
+        key: str,
+        item: AnalyzerInfo,
+        previous: Optional[AnalyzerInfo],
+    ) -> None:
+        if previous and previous.source_plugin_id != item.source_plugin_id:
+            self._log_debug(
+                "Overwriting analyzer from different plugin",
+                analyzer_id=key,
+                previous_plugin=previous.source_plugin_id,
+                new_plugin=item.source_plugin_id,
+            )
+            if previous.source_plugin_id:
+                self._by_plugin.get(previous.source_plugin_id, set()).discard(key)
+
+        if item.source_plugin_id:
+            self._by_plugin.setdefault(item.source_plugin_id, set()).add(key)
+
+    def _on_unregister(self, key: str, item: AnalyzerInfo) -> None:
+        if item.source_plugin_id:
+            self._by_plugin.get(item.source_plugin_id, set()).discard(key)
+
+    def _on_clear(self, items: Dict[str, AnalyzerInfo]) -> None:
+        self._by_plugin.clear()
 
     def get(self, analyzer_id: str) -> Optional[AnalyzerInfo]:
         """Get analyzer by ID."""

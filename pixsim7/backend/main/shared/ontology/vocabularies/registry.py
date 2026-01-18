@@ -124,10 +124,10 @@ class VocabularyRegistry:
         )
 
         # Plugin tracking
-        self._packs: List[VocabPackInfo] = []
         self._pack_registry = PackRegistryBase(
             registry=self._vocabs,
             name="vocab_packs",
+            plugin_id_getter=lambda pack: pack.plugin_id,
         )
         self._loaded = False
 
@@ -169,6 +169,10 @@ class VocabularyRegistry:
         self._build_keyword_index()
 
         self._loaded = True
+
+    @property
+    def name(self) -> str:
+        return "vocabularies"
 
     def _load_yaml(self, filename: str, directory: Path) -> Dict[str, Any]:
         """Load a YAML file, returning empty dict if not found."""
@@ -218,6 +222,41 @@ class VocabularyRegistry:
             count += 1
 
         return count
+
+    def _collect_vocab_items(
+        self,
+        source: str,
+        directory: Path,
+        configs: Dict[str, Any],
+    ) -> tuple[List[tuple[str, str, Any]], Dict[str, int]]:
+        """Collect vocab items without registering them."""
+        items: List[tuple[str, str, Any]] = []
+        counts: Dict[str, int] = {}
+
+        for vocab_name, config in configs.items():
+            data = self._load_yaml(config.yaml_file, directory)
+            raw_items = data.get(config.yaml_key, {})
+
+            if not isinstance(raw_items, dict):
+                continue
+
+            if not self._vocabs.has_namespace(config.name):
+                self._vocabs.add_namespace(config.name)
+
+            count = 0
+            for item_id, item_data in raw_items.items():
+                if self._vocabs.has(config.name, item_id, layer=source):
+                    raise ValueError(
+                        f"Duplicate {config.name} ID '{item_id}' from {source}"
+                    )
+                item = config.factory(item_id, item_data, source)
+                items.append((config.name, item_id, item))
+                count += 1
+
+            if count > 0:
+                counts[vocab_name] = count
+
+        return items, counts
 
     def _load_role_extras(self, directory: Path, source: str) -> None:
         """Load role-specific extras (priority, mappings) from roles.yaml."""
@@ -446,9 +485,16 @@ class VocabularyRegistry:
     ) -> None:
         """Load all vocabulary files from a plugin's vocabularies folder."""
         source = f"plugin:{plugin_id}"
+        pack_id = f"plugin_{plugin_id}"
 
         try:
-            counts = self._load_all_vocabs(source, vocab_dir, configs)
+            if not self._vocabs.has_layer(source):
+                self._vocabs.add_layer(source)
+
+            if self._pack_registry.has_pack(pack_id):
+                self._pack_registry.unregister_pack(pack_id)
+
+            items, counts = self._collect_vocab_items(source, vocab_dir, configs)
 
             # Load role extras from plugin
             self._load_role_extras(vocab_dir, source=source)
@@ -457,14 +503,21 @@ class VocabularyRegistry:
             self._load_scoring(vocab_dir)
 
             # Only register pack if something was loaded
-            if sum(counts.values()) > 0:
-                self._packs.append(VocabPackInfo(
-                    id=f"plugin_{plugin_id}",
+            if items:
+                pack_info = VocabPackInfo(
+                    id=pack_id,
                     source_path=str(vocab_dir),
                     plugin_id=plugin_id,
                     label=f"Plugin: {plugin_id}",
                     concepts_added=counts,
-                ))
+                )
+                self._pack_registry.register_pack(
+                    pack_info.id,
+                    items,
+                    layer=source,
+                    meta=pack_info,
+                    allow_overwrite=True,
+                )
         except ValueError as e:
             raise ValueError(f"Error loading plugin '{plugin_id}' vocabularies: {e}") from e
 
@@ -613,7 +666,7 @@ class VocabularyRegistry:
     @property
     def packs(self) -> List[VocabPackInfo]:
         self._ensure_loaded()
-        return [*self._packs, *self._pack_registry.list_packs()]
+        return self._pack_registry.list_packs()
 
     # =========================================================================
     # Pose Helpers
@@ -1053,6 +1106,40 @@ class VocabularyRegistry:
             self._build_keyword_index()
         return removed
 
+    def unregister_packs_by_plugin(self, plugin_id: str) -> Dict[str, int]:
+        """Unload all vocab packs and dynamic types owned by a plugin."""
+        self._ensure_loaded()
+
+        removed_packs = 0
+        for pack in list(self._pack_registry.list_packs()):
+            if pack.plugin_id == plugin_id:
+                if self._pack_registry.unregister_pack(pack.id):
+                    removed_packs += 1
+
+        layer = f"plugin:{plugin_id}"
+        if self._vocabs.has_layer(layer):
+            self._vocabs.clear_layer(layer)
+
+        removed_dynamic = 0
+        for name, meta in list(self._dynamic_type_meta.items()):
+            if meta.get("plugin_id") == plugin_id:
+                self._dynamic_type_meta.unregister(name)
+                self._dynamic_configs.unregister(name)
+                removed_dynamic += 1
+
+        if removed_packs:
+            self._build_pose_indices()
+            self._build_keyword_index()
+
+        return {
+            "packs": removed_packs,
+            "dynamic_types": removed_dynamic,
+        }
+
+    def unregister_by_plugin(self, plugin_id: str) -> Dict[str, int]:
+        """Unregister all vocab-related data owned by a plugin."""
+        return self.unregister_packs_by_plugin(plugin_id)
+
 
 # =============================================================================
 # Module-level singleton
@@ -1080,6 +1167,8 @@ def get_registry(
         _registry = VocabularyRegistry(
             strict_mode=strict_mode if strict_mode is not None else True,
         )
+        from pixsim7.backend.main.lib.registry.base import RegistryBase
+        RegistryBase.register_plugin_aware(_registry)
     elif strict_mode is not None:
         _registry.strict_mode = strict_mode
 

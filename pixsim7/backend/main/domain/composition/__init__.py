@@ -21,6 +21,7 @@ from .package_registry import (
     get_available_roles,
     get_role_by_id,
     clear_composition_packages,
+    unregister_composition_packages_by_plugin,
 )
 from .package_loader import (
     load_composition_package_from_yaml,
@@ -52,6 +53,7 @@ __all__ = [
     "get_available_roles",
     "get_role_by_id",
     "clear_composition_packages",
+    "unregister_composition_packages_by_plugin",
     # Core package
     "CORE_COMPOSITION_PACKAGE",
     "register_core_composition_package",

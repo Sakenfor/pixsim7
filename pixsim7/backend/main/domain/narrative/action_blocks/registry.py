@@ -48,17 +48,7 @@ class BlockRegistry(SimpleRegistry[str, ActionBlock]):
 
     def add(self, block: ActionBlock) -> None:
         """Add or update a block in the registry."""
-        block_id = block.id
-
-        # Remove from indices if updating
-        if self.has(block_id):
-            self._remove_from_indices(block_id)
-
-        # Store block
-        super().register(block_id, block)
-
-        # Update indices
-        self._add_to_indices(block)
+        super().register(block.id, block)
 
     def get(self, block_id: str) -> Optional[ActionBlock]:
         """Get a block by ID."""
@@ -66,18 +56,11 @@ class BlockRegistry(SimpleRegistry[str, ActionBlock]):
 
     def remove(self, block_id: str) -> bool:
         """Remove a block by ID. Returns True if removed."""
-        if not self.has(block_id):
-            return False
-
-        self._remove_from_indices(block_id)
-        super().unregister(block_id)
-        return True
+        return super().unregister(block_id) is not None
 
     def clear(self) -> None:
         """Remove all blocks."""
         super().clear()
-        self._by_kind = {"single_state": [], "transition": []}
-        self._by_location.clear()
 
     # =========================================================================
     # Query Operations
@@ -202,9 +185,13 @@ class BlockRegistry(SimpleRegistry[str, ActionBlock]):
                 self._by_location[loc] = []
             self._by_location[loc].append(block.id)
 
-    def _remove_from_indices(self, block_id: str) -> None:
+    def _remove_from_indices(
+        self,
+        block_id: str,
+        block: Optional[ActionBlock] = None,
+    ) -> None:
         """Remove block from indices."""
-        block = self.get_or_none(block_id)
+        block = block or self.get_or_none(block_id)
         if not block:
             return
 
@@ -218,3 +205,20 @@ class BlockRegistry(SimpleRegistry[str, ActionBlock]):
             loc = block.tags.location
             if loc in self._by_location and block_id in self._by_location[loc]:
                 self._by_location[loc].remove(block_id)
+
+    def _on_register(
+        self,
+        key: str,
+        item: ActionBlock,
+        previous: Optional[ActionBlock],
+    ) -> None:
+        if previous:
+            self._remove_from_indices(key, previous)
+        self._add_to_indices(item)
+
+    def _on_unregister(self, key: str, item: ActionBlock) -> None:
+        self._remove_from_indices(key, item)
+
+    def _on_clear(self, items: Dict[str, ActionBlock]) -> None:
+        self._by_kind = {"single_state": [], "transition": []}
+        self._by_location.clear()
