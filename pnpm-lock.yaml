@@ -53,6 +53,9 @@ importers:
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets-core
+      '@pixsim7/shared.auth':
+        specifier: workspace:*
+        version: link:../../packages/shared/auth
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities-core
@@ -274,6 +277,9 @@ importers:
       '@pixsim7/shared.async':
         specifier: workspace:*
         version: link:../../packages/shared/async
+      '@pixsim7/shared.auth':
+        specifier: workspace:*
+        version: link:../../packages/shared/auth
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities-core
@@ -298,6 +304,9 @@ importers:
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref-core
+      '@pixsim7/shared.sources':
+        specifier: workspace:*
+        version: link:../../packages/shared/sources
       '@pixsim7/shared.time':
         specifier: workspace:*
         version: link:../../packages/shared/time
@@ -733,6 +742,19 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/shared/auth:
+    dependencies:
+      '@pixsim7/shared.api-client':
+        specifier: workspace:*
+        version: link:../api-client
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+      zustand:
+        specifier: ^5.0.0
+        version: 5.0.9(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+
   packages/shared/capabilities-core:
     dependencies:
       '@pixsim7/shared.helpers.core':
@@ -810,6 +832,12 @@ importers:
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.10.1)
+
+  packages/shared/sources:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
 
   packages/shared/time:
     devDependencies:

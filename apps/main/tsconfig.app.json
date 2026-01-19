@@ -18,6 +18,14 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
+      "@/gizmos": ["./src/features/gizmos/lib/core/index.ts"],
+      "@/gizmos/*": ["./src/features/gizmos/lib/core/*"],
+      "@/types": ["./src/types/index.ts"],
+      "@/types/*": ["./src/types/*"],
+      "@/narrative": ["../../packages/game/engine/src/narrative"],
+      "@/narrative/*": ["../../packages/game/engine/src/narrative/*"],
+      "@/scene": ["../../packages/game/engine/src/narrative"],
+      "@/scene/*": ["../../packages/game/engine/src/narrative/*"],
       "@app/*": ["./src/app/*"],
       "@domain/*": ["./src/domain/*"],
 
@@ -77,6 +85,7 @@
       "@features/scene3d": ["./src/features/scene3d/index.ts"],
       "@features/sceneComposer3d": ["./src/features/sceneComposer3d/index.ts"],
       "@features/scenePreview3d": ["./src/features/scenePreview3d/index.ts"],
+      "@features/*": ["./src/features/*"],
 
       // Lib - Core registries & systems
       "@lib/core": ["./src/lib/core/index.ts"],
@@ -119,9 +128,11 @@
       "@lib/registries": ["./src/lib/registries.ts"],
       "@lib/backendStorage": ["./src/lib/backendStorage.ts"],
       "@lib/assetUrlResolver": ["./src/lib/assetUrlResolver.ts"],
+      "@lib/*": ["./src/lib/*"],
 
       // Packages
       "@pixsim7/types": ["../packages/types/dist"],
+      "@pixsim7/shared.auth": ["../../packages/shared/auth/src"],
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers-core/src"],
       "@pixsim7/core.composer": ["../../packages/core/composer/src"],
       "@shared/types": ["../../packages/shared/types/src"],

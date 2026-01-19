@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@pixsim7/shared.api-client": "workspace:*",
+    "@pixsim7/shared.auth": "workspace:*",
     "@pixsim7/shared.capabilities.core": "workspace:*",
     "@pixsim7/graphics.geometry": "workspace:*",
     "@pixsim7/shared.ref.core": "workspace:*",

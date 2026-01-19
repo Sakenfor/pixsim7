@@ -1,8 +1,19 @@
 /**
  * Authentication System
  *
- * Auth service and providers for user authentication
+ * Configures and re-exports auth functionality from @pixsim7/shared.auth.
  */
 
+// Export the configured auth service
 export * from './authService';
+
+// Re-export auth types from shared package
+export type {
+  User,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+} from '@pixsim7/shared.auth';
+
+// Google auth (app-specific)
 export * from './googleAuth';

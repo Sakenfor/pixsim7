@@ -18,6 +18,8 @@
     "baseUrl": "../main",
     "paths": {
       "@/*": ["./src/*"],
+      "@devtools/*": ["../devtools/src/*"],
+      "@devtools": ["../devtools/src/main.tsx"],
       "@app/*": ["./src/app/*"],
       "@domain/*": ["./src/domain/*"],
       "@features/*": ["./src/features/*"],
@@ -25,6 +27,7 @@
       "@shared/types": ["../../packages/shared/types/src"],
       "@shared/types/*": ["../../packages/shared/types/src/*"],
       "@pixsim7/types": ["../../packages/types/dist"],
+      "@pixsim7/shared.auth": ["../../packages/shared/auth/src"],
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers-core/src"],
       "@pixsim7/core.composer": ["../../packages/core/composer/src"]
     },

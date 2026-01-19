@@ -1,0 +1,78 @@
+/**
+ * @pixsim7/shared.auth
+ *
+ * Shared authentication logic for PixSim7.
+ * Provides login, logout, registration, and token management.
+ *
+ * @example Setup (in your app's entry point)
+ * ```ts
+ * import { createApiClient } from '@pixsim7/shared.api-client';
+ * import { createBrowserTokenProvider, computeBackendUrl } from '@pixsim7/shared.api-client/browser';
+ * import { configureAuthService, setTokenChangedCallback, setLogoutCallback } from '@pixsim7/shared.auth';
+ *
+ * // Create API client
+ * const client = createApiClient({
+ *   baseUrl: computeBackendUrl({ envUrl: import.meta.env.VITE_BACKEND_URL }),
+ *   tokenProvider: createBrowserTokenProvider(),
+ *   onUnauthorized: () => window.location.href = '/login',
+ * });
+ *
+ * // Configure auth service
+ * configureAuthService(client);
+ *
+ * // Optional: Hook into token changes
+ * setTokenChangedCallback((token) => {
+ *   previewBridge.sendAuthToken(token);
+ * });
+ *
+ * // Optional: Handle logout redirects
+ * setLogoutCallback(() => {
+ *   window.location.href = '/login';
+ * });
+ * ```
+ *
+ * @example Using auth in components
+ * ```tsx
+ * import { useAuthStore, authService } from '@pixsim7/shared.auth';
+ *
+ * function LoginPage() {
+ *   const setUser = useAuthStore((s) => s.setUser);
+ *
+ *   const handleLogin = async (email: string, password: string) => {
+ *     const response = await authService.login({ email, password });
+ *     setUser(response.user);
+ *   };
+ * }
+ * ```
+ *
+ * @packageDocumentation
+ */
+
+// Types
+export type {
+  User,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+} from './types';
+
+// Storage
+export type { AuthStorageProvider } from './storage';
+export {
+  browserAuthStorage,
+  TOKEN_KEY,
+  USER_KEY,
+} from './storage';
+
+// Service
+export {
+  authService,
+  configureAuthService,
+  setAuthStorageProvider,
+  getAuthStorageProvider,
+  setTokenChangedCallback,
+  setLogoutCallback,
+} from './authService';
+
+// Store
+export { useAuthStore, type AuthState } from './authStore';

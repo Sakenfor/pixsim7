@@ -5,13 +5,15 @@
  * Manages folder state, asset filtering, previews, uploads, and viewer navigation.
  */
 
+import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
+import type { SourceIdentity } from '@pixsim7/shared.sources';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
 import { uploadAsset } from '@lib/api/upload';
+import { authService } from '@lib/auth';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
-import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import { useAuthStore } from '@/stores/authStore';
 
 import {
@@ -23,9 +25,19 @@ import {
 } from '../stores/localFoldersStore';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 
-const LOCAL_SOURCE: SourceInfo = {
-  id: 'local-fs',
+/**
+ * Source identity for local folders
+ * Satisfies both SourceIdentity (new) and SourceInfo (legacy) interfaces
+ */
+const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
+  // SourceIdentity fields
+  typeId: 'local-fs',
+  instanceId: 'local-fs',
   label: 'Local Folders',
+  kind: 'local',
+  icon: 'folder',
+  // Legacy SourceInfo fields (for backward compatibility)
+  id: 'local-fs',
   type: 'local',
 };
 
@@ -40,6 +52,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     removeFolder,
     refreshFolder,
     adding,
+    loading,
     scanning,
     error,
     getFileForAsset,
@@ -471,12 +484,27 @@ export function useLocalFoldersController(): LocalFoldersController {
     }
   };
 
+  // Refresh all folders
+  const refresh = useCallback(async () => {
+    for (const folder of rawFolders) {
+      refreshFolder(folder.id);
+    }
+  }, [rawFolders, refreshFolder]);
+
+  // Computed busy state (any operation in progress)
+  const busy = adding || loading || scanning !== null;
+
+  // Get unique key for an asset
+  const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
+
   // Return controller interface
   return {
     source: LOCAL_SOURCE,
     folders: rawFolders.map(f => ({ id: f.id, name: f.name })),
     assets: assetList,
     filteredAssets,
+    getAssetKey,
+    refresh,
     loadPersisted,
     addFolder,
     removeFolder,
@@ -499,6 +527,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     uploadOne,
     supported,
     adding,
+    loading,
+    busy,
     scanning,
     error: error ?? null,
   };

@@ -1,32 +1,10 @@
-// User types
-export interface User {
-  id: string;
-  email: string;
-  username: string;
-  is_active: boolean;
-  role?: string;
-  is_admin?: boolean;
-  created_at: string;
-}
-
-// Auth types
-export interface LoginRequest {
-  email?: string;
-  username?: string;
-  password: string;
-}
-
-export interface RegisterRequest {
-  username: string;
-  email: string;
-  password: string;
-}
-
-export interface AuthResponse {
-  access_token: string;
-  token_type: string;
-  user: User;
-}
+// Auth types (re-exported from shared package)
+export type {
+  User,
+  LoginRequest,
+  RegisterRequest,
+  AuthResponse,
+} from '@pixsim7/shared.auth';
 
 // Asset types (basic, can be expanded)
 export interface Asset {
