@@ -364,15 +364,6 @@ class Settings(BaseSettings):
             raise ValueError(f"Expected str or Path, got {type(v)}")
 
 
-def _resolve_repo_root() -> Path:
-    """Best-effort repo root resolver for stable plugin path discovery."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "pixsim7").exists() and (parent / "apps").exists():
-            return parent
-    # Fallback to a stable parent depth if repo markers are missing.
-    return here.parents[4] if len(here.parents) > 4 else here.parent
-
     @property
     def async_database_url(self) -> str:
         """Convert sync database URL to async (asyncpg)"""
@@ -398,6 +389,16 @@ def _resolve_repo_root() -> Path:
     def log_database_url_resolved(self) -> str:
         """Get sync log database URL (for migrations)."""
         return self.log_database_url or self.database_url
+
+
+def _resolve_repo_root() -> Path:
+    """Best-effort repo root resolver for stable plugin path discovery."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "pixsim7").exists() and (parent / "apps").exists():
+            return parent
+    # Fallback to a stable parent depth if repo markers are missing.
+    return here.parents[4] if len(here.parents) > 4 else here.parent
 
 
 # Global settings instance

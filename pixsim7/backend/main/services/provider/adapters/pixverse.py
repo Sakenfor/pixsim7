@@ -899,32 +899,15 @@ class PixverseProvider(
             "name": "quality", "type": "enum", "required": False, "default": "720p",
             "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
         }
-        advanced_duration_models = [
-            model
-            for model in video_model_enum
-            if isinstance(model, str)
-            and (
-                model.lower().startswith("v5.5")
-                or model.lower().startswith("v6")
-                or "5.5" in model
-            )
-        ]
         duration_metadata: dict[str, Any] = {
             "kind": "duration_presets",
             "source": "pixverse",
-            "presets": [5, 8],
-            "note": "Pixverse video clips typically run for 5 or 8 seconds.",
+            "presets": list(range(1, 11)),  # 1-10 seconds
+            "note": "Pixverse video clips support 1-10 seconds.",
         }
-        if advanced_duration_models:
-            duration_metadata["per_model_presets"] = {
-                model: [5, 8, 10] for model in advanced_duration_models
-            }
-            duration_metadata[
-                "note"
-            ] = "Pixverse v5.5+ models support 10 second clips; older models support 5 or 8 seconds."
         duration = {
             "name": "duration", "type": "number", "required": False, "default": 5,
-            "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 20,
+            "enum": None, "description": "Video duration in seconds", "group": "render", "min": 1, "max": 10,
             "metadata": duration_metadata,
         }
         seed = {
@@ -1152,12 +1135,12 @@ class PixverseProvider(
             "metadata": {
                 "kind": "duration_presets",
                 "source": "pixverse",
-                "presets": [1, 2, 3, 4, 5],
-                "note": "Transitions support 1-5 seconds per segment between images.",
+                "presets": list(range(1, 9)),  # 1-8 seconds
+                "note": "Transitions support 1-8 seconds per segment between images.",
             },
             "min": 1,
-            "max": 5,
-            "description": "Transition duration per image segment (1-5 seconds)",
+            "max": 8,
+            "description": "Transition duration per image segment (1-8 seconds)",
         }
 
         spec = {
@@ -1255,7 +1238,7 @@ class PixverseProvider(
         expected_count: int | None = None,
     ) -> list[int]:
         """
-        Coerce transition durations to Pixverse's expected 1-5 second ints.
+        Coerce transition durations to Pixverse's expected 1-8 second ints.
         Accepts either a single int/float or list of numbers.
         """
         if durations is None:
@@ -1287,7 +1270,7 @@ class PixverseProvider(
             except (TypeError, ValueError):
                 numeric = 5
 
-            numeric = max(1, min(5, numeric))
+            numeric = max(1, min(8, numeric))
             sanitized.append(numeric)
 
         return sanitized

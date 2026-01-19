@@ -186,6 +186,16 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   // UI state for transition selection (which transition segment is selected)
   const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
 
+  // Get transition duration options from param specs (falls back to 1-8)
+  const transitionDurationOptions = useMemo(() => {
+    const durationSpec = workbench.paramSpecs.find((p) => p.name === 'duration');
+    const presets = durationSpec?.metadata?.presets;
+    if (Array.isArray(presets) && presets.length > 0) {
+      return presets.filter((v): v is number => typeof v === 'number');
+    }
+    // Fallback: 1-8 seconds for transitions
+    return [1, 2, 3, 4, 5, 6, 7, 8];
+  }, [workbench.paramSpecs]);
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenerateDockviewRef>(null);
@@ -533,7 +543,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
                               disabled={generating}
                               className="px-1 py-0.5 text-[10px] rounded bg-white/90 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 disabled:opacity-50"
                             >
-                              {[1, 2, 3, 4, 5].map(s => (
+                              {transitionDurationOptions.map(s => (
                                 <option key={s} value={s}>{s}s</option>
                               ))}
                             </select>
