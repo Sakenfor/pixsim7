@@ -11,7 +11,7 @@
     "build": "pnpm -r build",
     "build:ext": "pnpm --filter @pixsim7/chrome-extension build",
     "dev:ext": "pnpm --filter @pixsim7/chrome-extension dev",
-    "build:deps": "pnpm --filter @pixsim7/types build && pnpm --filter @pixsim7/ui build && pnpm --filter @pixsim7/game-core build && pnpm --filter @pixsim7/game-ui build && pnpm --filter @pixsim7/semantic-shapes build && pnpm --filter @pixsim7/scene-gizmos build",
+    "build:deps": "pnpm -r --filter @pixsim7/types --filter @pixsim7/ui --filter @pixsim7/game-core --filter @pixsim7/game-ui --filter @pixsim7/semantic-shapes --filter @pixsim7/scene-gizmos run build --if-present",
     "build:plugin": "tsx scripts/build-plugin.ts",
     "build:plugins": "tsx scripts/build-plugin.ts --all",
     "build:android": "cd apps/pixsim7-android && gradlew.bat assembleDebug",
