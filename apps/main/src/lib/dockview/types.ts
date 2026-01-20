@@ -6,10 +6,10 @@
  * registries for feature-internal panels (e.g., AssetViewer's panels).
  */
 
-import type { BasePanelDefinition } from "@features/panels/lib/panelTypes";
+import type { BasePanelDefinition } from "@pixsim7/shared.panels";
 
 // Re-export for convenience
-export type { BasePanelDefinition, PanelRegistryLike } from "@features/panels/lib/panelTypes";
+export type { BasePanelDefinition, PanelRegistryLike } from "@pixsim7/shared.panels";
 
 /**
  * Position hint for default panel layout

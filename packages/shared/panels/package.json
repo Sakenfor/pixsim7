@@ -1,0 +1,28 @@
+{
+  "name": "@pixsim7/shared.panels",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Shared panel contracts for PixSim7",
+  "main": "src/index.ts",
+  "module": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "require": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "files": ["src", "dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "typescript": "^5.4.0"
+  }
+}

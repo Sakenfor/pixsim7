@@ -9,11 +9,11 @@
  */
 
 import type { CapabilityKey, CapabilityProvider } from "@pixsim7/shared.capabilities.core";
+import { getCapabilityKeys } from "@pixsim7/shared.panels";
 
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
-import { getCapabilityKeys } from "@features/panels/lib/panelTypes";
 
 import {
   getRegistryChain,

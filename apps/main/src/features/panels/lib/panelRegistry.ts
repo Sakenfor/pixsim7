@@ -5,6 +5,7 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
+import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "@pixsim7/shared.panels";
 import type { ComponentType } from "react";
 import type { z } from "zod";
 
@@ -15,7 +16,6 @@ import type { EditorContext } from "../../context/editorContext";
 import type { PanelId } from "../../stores/workspaceStore";
 
 import type { PanelCategory } from "./panelConstants";
-import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "./panelTypes";
 import type { PanelMetadata } from "./types";
 
 // Re-export PanelCategory for backwards compatibility

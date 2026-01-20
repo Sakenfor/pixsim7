@@ -5,12 +5,13 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
+import type { PanelRegistryLike } from "@pixsim7/shared.panels";
+
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
 import { pluginCatalog } from "@lib/plugins/pluginSystem";
 
 import type { PanelDefinition } from "./panelRegistry";
-import type { PanelRegistryLike } from "./panelTypes";
 
 function buildPanelRegistrySnapshot(): PanelRegistryLike<PanelDefinition> {
   return {

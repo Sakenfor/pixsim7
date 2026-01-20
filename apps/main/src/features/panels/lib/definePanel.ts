@@ -21,7 +21,10 @@
  * ```
  */
 
+import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.panels';
 import type { ComponentType } from 'react';
+import type { z } from 'zod';
+
 import type {
   ContextLabelStrategy,
   CoreEditorRole,
@@ -34,8 +37,6 @@ import type {
   WorkspaceContext,
 } from './panelRegistry';
 import type { PanelOrchestrationMetadata } from './panelRegistry';
-import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from './panelTypes';
-import type { z } from 'zod';
 
 /**
  * Simplified panel definition options.
