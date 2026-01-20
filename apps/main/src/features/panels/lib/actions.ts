@@ -1,4 +1,6 @@
 // React import for the hook
+import type { CubeFace } from "@pixsim7/pixcubes";
+import type { ActionDefinition } from "@pixsim7/shared.types";
 import React from "react";
 
 /**
@@ -8,12 +10,10 @@ import React from "react";
  * which cube widgets can then expose on their faces when docked.
  */
 
-import type { ActionDefinition } from "@shared/types";
-import type { CubeFace } from "@pixsim7/pixcubes";
 
 import { capabilityRegistry, type ActionCapability } from "@lib/capabilities";
 
-import { toPanelAction, toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
+import { toPanelActions, type ToPanelActionOptions } from "./actionAdapters";
 
 export interface PanelActionError {
   actionId: string;

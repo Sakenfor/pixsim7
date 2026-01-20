@@ -1,9 +1,9 @@
 /**
  * Core headless game engine types and interfaces
- * Re-exports core types from @shared/types and local core definitions
+ * Re-exports core types from @pixsim7/shared.types and local core definitions
  */
 
-// Core types (re-exported from @shared/types via types.ts)
+// Core types (re-exported from @pixsim7/shared.types via types.ts)
 export type {
   CoreEventMap,
   ApiClient,

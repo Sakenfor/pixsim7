@@ -13,7 +13,7 @@ PixSim7 maintains **clear separation** between frontend (React/TypeScript) and b
 **Key Boundaries:**
 - **Frontend:** Barrel-exported modules (`@lib/*`, `@features/*`) with enforced import hygiene
 - **Backend:** Domain modules and API routes with Python barrel exports (`__init__.py`)
-- **Contract:** Shared TypeScript types in `@shared/types` define the data exchange format
+- **Contract:** Shared TypeScript types in `@pixsim7/shared.types` define the data exchange format
 - **Communication:** RESTful API (`/api/v1/*`) + WebSocket (`/ws/*`) for real-time updates
 
 **Status Post-Cleanup:**
@@ -168,7 +168,7 @@ from pixsim7.backend.main.domain.stats.engine import StatEngine
 
 ### 1.3 Shared Contract Layer
 
-**Package:** `@shared/types` (`packages/shared/types/src/`)
+**Package:** `@pixsim7/shared.types` (`packages/shared/types/src/`)
 
 Defines the **TypeScript contract** for data exchange between frontend and backend:
 
@@ -184,17 +184,17 @@ Defines the **TypeScript contract** for data exchange between frontend and backe
 **Usage Pattern:**
 ```typescript
 // Frontend
-import type { GameSession, BrainState } from '@shared/types';
+import type { GameSession, BrainState } from '@pixsim7/shared.types';
 
 // Game engine (shared package)
-import type { SceneNode } from '@shared/types';
+import type { SceneNode } from '@pixsim7/shared.types';
 ```
 
-**Backend Equivalent:** Backend defines similar models in Python (e.g., `domain/session.py`), but the TypeScript types in `@shared/types` are the **source of truth** for the API contract.
+**Backend Equivalent:** Backend defines similar models in Python (e.g., `domain/session.py`), but the TypeScript types in `@pixsim7/shared.types` are the **source of truth** for the API contract.
 
 #### **Namespace Import Patterns**
 
-**Package:** `@shared/types` provides namespace exports for major type groups:
+**Package:** `@pixsim7/shared.types` provides namespace exports for major type groups:
 
 **Available Namespaces:**
 - `IDs` - ID types and constructors (ref helpers live in ref-core/logic-core)
@@ -211,7 +211,7 @@ import type { SceneNode } from '@shared/types';
 
 ```typescript
 // âœ… RECOMMENDED - Clean namespace imports
-import { IDs } from '@shared/types';
+import { IDs } from '@pixsim7/shared.types';
 import { Ref } from '@pixsim7/shared.ref.core';
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
@@ -232,7 +232,7 @@ export async function createGameSession(
 ##### Scene Namespace (Scene Graph Types)
 ```typescript
 // âœ… RECOMMENDED - Namespace for scene graph code
-import { Scene } from '@shared/types';
+import { Scene } from '@pixsim7/shared.types';
 
 function buildScene(): Scene.Scene {
   const startNode: Scene.ContentNode = {
@@ -261,7 +261,7 @@ function buildScene(): Scene.Scene {
 ##### Game Namespace (Game DTOs)
 ```typescript
 // âœ… RECOMMENDED - Namespace for game API code
-import { Game, IDs } from '@shared/types';
+import { Game, IDs } from '@pixsim7/shared.types';
 
 async function createLocation(
   worldId: IDs.WorldId,
@@ -275,7 +275,7 @@ async function createLocation(
 **Direct Import Pattern (Alternative for focused files):**
 ```typescript
 // âœ… ALSO VALID - Direct imports for specific types
-import { LocationId, SessionId, SceneContentNode } from '@shared/types';
+import { LocationId, SessionId, SceneContentNode } from '@pixsim7/shared.types';
 
 export async function updateLocation(locationId: LocationId) {
   // ...
@@ -296,7 +296,7 @@ export async function updateLocation(locationId: LocationId) {
 
 ```typescript
 // Using namespace for multiple ID types
-import { IDs } from '@shared/types';
+import { IDs } from '@pixsim7/shared.types';
 import { Ref, isNpcRef } from '@pixsim7/shared.ref.core';
 import { parseRef } from '@pixsim7/shared.logic-core/ids';
 
@@ -405,7 +405,7 @@ Existing code using direct imports continues to work unchanged. Gradually migrat
 â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
            â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
-           â”‚   Shared Contract (@shared/types)  â”‚
+           â”‚   Shared Contract (@pixsim7/shared.types)  â”‚
            â”‚                                    â”‚
            â”‚  TypeScript DTOs define API shape  â”‚
            â”‚  â€¢ GameSession, BrainState         â”‚
@@ -621,17 +621,17 @@ const core = new PixSim7Core({
 - **Purpose:** These tools **intentionally** expose backend internals for developer productivity
 - **Not a Concern:** Clearly documented and separated from production features
 
-### 3.2 Shared Types (`@shared/types`)
+### 3.2 Shared Types (`@pixsim7/shared.types`)
 
 **Status:** âœ… **Clear Contract Layer**
 
 **Potential Confusion:**
-- TypeScript types in `@shared/types` define **frontend expectations**
+- TypeScript types in `@pixsim7/shared.types` define **frontend expectations**
 - Backend has separate Python models (e.g., `domain.session.GameSession`)
 - Types must stay in sync manually
 
 **Mitigation:**
-- Backend serializes domain models to match `@shared/types` contract
+- Backend serializes domain models to match `@pixsim7/shared.types` contract
 - API validation ensures responses match TypeScript types
 - Consider: Auto-generate TypeScript types from Python models (future improvement)
 
@@ -699,7 +699,7 @@ See [Frontend vs Backend Boundaries](./architecture/frontend-backend-boundaries.
 1. **Frontend uses barrel exports** - Always import from `@lib/*` or `@features/*`, never deep paths
 2. **Backend is FastAPI/Python** - Domain models â†’ Services â†’ API routes
 3. **Communication is REST + WebSocket** - All data flows through `/api/v1/*` endpoints
-4. **Shared types in `@shared/types`** - TypeScript contract for API responses
+4. **Shared types in `@pixsim7/shared.types`** - TypeScript contract for API responses
 5. **Dev tools use `/dev/*`** - Development endpoints clearly separated
 
 ## Quick Start
@@ -734,7 +734,7 @@ Update all barrel `index.ts` files with warnings:
  *   âŒ import { BrainState } from '@lib/core/types';
  *
  * This module re-exports:
- *   - Core types from @shared/types
+ *   - Core types from @pixsim7/shared.types
  *   - BrainState helper functions
  *   - BaseRegistry class
  *
@@ -843,14 +843,14 @@ Current setup:
 
 #### **4.3.3 API Contract Validation (Proposed)**
 
-**Problem:** TypeScript types in `@shared/types` can drift from backend responses.
+**Problem:** TypeScript types in `@pixsim7/shared.types` can drift from backend responses.
 
 **Solution:** Add runtime validation in `@lib/api/client.ts`:
 
 ```typescript
 import { z } from 'zod';
 
-// Define Zod schemas matching @shared/types
+// Define Zod schemas matching @pixsim7/shared.types
 const GameSessionSchema = z.object({
   id: z.number(),
   worldId: z.number(),
@@ -956,7 +956,7 @@ export async function createGameWorld(data: CreateWorldRequest): Promise<GameWor
   return response.data;
 }
 
-// 4. Add type to @shared/types if needed
+// 4. Add type to @pixsim7/shared.types if needed
 export interface CreateWorldRequest {
   name: string;
   initialTime: number;
@@ -1047,7 +1047,7 @@ function MyComponent({ id }: { id: number }) {
 |-------|----------|----------------|-------------|
 | Lib Modules | `apps/main/src/lib/*` | `@lib/*` barrel exports | ESLint `import/no-internal-modules` |
 | Feature Modules | `apps/main/src/features/*` | `@features/*` barrel exports | ESLint `import/no-internal-modules` |
-| Shared Types | `packages/shared/types/src` | `@shared/types` | TypeScript compiler |
+| Shared Types | `packages/shared/types/src` | `@pixsim7/shared.types` | TypeScript compiler |
 | API Client | `apps/main/src/lib/api` | `@lib/api` | Centralized in `client.ts` |
 
 ### Backend Boundaries
@@ -1077,7 +1077,7 @@ PixSim7 maintains **clean separation** between frontend and backend with:
 âœ… **Clear boundaries** - Barrel exports, enforced by ESLint
 âœ… **Documented patterns** - Import rules, API client usage
 âœ… **No mock/test bleed** - `mockCore` removed, dev tools clearly marked
-âœ… **Shared contract** - `@shared/types` defines API shape
+âœ… **Shared contract** - `@pixsim7/shared.types` defines API shape
 âœ… **Intentional overlap** - Dev tools (`/dev/*`) are well-separated
 
 **For new contributors:**
@@ -1088,7 +1088,7 @@ PixSim7 maintains **clean separation** between frontend and backend with:
 
 **For maintainers:**
 1. Update barrel exports when adding public APIs
-2. Keep `@shared/types` in sync with backend responses
+2. Keep `@pixsim7/shared.types` in sync with backend responses
 3. Mark dev-only code with `/dev/*` prefix
 4. Document intentional boundary crossings
 

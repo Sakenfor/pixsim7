@@ -4,7 +4,7 @@
  * Shows registered features grouped by category with their routes and actions.
  */
 
-import type { AppMapMetadata } from '@shared/types';
+import type { AppMapMetadata } from '@pixsim7/shared.types';
 import { useMemo } from 'react';
 
 import type {

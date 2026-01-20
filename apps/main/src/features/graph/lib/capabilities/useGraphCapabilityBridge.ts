@@ -7,7 +7,7 @@
  * @module graph/capabilities
  */
 
-import type { SceneIdRef } from '@shared/types';
+import type { SceneIdRef } from '@pixsim7/shared.types';
 import { useEffect, useMemo, useRef, useCallback } from 'react';
 
 

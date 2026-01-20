@@ -76,7 +76,7 @@ export type {
   SelectedAssetLike,
 } from './lib/multiAssetMode';
 
-// Lib - Generation Types (from @shared/types)
+// Lib - Generation Types (from @pixsim7/shared.types)
 export * from './lib/generationTypes';
 export { registerGenerationScopes } from './lib/registerGenerationScopes';
 

@@ -6,7 +6,7 @@
  */
 
 import type { CubeFace } from '@pixsim7/pixcubes';
-import type { ActionDefinition } from '@shared/types';
+import type { ActionDefinition } from '@pixsim7/shared.types';
 
 import type { PanelAction } from './actions';
 

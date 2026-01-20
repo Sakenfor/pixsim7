@@ -1,4 +1,4 @@
-import type { Scene } from '@shared/types';
+import type { Scene } from '@pixsim7/shared.types';
 
 import type { DraftSceneNode } from '@domain/sceneBuilder';
 

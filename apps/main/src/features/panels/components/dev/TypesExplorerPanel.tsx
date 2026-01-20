@@ -7,8 +7,9 @@
  * - OpenAPI info (type-only, metadata display)
  */
 
-import { Icon } from '@lib/icons';
 import { useState, useMemo } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 import { useLabelsForAutocomplete, type LabelSuggestion } from '@/stores/conceptStore';
@@ -466,7 +467,7 @@ function OpenAPIView() {
         <h3 className="text-sm font-semibold text-neutral-300">Usage Example</h3>
         <pre className="p-3 bg-neutral-800 rounded-md text-xs font-mono overflow-x-auto">
           <code className="text-neutral-300">
-            {`import type { ApiComponents } from '@shared/types';
+            {`import type { ApiComponents } from '@pixsim7/shared.types';
 
 type AssetResponse = ApiComponents['schemas']['AssetResponse'];
 type GenerationJob = ApiComponents['schemas']['GenerationJobResponse'];`}
@@ -547,7 +548,7 @@ export function TypesExplorerPanel() {
           <div>
             <h2 className="text-lg font-semibold">Types Explorer</h2>
             <p className="text-xs text-neutral-400">
-              Browse generated types from @shared/types
+              Browse generated types from @pixsim7/shared.types
             </p>
           </div>
         </div>

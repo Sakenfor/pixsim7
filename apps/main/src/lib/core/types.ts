@@ -7,7 +7,7 @@
  */
 
 import type { StatSource } from '@pixsim7/game.engine';
-import type { BrainState } from '@shared/types';
+import type { BrainState } from '@pixsim7/shared.types';
 
 export type {
   BrainState,
@@ -15,7 +15,7 @@ export type {
   BrainMemory,
   DerivedBehaviorUrgency,
   BehaviorUrge,
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 
 export {
   hasStat,

@@ -4,7 +4,7 @@
  * NPC interaction UI components + intimacy domain logic.
  *
  * **Architecture Note:**
- * - The canonical interaction **contract** lives in `@shared/types/interactions.ts`
+ * - The canonical interaction **contract** lives in `@pixsim7/shared.types/interactions.ts`
  * - This feature provides **UI components** and **intimacy domain logic**
  * - We re-export the contract for convenience (single source of truth maintained)
  *
@@ -15,28 +15,28 @@
  * // ✅ RECOMMENDED - Import everything from feature (convenient)
  * import {
  *   InteractionMenu,          // UI component
- *   NpcInteractionSurface,    // Contract type (re-exported from @shared/types)
+ *   NpcInteractionSurface,    // Contract type (re-exported from @pixsim7/shared.types)
  *   Intimacy                  // Domain logic
  * } from '@features/interactions';
  *
  * // ✅ ALSO VALID - Import contract directly (explicit)
- * import { NpcInteractionDefinition } from '@shared/types';
+ * import { NpcInteractionDefinition } from '@pixsim7/shared.types';
  * ```
  */
 
 // ============================================================================
-// Contract Types (re-exported from @shared/types for convenience)
+// Contract Types (re-exported from @pixsim7/shared.types for convenience)
 // ============================================================================
 
 /**
- * Re-export canonical interaction contract from @shared/types
+ * Re-export canonical interaction contract from @pixsim7/shared.types
  *
  * This allows UI code to import both components and contract types from the feature:
  * `import { InteractionMenu, NpcInteractionSurface } from '@features/interactions'`
  *
- * Source of truth: @shared/types/interactions.ts
+ * Source of truth: @pixsim7/shared.types/interactions.ts
  */
-export * from '@shared/types/interactions';
+export * from '@pixsim7/shared.types/interactions';
 
 // ============================================================================
 // Components - Core Interaction UI
@@ -74,7 +74,7 @@ export { TemplateSelector } from './components/editor/TemplateSelector';
 export type { TemplateSelectorProps } from './components/editor/TemplateSelector';
 
 // ============================================================================
-// Lib - Intimacy (from @shared/types migration)
+// Lib - Intimacy (from @pixsim7/shared.types migration)
 // ============================================================================
 
 // Named exports for backward compatibility

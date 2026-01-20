@@ -16,11 +16,11 @@ import {
   type AppRouteCapability,
   type AppStateCapability,
 } from '@pixsim7/shared.capabilities.core/app';
-import { ActionDefinitionSchema } from '@shared/types';
+import { ActionDefinitionSchema } from '@pixsim7/shared.types';
 import type {
   ActionContext,
   ActionDefinition,
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 import * as React from 'react';
 
 import { debugFlags } from '@lib/utils/debugFlags';

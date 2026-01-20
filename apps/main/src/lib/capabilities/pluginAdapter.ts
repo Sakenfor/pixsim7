@@ -13,7 +13,13 @@
  * ```
  */
 
-import type { ActionDefinition } from '@shared/types';
+import type { ActionDefinition } from '@pixsim7/shared.types';
+
+import { debugFlags } from '@lib/utils/debugFlags';
+import { logEvent } from '@lib/utils/logging';
+
+import type { PluginPermission } from '../plugins/types';
+
 import type {
   FeatureCapability,
   RouteCapability,
@@ -30,13 +36,10 @@ import {
   unregisterRoute,
   unregisterState,
 } from './index';
-import type { PluginPermission } from '../plugins/types';
-import { debugFlags } from '@lib/utils/debugFlags';
-import { logEvent } from '@lib/utils/logging';
 
 /**
  * Simplified types for plugin registration.
- * Actions use ActionDefinition from @shared/types.
+ * Actions use ActionDefinition from @pixsim7/shared.types.
  */
 export interface PluginFeatureRegistration {
   id: string;

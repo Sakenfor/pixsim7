@@ -18,7 +18,7 @@ import type {
   TemplateKind,
   RuntimeKind,
   SyncDirection,
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 
 import { isUUID } from './graphRefs';
 
@@ -257,10 +257,10 @@ export function buildRuntimeLinkMap(
 }
 
 // ============================================================================
-// Re-exports from @shared/types and @pixsim7/core.links
+// Re-exports from @pixsim7/shared.types and @pixsim7/core.links
 // ============================================================================
 
-export type { TemplateRef, TemplateKind, RuntimeKind, SyncDirection } from '@shared/types';
+export type { TemplateRef, TemplateKind, RuntimeKind, SyncDirection } from '@pixsim7/shared.types';
 export {
   createMappingId,
   createTemplateRefKey,

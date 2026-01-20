@@ -98,7 +98,7 @@ export * from './lib/editor/types';
 export * from './lib/builders/actionGraphBuilder';
 export * from './lib/builders/promptGraphBuilder';
 
-// Lib - Node Types (from @shared/types migration)
+// Lib - Node Types (from @pixsim7/shared.types migration)
 export * from './lib/nodeTypes/npcResponse';
 export * from './lib/nodeTypes/registry';
 export * from './lib/nodeTypes/sceneRegistry';

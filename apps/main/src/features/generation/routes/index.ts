@@ -1,4 +1,4 @@
-import type { ActionDefinition } from '@shared/types';
+import type { ActionDefinition } from '@pixsim7/shared.types';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 

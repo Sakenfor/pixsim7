@@ -6,9 +6,9 @@ This feature provides **UI components** and **domain logic** for NPC interaction
 
 ## Architecture: Contract vs. Implementation
 
-### 📜 Canonical Contract: `@shared/types/interactions.ts`
+### 📜 Canonical Contract: `@pixsim7/shared.types/interactions.ts`
 
-The **interaction contract** lives in `@shared/types/interactions.ts` (not here).
+The **interaction contract** lives in `@pixsim7/shared.types/interactions.ts` (not here).
 
 **Why?** It's a **cross-cutting contract** shared between:
 - Backend (Python/Pydantic schemas)
@@ -17,7 +17,7 @@ The **interaction contract** lives in `@shared/types/interactions.ts` (not here)
 
 **What's in the contract:**
 ```typescript
-// @shared/types/interactions.ts
+// @pixsim7/shared.types/interactions.ts
 export type NpcInteractionSurface = 'inline' | 'dialogue' | 'scene' | ...;
 export type NpcInteractionBranchIntent = 'branch:escalate' | 'branch:cool_down' | ...;
 export interface NpcInteractionDefinition { /* ... */ }
@@ -55,7 +55,7 @@ The feature **re-exports** the shared contract for convenience:
 // ✅ RECOMMENDED - Import everything from the feature
 import {
   InteractionMenu,           // UI component (from this feature)
-  NpcInteractionSurface,     // Contract type (re-exported from @shared/types)
+  NpcInteractionSurface,     // Contract type (re-exported from @pixsim7/shared.types)
   Intimacy                   // Domain logic (from this feature)
 } from '@features/interactions';
 
@@ -73,7 +73,7 @@ For code that only needs the contract (no UI):
 import {
   NpcInteractionSurface,
   NpcInteractionDefinition
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 
 // Backend, validators, or other features use this
 ```
@@ -92,11 +92,11 @@ import {
 │   ├── InteractionHistory.tsx    ← UI: Show history
 │   └── MoodIndicator.tsx         ← UI: Visual mood
 └── lib/
-    └── intimacy/                 ← Domain logic (migrated from @shared/types)
+    └── intimacy/                 ← Domain logic (migrated from @pixsim7/shared.types)
         ├── types.ts              ← Relationship gates, content rating
         └── nodeTypes.ts          ← Intimacy node registrations
 
-@shared/types/
+@pixsim7/shared.types/
 └── interactions.ts               ← Canonical contract (source of truth)
 ```
 
@@ -104,11 +104,11 @@ import {
 
 ## Single Source of Truth
 
-**Contract Definition:** `@shared/types/interactions.ts`
+**Contract Definition:** `@pixsim7/shared.types/interactions.ts`
 **UI Implementation:** `@features/interactions/components/`
 **Domain Logic:** `@features/interactions/lib/intimacy/`
 
-**Never duplicate** the contract - always import from `@shared/types` (or via the feature re-export).
+**Never duplicate** the contract - always import from `@pixsim7/shared.types` (or via the feature re-export).
 
 ---
 
@@ -147,7 +147,7 @@ function checkGate(playerState: any) {
 
 ```typescript
 // Backend or shared validator - no UI needed
-import { NpcInteractionDefinition } from '@shared/types';
+import { NpcInteractionDefinition } from '@pixsim7/shared.types';
 
 function validateInteraction(def: NpcInteractionDefinition) {
   // Validation logic using contract types only
@@ -158,7 +158,7 @@ function validateInteraction(def: NpcInteractionDefinition) {
 
 ## Migration Note
 
-This feature was part of the **@shared/types migration** (Phase 3):
-- Intimacy types moved here from `@shared/types/intimacy.ts`
-- Core interaction contract stayed in `@shared/types/interactions.ts`
+This feature was part of the **@pixsim7/shared.types migration** (Phase 3):
+- Intimacy types moved here from `@pixsim7/shared.types/intimacy.ts`
+- Core interaction contract stayed in `@pixsim7/shared.types/interactions.ts`
 - See: `docs/plans/shared-types-migration-summary.md`

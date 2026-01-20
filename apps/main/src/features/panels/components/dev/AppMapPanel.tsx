@@ -9,7 +9,7 @@
  * - System health metrics
  */
 
-import type { AppMapMetadata } from '@shared/types';
+import type { AppMapMetadata } from '@pixsim7/shared.types';
 import React, {
   useState,
   useMemo,

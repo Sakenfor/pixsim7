@@ -7,7 +7,7 @@
 // Named exports (existing imports)
 export * from './ids';
 
-// Namespace export (new pattern: import { IDs } from '@shared/types')
+// Namespace export (new pattern: import { IDs } from '@pixsim7/shared.types')
 export * as IDs from './ids';
 
 // Runtime ref builders (Ref.*)
@@ -20,7 +20,7 @@ export { Ref } from '@pixsim7/shared.ref.core';
 // Named exports (existing imports)
 export * from './sceneGraph';
 
-// Namespace export (new pattern: import { SceneGraph } from '@shared/types')
+// Namespace export (new pattern: import { SceneGraph } from '@pixsim7/shared.types')
 export * as SceneGraph from './sceneGraph';
 
 // ===================
@@ -30,7 +30,7 @@ export * as SceneGraph from './sceneGraph';
 // Named exports (existing imports)
 export * from './game';
 
-// Namespace export (new pattern: import { Game } from '@shared/types')
+// Namespace export (new pattern: import { Game } from '@pixsim7/shared.types')
 export * as Game from './game';
 
 // Character Identity Graph

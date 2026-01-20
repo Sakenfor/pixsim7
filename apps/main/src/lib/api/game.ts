@@ -1,4 +1,4 @@
-import { IDs, ApiComponents } from '@shared/types';
+import { IDs, ApiComponents } from '@pixsim7/shared.types';
 
 import type {
   Scene,

@@ -1,4 +1,4 @@
-import type { ActionDefinition } from '@shared/types';
+import type { ActionDefinition } from '@pixsim7/shared.types';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 

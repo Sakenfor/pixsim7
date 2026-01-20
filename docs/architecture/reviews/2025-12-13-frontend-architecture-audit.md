@@ -100,7 +100,7 @@ Following a comprehensive import path refactoring that fixed **80+ broken import
 @/types      â†’ ./src/types
 @/narrative  â†’ ../../packages/game/engine/src/narrative
 @/scene      â†’ ../../packages/game/engine/src/narrative
-@shared/types â†’ ../../packages/shared/types/src
+@pixsim7/shared.types â†’ ../../packages/shared/types/src
 ```
 
 **Lib Module Aliases (defined):**

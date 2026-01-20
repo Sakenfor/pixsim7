@@ -18,7 +18,7 @@ export function createCompositionApi(client: PixSimApiClient) {
      * Get all registered composition packages.
      *
      * Returns packages from core and all enabled plugins.
-     * Use getAvailableRoles() from @shared/types to filter by active packages.
+     * Use getAvailableRoles() from @pixsim7/shared.types to filter by active packages.
      */
     async getPackages(): Promise<CompositionPackage[]> {
       const response = await client.get<CompositionPackagesResponse>('/composition/packages');

@@ -44,7 +44,7 @@ import {
   SceneId as toSceneId,
   LocationId as toLocationId,
   AssetId as toAssetId,
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 
 // ============================================================================
 // Types
@@ -457,7 +457,7 @@ export function normalizeRefBatch<T extends Record<string, unknown>>(
 // ============================================================================
 
 export {
-  // ID types from @shared/types
+  // ID types from @pixsim7/shared.types
   type NpcId,
   type CharacterId,
   type InstanceId,

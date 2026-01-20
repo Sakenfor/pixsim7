@@ -5,7 +5,7 @@
  * Extends BaseRegistry with context-aware filtering and MenuItem conversion.
  */
 
-import type { ActionContext, ActionDefinition } from '@shared/types';
+import type { ActionContext, ActionDefinition } from '@pixsim7/shared.types';
 
 import { capabilityRegistry, type ActionCapability } from '@lib/capabilities';
 import { BaseRegistry } from '@lib/core/BaseRegistry';

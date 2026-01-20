@@ -218,9 +218,9 @@ The endpoint automatically includes transform data when present in `NPCState`.
 ### Using Transform Types
 
 ```typescript
-import { Transform, SpatialObject } from '@shared/types';
+import { Transform, SpatialObject } from '@pixsim7/shared.types';
 // OR
-import { Game } from '@shared/types';
+import { Game } from '@pixsim7/shared.types';
 
 // Create a 2D transform
 const npcTransform: Transform = {
@@ -243,7 +243,7 @@ const npc: SpatialObject = {
 ### Consuming Presence Data
 
 ```typescript
-import { NpcPresenceDTO } from '@shared/types';
+import { NpcPresenceDTO } from '@pixsim7/shared.types';
 
 const presence = await api.get<NpcPresenceDTO[]>('/api/v1/npcs/presence', {
   params: { world_id: 1, location_id: 42 }

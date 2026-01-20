@@ -1,4 +1,4 @@
-import type { SceneIdRef, InstanceRef } from '@shared/types';
+import type { SceneIdRef, InstanceRef } from '@pixsim7/shared.types';
 
 import { normalizeSceneRef } from '../refs/graphRefs';
 

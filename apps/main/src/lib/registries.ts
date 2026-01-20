@@ -46,7 +46,7 @@ export type {
   ResolveBatchResponse,
   TemplateKind,
   TemplateRef,
-} from '@shared/types';
+} from '@pixsim7/shared.types';
 
 // ===== Session Helper Registry =====
 // Manages session state helpers (built-in and custom)

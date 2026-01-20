@@ -16,6 +16,11 @@
       "require": "./src/composition-roles.generated.ts",
       "types": "./src/composition-roles.generated.ts"
     },
+    "./interactions": {
+      "import": "./src/interactions.ts",
+      "require": "./src/interactions.ts",
+      "types": "./src/interactions.ts"
+    },
     "./prompt": {
       "import": "./src/prompt.ts",
       "require": "./src/prompt.ts",

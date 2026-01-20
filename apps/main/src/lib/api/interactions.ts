@@ -4,7 +4,8 @@
  * Phase 17.3+: Client-side API for listing and executing NPC interactions
  */
 
-import { IDs } from '@shared/types';
+import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
+import { IDs } from '@pixsim7/shared.types';
 
 import type {
   ListInteractionsRequest,
@@ -13,7 +14,6 @@ import type {
   ExecuteInteractionResponse,
   NpcInteractionInstance,
 } from '@lib/registries';
-import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 
 import { apiClient } from './client';
 

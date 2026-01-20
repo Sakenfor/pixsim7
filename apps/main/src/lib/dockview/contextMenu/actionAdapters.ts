@@ -5,7 +5,7 @@
  * Used for opt-in adoption of module-defined actions in context menus.
  */
 
-import type { ActionContext, ActionDefinition } from '@shared/types';
+import type { ActionContext, ActionDefinition } from '@pixsim7/shared.types';
 
 import type { MenuAction, ContextMenuContext, MenuActionContext } from './types';
 

@@ -4,7 +4,7 @@
  * Integrates with existing scene graph system and AI video generation
  */
 
-import type { InstanceRef, CharacterRef } from '@shared/types';
+import type { InstanceRef, CharacterRef } from '@pixsim7/shared.types';
 
 import {
   normalizeInstanceRef,

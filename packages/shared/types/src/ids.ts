@@ -8,12 +8,12 @@
  * ## Import Patterns
  *
  * ```typescript
- * // Branded ID types and constructors - from @shared/types
- * import { NpcId, LocationId } from '@shared/types';
+ * // Branded ID types and constructors - from @pixsim7/shared.types
+ * import { NpcId, LocationId } from '@pixsim7/shared.types';
  * const npcId: NpcId = NpcId(123);
  *
- * // Ref types (NpcRef, SceneIdRef, etc.) - from @shared/types
- * import type { NpcRef, SceneIdRef } from '@shared/types';
+ * // Ref types (NpcRef, SceneIdRef, etc.) - from @pixsim7/shared.types
+ * import type { NpcRef, SceneIdRef } from '@pixsim7/shared.types';
  *
  * // Ref runtime functions (Ref builder, guards, parsers) - from @pixsim7/shared.ref.core
  * import { Ref, isNpcRef, parseRef, extractNpcId } from '@pixsim7/shared.ref.core';

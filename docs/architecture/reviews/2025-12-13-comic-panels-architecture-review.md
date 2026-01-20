@@ -176,7 +176,7 @@ No dependencies on:
   - @features/interactions (✓ good separation)
   - @features/scene (could be better integrated)
   - @lib/assetProvider (missing – should use this)
-  - @shared/types/ids (missing – uses plain assetId strings)
+  - @pixsim7/shared.types/ids (missing – uses plain assetId strings)
 ```
 
 ---
@@ -217,7 +217,7 @@ interface SceneMetaComicPanel {
 
 **Canonical ID System:**
 ```typescript
-// From @shared/types/ids.ts
+// From @pixsim7/shared.types/ids.ts
 type AssetRef = `asset:${number}`;
 type NpcRef = `npc:${number}`;
 type LocationRef = `location:${number}`;
@@ -392,7 +392,7 @@ export function createComicPanelWidget(config: ComicPanelWidgetConfig): OverlayW
 @features/scene/ui/comicPanels depends on:
   - @/modules/scene-builder (types)
   - @lib/assetProvider (asset fetching)
-  - @shared/types/ids (canonical IDs)
+  - @pixsim7/shared.types/ids (canonical IDs)
 
 lib/ui/overlay/widgets/ComicPanelWidget depends on:
   - @features/scene/ui (rendering)

@@ -293,8 +293,8 @@ The repository uses TypeScript path aliases to simplify imports and reduce coupl
 | `@/gizmos` | `apps/main/src/lib/gizmos/index.ts` | Main gizmos barrel export |
 | `@/types/*` | `apps/main/src/types/*` | Front-end specific types (automation, prompts, local helpers) |
 | `@/types` | `apps/main/src/types/index.ts` | Main app types barrel export |
-| `@shared/types/*` | `packages/shared/types/src/*` | Shared DTOs and interfaces used by engine + backend |
-| `@shared/types` | `packages/shared/types/src/index.ts` | Shared types barrel export |
+| `@pixsim7/shared.types/*` | `packages/shared/types/src/*` | Shared DTOs and interfaces used by engine + backend |
+| `@pixsim7/shared.types` | `packages/shared/types/src/index.ts` | Shared types barrel export |
 | `@features/intimacy/*` | `apps/main/src/features/intimacy/*` | Intimacy composer, gating, playtesting |
 | `@features/intimacy` | `apps/main/src/features/intimacy/index.ts` | Intimacy barrel export |
 | `@features/automation/*` | `apps/main/src/features/automation/*` | Browser automation components and types |
@@ -330,7 +330,7 @@ import { interactionStats } from '../../lib/gizmos/interactionStats';
 **After (using aliases):**
 ```typescript
 import { NarrativeExecutor } from '@/narrative/executor';
-import type { GameSessionDTO } from '@shared/types';
+import type { GameSessionDTO } from '@pixsim7/shared.types';
 import { interactionStats } from '@/gizmos/interactionStats';
 ```
 
@@ -342,7 +342,7 @@ import {
   createNodeHandlerRegistry
 } from '@/narrative';
 
-import type { GameSessionDTO, SceneNode, SceneEdge } from '@shared/types';
+import type { GameSessionDTO, SceneNode, SceneEdge } from '@pixsim7/shared.types';
 
 import {
   calculateStatChanges,
@@ -368,8 +368,8 @@ The aliases are configured in three places:
          "@/gizmos": ["apps/main/src/lib/gizmos/index.ts"],
          "@/types/*": ["apps/main/src/types/*"],
          "@/types": ["apps/main/src/types/index.ts"],
-         "@shared/types/*": ["packages/shared/types/src/*"],
-         "@shared/types": ["packages/shared/types/src/index.ts"]
+         "@pixsim7/shared.types/*": ["packages/shared/types/src/*"],
+         "@pixsim7/shared.types": ["packages/shared/types/src/index.ts"]
        }
      }
    }
@@ -384,7 +384,7 @@ The aliases are configured in three places:
          '@/scene': path.resolve(__dirname, '../../packages/game/engine/src/narrative'),
          '@/gizmos': path.resolve(__dirname, './src/lib/gizmos'),
          '@/types': path.resolve(__dirname, './src/types'),
-         '@shared/types': path.resolve(__dirname, '../../packages/shared/types/src'),
+         '@pixsim7/shared.types': path.resolve(__dirname, '../../packages/shared/types/src'),
        },
      },
    });
@@ -399,7 +399,7 @@ Each aliased domain has an `index.ts` barrel file that exports the public API:
 - **`@/narrative`**: Exports narrative executor, node handlers, condition evaluator, effect applicator, logging, generation bridge, runtime integration, and scene integration
 - **`@/gizmos`**: Exports surface registry, registration helpers, console integration, tool overrides, and interaction stats
 - **`@/types`**: Front-end specific types (automation presets, prompt graphs, operations UI helpers)
-- **`@shared/types`**: Shared DTOs including game sessions, scene graphs, narrative definitions, npc zones (used by engine + backend)
+- **`@pixsim7/shared.types`**: Shared DTOs including game sessions, scene graphs, narrative definitions, npc zones (used by engine + backend)
 
 Barrel exports help maintain a stable public API and make it clear which modules are intended for external use.
 

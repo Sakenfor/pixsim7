@@ -1,7 +1,7 @@
 // Lib - Gizmos Core
 export * from './lib/core';
 
-// Lib - Body Map (from @shared/types)
+// Lib - Body Map (from @pixsim7/shared.types)
 export * from './lib/bodyMap/zones';
 export * from './lib/bodyMap/tracking';
 
