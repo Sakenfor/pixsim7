@@ -24,8 +24,6 @@
       "@domain/*": ["./src/domain/*"],
       "@features/*": ["./src/features/*"],
       "@lib/*": ["./src/lib/*"],
-      "@shared/types": ["../../packages/shared/types/src"],
-      "@shared/types/*": ["../../packages/shared/types/src/*"],
       "@pixsim7/types": ["../../packages/types/dist"],
       "@pixsim7/shared.auth": ["../../packages/shared/auth/src"],
       "@pixsim7/shared.modules": ["../../packages/shared/modules/src"],
