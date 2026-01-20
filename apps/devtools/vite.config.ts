@@ -9,13 +9,21 @@ export default defineConfig({
   plugins: [
     react(),
     tsconfigPaths({
-      projects: [path.resolve(__dirname, '../main/tsconfig.app.json')],
+      projects: [
+        path.resolve(__dirname, '../main/tsconfig.app.json'),
+        path.resolve(__dirname, './tsconfig.app.json'),
+      ],
     }),
   ],
-  resolve: {
-    alias: [{ find: '@devtools', replacement: path.resolve(__dirname, './src') }],
-  },
   server: {
     port: 5176,
+    fs: {
+      strict: false,
+      allow: [
+        path.resolve(__dirname, '.'),
+        path.resolve(__dirname, '../main'),
+        path.resolve(__dirname, '../../packages'),
+      ],
+    },
   },
 });
