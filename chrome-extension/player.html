@@ -21,10 +21,11 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
+      height: 100vh;
       display: flex;
       flex-direction: column;
       cursor: default;
+      overflow: hidden;
     }
 
     /* Prevent text selection except in inputs */
@@ -91,6 +92,7 @@
       padding: 8px;
       gap: 8px;
       overflow: hidden;
+      min-height: 0;
     }
 
     .video-container {
@@ -100,9 +102,9 @@
       justify-content: center;
       background: #000;
       border-radius: 6px;
-      overflow: hidden;
+      overflow: auto;
       position: relative;
-      min-height: 200px;
+      min-height: 0;
     }
 
     .video-container video {
@@ -696,6 +698,56 @@
     }
 
     .url-input::placeholder { color: var(--text-muted); }
+
+    /* Player settings popup (in header) */
+    .player-settings-btn {
+      position: relative;
+    }
+
+    .player-settings-popup {
+      position: absolute;
+      top: 100%;
+      right: 0;
+      margin-top: 4px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      min-width: 180px;
+      z-index: 50;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .player-settings-popup .settings-title {
+      margin-bottom: 10px;
+    }
+
+    .player-settings-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    .player-settings-option input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    /* Contain video mode - force video to fit within container bounds */
+    .video-container.contain-video {
+      overflow: hidden;
+    }
+
+    .video-container.contain-video video {
+      max-width: none;
+      max-height: none;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
   </style>
 </head>
 <body>
@@ -713,6 +765,16 @@
       <button class="btn btn-secondary" id="openFileBtn" title="Open file">📁</button>
       <button class="btn btn-secondary" id="regionBtn" disabled title="Select rectangle region (R)">⬚</button>
       <button class="btn btn-secondary" id="polygonBtn" disabled title="Draw polygon region (P)">⬡</button>
+      <div class="player-settings-btn">
+        <button class="btn btn-secondary" id="playerSettingsBtn" title="Player settings">⚙</button>
+        <div class="player-settings-popup hidden" id="playerSettingsPopup">
+          <div class="settings-title">Player Settings</div>
+          <label class="player-settings-option">
+            <input type="checkbox" id="containVideoCheck">
+            <span>Contain video in window</span>
+          </label>
+        </div>
+      </div>
       <button class="btn btn-secondary" id="saveAssetBtn" disabled title="Save to assets only (S)">💾</button>
       <button class="btn btn-primary" id="captureBtn" disabled title="Upload to Pixverse (C)">📸</button>
     </div>

@@ -107,7 +107,66 @@ import {
     if (!elements.settingsPanel.contains(e.target) && e.target !== elements.settingsBtn) {
       elements.settingsPanel.classList.add('hidden');
     }
+    // Close player settings popup when clicking outside
+    if (elements.playerSettingsPopup && !elements.playerSettingsPopup.contains(e.target) && e.target !== elements.playerSettingsBtn) {
+      elements.playerSettingsPopup.classList.add('hidden');
+    }
   });
+
+  // ===== Player Settings (header) =====
+  const PLAYER_SETTINGS_STORAGE_KEY = 'pxs7_player_settings';
+
+  function loadPlayerSettings() {
+    try {
+      const stored = localStorage.getItem(PLAYER_SETTINGS_STORAGE_KEY);
+      if (stored) {
+        const settings = JSON.parse(stored);
+        state.containVideo = settings.containVideo || false;
+      }
+    } catch (e) {
+      state.containVideo = false;
+    }
+    applyPlayerSettings();
+  }
+
+  function savePlayerSettings() {
+    try {
+      localStorage.setItem(PLAYER_SETTINGS_STORAGE_KEY, JSON.stringify({
+        containVideo: state.containVideo,
+      }));
+    } catch (e) {
+      console.warn('Failed to save player settings:', e);
+    }
+  }
+
+  function applyPlayerSettings() {
+    if (state.containVideo) {
+      elements.videoContainer.classList.add('contain-video');
+    } else {
+      elements.videoContainer.classList.remove('contain-video');
+    }
+    if (elements.containVideoCheck) {
+      elements.containVideoCheck.checked = state.containVideo;
+    }
+  }
+
+  if (elements.playerSettingsBtn) {
+    elements.playerSettingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      elements.playerSettingsPopup.classList.toggle('hidden');
+    });
+  }
+
+  if (elements.containVideoCheck) {
+    elements.containVideoCheck.addEventListener('change', () => {
+      state.containVideo = elements.containVideoCheck.checked;
+      savePlayerSettings();
+      applyPlayerSettings();
+    });
+  }
+
+  // Load player settings on init
+  loadPlayerSettings();
 
   elements.skipNormalSlider.addEventListener('input', () => {
     state.skipNormalAmount = parseInt(elements.skipNormalSlider.value) / 10;

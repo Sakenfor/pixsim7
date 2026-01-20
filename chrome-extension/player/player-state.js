@@ -73,6 +73,10 @@ import {
     convertProgressBar: document.getElementById('convertProgressBar'),
     convertDetail: document.getElementById('convertDetail'),
     convertCancel: document.getElementById('convertCancel'),
+    // Player settings (header)
+    playerSettingsBtn: document.getElementById('playerSettingsBtn'),
+    playerSettingsPopup: document.getElementById('playerSettingsPopup'),
+    containVideoCheck: document.getElementById('containVideoCheck'),
   };
 
   // ===== Shared State =====
@@ -111,6 +115,8 @@ import {
     // Hotkeys (action -> { code, ctrl, shift, alt })
     hotkeys: null, // Will be initialized in player-controls.js
     recordingHotkey: null, // Currently recording hotkey action
+    // Player settings
+    containVideo: false,
   };
 
   // ===== Utility Functions =====
