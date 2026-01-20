@@ -2,5 +2,5 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'packages/*/*'
-  - 'packages/*/*/*'
+  - 'packages/shared/*/*'
   - 'chrome-extension'
