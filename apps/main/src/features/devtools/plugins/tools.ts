@@ -7,8 +7,9 @@
  * These tools are registered with the plugin catalog on app startup.
  */
 
+import type { DevToolDefinition } from '@pixsim7/shared.devtools';
+
 import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
-import type { DevToolDefinition } from '@lib/dev/devtools/types';
 
 // Import dev tool components
 // Note: AppMapPanel and TemplateAnalyticsPanel are now auto-registered from their modules

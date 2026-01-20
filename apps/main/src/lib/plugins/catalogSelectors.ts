@@ -6,13 +6,11 @@
  * while the catalog becomes the single source of truth.
  */
 
-import type {
-  GenerationUIPlugin,
-  ValidationResult,
-} from '@features/providers/lib/core/generationPlugins';
+import type { DevToolDefinition, DevToolCategory } from '@pixsim7/shared.devtools';
+import type { PanelInstancePolicy } from '@pixsim7/shared.panels';
+
 import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
 
-import type { DevToolDefinition, DevToolCategory } from '@lib/dev/devtools/types';
 
 import type { BrainToolPlugin, BrainToolContext, BrainToolCategory } from '@features/brainTools/lib/types';
 import type { GallerySurfaceDefinition, GallerySurfaceCategory, MediaType } from '@features/gallery/lib/core/surfaceRegistry';
@@ -25,7 +23,10 @@ import type {
 } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition, WorkspaceContext } from '@features/panels/lib/panelRegistry';
-import type { PanelInstancePolicy } from '@features/panels/lib/panelTypes';
+import type {
+  GenerationUIPlugin,
+  ValidationResult,
+} from '@features/providers/lib/core/generationPlugins';
 import type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from '@features/worldTools/lib/types';
 
 import { pluginCatalog } from './pluginSystem';

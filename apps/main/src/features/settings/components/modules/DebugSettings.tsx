@@ -8,11 +8,11 @@
  *
  * NOTE: Only visible in development mode.
  */
+import type { DevToolSetting, DevToolSettingSelect, DevToolSettingNumber } from '@pixsim7/shared.devtools';
 import { useState, useEffect } from 'react';
 
 import { getUserPreferences, updatePreferenceKey, type DebugPreferences, type DevToolsPreferences, type DevToolSettingValue } from '@lib/api/userPreferences';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
-import type { DevToolSetting, DevToolSettingSelect, DevToolSettingNumber } from '@lib/dev/devtools/types';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 import { settingsRegistry } from '../../lib/core/registry';

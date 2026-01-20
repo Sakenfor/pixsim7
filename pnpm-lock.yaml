@@ -59,12 +59,21 @@ importers:
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities-core
+      '@pixsim7/shared.devtools':
+        specifier: workspace:*
+        version: link:../../packages/shared/devtools
       '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation-core
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../packages/shared/helpers-core
+      '@pixsim7/shared.modules':
+        specifier: workspace:*
+        version: link:../../packages/shared/modules
+      '@pixsim7/shared.panels':
+        specifier: workspace:*
+        version: link:../../packages/shared/panels
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref-core
@@ -286,6 +295,9 @@ importers:
       '@pixsim7/shared.content-rating':
         specifier: workspace:*
         version: link:../../packages/shared/content-rating
+      '@pixsim7/shared.devtools':
+        specifier: workspace:*
+        version: link:../../packages/shared/devtools
       '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation-core
@@ -298,6 +310,12 @@ importers:
       '@pixsim7/shared.media.core':
         specifier: workspace:*
         version: link:../../packages/shared/media-core
+      '@pixsim7/shared.modules':
+        specifier: workspace:*
+        version: link:../../packages/shared/modules
+      '@pixsim7/shared.panels':
+        specifier: workspace:*
+        version: link:../../packages/shared/panels
       '@pixsim7/shared.player.core':
         specifier: workspace:*
         version: link:../../packages/shared/player-core
@@ -780,6 +798,19 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/shared/devtools:
+    dependencies:
+      react:
+        specifier: ^18.0.0 || ^19.0.0
+        version: 19.2.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/shared/generation-core:
     dependencies:
       '@pixsim7/shared.types':
@@ -814,6 +845,35 @@ importers:
 
   packages/shared/media-core:
     devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/modules:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../types
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/panels:
+    dependencies:
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
       typescript:
         specifier: ^5.4.0
         version: 5.9.3

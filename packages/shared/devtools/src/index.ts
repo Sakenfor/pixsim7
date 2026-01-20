@@ -5,6 +5,8 @@
  * and displayed in the Dev Tools surface.
  */
 
+import type { ComponentType } from 'react';
+
 export type DevToolId =
   | 'session-state-viewer'
   | 'plugin-workspace'
@@ -97,7 +99,7 @@ export interface DevToolDefinition {
   category?: DevToolCategory;
 
   /** React component used when the tool is shown as a panel */
-  panelComponent?: React.ComponentType<any>;
+  panelComponent?: ComponentType<any>;
 
   /** Optional route for full-page dev tools */
   routePath?: string;

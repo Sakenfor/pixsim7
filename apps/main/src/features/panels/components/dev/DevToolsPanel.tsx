@@ -5,11 +5,11 @@
  * Shows all registered dev tools grouped by category with search/filter.
  */
 
-import { Icon, IconBadge, type IconName } from "@lib/icons";
+import type { DevToolDefinition, DevToolCategory } from "@pixsim7/shared.devtools";
 import { useState, useMemo } from "react";
 
 import { useDevToolContext } from "@lib/dev/devtools/devToolContext";
-import type { DevToolDefinition, DevToolCategory } from "@lib/dev/devtools/types";
+import { Icon, IconBadge, type IconName } from "@lib/icons";
 import { devToolSelectors } from "@lib/plugins/catalogSelectors";
 
 import { useWorkspaceStore } from "@features/workspace";
