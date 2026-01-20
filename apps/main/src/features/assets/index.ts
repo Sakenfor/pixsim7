@@ -54,6 +54,32 @@ export { useFilterMetadata } from './hooks/useFilterMetadata';
 export { useLocalFoldersController } from './hooks/useLocalFoldersController';
 
 // ============================================================================
+// Context - Source Controller
+// ============================================================================
+
+export {
+  SourceControllerProvider,
+  useSourceController,
+  useSourceControllerOptional,
+  useSourceControllerType,
+  useFolderSourceController,
+  useCloudSourceController,
+  useImportSourceController,
+  // Re-export type guards for convenience
+  isFolderController,
+  isCloudController,
+  isImportController,
+  hasFolderCapability,
+  hasAuthCapability,
+  hasUploadCapability,
+  hasPreviewCapability,
+  hasViewerCapability,
+  hasViewModeCapability,
+  hasScanningCapability,
+  hasFeatureFlagsCapability,
+} from './context/SourceControllerContext';
+
+// ============================================================================
 // Stores
 // ============================================================================
 

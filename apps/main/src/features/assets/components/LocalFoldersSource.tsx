@@ -1,3 +1,6 @@
+import { SourceControllerProvider } from '../context/SourceControllerContext';
+import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
+
 import { LocalFoldersPanel } from './LocalFoldersPanel';
 
 interface LocalFoldersSourceProps {
@@ -9,10 +12,19 @@ interface LocalFoldersSourceProps {
 /**
  * Local Folders Asset Source
  *
- * Thin wrapper around LocalFoldersPanel to fit the asset source pattern.
- * The actual logic lives in useLocalFoldersController which already implements
- * the source controller pattern from types/localSources.ts
+ * Wraps LocalFoldersPanel with SourceControllerProvider to enable context-based
+ * access to the controller. Components inside can use useSourceController() or
+ * useFolderSourceController() to access the controller without prop drilling.
+ *
+ * The actual logic lives in useLocalFoldersController which implements
+ * FolderSourceController<LocalAsset> from types/sourceController.ts
  */
 export function LocalFoldersSource({ layout, cardSize }: LocalFoldersSourceProps) {
-  return <LocalFoldersPanel layout={layout} cardSize={cardSize} />;
+  const controller = useLocalFoldersController();
+
+  return (
+    <SourceControllerProvider controller={controller} controllerType="folder">
+      <LocalFoldersPanel layout={layout} cardSize={cardSize} />
+    </SourceControllerProvider>
+  );
 }

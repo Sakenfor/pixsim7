@@ -5,13 +5,13 @@
  * Displays folder count, asset count, hash coverage.
  */
 
+import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import { Button } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 
 import { authService } from '@lib/auth';
 
 import { useLocalFolders } from '@/features/assets/stores/localFoldersStore';
-import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import { useAuthStore } from '@/stores/authStore';
 
 export function LocalFoldersStatus() {
@@ -23,17 +23,19 @@ export function LocalFoldersStatus() {
   const getFileForAsset = useLocalFolders((s) => s.getFileForAsset);
   const updateAssetHash = useLocalFolders((s) => s.updateAssetHash);
   const loadPersisted = useLocalFolders((s) => s.loadPersisted);
+  const loading = useLocalFolders((s) => s.loading);
   const userId = useAuthStore((s) => s.user?.id);
 
   const [computing, setComputing] = useState(false);
   const [computeProgress, setComputeProgress] = useState({ done: 0, total: 0 });
 
   // Load persisted folders on mount (if not already loaded)
+  // Use loading flag to avoid triggering multiple loads
   useEffect(() => {
-    if (userId && folders.length === 0) {
+    if (userId && folders.length === 0 && !loading) {
       loadPersisted();
     }
-  }, [userId, folders.length, loadPersisted]);
+  }, [userId, folders.length, loading, loadPersisted]);
 
   const stats = useMemo(() => {
     const allAssets = Object.values(assets);

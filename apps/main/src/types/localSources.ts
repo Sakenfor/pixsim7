@@ -3,12 +3,21 @@
  *
  * Defines a minimal "source" model and controller API that works for local folders now,
  * and can support other sources (e.g., Google Drive, cloud storage) later.
+ *
+ * LocalFoldersController extends FolderSourceController for generic source abstraction
+ * while maintaining backward compatibility with existing code.
  */
+
+import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources';
 
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 export type LocalSourceId = 'local-fs';
 
+/**
+ * @deprecated Use SourceIdentity from sourceController.ts instead
+ * Kept for backward compatibility
+ */
 export interface SourceInfo {
   id: LocalSourceId;        // currently only 'local-fs'
   label: string;            // "Local Folders"
@@ -17,51 +26,25 @@ export interface SourceInfo {
 
 export type ViewMode = 'grid' | 'tree' | 'list';
 
-export interface LocalFoldersController {
-  // Source identity
-  source: SourceInfo;             // always 'local-fs' for now
+/**
+ * LocalFoldersController extends FolderSourceController with local-specific additions.
+ *
+ * Implements all capabilities from FolderSourceController:
+ * - BaseSourceController: source, assets, filteredAssets, getAssetKey, refresh
+ * - SourceLoadingState: loading, busy, error
+ * - PreviewCapability: previews, loadPreview, revokePreview
+ * - ViewerCapability: viewerAsset, openViewer, closeViewer, navigateViewer
+ * - UploadCapability: providerId, setProviderId, uploadStatus, uploadNotes, uploadOne
+ * - FolderCapability: folders, addFolder, removeFolder, refreshFolder, selectedFolderPath, setSelectedFolderPath
+ * - ViewModeCapability: viewMode, setViewMode
+ * - FeatureFlagsCapability: supported
+ * - ScanningCapability: adding, scanning
+ */
+export interface LocalFoldersController extends FolderSourceController<LocalAsset> {
+  // Override source to use the legacy SourceInfo type for backward compatibility
+  // The controller also provides the new SourceIdentity-compatible structure
+  source: SourceIdentity & SourceInfo;
 
-  // Data from localFoldersStore
-  folders: Array<{ id: string; name: string }>;
-  assets: LocalAsset[];           // flattened, sorted asset list
-  filteredAssets: LocalAsset[];   // filtered by selected folder when in tree mode
-
-  // Folder management
+  // Local-specific: load persisted folders on mount
   loadPersisted: () => void;
-  addFolder: () => void;
-  removeFolder: (id: string) => void;
-  refreshFolder: (id: string) => void;
-
-  // View state
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  selectedFolderPath: string | null;
-  setSelectedFolderPath: (path: string | null) => void;
-
-  // Previews & viewer
-  previews: Record<string, string>;
-  loadPreview: (asset: LocalAsset | string) => Promise<void>;
-  revokePreview: (assetKey: string) => void;  // Cleanup blob URL when no longer visible
-  viewerAsset: LocalAsset | null;
-  openViewer: (asset: LocalAsset) => void;
-  closeViewer: () => void;
-  navigateViewer: (direction: 'prev' | 'next') => void;
-
-  // Uploads
-  providerId?: string;
-  setProviderId: (id: string | undefined) => void;
-  uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
-  uploadNotes: Record<string, string | undefined>;
-  uploadOne: (asset: LocalAsset | string) => Promise<void>;
-
-  // Errors / state from useLocalFolders
-  supported: boolean;
-  adding: boolean;
-  scanning: {
-    folderId: string;
-    scanned: number;
-    found: number;
-    currentPath: string;
-  } | null;
-  error: string | null;
 }

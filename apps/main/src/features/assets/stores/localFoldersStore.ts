@@ -2,13 +2,10 @@
  * Persists directory handles in IndexedDB so each user can add their own folders.
  */
 import { create } from 'zustand';
+
 import { useAuthStore } from '@/stores/authStore';
-import type {
-  AssetCandidate,
-  FolderCandidate,
-  generateCandidateId,
-  FolderSourceMetadata,
-} from '../types/assetCandidate';
+
+import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
 
 type DirHandle = FileSystemDirectoryHandle;
 type FileHandle = FileSystemFileHandle;
@@ -48,6 +45,7 @@ type LocalFoldersState = {
   folders: FolderEntry[];
   assets: Record<string, LocalAsset>; // key -> asset
   adding: boolean;
+  loading: boolean; // Prevents concurrent loadPersisted calls
   scanning: ScanningState;  // Progress indicator for folder scanning
   error?: string;
   addFolder: () => Promise<void>;
@@ -251,7 +249,9 @@ async function scanFolderChunked(
           const f = await fh.getFile();
           size = f.size;
           lastModified = f.lastModified;
-        } catch {}
+        } catch (error) {
+          console.warn('scanFolderChunked: unable to read file metadata', error);
+        }
 
         // Create FolderCandidate (with legacy LocalAsset compatibility)
         const candidateId = `${id}:${rel}`;
@@ -323,7 +323,7 @@ async function getFileHandle(root: DirHandle, relativePath: string): Promise<Fil
 }
 
 // Load assets from cache and reconstruct file handles
-async function loadCachedAssets(id: string, _handle: DirHandle): Promise<LocalAsset[]> {
+async function loadCachedAssets(id: string): Promise<LocalAsset[]> {
   try {
     const cached = await idbGet<AssetMeta[]>(getAssetsKey(id));
     if (!cached) return [];
@@ -426,14 +426,18 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   folders: [],
   assets: {},
   adding: false,
+  loading: false,
   scanning: null,
   error: undefined,
 
   loadPersisted: async () => {
     if (!isFSASupported()) return;
+    // Prevent concurrent loads - this was causing race conditions where
+    // state was cleared before IndexedDB load completed
+    if (get().loading) return;
     try {
+      set({ loading: true, error: undefined });
       void requestStoragePersistence();
-      set({ folders: [], assets: {}, error: undefined });
       const stored = await idbGet<FolderEntry[]>(getFoldersKey());
       if (stored && stored.length) {
         // Request permission again if needed
@@ -442,7 +446,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         const needsPermission: FolderEntry[] = [];
         for (const f of stored) {
           try {
-            // @ts-ignore permission API
+            // @ts-expect-error permission API
             const perm = await (f.handle as any).queryPermission?.({ mode: 'read' });
             if (perm === 'granted') {
               ok.push(f);
@@ -475,7 +479,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         // Load from cache first for instant display, then always kick off a fresh
         // scan in the background so newly added files appear without manual refresh.
         for (const f of ok) {
-          const cachedItems = await loadCachedAssets(f.id, f.handle);
+          const cachedItems = await loadCachedAssets(f.id);
           if (cachedItems.length > 0) {
             set(s => ({
               assets: {
@@ -498,8 +502,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
       }
+      set({ loading: false });
     } catch (e: unknown) {
-      set({ error: e instanceof Error ? e.message : 'Failed to load persisted folders' });
+      set({ loading: false, error: e instanceof Error ? e.message : 'Failed to load persisted folders' });
     }
   },
 
@@ -511,7 +516,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     set({ adding: true, error: undefined });
     try {
       void requestStoragePersistence();
-      // @ts-ignore
+      // @ts-expect-error IndexedDB iteration
       const dir: DirHandle = await (window as any).showDirectoryPicker();
       const id = `${dir.name}-${Date.now()}-${getUserNamespace()}`;
       const entry: FolderEntry = { id, name: dir.name, handle: dir };

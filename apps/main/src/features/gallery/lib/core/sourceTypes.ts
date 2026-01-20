@@ -1,4 +1,6 @@
+import type { SourceControllerType, AnySourceController } from '@pixsim7/shared.sources';
 import type { ComponentType } from 'react';
+
 import type { AssetSourceId } from './assetSources';
 
 /**
@@ -23,7 +25,7 @@ export type SourceCategory = 'remote' | 'local' | 'cloud' | 'social';
 /**
  * Defines a type of source that can be instantiated
  */
-export interface SourceTypeDefinition {
+export interface SourceTypeDefinition<TController extends AnySourceController = AnySourceController> {
   typeId: SourceTypeId;
   name: string;
   icon: string;
@@ -32,6 +34,12 @@ export interface SourceTypeDefinition {
 
   // Component to render instances of this type
   component: ComponentType<any>;
+
+  // Controller type discriminator for context provider
+  controllerType?: SourceControllerType;
+
+  // Hook to create controller instance (called inside component)
+  useController?: () => TController;
 
   // For Phase 3: configuration schema for user setup
   // configSchema?: {

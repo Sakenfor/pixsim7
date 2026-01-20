@@ -1,5 +1,5 @@
-import { registerSourceType, getDefaultInstanceId } from './sourceTypes';
 import { registerAssetSource } from './assetSources';
+import { registerSourceType, getDefaultInstanceId } from './sourceTypes';
 
 /**
  * Register all available asset sources
@@ -21,7 +21,7 @@ export async function registerAssetSources() {
  */
 async function registerSourceTypes() {
   // Dynamic imports to avoid circular dependency
-  const { RemoteGallerySource, LocalFoldersSource } = await import('@features/assets');
+  const { RemoteGallerySource, LocalFoldersSource, useLocalFoldersController } = await import('@features/assets');
 
   // Remote gallery type
   registerSourceType({
@@ -31,6 +31,7 @@ async function registerSourceTypes() {
     category: 'remote',
     description: 'Database-backed remote assets with multiple viewing surfaces',
     component: RemoteGallerySource,
+    controllerType: 'base',
   });
 
   // Local filesystem type
@@ -41,6 +42,8 @@ async function registerSourceTypes() {
     category: 'local',
     description: 'Assets from local filesystem folders',
     component: LocalFoldersSource,
+    controllerType: 'folder',
+    useController: useLocalFoldersController,
   });
 
   // Future types will be registered here in Phase 3:
@@ -51,8 +54,8 @@ async function registerSourceTypes() {
   //   category: 'cloud',
   //   description: 'Assets from Google Drive folders',
   //   component: GoogleDriveSource,
-  //   configSchema: { ... },
-  //   createController: (config) => new GoogleDriveController(config)
+  //   controllerType: 'cloud',
+  //   useController: useGoogleDriveController,
   // });
 }
 
