@@ -130,21 +130,40 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
       </div>
 
       {/* Body - Dynamic Renderer from Registry (memoized lookup) */}
-      {renderer?.component ? (
-        <renderer.component
-          node={data.draftNode}
-          isSelected={selected}
-          isStart={data.isStart}
-          hasErrors={highestSeverity === 'error'}
-        />
-      ) : (
-        <div className="px-3 py-3 text-center">
-          <div className="text-red-500 text-xs font-medium">Renderer Missing</div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            Type: {data.nodeType}
-          </div>
-        </div>
-      )}
+      {(() => {
+        if (!renderer?.component) {
+          return (
+            <div className="px-3 py-3 text-center">
+              <div className="text-red-500 text-xs font-medium">Renderer Missing</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                Type: {data.nodeType}
+              </div>
+            </div>
+          );
+        }
+
+        const RendererComponent = renderer.component;
+        try {
+          return (
+            <RendererComponent
+              node={data.draftNode}
+              isSelected={selected}
+              isStart={data.isStart}
+              hasErrors={highestSeverity === 'error'}
+            />
+          );
+        } catch (error) {
+          console.error(`[SceneNode] Error rendering node '${id}':`, error);
+          return (
+            <div className="px-3 py-3 text-center">
+              <div className="text-red-500 text-xs font-medium">Render Error</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                {error instanceof Error ? error.message : 'Unknown error'}
+              </div>
+            </div>
+          );
+        }
+      })()}
 
       {/* Dynamic Input Handles */}
       {portConfig.inputs.map((port, index) => (

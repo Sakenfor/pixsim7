@@ -1,3 +1,5 @@
+import { useShallow } from 'zustand/react/shallow';
+
 import type { ExpansionComponentProps } from '@features/cubes';
 
 import { useGraphStore } from '../../stores/graphStore';
@@ -14,7 +16,7 @@ export function GraphCubeExpansion(_props: ExpansionComponentProps) {
   void _props;
 
   // Single selector that computes all stats - avoids multiple subscriptions
-  const stats = useGraphStore(selectGraphStats);
+  const stats = useGraphStore(useShallow(selectGraphStats));
 
   return (
     <div className="p-3 space-y-3">

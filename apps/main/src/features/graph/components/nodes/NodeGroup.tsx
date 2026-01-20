@@ -1,4 +1,4 @@
-import { memo, useState, useMemo } from 'react';
+import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -30,16 +30,30 @@ interface NodeGroupNodeData {
  */
 export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeData>) => {
   // Use selectors with useShallow for stable action references
-  const { toggleGroupCollapsed, getGroupChildren } = useGraphStore(
-    useShallow(selectNodeGroupActions)
-  );
+  const { toggleGroupCollapsed } = useGraphStore(useShallow(selectNodeGroupActions));
   const { zoomIntoGroup } = useGraphStore(useShallow(selectNavigationActions));
   const [isHovered, setIsHovered] = useState(false);
 
   const groupNode = data.draftNode;
 
-  // Memoize getGroupChildren call - only recalculate when id changes
-  const childNodes = useMemo(() => getGroupChildren(id), [getGroupChildren, id]);
+  // Subscribe to store state so child count stays current when group membership changes.
+  const childNodeCount = useGraphStore((state) => {
+    if (!state.currentSceneId) return 0;
+    const scene = state.scenes[state.currentSceneId];
+    if (!scene) return 0;
+    const group = scene.nodes.find(
+      (node) => node.id === id && node.type === 'node_group'
+    ) as NodeGroupData | undefined;
+    if (!group) return 0;
+
+    let count = 0;
+    for (const node of scene.nodes) {
+      if (group.childNodeIds.includes(node.id)) {
+        count += 1;
+      }
+    }
+    return count;
+  });
 
   const handleToggleCollapse = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -93,7 +107,7 @@ export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeDa
               {data.label}
             </div>
             <div className="text-xs opacity-90">
-              {childNodes.length} node{childNodes.length !== 1 ? 's' : ''}
+              {childNodeCount} node{childNodeCount !== 1 ? 's' : ''}
             </div>
           </div>
 
