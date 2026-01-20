@@ -1,5 +1,4 @@
-import type { DraftSceneNode } from '@domain/sceneBuilder';
-import { addNode as addNodeUtil, updateNode as updateNodeUtil, removeNodeWithEdges } from '@pixsim7/shared.graph-utilities';
+import { addNode as addNodeUtil, updateNode as updateNodeUtil, removeNodeWithEdges } from '@pixsim7/shared.graph.utilities';
 
 import type { StateCreator, NodeManagementState, GraphState } from './types';
 

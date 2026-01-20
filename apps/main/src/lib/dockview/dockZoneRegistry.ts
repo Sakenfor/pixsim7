@@ -13,11 +13,11 @@
  * - Configurable fallback: preset scope fallback is not hardcoded
  */
 
-import type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.panels';
+import type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.panels';
 
 import { BaseRegistry } from '@lib/core/BaseRegistry';
 
-export type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.panels';
+export type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.panels';
 
 /**
  * Registry for dock zone definitions.

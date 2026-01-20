@@ -30,7 +30,7 @@ The frontend is **well-structured** with good separation between framework-agnos
 | `@pixsim7/shared.logic-core` | `packages/shared/logic-core/` | Shared runtime logic (stats, content ratings) | `shared.types` |
 | `@pixsim7/assets-core` | `packages/shared/assets-core/` | Asset card actions, media types | `shared.types` |
 | `@pixsim7/generation-core` | `packages/shared/generation-core/` | Generation logic, provider params | `shared.types` |
-| `@pixsim7/shared.api-client` | `packages/shared/api-client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
+| `@pixsim7/shared.api.client` | `packages/shared/api/client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
 | `@pixsim7/game.engine` | `packages/game/engine/` | Headless game logic | `helpers-core`, `ref-core`, `logic-core`, `shared.types` |
 | `@pixsim7/scene.shapes` | `packages/scene/shapes/` | 3D shape definitions | `game.engine`, `shared.types` |
 | `@pixsim7/scene.gizmos` | `packages/scene/gizmos/` | 3D gizmos/controls | `shared.types` |

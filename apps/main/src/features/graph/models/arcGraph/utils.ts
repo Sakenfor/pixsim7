@@ -4,9 +4,9 @@
  * Helper functions for working with arc graphs, similar to graphSync for scene graphs.
  */
 
+import type { ArcGraph } from './types';
 import { validateArcGraph as validateArcGraphComprehensive } from './validation';
 
-import type { ArcGraph, ArcGraphNode, ArcGraphEdge } from './types';
 
 /**
  * Create a new empty arc graph
@@ -26,7 +26,7 @@ export function createEmptyArcGraph(title: string): ArcGraph {
 /**
  * NOTE: Basic CRUD operations (addNode, updateNode, removeNode, addEdge, removeEdge)
  * and edge query utilities (getNodeEdges, getIncomingEdges, getOutgoingEdges) are
- * available in @pixsim7/shared.graph-utilities and should be used instead of
+ * available in @pixsim7/shared.graph.utilities and should be used instead of
  * arc-specific implementations.
  */
 

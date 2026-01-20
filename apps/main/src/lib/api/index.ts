@@ -3,7 +3,7 @@
  */
 
 // Note: `apiClient` is legacy (AxiosResponse-returning) and kept for backward compatibility.
-// Prefer `pixsimClient` (data-returning) or `@pixsim7/shared.api-client/domains` for reusable domain clients.
+// Prefer `pixsimClient` (data-returning) or `@pixsim7/shared.api.client/domains` for reusable domain clients.
 export { apiClient, pixsimClient, BACKEND_BASE, API_BASE_URL } from './client';
 export {
   // Error message extraction

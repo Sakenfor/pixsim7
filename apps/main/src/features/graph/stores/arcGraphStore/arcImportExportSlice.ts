@@ -1,7 +1,8 @@
-import { exportArcGraph as exportArcGraphModel, importArcGraph as importArcGraphModel } from '@features/graph/models/arcGraph';
-import { exportGraph, exportProject, importProject } from '@pixsim7/shared.graph-utilities';
+import { exportGraph, exportProject, importProject } from '@pixsim7/shared.graph.utilities';
 
+import { exportArcGraph as exportArcGraphModel, importArcGraph as importArcGraphModel } from '@features/graph/models/arcGraph';
 import type { ArcGraph } from '@features/graph/models/arcGraph';
+
 import type { ArcStateCreator, ArcImportExportState } from './types';
 
 /**

@@ -1,4 +1,3 @@
-import { createEmptyArcGraph, type ArcGraph } from '@features/graph/models/arcGraph';
 import {
   removeGraphFromCollection,
   duplicateGraph,
@@ -7,7 +6,9 @@ import {
   listGraphs,
   updateGraphInCollection,
   generateGraphId,
-} from '@pixsim7/shared.graph-utilities';
+} from '@pixsim7/shared.graph.utilities';
+
+import { createEmptyArcGraph, type ArcGraph } from '@features/graph/models/arcGraph';
 
 import type { ArcStateCreator, ArcGraphManagementState } from './types';
 

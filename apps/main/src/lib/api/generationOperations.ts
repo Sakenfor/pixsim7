@@ -1,13 +1,13 @@
 /**
  * Generation Operations API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api.client.
  */
-import { createGenerationOperationsApi } from '@pixsim7/shared.api-client/domains';
+import { createGenerationOperationsApi } from '@pixsim7/shared.api.client/domains';
 
 import { pixsimClient } from './client';
 
-export type { GenerationOperationMetadataItem } from '@pixsim7/shared.api-client/domains';
+export type { GenerationOperationMetadataItem } from '@pixsim7/shared.api.client/domains';
 
 const generationOperationsApi = createGenerationOperationsApi(pixsimClient);
 

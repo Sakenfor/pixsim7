@@ -24,7 +24,7 @@ export type EntityScopedCapability<T, TRef extends EntityRef = EntityRef> = T & 
 export type {
   CapabilityDeclaration,
   CapabilityDeclarationObject,
-} from "@pixsim7/shared.panels";
+} from "@pixsim7/shared.ui.panels";
 
 /**
  * Capability consumption record (UI version).

@@ -1,4 +1,3 @@
-import type { DraftScene } from '@domain/sceneBuilder';
 import {
   generateGraphId,
   removeGraphFromCollection,
@@ -7,7 +6,9 @@ import {
   getGraph,
   listGraphs,
   getGraphIds,
-} from '@pixsim7/shared.graph-utilities';
+} from '@pixsim7/shared.graph.utilities';
+
+import type { DraftScene } from '@domain/sceneBuilder';
 
 import type { StateCreator, SceneManagementState } from './types';
 

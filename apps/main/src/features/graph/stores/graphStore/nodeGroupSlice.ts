@@ -1,5 +1,5 @@
+import { findNode, hasNode, findNodeByType, filterNodesByType } from '@pixsim7/shared.graph.utilities';
 import { useToastStore } from '@pixsim7/shared.ui';
-import { findNode, hasNode, findNodeByType, filterNodesByType } from '@pixsim7/shared.graph-utilities';
 
 import { logEvent } from '@lib/utils/logging';
 

@@ -17,7 +17,7 @@ import type {
   SceneErrorMessage as SceneErrorMessageBase,
   PlaybackStateMessage as PlaybackStateMessageBase,
   NodeChangedMessage as NodeChangedMessageBase,
-} from "@pixsim7/shared.preview-protocol";
+} from "@pixsim7/shared.preview.protocol";
 
 import type { Scene } from "@lib/registries";
 
@@ -38,4 +38,4 @@ export type NodeChangedMessage = NodeChangedMessageBase;
 export {
   isEditorToGameMessage,
   isGameToEditorMessage,
-} from "@pixsim7/shared.preview-protocol";
+} from "@pixsim7/shared.preview.protocol";

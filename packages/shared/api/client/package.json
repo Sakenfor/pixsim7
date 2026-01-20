@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.api-client",
+  "name": "@pixsim7/shared.api.client",
   "version": "0.0.1",
   "private": true,
   "description": "Environment-neutral API client for PixSim7 (browser, Node, Electron, Tauri)",

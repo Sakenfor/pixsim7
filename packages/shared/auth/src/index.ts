@@ -6,7 +6,7 @@
  *
  * @example Setup (in your app's entry point)
  * ```ts
- * import { computeBackendUrl } from '@pixsim7/shared.api-client/browser';
+ * import { computeBackendUrl } from '@pixsim7/shared.api.client/browser';
  * import { configureAuthService, setTokenChangedCallback, setLogoutCallback } from '@pixsim7/shared.auth';
  *
  * configureAuthService({

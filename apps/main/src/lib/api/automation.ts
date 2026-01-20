@@ -1,9 +1,9 @@
 /**
  * Automation API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api.client.
  */
-import { createAutomationApi } from '@pixsim7/shared.api-client/domains';
+import { createAutomationApi } from '@pixsim7/shared.api.client/domains';
 
 import { pixsimClient } from './client';
 
@@ -22,7 +22,7 @@ export type {
   ClearExecutionsResponse,
   ListExecutionsQuery,
   ListLoopsQuery,
-} from '@pixsim7/shared.api-client/domains';
+} from '@pixsim7/shared.api.client/domains';
 
 const automationApi = createAutomationApi(pixsimClient);
 

@@ -21,7 +21,7 @@
  * ```
  */
 
-import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.panels';
+import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 import type { ComponentType } from 'react';
 import type { z } from 'zod';
 

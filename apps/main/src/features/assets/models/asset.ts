@@ -6,7 +6,7 @@
  * and should only be used at the fetch boundary.
  */
 
-import type { AssetResponse } from '@pixsim7/shared.api-client/domains';
+import type { AssetResponse } from '@pixsim7/shared.api.client/domains';
 import type { MediaType } from '@pixsim7/shared.types';
 
 import type { SelectedAsset } from '../stores/assetSelectionStore';

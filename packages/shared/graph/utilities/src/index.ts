@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.graph-utilities
+ * @pixsim7/shared.graph.utilities
  *
  * Generic graph utilities - pure TypeScript, no framework dependencies.
  *
@@ -10,7 +10,7 @@
  *
  * @example
  * ```ts
- * import { addNode, exportGraph, generateGraphId } from '@pixsim7/shared.graph-utilities';
+ * import { addNode, exportGraph, generateGraphId } from '@pixsim7/shared.graph.utilities';
  *
  * // Works with any graph structure that has nodes array
  * const updatedGraph = addNode(sceneGraph, newNode);

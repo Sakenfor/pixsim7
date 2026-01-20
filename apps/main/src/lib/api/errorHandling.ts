@@ -1,10 +1,10 @@
 /**
  * API Error Handling Utilities
  *
- * Re-exports error handling utilities from @pixsim7/shared.api-client.
+ * Re-exports error handling utilities from @pixsim7/shared.api.client.
  * This module is kept for backward compatibility with existing imports.
  *
- * For new code, prefer importing directly from @pixsim7/shared.api-client.
+ * For new code, prefer importing directly from @pixsim7/shared.api.client.
  */
 
 // Re-export all error handling utilities from the api-client package
@@ -33,7 +33,7 @@ export {
 
   // Error codes
   ErrorCodes,
-} from '@pixsim7/shared.api-client';
+} from '@pixsim7/shared.api.client';
 
 // Re-export types
-export type { ErrorResponse, ErrorCode } from '@pixsim7/shared.api-client';
+export type { ErrorResponse, ErrorCode } from '@pixsim7/shared.api.client';

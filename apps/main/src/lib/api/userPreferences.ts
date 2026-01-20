@@ -1,9 +1,9 @@
 /**
  * User Preferences API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api.client.
  */
-import { createUserPreferencesApi } from '@pixsim7/shared.api-client/domains';
+import { createUserPreferencesApi } from '@pixsim7/shared.api.client/domains';
 
 import { pixsimClient } from './client';
 
@@ -13,7 +13,7 @@ export type {
   DevToolSettingValue,
   UserPreferences,
   UserPreferencesResponse,
-} from '@pixsim7/shared.api-client/domains';
+} from '@pixsim7/shared.api.client/domains';
 
 const userPreferencesApi = createUserPreferencesApi(pixsimClient);
 

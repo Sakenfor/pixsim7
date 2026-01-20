@@ -10,7 +10,7 @@
 import {
   CONTENT_RATING_ORDER,
   getContentRatingIndex,
-} from '@pixsim7/shared.content-rating';
+} from '@pixsim7/shared.content.rating';
 
 import type {
   IntimacySceneConfig,

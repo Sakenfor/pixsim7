@@ -24,8 +24,8 @@ import type {
  *
  * @example
  * ```ts
- * import { createApiClient } from '@pixsim7/shared.api-client';
- * import { createBrowserTokenProvider } from '@pixsim7/shared.api-client/browser';
+ * import { createApiClient } from '@pixsim7/shared.api.client';
+ * import { createBrowserTokenProvider } from '@pixsim7/shared.api.client/browser';
  *
  * const client = createApiClient({
  *   baseUrl: 'http://localhost:8001',

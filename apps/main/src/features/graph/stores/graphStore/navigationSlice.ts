@@ -1,4 +1,4 @@
-import { findNode, findNodeByType } from '@pixsim7/shared.graph-utilities';
+import { findNode, findNodeByType } from '@pixsim7/shared.graph.utilities';
 
 import { logEvent } from '@lib/utils/logging';
 

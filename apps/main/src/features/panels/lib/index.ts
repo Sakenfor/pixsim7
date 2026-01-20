@@ -10,7 +10,7 @@ export {
   type MutablePanelRegistryLike,
   type PanelAvailabilityPolicy,
   type PanelInstancePolicy,
-} from "@pixsim7/shared.panels";
+} from "@pixsim7/shared.ui.panels";
 
 export { panelSelectors, dockWidgetSelectors } from "@lib/plugins/catalogSelectors";
 

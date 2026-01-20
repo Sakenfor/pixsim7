@@ -12,7 +12,7 @@
 import {
   clampContentRating,
   getContentRatingIndex,
-} from '@pixsim7/shared.content-rating';
+} from '@pixsim7/shared.content.rating';
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
 

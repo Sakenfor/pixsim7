@@ -1,4 +1,4 @@
-import { filterNodesByType } from '@pixsim7/shared.graph-utilities';
+import { filterNodesByType } from '@pixsim7/shared.graph.utilities';
 
 import type { StateCreator, CrossSceneState } from './types';
 

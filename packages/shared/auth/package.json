@@ -22,7 +22,7 @@
     "zustand": "^4.0.0 || ^5.0.0"
   },
   "dependencies": {
-    "@pixsim7/shared.api-client": "workspace:*"
+    "@pixsim7/shared.api.client": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.0",

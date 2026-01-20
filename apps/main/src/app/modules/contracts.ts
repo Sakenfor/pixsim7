@@ -1,6 +1,6 @@
 import type { DevToolCategory } from '@pixsim7/shared.devtools';
 import type { ModuleDefinition } from '@pixsim7/shared.modules';
-import type { BasePanelDefinition } from '@pixsim7/shared.panels';
+import type { BasePanelDefinition } from '@pixsim7/shared.ui.panels';
 
 import type { FeatureCapability } from '@lib/capabilities';
 

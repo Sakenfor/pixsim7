@@ -18,7 +18,7 @@ import type {
   GenerationValidationResult,
 } from '@pixsim7/shared.types';
 import type { UserContentPreferences } from '@pixsim7/shared.types';
-import { getContentRatingIndex } from '@pixsim7/shared.content-rating';
+import { getContentRatingIndex } from '@pixsim7/shared.content.rating';
 
 /**
  * Validate social context against world constraints

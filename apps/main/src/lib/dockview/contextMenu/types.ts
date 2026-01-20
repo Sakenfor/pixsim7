@@ -10,7 +10,7 @@ import type {
   MenuActionContextBase,
   MenuActionBase,
   MenuItem as MenuItemBase,
-} from '@pixsim7/shared.panels';
+} from '@pixsim7/shared.ui.panels';
 import type { DockviewApi } from 'dockview-core';
 
 import type { ContextHubState } from '@features/contextHub';

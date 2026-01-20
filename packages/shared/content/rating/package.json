@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.content-rating",
+  "name": "@pixsim7/shared.content.rating",
   "version": "0.0.1",
   "private": true,
   "description": "Content rating utilities and validation (framework-agnostic)",

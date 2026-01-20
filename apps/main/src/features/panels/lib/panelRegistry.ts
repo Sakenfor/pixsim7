@@ -5,7 +5,7 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
-import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "@pixsim7/shared.panels";
+import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "@pixsim7/shared.ui.panels";
 import type { ComponentType } from "react";
 import type { z } from "zod";
 

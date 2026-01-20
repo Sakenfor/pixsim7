@@ -1,9 +1,9 @@
 /**
  * Logs API Client (web wrapper)
  *
- * Delegates to environment-neutral domain client in @pixsim7/shared.api-client.
+ * Delegates to environment-neutral domain client in @pixsim7/shared.api.client.
  */
-import { createLogsApi } from '@pixsim7/shared.api-client/domains';
+import { createLogsApi } from '@pixsim7/shared.api.client/domains';
 
 import { pixsimClient } from './client';
 
@@ -16,7 +16,7 @@ export type {
   LogQueryParams,
   ConsoleFieldDefinition,
   ConsoleFieldsResponse,
-} from '@pixsim7/shared.api-client/domains';
+} from '@pixsim7/shared.api.client/domains';
 
 const logsApi = createLogsApi(pixsimClient);
 

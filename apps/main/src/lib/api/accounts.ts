@@ -4,15 +4,15 @@
  * Typed API client for /api/v1/accounts endpoint.
  * Uses OpenAPI-generated types for type safety and contract alignment.
  */
-import { createAccountsApi } from '@pixsim7/shared.api-client/domains';
-import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/shared.api-client/domains';
+import { createAccountsApi } from '@pixsim7/shared.api.client/domains';
+import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/shared.api.client/domains';
 import type { ApiComponents } from '@shared/types';
 
 import { logEvent } from '@lib/utils/logging';
 
 import { pixsimClient } from './client';
 
-export type { AccountResponse, AccountUpdate, AccountStatus, CreateApiKeyResponse } from '@pixsim7/shared.api-client/domains';
+export type { AccountResponse, AccountUpdate, AccountStatus, CreateApiKeyResponse } from '@pixsim7/shared.api.client/domains';
 
 // OpenAPI-generated types
 export type AccountStatsResponse = ApiComponents['schemas']['AccountStatsResponse'];

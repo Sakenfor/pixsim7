@@ -1,5 +1,6 @@
+import { exportGraph, exportProject, importGraph, importProject, createBasicValidator } from '@pixsim7/shared.graph.utilities';
+
 import { logEvent } from '@lib/utils/logging';
-import { exportGraph, exportProject, importGraph, importProject, createBasicValidator } from '@pixsim7/shared.graph-utilities';
 
 import type { DraftScene } from '@domain/sceneBuilder';
 

@@ -5,7 +5,7 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
-import type { PanelRegistryLike } from "@pixsim7/shared.panels";
+import type { PanelRegistryLike } from "@pixsim7/shared.ui.panels";
 
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";

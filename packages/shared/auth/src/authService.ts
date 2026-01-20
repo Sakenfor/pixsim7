@@ -20,7 +20,7 @@
  * setAuthStorageProvider(mySecureAuthStorage);
  * ```
  */
-import { createApiClient, type ApiClientConfig, type PixSimApiClient, type TokenProvider } from '@pixsim7/shared.api-client';
+import { createApiClient, type ApiClientConfig, type PixSimApiClient, type TokenProvider } from '@pixsim7/shared.api.client';
 import type { AuthStorageProvider } from './storage';
 import { browserAuthStorage } from './storage';
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from './types';

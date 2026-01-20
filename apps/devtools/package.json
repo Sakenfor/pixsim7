@@ -7,12 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "prebuild": "pnpm run build:deps",
-    "build:deps": "pnpm --filter @pixsim7/shared.types build && pnpm --filter @pixsim7/shared.modules build && pnpm --filter @pixsim7/shared.panels build && pnpm --filter @pixsim7/shared.devtools build && pnpm --filter @pixsim7/shared.ui.tools build && pnpm --filter @pixsim7/shared.ui build && pnpm --filter @pixsim7/game.engine build && pnpm --filter @pixsim7/game.components build && pnpm --filter @pixsim7/scene.shapes build && pnpm --filter @pixsim7/scene.gizmos build",
+    "build:deps": "pnpm --filter @pixsim7/shared.types build && pnpm --filter @pixsim7/shared.modules build && pnpm --filter @pixsim7/shared.ui.panels build && pnpm --filter @pixsim7/shared.devtools build && pnpm --filter @pixsim7/shared.ui.tools build && pnpm --filter @pixsim7/shared.ui build && pnpm --filter @pixsim7/game.engine build && pnpm --filter @pixsim7/game.components build && pnpm --filter @pixsim7/scene.shapes build && pnpm --filter @pixsim7/scene.gizmos build",
     "build:check": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@pixsim7/shared.api-client": "workspace:*",
+    "@pixsim7/shared.api.client": "workspace:*",
     "@pixsim7/shared.auth": "workspace:*",
     "@pixsim7/shared.capabilities.core": "workspace:*",
     "@pixsim7/graphics.geometry": "workspace:*",
@@ -28,7 +28,7 @@
     "@pixsim7/shared.devtools": "workspace:*",
     "@pixsim7/shared.generation.core": "workspace:*",
     "@pixsim7/shared.modules": "workspace:*",
-    "@pixsim7/shared.panels": "workspace:*",
+    "@pixsim7/shared.ui.panels": "workspace:*",
     "@pixsim7/shared.types": "workspace:*",
     "@pixsim7/shared.ui": "workspace:*",
     "@pixsim7/shared.ui.tools": "workspace:*",

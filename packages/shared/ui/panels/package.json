@@ -1,8 +1,8 @@
 {
-  "name": "@pixsim7/shared.preview-protocol",
+  "name": "@pixsim7/shared.ui.panels",
   "version": "0.0.1",
   "private": true,
-  "description": "PostMessage protocol types between editor and game.",
+  "description": "Shared panel contracts for PixSim7",
   "main": "src/index.ts",
   "module": "src/index.ts",
   "types": "src/index.ts",
@@ -18,8 +18,11 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": {},
+  "peerDependencies": {
+    "react": ">=18"
+  },
   "devDependencies": {
+    "@types/react": "^19.2.2",
     "typescript": "^5.4.0"
   }
 }

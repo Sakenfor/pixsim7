@@ -1,4 +1,3 @@
-import { useToastStore } from '@pixsim7/shared.ui';
 import {
   addNode,
   updateNode,
@@ -6,7 +5,8 @@ import {
   addEdge,
   removeEdge,
   findNode,
-} from '@pixsim7/shared.graph-utilities';
+} from '@pixsim7/shared.graph.utilities';
+import { useToastStore } from '@pixsim7/shared.ui';
 
 import { validateArcGraphReferences, type ArcGraphEdge, type ArcGraphNode } from '@features/graph/models/arcGraph';
 
