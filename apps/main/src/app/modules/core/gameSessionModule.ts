@@ -1,7 +1,9 @@
-import type { Module } from '../types';
-import { createModuleInitializer } from '../lifecycle';
-import { registerBuiltinHelpers } from '@lib/registries';
+import { createModuleInitializer, MODULE_PRIORITIES } from '@pixsim7/shared.modules';
+
 import { registerCustomHelpers } from '@lib/game/customHelpers';
+import { registerBuiltinHelpers } from '@lib/registries';
+
+import type { Module } from '../types';
 
 /**
  * Game Session Module
@@ -18,7 +20,7 @@ import { registerCustomHelpers } from '@lib/game/customHelpers';
 export const gameSessionModule: Module = {
   id: 'game-session',
   name: 'Game Session Module',
-  priority: 75, // Core system
+  priority: MODULE_PRIORITIES.CORE_SYSTEM,
 
   // Use lifecycle helper for automatic hot-reload safety
   initialize: createModuleInitializer('game-session', async () => {

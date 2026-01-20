@@ -45,7 +45,7 @@ export function createModuleInitializer(
   return async () => {
     // Check if already initialized
     if (initializedModules.get(moduleId)) {
-      if (import.meta.env.DEV) {
+      if (import.meta.env?.DEV) {
         console.debug(`[Module] ${moduleId} already initialized, skipping (hot-reload)`);
       }
       return;
@@ -56,7 +56,7 @@ export function createModuleInitializer(
       await initFn();
       initializedModules.set(moduleId, true);
 
-      if (import.meta.env.DEV) {
+      if (import.meta.env?.DEV) {
         console.debug(`[Module] ${moduleId} initialized successfully`);
       }
     } catch (error) {
@@ -89,12 +89,12 @@ export function isModuleInitialized(moduleId: string): boolean {
 export function resetModuleState(moduleId?: string): void {
   if (moduleId) {
     initializedModules.delete(moduleId);
-    if (import.meta.env.DEV) {
+    if (import.meta.env?.DEV) {
       console.debug(`[Module] ${moduleId} state reset`);
     }
   } else {
     initializedModules.clear();
-    if (import.meta.env.DEV) {
+    if (import.meta.env?.DEV) {
       console.debug('[Module] All module states reset');
     }
   }
@@ -131,7 +131,7 @@ export function getInitializedModules(): string[] {
  * ```
  */
 export function warnUnguardedInit(moduleId: string, action: string): void {
-  if (import.meta.env.DEV) {
+  if (import.meta.env?.DEV) {
     console.warn(
       `[Module] ${moduleId}: ${action} without hot-reload guard. ` +
         `Consider using createModuleInitializer() to prevent duplicate initialization.`
@@ -156,7 +156,7 @@ export function createModuleCleanup(
 
   return async () => {
     if (cleanupRan) {
-      if (import.meta.env.DEV) {
+      if (import.meta.env?.DEV) {
         console.debug(`[Module] ${moduleId} already cleaned up, skipping`);
       }
       return;
@@ -168,7 +168,7 @@ export function createModuleCleanup(
       // Remove from initialized modules
       initializedModules.delete(moduleId);
 
-      if (import.meta.env.DEV) {
+      if (import.meta.env?.DEV) {
         console.debug(`[Module] ${moduleId} cleaned up successfully`);
       }
     } catch (error) {

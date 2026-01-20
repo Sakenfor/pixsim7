@@ -1,3 +1,5 @@
+import { MODULE_PRIORITIES } from '@pixsim7/shared.modules';
+
 import { initializePluginKernel } from '@lib/plugins/pluginKernel';
 
 import type { Module } from '../types';
@@ -16,7 +18,7 @@ import type { Module } from '../types';
 export const pluginBootstrapModule: Module = {
   id: 'plugin-bootstrap',
   name: 'Plugin Bootstrap Module',
-  priority: 100, // Must initialize first
+  priority: MODULE_PRIORITIES.INFRASTRUCTURE,
 
   async initialize() {
     await initializePluginKernel({ verbose: true, strict: false });

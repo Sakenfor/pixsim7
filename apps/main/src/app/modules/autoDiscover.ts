@@ -1,6 +1,9 @@
 // Feature Module Auto-Discovery
 
-import { moduleRegistry, type Module } from './types';
+import { isValidModule } from '@pixsim7/shared.modules';
+
+import type { Module } from './contracts';
+import { moduleRegistry } from './registry';
 
 interface ModuleExport {
   default?: Module;
@@ -83,12 +86,6 @@ function findModuleExport(exports: ModuleExport, featureName: string): Module | 
 
   // 4. Fallback to first valid export
   return validExports[0].module;
-}
-
-function isValidModule(obj: unknown): obj is Module {
-  if (!obj || typeof obj !== 'object') return false;
-  const mod = obj as Record<string, unknown>;
-  return typeof mod.id === 'string' && typeof mod.name === 'string';
 }
 
 export function registerDiscoveredFeatureModules(): void {
