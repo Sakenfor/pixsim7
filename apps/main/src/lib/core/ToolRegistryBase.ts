@@ -44,7 +44,7 @@ export type { ToolPlugin, UiToolPlugin } from '@pixsim7/shared.ui.tools';
  * - Add any registry-specific methods (e.g., getBySurface for Gallery)
  */
 export abstract class ToolRegistryBase<
-  T extends ToolPlugin,
+  T extends ToolPlugin<TContext>,
   TContext = unknown
 > extends BaseRegistry<T> {
   /**
@@ -122,4 +122,5 @@ export abstract class ToolRegistryBase<
 /**
  * Preferred alias for ToolRegistryBase.
  */
-export type UiToolRegistryBase<T extends ToolPlugin, TContext = unknown> = ToolRegistryBase<T, TContext>;
+export type UiToolRegistryBase<T extends ToolPlugin<TContext>, TContext = unknown> =
+  ToolRegistryBase<T, TContext>;
