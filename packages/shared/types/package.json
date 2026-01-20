@@ -21,6 +21,11 @@
       "require": "./src/interactions.ts",
       "types": "./src/interactions.ts"
     },
+    "./intimacy": {
+      "import": "./src/intimacy.ts",
+      "require": "./src/intimacy.ts",
+      "types": "./src/intimacy.ts"
+    },
     "./prompt": {
       "import": "./src/prompt.ts",
       "require": "./src/prompt.ts",
