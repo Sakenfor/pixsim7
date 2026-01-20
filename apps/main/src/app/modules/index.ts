@@ -35,7 +35,7 @@ import {
   blockFitModule,
   widgetBuilderModule,
 } from './pages';
-import { moduleRegistry } from './types';
+import { moduleRegistry } from './registry';
 
 // Register all modules
 export function registerModules() {
@@ -89,7 +89,7 @@ export {
 } from './autoDiscover';
 
 // Export page category constants and types
-export { PAGE_CATEGORIES, type PageCategory } from './types';
+export { PAGE_CATEGORIES, type PageCategory } from './contracts';
 
 // Export core module instances for direct access
 export { pluginBootstrapModule } from './core/pluginBootstrapModule';
