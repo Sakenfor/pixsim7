@@ -22,52 +22,12 @@
  * @see docs/guides/registry-patterns.md
  */
 
-import type { ReactNode } from 'react';
-import { BaseRegistry, type Identifiable } from './BaseRegistry';
+import type { ToolPlugin } from '@pixsim7/shared.ui.tools';
 
-/**
- * Base interface for UI tool plugins
- *
- * UI tools are panels/widgets that render in the application interface.
- * Domain-specific registries extend this with additional properties
- * (e.g., GalleryUiToolPlugin adds `supportedSurfaces`).
- *
- * @alias UiToolPlugin - Preferred name for new code
- */
-export interface ToolPlugin extends Identifiable {
-  /** Unique identifier */
-  id: string;
+import { BaseRegistry } from './BaseRegistry';
 
-  /** Display name */
-  name: string;
-
-  /** Short description */
-  description?: string;
-
-  /** Icon (emoji or icon name) */
-  icon?: string;
-
-  /** Category for grouping tools (type varies by registry) */
-  category?: string;
-
-  /**
-   * Predicate to determine when this tool should be visible
-   * @returns true if the tool should be shown
-   */
-  whenVisible?: (context: any) => boolean;
-
-  /**
-   * Render the tool UI
-   * @param context - Current context (type varies by registry)
-   */
-  render: (context: any) => ReactNode;
-
-  /** Optional: Initialize the tool when mounted */
-  onMount?: (context: any) => void | Promise<void>;
-
-  /** Optional: Cleanup when tool is unmounted */
-  onUnmount?: () => void | Promise<void>;
-}
+// Re-export shared contracts for backwards compatibility
+export type { ToolPlugin, UiToolPlugin } from '@pixsim7/shared.ui.tools';
 
 /**
  * Abstract base class for tool registries
@@ -85,7 +45,7 @@ export interface ToolPlugin extends Identifiable {
  */
 export abstract class ToolRegistryBase<
   T extends ToolPlugin,
-  TContext = any
+  TContext = unknown
 > extends BaseRegistry<T> {
   /**
    * Name prefix for log messages (e.g., 'Gallery', 'Brain', 'World')
@@ -118,7 +78,7 @@ export abstract class ToolRegistryBase<
     }
 
     this.forceRegister(tool);
-    console.log(`✓ Registered ${this.toolTypeName.toLowerCase()} tool: ${tool.id}`);
+    console.log(`Registered ${this.toolTypeName.toLowerCase()} tool: ${tool.id}`);
     return true;
   }
 
@@ -160,12 +120,6 @@ export abstract class ToolRegistryBase<
 // ============================================================================
 
 /**
- * Preferred alias for ToolPlugin.
- * Use this in new code to distinguish from scene gizmos and other "tool" types.
- */
-export type UiToolPlugin = ToolPlugin;
-
-/**
  * Preferred alias for ToolRegistryBase.
  */
-export type UiToolRegistryBase<T extends UiToolPlugin, TContext = any> = ToolRegistryBase<T, TContext>;
+export type UiToolRegistryBase<T extends ToolPlugin, TContext = unknown> = ToolRegistryBase<T, TContext>;

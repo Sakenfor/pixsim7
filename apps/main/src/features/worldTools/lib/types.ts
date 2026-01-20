@@ -23,64 +23,30 @@
  * @alias WorldUiToolPlugin - Preferred name for new code
  */
 
-import type { ReactNode } from 'react';
-
-import { ToolRegistryBase, type ToolPlugin } from '@lib/core/ToolRegistryBase';
-import { debugFlags } from '@lib/utils/debugFlags';
-import type {
-  GameSessionDTO,
-  GameWorldDetail,
-  GameLocationDetail,
-  NpcPresenceDTO,
-} from '@lib/api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game.engine';
+import type { WorldToolPlugin as SharedWorldToolPlugin } from '@pixsim7/shared.ui.tools';
 
-/**
- * Re-export context types from separate file to avoid circular dependencies
- */
+import { ToolRegistryBase } from '@lib/core/ToolRegistryBase';
+import { debugFlags } from '@lib/utils/debugFlags';
 
+// Re-export shared contracts
+export type { WorldToolCategory } from '@pixsim7/shared.ui.tools';
+
+// Re-export context types from separate file
+export type { WorldTime, WorldToolContext } from './context';
 import type { WorldToolContext } from './context';
 
-export type { WorldTime, WorldToolContext } from './context';
+/**
+ * World UI tool plugin definition.
+ * Specialized with app's NpcSlotAssignment type.
+ */
+export type WorldToolPlugin = SharedWorldToolPlugin<NpcSlotAssignment>;
 
 /**
- * World tool category
+ * Preferred alias for WorldToolPlugin.
+ * Use this in new code to distinguish from scene gizmos and other "tool" types.
  */
-export type WorldToolCategory = 'character' | 'world' | 'quest' | 'inventory' | 'debug' | 'utility';
-
-/**
- * World UI tool plugin definition
- *
- * Extends the base UiToolPlugin with world-specific properties.
- * These are UI panels/widgets for the world view (RelationshipDashboard, QuestLog, etc.)
- *
- * @alias WorldUiToolPlugin - Preferred name for new code
- */
-export interface WorldToolPlugin extends ToolPlugin {
-  /** Short description (required for world tools) */
-  description: string;
-
-  /** Category for grouping tools */
-  category?: WorldToolCategory;
-
-  /**
-   * Predicate to determine when this tool should be visible
-   * @returns true if the tool should be shown
-   */
-  whenVisible?: (context: WorldToolContext) => boolean;
-
-  /**
-   * Render the tool UI
-   * @param context - Current world context
-   */
-  render: (context: WorldToolContext) => ReactNode;
-
-  /** Optional: Initialize the tool when mounted */
-  onMount?: (context: WorldToolContext) => void | Promise<void>;
-
-  /** Optional: Cleanup when tool is unmounted */
-  onUnmount?: () => void | Promise<void>;
-}
+export type WorldUiToolPlugin = WorldToolPlugin;
 
 /**
  * World tool registry
@@ -111,7 +77,7 @@ export class WorldToolRegistry extends ToolRegistryBase<WorldToolPlugin, WorldTo
     }
 
     this.forceRegister(tool);
-    debugFlags.log('registry', `✓ Registered world tool: ${tool.id}`);
+    debugFlags.log('registry', `Registered world tool: ${tool.id}`);
     return true;
   }
 }
@@ -238,13 +204,3 @@ export interface PlayerHudPreferences {
   /** Timestamp when preferences were last updated */
   lastUpdated: number;
 }
-
-// ============================================================================
-// Type Aliases (preferred names for new code)
-// ============================================================================
-
-/**
- * Preferred alias for WorldToolPlugin.
- * Use this in new code to distinguish from scene gizmos and other "tool" types.
- */
-export type WorldUiToolPlugin = WorldToolPlugin;

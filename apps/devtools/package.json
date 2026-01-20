@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "prebuild": "pnpm run build:deps",
-    "build:deps": "pnpm --filter @pixsim7/shared.types build && pnpm --filter @pixsim7/shared.modules build && pnpm --filter @pixsim7/shared.panels build && pnpm --filter @pixsim7/shared.devtools build && pnpm --filter @pixsim7/shared.ui build && pnpm --filter @pixsim7/game.engine build && pnpm --filter @pixsim7/game.components build && pnpm --filter @pixsim7/scene.shapes build && pnpm --filter @pixsim7/scene.gizmos build",
+    "build:deps": "pnpm --filter @pixsim7/shared.types build && pnpm --filter @pixsim7/shared.modules build && pnpm --filter @pixsim7/shared.panels build && pnpm --filter @pixsim7/shared.devtools build && pnpm --filter @pixsim7/shared.ui.tools build && pnpm --filter @pixsim7/shared.ui build && pnpm --filter @pixsim7/game.engine build && pnpm --filter @pixsim7/game.components build && pnpm --filter @pixsim7/scene.shapes build && pnpm --filter @pixsim7/scene.gizmos build",
     "build:check": "tsc -b && vite build",
     "preview": "vite preview"
   },
@@ -31,6 +31,7 @@
     "@pixsim7/shared.panels": "workspace:*",
     "@pixsim7/shared.types": "workspace:*",
     "@pixsim7/shared.ui": "workspace:*",
+    "@pixsim7/shared.ui.tools": "workspace:*",
     "@pixsim7/pixcubes": "workspace:*",
     "@react-spring/three": "^10.0.3",
     "@react-three/drei": "^10.7.7",

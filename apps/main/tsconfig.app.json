@@ -136,6 +136,7 @@
       "@pixsim7/shared.modules": ["../../packages/shared/modules/src"],
       "@pixsim7/shared.panels": ["../../packages/shared/panels/src"],
       "@pixsim7/shared.devtools": ["../../packages/shared/devtools/src"],
+      "@pixsim7/shared.ui.tools": ["../../packages/shared/ui.tools/src"],
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers-core/src"],
       "@pixsim7/core.composer": ["../../packages/core/composer/src"],
       "@shared/types": ["../../packages/shared/types/src"],
