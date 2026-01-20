@@ -7,9 +7,9 @@
  */
 import { createApiClient, type PixSimApiClient } from '@pixsim7/shared.api-client';
 import {
-  createBrowserTokenProvider,
   computeBackendUrl,
 } from '@pixsim7/shared.api-client/browser';
+import { getAuthTokenProvider } from '@pixsim7/shared.auth';
 
 /**
  * Backend base URL (without /api/v1 suffix).
@@ -34,24 +34,16 @@ export const API_BASE_URL = `${BACKEND_BASE}/api/v1`;
 let isRedirecting = false;
 
 /**
- * Browser token provider using localStorage.
- */
-const browserTokenProvider = createBrowserTokenProvider({
-  tokenKey: 'access_token',
-  userKey: 'user',
-});
-
-/**
  * Pre-configured API client instance for the web app.
  *
  * Features:
- * - Automatic token injection from localStorage
+ * - Automatic token injection from auth storage (localStorage by default)
  * - Centralized 401 handling with redirect to /login
  * - Redirect storm prevention (only one redirect per page load)
  */
 const client = createApiClient({
   baseUrl: BACKEND_BASE,
-  tokenProvider: browserTokenProvider,
+  tokenProvider: getAuthTokenProvider(),
   onUnauthorized: () => {
     // Token expired or invalid - redirect once (prevent flash loops from parallel requests)
     if (typeof window !== 'undefined') {

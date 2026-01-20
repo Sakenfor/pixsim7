@@ -20,7 +20,7 @@
  * setAuthStorageProvider(mySecureAuthStorage);
  * ```
  */
-import type { PixSimApiClient } from '@pixsim7/shared.api-client';
+import { createApiClient, type ApiClientConfig, type PixSimApiClient, type TokenProvider } from '@pixsim7/shared.api-client';
 import type { AuthStorageProvider } from './storage';
 import { browserAuthStorage } from './storage';
 import type { LoginRequest, RegisterRequest, AuthResponse, User } from './types';
@@ -42,13 +42,40 @@ let logoutCallback: (() => void) | null = null;
 let apiClient: PixSimApiClient | null = null;
 
 /**
- * Configure the auth service with an API client.
+ * Auth service configuration options.
+ * Token handling is always derived from the active AuthStorageProvider.
+ */
+export type AuthServiceConfig = Omit<ApiClientConfig, 'tokenProvider'>;
+
+/**
+ * Token provider that proxies to the current AuthStorageProvider.
+ * Uses the latest authStorage instance for every call.
+ */
+const authTokenProvider: TokenProvider = {
+  getAccessToken: () => authStorage.getAccessToken(),
+  setAccessToken: (token) => authStorage.setAccessToken(token),
+  clearTokens: () => authStorage.clearAll(),
+};
+
+/**
+ * Get the shared auth token provider.
+ * Useful for creating API clients that must stay in sync with auth storage.
+ */
+export function getAuthTokenProvider(): TokenProvider {
+  return authTokenProvider;
+}
+
+/**
+ * Configure the auth service and create its API client.
  * Must be called before using auth operations.
  *
- * @param client - The PixSimApiClient instance to use for API calls
+ * @param config - API client configuration (token provider is injected automatically)
  */
-export function configureAuthService(client: PixSimApiClient): void {
-  apiClient = client;
+export function configureAuthService(config: AuthServiceConfig): void {
+  apiClient = createApiClient({
+    ...config,
+    tokenProvider: authTokenProvider,
+  });
 }
 
 /**
@@ -93,7 +120,7 @@ export function setLogoutCallback(callback: (() => void) | null): void {
 function getClient(): PixSimApiClient {
   if (!apiClient) {
     throw new Error(
-      '[authService] API client not configured. Call configureAuthService(client) first.'
+      '[authService] API client not configured. Call configureAuthService(config) first.'
     );
   }
   return apiClient;

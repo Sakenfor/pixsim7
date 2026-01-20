@@ -18,11 +18,22 @@ import {
   type AuthStorageProvider,
 } from '@pixsim7/shared.auth';
 
-import { pixsimClient } from '../api/client';
+import { BACKEND_BASE } from '../api/client';
 import { previewBridge } from '../preview-bridge';
 
-// Configure the auth service with the API client
-configureAuthService(pixsimClient);
+let isRedirecting = false;
+
+// Configure the auth service with API client settings
+configureAuthService({
+  baseUrl: BACKEND_BASE,
+  onUnauthorized: () => {
+    if (typeof window === 'undefined') return;
+    if (!window.location.pathname.startsWith('/login') && !isRedirecting) {
+      isRedirecting = true;
+      window.location.href = '/login';
+    }
+  },
+});
 
 // Hook into token changes for preview bridge sync
 setTokenChangedCallback((token) => {

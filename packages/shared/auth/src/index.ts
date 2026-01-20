@@ -6,19 +6,13 @@
  *
  * @example Setup (in your app's entry point)
  * ```ts
- * import { createApiClient } from '@pixsim7/shared.api-client';
- * import { createBrowserTokenProvider, computeBackendUrl } from '@pixsim7/shared.api-client/browser';
+ * import { computeBackendUrl } from '@pixsim7/shared.api-client/browser';
  * import { configureAuthService, setTokenChangedCallback, setLogoutCallback } from '@pixsim7/shared.auth';
  *
- * // Create API client
- * const client = createApiClient({
+ * configureAuthService({
  *   baseUrl: computeBackendUrl({ envUrl: import.meta.env.VITE_BACKEND_URL }),
- *   tokenProvider: createBrowserTokenProvider(),
  *   onUnauthorized: () => window.location.href = '/login',
  * });
- *
- * // Configure auth service
- * configureAuthService(client);
  *
  * // Optional: Hook into token changes
  * setTokenChangedCallback((token) => {
@@ -56,6 +50,9 @@ export type {
   AuthResponse,
 } from './types';
 
+// Config
+export type { AuthServiceConfig } from './authService';
+
 // Storage
 export type { AuthStorageProvider } from './storage';
 export {
@@ -68,6 +65,7 @@ export {
 export {
   authService,
   configureAuthService,
+  getAuthTokenProvider,
   setAuthStorageProvider,
   getAuthStorageProvider,
   setTokenChangedCallback,
