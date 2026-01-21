@@ -39,6 +39,7 @@ export type {
 export type {
   AssetResponse,
   AssetListResponse,
+  EnrichAssetResponse,
   ExtractFrameRequest,
   ReuploadAssetRequest,
   ListAssetsQuery,

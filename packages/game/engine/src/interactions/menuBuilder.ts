@@ -12,7 +12,7 @@
 import type {
   NpcInteractionInstance,
   NpcInteractionDefinition,
-  InteractionSurface,
+  NpcInteractionSurface,
 } from '@pixsim7/shared.types';
 import type { HotspotAction } from './hotspot';
 import { gameActionRegistry } from './actionRegistry';
@@ -31,7 +31,7 @@ export interface UnifiedMenuItem {
   icon?: string;
 
   /** Surface to use */
-  surface: InteractionSurface;
+  surface: NpcInteractionSurface;
 
   /** Priority (higher = shown first) */
   priority: number;
@@ -80,7 +80,7 @@ export interface InteractionMenuResult {
   unavailable: UnifiedMenuItem[];
 
   /** Items grouped by surface */
-  bySurface: Record<InteractionSurface, UnifiedMenuItem[]>;
+  bySurface: Record<NpcInteractionSurface, UnifiedMenuItem[]>;
 }
 
 /**
@@ -138,7 +138,7 @@ export function slotPluginToMenuItem(
   priority: number = 0
 ): UnifiedMenuItem {
   let icon: string | undefined;
-  let surface: InteractionSurface = 'inline';
+  let surface: NpcInteractionSurface = 'inline';
 
   // Infer from plugin ID
   switch (pluginId) {
@@ -201,7 +201,7 @@ export function buildInteractionMenu(options: {
   sortByPriority?: boolean;
 
   /** Filter to specific surfaces */
-  filterSurfaces?: InteractionSurface[];
+  filterSurfaces?: NpcInteractionSurface[];
 }): InteractionMenuResult {
   const {
     hotspotActions = [],
@@ -248,7 +248,7 @@ export function buildInteractionMenu(options: {
   const unavailable = filtered.filter((item) => !item.available);
 
   // Group by surface
-  const bySurface: Record<InteractionSurface, UnifiedMenuItem[]> = {
+  const bySurface: Record<NpcInteractionSurface, UnifiedMenuItem[]> = {
     inline: [],
     dialogue: [],
     scene: [],
@@ -283,7 +283,7 @@ export function getPrimaryInteraction(
  */
 export function getInteractionsBySurface(
   menu: InteractionMenuResult,
-  surface: InteractionSurface
+  surface: NpcInteractionSurface
 ): UnifiedMenuItem[] {
   return menu.bySurface[surface] || [];
 }

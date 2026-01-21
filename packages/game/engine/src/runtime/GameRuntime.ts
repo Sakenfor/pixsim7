@@ -454,7 +454,7 @@ export class GameRuntime implements IGameRuntime {
 
     const adapter = getAdapterBySource(source);
     if (!adapter) {
-      this.log(`No adapter registered for source "${source}"`, 'warn');
+      this.log(`No adapter registered for source "${source}"`);
       return null;
     }
 

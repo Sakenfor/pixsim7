@@ -4,6 +4,10 @@
  * Generic object manipulation utilities - pure TypeScript, no dependencies.
  */
 
+export type DeepPartial<T> = {
+  [P in keyof T]?: T[P] extends object ? DeepPartial<T[P]> : T[P];
+};
+
 /**
  * Deep merge two objects, with override taking precedence.
  *
@@ -26,7 +30,7 @@
  */
 export function deepMerge<T extends Record<string, any>>(
   base: T,
-  override: Partial<T>
+  override: DeepPartial<T>
 ): T {
   const result = { ...base };
 

@@ -1,5 +1,5 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type { ApiComponents } from '@pixsim7/shared.types';
 
 export type AssetResponse = ApiComponents['schemas']['AssetResponse'];
 export type AssetListResponse = ApiComponents['schemas']['AssetListResponse'];
@@ -11,8 +11,7 @@ export interface ReuploadAssetRequest {
   provider_id: string;
 }
 
-export type ListAssetsQuery =
-  ApiOperations['list_assets_api_v1_assets_get']['parameters']['query'];
+export type ListAssetsQuery = AssetSearchRequest;
 
 export interface AssetSearchRequest {
   filters?: Record<string, unknown>;

@@ -15,10 +15,14 @@ import type { StatSource } from '../session/statAdapters';
 export interface NpcPersona {
   /** Personality trait modifiers (0-100 scale) */
   traits?: Record<string, number>;
+  /** Persona tags used for derived behavior */
+  tags?: string[];
   /** Base mood/disposition */
   baseMood?: string;
   /** Communication style preferences */
   communicationStyle?: Record<string, any>;
+  /** Conversation style label (legacy snake-case) */
+  conversation_style?: string;
   /** Additional persona metadata */
   meta?: Record<string, any>;
 }

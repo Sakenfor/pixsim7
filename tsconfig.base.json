@@ -43,7 +43,9 @@
       "@features/generation/*": ["apps/main/src/features/generation/*"],
       "@features/generation": ["apps/main/src/features/generation/index.ts"],
       "@features/graph/*": ["apps/main/src/features/graph/*"],
-      "@features/graph": ["apps/main/src/features/graph/index.ts"]
+      "@features/graph": ["apps/main/src/features/graph/index.ts"],
+      "@pixsim7/shared.graph.core": ["packages/shared/graph/core/src/index.ts"],
+      "@pixsim7/shared.graph.core/*": ["packages/shared/graph/core/src/*"]
     }
   }
 }

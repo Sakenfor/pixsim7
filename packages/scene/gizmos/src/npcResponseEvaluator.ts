@@ -9,7 +9,7 @@ import type {
   ResponseGraphNode,
   ResponseGraphConnection,
   NpcResponseMetadata,
-} from '@pixsim7/shared.types';
+} from '@pixsim7/shared.graph.core';
 
 // ============================================================================
 // Evaluation Context

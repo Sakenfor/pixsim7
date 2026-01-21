@@ -65,7 +65,7 @@ export function generateZonesFromCorrespondences(
   }
 
   return {
-    npcId: '',  // To be set by caller
+    npcId: 0,  // To be set by caller
     reference,
     trackedZones,
     correspondenceMap: {

@@ -425,18 +425,22 @@ export function tryParseRef(ref: string): RefParseResult {
   };
 
   // Parse a numeric ID and return error result if invalid
-  const parseNumericId = (val: string): { success: true; n: number } | { success: false; reason: RefParseErrorReason; message: string } => {
+  const parseNumericId = (
+    val: string
+  ): { success: true; n: number } | { success: false; reason: RefParseErrorReason; message: string } => {
     const result = validateNumericId(val);
-    if (result.valid) {
-      return { success: true, n: result.n };
+    if (result.valid === false) {
+      return { success: false, reason: result.reason, message: result.message };
     }
-    return { success: false, reason: result.reason, message: result.message };
+    return { success: true, n: result.n };
   };
 
   switch (prefix) {
     case 'npc': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'npc', id: result.n } };
     }
 
@@ -456,7 +460,9 @@ export function tryParseRef(ref: string): RefParseResult {
 
     case 'location': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'location', id: result.n } };
     }
 
@@ -473,7 +479,9 @@ export function tryParseRef(ref: string): RefParseResult {
 
       const idStr = value.slice(secondColonIndex + 1);
       const result = parseNumericId(idStr);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
 
       return { success: true, parsed: { type: 'scene', id: result.n, sceneType } };
     }
@@ -488,7 +496,9 @@ export function tryParseRef(ref: string): RefParseResult {
       const roleName = value.slice(secondColonIndex + 1);
 
       const result = parseNumericId(sceneIdStr);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
 
       if (!roleName) {
         return { success: false, reason: 'missing_role_name', message: 'Role name cannot be empty' };
@@ -499,13 +509,17 @@ export function tryParseRef(ref: string): RefParseResult {
 
     case 'asset': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'asset', id: result.n } };
     }
 
     case 'generation': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'generation', id: result.n } };
     }
 
@@ -525,13 +539,17 @@ export function tryParseRef(ref: string): RefParseResult {
 
     case 'world': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'world', id: result.n } };
     }
 
     case 'session': {
       const result = parseNumericId(value);
-      if (!result.success) return { success: false, reason: result.reason, message: result.message };
+      if (result.success === false) {
+        return { success: false, reason: result.reason, message: result.message };
+      }
       return { success: true, parsed: { type: 'session', id: result.n } };
     }
 

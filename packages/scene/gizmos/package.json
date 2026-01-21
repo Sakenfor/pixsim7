@@ -18,6 +18,7 @@
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
+    "@pixsim7/shared.graph.core": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {

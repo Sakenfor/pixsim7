@@ -144,7 +144,7 @@ export interface GalleryToolContext<TAsset extends MinimalAsset = MinimalAsset> 
     q?: string;
     tag?: string;
     provider_id?: string;
-    sort?: 'new' | 'old' | 'alpha';
+    sort?: 'new' | 'old' | 'alpha' | 'size';
     media_type?: string;
   };
 

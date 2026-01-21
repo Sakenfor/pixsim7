@@ -9,8 +9,8 @@ export type AnalyzerResponse = ApiComponents['schemas']['AnalyzerResponse'];
 export type AnalyzersListResponse = ApiComponents['schemas']['AnalyzersListResponse'];
 export type AnalyzerInstanceResponse = ApiComponents['schemas']['AnalyzerInstanceResponse'];
 export type AnalyzerInstanceListResponse = ApiComponents['schemas']['AnalyzerInstanceListResponse'];
-export type CreateAnalyzerInstanceRequest = ApiComponents['schemas']['CreateAnalyzerInstanceRequest'];
-export type UpdateAnalyzerInstanceRequest = ApiComponents['schemas']['UpdateAnalyzerInstanceRequest'];
+export type CreateAnalyzerInstanceRequest = ApiComponents['schemas']['AnalyzerInstanceCreate'];
+export type UpdateAnalyzerInstanceRequest = ApiComponents['schemas']['AnalyzerInstanceUpdate'];
 
 // ============================================================================
 // Frontend-only types (UX helpers, not in OpenAPI)

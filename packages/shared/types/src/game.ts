@@ -1525,8 +1525,13 @@ export interface ActivityCategoryConfig {
   meta?: Record<string, unknown>;
 }
 
-/** Relationship delta for activity effects (aliased from OpenAPI) */
-export type RelationshipDelta = ApiComponents['schemas']['RelationshipDelta'];
+/** Relationship delta for activity effects (mirrors backend schema) */
+export interface RelationshipDelta {
+  affinity?: number;
+  trust?: number;
+  chemistry?: number;
+  tension?: number;
+}
 
 /**
  * Custom effect for extensibility

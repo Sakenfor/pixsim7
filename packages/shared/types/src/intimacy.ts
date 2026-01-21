@@ -106,6 +106,15 @@ export type IntimacyIntensity =
  * Extends generation node config with intimacy-specific settings
  */
 export interface IntimacySceneConfig {
+  /** Editor-facing ID */
+  id?: string;
+
+  /** Display name for the scene */
+  name?: string;
+
+  /** Optional description */
+  description?: string;
+
   /** Type of intimacy scene */
   sceneType: IntimacySceneType;
 
@@ -114,6 +123,9 @@ export interface IntimacySceneConfig {
 
   /** Target NPC(s) for this scene */
   targetNpcIds: number[];
+
+  /** Legacy alias for target NPC IDs (editor-only) */
+  npcIds?: number[];
 
   /** Relationship gate(s) required to access this scene */
   gates: RelationshipGate[];
@@ -135,6 +147,12 @@ export interface IntimacySceneConfig {
 
   /** Tags for organizing scenes */
   tags?: string[];
+
+  /** Mood hint for generation */
+  mood?: string;
+
+  /** Duration hint for generation (seconds) */
+  duration?: number;
 
   /** Custom metadata */
   metadata?: Record<string, any>;

@@ -31,7 +31,9 @@
       "@pixsim7/shared.devtools": ["../../packages/shared/devtools/src"],
       "@pixsim7/shared.ui.tools": ["../../packages/shared/ui/tools/src"],
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers/core/src"],
-      "@pixsim7/core.composer": ["../../packages/core/composer/src"]
+      "@pixsim7/core.composer": ["../../packages/core/composer/src"],
+      "@pixsim7/shared.graph.core": ["../../packages/shared/graph/core/src/index.ts"],
+      "@pixsim7/shared.graph.core/*": ["../../packages/shared/graph/core/src/*"]
     },
 
     /* Linting */

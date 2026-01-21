@@ -9,7 +9,7 @@ import type {
   NpcInteractionDefinition,
   InteractionGating,
   InteractionOutcome,
-  InteractionSurface,
+  NpcInteractionSurface,
 } from '@pixsim7/shared.types';
 
 export interface ValidationError {
@@ -82,7 +82,7 @@ export function validateInteraction(
       field: 'surface',
       message: 'Interaction surface is required',
       severity: 'error',
-      suggestion: 'Specify how this interaction should be displayed: "inline", "dialogue", "scene", "notification", or "menu"',
+      suggestion: 'Specify how this interaction should be displayed: "inline", "dialogue", "scene", "notification", "menu", or "ambient"',
     });
   }
 
@@ -263,7 +263,7 @@ function validateGating(gating: InteractionGating, interactionId: string): Valid
 function validateOutcome(
   outcome: InteractionOutcome,
   interactionId: string,
-  surface: InteractionSurface
+  surface: NpcInteractionSurface
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 

@@ -157,6 +157,6 @@ export function parseHotspotAction(raw: unknown): HotspotAction | null {
  */
 export function validateAction(action: HotspotAction): boolean {
   const meta = gameActionRegistry.get(action.type);
-  const value = (action as Record<string, unknown>)[meta.requiredField];
+  const value = (action as unknown as Record<string, unknown>)[meta.requiredField];
   return value != null;
 }

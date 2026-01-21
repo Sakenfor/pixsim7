@@ -10,7 +10,7 @@
  */
 
 import { Ref, extractNpcId } from '@pixsim7/shared.ref.core';
-import type { NpcId, NpcRef } from '@pixsim7/shared.types';
+import { NpcId as toNpcId, type NpcId } from '@pixsim7/shared.types';
 
 // ===== Key Builders =====
 
@@ -220,7 +220,8 @@ export function createEventEffect(
  * Uses canonical extractNpcId from @pixsim7/shared.types
  */
 export function parseNpcKey(key: string): NpcId | null {
-  return extractNpcId(key);
+  const npcId = extractNpcId(key);
+  return npcId !== null ? toNpcId(npcId) : null;
 }
 
 /**
@@ -245,7 +246,7 @@ export function parseNpcPairKey(key: string): ParsedNpcPair | null {
   if (!Number.isFinite(id1) || !Number.isFinite(id2)) return null;
   if (id1 < 0 || id2 < 0) return null;
 
-  return { npc1: id1 as NpcId, npc2: id2 as NpcId };
+  return { npc1: toNpcId(id1), npc2: toNpcId(id2) };
 }
 
 /**
@@ -293,7 +294,7 @@ export function parseNetworkKey(key: string): ParsedNetworkPath | null {
   if (!Number.isFinite(id1) || !Number.isFinite(id2)) return null;
   if (id1 < 0 || id2 < 0) return null;
 
-  return { fromNpcId: id1 as NpcId, toNpcId: id2 as NpcId };
+  return { fromNpcId: toNpcId(id1), toNpcId: toNpcId(id2) };
 }
 
 /**
