@@ -453,7 +453,7 @@ export function ConstraintRunner({
                 ▶ Start Constraint Run
               </Button>
             ) : (
-              <Button size="sm" variant="danger" onClick={() => handleStop('Manually stopped')}>
+              <Button size="sm" variant="secondary" onClick={() => handleStop('Manually stopped')}>
                 ⏸ Stop
               </Button>
             )}

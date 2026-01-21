@@ -1,6 +1,6 @@
 import type { AssetRef, GenerationRef, LocationRef, SceneIdRef } from "@pixsim7/shared.types";
 
-import type { AssetModel } from "@features/assets";
+import type { AssetModel, ViewerAsset } from "@features/assets";
 
 import type { OperationType } from "@/types/operations";
 

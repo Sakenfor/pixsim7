@@ -11,6 +11,7 @@ import {
   SECONDS_PER_DAY,
   SECONDS_PER_HOUR,
 } from '@pixsim7/game.engine';
+import { SessionId as toSessionId } from '@pixsim7/shared.types';
 import { Button, Input, Panel, Select } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -260,6 +261,11 @@ export function SimulationPlayground() {
     void handleSelectWorld(worlds[0].id);
   }, [handleSelectWorld, selectedWorldId, worlds]);
 
+  const sessionRelationships = useMemo(
+    () => (gameSession?.stats?.relationships ?? {}) as Record<string, unknown>,
+    [gameSession]
+  );
+
   const handleAdvanceTime = useCallback(async (deltaSeconds: number) => {
     if (!selectedWorldId || !worldDetail) {
       setLocalError('No world selected');
@@ -289,7 +295,7 @@ export function SimulationPlayground() {
           worldId: selectedWorldId,
           sessionSnapshot: {
             flags: gameSession?.flags || {},
-            relationships: gameSession?.relationships || {},
+            relationships: sessionRelationships,
           },
           events,
         });
@@ -307,6 +313,7 @@ export function SimulationPlayground() {
     runtimeState.worldTimeSeconds,
     selectedNpcIds,
     selectedWorldId,
+    sessionRelationships,
     simulationHistory,
     worldDetail,
   ]);
@@ -367,7 +374,7 @@ export function SimulationPlayground() {
       worldId: selectedWorldId,
       initialWorldTime: worldTime,
       initialSessionFlags: gameSession?.flags || {},
-      initialRelationships: gameSession?.relationships || {},
+      initialRelationships: sessionRelationships,
       npcIds: selectedNpcIds,
     });
 
@@ -394,10 +401,14 @@ export function SimulationPlayground() {
 
       // Update session with scenario data (runtime will pick up changes)
       if (gameSession) {
-        await updateGameSession(gameSession.id, {
+        const currentStats = (gameSession.stats || {}) as Record<string, Record<string, unknown>>;
+        await updateGameSession(toSessionId(gameSession.id), {
           world_time: scenario.initialWorldTime,
           flags: scenario.initialSessionFlags,
-          relationships: scenario.initialRelationships,
+          stats: {
+            ...currentStats,
+            relationships: scenario.initialRelationships,
+          },
         });
         // Reload session to get updated state
         await runtime.attachSession(gameSession.id);
@@ -506,6 +517,13 @@ export function SimulationPlayground() {
 
   // Parse world time for display
   const worldTimeComponents = parseWorldTime(worldTime);
+  const worldTimeForTools = useMemo(
+    () => ({
+      day: worldTimeComponents.dayOfWeek,
+      hour: worldTimeComponents.hour,
+    }),
+    [worldTimeComponents.dayOfWeek, worldTimeComponents.hour]
+  );
   const worldTimeDisplay = formatWorldTime(worldTime);
 
   // Build WorldToolContext
@@ -513,9 +531,9 @@ export function SimulationPlayground() {
     () => ({
       session: gameSession,
       sessionFlags: gameSession?.flags || {},
-      relationships: gameSession?.relationships || {},
+      relationships: sessionRelationships,
       worldDetail,
-      worldTime: worldTimeComponents,
+      worldTime: worldTimeForTools,
       locationDetail: null,
       locationNpcs: [],
       npcSlotAssignments: [],
@@ -523,7 +541,7 @@ export function SimulationPlayground() {
       selectedLocationId: null,
       activeNpcId,
     }),
-    [gameSession, worldDetail, worldTimeComponents, selectedWorldId, activeNpcId]
+    [gameSession, worldDetail, worldTimeForTools, selectedWorldId, activeNpcId, sessionRelationships]
   );
 
   // Preload persona when active NPC changes
@@ -942,7 +960,7 @@ export function SimulationPlayground() {
         <div className="flex flex-wrap items-center gap-3">
           <Button
             size="sm"
-            variant={isAutoPlaying ? 'danger' : 'primary'}
+            variant={isAutoPlaying ? 'secondary' : 'primary'}
             onClick={() => setIsAutoPlaying(!isAutoPlaying)}
             disabled={!selectedWorldId}
           >

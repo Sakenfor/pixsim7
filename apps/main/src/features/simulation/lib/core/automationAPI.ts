@@ -114,8 +114,10 @@ export class HeadlessSimulationRunner {
       session: {
         id: 0,
         flags: this.sessionFlags,
-        relationships: this.sessionRelationships,
-      } as SimulationTickContext['session'],
+        stats: {
+          relationships: this.sessionRelationships,
+        },
+      } as unknown as SimulationTickContext['session'],
       selectedNpcIds: [],
     };
 

@@ -7,6 +7,7 @@
  */
 
 import type { GameSessionDTO, GameWorldDetail } from '@lib/api';
+import type { GameEvent } from '@lib/game/runtime';
 
 import type { SimulationScenario } from '../lib/core/scenarios';
 
@@ -19,16 +20,7 @@ export interface SimulationTickContext {
   selectedNpcIds: number[];
 }
 
-export interface SimulationEvent {
-  id: string;
-  timestamp: number;
-  worldTime: number;
-  type: 'info' | 'warning' | 'success' | 'error';
-  category: 'time' | 'npc' | 'relationship' | 'quest' | 'world' | 'custom' | 'lifecycle' | 'plugin';
-  title: string;
-  message: string;
-  metadata?: Record<string, unknown>;
-}
+export type SimulationEvent = GameEvent;
 
 // Phase 8: Lifecycle hook types
 export type SimulationHook = (
