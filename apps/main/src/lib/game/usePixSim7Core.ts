@@ -5,15 +5,19 @@
  * Consumers use core.getStat('session.relationships', npcId) directly.
  */
 
+import { createPixSim7Core } from '@pixsim7/game.engine';
 import { useEffect, useState, useCallback } from 'react';
-import { createPixSim7Core, type PixSim7Core } from '@pixsim7/game.engine';
+
 import type { GameSessionDTO } from '@lib/registries';
+
 import { frontendApiClient, localStorageProvider } from './coreAdapter';
 
-// Singleton core instance
-let coreInstance: PixSim7Core | null = null;
+type CoreInstance = ReturnType<typeof createPixSim7Core>;
 
-function getCoreInstance(): PixSim7Core {
+// Singleton core instance
+let coreInstance: CoreInstance | null = null;
+
+function getCoreInstance(): CoreInstance {
   if (!coreInstance) {
     coreInstance = createPixSim7Core({
       apiClient: frontendApiClient,
@@ -31,7 +35,7 @@ function getCoreInstance(): PixSim7Core {
  * const rel = core.getStat('session.relationships', npcId) as NpcRelationshipState | null;
  */
 export function usePixSim7Core() {
-  const [core] = useState<PixSim7Core>(() => getCoreInstance());
+  const [core] = useState<CoreInstance>(() => getCoreInstance());
   const [session, setSession] = useState<GameSessionDTO | null>(null);
 
   useEffect(() => {

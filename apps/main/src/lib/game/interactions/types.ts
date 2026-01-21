@@ -1,15 +1,24 @@
-import type { GameSessionDTO, SessionUpdatePayload, NpcPresenceDTO } from '../../api/game';
 import type {
   NpcSlotAssignment,
   InventoryItem,
   StatSource,
 } from '@pixsim7/game.engine';
 
+import type {
+  GameSessionDTO,
+  SessionUpdatePayload,
+  NpcPresenceDTO,
+  SensualTouchRequest,
+  SensualTouchResponse,
+} from '../../api/game';
+
 /**
  * Base config interface all interaction plugins extend
  */
 export interface BaseInteractionConfig {
   enabled: boolean;
+  __presetId?: string;
+  __presetName?: string;
 }
 
 /**
@@ -89,7 +98,7 @@ export interface SessionHelpers {
   /** Update quest status (optimistic, async validated) */
   updateQuestStatus: (
     questId: string,
-    status: 'pending' | 'active' | 'completed' | 'failed'
+    status: 'pending' | 'active' | 'completed' | 'failed' | 'not_started' | 'in_progress'
   ) => Promise<GameSessionDTO>;
 
   /** Increment quest steps (optimistic, async validated) */
@@ -159,6 +168,7 @@ export interface InteractionAPI {
   getSession: (id: number) => Promise<GameSessionDTO>;
   updateSession: (id: number, updates: Partial<GameSessionDTO>) => Promise<GameSessionDTO>;
   attemptPickpocket: (req: PickpocketRequest) => Promise<PickpocketResult>;
+  attemptSensualTouch: (req: SensualTouchRequest) => Promise<SensualTouchResponse>;
   getScene: (id: number) => Promise<any>;
   // Add more API methods as needed
 }
@@ -209,7 +219,8 @@ export type InteractionUIMode =
   | 'dialogue'      // Opens dialogue UI
   | 'notification'  // Shows notification only
   | 'silent'        // No UI feedback
-  | 'custom';       // Plugin handles its own UI
+  | 'custom'        // Plugin handles its own UI
+  | 'minigame';     // Launches a minigame UI
 
 /**
  * Interaction capabilities/effects for UI hints
@@ -238,6 +249,12 @@ export interface InteractionCapabilities {
 
   /** Can be detected (stealth) */
   canBeDetected?: boolean;
+
+  /** Requires explicit player consent */
+  requiresConsent?: boolean;
+
+  /** Interaction can be unlocked via progression */
+  unlockable?: boolean;
 }
 
 /**

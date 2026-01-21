@@ -30,6 +30,7 @@ import {
   type HotspotAction,
   type ScenePlaybackPhase,
 } from '@pixsim7/game.engine';
+import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -69,13 +70,17 @@ import {
   getNpcSlots,
   getWorldNpcRoles,
   attemptPickpocket,
+  attemptSensualTouch,
+  type SessionUpdatePayload,
   type GameLocationSummary,
   type GameLocationDetail,
   type GameHotspotDTO,
   type NpcExpressionDTO,
   type GameWorldSummary,
 } from '../lib/api/game';
-
+import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
+import { executeSlotInteractions } from '../lib/game/interactions/executor';
+import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
 import { hasEnabledInteractions } from '../lib/game/interactions/utils';
 import {
   useGameRuntime,
@@ -87,9 +92,6 @@ import {
   unregisterBuiltinGamePlugins,
 } from '../lib/game/runtime';
 import { saveWorldSession } from '../lib/game/session';
-import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
-import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
-import { executeSlotInteractions } from '../lib/game/interactions/executor';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';
@@ -135,6 +137,7 @@ export function Game2D() {
   // Use runtime values unless overridden by callbacks
   const gameSession = sessionOverride ?? runtimeSession;
   const worldDetail = worldOverride ?? runtimeWorld;
+  const relationships = (gameSession?.stats?.relationships as Record<string, unknown>) ?? {};
 
   // Sync overrides back to null when runtime updates (runtime takes precedence)
   useEffect(() => {
@@ -209,7 +212,7 @@ export function Game2D() {
     const pluginGameState: PluginGameState = {
       session: gameSession,
       flags: gameSession?.flags || {},
-      relationships: gameSession?.relationships || {},
+      relationships,
       world: worldDetail,
       worldTime: worldTime,
       currentLocation: locationDetail,
@@ -352,7 +355,7 @@ export function Game2D() {
           }
         }
 
-        const scene = await getGameScene(sceneId);
+        const scene = await getGameScene(toSceneId(sceneId));
         setCurrentScene(scene);
         setIsSceneOpen(true);
         setScenePhase('playing');
@@ -378,13 +381,13 @@ export function Game2D() {
     setError(null);
     (async () => {
       try {
-        const detail = await getGameLocation(selectedLocationId);
+        const detail = await getGameLocation(toLocationId(selectedLocationId));
         setLocationDetail(detail);
 
         // Try to load a background asset for 2D rendering:
         // prefer meta.background_asset_id, else fall back to asset_id if it is image/video.
         setBackgroundAsset(null);
-        const bgId = (detail.meta && (detail.meta as any).background_asset_id) ?? detail.asset_id;
+        const bgId = (detail.meta && (detail.meta as any).background_asset_id) ?? detail.asset?.id;
         if (bgId) {
           const response = await getAsset(bgId);
           const asset = fromAssetResponse(response);
@@ -477,7 +480,7 @@ export function Game2D() {
   // Memoize SessionAPI to prevent recreating on every render
   const sessionAPI = useMemo<SessionAPI>(
     () => ({
-      updateSession: (sessionId, updates) => updateGameSession(sessionId, updates),
+      updateSession: (sessionId, updates) => updateGameSession(toSessionId(sessionId), updates),
     }),
     [] // SessionAPI functions are stable, no dependencies needed
   );
@@ -494,7 +497,7 @@ export function Game2D() {
     () => ({
       session: gameSession,
       sessionFlags: gameSession?.flags || {},
-      relationships: gameSession?.relationships || {},
+      relationships,
       worldDetail,
       worldTime,
       locationDetail,
@@ -538,30 +541,36 @@ export function Game2D() {
         assignment,
         gameSession,
         sessionFlags: gameSession?.flags || {},
-        relationships: gameSession?.relationships || {},
+        relationships,
         worldId: selectedWorldId,
         worldTime,
         locationId: selectedLocationId!,
         locationNpcs,
       },
       api: {
-        getSession: (id) => getGameSession(id),
-        updateSession: (id, updates) => updateGameSession(id, updates),
+        getSession: (id) => getGameSession(toSessionId(id)),
+        updateSession: async (id, updates) => {
+          const response = await updateGameSession(toSessionId(id), updates as SessionUpdatePayload);
+          if (response.session) return response.session;
+          if (response.serverSession) return response.serverSession;
+          throw new Error('Failed to update session');
+        },
         attemptPickpocket: (req) => attemptPickpocket(req),
-        getScene: (id) => getGameScene(id),
+        attemptSensualTouch: (req) => attemptSensualTouch(req),
+        getScene: (id) => getGameScene(toSceneId(id)),
       },
       session: sessionHelpers,
       onSceneOpen: async (sceneId, npcId) => {
         setIsLoadingScene(true);
         try {
           if (!gameSession) {
-            const created = await createGameSession(sceneId);
+            const created = await createGameSession(toSceneId(sceneId));
             setGameSession(created);
             const worldTimeSeconds = worldTimeToSeconds(worldTime);
             saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
-            updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+            updateGameSession(toSessionId(created.id), { world_time: worldTimeSeconds }).catch(() => {});
           }
-          const scene = await getGameScene(sceneId);
+          const scene = await getGameScene(toSceneId(sceneId));
           setCurrentScene(scene);
           setIsSceneOpen(true);
           setScenePhase('playing');
@@ -626,18 +635,18 @@ export function Game2D() {
       // Lazily create a backing GameSession the first time we enter a scene.
       if (!gameSession) {
         try {
-          const created = await createGameSession(Number(sceneId));
+          const created = await createGameSession(toSceneId(Number(sceneId)));
           setGameSession(created);
           const worldTimeSeconds = worldTimeToSeconds(worldTime);
           saveWorldSession({ worldTimeSeconds, gameSessionId: created.id });
           // Optionally keep GameSession.world_time in sync on creation.
-          updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+          updateGameSession(toSessionId(created.id), { world_time: worldTimeSeconds }).catch(() => {});
         } catch (err) {
           console.error('Failed to create GameSession for Game2D', err);
         }
       }
 
-      const scene = await getGameScene(Number(sceneId));
+      const scene = await getGameScene(toSceneId(Number(sceneId)));
       setCurrentScene(scene);
       setIsSceneOpen(true);
       setScenePhase('playing');
@@ -854,8 +863,8 @@ export function Game2D() {
                 onClick={() => setSelectedLocationId(loc.id)}
               >
                 <span className="font-medium">{loc.name}</span>
-                {loc.asset_id != null && (
-                  <span className="ml-2 text-[10px] text-neutral-400">asset #{loc.asset_id}</span>
+                {loc.asset?.id != null && (
+                  <span className="ml-2 text-[10px] text-neutral-400">asset #{loc.asset.id}</span>
                 )}
               </button>
             ))}
@@ -873,9 +882,9 @@ export function Game2D() {
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-sm">{locationDetail.name}</span>
-                {locationDetail.asset_id != null && (
+                {locationDetail.asset?.id != null && (
                   <Badge color="blue" className="text-[10px]">
-                    Asset #{locationDetail.asset_id}
+                    Asset #{locationDetail.asset.id}
                   </Badge>
                 )}
               </div>
@@ -1068,13 +1077,13 @@ export function Game2D() {
               setIsLoadingScene(true);
               try {
                 if (!gameSession) {
-                  const created = await createGameSession(sceneId);
+                  const created = await createGameSession(toSceneId(sceneId));
                   setGameSession(created);
                   const worldTimeSeconds = worldTimeToSeconds(worldTime);
                   saveWorldSession({ worldTimeSeconds, gameSessionId: created.id, worldId: selectedWorldId || undefined });
-                  updateGameSession(created.id, { world_time: worldTimeSeconds }).catch(() => {});
+                  updateGameSession(toSessionId(created.id), { world_time: worldTimeSeconds }).catch(() => {});
                 }
-                const scene = await getGameScene(sceneId);
+                const scene = await getGameScene(toSceneId(sceneId));
                 setCurrentScene(scene);
                 setIsSceneOpen(true);
                 setScenePhase('playing');
@@ -1120,7 +1129,7 @@ export function Game2D() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
             <InteractionPresetEditor
-              worldDetail={worldDetail}
+              world={worldDetail}
               onWorldUpdate={(updatedWorld) => {
                 setWorldDetail(updatedWorld);
               }}

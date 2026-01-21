@@ -11,16 +11,20 @@
  * - Reactive state updates via React useState
  */
 
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   createGameRuntime,
-  type GameRuntime,
   type GameRuntimeConfig,
-  type SessionFlags,
 } from '@pixsim7/game.engine';
+import { SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
+import type { SessionFlags } from '@pixsim7/shared.types';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+
 import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
-import { useGameStateStore } from '@/stores/gameStateStore';
+
+
 import { useWorldConfigSync } from '@/hooks/useWorldConfigSync';
+import { useGameStateStore } from '@/stores/gameStateStore';
+
 import {
   createGameSession,
   getGameWorld,
@@ -28,6 +32,8 @@ import {
   advanceGameWorldTime,
 } from '../../api/game';
 import { loadWorldSession, saveWorldSession } from '../session';
+
+import { gameHooksRegistry, type GameTickContext, type GameEvent } from './gameHooks';
 import { gameRuntimeApiClient, gameRuntimeStorage } from './runtimeApiAdapter';
 import {
   isTurnBasedMode,
@@ -36,7 +42,6 @@ import {
   createTurnAdvanceFlags,
   secondsToWorldTime,
 } from './timeHelpers';
-import { gameHooksRegistry, type GameTickContext, type GameEvent } from './gameHooks';
 import type { GameRuntimeState, GameRuntimeOptions, WorldTimeDisplay } from './types';
 
 /**
@@ -97,7 +102,7 @@ export interface UseGameRuntimeReturn {
  */
 export function useGameRuntime(): UseGameRuntimeReturn {
   // Create runtime instance (stable across renders)
-  const runtimeRef = useRef<GameRuntime | null>(null);
+  const runtimeRef = useRef<ReturnType<typeof createGameRuntime> | null>(null);
   if (!runtimeRef.current) {
     const config: GameRuntimeConfig = {
       apiClient: gameRuntimeApiClient,
@@ -253,7 +258,8 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         }
 
         // Build session flags
-        const sessionKind = options.sessionKind ?? 'world';
+        const sessionKind =
+          options.sessionKind === 'simulation' ? 'scene' : options.sessionKind ?? 'world';
         const worldMode = options.worldMode ?? (isTurnBasedMode(null, w) ? 'turn_based' : 'real_time');
 
         const flags: SessionFlags = {
@@ -269,12 +275,12 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         };
 
         // Create new session (scene_id=1 as placeholder for world sessions)
-        const newSession = await createGameSession(1, flags);
+        const newSession = await createGameSession(toSceneId(1), flags);
         setSession(newSession);
 
         // Sync world_time from world to session
         if (newSession.world_time !== w.world_time) {
-          const result = await updateGameSession(newSession.id, { world_time: w.world_time });
+          const result = await updateGameSession(toSessionId(newSession.id), { world_time: w.world_time });
           if (result.session) {
             setSession(result.session);
           }
@@ -290,7 +296,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         // Sync store
         if (options.initialLocationId) {
           setLocationId(options.initialLocationId);
-          storeEnterRoom(worldId, newSession.id, `location:${options.initialLocationId}`);
+          storeEnterRoom(worldId, newSession.id, options.initialLocationId);
         }
 
         return newSession;
@@ -396,7 +402,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
 
         // Sync session world_time
         if (session) {
-          const result = await updateGameSession(session.id, {
+          const result = await updateGameSession(toSessionId(session.id), {
             world_time: updatedWorld.world_time,
           });
           if (result.session) {
@@ -470,7 +476,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
             locationId
           );
 
-          const result = await updateGameSession(session.id, {
+          const result = await updateGameSession(toSessionId(session.id), {
             world_time: updatedWorld.world_time,
             flags: updatedFlags,
           });
@@ -480,7 +486,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
           }
         } else if (session) {
           // Real-time mode: just update world_time
-          const result = await updateGameSession(session.id, {
+          const result = await updateGameSession(toSessionId(session.id), {
             world_time: updatedWorld.world_time,
           });
           if (result.session) {

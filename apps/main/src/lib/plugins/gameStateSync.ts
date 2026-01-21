@@ -5,9 +5,10 @@
  * Game components (like Game2D) can call updatePluginGameState() to notify plugins of state changes.
  */
 
+import type { GameSessionDTO, GameWorldDetail, GameLocationDetail, NpcPresenceDTO } from '../api/game';
+
 import { pluginManager } from './PluginManager';
 import type { PluginGameState } from './types';
-import type { GameSessionDTO, GameWorldDetail, GameLocationDetail, NpcPresenceDTO } from '../api/game';
 
 /**
  * Build PluginGameState from various game state sources
@@ -24,7 +25,7 @@ export function buildPluginGameState(params: {
     // Session data
     session: session ?? null,
     flags: (session?.flags as Record<string, unknown>) ?? {},
-    relationships: (session?.relationships as Record<string, unknown>) ?? {},
+    relationships: (session?.stats?.relationships as Record<string, unknown>) ?? {},
 
     // World data
     world: world ?? null,

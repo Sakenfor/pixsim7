@@ -7,6 +7,7 @@
  * Note: Uses generic session.getStat/updateStat API - no typed helpers needed!
  */
 import type { NpcRelationshipState } from '@pixsim7/game.engine';
+
 import type { InteractionPlugin, BaseInteractionConfig } from './types';
 
 export interface GiveItemConfig extends BaseInteractionConfig {
@@ -74,7 +75,7 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
   ],
 
   async execute(config, context) {
-    const { state, api } = context;
+    const { state } = context;
 
     if (!state.gameSession) {
       return {
@@ -91,7 +92,8 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
     }
 
     // Access player inventory from state (when implemented)
-    const hasItem = state.inventory?.some(item => item.id === config.itemId) ?? true; // Placeholder
+    const inventory = context.session.getInventory();
+    const hasItem = inventory.some(item => item.id === config.itemId) || inventory.length === 0;
 
     if (!hasItem) {
       return {
@@ -148,6 +150,6 @@ export const giveItemInteraction: InteractionPlugin<GiveItemConfig> = {
   isAvailable(context) {
     // Could check if player has items in inventory
     // Access state without importing anything!
-    return context.state.gameSession !== null && (context.state.inventory?.length ?? 0) > 0;
+    return context.state.gameSession !== null && context.session.getInventory().length > 0;
   },
 };

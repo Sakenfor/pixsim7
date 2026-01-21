@@ -6,7 +6,10 @@
  */
 
 import type { GameApiClient, SessionStorage } from '@pixsim7/game.engine';
-import type { GameSessionDTO, GameWorldDetail, TemplateKind } from '@lib/registries';
+import { SessionId as toSessionId } from '@pixsim7/shared.types';
+
+import type { GameSessionDTO, GameWorldDetail, TemplateKind, ListInteractionsRequest, ListInteractionsResponse, ExecuteInteractionRequest, ExecuteInteractionResponse } from '@lib/registries';
+
 import {
   getGameSession,
   updateGameSession,
@@ -21,17 +24,17 @@ import {
  */
 export const gameRuntimeApiClient: GameApiClient = {
   async fetchSession(sessionId: number): Promise<GameSessionDTO> {
-    return await getGameSession(sessionId);
+    return await getGameSession(toSessionId(sessionId));
   },
 
   async updateSession(
     sessionId: number,
     payload: Partial<GameSessionDTO>
   ): Promise<GameSessionDTO> {
-    const result = await updateGameSession(sessionId, {
+    const result = await updateGameSession(toSessionId(sessionId), {
       world_time: payload.world_time,
       flags: payload.flags,
-      stats: payload.stats,
+      stats: payload.stats as Record<string, Record<string, unknown>> | undefined,
     });
 
     if (result.conflict) {
@@ -58,13 +61,20 @@ export const gameRuntimeApiClient: GameApiClient = {
     return await advanceGameWorldTime(worldId, deltaSeconds);
   },
 
-  async listInteractions() {
+  async listInteractions(req: ListInteractionsRequest): Promise<ListInteractionsResponse> {
     // Not used by useGameRuntime - interactions are handled at route level
-    return { interactions: [] };
+    return {
+      interactions: [],
+      npcId: req.npcId,
+      worldId: req.worldId,
+      sessionId: req.sessionId,
+      timestamp: Date.now(),
+    };
   },
 
-  async executeInteraction() {
+  async executeInteraction(req: ExecuteInteractionRequest): Promise<ExecuteInteractionResponse> {
     // Not used by useGameRuntime - interactions are handled at route level
+    void req;
     return {
       success: false,
       message: 'executeInteraction not implemented in runtime adapter',

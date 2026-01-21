@@ -1,30 +1,32 @@
-import { useState, useMemo, useRef } from 'react';
 import { Button, Panel, Input, Select, Badge } from '@pixsim7/shared.ui';
+import { useState, useMemo, useRef } from 'react';
+
 import type { GameWorldDetail } from '@lib/api/game';
 import { saveGameWorldMeta } from '@lib/api/game';
-import { interactionRegistry } from '@lib/registries';
 import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
   setWorldInteractionPresets,
   generatePresetId,
-  getGlobalInteractionPresets,
   saveGlobalInteractionPresets,
-  promotePresetToGlobal,
-  copyPresetToWorld,
   downloadPresetsAsJSON,
   importPresetsFromFile,
-  type InteractionPreset,
   type PresetWithScope,
   type ConflictResolution,
 } from '@lib/game/interactions/presets';
+import { interactionRegistry } from '@lib/registries';
 
 interface InteractionPresetEditorProps {
   world: GameWorldDetail;
   onWorldUpdate: (world: GameWorldDetail) => void;
+  onClose?: () => void;
 }
 
-export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPresetEditorProps) {
+export function InteractionPresetEditor({
+  world,
+  onWorldUpdate,
+  onClose,
+}: InteractionPresetEditorProps) {
   const [presets, setPresets] = useState<PresetWithScope[]>(() => getCombinedPresets(world));
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [selectedScope, setSelectedScope] = useState<'global' | 'world' | null>(null);
@@ -193,7 +195,10 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
   };
 
   const handleExportAll = () => {
-    const presetsToExport = filteredPresets.map(({ scope, ...preset }) => preset);
+    const presetsToExport = filteredPresets.map(({ scope, ...preset }) => {
+      void scope;
+      return preset;
+    });
     const scopeLabel = scopeFilter === 'all' ? 'all' : scopeFilter;
     downloadPresetsAsJSON(
       presetsToExport,
@@ -208,6 +213,7 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
   const handleExportSelected = () => {
     if (!selectedPreset) return;
     const { scope, ...preset } = selectedPreset;
+    void scope;
     downloadPresetsAsJSON(
       [preset],
       `preset-${preset.id}-${Date.now()}.json`,
@@ -282,6 +288,11 @@ export function InteractionPresetEditor({ world, onWorldUpdate }: InteractionPre
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Interaction Presets</h2>
         <div className="flex gap-2">
+          {onClose && (
+            <Button variant="secondary" size="sm" onClick={onClose}>
+              Close
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={handleStartCreate} disabled={isCreating}>
             + New Preset
           </Button>

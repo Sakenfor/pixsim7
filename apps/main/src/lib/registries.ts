@@ -27,11 +27,31 @@ export type {
   GameNpcDetail,
   GameNpcSummary,
   GameHotspotDTO,
+  GameContext,
+  GameMode,
+  SessionFlags,
+  SessionUiOverride,
+  WorldMode,
+  PlayerSlot,
+  ActorType,
+  ActorPresence,
+  NpcActor,
+  PlayerActor,
+  AgentActor,
+  AnyActor,
   NpcSlot2d,
   NpcExpressionDTO,
   NpcPresenceDTO,
   NpcSurfacePackage,
   Scene,
+  MediaSegment,
+  PlaybackMode,
+  SelectionStrategy,
+  ViewMode,
+  MotionPreset,
+  WorldUiTheme,
+  UserUiPreferences,
+  NpcInteractionDefinition,
   SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
@@ -41,6 +61,34 @@ export type {
   QuestDTO,
   InventoryItemDTO,
   WorldManifest,
+  // Character graph
+  CharacterIdentityGraph,
+  CharacterGraphNodeUnion,
+  CharacterUsageStats,
+  // Interaction types
+  ListInteractionsRequest,
+  ListInteractionsResponse,
+  ExecuteInteractionRequest,
+  ExecuteInteractionResponse,
+  NpcInteractionInstance,
+  NpcInteractionSurface,
+  InteractionSurface,
+  // Intimacy types
+  RelationshipGate,
+  GateCheckResult,
+  IntimacySceneConfig,
+  IntimacySceneType,
+  IntimacyIntensity,
+  RelationshipProgressionArc,
+  ProgressionStage,
+  ProgressionArcState,
+  IntimacyContentValidation,
+  ContentRatingCheck,
+  // Generation types
+  GenerationNodeConfig,
+  GenerationValidationResult,
+  GenerationSocialContext,
+  GeneratedContentPayload,
   // Links/template resolution types
   ResolveTemplateResponse,
   ResolveBatchResponse,
@@ -51,11 +99,13 @@ export type {
 // ===== Session Helper Registry =====
 // Manages session state helpers (built-in and custom)
 // Source:@pixsim7/game.engine
-export {
+import {
   sessionHelperRegistry,
   SessionHelperRegistry,
   VALID_HELPER_CATEGORIES,
 } from '@pixsim7/game.engine';
+
+export { sessionHelperRegistry, SessionHelperRegistry, VALID_HELPER_CATEGORIES };
 
 export type {
   HelperFunction,
@@ -67,7 +117,8 @@ export type {
 // ===== Interaction Registry =====
 // Manages NPC interaction plugins
 // Source: frontend/src/lib/game/interactions
-export { interactionRegistry, InteractionRegistry } from './game/interactions/types';
+import { interactionRegistry, InteractionRegistry } from './game/interactions/types';
+export { interactionRegistry, InteractionRegistry };
 
 export type {
   InteractionPlugin,
@@ -84,12 +135,14 @@ export type {
 // ===== Node Type Registries =====
 // Manages scene + arc graph node types
 // Source: @features/graph (moved from @pixsim7/shared.types in migration)
-export {
+import {
   nodeTypeRegistry,
   sceneNodeTypeRegistry,
   arcNodeTypeRegistry,
   NodeTypeRegistry,
 } from '@features/graph';
+
+export { nodeTypeRegistry, sceneNodeTypeRegistry, arcNodeTypeRegistry, NodeTypeRegistry };
 
 export type {
   NodeTypeDefinition,

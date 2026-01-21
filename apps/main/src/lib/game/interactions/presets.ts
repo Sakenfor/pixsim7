@@ -9,6 +9,7 @@
 
 import type { GameWorldDetail } from '../../api/game';
 import { updateGameWorldMeta, saveGameWorldMeta } from '../../api/game';
+
 import type { BaseInteractionConfig } from './types';
 
 /**
@@ -1312,7 +1313,7 @@ export interface PlaylistExecutionState {
   paused: boolean;
 
   /** Timeout ID for delayed execution */
-  timeoutId?: NodeJS.Timeout;
+  timeoutId?: ReturnType<typeof setTimeout>;
 }
 
 const GLOBAL_PLAYLISTS_KEY = 'pixsim7:interaction-playlists:global';
@@ -1562,7 +1563,7 @@ export async function executePlaylist(
   }
 
   let stopped = false;
-  const timeouts: NodeJS.Timeout[] = [];
+  const timeouts: Array<ReturnType<typeof setTimeout>> = [];
 
   const stopExecution = () => {
     stopped = true;

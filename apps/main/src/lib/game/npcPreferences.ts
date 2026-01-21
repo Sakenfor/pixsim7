@@ -15,7 +15,8 @@ import {
   isToolUnlocked,
   getRecommendedTools,
 } from '@pixsim7/scene.gizmos';
-import type { GameNpcDetail } from '@/types/game';
+
+import type { GameNpcDetail } from '@lib/registries';
 
 // ============================================================================
 // Storage Helpers

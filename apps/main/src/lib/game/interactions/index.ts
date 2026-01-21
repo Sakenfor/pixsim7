@@ -53,6 +53,7 @@ export type {
   FormField,
   InteractionUIMode,
   InteractionCapabilities,
+  SessionAPI,
 } from './types';
 
 // Export specific configs for type safety

@@ -5,16 +5,19 @@
  * Makes Game2D cleaner and testable.
  */
 
-import type { GameSessionDTO, NpcPresenceDTO } from '../../api/game';
 import type { NpcSlotAssignment } from '@pixsim7/game.engine';
-import type { InteractionContext } from './types';
-import { executeInteraction } from './index';
+
 import { trackPresetUsage, trackPresetOutcome, type InteractionOutcome } from './presets';
+import type { InteractionContext } from './types';
+
+import { executeInteraction } from './index';
 
 export interface SlotInteractionConfig {
-  [key: string]: any;
+  enabled?: boolean;
+  __presetId?: string;
+  __presetName?: string;
+  [key: string]: unknown;
 }
-
 
 /**
  * Execute all enabled interactions for an NPC slot
@@ -33,16 +36,17 @@ export async function executeSlotInteractions(
   const interactions = slot.interactions || {};
 
   let hasInteraction = false;
-  let hasDialogueInteraction = false;
 
   for (const [interactionId, config] of Object.entries(interactions)) {
-    if (!config || !config.enabled) continue;
+    const interactionConfig = config as SlotInteractionConfig | undefined;
+
+    if (!interactionConfig?.enabled) continue;
 
     hasInteraction = true;
 
     // Track preset usage if this interaction was created from a preset
-    if (config.__presetId) {
-      trackPresetUsage(config.__presetId, config.__presetName);
+    if (typeof interactionConfig.__presetId === 'string') {
+      trackPresetUsage(interactionConfig.__presetId, interactionConfig.__presetName);
     }
 
     // Get the plugin to check its UI mode
@@ -50,10 +54,9 @@ export async function executeSlotInteractions(
 
     // Handle dialogue-mode interactions (e.g., talk)
     if (plugin?.uiMode === 'dialogue') {
-      hasDialogueInteraction = true;
       // Execute the interaction (which will open the dialogue)
       try {
-        await executeInteraction(interactionId, config, context);
+        await executeInteraction(interactionId, interactionConfig, context);
         // Also trigger the onDialogue handler for backward compatibility
         if (handlers.onDialogue) {
           handlers.onDialogue(assignment.npcId);
@@ -72,10 +75,10 @@ export async function executeSlotInteractions(
 
     // Execute other interactions normally
     try {
-      const result = await executeInteraction(interactionId, config, context);
+      const result = await executeInteraction(interactionId, interactionConfig, context);
 
       // Phase 7: Track preset outcome if this interaction was created from a preset
-      if (config.__presetId) {
+      if (typeof interactionConfig.__presetId === 'string') {
         // Determine outcome based on result
         let outcome: InteractionOutcome;
         if (result.success) {
@@ -85,7 +88,11 @@ export async function executeSlotInteractions(
         } else {
           outcome = 'neutral';
         }
-        trackPresetOutcome(config.__presetId, outcome, config.__presetName);
+        trackPresetOutcome(
+          interactionConfig.__presetId,
+          outcome,
+          interactionConfig.__presetName
+        );
       }
 
       if (result.success && result.message && handlers.onNotification) {
@@ -93,8 +100,12 @@ export async function executeSlotInteractions(
       }
     } catch (e: any) {
       // Phase 7: Track failure outcome for preset
-      if (config.__presetId) {
-        trackPresetOutcome(config.__presetId, 'failure', config.__presetName);
+      if (typeof interactionConfig.__presetId === 'string') {
+        trackPresetOutcome(
+          interactionConfig.__presetId,
+          'failure',
+          interactionConfig.__presetName
+        );
       }
 
       if (handlers.onNotification) {

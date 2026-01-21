@@ -11,8 +11,6 @@
  * 3. Apply server truth or rollback on error
  */
 
-import type { GameSessionDTO } from '../../api/game';
-import type { SessionHelpers, SessionAPI } from './types';
 import {
   getInventory,
   addInventoryItem as addInventoryItemCore,
@@ -20,7 +18,8 @@ import {
   updateArcStage as updateArcStageCore,
   markSceneSeen as markSceneSeenCore,
   updateQuestStatus as updateQuestStatusCore,
-  incrementQuestSteps as incrementQuestStepsCore,
+  updateQuestSteps as updateQuestStepsCore,
+  getQuestState,
   triggerEvent as triggerEventCore,
   endEvent as endEventCore,
   isEventActive,
@@ -28,6 +27,10 @@ import {
   getAdapterBySource,
   type StatSource,
 } from '@pixsim7/game.engine';
+
+import type { GameSessionDTO, SessionUpdatePayload } from '../../api/game';
+
+import type { SessionHelpers, SessionAPI } from './types';
 
 /** Maximum number of retry attempts for conflict resolution */
 const MAX_RETRIES = 3;
@@ -95,7 +98,11 @@ function buildOptimisticPayload(
 
   // Set the final value (merge with current)
   const lastPart = parts[parts.length - 1];
-  target[lastPart] = { ...(current ?? {}), ...patch };
+  const patchObject =
+    typeof patch === 'object' && patch !== null
+      ? (patch as Record<string, unknown>)
+      : null;
+  target[lastPart] = patchObject ? { ...(current ?? {}), ...patchObject } : patch;
 
   return result;
 }
@@ -163,10 +170,14 @@ export function createSessionHelpers(
     if (api) {
       try {
         // Include version for optimistic locking
-        const response = await api.updateSession(gameSession.id, {
-          ...backendUpdate,
-          expectedVersion: gameSession.version,
-        });
+        const payload: SessionUpdatePayload = {
+          ...(backendUpdate as SessionUpdatePayload),
+          expected_version: gameSession.version,
+          ...(backendUpdate.stats
+            ? { stats: backendUpdate.stats as SessionUpdatePayload['stats'] }
+            : {}),
+        };
+        const response = await api.updateSession(gameSession.id, payload);
 
         // 3a. Handle version conflicts with retry limit
         if (response.conflict && response.serverSession) {
@@ -204,7 +215,7 @@ export function createSessionHelpers(
 
           // Recursively retry with incremented counter
           return applyOptimisticUpdate(
-            (s) => resolvedUpdate, // Use pre-resolved update
+            () => resolvedUpdate, // Use pre-resolved update
             newBackendUpdate,
             retryCount + 1
           );
@@ -227,22 +238,37 @@ export function createSessionHelpers(
     return localUpdate(gameSession);
   };
 
-  /**
-   * Resolve conflicts between local and server state
-   * Strategy: Apply local changes on top of server state (last-write-wins with merge)
-   */
-  const resolveConflict = async (
-    localSession: GameSessionDTO,
-    serverSession: GameSessionDTO,
-    localUpdate: (session: GameSessionDTO) => GameSessionDTO
-  ): Promise<GameSessionDTO> => {
-    // Re-apply local changes on top of server state
-    const resolved = localUpdate(serverSession);
-    return resolved;
-  };
-
   // Build dynamic helpers from registry (allows custom extensions)
   const dynamicHelpers = sessionHelperRegistry.buildHelpersObject(gameSession);
+
+  const cloneFlags = (flags: GameSessionDTO['flags']): GameSessionDTO['flags'] => {
+    return JSON.parse(JSON.stringify(flags ?? {})) as GameSessionDTO['flags'];
+  };
+
+  const buildFlagsUpdate = (mutate: (session: GameSessionDTO) => void) => {
+    const sessionCopy: GameSessionDTO = { ...gameSession, flags: cloneFlags(gameSession.flags) };
+    mutate(sessionCopy);
+    return { flags: sessionCopy.flags };
+  };
+
+  const toQuestStatus = (
+    status: 'pending' | 'active' | 'completed' | 'failed' | 'not_started' | 'in_progress'
+  ): 'not_started' | 'in_progress' | 'completed' | 'failed' => {
+    if (status === 'pending') return 'not_started';
+    if (status === 'active') return 'in_progress';
+    return status;
+  };
+
+  const incrementQuestStepsBy = (
+    session: GameSessionDTO,
+    questId: string,
+    increment: number
+  ) => {
+    if (increment <= 0) return;
+    const current = getQuestState(session, questId);
+    const currentSteps = current?.stepsCompleted ?? 0;
+    updateQuestStepsCore(session, questId, currentSteps + increment);
+  };
 
   /**
    * Generic stat update - works with any registered stat adapter.
@@ -303,57 +329,84 @@ export function createSessionHelpers(
 
     addInventoryItem: async (itemId, quantity = 1) => {
       return applyOptimisticUpdate(
-        (session) => addInventoryItemCore(session, itemId, quantity),
-        { flags: addInventoryItemCore(gameSession, itemId, quantity).flags }
+        (session) => {
+          addInventoryItemCore(session, itemId, quantity);
+          return session;
+        },
+        buildFlagsUpdate((session) => addInventoryItemCore(session, itemId, quantity))
       );
     },
 
     removeInventoryItem: async (itemId, quantity = 1) => {
       return applyOptimisticUpdate(
-        (session) => removeInventoryItemCore(session, itemId, quantity),
-        { flags: removeInventoryItemCore(gameSession, itemId, quantity).flags }
+        (session) => {
+          removeInventoryItemCore(session, itemId, quantity);
+          return session;
+        },
+        buildFlagsUpdate((session) => removeInventoryItemCore(session, itemId, quantity))
       );
     },
 
     updateArcStage: async (arcId, stage) => {
       return applyOptimisticUpdate(
-        (session) => updateArcStageCore(session, arcId, stage),
-        { flags: updateArcStageCore(gameSession, arcId, stage).flags }
+        (session) => {
+          updateArcStageCore(session, arcId, stage);
+          return session;
+        },
+        buildFlagsUpdate((session) => updateArcStageCore(session, arcId, stage))
       );
     },
 
     markSceneSeen: async (arcId, sceneId) => {
       return applyOptimisticUpdate(
-        (session) => markSceneSeenCore(session, arcId, sceneId),
-        { flags: markSceneSeenCore(gameSession, arcId, sceneId).flags }
+        (session) => {
+          markSceneSeenCore(session, arcId, sceneId);
+          return session;
+        },
+        buildFlagsUpdate((session) => markSceneSeenCore(session, arcId, sceneId))
       );
     },
 
     updateQuestStatus: async (questId, status) => {
+      const mappedStatus = toQuestStatus(status);
       return applyOptimisticUpdate(
-        (session) => updateQuestStatusCore(session, questId, status),
-        { flags: updateQuestStatusCore(gameSession, questId, status).flags }
+        (session) => {
+          updateQuestStatusCore(session, questId, mappedStatus);
+          return session;
+        },
+        buildFlagsUpdate((session) => updateQuestStatusCore(session, questId, mappedStatus))
       );
     },
 
     incrementQuestSteps: async (questId, increment = 1) => {
       return applyOptimisticUpdate(
-        (session) => incrementQuestStepsCore(session, questId, increment),
-        { flags: incrementQuestStepsCore(gameSession, questId, increment).flags }
+        (session) => {
+          incrementQuestStepsBy(session, questId, increment);
+          return session;
+        },
+        buildFlagsUpdate((session) => {
+          incrementQuestStepsBy(session, questId, increment);
+        })
       );
     },
 
     triggerEvent: async (eventId) => {
       return applyOptimisticUpdate(
-        (session) => triggerEventCore(session, eventId),
-        { flags: triggerEventCore(gameSession, eventId).flags }
+        (session) => {
+          triggerEventCore(session, eventId);
+          return session;
+        },
+        buildFlagsUpdate((session) => triggerEventCore(session, eventId))
       );
     },
 
     endEvent: async (eventId) => {
       return applyOptimisticUpdate(
-        (session) => endEventCore(session, eventId),
-        { flags: endEventCore(gameSession, eventId).flags }
+        (session) => {
+          endEventCore(session, eventId);
+          return session;
+        },
+        buildFlagsUpdate((session) => endEventCore(session, eventId))
       );
     },
 

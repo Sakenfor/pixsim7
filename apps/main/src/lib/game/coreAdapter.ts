@@ -3,7 +3,10 @@
  */
 
 import type { ApiClient, StorageProvider } from '@pixsim7/game.engine';
+import { SessionId as toSessionId } from '@pixsim7/shared.types';
+
 import type { GameSessionDTO } from '@lib/registries';
+
 import { getGameSession, updateGameSession } from '../api/game';
 
 /**
@@ -11,14 +14,14 @@ import { getGameSession, updateGameSession } from '../api/game';
  */
 export const frontendApiClient: ApiClient = {
   async fetchSession(sessionId: number): Promise<GameSessionDTO> {
-    return await getGameSession(sessionId);
+    return await getGameSession(toSessionId(sessionId));
   },
 
   async saveSession(session: GameSessionDTO): Promise<void> {
-    await updateGameSession(session.id, {
+    await updateGameSession(toSessionId(session.id), {
       world_time: session.world_time,
       flags: session.flags,
-      stats: session.stats,
+      stats: session.stats as Record<string, Record<string, unknown>>,
     });
   },
 };
