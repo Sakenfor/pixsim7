@@ -53,24 +53,24 @@ importers:
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets/core
-      '@pixsim7/shared.auth':
+      '@pixsim7/shared.auth.core':
         specifier: workspace:*
-        version: link:../../packages/shared/auth
+        version: link:../../packages/shared/auth/core
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities/core
-      '@pixsim7/shared.devtools':
+      '@pixsim7/shared.devtools.core':
         specifier: workspace:*
-        version: link:../../packages/shared/devtools
+        version: link:../../packages/shared/devtools/core
       '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation/core
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../packages/shared/helpers/core
-      '@pixsim7/shared.modules':
+      '@pixsim7/shared.modules.core':
         specifier: workspace:*
-        version: link:../../packages/shared/modules
+        version: link:../../packages/shared/modules/core
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref/core
@@ -159,6 +159,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.22(postcss@8.5.6)
+      eslint:
+        specifier: ^9.39.1
+        version: 9.39.1(jiti@1.21.7)
       postcss:
         specifier: ^8.4.49
         version: 8.5.6
@@ -168,6 +171,9 @@ importers:
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.46.3
+        version: 8.47.0(eslint@9.39.1(jiti@1.21.7))(typescript@5.9.3)
       vite:
         specifier: ^7.2.2
         version: 7.2.4(@types/node@24.10.1)(jiti@1.21.7)(tsx@4.20.6)(yaml@2.8.2)
@@ -286,24 +292,24 @@ importers:
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets/core
-      '@pixsim7/shared.async':
+      '@pixsim7/shared.async.core':
         specifier: workspace:*
-        version: link:../../packages/shared/async
-      '@pixsim7/shared.auth':
+        version: link:../../packages/shared/async/core
+      '@pixsim7/shared.auth.core':
         specifier: workspace:*
-        version: link:../../packages/shared/auth
+        version: link:../../packages/shared/auth/core
       '@pixsim7/shared.capabilities.core':
         specifier: workspace:*
         version: link:../../packages/shared/capabilities/core
       '@pixsim7/shared.content.rating':
         specifier: workspace:*
         version: link:../../packages/shared/content/rating
-      '@pixsim7/shared.devtools':
+      '@pixsim7/shared.devtools.core':
         specifier: workspace:*
-        version: link:../../packages/shared/devtools
-      '@pixsim7/shared.gating':
+        version: link:../../packages/shared/devtools/core
+      '@pixsim7/shared.gating.core':
         specifier: workspace:*
-        version: link:../../packages/shared/gating
+        version: link:../../packages/shared/gating/core
       '@pixsim7/shared.generation.core':
         specifier: workspace:*
         version: link:../../packages/shared/generation/core
@@ -319,12 +325,12 @@ importers:
       '@pixsim7/shared.media.core':
         specifier: workspace:*
         version: link:../../packages/shared/media/core
-      '@pixsim7/shared.models':
+      '@pixsim7/shared.models.core':
         specifier: workspace:*
-        version: link:../../packages/shared/models
-      '@pixsim7/shared.modules':
+        version: link:../../packages/shared/models/core
+      '@pixsim7/shared.modules.core':
         specifier: workspace:*
-        version: link:../../packages/shared/modules
+        version: link:../../packages/shared/modules/core
       '@pixsim7/shared.player.core':
         specifier: workspace:*
         version: link:../../packages/shared/player/core
@@ -334,12 +340,12 @@ importers:
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../../packages/shared/ref/core
-      '@pixsim7/shared.sources':
+      '@pixsim7/shared.sources.core':
         specifier: workspace:*
-        version: link:../../packages/shared/sources
-      '@pixsim7/shared.time':
+        version: link:../../packages/shared/sources/core
+      '@pixsim7/shared.time.core':
         specifier: workspace:*
-        version: link:../../packages/shared/time
+        version: link:../../packages/shared/time/core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../packages/shared/types
@@ -722,6 +728,9 @@ importers:
 
   packages/scene/gizmos:
     dependencies:
+      '@pixsim7/shared.graph.core':
+        specifier: workspace:*
+        version: link:../../shared/graph/core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -772,17 +781,17 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/async:
+  packages/shared/async/core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/auth:
+  packages/shared/auth/core:
     dependencies:
       '@pixsim7/shared.api.client':
         specifier: workspace:*
-        version: link:../api/client
+        version: link:../../api/client
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -816,7 +825,7 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/devtools:
+  packages/shared/devtools/core:
     dependencies:
       react:
         specifier: ^18.0.0 || ^19.0.0
@@ -829,7 +838,7 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/gating:
+  packages/shared/gating/core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -886,17 +895,17 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/models:
+  packages/shared/models/core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/modules:
+  packages/shared/modules/core:
     dependencies:
       '@pixsim7/shared.types':
         specifier: workspace:*
-        version: link:../types
+        version: link:../../types
       react:
         specifier: '>=18'
         version: 19.2.0
@@ -929,13 +938,13 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@24.10.1)
 
-  packages/shared/sources:
+  packages/shared/sources/core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/shared/time:
+  packages/shared/time/core:
     devDependencies:
       typescript:
         specifier: ^5.4.0
