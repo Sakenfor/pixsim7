@@ -23,6 +23,8 @@ import { createSceneViewHost, type SceneViewHostConfig } from '@lib/ui/overlay';
 import type { WidgetDefinition } from '../types';
 import { registerWidget } from '../widgetRegistry';
 
+const isDev = import.meta.env?.DEV;
+
 // ============================================================================
 // Helper
 // ============================================================================
@@ -42,7 +44,7 @@ function extractBinding<T>(
   } else if (binding.kind === 'fn') {
     // Function bindings cannot be serialized/reconstructed from config.
     // They must be provided at runtime via widget factory options.
-    if (process.env.NODE_ENV === 'development') {
+    if (isDev) {
       console.warn(
         `[extractBinding] Function binding for "${target}" cannot be reconstructed from serialized config. ` +
         `Provide it via runtimeOptions instead.`

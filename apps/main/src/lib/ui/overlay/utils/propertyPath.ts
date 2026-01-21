@@ -10,8 +10,10 @@
  *   "items[0].title" → (data) => data.items?.[0]?.title
  */
 
+import { resolvePath } from '@lib/editing-core';
+
 // Re-export core resolvePath from editing-core
-export { resolvePath } from '@lib/editing-core';
+export { resolvePath };
 
 /**
  * Create a resolver function from a value or property path
@@ -65,7 +67,7 @@ export function extractPropertyPaths(
   const paths: string[] = [];
 
   for (const key in obj) {
-    if (!obj.hasOwnProperty(key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
 
     const path = prefix ? `${prefix}.${key}` : key;
     const value = obj[key];

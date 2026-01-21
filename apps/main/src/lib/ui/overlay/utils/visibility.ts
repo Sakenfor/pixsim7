@@ -155,8 +155,8 @@ export function prefersReducedMotion(): boolean {
  * Creates a visibility state machine for managing delayed show/hide
  */
 export class VisibilityStateMachine {
-  private showTimeout: NodeJS.Timeout | null = null;
-  private hideTimeout: NodeJS.Timeout | null = null;
+  private showTimeout: ReturnType<typeof setTimeout> | null = null;
+  private hideTimeout: ReturnType<typeof setTimeout> | null = null;
   private isVisible = false;
 
   constructor(

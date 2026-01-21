@@ -11,6 +11,8 @@
 
 import type { ComponentType } from 'react';
 
+import type { UnifiedAnchor, UnifiedRegion } from '@lib/editing-core';
+
 import type { CapabilityDeclaration } from '@features/contextHub/types';
 
 // Re-export editing-core types for surfaces that need them

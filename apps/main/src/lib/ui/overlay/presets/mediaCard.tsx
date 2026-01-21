@@ -5,6 +5,8 @@
  * the legacy badge configuration system.
  */
 
+import { createBindingFromValue } from '@lib/editing-core';
+
 import type { OverlayPreset, OverlayConfiguration, OverlayWidget } from '../types';
 import { createBadgeWidget } from '../widgets/BadgeWidget';
 import { createButtonWidget } from '../widgets/ButtonWidget';
@@ -116,9 +118,9 @@ export const detailedPreset: OverlayPreset = {
           id: 'metadata-panel',
           position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
           visibility: { trigger: 'hover-container' },
-          title: 'Metadata',
+          titleBinding: createBindingFromValue('title', 'Metadata'),
           variant: 'glass',
-          content: (data) => {
+          contentBinding: createBindingFromValue('content', (data) => {
             // Format duration as MM:SS
             const formatDuration = (sec?: number) => {
               if (!sec) return null;
@@ -138,7 +140,7 @@ export const detailedPreset: OverlayPreset = {
                 )}
               </div>
             );
-          },
+          }),
           priority: 5,
         }),
       ),
@@ -203,8 +205,8 @@ export const reviewPreset: OverlayPreset = {
           visibility: { trigger: 'always' },
           variant: 'icon-text',
           icon: 'eye',
-          label: 'Review',
-          color: 'warning',
+          labelBinding: createBindingFromValue('label', 'Review'),
+          color: 'orange',
           shape: 'rounded',
           priority: 15,
         }),
@@ -218,7 +220,7 @@ export const reviewPreset: OverlayPreset = {
           // Use touchFallback: 'always' so buttons are visible on tablets
           visibility: { trigger: 'hover-container', touchFallback: 'always' },
           icon: 'check',
-          label: 'Approve',
+          labelBinding: createBindingFromValue('label', 'Approve'),
           tooltip: 'Mark asset as approved',
           variant: 'primary',
           size: 'sm',
@@ -235,7 +237,7 @@ export const reviewPreset: OverlayPreset = {
           // Use touchFallback: 'always' so buttons are visible on tablets
           visibility: { trigger: 'hover-container', touchFallback: 'always' },
           icon: 'x',
-          label: 'Reject',
+          labelBinding: createBindingFromValue('label', 'Reject'),
           tooltip: 'Mark asset as rejected',
           variant: 'danger',
           size: 'sm',

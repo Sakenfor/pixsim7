@@ -32,7 +32,7 @@ export interface APIStorageConfig {
  * - DELETE /presets/:id    - Delete a preset
  * - HEAD   /presets/:id    - Check if preset exists
  */
-export class APIPresetStorage implements PresetStorage {
+export class APIPresetStorage implements PresetStorage<OverlayPreset> {
   private config: APIStorageConfig;
   private cache: Map<string, OverlayPreset> = new Map();
   private cacheTimestamp: number = 0;

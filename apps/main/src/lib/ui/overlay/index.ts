@@ -164,7 +164,7 @@ export {
 
 export type {
   CollisionResult,
-  CollisionInfo,
+  Collision,
 } from './utils/collision';
 
 // Presets

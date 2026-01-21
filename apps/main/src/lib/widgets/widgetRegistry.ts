@@ -12,12 +12,15 @@
  */
 
 import { BaseRegistry } from '@lib/core/BaseRegistry';
+
 import type {
   WidgetDefinition,
   WidgetSurface,
   WidgetCategory,
   WidgetDomain,
 } from './types';
+
+type AnyWidgetDefinition = WidgetDefinition<any, any>;
 
 /** Chrome surfaces that require a React component */
 const CHROME_SURFACES: WidgetSurface[] = ['header', 'statusbar', 'toolbar', 'panel-composer'];
@@ -30,7 +33,7 @@ const EDITING_CORE_SURFACES: WidgetSurface[] = ['overlay', 'hud'];
  * This is the core logic for capability-based filtering.
  */
 export function canRenderOnSurface(
-  widget: WidgetDefinition,
+  widget: AnyWidgetDefinition,
   surface: WidgetSurface,
   context?: { domain?: string }
 ): boolean {
@@ -69,7 +72,7 @@ export function canRenderOnSurface(
 /**
  * Get surfaces a widget can render on (based on capability).
  */
-export function getWidgetSurfaces(widget: WidgetDefinition): WidgetSurface[] {
+export function getWidgetSurfaces(widget: AnyWidgetDefinition): WidgetSurface[] {
   const surfaces: WidgetSurface[] = [];
 
   // If explicit surfaces provided, use those (filtered by capability)
@@ -105,26 +108,26 @@ export function getWidgetSurfaces(widget: WidgetDefinition): WidgetSurface[] {
 /**
  * Widget Registry - extends BaseRegistry with widget-specific queries
  */
-class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
+class WidgetRegistryImpl extends BaseRegistry<AnyWidgetDefinition> {
   /**
    * Get widgets that can render on a specific surface.
    * Uses capability-based filtering (component/factory presence).
    */
-  getBySurface(surface: WidgetSurface, context?: { domain?: string }): WidgetDefinition[] {
+  getBySurface(surface: WidgetSurface, context?: { domain?: string }): AnyWidgetDefinition[] {
     return this.getAll().filter((widget) => canRenderOnSurface(widget, surface, context));
   }
 
   /**
    * Get widgets by category
    */
-  getByCategory(category: WidgetCategory): WidgetDefinition[] {
+  getByCategory(category: WidgetCategory): AnyWidgetDefinition[] {
     return this.getAll().filter((widget) => widget.category === category);
   }
 
   /**
    * Get widgets by domain
    */
-  getByDomain(domain: WidgetDomain): WidgetDefinition[] {
+  getByDomain(domain: WidgetDomain): AnyWidgetDefinition[] {
     return this.getAll().filter((widget) => widget.domain === domain);
   }
 
@@ -136,7 +139,7 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
     surface: WidgetSurface,
     category: WidgetCategory,
     context?: { domain?: string }
-  ): WidgetDefinition[] {
+  ): AnyWidgetDefinition[] {
     return this.getAll().filter(
       (widget) =>
         canRenderOnSurface(widget, surface, context) && widget.category === category
@@ -146,7 +149,7 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
   /**
    * Search widgets by query string
    */
-  search(query: string): WidgetDefinition[] {
+  search(query: string): AnyWidgetDefinition[] {
     const lowerQuery = query.toLowerCase();
     return this.getAll().filter((widget) => {
       const matchesId = widget.id.toLowerCase().includes(lowerQuery);
@@ -167,10 +170,10 @@ class WidgetRegistryImpl extends BaseRegistry<WidgetDefinition> {
    */
   getGroupedByCategory(
     surface?: WidgetSurface
-  ): Partial<Record<WidgetCategory, WidgetDefinition[]>> {
+  ): Partial<Record<WidgetCategory, AnyWidgetDefinition[]>> {
     const widgets = surface ? this.getBySurface(surface) : this.getAll();
 
-    const grouped: Partial<Record<WidgetCategory, WidgetDefinition[]>> = {};
+    const grouped: Partial<Record<WidgetCategory, AnyWidgetDefinition[]>> = {};
 
     for (const widget of widgets) {
       if (!grouped[widget.category]) {
@@ -239,7 +242,7 @@ export const widgetRegistry = new WidgetRegistryImpl();
 /**
  * Register a widget definition
  */
-export function registerWidget(definition: WidgetDefinition): void {
+export function registerWidget(definition: AnyWidgetDefinition): void {
   const hasComponent = definition.component !== undefined;
   const hasFactory = definition.factory !== undefined;
 
@@ -302,14 +305,14 @@ export function unregisterWidget(id: string): void {
 /**
  * Get a widget definition by ID
  */
-export function getWidget(id: string): WidgetDefinition | undefined {
+export function getWidget(id: string): AnyWidgetDefinition | undefined {
   return widgetRegistry.get(id);
 }
 
 /**
  * Get all widgets for a surface
  */
-export function getWidgetsForSurface(surface: WidgetSurface): WidgetDefinition[] {
+export function getWidgetsForSurface(surface: WidgetSurface): AnyWidgetDefinition[] {
   return widgetRegistry.getBySurface(surface);
 }
 
@@ -318,7 +321,7 @@ export function getWidgetsForSurface(surface: WidgetSurface): WidgetDefinition[]
  */
 export function getWidgetMenuItems(
   surface: WidgetSurface
-): Partial<Record<WidgetCategory, WidgetDefinition[]>> {
+): Partial<Record<WidgetCategory, AnyWidgetDefinition[]>> {
   return widgetRegistry.getGroupedByCategory(surface);
 }
 

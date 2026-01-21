@@ -5,8 +5,8 @@ import type {
   ResolvedDisplayTarget,
   DisplaySurfaceConfig,
   DisplaySpaceDefinition
-} from '../../types';
-import type { GameWorldMeta } from '../../types/game';
+} from '@/types/display';
+import type { GameWorldMeta } from '@/types/game';
 
 /**
  * Extracts the display spaces map from a GameWorld meta object, if present.
@@ -56,4 +56,3 @@ export function resolveDisplayTargetFromWorldMeta(
 
   return { space, surface, target };
 }
-

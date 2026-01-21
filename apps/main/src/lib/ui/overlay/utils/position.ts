@@ -7,12 +7,13 @@
 
 import type {
   OverlayAnchor,
-  OverlayPosition,
   CustomPosition,
   WidgetPosition,
   ComputedPosition,
 } from '../types';
 import { isOverlayPosition, isCustomPosition } from '../types';
+
+const isDev = import.meta.env?.DEV ?? false;
 
 /**
  * Converts a number or string value to a CSS value
@@ -138,7 +139,7 @@ export function calculatePosition(position: WidgetPosition): ComputedPosition {
   }
 
   // Should never reach here due to TypeScript, but fail safely
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     console.error('Invalid position configuration:', position);
   }
 

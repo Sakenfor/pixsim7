@@ -21,7 +21,7 @@ const STORE_NAME = 'presets';
  * - Structured data storage with indexing
  * - Offline-first support
  */
-export class IndexedDBPresetStorage implements PresetStorage {
+export class IndexedDBPresetStorage implements PresetStorage<OverlayPreset> {
   private dbPromise: Promise<IDBDatabase> | null = null;
 
   /**
@@ -181,7 +181,7 @@ export class IndexedDBPresetStorage implements PresetStorage {
       const index = store.index('isUserCreated');
 
       return new Promise((resolve, reject) => {
-        const request = index.getAll(true);
+        const request = index.getAll(true as unknown as IDBValidKey);
 
         request.onsuccess = () => {
           resolve(request.result ?? []);

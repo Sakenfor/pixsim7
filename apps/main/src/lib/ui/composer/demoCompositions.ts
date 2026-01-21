@@ -5,8 +5,9 @@
  * integrated with Panel Builder widgets (Task 50.4).
  */
 
-import type { PanelComposition } from './panelComposer';
 import { createBinding } from '../../dataBinding';
+
+import type { PanelComposition } from './panelComposer';
 
 /**
  * Workspace Status Dashboard
@@ -20,6 +21,7 @@ export const workspaceStatusComposition: PanelComposition = {
   id: 'demo-workspace-status',
   name: 'Workspace Status Dashboard',
   layout: {
+    type: 'grid',
     columns: 12,
     rows: 8,
     gap: 8,
@@ -197,6 +199,7 @@ export const gameStateComposition: PanelComposition = {
   id: 'demo-game-state',
   name: 'Game State Monitor',
   layout: {
+    type: 'grid',
     columns: 12,
     rows: 6,
     gap: 8,
@@ -302,6 +305,7 @@ export const mixedDataComposition: PanelComposition = {
   id: 'demo-mixed-data',
   name: 'Mixed Data Dashboard',
   layout: {
+    type: 'grid',
     columns: 12,
     rows: 8,
     gap: 8,

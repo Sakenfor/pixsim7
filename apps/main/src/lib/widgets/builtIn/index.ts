@@ -7,14 +7,16 @@
 export { clockWidget } from './ClockWidget';
 export { deviceStatusWidget } from './DeviceStatusWidget';
 
+import type { WidgetDefinition } from '../types';
 import { registerWidget } from '../widgetRegistry';
+
 import { clockWidget } from './ClockWidget';
 import { deviceStatusWidget } from './DeviceStatusWidget';
 
 /**
  * All built-in widget definitions
  */
-export const builtInWidgets = [
+export const builtInWidgets: Array<WidgetDefinition<any, any>> = [
   clockWidget,
   deviceStatusWidget,
 ];

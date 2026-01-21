@@ -7,12 +7,17 @@
  */
 
 import React, { useRef, useState, useCallback, useMemo, useEffect } from 'react';
-import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
+
+import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
+
 import { OverlayWidget } from './OverlayWidget';
+import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
+import { handleCollisions } from './utils/collision';
 import { applyDefaults } from './utils/merge';
 import { validateAndLog } from './utils/validation';
-import { handleCollisions } from './utils/collision';
-import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
+
+
+const isDev = import.meta.env?.DEV ?? false;
 
 export interface OverlayContainerProps {
   /** Overlay configuration */
@@ -76,7 +81,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   onWidgetClick,
   children,
   className = '',
-  validate = process.env.NODE_ENV === 'development',
+  validate = isDev,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -127,7 +132,7 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       if (result.hasCollisions) {
         setAdjustedPositions(result.adjustedPositions);
 
-        if (process.env.NODE_ENV === 'development') {
+        if (isDev) {
           console.log(
             `[Overlay] Detected ${result.collisions.length} collision(s), adjusted ${result.adjustedPositions.size} widget(s)`
           );

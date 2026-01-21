@@ -1,5 +1,7 @@
 import type { StateStorage } from 'zustand/middleware';
+
 import { getUserPreferences, updatePreferenceKey } from '../api/userPreferences';
+
 import { debugFlags } from './debugFlags';
 
 /**
@@ -26,7 +28,7 @@ function hasAuthToken(): boolean {
  */
 export function createBackendStorage(preferenceKey: string): StateStorage {
   const localStorageKey = `${preferenceKey}_local`;
-  let saveTimeout: NodeJS.Timeout | null = null;
+  let saveTimeout: ReturnType<typeof setTimeout> | null = null;
   const SAVE_DEBOUNCE_MS = 2000; // Wait 2s after last change before syncing to backend
 
   return {

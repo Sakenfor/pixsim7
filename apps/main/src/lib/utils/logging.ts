@@ -21,7 +21,15 @@ let serviceName = 'web';
 
 // In-memory batch queue and flush settings
 // Use LogIngestRequest for type safety, but allow extra fields via intersection
-type LogPayload = Partial<LogIngestRequest> & { level: string; service: string; msg: string };
+type LogPayload = Partial<LogIngestRequest> & {
+  level: string;
+  service: string;
+  msg: string;
+  original_level?: string;
+  original_msg?: string;
+  original_error?: unknown;
+  occurrences?: number;
+};
 
 const LOG_BATCH_SIZE = 10;
 const LOG_FLUSH_INTERVAL_MS = 5000;

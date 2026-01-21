@@ -12,8 +12,11 @@ import type {
   WidgetStyle,
 } from '../types';
 import { WIDGET_Z_INDEX_RANGE, SIZE_VALUES, isOverlayPosition } from '../types';
+
 import { validatePosition } from './position';
 import { validateVisibilityConfig } from './visibility';
+
+const isDev = import.meta.env?.DEV;
 
 /**
  * Validates a complete overlay configuration
@@ -307,7 +310,7 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
     positionMap.set(posKey, existing);
   }
 
-  for (const [pos, ids] of positionMap) {
+  for (const [, ids] of positionMap) {
     if (ids.length > 1 && !config.collisionDetection) {
       warnings.push({
         code: 'OVERLAPPING_WIDGETS',
@@ -394,7 +397,7 @@ export function lintConfiguration(config: OverlayConfiguration): ValidationError
 export function validateAndLog(config: OverlayConfiguration): ValidationResult {
   const result = validateConfiguration(config);
 
-  if (process.env.NODE_ENV === 'development') {
+  if (isDev) {
     const allIssues = [...result.errors, ...lintConfiguration(config)];
 
     if (allIssues.length > 0) {

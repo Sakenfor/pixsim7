@@ -5,12 +5,14 @@
  * Integrates with ProgressWidget for upload progress display
  */
 
-import React from 'react';
-import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Button } from '@pixsim7/shared.ui';
-import { Icon } from '@lib/icons';
+import React from 'react';
+
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
+
+import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
 export type UploadState = 'idle' | 'uploading' | 'success' | 'error';
 
@@ -104,7 +106,6 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
     variant = 'secondary',
     size = 'sm',
     showProgress = true,
-    successDuration,
     className = '',
     priority,
   } = config;
@@ -154,7 +155,7 @@ export function createUploadWidget(config: UploadWidgetConfig): OverlayWidget {
         error: {
           label: labels.error || 'Failed',
           icon: icons.error || 'alertCircle',
-          variant: 'danger' as const,
+          variant: 'secondary' as const,
           disabled: false,
         },
       };
