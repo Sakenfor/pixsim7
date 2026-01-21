@@ -106,7 +106,7 @@ export {
   connectPixverseWithGoogle,
 } from './lib/api/accounts';
 
-export type { UpdateAccountRequest } from './lib/api/accounts';
+export type { AccountUpdate } from './lib/api/accounts';
 
 export {
   getPixverseSyncDryRun,

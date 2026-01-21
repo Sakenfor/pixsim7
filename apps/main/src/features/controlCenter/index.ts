@@ -37,7 +37,6 @@ export {
 
 export {
   useControlCenterLayout,
-  type ControlCenterLayoutConfig,
 } from './hooks/useControlCenterLayout';
 
 // ============================================================================

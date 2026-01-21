@@ -23,4 +23,6 @@ export type {
   AccountUpdate,
   AccountStatus,
   CreateApiKeyResponse,
+  AccountStatsResponse,
+  InvitedAccountsResponse,
 } from '@lib/api/accounts';

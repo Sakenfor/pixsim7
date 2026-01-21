@@ -4,8 +4,9 @@
  * A news-style ticker that displays recent generation events.
  * Shows scrolling notifications for started, completed, and failed generations.
  */
-import { useState, useEffect, useMemo, useRef } from 'react';
 import clsx from 'clsx';
+import { useState, useEffect, useMemo, useRef } from 'react';
+
 import { useGenerationsStore, isGenerationActive } from '@features/generation';
 
 interface TickerEvent {
@@ -78,8 +79,8 @@ export function NotificationTicker() {
             timestamp: now,
           };
         } else if (currentStatus === 'failed') {
-          const errorSnippet = gen.error_message
-            ? gen.error_message.slice(0, 30) + (gen.error_message.length > 30 ? '...' : '')
+          const errorSnippet = gen.errorMessage
+            ? gen.errorMessage.slice(0, 30) + (gen.errorMessage.length > 30 ? '...' : '')
             : 'failed';
           event = {
             id: `${id}-failed-${now}`,

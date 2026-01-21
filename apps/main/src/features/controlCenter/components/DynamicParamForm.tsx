@@ -1,5 +1,7 @@
-import { useMemo } from 'react';
 import clsx from 'clsx';
+import { useMemo } from 'react';
+
+import type { ParamSpec } from '@lib/generation-ui';
 
 /**
  * ParamSpec type has been moved to @lib/generation-ui for better reusability.

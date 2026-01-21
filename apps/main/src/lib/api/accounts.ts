@@ -135,8 +135,7 @@ export async function getAccountStats(
   force = false
 ): Promise<AccountStatsResponse> {
   const params = force ? '?force=true' : '';
-  const response = await pixsimClient.get<AccountStatsResponse>(`/accounts/${accountId}/stats${params}`);
-  return response.data;
+  return pixsimClient.get<AccountStatsResponse>(`/accounts/${accountId}/stats${params}`);
 }
 
 /**
@@ -159,6 +158,5 @@ export async function getInvitedAccounts(
     page_size: pageSize.toString(),
     offset: offset.toString(),
   });
-  const response = await pixsimClient.get<InvitedAccountsResponse>(`/accounts/${accountId}/invited-accounts?${params}`);
-  return response.data;
+  return pixsimClient.get<InvitedAccountsResponse>(`/accounts/${accountId}/invited-accounts?${params}`);
 }

@@ -8,14 +8,15 @@
  * - Google account authentication flag
  */
 
-import { useState, useEffect } from 'react';
 import { Modal, FormField, Input, Button, useToast } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
-import type { UpdateAccountRequest } from '../lib/api/accounts';
+import type { AccountUpdate } from '../lib/api/accounts';
 import { connectPixverseWithGoogle, createApiKey } from '../lib/api/accounts';
 
 /** Form state for editing an account */
-export interface EditAccountFormState {
+interface EditAccountFormState {
   email: string;
   nickname: string;
   api_key: string;
@@ -24,8 +25,15 @@ export interface EditAccountFormState {
   clearOpenApiKey: boolean;
 }
 
+type AccountApiKey = {
+  id?: string;
+  kind?: string;
+  name?: string;
+  value?: string;
+};
+
 /** Create initial form state from account */
-export function createInitialFormState(account: ProviderAccount): EditAccountFormState {
+function createInitialFormState(account: ProviderAccount): EditAccountFormState {
   return {
     email: account.email,
     nickname: account.nickname ?? '',
@@ -37,39 +45,31 @@ export function createInitialFormState(account: ProviderAccount): EditAccountFor
 }
 
 /** Build update payload from form state, only including changed fields */
-export function buildAccountUpdatePayload(
+function buildAccountUpdatePayload(
   account: ProviderAccount,
   form: EditAccountFormState
-): UpdateAccountRequest {
-  const updates: UpdateAccountRequest = {};
-
+): AccountUpdate {
   const trimmedEmail = form.email.trim();
-  if (trimmedEmail && trimmedEmail !== account.email) {
-    updates.email = trimmedEmail;
-  }
-
   const currentNickname = account.nickname ?? '';
-  if (form.nickname !== currentNickname) {
-    updates.nickname = form.nickname;
-  }
-
   const trimmedApiKey = form.api_key.trim();
-  if (trimmedApiKey) {
-    updates.api_key = trimmedApiKey;
-  }
-
   const trimmedOpenApiKey = form.openapi_key.trim();
-  if (form.clearOpenApiKey) {
-    updates.api_keys = [];
-  } else if (trimmedOpenApiKey) {
-    updates.api_keys = [
-      { id: 'openapi_main', kind: 'openapi', value: trimmedOpenApiKey, priority: 10 },
-    ];
-  }
-
-  if (form.is_google_account !== account.is_google_account) {
-    updates.is_google_account = form.is_google_account;
-  }
+  const updates: AccountUpdate = {
+    ...(trimmedEmail && trimmedEmail !== account.email ? { email: trimmedEmail } : {}),
+    ...(form.nickname !== currentNickname ? { nickname: form.nickname } : {}),
+    ...(trimmedApiKey ? { api_key: trimmedApiKey } : {}),
+    ...(form.clearOpenApiKey
+      ? { api_keys: [] }
+      : trimmedOpenApiKey
+        ? {
+          api_keys: [
+            { id: 'openapi_main', kind: 'openapi', value: trimmedOpenApiKey, priority: 10 },
+          ],
+        }
+        : {}),
+    ...(form.is_google_account !== account.is_google_account
+      ? { is_google_account: form.is_google_account }
+      : {}),
+  };
 
   return updates;
 }
@@ -77,7 +77,7 @@ export function buildAccountUpdatePayload(
 interface EditAccountModalProps {
   account: ProviderAccount;
   onClose: () => void;
-  onSave: (accountId: number, data: UpdateAccountRequest) => Promise<void>;
+  onSave: (accountId: number, data: AccountUpdate) => Promise<void>;
   onRefresh?: () => void;
 }
 
@@ -90,6 +90,7 @@ export function EditAccountModal({ account, onClose, onSave, onRefresh }: EditAc
   const [creatingApiKey, setCreatingApiKey] = useState(false);
   const [hasApiKey, setHasApiKey] = useState(account.has_api_key_paid);
   const toast = useToast();
+  const apiKeys = Array.isArray(account.api_keys) ? (account.api_keys as AccountApiKey[]) : [];
 
   useEffect(() => {
     setFormState(createInitialFormState(account));
@@ -108,7 +109,7 @@ export function EditAccountModal({ account, onClose, onSave, onRefresh }: EditAc
 
     setCreatingApiKey(true);
     try {
-      const result = await createApiKey(account.id);
+      await createApiKey(account.id);
       toast.success('API key created successfully!');
       setHasApiKey(true);
       // Refresh to show the new key
@@ -217,12 +218,12 @@ export function EditAccountModal({ account, onClose, onSave, onRefresh }: EditAc
         >
           <div className="space-y-3">
             {/* Existing keys */}
-            {account.api_keys && account.api_keys.length > 0 && (
+            {apiKeys.length > 0 && (
               <div className="space-y-2">
                 <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                  Existing keys ({account.api_keys.length}):
+                  Existing keys ({apiKeys.length}):
                 </div>
-                {account.api_keys.map((key, idx) => {
+                {apiKeys.map((key, idx) => {
                   const displayValue = key.value || '';
                   const maskedValue = displayValue.length > 14
                     ? `${displayValue.slice(0, 10)}...${displayValue.slice(-4)}`

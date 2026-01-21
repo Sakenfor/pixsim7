@@ -1,10 +1,12 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import { createBackendStorage } from '../lib/backendStorage';
-import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
-import { debugFlags } from '../lib/debugFlags';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
 import type { GenerationSessionFields, GenerationSessionActions } from '@features/generation/stores/generationSessionStore';
 import { DEFAULT_SESSION_FIELDS } from '@features/generation/stores/generationSessionStore';
+
+import { createBackendStorage } from '../lib/backendStorage';
+import { debugFlags } from '../lib/debugFlags';
+import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 
 export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
@@ -204,7 +206,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
     },
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage('controlCenter'),
+      storage: createJSONStorage(() => createBackendStorage('controlCenter')),
       skipHydration: false,
       partialize: (s) => ({
         dockPosition: s.dockPosition,
@@ -226,7 +228,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
       }),
       version: 8,
       migrate: (persistedState: any, version: number) => {
-        let migrated = { ...persistedState };
+        const migrated = { ...persistedState };
 
         // Migrate from version 4 to 5: add floating position/size defaults
         if (version < 5) {

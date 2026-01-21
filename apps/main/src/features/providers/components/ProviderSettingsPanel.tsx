@@ -7,7 +7,7 @@ import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
-import type { UpdateAccountRequest } from '../lib/api/accounts';
+import type { AccountUpdate } from '../lib/api/accounts';
 
 
 import { AIProviderSettings } from './AIProviderSettings';
@@ -44,7 +44,7 @@ export function ProviderSettingsPanel() {
   const [activeTab, setActiveTab] = useState<ProviderTab>('accounts');
   const toast = useToast();
 
-  const handleSaveAccount = async (accountId: number, data: UpdateAccountRequest) => {
+  const handleSaveAccount = async (accountId: number, data: AccountUpdate) => {
     try {
       await updateAccount(accountId, data);
       setRefreshKey(prev => prev + 1);
@@ -436,7 +436,9 @@ export function ProviderSettingsPanel() {
                           description: 'Clearing expired cooldowns and fixing account states',
                           variant: 'info',
                         });
-                        const response = await apiClient.post(`/accounts/cleanup?provider_id=${activeProvider}`);
+                        const response = await apiClient.post<{ message: string }>(
+                          `/accounts/cleanup?provider_id=${activeProvider}`
+                        );
                         const { message } = response.data;
                         toast?.({
                           title: 'Cleanup complete',
@@ -510,7 +512,10 @@ export function ProviderSettingsPanel() {
                           variant: 'info',
                         });
 
-                        const checkRes = await apiClient.get(`/accounts/deduplicate?provider_id=${activeProvider}`);
+                        const checkRes = await apiClient.get<{
+                          duplicate_count: number;
+                          accounts: Array<{ email: string }>;
+                        }>(`/accounts/deduplicate?provider_id=${activeProvider}`);
                         const { duplicate_count, accounts } = checkRes.data;
 
                         if (duplicate_count === 0) {
@@ -534,7 +539,7 @@ export function ProviderSettingsPanel() {
                         if (!confirmed) return;
 
                         // Run deduplication (POST = actually delete)
-                        const dedupeRes = await apiClient.post(
+                        const dedupeRes = await apiClient.post<{ deleted: number }>(
                           `/accounts/deduplicate?provider_id=${activeProvider}`
                         );
                         const { deleted } = dedupeRes.data;

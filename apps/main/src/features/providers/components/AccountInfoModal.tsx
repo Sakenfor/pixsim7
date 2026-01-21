@@ -4,8 +4,10 @@
  * Modal displaying account details and invited users list for Pixverse accounts.
  */
 
-import { useState, useEffect } from 'react';
 import { Modal } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import type { AccountStatsResponse } from '../lib/api/accounts';
 import { getAccountStats, getInvitedAccounts } from '../lib/api/accounts';
 
 interface AccountInfoModalProps {
@@ -25,7 +27,7 @@ interface InvitedAccount {
 
 export function AccountInfoModal({ accountId, accountEmail, onClose }: AccountInfoModalProps) {
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<{ invited_count: number; user_info: Record<string, any> } | null>(null);
+  const [stats, setStats] = useState<AccountStatsResponse | null>(null);
   const [invitedAccounts, setInvitedAccounts] = useState<InvitedAccount[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +40,20 @@ export function AccountInfoModal({ accountId, accountEmail, onClose }: AccountIn
           getInvitedAccounts(accountId),
         ]);
         setStats(statsData);
-        setInvitedAccounts(invitedData.items);
+        const mappedInvites = invitedData.items.map((item) => {
+          const record = item as Record<string, unknown>;
+          const accountIdValue =
+            typeof record.account_id === 'number' ? record.account_id : Number(record.account_id ?? 0);
+          return {
+            account_id: Number.isFinite(accountIdValue) ? accountIdValue : 0,
+            account_avatar: typeof record.account_avatar === 'string' ? record.account_avatar : '',
+            nick_name: typeof record.nick_name === 'string' ? record.nick_name : '',
+            user_name: typeof record.user_name === 'string' ? record.user_name : '',
+            register_at: typeof record.register_at === 'string' ? record.register_at : '',
+            followed: Boolean(record.followed),
+          };
+        });
+        setInvitedAccounts(mappedInvites);
       } catch (err) {
         console.error('Failed to load account info:', err);
         setError(err instanceof Error ? err.message : 'Failed to load account information');
@@ -51,7 +66,7 @@ export function AccountInfoModal({ accountId, accountEmail, onClose }: AccountIn
   }, [accountId]);
 
   return (
-    <Modal open onOpenChange={onClose} title={`Account Info: ${accountEmail}`}>
+    <Modal isOpen onClose={onClose} title={`Account Info: ${accountEmail}`}>
       <div className="space-y-4">
         {loading && (
           <div className="text-center py-8 text-neutral-500">Loading...</div>
@@ -70,32 +85,42 @@ export function AccountInfoModal({ accountId, accountEmail, onClose }: AccountIn
               <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-2">
                 User Information
               </h3>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>
-                  <span className="text-neutral-500">Username:</span>
-                  <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
-                    {stats.user_info.username || 'N/A'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500">Nickname:</span>
-                  <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
-                    {stats.user_info.nickname || 'N/A'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500">Email:</span>
-                  <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
-                    {stats.user_info.email || accountEmail}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-neutral-500">Invite Code:</span>
-                  <span className="ml-2 font-mono text-xs bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded">
-                    {stats.user_info.invite_code || 'N/A'}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const userInfo = stats.user_info as Record<string, unknown>;
+                const username = typeof userInfo.username === 'string' ? userInfo.username : 'N/A';
+                const nickname = typeof userInfo.nickname === 'string' ? userInfo.nickname : 'N/A';
+                const email = typeof userInfo.email === 'string' ? userInfo.email : accountEmail;
+                const inviteCode = typeof userInfo.invite_code === 'string' ? userInfo.invite_code : 'N/A';
+
+                return (
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-neutral-500">Username:</span>
+                      <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
+                        {username}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">Nickname:</span>
+                      <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
+                        {nickname}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">Email:</span>
+                      <span className="ml-2 font-medium text-neutral-800 dark:text-neutral-200">
+                        {email}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-neutral-500">Invite Code:</span>
+                      <span className="ml-2 font-mono text-xs bg-neutral-200 dark:bg-neutral-700 px-1.5 py-0.5 rounded">
+                        {inviteCode}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Invited Accounts Section */}

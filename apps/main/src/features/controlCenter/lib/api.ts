@@ -1,7 +1,7 @@
-import { apiClient } from './client';
+import { createGeneration, type CreateGenerationRequest, type GenerationNodeConfigSchema } from '@lib/api/generations';
 import { devValidateParams, devLogParams } from '@lib/utils/validation/devValidation';
-import { createGeneration, type CreateGenerationRequest } from '@lib/api/generations';
-import type { OperationType } from '../../types/operations';
+
+import type { OperationType } from '@/types/operations';
 
 export interface GenerateAssetRequest {
   prompt: string;
@@ -67,6 +67,8 @@ const CANONICAL_CONFIG_KEYS = new Set([
   'original_video_id',
   'source_asset_id',
   'source_asset_ids',
+  'sourceAssetId',
+  'sourceAssetIds',
   'prompts',
   'composition_assets',
   'pacing',
@@ -85,7 +87,7 @@ function buildGenerationConfig(
     | 'video_extend',
   params: Record<string, any>,
   providerId: string = 'pixverse'
-): Record<string, any> {
+): GenerationNodeConfigSchema {
   const merged = { ...params };
 
   // Extract duration settings (only if explicitly provided)
@@ -125,8 +127,12 @@ function buildGenerationConfig(
   }
 
   // Build the config object (matches GenerationNodeConfigSchema)
-  const config: Record<string, any> = {
-    generation_type: generationType,
+  const sourceAssetId =
+    merged.sourceAssetId ?? merged.source_asset_id ?? merged.original_video_id;
+  const sourceAssetIds = merged.sourceAssetIds ?? merged.source_asset_ids;
+
+  const config: GenerationNodeConfigSchema = {
+    generationType,
     purpose: 'gap_fill',
     style,
     duration,
@@ -137,44 +143,15 @@ function buildGenerationConfig(
     },
     enabled: true,
     version: 1,
+    ...(merged.prompt ? { prompt: merged.prompt } : {}),
+    ...(merged.image_url ? { image_url: merged.image_url } : {}),
+    ...(merged.video_url ? { video_url: merged.video_url } : {}),
+    ...(merged.image_urls ? { image_urls: merged.image_urls } : {}),
+    ...(merged.prompts ? { prompts: merged.prompts } : {}),
+    ...(sourceAssetId !== undefined ? { sourceAssetId } : {}),
+    ...(sourceAssetIds ? { sourceAssetIds } : {}),
+    ...(merged.composition_assets ? { composition_assets: merged.composition_assets } : {}),
   };
-
-  // Include prompt in config for structured params (backend expects this for logging/introspection)
-  if (merged.prompt) {
-    config.prompt = merged.prompt;
-  }
-
-  // Include image_url for image_to_video operations
-  if (merged.image_url) {
-    config.image_url = merged.image_url;
-  }
-
-  // Include video_url and original_video_id for video_extend operations
-  if (merged.video_url) {
-    config.video_url = merged.video_url;
-  }
-  if (merged.original_video_id) {
-    config.original_video_id = merged.original_video_id;
-  }
-  if (merged.source_asset_id) {
-    config.source_asset_id = merged.source_asset_id;
-  }
-
-  // Include transition-specific fields
-  if (merged.image_urls) {
-    config.image_urls = merged.image_urls;
-  }
-  if (merged.prompts) {
-    config.prompts = merged.prompts;
-  }
-  if (merged.source_asset_ids) {
-    config.source_asset_ids = merged.source_asset_ids;
-  }
-
-  // Include composition-specific fields
-  if (merged.composition_assets) {
-    config.composition_assets = merged.composition_assets;
-  }
 
   return config;
 }
@@ -216,18 +193,14 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
     providerId
   );
 
-  // Ensure prompt is always embedded in the config (some callers may omit it
-  // from extraParams when presets/dynamic params change).
-  if (req.prompt && req.prompt.trim().length > 0) {
-    config.prompt = req.prompt.trim();
-  }
-
   // Create generation request
   // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
   const generationRequest: CreateGenerationRequest = {
     config,
     provider_id: providerId,
     name: `Quick generation: ${req.prompt.slice(0, 50)}`,
+    priority: 5,
+    version_intent: 'new',
     force_new: true,
   };
 
