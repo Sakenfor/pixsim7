@@ -1,8 +1,11 @@
-import { useState, useCallback, useMemo } from 'react';
 import { ScenePlayer } from '@pixsim7/game.components';
+import type { SceneRuntimeState } from '@pixsim7/shared.types';
 import { Button, Panel, Tabs } from '@pixsim7/shared.ui';
+import { useState, useCallback, useMemo } from 'react';
+
 import { useGraphStore } from '@features/graph';
-import type { SceneRuntimeState } from '@lib/registries';
+
+
 import { PlaybackTimeline, type PlaybackEvent } from '../player/PlaybackTimeline';
 import { SceneStateEditor } from '../player/SceneStateEditor';
 
@@ -33,7 +36,8 @@ export function ScenePlaybackPanel({
   const scenes = useGraphStore((s) => s.scenes);
 
   const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>('full');
+  const [playbackMode] = useState<PlaybackMode>('full');
+  const [activeTab, setActiveTab] = useState<'playback' | 'mockState' | 'timeline'>('playback');
   const [mockState, setMockState] = useState<Record<string, any>>({});
   const [playbackEvents, setPlaybackEvents] = useState<PlaybackEvent[]>([]);
   const [runtimeState, setRuntimeState] = useState<SceneRuntimeState | null>(null);
@@ -131,45 +135,49 @@ export function ScenePlaybackPanel({
             { id: 'mockState', label: 'Mock State' },
             { id: 'timeline', label: `Timeline (${playbackEvents.length})` },
           ]}
-        >
-          {/* Playback view */}
-          <div id="playback" className="h-full overflow-auto p-4">
-            {isPlaying ? (
-              <ScenePlayer
-                scene={runtimeScene}
-                initialState={{
-                  currentNodeId: effectiveStartNodeId,
-                  currentSceneId: runtimeScene.id,
-                  flags: mockState,
-                }}
-                autoAdvance={playbackMode === 'full'}
-                onStateChange={handleStateChange}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
-                <div className="text-center">
-                  <p className="text-4xl mb-4">▶️</p>
-                  <p className="text-sm">Click "Play Scene" to start testing</p>
-                  {mockState && Object.keys(mockState).length > 0 && (
-                    <p className="text-xs mt-2 text-neutral-400">
-                      Mock state configured: {Object.keys(mockState).length} flag(s)
-                    </p>
-                  )}
+          value={activeTab}
+          onChange={(tabId) => setActiveTab(tabId as typeof activeTab)}
+        />
+        <div className="h-full overflow-auto">
+          {activeTab === 'playback' && (
+            <div id="playback" className="h-full overflow-auto p-4">
+              {isPlaying ? (
+                <ScenePlayer
+                  scene={runtimeScene}
+                  initialState={{
+                    currentNodeId: effectiveStartNodeId,
+                    currentSceneId: runtimeScene.id,
+                    flags: mockState,
+                  }}
+                  autoAdvance={playbackMode === 'full'}
+                  onStateChange={handleStateChange}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
+                  <div className="text-center">
+                    <p className="text-4xl mb-4">▶️</p>
+                    <p className="text-sm">Click "Play Scene" to start testing</p>
+                    {mockState && Object.keys(mockState).length > 0 && (
+                      <p className="text-xs mt-2 text-neutral-400">
+                        Mock state configured: {Object.keys(mockState).length} flag(s)
+                      </p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {/* Scene state editor */}
-          <div id="mockState" className="h-full overflow-auto p-4">
-            <SceneStateEditor state={mockState} onChange={setMockState} />
-          </div>
-
-          {/* Execution timeline */}
-          <div id="timeline" className="h-full overflow-auto p-4">
-            <PlaybackTimeline events={playbackEvents} />
-          </div>
-        </Tabs>
+              )}
+            </div>
+          )}
+          {activeTab === 'mockState' && (
+            <div id="mockState" className="h-full overflow-auto p-4">
+              <SceneStateEditor state={mockState} onChange={setMockState} />
+            </div>
+          )}
+          {activeTab === 'timeline' && (
+            <div id="timeline" className="h-full overflow-auto p-4">
+              <PlaybackTimeline events={playbackEvents} />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Runtime info footer */}

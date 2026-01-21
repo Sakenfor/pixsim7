@@ -1,6 +1,9 @@
 import { Badge } from '@pixsim7/shared.ui';
+
 import type { PlaybackEvent } from '../../lib/core';
 import { getNodeTypeColor, formatTime, getElapsedTime as getElapsed } from '../utils';
+
+export type { PlaybackEvent } from '../../lib/core';
 
 export interface PlaybackTimelineProps {
   /** Array of playback events */

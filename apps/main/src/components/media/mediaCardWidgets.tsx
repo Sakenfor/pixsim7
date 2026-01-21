@@ -367,7 +367,7 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
  * Uses MenuWidget for expandable actions when actions are available
  */
 export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, providerStatus, actions, presetCapabilities } = props;
+  const { id, providerId, providerStatus, actions, presetCapabilities } = props;
 
   // If preset provides its own status widget, skip the runtime one
   if (presetCapabilities?.providesStatusWidget) {
@@ -415,7 +415,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         id: 'reupload',
         label: 'Upload to provider…',
         icon: 'upload',
-        onClick: () => actions.onReupload?.(id),
+        onClick: () => actions.onReupload?.(providerId),
       });
     }
 

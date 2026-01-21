@@ -48,7 +48,7 @@ export interface MediaCardActions {
   onUploadToProvider?: (id: number) => void;
   onArchive?: (id: number) => void;
   onDelete?: (id: number) => void;
-  onReupload?: (id: number) => void;
+  onReupload?: (providerId: string) => void | Promise<void>;
   onEnrichMetadata?: (id: number) => void;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;

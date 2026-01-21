@@ -37,18 +37,20 @@ export function MasonryGrid({
     updateWidth();
 
     let ro: ResizeObserver | null = null;
-    if ('ResizeObserver' in window) {
+    const win = window as Window;
+
+    if ('ResizeObserver' in win) {
       ro = new ResizeObserver(updateWidth);
       ro.observe(el);
     } else {
-      window.addEventListener('resize', updateWidth);
+      win.addEventListener('resize', updateWidth);
     }
 
     return () => {
       if (ro) {
         ro.disconnect();
       } else {
-        window.removeEventListener('resize', updateWidth);
+        win.removeEventListener('resize', updateWidth);
       }
     };
   }, [containerWidth]);

@@ -32,7 +32,7 @@ function AnalyzerSelector({
   useEffect(() => {
     listPromptAnalyzers()
       .then((res) => {
-        setAnalyzers(res.analyzers);
+        setAnalyzers([...res.analyzers]);
         setLoading(false);
       })
       .catch((err) => {

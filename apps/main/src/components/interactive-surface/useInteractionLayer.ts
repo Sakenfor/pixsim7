@@ -7,7 +7,9 @@
  */
 
 import { useState, useCallback, useMemo, useRef } from 'react';
+
 import { generateUUID } from '@lib/utils/uuid';
+
 import type {
   SurfaceState,
   InteractionLayer,
@@ -97,7 +99,11 @@ export interface UseInteractionLayerReturn {
   // Element management
   addElement: (layerId: string, element: Omit<AnyElement, 'id' | 'layerId'>) => string;
   removeElement: (layerId: string, elementId: string) => void;
-  updateElement: (layerId: string, elementId: string, updates: Partial<AnyElement>) => void;
+  updateElement: (
+    layerId: string,
+    elementId: string,
+    updates: Partial<Omit<AnyElement, 'id' | 'layerId' | 'type'>>
+  ) => void;
   getElement: (layerId: string, elementId: string) => AnyElement | undefined;
 
   // Selection
@@ -153,7 +159,7 @@ export function useInteractionLayer(
     initialLayers[0]?.id ?? null
   );
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
-  const [currentTime, setCurrentTime] = useState<number | undefined>(undefined);
+  const [currentTime] = useState<number | undefined>(undefined);
 
   // History
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -385,7 +391,11 @@ export function useInteractionLayer(
   }, []);
 
   const updateElement = useCallback(
-    (layerId: string, elementId: string, updates: Partial<AnyElement>) => {
+    (
+      layerId: string,
+      elementId: string,
+      updates: Partial<Omit<AnyElement, 'id' | 'layerId' | 'type'>>
+    ) => {
       setLayers((prev) =>
         prev.map((l) =>
           l.id === layerId
@@ -507,7 +517,8 @@ export function useInteractionLayer(
   );
 
   const handlePointerUp = useCallback(
-    (_event: SurfacePointerEvent) => {
+    (event: SurfacePointerEvent) => {
+      void event;
       if (!isDrawingRef.current) return;
 
       isDrawingRef.current = false;

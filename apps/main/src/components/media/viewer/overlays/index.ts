@@ -7,6 +7,7 @@ export {
   useMediaOverlayTool,
 } from './registry';
 export { MediaOverlayHost, useMediaOverlayHost } from './host';
+export type { MediaOverlayHostState } from './host';
 export type {
   MediaOverlayTool,
   MediaOverlayId,

@@ -143,7 +143,7 @@ export function MediaCardConfigPage() {
     if (!name) return;
 
     try {
-      await manager.savePreset(configuration, {
+      await manager.savePresetFromConfig(configuration, {
         name,
         category: 'media',
         icon: '⭐',
