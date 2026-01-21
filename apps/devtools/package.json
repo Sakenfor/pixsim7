@@ -9,6 +9,7 @@
     "prebuild": "pnpm run build:deps",
     "build:deps": "pnpm -r --filter \"@pixsim7/shared.*\" --filter @pixsim7/game.engine --filter @pixsim7/game.components --filter @pixsim7/scene.shapes --filter @pixsim7/scene.gizmos run build --if-present",
     "build:check": "tsc -b && vite build",
+    "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -60,9 +61,11 @@
     "@vitejs/plugin-react": "^5.1.0",
     "vite-tsconfig-paths": "^5.0.1",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.14",
     "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.3",
     "vite": "^7.2.2"
   },
   "pixsim": {
