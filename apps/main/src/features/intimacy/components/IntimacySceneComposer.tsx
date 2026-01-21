@@ -9,9 +9,9 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md
  */
 
-import { GenerationSettingsBar } from '@lib/generation-ui';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 
+import { GenerationSettingsBar } from '@lib/generation-ui';
 import type {
   IntimacySceneConfig,
   IntimacySceneType,

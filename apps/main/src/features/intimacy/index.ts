@@ -59,20 +59,17 @@ export {
   checkGate,
   checkAllGates,
   type GateCheckResult,
-  type GateStatus,
 } from './lib/gateChecking';
 
 export {
   validateSceneTemplate,
   validateArcTemplate,
   type ValidationResult,
-  type ValidationError,
 } from './lib/templateValidation';
 
 export {
   validateIntimacyScene,
   validateProgressionArc,
-  type SceneValidationResult,
 } from './lib/validation';
 
 // ============================================================================

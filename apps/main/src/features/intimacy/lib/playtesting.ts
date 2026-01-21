@@ -8,11 +8,8 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md (Phase 11)
  */
 
-import type {
-  RelationshipProgressionArc,
-  ProgressionStage,
-  RelationshipGate,
-} from '@lib/registries';
+import type { RelationshipProgressionArc } from '@lib/registries';
+
 import { checkGate, type SimulatedRelationshipState } from './gateChecking';
 
 // ============================================================================
@@ -126,7 +123,7 @@ export const PLAYTEST_PRESETS = {
     description: 'Low starting metrics, slow progression - tests minimum requirements',
     state: {
       tier: 'stranger' as const,
-      intimacyLevel: 0,
+      intimacyLevel: 'none',
       metrics: {
         affinity: 20,
         trust: 15,
@@ -143,7 +140,7 @@ export const PLAYTEST_PRESETS = {
     description: 'Medium starting metrics - tests typical progression',
     state: {
       tier: 'acquaintance' as const,
-      intimacyLevel: 2,
+      intimacyLevel: 'light_flirt',
       metrics: {
         affinity: 50,
         trust: 50,
@@ -160,7 +157,7 @@ export const PLAYTEST_PRESETS = {
     description: 'High starting metrics - tests if arc provides enough challenge',
     state: {
       tier: 'friend' as const,
-      intimacyLevel: 5,
+      intimacyLevel: 'intimate',
       metrics: {
         affinity: 80,
         trust: 80,
@@ -177,7 +174,7 @@ export const PLAYTEST_PRESETS = {
     description: 'Maximum metrics - tests if gates can be bypassed too easily',
     state: {
       tier: 'close_friend' as const,
-      intimacyLevel: 8,
+      intimacyLevel: 'very_intimate',
       metrics: {
         affinity: 100,
         trust: 100,
@@ -194,7 +191,7 @@ export const PLAYTEST_PRESETS = {
     description: 'Bare minimum to pass first gate - tests edge cases',
     state: {
       tier: 'stranger' as const,
-      intimacyLevel: 0,
+      intimacyLevel: 'none',
       metrics: {
         affinity: 1,
         trust: 1,
@@ -211,7 +208,7 @@ export const PLAYTEST_PRESETS = {
     description: 'High tension with mixed other metrics - tests tension-gated content',
     state: {
       tier: 'acquaintance' as const,
-      intimacyLevel: 3,
+      intimacyLevel: 'deep_flirt',
       metrics: {
         affinity: 40,
         trust: 30,

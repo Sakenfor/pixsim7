@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Panel, Badge, Button, ProgressBar } from '@pixsim7/shared.ui';
 import {
   parseNpcKey,
   getNpcRelationshipState,
 } from '@pixsim7/game.engine';
+import { Panel, Badge, Button, ProgressBar } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
+
 import type { GameSessionDTO } from '@lib/api/game';
 
 interface RelationshipDashboardProps {
@@ -17,7 +18,7 @@ interface NpcRelationship {
   trust: number;
   chemistry: number;
   tension: number;
-  flags: any;
+  flags: string[];
   tier: string;
   intimacyLevel: string | null;
 }
@@ -47,13 +48,17 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
         // Use game-core helper instead of manual extraction
         const relState = getNpcRelationshipState(session, npcId);
 
+        if (!relState) {
+          continue;
+        }
+
         npcRelationships.push({
           npcId,
-          affinity: relState.affinity,
-          trust: relState.trust,
-          chemistry: relState.chemistry,
-          tension: relState.tension,
-          flags: relState.flags,
+          affinity: relState.values.affinity ?? 0,
+          trust: relState.values.trust ?? 0,
+          chemistry: relState.values.chemistry ?? 0,
+          tension: relState.values.tension ?? 0,
+          flags: relState.flags ?? [],
           tier: relState.tierId || 'stranger',
           intimacyLevel: relState.levelId || null,
         });
@@ -163,15 +168,15 @@ function RelationshipCard({ relationship }: RelationshipCardProps) {
         <ProgressBar label="Tension" value={tension} color="red" />
       </div>
 
-      {relationship.flags && Object.keys(relationship.flags).length > 0 && (
+      {relationship.flags.length > 0 && (
         <div className="pt-2 border-t border-neutral-200 dark:border-neutral-600">
           <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
             Relationship Flags
           </p>
           <div className="flex flex-wrap gap-1">
-            {Object.entries(relationship.flags).map(([key, value]) => (
-              <Badge key={key} color="gray">
-                {key}: {JSON.stringify(value)}
+            {relationship.flags.map((flag) => (
+              <Badge key={flag} color="gray">
+                {flag}
               </Badge>
             ))}
           </div>

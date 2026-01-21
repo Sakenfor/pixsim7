@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { previewUnifiedMood } from '@pixsim7/game.engine';
-import type { UnifiedMoodState } from '@lib/registries';
+import type { UnifiedMoodState } from '@pixsim7/shared.types';
+import { useEffect, useState } from 'react';
 
 interface UseUnifiedMoodArgs {
   worldId: number;
@@ -12,7 +12,7 @@ interface UseUnifiedMoodArgs {
     chemistry: number;
     tension: number;
   };
-  levelId?: string | null;
+  intimacyLevelId?: string | null;
 }
 
 interface UseUnifiedMoodResult {
@@ -32,7 +32,7 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const { worldId, npcId, sessionId, relationshipValues, levelId } = args;
+  const { worldId, npcId, sessionId, relationshipValues, intimacyLevelId } = args;
 
   useEffect(() => {
     // Require at least world + npc + session to run
@@ -53,7 +53,7 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
       npcId,
       sessionId,
       relationshipValues,
-      levelId: levelId ?? undefined,
+      intimacyLevelId: intimacyLevelId ?? undefined,
     })
       .then((result) => {
         if (!cancelled) {
@@ -82,9 +82,8 @@ export function useUnifiedMood(args: UseUnifiedMoodArgs): UseUnifiedMoodResult {
     relationshipValues?.trust,
     relationshipValues?.chemistry,
     relationshipValues?.tension,
-    levelId,
+    intimacyLevelId,
   ]);
 
   return { data, loading, error };
 }
-

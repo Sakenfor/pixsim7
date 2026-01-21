@@ -4,13 +4,14 @@
  * Phase 17.4+: Display and execute NPC interactions with cooldown timers
  */
 
-import React, { useState, useEffect } from 'react';
-import type { NpcInteractionInstance, InteractionSurface } from '@lib/registries';
 import {
   getRemainingCooldown,
   formatCooldownSmart,
   getCooldownProgress,
 } from '@pixsim7/game.engine';
+import React, { useState, useEffect } from 'react';
+
+import type { NpcInteractionInstance, NpcInteractionSurface } from '@lib/registries';
 import './InteractionMenu.css';
 
 export interface InteractionMenuProps {
@@ -45,7 +46,7 @@ export interface InteractionMenuProps {
 /**
  * Get icon for interaction surface
  */
-function getSurfaceIcon(surface: InteractionSurface): string {
+function getSurfaceIcon(surface: NpcInteractionSurface): string {
   switch (surface) {
     case 'dialogue':
       return '💬';
@@ -57,6 +58,8 @@ function getSurfaceIcon(surface: InteractionSurface): string {
       return '📬';
     case 'menu':
       return '📋';
+    case 'ambient':
+      return '🌫️';
     default:
       return '•';
   }
@@ -238,11 +241,9 @@ export function InteractionMenu({
  */
 export function InlineInteractionHint({
   interactions,
-  onSelect,
   keyHint = 'E',
 }: {
   interactions: NpcInteractionInstance[];
-  onSelect: (interaction: NpcInteractionInstance) => void;
   keyHint?: string;
 }) {
   // Show only the highest priority available interaction

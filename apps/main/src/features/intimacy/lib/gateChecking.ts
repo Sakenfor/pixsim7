@@ -245,3 +245,5 @@ export function createStateFromTier(tier: string): SimulatedRelationshipState {
 
   return presets[tier] || createDefaultState();
 }
+
+export type { GateCheckResult };

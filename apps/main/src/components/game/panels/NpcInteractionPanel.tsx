@@ -9,46 +9,51 @@
  * - Pending Dialogue
  */
 
-import { useState } from 'react';
-import {
-  MoodIndicator,
-  InteractionSuggestions,
-  ChainProgress,
-  InteractionHistory,
-  PendingDialoguePanel,
-} from '@features/interactions';
 import type {
   MoodState,
   InteractionSuggestion,
+  InteractionChain,
   ChainState,
-  InteractionHistoryEntry,
 } from '@pixsim7/game.engine';
-import { Button, Panel } from '@pixsim7/shared.ui';
+import { Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import {
+  MoodIndicator,
+  InteractionSuggestions,
+  ChainList,
+  InteractionHistory,
+  PendingDialoguePanel,
+  type InteractionHistoryEntry,
+} from '@features/interactions';
+
+import type { ExecutedDialogue } from '@/hooks/usePendingDialogue';
+
 import './NpcInteractionPanel.css';
 
 export interface NpcInteractionPanelProps {
   npcId: number;
   npcName: string;
+  sessionId?: number;
 
   // Mood state
   mood?: MoodState;
 
   // Suggestions
   suggestions?: InteractionSuggestion[];
-  onSuggestionClick?: (suggestion: InteractionSuggestion) => void;
+  onSuggestionSelect?: (interaction: InteractionSuggestion['interaction']) => void;
 
   // Active chains
-  activeChains?: ChainState[];
+  activeChains?: InteractionChain[];
+  chainStates?: Record<string, ChainState | null>;
   onChainStepClick?: (chainId: string, stepId: string) => void;
 
   // Interaction history
   history?: InteractionHistoryEntry[];
 
   // Pending dialogue
-  hasPendingDialogue?: boolean;
-  pendingDialogueMessage?: string;
-  onAcceptDialogue?: () => void;
-  onDismissDialogue?: () => void;
+  showPendingDialogue?: boolean;
+  onDialogueExecuted?: (result: ExecutedDialogue) => void;
 
   // Panel controls
   onClose?: () => void;
@@ -57,19 +62,22 @@ export interface NpcInteractionPanelProps {
 export function NpcInteractionPanel({
   npcId,
   npcName,
+  sessionId,
   mood,
   suggestions = [],
-  onSuggestionClick,
+  onSuggestionSelect,
   activeChains = [],
+  chainStates = {},
   onChainStepClick,
   history = [],
-  hasPendingDialogue = false,
-  pendingDialogueMessage,
-  onAcceptDialogue,
-  onDismissDialogue,
+  showPendingDialogue = false,
+  onDialogueExecuted,
   onClose,
 }: NpcInteractionPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'history'>('overview');
+  const canShowPendingDialogue = showPendingDialogue && sessionId !== undefined;
+  const handleSuggestionSelect =
+    onSuggestionSelect ?? (() => {});
 
   return (
     <div className="npc-interaction-panel">
@@ -105,13 +113,10 @@ export function NpcInteractionPanel({
         {activeTab === 'overview' && (
           <div className="overview-tab">
             {/* Pending Dialogue (if any) */}
-            {hasPendingDialogue && (
+            {canShowPendingDialogue && (
               <PendingDialoguePanel
-                npcId={npcId}
-                npcName={npcName}
-                message={pendingDialogueMessage}
-                onAccept={onAcceptDialogue}
-                onDismiss={onDismissDialogue}
+                sessionId={sessionId}
+                onDialogueExecuted={onDialogueExecuted}
               />
             )}
 
@@ -127,13 +132,11 @@ export function NpcInteractionPanel({
             {activeChains.length > 0 && (
               <div className="section">
                 <h3 className="section-title">Active Chains</h3>
-                {activeChains.map((chain) => (
-                  <ChainProgress
-                    key={chain.chainId}
-                    chainState={chain}
-                    onStepClick={onChainStepClick}
-                  />
-                ))}
+                <ChainList
+                  chains={activeChains}
+                  states={chainStates}
+                  onStepClick={onChainStepClick}
+                />
               </div>
             )}
 
@@ -142,13 +145,13 @@ export function NpcInteractionPanel({
               <div className="section">
                 <InteractionSuggestions
                   suggestions={suggestions}
-                  onSuggestionClick={onSuggestionClick}
+                  onSelect={handleSuggestionSelect}
                 />
               </div>
             )}
 
             {/* Empty state */}
-            {!hasPendingDialogue &&
+            {!canShowPendingDialogue &&
               !mood &&
               activeChains.length === 0 &&
               suggestions.length === 0 && (
@@ -165,7 +168,7 @@ export function NpcInteractionPanel({
         {activeTab === 'history' && (
           <div className="history-tab">
             {history.length > 0 ? (
-              <InteractionHistory entries={history} />
+              <InteractionHistory history={history} />
             ) : (
               <div className="empty-state">
                 <div className="empty-icon">📜</div>

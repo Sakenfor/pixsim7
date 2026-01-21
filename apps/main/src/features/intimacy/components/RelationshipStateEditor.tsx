@@ -9,6 +9,7 @@
  */
 
 import React from 'react';
+
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import { createStateFromTier } from '../lib/gateChecking';
 
@@ -24,6 +25,9 @@ interface RelationshipStateEditorProps {
 
   /** Show preset buttons for quick setup */
   showPresets?: boolean;
+
+  /** Compact layout for embedding in tight panels */
+  compact?: boolean;
 }
 
 const TIERS = [

@@ -3,12 +3,16 @@
  * UI for viewing and editing NPC tool/pattern preferences
  */
 
-import { useState, useEffect } from 'react';
-import { Button, Panel, Badge } from '@pixsim7/shared.ui';
-import type { GameNpcDetail } from '@lib/api/game';
+import type { NpcPersona } from '@pixsim7/game.engine';
 import type { NpcPreferences, ToolPreference, PatternPreference } from '@pixsim7/scene.gizmos';
 import { PREFERENCE_PRESETS, createDefaultPreferences } from '@pixsim7/scene.gizmos';
-import { getAllTools } from '@/gizmos/loadDefaultPacks';
+import type { BrainFace } from '@pixsim7/scene.shapes';
+import { NpcId as toNpcId, WorldId as toWorldId } from '@pixsim7/shared.types';
+import { Button, Panel, Badge } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import type { GameNpcDetail } from '@lib/api/game';
+import type { BrainState, BrainStatSnapshot } from '@lib/core/types';
 import {
   getNpcPreferences,
   setNpcPreferences,
@@ -17,10 +21,13 @@ import {
   addFavoriteTool,
   removeFavoriteTool,
 } from '@lib/game/npcPreferences';
-import type { NpcPersona } from '@pixsim7/game.engine';
-import type { BrainState, BrainStatSnapshot } from '@lib/core/types';
+
+import { getAllTools } from '@features/gizmos';
+
+
+
 import { BrainShape } from '@/components/shapes/BrainShape';
-import type { BrainFace } from '@pixsim7/scene.shapes';
+
 
 interface NpcPreferencesEditorProps {
   npc: GameNpcDetail;
@@ -84,8 +91,8 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
     };
 
     const brain: BrainState = {
-      npcId: npc.id,
-      worldId: 0,
+      npcId: toNpcId(npc.id),
+      worldId: toWorldId(0),
       stats,
       derived: {
         persona_tags: basePersona.tags,
@@ -223,7 +230,6 @@ export function NpcPreferencesEditor({ npc, onChange }: NpcPreferencesEditorProp
                 const isFavorite = preferences.favorites.includes(tool.id);
                 const relationshipRequired = preferences.relationshipGates?.[tool.id];
                 const isLocked = relationshipRequired !== undefined && (npc.relationshipLevel || 0) < relationshipRequired;
-                const isUnlocked = preferences.unlockedTools?.includes(tool.id);
 
                 return (
                   <div

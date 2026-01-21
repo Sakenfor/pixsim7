@@ -20,6 +20,7 @@ import type { SimulatedRelationshipState } from './gateChecking';
 import {
   deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
   supportsContentRating as checkContentRatingWithHelper,
+  type IntimacyBand,
   type IntimacyGatingConfig,
 } from './intimacyGating';
 

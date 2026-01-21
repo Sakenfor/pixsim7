@@ -5,7 +5,9 @@
  * NPC interactions and provides methods to execute them via the LLM.
  */
 
+import { SessionId as toSessionId } from '@pixsim7/shared.types';
 import { useState, useEffect, useCallback } from 'react';
+
 import {
   getPendingDialogue,
   executePendingDialogue,
@@ -80,7 +82,7 @@ export function usePendingDialogue(
     try {
       setLoading(true);
       setError(null);
-      const requests = await getPendingDialogue(sessionId);
+      const requests = await getPendingDialogue(toSessionId(sessionId));
       setPending(requests);
 
       // Auto-execute if enabled
@@ -103,10 +105,10 @@ export function usePendingDialogue(
     async (requestId: string): Promise<ExecutedDialogue> => {
       try {
         setExecuting((prev) => ({ ...prev, [requestId]: true }));
-        const result = await executePendingDialogue(sessionId, requestId);
+        const result = await executePendingDialogue(toSessionId(sessionId), requestId);
 
         // Clear from pending list
-        await clearPendingDialogue(sessionId, requestId);
+        await clearPendingDialogue(toSessionId(sessionId), requestId);
 
         // Refresh pending list
         await refresh();
@@ -134,7 +136,7 @@ export function usePendingDialogue(
   const clear = useCallback(
     async (requestId: string): Promise<void> => {
       try {
-        await clearPendingDialogue(sessionId, requestId);
+        await clearPendingDialogue(toSessionId(sessionId), requestId);
         await refresh();
       } catch (err) {
         console.error(`Failed to clear dialogue ${requestId}:`, err);

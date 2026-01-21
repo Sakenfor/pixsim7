@@ -9,18 +9,17 @@
  */
 
 import React, { useState, useMemo } from 'react';
+
 import type { IntimacySceneConfig, RelationshipProgressionArc } from '@lib/registries';
+
 import {
   getAllSceneTemplates,
   getAllArcTemplates,
   cloneSceneFromTemplate,
   cloneArcFromTemplate,
-  deleteUserSceneTemplate,
-  deleteUserArcTemplate,
   type SceneTemplate,
   type ArcTemplate,
 } from '../lib/templates';
-import { RelationshipGateBadge } from './RelationshipGateVisualizer';
 
 // ============================================================================
 // Scene Template Browser
@@ -210,18 +209,14 @@ export function SceneTemplateBrowser({
                       )}
                       <div className="flex flex-wrap gap-2">
                         {gate.requiredTier && (
-                          <RelationshipGateBadge
-                            type="tier"
-                            value={gate.requiredTier}
-                            variant="neutral"
-                          />
+                          <span className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                            Tier: {gate.requiredTier}
+                          </span>
                         )}
                         {gate.requiredIntimacyLevel && (
-                          <RelationshipGateBadge
-                            type="intimacy"
-                            value={gate.requiredIntimacyLevel}
-                            variant="neutral"
-                          />
+                          <span className="text-xs px-2 py-1 bg-pink-100 text-pink-800 rounded">
+                            Intimacy: {gate.requiredIntimacyLevel}
+                          </span>
                         )}
                         {gate.metricRequirements && (
                           <>
