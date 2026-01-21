@@ -1,4 +1,4 @@
-import { MODULE_PRIORITIES } from '@pixsim7/shared.modules';
+import { MODULE_PRIORITIES } from '@pixsim7/shared.modules.core';
 
 import { initializePluginKernel } from '@lib/plugins/pluginKernel';
 

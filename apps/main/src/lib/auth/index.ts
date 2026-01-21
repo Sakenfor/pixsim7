@@ -13,7 +13,7 @@ export type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
-} from '@pixsim7/shared.auth';
+} from '@pixsim7/shared.auth.core';
 
 // Google auth (app-specific)
 export * from './googleAuth';

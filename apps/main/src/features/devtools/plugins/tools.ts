@@ -7,7 +7,7 @@
  * These tools are registered with the plugin catalog on app startup.
  */
 
-import type { DevToolDefinition } from '@pixsim7/shared.devtools';
+import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 
 import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 

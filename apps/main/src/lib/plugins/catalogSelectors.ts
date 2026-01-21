@@ -6,7 +6,7 @@
  * while the catalog becomes the single source of truth.
  */
 
-import type { DevToolDefinition, DevToolCategory } from '@pixsim7/shared.devtools';
+import type { DevToolDefinition, DevToolCategory } from '@pixsim7/shared.devtools.core';
 import type { PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 
 import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';

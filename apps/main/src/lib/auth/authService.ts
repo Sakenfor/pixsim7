@@ -16,7 +16,7 @@ import {
   setAuthStorageProvider,
   getAuthStorageProvider,
   type AuthStorageProvider,
-} from '@pixsim7/shared.auth';
+} from '@pixsim7/shared.auth.core';
 
 import { BACKEND_BASE } from '../api/client';
 import { previewBridge } from '../preview-bridge';

@@ -5,7 +5,7 @@
  * Shows all registered dev tools grouped by category with search/filter.
  */
 
-import type { DevToolDefinition, DevToolCategory } from "@pixsim7/shared.devtools";
+import type { DevToolDefinition, DevToolCategory } from "@pixsim7/shared.devtools.core";
 import { useState, useMemo } from "react";
 
 import { useDevToolContext } from "@lib/dev/devtools/devToolContext";

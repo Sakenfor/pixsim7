@@ -1,4 +1,4 @@
-import type { SourceControllerType, AnySourceController } from '@pixsim7/shared.sources';
+import type { SourceControllerType, AnySourceController } from '@pixsim7/shared.sources.core';
 import type { ComponentType } from 'react';
 
 import type { AssetSourceId } from './assetSources';

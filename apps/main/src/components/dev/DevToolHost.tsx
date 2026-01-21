@@ -5,7 +5,7 @@
  * Similar to GraphEditorHost but for dev tools.
  */
 
-import type { DevToolId } from '@pixsim7/shared.devtools';
+import type { DevToolId } from '@pixsim7/shared.devtools.core';
 import { useMemo } from 'react';
 
 import { devToolSelectors } from '@lib/plugins/catalogSelectors';

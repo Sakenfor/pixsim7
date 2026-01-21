@@ -1,1 +1,1 @@
-export * from '@pixsim7/shared.devtools';
+export * from '@pixsim7/shared.devtools.core';

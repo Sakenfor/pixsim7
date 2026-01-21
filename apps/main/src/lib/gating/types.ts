@@ -10,4 +10,4 @@ export type {
   RelationshipState,
   GatingResult,
   GateRequirements,
-} from "@pixsim7/shared.gating";
+} from "@pixsim7/shared.gating.core";

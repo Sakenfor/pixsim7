@@ -5,7 +5,7 @@
  * Handles generation requests, status polling, and asset creation.
  */
 
-import { pollUntil } from '@pixsim7/shared.async';
+import { pollUntil } from '@pixsim7/shared.async.core';
 import type {
   Asset,
   AssetRequest,

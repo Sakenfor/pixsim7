@@ -4,11 +4,13 @@
  * Polls generation status and updates the store.
  * Replaces useJobStatus.
  */
+import { pollUntil } from '@pixsim7/shared.async.core';
 import { useEffect, useRef, useState } from 'react';
-import { getGeneration } from '@lib/api/generations';
-import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
-import { pollUntil } from '@pixsim7/shared.async';
+
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { getGeneration } from '@lib/api/generations';
+
+import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
 
 export interface UseGenerationStatusOptions {
   /** Base polling interval in ms (default: 3000) */

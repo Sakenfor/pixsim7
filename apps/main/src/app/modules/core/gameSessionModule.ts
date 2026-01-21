@@ -1,4 +1,4 @@
-import { createModuleInitializer, MODULE_PRIORITIES } from '@pixsim7/shared.modules';
+import { createModuleInitializer, MODULE_PRIORITIES } from '@pixsim7/shared.modules.core';
 
 import { registerCustomHelpers } from '@lib/game/customHelpers';
 import { registerBuiltinHelpers } from '@lib/registries';

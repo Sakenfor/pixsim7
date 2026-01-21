@@ -6,7 +6,7 @@
  */
 
 import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
-import type { SourceIdentity } from '@pixsim7/shared.sources';
+import type { SourceIdentity } from '@pixsim7/shared.sources.core';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
 import { uploadAsset } from '@lib/api/upload';

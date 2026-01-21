@@ -8,7 +8,7 @@
  * while maintaining backward compatibility with existing code.
  */
 
-import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources';
+import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources.core';
 
 import type { LocalAsset } from '@features/assets/stores/localFoldersStore';
 

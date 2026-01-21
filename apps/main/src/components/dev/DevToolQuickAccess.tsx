@@ -5,7 +5,7 @@
  * Triggered by Ctrl+Shift+D.
  */
 
-import type { DevToolDefinition } from '@pixsim7/shared.devtools';
+import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 import { useState, useMemo, useEffect, useRef } from 'react';
 
 import { useDevToolContext } from '@lib/dev/devtools/devToolContext';

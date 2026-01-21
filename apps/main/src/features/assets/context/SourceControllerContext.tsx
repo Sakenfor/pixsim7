@@ -12,7 +12,7 @@ import type {
   CloudSourceController,
   ImportSourceController,
   SourceControllerType,
-} from '@pixsim7/shared.sources';
+} from '@pixsim7/shared.sources.core';
 import { createContext, useContext, type ReactNode } from 'react';
 
 
@@ -197,4 +197,4 @@ export {
   hasViewModeCapability,
   hasScanningCapability,
   hasFeatureFlagsCapability,
-} from '@pixsim7/shared.sources';
+} from '@pixsim7/shared.sources.core';

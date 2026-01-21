@@ -1,6 +1,6 @@
 // Feature Module Auto-Discovery
 
-import { isValidModule } from '@pixsim7/shared.modules';
+import { isValidModule } from '@pixsim7/shared.modules.core';
 
 import type { Module } from './contracts';
 import { moduleRegistry } from './registry';

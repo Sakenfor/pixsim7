@@ -11,4 +11,4 @@
 import '../lib/auth/authService';
 
 // Re-export from shared package
-export { useAuthStore, type AuthState } from '@pixsim7/shared.auth';
+export { useAuthStore, type AuthState } from '@pixsim7/shared.auth.core';

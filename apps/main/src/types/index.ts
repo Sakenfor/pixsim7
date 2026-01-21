@@ -4,7 +4,7 @@ export type {
   LoginRequest,
   RegisterRequest,
   AuthResponse,
-} from '@pixsim7/shared.auth';
+} from '@pixsim7/shared.auth.core';
 
 // Asset types (basic, can be expanded)
 export interface Asset {

@@ -9,7 +9,7 @@ import { createApiClient, type PixSimApiClient } from '@pixsim7/shared.api.clien
 import {
   computeBackendUrl,
 } from '@pixsim7/shared.api.client/browser';
-import { getAuthTokenProvider } from '@pixsim7/shared.auth';
+import { getAuthTokenProvider } from '@pixsim7/shared.auth.core';
 
 /**
  * Backend base URL (without /api/v1 suffix).

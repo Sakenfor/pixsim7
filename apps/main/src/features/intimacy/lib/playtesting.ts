@@ -554,7 +554,7 @@ export function analyzePlaytest(session: PlaytestSession): PlaytestAnalysis {
 // ============================================================================
 
 // formatDuration moved to @pixsim7/shared.time
-import { formatDuration } from '@pixsim7/shared.time';
+import { formatDuration } from '@pixsim7/shared.time.core';
 
 /**
  * Export playtest session to JSON
