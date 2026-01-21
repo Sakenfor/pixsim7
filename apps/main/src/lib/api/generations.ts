@@ -39,7 +39,7 @@ export type {
   GenerationNodeConfig,
   GenerateContentRequest,
   GenerateContentResponse,
-} from '@lib/registries';
+} from '@pixsim7/shared.types';
 
 const generationsApi = createGenerationsApi(pixsimClient);
 

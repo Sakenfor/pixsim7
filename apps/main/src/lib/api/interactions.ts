@@ -6,14 +6,14 @@
 
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 import { IDs } from '@pixsim7/shared.types';
-
 import type {
   ListInteractionsRequest,
   ListInteractionsResponse,
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
   NpcInteractionInstance,
-} from '@lib/registries';
+  GameSessionDTO,
+} from '@pixsim7/shared.types';
 
 import { apiClient } from './client';
 
@@ -119,11 +119,23 @@ export async function getPendingDialogue(
   createdAt: number;
   metadata?: Record<string, unknown>;
 }>> {
-  const response = await apiClient.get(
+  const response = await apiClient.get<GameSessionDTO>(
     `/game/sessions/${sessionId}`
   );
   const session = response.data;
-  return session.flags?.pendingDialogue || [];
+  const pending = session.flags?.pendingDialogue as Array<{
+    requestId: string;
+    npcId: IDs.NpcId;
+    programId: string;
+    systemPrompt?: string;
+    llmPrompt: string;
+    visualPrompt?: string;
+    playerInput?: string;
+    branchIntent?: string;
+    createdAt: number;
+    metadata?: Record<string, unknown>;
+  }> | undefined;
+  return pending ?? [];
 }
 
 /**
@@ -152,7 +164,11 @@ export async function executePendingDialogue(
     playerInput: request.playerInput,
     programId: request.programId,
   });
-  const response = await apiClient.post('/game/dialogue/next-line/execute', payload);
+  const response = await apiClient.post<{
+    text: string;
+    cached: boolean;
+    generation_time_ms?: number;
+  }>('/game/dialogue/next-line/execute', payload);
 
   return {
     text: response.data.text,
@@ -171,12 +187,12 @@ export async function clearPendingDialogue(
 ): Promise<void> {
   // This would need a backend endpoint to modify session flags
   // For now, we'll handle it client-side by filtering
-  const response = await apiClient.get(
+  const response = await apiClient.get<GameSessionDTO>(
     `/game/sessions/${sessionId}`
   );
   const session = response.data;
-  const pending = session.flags?.pendingDialogue || [];
-  const filtered = pending.filter((r: any) => r.requestId !== requestId);
+  const pending = (session.flags?.pendingDialogue as Array<{ requestId: string }> | undefined) ?? [];
+  const filtered = pending.filter((r) => r.requestId !== requestId);
 
   await apiClient.patch(`/game/sessions/${sessionId}`, {
     flags: {

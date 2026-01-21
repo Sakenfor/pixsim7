@@ -10,8 +10,7 @@
  * - Gallery assets with tags and roles
  */
 
-import type { GalleryAsset } from '../gallery/types';
-import type { AssetCharacterId, AssetLocationId, AssetRole } from '@features/gallery';
+import type { GalleryAsset, AssetCharacterId, AssetLocationId, AssetRole } from '@features/gallery';
 import {
   filterAssetsByRole,
   filterAssetsByCharacter,

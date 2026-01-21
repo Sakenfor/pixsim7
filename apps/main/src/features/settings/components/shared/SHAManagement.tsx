@@ -181,7 +181,7 @@ export function SHAManagement() {
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         {canBackfill && (
-          <Button onClick={backfillHashes} disabled={backfilling} variant="default" size="sm">
+          <Button onClick={backfillHashes} disabled={backfilling} variant="primary" size="sm">
             {backfilling ? 'Computing...' : `Hash ${Math.min(100, stats.without_sha_with_local)} assets`}
           </Button>
         )}

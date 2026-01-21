@@ -1,8 +1,9 @@
-import { useProviders } from '@features/providers';
-import { Icons } from '@lib/icons';
 import { useMemo, useCallback } from 'react';
 
+import { Icons } from '@lib/icons';
+
 import { useLocalFoldersController } from '@features/assets/hooks/useLocalFoldersController';
+import { useProviders } from '@features/providers';
 
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
 
@@ -52,7 +53,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     [controller.previews]
   );
   const getMediaType = useCallback(
-    (asset: LocalAsset) => (asset.kind === 'video' ? 'video' : 'image') as const,
+    (asset: LocalAsset): 'video' | 'image' => (asset.kind === 'video' ? 'video' : 'image'),
     []
   );
   // Build a map of SHA → count for duplicate detection

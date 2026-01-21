@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { OperationType } from '@lib/registries';
+
+import type { OperationType } from '@/types/operations';
 
 interface Generation {
   id: number;
@@ -133,4 +134,3 @@ export function useGenerationDevController(options: GenerationDevControllerOptio
     reloadGenerations: loadGenerations,
   };
 }
-

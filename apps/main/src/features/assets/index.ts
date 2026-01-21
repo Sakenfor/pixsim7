@@ -86,6 +86,7 @@ export {
 export { useAssetPickerStore } from './stores/assetPickerStore';
 
 export { useAssetSelectionStore } from './stores/assetSelectionStore';
+export type { SelectedAsset } from './stores/assetSelectionStore';
 
 export { useAssetDetailStore } from './stores/assetDetailStore';
 

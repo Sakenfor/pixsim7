@@ -9,7 +9,7 @@
  * Part of Task 62 Phase 62.4
  */
 
-import type { MediaCardBadgeConfig } from '../../components/media/MediaCard';
+import type { MediaCardBadgeConfig } from '@/components/media/MediaCard';
 
 /**
  * Merge badge configurations with priority:

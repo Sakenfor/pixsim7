@@ -130,7 +130,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
 /**
  * Maps an array of API AssetResponses to internal AssetModels.
  */
-export function fromAssetResponses(responses: AssetResponse[]): AssetModel[] {
+export function fromAssetResponses(responses: readonly AssetResponse[]): AssetModel[] {
   return responses.map(fromAssetResponse);
 }
 

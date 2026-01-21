@@ -11,6 +11,7 @@
 import { useSyncExternalStore } from 'react';
 
 import { apiClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
+import type { AssetResponse } from '@lib/api/assets';
 import { debugFlags } from '@lib/utils';
 
 import { assetEvents, useAssetSettingsStore } from '@features/assets';
@@ -81,8 +82,8 @@ const WS_CANDIDATES = Array.from(
  */
 class WebSocketManager {
   private ws: WebSocket | null = null;
-  private reconnectTimeout: NodeJS.Timeout | null = null;
-  private disconnectTimeout: NodeJS.Timeout | null = null;
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private disconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private candidateIndex = 0;
   private subscribers = new Set<() => void>();
   private isConnected = false;
@@ -280,7 +281,7 @@ class WebSocketManager {
                   debugFlags.log('websocket', 'Asset synced to local storage successfully');
 
                   // Re-fetch asset and emit update event so gallery refreshes thumbnails
-                  const { data: syncedAsset } = await apiClient.get(`/assets/${assetId}`);
+                   const { data: syncedAsset } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
                   assetEvents.emitAssetUpdated(syncedAsset);
                   debugFlags.log('websocket', 'Emitted asset update event');
                 } catch (err) {
@@ -332,7 +333,7 @@ class WebSocketManager {
             setTimeout(async () => {
               debugFlags.log('websocket', 'Fetching asset data for:', assetId);
               try {
-                const { data: assetData } = await apiClient.get(`/assets/${assetId}`);
+                const { data: assetData } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
                 debugFlags.log('websocket', 'Asset data fetched:', assetData);
 
                 // Check if asset is ready (downloaded or remote URL available)
@@ -348,7 +349,7 @@ class WebSocketManager {
                   debugFlags.log('websocket', 'Asset not ready, retrying in 1s...');
                   setTimeout(async () => {
                     try {
-                      const { data: retryData } = await apiClient.get(`/assets/${assetId}`);
+                       const { data: retryData } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
                       debugFlags.log('websocket', 'Asset data refetched:', retryData);
                       assetEvents.emitAssetCreated(retryData);
                     } catch (retryErr) {
@@ -380,11 +381,11 @@ class WebSocketManager {
           debugFlags.log('websocket', 'Legacy generation update received:', message.data);
           const addOrUpdateGeneration = useGenerationsStore.getState().addOrUpdate;
 
-          if (Array.isArray(message.data)) {
-            message.data.forEach(update => addOrUpdateGeneration(fromGenerationResponse(update)));
-          } else {
-            addOrUpdateGeneration(fromGenerationResponse(message.data));
-          }
+          const updates = Array.isArray(message.data) ? message.data : [message.data];
+          updates.forEach((update) => {
+            if (!update || typeof update !== 'object') return;
+            addOrUpdateGeneration(fromGenerationResponse(update as GenerationResponse));
+          });
         } else if (message.type === 'connected') {
           debugFlags.log('websocket', 'Connection acknowledged:', message);
         } else {

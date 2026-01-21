@@ -234,7 +234,7 @@ export function LocalFoldersStatus() {
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         {stats.withoutHash.length > 0 && (
-          <Button onClick={computeHashes} disabled={computing} size="sm" variant="default">
+          <Button onClick={computeHashes} disabled={computing} size="sm" variant="primary">
             {computing
               ? `Hashing... ${computeProgress.done}/${computeProgress.total}`
               : `Hash ${Math.min(100, stats.withoutHash.length)} files`}

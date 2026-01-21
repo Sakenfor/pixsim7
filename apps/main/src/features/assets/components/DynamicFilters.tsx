@@ -1,5 +1,6 @@
-import { Icon } from '@lib/icons';
 import { useCallback, useMemo } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
@@ -72,7 +73,7 @@ export function DynamicFilters({
   }, [metadata, include, exclude]);
 
   const handleFilterChange = useCallback(
-    (key: string, value: string | boolean | undefined) => {
+    (key: string, value: string | boolean | number | undefined) => {
       onFiltersChange({
         ...filters,
         [key]: value === '' ? undefined : value,
@@ -113,8 +114,8 @@ export function DynamicFilters({
 interface FilterControlProps {
   definition: FilterDefinition;
   options: FilterOptionValue[];
-  value: string | boolean | undefined | null;
-  onChange: (value: string | boolean | undefined) => void;
+  value: string | boolean | number | undefined | null;
+  onChange: (value: string | boolean | number | undefined) => void;
   compact?: boolean;
 }
 

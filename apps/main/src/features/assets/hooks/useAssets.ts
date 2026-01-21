@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listAssets } from '@lib/api/assets';
-import type { AssetListResponse, AssetResponse } from '@lib/api/assets';
+import type { AssetListResponse, AssetResponse, AssetSearchRequest } from '@lib/api/assets';
 
 import { assetEvents } from '../lib/assetEvents';
 import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
@@ -69,7 +69,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
   // Request ID to ignore stale responses after filter changes
   const requestIdRef = useRef(0);
 
-  const filterParams = useMemo(() => ({
+  const filterParams = useMemo<AssetFilters>(() => ({
     // Existing filters
     q: filters.q?.trim() || undefined,
     tag: filters.tag || undefined,
@@ -165,7 +165,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
   cursorRef.current = cursor;
 
   // Build query params helper
-  const buildQueryParams = useCallback((currentFilters: typeof filterParams, offset?: number, currentCursor?: string | null) => {
+  const buildQueryParams = useCallback((currentFilters: AssetFilters, offset?: number, currentCursor?: string | null): AssetSearchRequest => {
     const registryFilters: Record<string, string> = {};
     if (currentFilters.provider_id) {
       registryFilters.provider_id = currentFilters.provider_id;
@@ -377,7 +377,7 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
   // Subscribe to new asset events (from generation completions)
   useEffect(() => {
     const unsubscribe = assetEvents.subscribe((asset) => {
-      const tags = asset.tags || [];
+      const tags = (asset.tags || []).map((tag) => (typeof tag === 'string' ? tag : tag.name));
       // Only prepend if it matches current filters (or no filters)
       const matchesFilters =
         (!filterParams.media_type || asset.media_type === filterParams.media_type) &&

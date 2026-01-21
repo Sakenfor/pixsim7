@@ -184,7 +184,7 @@ export function ContentBlobManagement() {
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         {canBackfill && (
-          <Button onClick={backfillLinks} disabled={backfilling} variant="default" size="sm">
+          <Button onClick={backfillLinks} disabled={backfilling} variant="primary" size="sm">
             {backfilling ? 'Linking...' : `Link ${Math.min(100, stats.missing_with_sha + stats.missing_logical_size)} assets`}
           </Button>
         )}

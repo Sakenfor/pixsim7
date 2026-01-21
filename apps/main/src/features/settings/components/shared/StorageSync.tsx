@@ -180,7 +180,7 @@ export function StorageSync() {
       {/* Actions */}
       <div className="flex gap-2 pt-1">
         {needsSync && (
-          <Button onClick={syncAssets} disabled={syncing} variant="default" size="sm">
+          <Button onClick={syncAssets} disabled={syncing} variant="primary" size="sm">
             {syncing ? 'Syncing...' : `Sync ${Math.min(50, stats.old_storage)} assets`}
           </Button>
         )}

@@ -7,7 +7,10 @@
  * Uses internal GenerationModel (camelCase) - API responses should be
  * mapped before calling these functions.
  */
-import { isGenerationActive, isGenerationTerminal, type GenerationModel, type GenerationStatus } from '@features/generation';
+import type { IconName } from '@lib/icons';
+
+import { isGenerationActive, type GenerationModel } from '@features/generation';
+
 import { getStatusConfig, getStatusTextColor } from './generationStatusConfig';
 
 export interface GenerationStatusInfo {
@@ -90,7 +93,7 @@ export function getGenerationStatusDisplay(
   status: GenerationStatusInfo['status']
 ): {
   label: string;
-  icon: string;
+  icon: IconName;
   color: string;
   description: string;
 } {

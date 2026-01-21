@@ -1,13 +1,13 @@
-import { useProviders } from '@features/providers';
-import { ThemedIcon } from '@lib/icons';
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useMemo } from 'react';
 
 import { enrichAsset } from '@lib/api/assets';
+import { ThemedIcon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { GalleryToolsPanel } from '@features/gallery';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
+import { useProviders } from '@features/providers';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
@@ -165,7 +165,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               try {
                 const result = await enrichAsset(a.id);
                 if (result.enriched) {
-                  controller.refresh();
+                  controller.reset();
                 } else {
                   alert(result.message || 'No metadata to refresh');
                 }

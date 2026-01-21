@@ -6,9 +6,16 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useGenerationsStore, isGenerationTerminal, getStatusContainerClasses } from '@features/generation';
-import { logEvent } from '@lib/utils/logging';
+
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { logEvent } from '@lib/utils/logging';
+
+import {
+  useGenerationsStore,
+  isGenerationTerminal,
+  getStatusContainerClasses,
+  fromGenerationResponse,
+} from '@features/generation';
 
 /** Polling interval for backup status checks (ms) */
 const POLL_INTERVAL = 5000;
@@ -39,7 +46,7 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
       try {
         const { getGeneration } = await import('@/lib/api/generations');
         const updated = await getGeneration(generationId);
-        addOrUpdateGeneration(updated);
+        addOrUpdateGeneration(fromGenerationResponse(updated));
 
         if (isGenerationTerminal(updated.status)) {
           clearInterval(interval);
@@ -61,7 +68,7 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
       const newGeneration = await retryGeneration(generationId);
 
       // Update store with new generation
-      addOrUpdateGeneration(newGeneration);
+      addOrUpdateGeneration(fromGenerationResponse(newGeneration));
 
       // Log the retry event
       setTimeout(() => {
@@ -87,7 +94,7 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
   }
 
   const statusColor = getStatusContainerClasses(generation.status);
-  const canRetry = generation.status === 'failed' && generation.retry_count < MAX_RETRIES;
+  const canRetry = generation.status === 'failed' && generation.retryCount < MAX_RETRIES;
 
   return (
     <div className={`text-xs p-2 border rounded ${statusColor}`}>
@@ -105,18 +112,18 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
         )}
       </div>
       <div className="mt-1">Status: {generation.status}</div>
-      {generation.retry_count > 0 && (
+      {generation.retryCount > 0 && (
         <div className="mt-1 text-xs opacity-75">
-          Retry attempt: {generation.retry_count}/{MAX_RETRIES}
+          Retry attempt: {generation.retryCount}/{MAX_RETRIES}
         </div>
       )}
-      {generation.error_message && (
+      {generation.errorMessage && (
         <div className="mt-1 text-red-600 dark:text-red-400">
-          Error: {generation.error_message}
+          Error: {generation.errorMessage}
         </div>
       )}
-      {generation.asset_id && (
-        <div className="mt-1">Asset ID: {generation.asset_id}</div>
+      {generation.assetId && (
+        <div className="mt-1">Asset ID: {generation.assetId}</div>
       )}
     </div>
   );

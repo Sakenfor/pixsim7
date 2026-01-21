@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import { persist, type StateStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+
 import { createBackendStorage, manuallyRehydrateStore, exposeStoreForDebugging, debugFlags } from '@lib/utils';
+
 import type { OperationType } from '@/types/operations';
 
 // Params that are persisted per-model (quality, resolution-related)
@@ -243,7 +245,7 @@ export function createGenerationSettingsStore(
       }),
       {
         name: storageKey,
-        storage,
+        storage: createJSONStorage(() => storage),
         partialize: (state) => ({
           paramsPerOperation: state.paramsPerOperation,
           paramsPerModel: state.paramsPerModel,

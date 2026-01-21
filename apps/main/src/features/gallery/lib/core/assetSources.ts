@@ -19,12 +19,18 @@ export interface AssetSourceInfo {
   kind: 'remote' | 'local' | 'cloud';
 }
 
+export interface AssetSourceComponentProps {
+  layout: 'masonry' | 'grid';
+  cardSize: number;
+  overlayPresetId?: string;
+}
+
 export interface AssetSourceDefinition {
   id: AssetSourceId;
   label: string;
   icon: string;
   kind: 'remote' | 'local' | 'cloud';
-  component: ComponentType;
+  component: ComponentType<AssetSourceComponentProps>;
   description?: string;
 }
 

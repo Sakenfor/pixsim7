@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 import type { AssetModel } from '@features/assets';
-import { toSelectedAsset } from '@features/assets/models/asset';
+import { toSelectedAsset } from '@features/assets';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import {
   CAP_GENERATION_WIDGET,
@@ -182,14 +182,9 @@ export function useMediaGenerationActions() {
             ...dynamicParams,
             source_asset_id: asset.id,
           },
-          sourceAssetIds: undefined,
           prompts: [],
           transitionDurations: [],
-          activeAsset: {
-            id: asset.id,
-            type: asset.mediaType,
-            source: 'gallery',
-          },
+          activeAsset: toSelectedAsset(asset, 'gallery'),
           currentInput: { id: 'quick', asset, queuedAt: '', lockedTimestamp: undefined },
         });
 

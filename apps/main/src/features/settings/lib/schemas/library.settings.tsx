@@ -11,21 +11,24 @@
  */
 
 import { useEffect } from 'react';
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
+
 import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
 import { useAssetSettingsStore } from '@features/assets';
 import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
+
 import { apiClient } from '@/lib/api';
+
+import { ContentBlobManagement } from '../../components/shared/ContentBlobManagement';
+import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
 import { SHAManagement } from '../../components/shared/SHAManagement';
 import { StorageSync } from '../../components/shared/StorageSync';
-import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
-import { ContentBlobManagement } from '../../components/shared/ContentBlobManagement';
+import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
 
 // Fetch server settings on mount
 async function fetchServerSettings(): Promise<ServerMediaSettings> {
-  const response = await apiClient.get('/media/settings');
+  const response = await apiClient.get<ServerMediaSettings>('/media/settings');
   return response.data;
 }
 
@@ -34,7 +37,7 @@ async function updateServerSetting(
   key: keyof ServerMediaSettings,
   value: any
 ): Promise<ServerMediaSettings> {
-  const response = await apiClient.patch('/media/settings', { [key]: value });
+  const response = await apiClient.patch<ServerMediaSettings>('/media/settings', { [key]: value });
   return response.data;
 }
 

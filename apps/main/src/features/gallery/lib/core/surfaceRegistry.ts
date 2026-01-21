@@ -11,10 +11,12 @@
  * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
-import type { ComponentType } from 'react';
-import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
-import type { MediaCardBadgeConfig } from '../../components/media/MediaCard';
 import type { ApiComponents } from '@pixsim7/shared.types';
+import type { ComponentType } from 'react';
+
+import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
+
+import type { MediaCardBadgeConfig } from '@/components/media/MediaCard';
 
 /**
  * Gallery surface identifier

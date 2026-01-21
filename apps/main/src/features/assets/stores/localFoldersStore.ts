@@ -50,7 +50,7 @@ type LocalFoldersState = {
   error?: string;
   addFolder: () => Promise<void>;
   removeFolder: (id: string) => Promise<void>;
-  refreshFolder: (id: string) => Promise<void>;
+  refreshFolder: (id: string, silent?: boolean) => Promise<void>;
   loadPersisted: () => Promise<void>;
   getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
   updateAssetHash: (assetKey: string, sha256: string, file: File) => Promise<void>;
@@ -163,7 +163,7 @@ type AssetMeta = {
   // AssetCandidate fields
   id: string;
   name: string;
-  kind: 'image' | 'video' | 'other';
+  kind: 'image' | 'video' | 'audio' | 'other';
   size?: number;
   lastModified?: number;
   source: FolderSourceMetadata;
@@ -446,7 +446,6 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         const needsPermission: FolderEntry[] = [];
         for (const f of stored) {
           try {
-            // @ts-expect-error permission API
             const perm = await (f.handle as any).queryPermission?.({ mode: 'read' });
             if (perm === 'granted') {
               ok.push(f);
@@ -516,7 +515,6 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     set({ adding: true, error: undefined });
     try {
       void requestStoragePersistence();
-      // @ts-expect-error IndexedDB iteration
       const dir: DirHandle = await (window as any).showDirectoryPicker();
       const id = `${dir.name}-${Date.now()}-${getUserNamespace()}`;
       const entry: FolderEntry = { id, name: dir.name, handle: dir };
@@ -576,9 +574,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       if (!existing) return item;
       return {
         ...item,
-        lastUploadStatus: existing.lastUploadStatus,
-        lastUploadNote: existing.lastUploadNote,
-        lastUploadAt: existing.lastUploadAt,
+        last_upload_status: existing.last_upload_status,
+        last_upload_note: existing.last_upload_note,
+        last_upload_at: existing.last_upload_at,
       };
     });
 
@@ -647,9 +645,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     // Update in-memory asset
     const updated = {
       ...asset,
-      lastUploadStatus: status,
-      lastUploadNote: note,
-      lastUploadAt: Date.now(),
+      last_upload_status: status,
+      last_upload_note: note,
+      last_upload_at: Date.now(),
     };
 
     set(s => ({

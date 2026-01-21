@@ -6,6 +6,7 @@
  */
 
 import { create } from 'zustand';
+import type { StoreApi, UseBoundStore } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { AssetModel } from '@features/assets';
@@ -49,9 +50,7 @@ export interface GenerationInputsState {
   getAllInputs: () => InputItem[];
 }
 
-export type GenerationInputStoreHook = <T>(
-  selector: (state: GenerationInputsState) => T
-) => T;
+export type GenerationInputStoreHook = UseBoundStore<StoreApi<GenerationInputsState>>;
 
 function createInputId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

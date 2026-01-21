@@ -12,8 +12,9 @@ import type {
   IAssetProvider,
 } from '@pixsim7/shared.types';
 import { AssetNotFoundError } from '@pixsim7/shared.types';
+
 import { getAsset as getAssetApi, listAssets } from '@features/assets/lib/api';
-import type { AssetResponse, AssetListResponse } from '@features/assets/lib/api';
+import type { AssetResponse } from '@features/assets/lib/api';
 
 // ============================================================================
 // Types
@@ -48,6 +49,7 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
 }
 
 function mapAssetResponseToAsset(summary: AssetResponse): Asset {
+  const tags = summary.tags?.map((tag) => tag.slug || tag.name || tag.display_name || '') ?? undefined;
   return {
     id: String(summary.id),
     url: summary.remote_url || summary.file_url || '',
@@ -55,7 +57,7 @@ function mapAssetResponseToAsset(summary: AssetResponse): Asset {
     source: 'pre-made',
     metadata: {
       description: summary.description || undefined,
-      tags: summary.tags,
+      tags,
       durationSec: summary.duration_sec || undefined,
       width: summary.width || undefined,
       height: summary.height || undefined,
@@ -108,7 +110,7 @@ function buildTagFromRequest(request: AssetRequest): string | undefined {
  */
 function scoreAsset(asset: AssetResponse, request: AssetRequest): number {
   let score = 0;
-  const tags = asset.tags ?? [];
+  const tags = asset.tags?.map((tag) => tag.slug || tag.name || tag.display_name || '') ?? [];
 
   // Location match (high value)
   if (request.locationId) {
@@ -189,6 +191,7 @@ export class PreMadeAssetProvider implements IAssetProvider {
         },
       };
     } catch (error) {
+      void error;
       throw new AssetNotFoundError(assetId);
     }
   }

@@ -1,5 +1,3 @@
-import { createJSONStorage } from "zustand/middleware";
-
 import type { GenerationInputStoreHook } from "./generationInputStore";
 import { createGenerationInputStore } from "./generationInputStore";
 import type { GenerationSessionStoreHook } from "./generationSessionStore";
@@ -34,7 +32,7 @@ export function getGenerationSettingsStore(scopeId: string): GenerationSettingsS
 
   const store = createGenerationSettingsStore(
     getStorageKey("generation_settings", scopeId),
-    createJSONStorage(() => localStorage),
+    localStorage,
   );
   settingsStores.set(scopeId, store);
   return store;

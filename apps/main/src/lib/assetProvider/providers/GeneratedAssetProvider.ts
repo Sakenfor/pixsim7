@@ -5,6 +5,7 @@
  * Handles generation requests, status polling, and asset creation.
  */
 
+import { pollUntil } from '@pixsim7/shared.async';
 import type {
   Asset,
   AssetRequest,
@@ -16,15 +17,15 @@ import {
   AssetGenerationError,
   AssetTimeoutError,
 } from '@pixsim7/shared.types';
+
 import {
   createGeneration,
   getGeneration,
   type GenerationResponse,
   type CreateGenerationRequest,
-  type GenerationConfig,
 } from '@lib/api/generations';
+
 import { getAsset as getAssetApi } from '@features/assets/lib/api';
-import { pollUntil } from '@pixsim7/shared.async';
 
 // ============================================================================
 // Types
@@ -71,8 +72,8 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
   }
 }
 
-function buildGenerationConfig(request: AssetRequest): GenerationConfig {
-  const config: GenerationConfig = {
+function buildGenerationConfig(request: AssetRequest): CreateGenerationRequest['config'] {
+  const config: CreateGenerationRequest['config'] = {
     generationType: 'transition',
     purpose: 'gap_fill',
     strategy: request.strategy ?? 'per_playthrough',
@@ -90,27 +91,11 @@ function buildGenerationConfig(request: AssetRequest): GenerationConfig {
     fallback: {
       mode: 'skip',
     },
+    ...(request.prompt ? { prompt: request.prompt } : {}),
+    ...(request.imageUrl ? { image_url: request.imageUrl } : {}),
+    ...(request.videoUrl ? { video_url: request.videoUrl } : {}),
+    ...(request.providerParams ? request.providerParams : {}),
   };
-
-  // Add prompt if provided
-  if (request.prompt) {
-    config.prompt = request.prompt;
-  }
-
-  // Add image URL for img2vid
-  if (request.imageUrl) {
-    config.image_url = request.imageUrl;
-  }
-
-  // Add video URL for video extend
-  if (request.videoUrl) {
-    config.video_url = request.videoUrl;
-  }
-
-  // Add any provider-specific params
-  if (request.providerParams) {
-    Object.assign(config, request.providerParams);
-  }
 
   return config;
 }
@@ -155,6 +140,7 @@ export class GeneratedAssetProvider implements IAssetProvider {
         },
       };
     } catch (error) {
+      void error;
       throw new AssetNotFoundError(assetId);
     }
   }
@@ -170,18 +156,20 @@ export class GeneratedAssetProvider implements IAssetProvider {
 
     // Build generation request
     const generationRequest: CreateGenerationRequest = {
-      config: buildGenerationConfig(request),
+      config: buildGenerationConfig(request) as unknown as CreateGenerationRequest['config'],
       provider_id: providerId,
       force_new: request.preferCached === false,
+      priority: 5,
+      version_intent: 'new',
+      ...(request.sceneId
+        ? {
+          from_scene: {
+            id: request.sceneId,
+            location: request.locationId,
+          },
+        }
+        : {}),
     };
-
-    // Add scene context if provided
-    if (request.sceneId) {
-      generationRequest.from_scene = {
-        id: request.sceneId,
-        location: request.locationId,
-      };
-    }
 
     // Submit generation
     let generation: GenerationResponse;
@@ -196,8 +184,8 @@ export class GeneratedAssetProvider implements IAssetProvider {
     }
 
     // If already completed (cache hit), return immediately
-    if (generation.status === 'completed' && generation.asset_id) {
-      return this.getAsset(String(generation.asset_id));
+    if (generation.status === 'completed' && generation.asset?.id) {
+      return this.getAsset(String(generation.asset.id));
     }
 
     // If already failed, throw immediately
@@ -217,6 +205,7 @@ export class GeneratedAssetProvider implements IAssetProvider {
    * Check if generation is available (always returns not available since we generate on-demand)
    */
   async checkAvailability(request: AssetRequest): Promise<AssetAvailability> {
+    void request;
     // GeneratedAssetProvider doesn't have pre-existing assets
     // It always generates on-demand
     return {
@@ -256,11 +245,11 @@ export class GeneratedAssetProvider implements IAssetProvider {
             }
 
             // Check for completion
-            if (data.status === 'completed' && data.asset_id) {
+            if (data.status === 'completed' && data.asset?.id) {
               resolved = true;
               cancel();
               try {
-                const asset = await this.getAsset(String(data.asset_id));
+                const asset = await this.getAsset(String(data.asset.id));
                 resolve({
                   ...asset,
                   metadata: {

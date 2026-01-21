@@ -15,6 +15,7 @@ import { authService } from '@lib/auth';
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import { useAuthStore } from '@/stores/authStore';
+import type { LocalFoldersController, SourceInfo, ViewMode } from '@/types/localSources';
 
 import {
   useLocalFolders,
@@ -23,7 +24,6 @@ import {
   generateThumbnail,
   type LocalAsset,
 } from '../stores/localFoldersStore';
-import type { LocalFoldersController, SourceInfo, ViewMode } from '../types/localSources';
 
 /**
  * Source identity for local folders
@@ -113,10 +113,10 @@ export function useLocalFoldersController(): LocalFoldersController {
     const initialNotes: Record<string, string | undefined> = {};
 
     for (const asset of Object.values(assetsRecord)) {
-      if (asset.lastUploadStatus) {
-        initialStatus[asset.key] = asset.lastUploadStatus;
-        if (asset.lastUploadNote) {
-          initialNotes[asset.key] = asset.lastUploadNote;
+      if (asset.last_upload_status) {
+        initialStatus[asset.key] = asset.last_upload_status;
+        if (asset.last_upload_note) {
+          initialNotes[asset.key] = asset.last_upload_note;
         }
       }
     }
@@ -191,7 +191,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         return false;
       }
       // Skip if already marked as success (uploaded)
-      if (asset.lastUploadStatus === 'success') return false;
+      if (asset.last_upload_status === 'success') return false;
       return true;
     });
 
@@ -200,7 +200,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       asset.sha256 &&
       asset.sha256_file_size === asset.size &&
       asset.sha256_last_modified === asset.lastModified &&
-      asset.lastUploadStatus !== 'success'
+      asset.last_upload_status !== 'success'
     );
 
     // If nothing to do, mark as checked for this scope signature.
@@ -333,7 +333,7 @@ export function useLocalFoldersController(): LocalFoldersController {
               sha256 = await computeFileSha256(file);
               await updateAssetHash(asset.key, sha256, file);
             }
-            if (sha256 && asset.lastUploadStatus !== 'success') {
+            if (sha256 && asset.last_upload_status !== 'success') {
               const record = await getUploadRecordByHash(sha256);
               if (record?.status === 'success') {
                 await updateAssetUploadStatus(asset.key, 'success', record.note);

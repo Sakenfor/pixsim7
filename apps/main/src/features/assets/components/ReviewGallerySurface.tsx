@@ -8,12 +8,15 @@
  * - Minimal filters (focus on reviewing)
  */
 
-import { useState, useMemo, useEffect } from 'react';
-import { useGallerySurfaceController } from '@features/gallery';
-import { MediaCard } from '@/components/media/MediaCard';
 import { Button } from '@pixsim7/shared.ui';
-import { usePersistentSet } from '@/hooks/usePersistentState';
+import { useState, useMemo, useEffect } from 'react';
+
+import { useGallerySurfaceController } from '@features/gallery';
+
+import { MediaCard } from '@/components/media/MediaCard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { usePersistentSet } from '@/hooks/usePersistentState';
+
 import { AssetDetailModal } from './AssetDetailModal';
 import { GallerySurfaceShell, mediaCardPropsFromAsset } from './shared';
 
@@ -32,40 +35,43 @@ export function ReviewGallerySurface() {
   const [acceptedAssets, setAcceptedAssets] = usePersistentSet('review-session:accepted', new Set());
   const [rejectedAssets, setRejectedAssets] = usePersistentSet('review-session:rejected', new Set());
 
-  const handleAccept = (assetId: string) => {
-    setReviewedAssets(prev => new Set(prev).add(assetId));
-    setAcceptedAssets(prev => new Set(prev).add(assetId));
+  const handleAccept = (assetId: string | number) => {
+    const id = String(assetId);
+    setReviewedAssets(prev => new Set(prev).add(id));
+    setAcceptedAssets(prev => new Set(prev).add(id));
     setRejectedAssets(prev => {
       const next = new Set(prev);
-      next.delete(assetId);
+      next.delete(id);
       return next;
     });
   };
 
-  const handleReject = (assetId: string) => {
-    setReviewedAssets(prev => new Set(prev).add(assetId));
-    setRejectedAssets(prev => new Set(prev).add(assetId));
+  const handleReject = (assetId: string | number) => {
+    const id = String(assetId);
+    setReviewedAssets(prev => new Set(prev).add(id));
+    setRejectedAssets(prev => new Set(prev).add(id));
     setAcceptedAssets(prev => {
       const next = new Set(prev);
-      next.delete(assetId);
+      next.delete(id);
       return next;
     });
   };
 
-  const handleSkip = (assetId: string) => {
+  const handleSkip = (assetId: string | number) => {
+    const id = String(assetId);
     setReviewedAssets(prev => {
       const next = new Set(prev);
-      next.delete(assetId);
+      next.delete(id);
       return next;
     });
     setAcceptedAssets(prev => {
       const next = new Set(prev);
-      next.delete(assetId);
+      next.delete(id);
       return next;
     });
     setRejectedAssets(prev => {
       const next = new Set(prev);
-      next.delete(assetId);
+      next.delete(id);
       return next;
     });
   };
@@ -180,9 +186,10 @@ export function ReviewGallerySurface() {
   const reviewGrid = (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {controller.assets.map((asset, index) => {
-        const isAccepted = acceptedAssets.has(asset.id);
-        const isRejected = rejectedAssets.has(asset.id);
-        const isReviewed = reviewedAssets.has(asset.id);
+        const assetId = String(asset.id);
+        const isAccepted = acceptedAssets.has(assetId);
+        const isRejected = rejectedAssets.has(assetId);
+        const isReviewed = reviewedAssets.has(assetId);
         const isFocused = index === focusedAssetIndex;
 
         return (
@@ -205,8 +212,8 @@ export function ReviewGallerySurface() {
               {...mediaCardPropsFromAsset(asset)}
               actions={{
                 ...controller.getAssetActions(asset),
-                onApprove: () => handleAccept(asset.id),
-                onReject: () => handleReject(asset.id),
+                onApprove: () => handleAccept(assetId),
+                onReject: () => handleReject(assetId),
               }}
               overlayPresetId="media-card-review"
               contextMenuAsset={asset}
@@ -218,14 +225,14 @@ export function ReviewGallerySurface() {
               <div className="flex gap-2">
                 <Button
                   variant={isAccepted ? 'primary' : 'secondary'}
-                  onClick={() => handleAccept(asset.id)}
+                  onClick={() => handleAccept(assetId)}
                   className="flex-1 text-sm"
                 >
                   ✓ Accept
                 </Button>
                 <Button
                   variant={isRejected ? 'primary' : 'secondary'}
-                  onClick={() => handleReject(asset.id)}
+                  onClick={() => handleReject(assetId)}
                   className="flex-1 text-sm"
                 >
                   ✗ Reject
@@ -233,7 +240,7 @@ export function ReviewGallerySurface() {
                 {isReviewed && (
                   <Button
                     variant="secondary"
-                    onClick={() => handleSkip(asset.id)}
+                    onClick={() => handleSkip(assetId)}
                     className="text-sm"
                   >
                     ↺

@@ -1,10 +1,13 @@
 import { useMemo, useEffect, useCallback, useRef } from 'react';
-import { useGenerationScopeStores } from './useGenerationScope';
+
+import type { ParamSpec } from '@features/controlCenter/components/DynamicParamForm';
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';
 import { useProviderIdForModel } from '@features/providers';
-import type { ParamSpec } from '../components/control/DynamicParamForm';
+
 import type { OperationType } from '@/types/operations';
+
+import { useGenerationScopeStores } from './useGenerationScope';
 
 // Re-export for backwards compatibility
 export type { OperationType };
@@ -195,6 +198,7 @@ export function useGenerationWorkbench(
       'composition_assets',
     ],
   } = options;
+  void autoShowSettings;
 
   const { useSessionStore, useSettingsStore } = useGenerationScopeStores();
 

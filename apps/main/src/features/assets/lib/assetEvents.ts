@@ -9,11 +9,13 @@ import type { AssetResponse } from '@lib/api/assets';
 
 type AssetEventCallback = (asset: AssetResponse) => void;
 type AssetUpdateCallback = (asset: AssetResponse) => void;
+type AssetDeleteCallback = (assetId: number | string) => void;
 type RetryCallback = () => void;
 
 class AssetEventEmitter {
   private listeners: Set<AssetEventCallback> = new Set();
   private updateListeners: Set<AssetUpdateCallback> = new Set();
+  private deleteListeners: Set<AssetDeleteCallback> = new Set();
   private retryListeners: Set<RetryCallback> = new Set();
 
   /**
@@ -33,6 +35,16 @@ class AssetEventEmitter {
     this.updateListeners.add(callback);
     return () => {
       this.updateListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Subscribe to asset delete events
+   */
+  subscribeToDeletes(callback: AssetDeleteCallback): () => void {
+    this.deleteListeners.add(callback);
+    return () => {
+      this.deleteListeners.delete(callback);
     };
   }
 
@@ -60,6 +72,20 @@ class AssetEventEmitter {
         callback(asset);
       } catch (err) {
         console.error('[AssetEvents] Update listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Emit an asset delete event
+   */
+  emitAssetDeleted(assetId: number | string): void {
+    console.log('[AssetEvents] Asset deleted:', assetId);
+    this.deleteListeners.forEach((callback) => {
+      try {
+        callback(assetId);
+      } catch (err) {
+        console.error('[AssetEvents] Delete listener error:', err);
       }
     });
   }
