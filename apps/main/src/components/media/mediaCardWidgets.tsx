@@ -6,12 +6,11 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { useOperationSpec, useProviderIdForModel } from '@features/providers';
-import { Icon } from '@lib/icons';
 import { ButtonGroup, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 import { createBindingFromValue } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
@@ -19,6 +18,7 @@ import {
   createVideoScrubWidget,
   createUploadWidget,
   createTooltipWidget,
+  type BadgeWidgetConfig,
   type MenuItem,
 } from '@lib/ui/overlay';
 
@@ -38,6 +38,7 @@ import {
 } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
+import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
 import {
   OPERATION_METADATA,
@@ -123,7 +124,7 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
 
   // Use capability to get nearest generation widget, with global fallback
   const { value: widgetContext, provider: widgetProvider } =
@@ -278,7 +279,7 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
     buttonItems.push({
       id: 'quick-generate',
       icon: <Icon name="sparkles" size={14} />,
-      onClick: () => actions?.onQuickAdd?.(),
+      onClick: () => actions?.onQuickAdd?.(id),
       title: 'Quick generate with current settings',
     });
   }
@@ -497,7 +498,7 @@ export function createDurationWidget(props: MediaCardProps): OverlayWidget<Media
     position: { anchor: 'bottom-right', offset: { x: -4, y: -4 } },
     visibility: { trigger: 'always' },
     variant: 'text',
-    label: durationText,
+    labelBinding: createBindingFromValue('label', () => durationText),
     color: 'gray',
     className: '!bg-black/60 !text-white text-[10px]',
     priority: 5,
@@ -520,7 +521,7 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget<Media
     // Use hover-container without transition for consistent behavior
     visibility: { trigger: 'hover-container' },
     variant: 'text',
-    label: providerId,
+    labelBinding: createBindingFromValue('label', () => providerId),
     color: 'gray',
     className: '!bg-white/90 dark:!bg-neutral-800/90 backdrop-blur-sm text-[10px]',
     tooltip: `Provider: ${providerId}`,
@@ -579,9 +580,11 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
     // Use hover-container without transition for consistent behavior
     visibility: { trigger: 'hover-container' },
     // ✨ REACTIVE: Function gets fresh data on every render
-    state: (data) => data.uploadState || 'idle',
-    progress: (data) => data.uploadProgress || 0,
-    onUpload: () => onUploadClick(id),
+    stateBinding: createBindingFromValue('state', (data: MediaCardOverlayData) => data.uploadState || 'idle'),
+    progressBinding: createBindingFromValue('progress', (data: MediaCardOverlayData) => data.uploadProgress || 0),
+    onUpload: async () => {
+      await onUploadClick(id);
+    },
     showProgress: true,
     size: 'sm',
     priority: 25,
@@ -722,7 +725,7 @@ function SlotPickerContent({
     [inputScopeId],
   );
   const inputs = inputStore((s) => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
-  const ccIsOpen = useControlCenterStore((s) => s.isOpen);
+  const ccIsOpen = useControlCenterStore((s) => s.open);
 
   // Max slots from prop (provider-specific) or default to 7 (Pixverse transition limit)
   const maxAllowed = maxSlotsProp ?? 7;
@@ -1000,9 +1003,15 @@ export function createGenerationStatusWidget(props: MediaCardProps): OverlayWidg
 
   // Get status configuration
   const statusCfg = getStatusConfig(generationStatus);
+  const badgeColor: NonNullable<BadgeWidgetConfig['color']> =
+    statusCfg.color === 'amber'
+      ? 'orange'
+      : statusCfg.color === 'neutral'
+        ? 'gray'
+        : statusCfg.color;
   const config = {
     icon: statusCfg.icon as any,
-    color: statusCfg.color,
+    color: badgeColor,
     label: statusCfg.label,
     className: getStatusBadgeClasses(generationStatus) + (generationStatus === 'processing' ? ' animate-spin' : ''),
     tooltip: generationStatus === 'failed' ? (generationError || statusCfg.description) : statusCfg.description,

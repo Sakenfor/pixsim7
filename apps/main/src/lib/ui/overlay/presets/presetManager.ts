@@ -5,13 +5,16 @@
  * Handles saving, loading, and managing overlay presets (both system and user-created)
  */
 
-import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
 import type { UnifiedSurfaceConfig } from '@lib/editing-core';
 import {
   PresetManager as GenericPresetManager,
   LocalStoragePresetStorage,
+  type PresetStorage,
 } from '@lib/editing-core';
+
 import { toUnifiedSurfaceConfig, fromUnifiedSurfaceConfig } from '../overlayConfig';
+import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
+
 import { mediaCardPresets } from './mediaCard';
 
 const STORAGE_KEY = 'overlay_user_presets';
@@ -25,9 +28,9 @@ const STORAGE_KEY = 'overlay_user_presets';
  * - Context-based suggestions
  */
 export class OverlayPresetManager extends GenericPresetManager<OverlayPreset, PresetCategory> {
-  constructor() {
+  constructor(storage?: PresetStorage<OverlayPreset>) {
     super({
-      storage: new LocalStoragePresetStorage<OverlayPreset>(STORAGE_KEY),
+      storage: storage ?? new LocalStoragePresetStorage<OverlayPreset>(STORAGE_KEY),
     });
 
     // Register system presets

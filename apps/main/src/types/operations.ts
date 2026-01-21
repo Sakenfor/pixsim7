@@ -133,6 +133,8 @@ export type MultiAssetMode = 'single' | 'optional' | 'required';
 export interface OperationMetadata {
   /** Display label */
   label: string;
+  /** Optional icon name for UI display */
+  icon?: string;
   /** Short description */
   description: string;
   /** Multi-asset behavior */

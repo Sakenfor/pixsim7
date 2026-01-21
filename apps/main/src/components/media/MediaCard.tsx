@@ -21,11 +21,11 @@
  * - [ ] Multi-provider support in UI
  */
 
-import { ThemedIcon } from '@lib/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { useContextMenuOptional } from '@lib/dockview';
+import { ThemedIcon } from '@lib/icons';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -344,6 +344,7 @@ export function MediaCard(props: MediaCardProps) {
       ...merged,
       id: customOverlayConfig?.id || merged.id || 'media-card-default-runtime',
       name: customOverlayConfig?.name || merged.name || 'Media Card',
+      widgets: merged.widgets ?? [],
       spacing: customOverlayConfig?.spacing || merged.spacing || 'normal',
       // Default to enabling collision detection unless explicitly disabled
       collisionDetection: merged.collisionDetection ?? true,

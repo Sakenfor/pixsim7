@@ -105,7 +105,10 @@ const SAMPLE_MEDIA = {
   width: 640,
   height: 360,
   durationSec: 125,
-  tags: ['ai-generated', 'cinematic', 'landscape'],
+  tags: ['ai-generated', 'cinematic', 'landscape'].map((slug) => ({
+    slug,
+    display_name: slug,
+  })),
   description: 'Sample video for preview',
   createdAt: new Date().toISOString(),
   providerStatus: 'ok' as const,
@@ -982,6 +985,7 @@ export function WidgetBuilderRoute() {
   // Overlay component selection (when surface is overlay)
   const overlayComponent = (searchParams.get('component') as OverlayComponentType) || 'mediaCard';
   const overlayConfig = OVERLAY_COMPONENTS[overlayComponent];
+  const presetStorageKey = `${overlayConfig.storageKey}:presets`;
 
   // Storage selection
   const [storageType] = useState<StorageType>(
@@ -995,10 +999,10 @@ export function WidgetBuilderRoute() {
       try {
         return JSON.parse(saved);
       } catch {
-        return overlayConfig.presets[0]?.configuration || { id: 'default', widgets: [] };
+        return overlayConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] };
       }
     }
-    return overlayConfig.presets[0]?.configuration || { id: 'default', widgets: [] };
+    return overlayConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] };
   });
 
   // Block instances state
@@ -1035,13 +1039,13 @@ export function WidgetBuilderRoute() {
         storage = new IndexedDBPresetStorage();
         break;
       case 'api':
-        storage = new LocalStoragePresetStorage(); // Fallback
+        storage = new LocalStoragePresetStorage(presetStorageKey); // Fallback
         break;
       default:
-        storage = new LocalStoragePresetStorage();
+        storage = new LocalStoragePresetStorage(presetStorageKey);
     }
     return new PresetManager(storage);
-  }, [storageType]);
+  }, [storageType, presetStorageKey]);
 
   // Handle surface type change
   const handleSurfaceChange = (newSurface: WidgetSurfaceType) => {
@@ -1057,10 +1061,10 @@ export function WidgetBuilderRoute() {
       try {
         setOverlayConfiguration(JSON.parse(saved));
       } catch {
-        setOverlayConfiguration(config.presets[0]?.configuration || { id: 'default', widgets: [] });
+        setOverlayConfiguration(config.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] });
       }
     } else {
-      setOverlayConfiguration(config.presets[0]?.configuration || { id: 'default', widgets: [] });
+      setOverlayConfiguration(config.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] });
     }
   };
 

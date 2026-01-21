@@ -6,6 +6,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
+
 import { useFeatures, useActions, useStates } from '@lib/capabilities';
 
 interface CapabilityAutocompleteProps {
@@ -44,7 +45,6 @@ export function CapabilityAutocomplete({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [cursorPosition, setCursorPosition] = useState(0);
 
   const features = useFeatures();
   const actions = useActions();
@@ -69,7 +69,6 @@ export function CapabilityAutocomplete({
         setSuggestions(filteredSuggestions);
         setShowSuggestions(true);
         setSelectedIndex(0);
-        setCursorPosition(cursorPos);
       } else {
         setShowSuggestions(false);
       }
@@ -134,7 +133,7 @@ export function CapabilityAutocomplete({
           label: f.name,
           description: f.description,
           icon: f.icon,
-          type: 'feature',
+          type: 'feature' as const,
         }))
         .slice(0, 10);
     }
@@ -151,7 +150,7 @@ export function CapabilityAutocomplete({
           label: a.name,
           description: a.description,
           icon: a.icon,
-          type: 'action',
+          type: 'action' as const,
         }))
         .slice(0, 10);
     }
@@ -164,7 +163,7 @@ export function CapabilityAutocomplete({
           label: s.name,
           description: undefined,
           icon: undefined,
-          type: 'state',
+          type: 'state' as const,
         }))
         .slice(0, 10);
     }
@@ -179,7 +178,7 @@ export function CapabilityAutocomplete({
         label: p.label,
         description: p.description,
         icon: undefined,
-        type: 'permission',
+        type: 'permission' as const,
       }));
     }
 

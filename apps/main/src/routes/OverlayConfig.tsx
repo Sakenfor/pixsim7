@@ -127,6 +127,7 @@ export function OverlayConfig() {
   // Get component type from URL or default to mediaCard
   const componentType = (searchParams.get('component') as ComponentType) || 'mediaCard';
   const componentConfig = COMPONENT_CONFIGS[componentType];
+  const presetStorageKey = `${componentConfig.storageKey}:presets`;
 
   // Storage selection
   const [storageType, setStorageType] = useState<StorageType>(() => {
@@ -159,16 +160,16 @@ export function OverlayConfig() {
             authToken: apiConfig.authToken || undefined,
           });
         } else {
-          storage = new LocalStoragePresetStorage();
+          storage = new LocalStoragePresetStorage(presetStorageKey);
         }
         break;
       case 'localStorage':
       default:
-        storage = new LocalStoragePresetStorage();
+        storage = new LocalStoragePresetStorage(presetStorageKey);
         break;
     }
     return new PresetManager(storage);
-  }, [storageType, apiConfig]);
+  }, [storageType, apiConfig, presetStorageKey]);
 
   // Load configuration
   const [configuration, setConfiguration] = useState<OverlayConfiguration>(() => {
@@ -177,10 +178,10 @@ export function OverlayConfig() {
       try {
         return JSON.parse(saved);
       } catch {
-        return componentConfig.presets[0]?.configuration || { id: 'default', widgets: [] };
+        return componentConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] };
       }
     }
-    return componentConfig.presets[0]?.configuration || { id: 'default', widgets: [] };
+    return componentConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] };
   });
 
   // Handle component type change
@@ -193,10 +194,10 @@ export function OverlayConfig() {
       try {
         setConfiguration(JSON.parse(saved));
       } catch {
-        setConfiguration(newConfig.presets[0]?.configuration || { id: 'default', widgets: [] });
+        setConfiguration(newConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] });
       }
     } else {
-      setConfiguration(newConfig.presets[0]?.configuration || { id: 'default', widgets: [] });
+      setConfiguration(newConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] });
     }
   };
 
@@ -248,7 +249,7 @@ export function OverlayConfig() {
   // Reset to default
   const handleReset = () => {
     if (confirm('Reset to default configuration?')) {
-      const defaultConfig = componentConfig.presets[0]?.configuration || { id: 'default', widgets: [] };
+      const defaultConfig = componentConfig.presets[0]?.configuration || { id: 'default', name: 'Default', widgets: [] };
       setConfiguration(defaultConfig);
       localStorage.setItem(componentConfig.storageKey, JSON.stringify(defaultConfig));
     }

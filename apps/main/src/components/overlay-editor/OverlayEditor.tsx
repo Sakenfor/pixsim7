@@ -5,16 +5,21 @@
  * Can be used for MediaCard badges, video controls, HUD overlays, etc.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { Panel } from '@pixsim7/shared.ui';
-import { WidgetList } from './WidgetList';
-import { WidgetPropertyEditor } from './WidgetPropertyEditor';
+import React, { useState, useMemo, useEffect } from 'react';
+
+import type { UnifiedWidgetConfig } from '@lib/editing-core';
+import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
+import { overlayWidgets, registerOverlayWidgets } from '@lib/widgets';
+
+import { SurfaceWorkbench } from '../surface-workbench';
+
 import { PresetSelector } from './PresetSelector';
 import { ValidationPanel } from './ValidationPanel';
-import { overlayWidgets, registerOverlayWidgets } from '@lib/widgets';
-import type { UnifiedWidgetConfig } from '@lib/editing-core';
-import { SurfaceWorkbench } from '../surface-workbench';
+import { WidgetList } from './WidgetList';
+import { WidgetPropertyEditor } from './WidgetPropertyEditor';
+
+
 
 export interface OverlayEditorProps {
   /** Current overlay configuration */
@@ -159,6 +164,15 @@ export function OverlayEditor({
 
   // Handle widget duplication
   const handleDuplicateWidget = (widget: OverlayWidget) => {
+    const toNumber = (value: number | string | undefined) => {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value);
+        return Number.isNaN(parsed) ? 0 : parsed;
+      }
+      return 0;
+    };
+
     // Create a copy of the widget with a new ID and slightly offset position
     const duplicatedWidget: OverlayWidget = {
       ...widget,
@@ -167,13 +181,13 @@ export function OverlayEditor({
         ? {
             ...widget.position,
             offset: {
-              x: (widget.position.offset?.x ?? 0) + 16,
-              y: (widget.position.offset?.y ?? 0) + 16,
+              x: toNumber(widget.position.offset?.x) + 16,
+              y: toNumber(widget.position.offset?.y) + 16,
             },
           }
         : {
-            x: (widget.position as any).x + 16,
-            y: (widget.position as any).y + 16,
+            x: toNumber((widget.position as { x?: number | string }).x) + 16,
+            y: toNumber((widget.position as { y?: number | string }).y) + 16,
           },
     };
 

@@ -27,7 +27,10 @@ const SAMPLE_MEDIA = {
   width: 640,
   height: 360,
   durationSec: 125,
-  tags: ['ai-generated', 'cinematic', 'landscape', 'sunset', 'mountains'],
+  tags: ['ai-generated', 'cinematic', 'landscape', 'sunset', 'mountains'].map((slug) => ({
+    slug,
+    display_name: slug,
+  })),
   description: 'A beautiful cinematic landscape with mountains at sunset, generated with AI',
   createdAt: new Date().toISOString(),
   providerStatus: 'ok' as const,
@@ -45,6 +48,7 @@ export function MediaCardConfigPage() {
   const [storageType, setStorageType] = useState<StorageType>(() => {
     return (localStorage.getItem('presetStorageType') as StorageType) || 'localStorage';
   });
+  const presetStorageKey = 'mediaCardOverlayConfig:presets';
 
   const [apiConfig, setApiConfig] = useState(() => {
     const saved = localStorage.getItem('presetApiConfig');
@@ -73,16 +77,16 @@ export function MediaCardConfigPage() {
           });
         } else {
           // Fallback to localStorage if API not configured
-          storage = new LocalStoragePresetStorage();
+          storage = new LocalStoragePresetStorage(presetStorageKey);
         }
         break;
       case 'localStorage':
       default:
-        storage = new LocalStoragePresetStorage();
+        storage = new LocalStoragePresetStorage(presetStorageKey);
         break;
     }
     return new PresetManager(storage);
-  }, [storageType, apiConfig]);
+  }, [storageType, apiConfig, presetStorageKey]);
 
   // Load configuration from localStorage or use default
   const [configuration, setConfiguration] = useState<OverlayConfiguration>(() => {

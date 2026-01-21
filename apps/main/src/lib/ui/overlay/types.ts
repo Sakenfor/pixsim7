@@ -244,6 +244,9 @@ export interface OverlayWidget<TData = any> {
 
   /** Render priority (higher = on top) */
   priority?: number;
+
+  /** Widget-specific configuration props (stored alongside core fields). */
+  [key: string]: unknown;
 }
 
 // ============================================================================
