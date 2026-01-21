@@ -9,7 +9,7 @@
  *
  * Usage:
  * ```ts
- * import { authService, setAuthStorageProvider, setTokenChangedCallback } from '@pixsim7/shared.auth';
+ * import { authService, setAuthStorageProvider, setTokenChangedCallback } from '@pixsim7/shared.auth.core';
  *
  * // Optional: Set callback for token changes (e.g., to sync with iframe)
  * setTokenChangedCallback((token) => {

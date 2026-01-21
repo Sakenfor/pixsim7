@@ -7,7 +7,7 @@
  * @example Setup (in your app's entry point)
  * ```ts
  * import { computeBackendUrl } from '@pixsim7/shared.api.client/browser';
- * import { configureAuthService, setTokenChangedCallback, setLogoutCallback } from '@pixsim7/shared.auth';
+ * import { configureAuthService, setTokenChangedCallback, setLogoutCallback } from '@pixsim7/shared.auth.core';
  *
  * configureAuthService({
  *   baseUrl: computeBackendUrl({ envUrl: import.meta.env.VITE_BACKEND_URL }),
@@ -27,7 +27,7 @@
  *
  * @example Using auth in components
  * ```tsx
- * import { useAuthStore, authService } from '@pixsim7/shared.auth';
+ * import { useAuthStore, authService } from '@pixsim7/shared.auth.core';
  *
  * function LoginPage() {
  *   const setUser = useAuthStore((s) => s.setUser);

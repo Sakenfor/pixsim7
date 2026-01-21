@@ -25,7 +25,7 @@ export interface AuthState {
  *
  * Usage:
  * ```tsx
- * import { useAuthStore } from '@pixsim7/shared.auth';
+ * import { useAuthStore } from '@pixsim7/shared.auth.core';
  *
  * function MyComponent() {
  *   const { user, isAuthenticated, isLoading, initialize, logout } = useAuthStore();

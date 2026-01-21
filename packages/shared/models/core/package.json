@@ -1,8 +1,8 @@
 {
-  "name": "@pixsim7/shared.gating",
+  "name": "@pixsim7/shared.models.core",
   "version": "0.0.1",
   "private": true,
-  "description": "Content gating plugin contracts and types.",
+  "description": "Shared 3D model inspector types and helpers.",
   "main": "src/index.ts",
   "module": "src/index.ts",
   "types": "src/index.ts",

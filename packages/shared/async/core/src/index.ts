@@ -8,7 +8,7 @@
  *
  * @example
  * ```ts
- * import { pollUntil } from '@pixsim7/shared.async';
+ * import { pollUntil } from '@pixsim7/shared.async.core';
  *
  * const cancel = pollUntil(
  *   () => fetchJob(jobId),

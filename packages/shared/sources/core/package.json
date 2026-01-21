@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.sources",
+  "name": "@pixsim7/shared.sources.core",
   "version": "0.0.1",
   "private": true,
   "description": "Generic asset source controller abstractions (Local Folders, Google Drive, etc.)",

@@ -1,5 +1,5 @@
 {
-  "name": "@pixsim7/shared.auth",
+  "name": "@pixsim7/shared.auth.core",
   "version": "0.0.1",
   "private": true,
   "description": "Shared authentication logic for PixSim7 (login, logout, token management)",
