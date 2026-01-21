@@ -1,5 +1,12 @@
+import {
+  GameContext,
+  LocationId,
+  NpcId,
+  SceneId,
+  SessionId,
+  WorldId,
+} from '@pixsim7/shared.types';
 import { create } from 'zustand';
-import { GameContext, GameMode } from '@lib/registries';
 
 /**
  * Game State Store (Task 22)
@@ -13,18 +20,22 @@ import { GameContext, GameMode } from '@lib/registries';
  * - Focused NPC/scene/program where relevant
  */
 
+type RuntimeGameContext = GameContext & {
+  worldTimeSeconds?: number | null;
+};
+
 interface GameStateStore {
   // Current game context (null if not in game)
-  context: GameContext | null;
+  context: RuntimeGameContext | null;
 
   // Actions
-  setContext: (ctx: GameContext) => void;
-  updateContext: (patch: Partial<GameContext>) => void;
+  setContext: (ctx: RuntimeGameContext) => void;
+  updateContext: (patch: Partial<RuntimeGameContext>) => void;
   clearContext: () => void;
 
   // Mode-specific actions for convenience
   enterMap: (worldId: number, sessionId: number) => void;
-  enterRoom: (worldId: number, sessionId: number, locationId: string) => void;
+  enterRoom: (worldId: number, sessionId: number, locationId: number | string) => void;
   enterScene: (worldId: number, sessionId: number, sceneId: number, npcId?: number) => void;
   enterConversation: (worldId: number, sessionId: number, npcId: number, narrativeProgramId?: string) => void;
   enterMenu: (worldId: number, sessionId: number) => void;
@@ -46,8 +57,8 @@ export const useGameStateStore = create<GameStateStore>((set) => ({
     set({
       context: {
         mode: 'map',
-        worldId,
-        sessionId,
+        worldId: WorldId(worldId),
+        sessionId: SessionId(sessionId),
       },
     }),
 
@@ -55,9 +66,9 @@ export const useGameStateStore = create<GameStateStore>((set) => ({
     set({
       context: {
         mode: 'room',
-        worldId,
-        sessionId,
-        locationId,
+        worldId: WorldId(worldId),
+        sessionId: SessionId(sessionId),
+        locationId: LocationId(Number(locationId)),
       },
     }),
 
@@ -65,10 +76,10 @@ export const useGameStateStore = create<GameStateStore>((set) => ({
     set({
       context: {
         mode: 'scene',
-        worldId,
-        sessionId,
-        sceneId,
-        npcId,
+        worldId: WorldId(worldId),
+        sessionId: SessionId(sessionId),
+        sceneId: SceneId(sceneId),
+        npcId: npcId !== undefined ? NpcId(npcId) : undefined,
       },
     }),
 
@@ -76,9 +87,9 @@ export const useGameStateStore = create<GameStateStore>((set) => ({
     set({
       context: {
         mode: 'conversation',
-        worldId,
-        sessionId,
-        npcId,
+        worldId: WorldId(worldId),
+        sessionId: SessionId(sessionId),
+        npcId: NpcId(npcId),
         narrativeProgramId,
       },
     }),
@@ -87,8 +98,8 @@ export const useGameStateStore = create<GameStateStore>((set) => ({
     set({
       context: {
         mode: 'menu',
-        worldId,
-        sessionId,
+        worldId: WorldId(worldId),
+        sessionId: SessionId(sessionId),
       },
     }),
 }));

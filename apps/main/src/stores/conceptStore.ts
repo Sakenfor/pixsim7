@@ -8,12 +8,13 @@
  * replacing build-time generated constants with dynamic API data.
  */
 import { create } from 'zustand';
+
 import type {
   ConceptResponse,
   ConceptKind,
   ConceptKindInfo,
 } from '@lib/api/concepts';
-import { getConcepts, getConceptKinds, KNOWN_KINDS } from '@lib/api/concepts';
+import { getConcepts, getConceptKinds } from '@lib/api/concepts';
 
 // ============================================================================
 // Types
@@ -105,7 +106,7 @@ export const useConceptStore = create<ConceptState>((set, get) => ({
     try {
       const response = await getConceptKinds();
       set({
-        availableKinds: response.kinds,
+        availableKinds: [...response.kinds],
         kindsLoaded: true,
         kindsLoading: false,
       });
@@ -140,8 +141,8 @@ export const useConceptStore = create<ConceptState>((set, get) => ({
 
       // Immutable update with new data
       set((s) => ({
-        conceptsByKind: { ...s.conceptsByKind, [kind]: response.concepts },
-        priorityByKind: { ...s.priorityByKind, [kind]: response.priority },
+        conceptsByKind: { ...s.conceptsByKind, [kind]: [...response.concepts] },
+        priorityByKind: { ...s.priorityByKind, [kind]: [...response.priority] },
         groupNameByKind: { ...s.groupNameByKind, [kind]: response.group_name },
         loadedKinds: [...s.loadedKinds, kind],
         loadingKinds: s.loadingKinds.filter((k) => k !== kind),

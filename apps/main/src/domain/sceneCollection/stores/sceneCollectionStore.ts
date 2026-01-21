@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { SceneCollection, SceneCollectionType } from '../types';
+
 import { createTemporalStore, sceneCollectionStorePartialize } from '@/stores/_shared/temporal';
+
+import type { SceneCollection, SceneCollectionType } from '../types';
 
 interface SceneCollectionState {
   /** All scene collections by ID */
@@ -42,166 +44,167 @@ export const useSceneCollectionStore = create<SceneCollectionState>()(
         collections: {},
         currentCollectionId: null,
 
-      createCollection: (title, type) => {
-        const id = crypto.randomUUID();
-        const collection: SceneCollection = {
-          id,
-          title,
-          type,
-          scenes: [],
-          metadata: {},
-          version: 1,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        set((state) => ({
-          collections: {
-            ...state.collections,
-            [id]: collection,
-          },
-        }), false, 'createCollection');
-
-        return id;
-      },
-
-      getCollection: (id) => {
-        return get().collections[id] || null;
-      },
-
-      updateCollection: (id, patch) => {
-        set((state) => ({
-          collections: {
-            ...state.collections,
-            [id]: {
-              ...state.collections[id],
-              ...patch,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        }), false, 'updateCollection');
-      },
-
-      deleteCollection: (id) => {
-        set((state) => {
-          const { [id]: removed, ...rest } = state.collections;
-          return {
-            collections: rest,
-            currentCollectionId: state.currentCollectionId === id ? null : state.currentCollectionId,
+        createCollection: (title, type) => {
+          const id = crypto.randomUUID();
+          const collection: SceneCollection = {
+            id,
+            title,
+            type,
+            scenes: [],
+            metadata: {},
+            version: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
           };
-        }, false, 'deleteCollection');
-      },
 
-      addSceneToCollection: (collectionId, sceneId, order) => {
-        const collection = get().collections[collectionId];
-        if (!collection) return;
-
-        const maxOrder = Math.max(0, ...collection.scenes.map(s => s.order));
-        const newOrder = order !== undefined ? order : maxOrder + 1;
-
-        set((state) => ({
-          collections: {
-            ...state.collections,
-            [collectionId]: {
-              ...collection,
-              scenes: [
-                ...collection.scenes,
-                { sceneId, order: newOrder },
-              ],
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        }), false, 'addSceneToCollection');
-      },
-
-      removeSceneFromCollection: (collectionId, sceneId) => {
-        const collection = get().collections[collectionId];
-        if (!collection) return;
-
-        set((state) => ({
-          collections: {
-            ...state.collections,
-            [collectionId]: {
-              ...collection,
-              scenes: collection.scenes.filter(s => s.sceneId !== sceneId),
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        }), false, 'removeSceneFromCollection');
-      },
-
-      reorderScenes: (collectionId, sceneIds) => {
-        const collection = get().collections[collectionId];
-        if (!collection) return;
-
-        const reordered = sceneIds.map((sceneId, index) => {
-          const existing = collection.scenes.find(s => s.sceneId === sceneId);
-          return {
-            sceneId,
-            order: index,
-            optional: existing?.optional,
-            unlockConditions: existing?.unlockConditions,
-          };
-        });
-
-        set((state) => ({
-          collections: {
-            ...state.collections,
-            [collectionId]: {
-              ...collection,
-              scenes: reordered,
-              updatedAt: new Date().toISOString(),
-            },
-          },
-        }), false, 'reorderScenes');
-      },
-
-      setCurrentCollection: (id) => {
-        set({ currentCollectionId: id }, false, 'setCurrentCollection');
-      },
-
-      getCurrentCollection: () => {
-        const { currentCollectionId, collections } = get();
-        return currentCollectionId ? collections[currentCollectionId] || null : null;
-      },
-
-      getCollectionsForArc: (arcGraphId) => {
-        const { collections } = get();
-        return Object.values(collections).filter(c => c.arcGraphId === arcGraphId);
-      },
-
-      getCollectionsForCampaign: (campaignId) => {
-        const { collections } = get();
-        return Object.values(collections).filter(c => c.campaignId === campaignId);
-      },
-
-      getCollectionForScene: (sceneId) => {
-        const { collections } = get();
-        return Object.values(collections).find(c =>
-          c.scenes.some(s => s.sceneId === sceneId)
-        ) || null;
-      },
-
-      exportCollection: (id) => {
-        const collection = get().collections[id];
-        return collection ? JSON.stringify(collection, null, 2) : null;
-      },
-
-      importCollection: (json) => {
-        try {
-          const collection = JSON.parse(json) as SceneCollection;
           set((state) => ({
             collections: {
               ...state.collections,
-              [collection.id]: collection,
+              [id]: collection,
             },
-          }), false, 'importCollection');
-          return collection.id;
-        } catch (error) {
-          console.error('Failed to import collection:', error);
-          return null;
-        }
-      },
+          }));
+
+          return id;
+        },
+
+        getCollection: (id) => {
+          return get().collections[id] || null;
+        },
+
+        updateCollection: (id, patch) => {
+          set((state) => ({
+            collections: {
+              ...state.collections,
+              [id]: {
+                ...state.collections[id],
+                ...patch,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          }));
+        },
+
+        deleteCollection: (id) => {
+          set((state) => {
+          const { [id]: removed, ...rest } = state.collections;
+          void removed;
+            return {
+              collections: rest,
+              currentCollectionId: state.currentCollectionId === id ? null : state.currentCollectionId,
+            };
+          });
+        },
+
+        addSceneToCollection: (collectionId, sceneId, order) => {
+          const collection = get().collections[collectionId];
+          if (!collection) return;
+
+          const maxOrder = Math.max(0, ...collection.scenes.map(s => s.order));
+          const newOrder = order !== undefined ? order : maxOrder + 1;
+
+          set((state) => ({
+            collections: {
+              ...state.collections,
+              [collectionId]: {
+                ...collection,
+                scenes: [
+                  ...collection.scenes,
+                  { sceneId, order: newOrder },
+                ],
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          }));
+        },
+
+        removeSceneFromCollection: (collectionId, sceneId) => {
+          const collection = get().collections[collectionId];
+          if (!collection) return;
+
+          set((state) => ({
+            collections: {
+              ...state.collections,
+              [collectionId]: {
+                ...collection,
+                scenes: collection.scenes.filter(s => s.sceneId !== sceneId),
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          }));
+        },
+
+        reorderScenes: (collectionId, sceneIds) => {
+          const collection = get().collections[collectionId];
+          if (!collection) return;
+
+          const reordered = sceneIds.map((sceneId, index) => {
+            const existing = collection.scenes.find(s => s.sceneId === sceneId);
+            return {
+              sceneId,
+              order: index,
+              optional: existing?.optional,
+              unlockConditions: existing?.unlockConditions,
+            };
+          });
+
+          set((state) => ({
+            collections: {
+              ...state.collections,
+              [collectionId]: {
+                ...collection,
+                scenes: reordered,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+          }));
+        },
+
+        setCurrentCollection: (id) => {
+          set({ currentCollectionId: id });
+        },
+
+        getCurrentCollection: () => {
+          const { currentCollectionId, collections } = get();
+          return currentCollectionId ? collections[currentCollectionId] || null : null;
+        },
+
+        getCollectionsForArc: (arcGraphId) => {
+          const { collections } = get();
+          return Object.values(collections).filter(c => c.arcGraphId === arcGraphId);
+        },
+
+        getCollectionsForCampaign: (campaignId) => {
+          const { collections } = get();
+          return Object.values(collections).filter(c => c.campaignId === campaignId);
+        },
+
+        getCollectionForScene: (sceneId) => {
+          const { collections } = get();
+          return Object.values(collections).find(c =>
+            c.scenes.some(s => s.sceneId === sceneId)
+          ) || null;
+        },
+
+        exportCollection: (id) => {
+          const collection = get().collections[id];
+          return collection ? JSON.stringify(collection, null, 2) : null;
+        },
+
+        importCollection: (json) => {
+          try {
+            const collection = JSON.parse(json) as SceneCollection;
+            set((state) => ({
+              collections: {
+                ...state.collections,
+                [collection.id]: collection,
+              },
+            }));
+            return collection.id;
+          } catch (error) {
+            console.error('Failed to import collection:', error);
+            return null;
+          }
+        },
       }),
       {
         limit: 50,
@@ -213,7 +216,7 @@ export const useSceneCollectionStore = create<SceneCollectionState>()(
 );
 
 // Export temporal actions for undo/redo
-export const useSceneCollectionStoreUndo = () => useSceneCollectionStore.temporal.undo;
-export const useSceneCollectionStoreRedo = () => useSceneCollectionStore.temporal.redo;
+export const useSceneCollectionStoreUndo = () => useSceneCollectionStore.temporal.getState().undo;
+export const useSceneCollectionStoreRedo = () => useSceneCollectionStore.temporal.getState().redo;
 export const useSceneCollectionStoreCanUndo = () => useSceneCollectionStore.temporal.getState().pastStates.length > 0;
 export const useSceneCollectionStoreCanRedo = () => useSceneCollectionStore.temporal.getState().futureStates.length > 0;

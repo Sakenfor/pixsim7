@@ -24,6 +24,7 @@ import {
   parseIntimacyGating,
   getTurnDeltaFromPreset,
 } from '@pixsim7/core.world';
+import { deepMerge } from '@pixsim7/shared.helpers.core';
 import type { GameWorldDetail } from '@pixsim7/shared.types';
 import {
   DEFAULT_WORLD_STATS_CONFIG,
@@ -38,7 +39,6 @@ import {
   type StatTier,
   type StatLevel,
 } from '@pixsim7/shared.types';
-import { deepMerge } from '@pixsim7/shared.helpers.core';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
@@ -181,8 +181,8 @@ export const useWorldConfigStore = create<WorldConfigState>()(
           statsConfig,
           manifest,
           intimacyGating,
-          backendTierOrder: config.tier_order,
-          backendLevelOrder: config.level_order,
+          backendTierOrder: config.tier_order ? [...config.tier_order] : null,
+          backendLevelOrder: config.level_order ? [...config.level_order] : null,
           turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
           lastUpdatedAt: Date.now(),
           isConfigLoading: false,

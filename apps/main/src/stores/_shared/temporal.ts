@@ -29,8 +29,8 @@
  */
 
 import { temporal } from 'zundo';
-import type { StateCreator } from 'zustand';
 import type { TemporalState } from 'zundo';
+import type { StateCreator, StoreApi, StoreMutatorIdentifier } from 'zustand';
 
 /**
  * Configuration options for temporal middleware
@@ -85,11 +85,15 @@ export interface TemporalConfig<T> {
  * );
  * ```
  */
-export function createTemporalStore<T>(
-  stateCreator: StateCreator<T>,
-  config?: TemporalConfig<T>
-) {
-  return temporal(stateCreator, {
+export function createTemporalStore<
+  TState,
+  Mps extends [StoreMutatorIdentifier, unknown][] = [],
+  Mcs extends [StoreMutatorIdentifier, unknown][] = []
+>(
+  stateCreator: StateCreator<TState, Mps, Mcs>,
+  config?: TemporalConfig<TState>
+): StateCreator<TState, Mps, [['temporal', StoreApi<TemporalState<Partial<TState>>>], ...Mcs]> {
+  return temporal(stateCreator as unknown as StateCreator<TState, [...Mps, ['temporal', unknown]], Mcs>, {
     limit: config?.limit ?? 50,
     partialize: config?.partialize,
     equality: config?.equality ?? ((a, b) => a === b),
@@ -148,6 +152,10 @@ export function graphStorePartialize<
     viewportState,
     ...tracked
   } = state as any;
+  void selectedNodeIds;
+  void hoveredNodeId;
+  void isDragging;
+  void viewportState;
 
   // Return everything except the excluded UI state
   return tracked as Partial<T>;
@@ -167,6 +175,8 @@ export function arcGraphStorePartialize<
   }
 >(state: T): Partial<T> {
   const { selectedNodeIds, selectedEdgeIds, ...tracked } = state as any;
+  void selectedNodeIds;
+  void selectedEdgeIds;
   return tracked as Partial<T>;
 }
 
@@ -182,6 +192,7 @@ export function sceneCollectionStorePartialize<
   }
 >(state: T): Partial<T> {
   const { selectedCollectionId, ...tracked } = state as any;
+  void selectedCollectionId;
   return tracked as Partial<T>;
 }
 
@@ -197,6 +208,7 @@ export function campaignStorePartialize<
   }
 >(state: T): Partial<T> {
   const { currentCampaignId, ...tracked } = state as any;
+  void currentCampaignId;
   return tracked as Partial<T>;
 }
 

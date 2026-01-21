@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { devtools } from 'zustand/middleware';
-import type { Campaign, CampaignProgression, CampaignType } from '../types';
+
 import { createTemporalStore, campaignStorePartialize } from '@/stores/_shared/temporal';
+
+import type { Campaign, CampaignProgression, CampaignType } from '../types';
 
 interface CampaignState {
   /** All campaigns by ID */
@@ -72,7 +74,7 @@ export const useCampaignStore = create<CampaignState>()(
             ...state.campaigns,
             [id]: campaign,
           },
-        }), false, 'createCampaign');
+        }));
 
         return id;
       },
@@ -91,17 +93,18 @@ export const useCampaignStore = create<CampaignState>()(
               updatedAt: new Date().toISOString(),
             },
           },
-        }), false, 'updateCampaign');
+        }));
       },
 
       deleteCampaign: (id) => {
         set((state) => {
           const { [id]: removed, ...rest } = state.campaigns;
+          void removed;
           return {
             campaigns: rest,
             currentCampaignId: state.currentCampaignId === id ? null : state.currentCampaignId,
           };
-        }, false, 'deleteCampaign');
+        });
       },
 
       addArcToCampaign: (campaignId, arcGraphId, order) => {
@@ -123,7 +126,7 @@ export const useCampaignStore = create<CampaignState>()(
               updatedAt: new Date().toISOString(),
             },
           },
-        }), false, 'addArcToCampaign');
+        }));
       },
 
       removeArcFromCampaign: (campaignId, arcGraphId) => {
@@ -139,7 +142,7 @@ export const useCampaignStore = create<CampaignState>()(
               updatedAt: new Date().toISOString(),
             },
           },
-        }), false, 'removeArcFromCampaign');
+        }));
       },
 
       reorderArcs: (campaignId, arcGraphIds) => {
@@ -166,7 +169,7 @@ export const useCampaignStore = create<CampaignState>()(
               updatedAt: new Date().toISOString(),
             },
           },
-        }), false, 'reorderArcs');
+        }));
       },
 
       startCampaign: (worldId, campaignId) => {
@@ -183,7 +186,7 @@ export const useCampaignStore = create<CampaignState>()(
               },
             },
           },
-        }), false, 'startCampaign');
+        }));
       },
 
       completeCampaign: (worldId, campaignId) => {
@@ -200,7 +203,7 @@ export const useCampaignStore = create<CampaignState>()(
               },
             },
           },
-        }), false, 'completeCampaign');
+        }));
       },
 
       updateCampaignProgress: (worldId, campaignId, currentArcId) => {
@@ -217,7 +220,7 @@ export const useCampaignStore = create<CampaignState>()(
               },
             },
           },
-        }), false, 'updateCampaignProgress');
+        }));
       },
 
       completeArc: (worldId, campaignId, arcGraphId) => {
@@ -235,7 +238,7 @@ export const useCampaignStore = create<CampaignState>()(
               },
             },
           },
-        }), false, 'completeArc');
+        }));
       },
 
       getCampaignProgression: (worldId, campaignId) => {
@@ -243,7 +246,7 @@ export const useCampaignStore = create<CampaignState>()(
       },
 
       setCurrentCampaign: (id) => {
-        set({ currentCampaignId: id }, false, 'setCurrentCampaign');
+        set({ currentCampaignId: id });
       },
 
       getCurrentCampaign: () => {
@@ -284,7 +287,7 @@ export const useCampaignStore = create<CampaignState>()(
               ...state.campaigns,
               [campaign.id]: campaign,
             },
-          }), false, 'importCampaign');
+          }));
           return campaign.id;
         } catch (error) {
           console.error('Failed to import campaign:', error);
@@ -302,7 +305,7 @@ export const useCampaignStore = create<CampaignState>()(
 );
 
 // Export temporal actions for undo/redo
-export const useCampaignStoreUndo = () => useCampaignStore.temporal.undo;
-export const useCampaignStoreRedo = () => useCampaignStore.temporal.redo;
+export const useCampaignStoreUndo = () => useCampaignStore.temporal.getState().undo;
+export const useCampaignStoreRedo = () => useCampaignStore.temporal.getState().redo;
 export const useCampaignStoreCanUndo = () => useCampaignStore.temporal.getState().pastStates.length > 0;
 export const useCampaignStoreCanRedo = () => useCampaignStore.temporal.getState().futureStates.length > 0;

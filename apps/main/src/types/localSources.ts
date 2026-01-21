@@ -10,7 +10,7 @@
 
 import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources';
 
-import type { LocalAsset } from '../stores/localFoldersStore';
+import type { LocalAsset } from '@features/assets/stores/localFoldersStore';
 
 export type LocalSourceId = 'local-fs';
 
