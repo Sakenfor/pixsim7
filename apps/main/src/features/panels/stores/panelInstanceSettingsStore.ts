@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+
 import type { PanelId } from "@features/workspace";
+
 import type { PanelSettingsScopeMode } from "../lib/panelSettingsScopes";
 
 export interface PanelInstanceSettings {
@@ -186,7 +188,8 @@ export const usePanelInstanceSettingsStore = create<
         set((state) => {
           const existing = state.instances[instanceId];
           if (!existing) return state;
-          const { panelSettings: _, ...rest } = existing;
+          const { panelSettings: removedPanelSettings, ...rest } = existing;
+          void removedPanelSettings;
           return {
             instances: {
               ...state.instances,
@@ -200,7 +203,8 @@ export const usePanelInstanceSettingsStore = create<
         set((state) => {
           const existing = state.instances[instanceId];
           if (!existing?.panelSettings || !(key in existing.panelSettings)) return state;
-          const { [key]: _, ...rest } = existing.panelSettings;
+          const { [key]: removedSetting, ...rest } = existing.panelSettings;
+          void removedSetting;
           const hasOtherSettings = Object.keys(rest).length > 0;
           return {
             instances: {
@@ -272,7 +276,8 @@ export const usePanelInstanceSettingsStore = create<
 
           if (componentId) {
             // Clear specific component's settings
-            const { [componentId]: _, ...rest } = existing.componentSettings;
+            const { [componentId]: removedComponent, ...rest } = existing.componentSettings;
+            void removedComponent;
             const hasOtherComponents = Object.keys(rest).length > 0;
             return {
               instances: {
@@ -286,7 +291,8 @@ export const usePanelInstanceSettingsStore = create<
           }
 
           // Clear all component settings
-          const { componentSettings: _, ...rest } = existing;
+          const { componentSettings: removedComponentSettings, ...rest } = existing;
+          void removedComponentSettings;
           return {
             instances: {
               ...state.instances,
@@ -302,7 +308,8 @@ export const usePanelInstanceSettingsStore = create<
           const componentSettings = existing?.componentSettings?.[componentId];
           if (!componentSettings || !(key in componentSettings)) return state;
 
-          const { [key]: _, ...restFields } = componentSettings;
+          const { [key]: removedField, ...restFields } = componentSettings;
+          void removedField;
           const hasOtherFields = Object.keys(restFields).length > 0;
 
           if (hasOtherFields) {
@@ -321,7 +328,8 @@ export const usePanelInstanceSettingsStore = create<
           }
 
           // No more fields for this component, remove it
-          const { [componentId]: __, ...restComponents } = existing.componentSettings!;
+          const { [componentId]: removedComponent, ...restComponents } = existing.componentSettings!;
+          void removedComponent;
           const hasOtherComponents = Object.keys(restComponents).length > 0;
           return {
             instances: {
@@ -355,7 +363,7 @@ export const usePanelInstanceSettingsStore = create<
             const scopes = state.instances[instanceId]?.scopes;
             if (scopes) {
               for (const scopeId of Object.keys(scopes)) {
-                if (scopes[scopeId] === 'dock') {
+                if ((scopes[scopeId] as unknown as string) === 'dock') {
                   scopes[scopeId] = 'local' as PanelSettingsScopeMode;
                 }
               }

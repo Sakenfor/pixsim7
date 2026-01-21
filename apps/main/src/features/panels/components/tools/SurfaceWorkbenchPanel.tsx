@@ -4,14 +4,15 @@ import { useMemo, useState } from "react";
 import { useEditorContext } from "@lib/context";
 import { gizmoSurfaceSelectors } from "@lib/plugins/catalogSelectors";
 
+import type {
+  GizmoSurfaceContext,
+  GizmoSurfaceDefinition,
+} from "@features/gizmos";
+
 import {
   SurfaceWorkbench,
   type SurfaceWorkbenchStatus,
 } from "@/components/surface-workbench";
-import type {
-  GizmoSurfaceContext,
-  GizmoSurfaceDefinition,
-} from "@/gizmos/surfaceRegistry";
 
 type SurfaceModeFilter = "all" | "panel" | "overlay" | "hud";
 

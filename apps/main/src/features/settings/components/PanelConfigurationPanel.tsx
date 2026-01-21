@@ -21,7 +21,7 @@ import { useWorkspaceStore } from '@features/workspace';
 
 import { PanelSettingsErrorBoundary } from './PanelSettingsErrorBoundary';
 
-type FilterCategory = 'all' | 'core' | 'development' | 'game' | 'tools' | 'custom';
+type FilterCategory = 'all' | 'workspace' | 'dev' | 'game' | 'tools' | 'custom';
 
 export function PanelConfigurationPanel() {
   const [selectedPanelId, setSelectedPanelId] = useState<string | null>(null);
@@ -57,8 +57,8 @@ export function PanelConfigurationPanel() {
     const all = Object.values(panelConfigs);
     return {
       all: all.length,
-      core: all.filter((p) => p.category === 'core').length,
-      development: all.filter((p) => p.category === 'development').length,
+      workspace: all.filter((p) => p.category === 'workspace').length,
+      dev: all.filter((p) => p.category === 'dev').length,
       game: all.filter((p) => p.category === 'game').length,
       tools: all.filter((p) => p.category === 'tools').length,
       custom: all.filter((p) => p.category === 'custom').length,
@@ -104,7 +104,7 @@ export function PanelConfigurationPanel() {
         {/* Category Filters */}
         <div className="p-2 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex flex-col gap-1">
-            {(['all', 'core', 'development', 'game', 'tools', 'custom'] as const).map((cat) => (
+            {(['all', 'workspace', 'dev', 'game', 'tools', 'custom'] as const).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setFilterCategory(cat)}
@@ -150,9 +150,9 @@ export function PanelConfigurationPanel() {
                         <div className="flex gap-1 mt-1 flex-wrap">
                           <span
                             className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                              panel.category === 'core'
+                              panel.category === 'workspace'
                                 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                                : panel.category === 'development'
+                                : panel.category === 'dev'
                                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
                                   : panel.category === 'game'
                                     ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'

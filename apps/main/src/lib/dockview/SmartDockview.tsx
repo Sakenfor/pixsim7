@@ -956,9 +956,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       >
         <ContextHubHost hostId={dockviewHostId}>
           <DockviewReact
-            components={components}
-            tabComponents={tabComponents}
-            watermarkComponent={watermarkComponent}
+            components={components as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
+            tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
+            watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
             onReady={handleReady}
             className={theme}
           />

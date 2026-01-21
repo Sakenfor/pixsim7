@@ -8,8 +8,8 @@
  * - Join Left/Right Group
  */
 
-import type { MenuAction } from '../types';
 import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
+import type { MenuAction } from '../types';
 
 type JoinDirection = 'left' | 'right';
 
@@ -211,8 +211,11 @@ const moveToDockviewAction: MenuAction = {
         const targetApi = targetHost?.api ?? ctx.getDockviewApi?.(id);
         if (!targetApi) return;
 
-        const panelId = resolvePanelDefinitionId(panel) ?? panel.id ?? panel.component;
+        const panelId = resolvePanelDefinitionId(panel) ?? panel.id;
         if (typeof panelId !== 'string') return;
+        const panelParams =
+          (panel as { params?: Record<string, unknown> }).params ??
+          (panel.api as { params?: Record<string, unknown> } | undefined)?.params;
 
         const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
         const allowMultiple = !!registryEntry?.supportsMultipleInstances;
@@ -227,13 +230,13 @@ const moveToDockviewAction: MenuAction = {
           targetHost.addPanel(panelId, {
             allowMultiple,
             title: panel.title ?? registryEntry?.title,
-            params: panel.params ?? panel.api?.params,
+            params: panelParams,
           });
         } else {
           addDockviewPanel(targetApi, panelId, {
             allowMultiple,
             title: panel.title ?? registryEntry?.title,
-            params: panel.params ?? panel.api?.params,
+            params: panelParams,
           });
         }
 

@@ -362,7 +362,7 @@ const selectAssetAction: MenuAction = {
     const assets = resolveAssets(ctx);
     if (assets.length !== 1) return false;
     const selectionStore = useAssetSelectionStore.getState();
-    return selectionStore.selectedAsset?.id !== assets[0].id;
+    return !selectionStore.isSelected(assets[0].id);
   },
   execute: (ctx) => {
     const assets = resolveAssets(ctx);
@@ -394,7 +394,7 @@ const compareWithSelectedAction: MenuAction = {
 
     // Open both in viewer for comparison
     const viewerAsset = toViewerAsset(assets[0]);
-    const selectedAsset = toViewerAsset(assetSelection.asset as AssetModel);
+    const selectedAsset = assetSelection.asset;
     useAssetViewerStore.getState().openViewer(viewerAsset, [selectedAsset, viewerAsset]);
   },
 };

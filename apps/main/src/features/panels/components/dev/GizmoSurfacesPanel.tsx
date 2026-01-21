@@ -209,18 +209,18 @@ export function GizmoSurfacesPanel({ onClose }: GizmoSurfacesPanelProps) {
 function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
   const [expanded, setExpanded] = useState(false);
 
-  const getCategoryVariant = (category?: GizmoSurfaceCategory) => {
+  const getCategoryColor = (category?: GizmoSurfaceCategory) => {
     switch (category) {
       case "scene":
-        return "info";
+        return "blue";
       case "world":
-        return "success";
+        return "green";
       case "npc":
-        return "warning";
+        return "yellow";
       case "debug":
-        return "error";
+        return "red";
       default:
-        return "secondary";
+        return "gray";
     }
   };
 
@@ -252,7 +252,7 @@ function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
 
           <div className="flex items-center gap-1">
             {surface.category && (
-              <Badge variant={getCategoryVariant(surface.category)} size="sm">
+              <Badge color={getCategoryColor(surface.category)}>
                 {surface.category}
               </Badge>
             )}
@@ -280,17 +280,17 @@ function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
             </div>
             <div className="flex gap-1">
               {hasPanel && (
-                <Badge variant="info" size="sm">
+                <Badge color="blue">
                   Panel
                 </Badge>
               )}
               {hasOverlay && (
-                <Badge variant="success" size="sm">
+                <Badge color="green">
                   Overlay
                 </Badge>
               )}
               {hasHud && (
-                <Badge variant="warning" size="sm">
+                <Badge color="yellow">
                   HUD
                 </Badge>
               )}
@@ -308,7 +308,7 @@ function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
               </div>
               <div className="flex flex-wrap gap-1">
                 {surface.supportsContexts.map((context) => (
-                  <Badge key={context} variant="secondary" size="sm">
+                  <Badge key={context} color="gray">
                     {context}
                   </Badge>
                 ))}
@@ -324,7 +324,7 @@ function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
               </div>
               <div className="flex flex-wrap gap-1">
                 {surface.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" size="sm">
+                  <Badge key={tag} color="gray">
                     {tag}
                   </Badge>
                 ))}

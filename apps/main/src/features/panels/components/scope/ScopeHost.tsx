@@ -10,6 +10,7 @@
  */
 
 import { useMemo, type ReactNode } from "react";
+
 import {
   panelSettingsScopeRegistry,
   getScopeMode,
@@ -108,7 +109,7 @@ export function ScopeHost({
         dockviewId,
       });
 
-      if (process.env.NODE_ENV === "development") {
+      if (import.meta.env.DEV) {
         console.debug(
           `[ScopeHost] Wrapping panel ${instanceId} (${mode}) with scope: ${scope.id}`,
         );

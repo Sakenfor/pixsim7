@@ -1,14 +1,18 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+
 import {
   createBackendStorage,
   manuallyRehydrateStore,
   exposeStoreForDebugging,
   debugFlags,
 } from "@lib/utils";
+
 import type { PanelId } from "@features/workspace";
-import { pluginCatalog } from "@/lib/plugins/pluginSystem";
+
 import type { MediaCardBadgeConfig } from "@/components/media/MediaCard";
+import { pluginCatalog } from "@/lib/plugins/pluginSystem";
+
 import type { PanelCategory } from "../lib/panelConstants";
 
 /**
@@ -47,7 +51,7 @@ export interface PanelInstance {
 
 export interface PanelConfigState {
   // Panel configurations
-  panelConfigs: Record<PanelId, PanelConfig>;
+  panelConfigs: Partial<Record<PanelId, PanelConfig>>;
 
   // Active panel instances (for supporting multiple instances of same panel)
   activeInstances: PanelInstance[];
@@ -61,6 +65,7 @@ export interface PanelConfigActions {
   setPanelConfig: (panelId: PanelId, config: Partial<PanelConfig>) => void;
   getPanelConfig: (panelId: PanelId) => PanelConfig | undefined;
   togglePanelEnabled: (panelId: PanelId) => void;
+  togglePanel: (panelId: PanelId) => void;
 
   // Panel settings
   updatePanelSettings: (
@@ -98,6 +103,7 @@ export interface PanelConfigActions {
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
   badgeConfig?: Partial<MediaCardBadgeConfig>;
+  [key: string]: unknown;
 }
 
 const defaultGalleryBadgeConfig: Partial<MediaCardBadgeConfig> = {
@@ -110,7 +116,7 @@ const defaultGalleryBadgeConfig: Partial<MediaCardBadgeConfig> = {
 };
 
 // Default panel configurations
-const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
+const defaultPanelConfigs: Partial<Record<PanelId, PanelConfig>> = {
   gallery: {
     id: "gallery",
     enabled: true,
@@ -118,7 +124,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
       overlayPresetId: "media-card-default",
       badgeConfig: defaultGalleryBadgeConfig,
     } as GalleryPanelSettings,
-    category: "core",
+    category: "workspace",
     tags: ["assets", "media"],
     description: "Browse and manage project assets",
     icon: "🖼️",
@@ -127,7 +133,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "scene",
     enabled: true,
     settings: {},
-    category: "core",
+    category: "scene",
     tags: ["scene", "builder"],
     description: "Build and edit scenes",
     icon: "🎬",
@@ -140,7 +146,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
       // Can be changed via advanced panel settings.
       graphEditorId: "scene-graph-v2",
     },
-    category: "core",
+    category: "workspace",
     tags: ["graph", "nodes"],
     description: "Visual node-based editor",
     icon: "🔀",
@@ -149,7 +155,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "inspector",
     enabled: true,
     settings: {},
-    category: "core",
+    category: "workspace",
     tags: ["inspector", "properties"],
     description: "Inspect and edit node properties",
     icon: "🔍",
@@ -158,7 +164,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "health",
     enabled: true,
     settings: { compactMode: false },
-    category: "development",
+    category: "system",
     tags: ["health", "monitoring", "validation"],
     description: "System health and validation",
     icon: "❤️",
@@ -176,7 +182,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "providers",
     enabled: true,
     settings: {},
-    category: "development",
+    category: "system",
     tags: ["providers", "api"],
     description: "API provider settings",
     icon: "🔌",
@@ -185,7 +191,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "settings",
     enabled: true,
     settings: {},
-    category: "core",
+    category: "utilities",
     tags: ["settings", "configuration"],
     description: "Application settings",
     icon: "⚙️",
@@ -221,7 +227,7 @@ const defaultPanelConfigs: Record<PanelId, PanelConfig> = {
     id: "scene-management",
     enabled: true,
     settings: {},
-    category: "core",
+    category: "scene",
     tags: ["scene", "management", "workflow"],
     description: "Unified scene workflow management",
     icon: "📚",
@@ -281,6 +287,9 @@ export const usePanelConfigStore = create<
         if (config) {
           get().setPanelConfig(panelId, { enabled: !config.enabled });
         }
+      },
+      togglePanel: (panelId) => {
+        get().togglePanelEnabled(panelId);
       },
 
       // Panel settings
@@ -421,7 +430,7 @@ export const usePanelConfigStore = create<
     }),
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage("panel-config"),
+      storage: createJSONStorage(() => createBackendStorage("panel-config")),
       version: 1,
     },
   ),

@@ -331,6 +331,7 @@ interface PanelDetailViewProps {
 
 function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: PanelDetailViewProps) {
   const allPanels = useMemo(() => getAllPanelMetadata(), []);
+  const panelId = metadata.id as PanelId;
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(
     () => panelSelectors.getAll().find((p) => p.id === metadata.id),
@@ -338,7 +339,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
   );
   const [componentRegistryVersion, setComponentRegistryVersion] = useState(0);
   const panelRegistryOverride = usePanelConfigStore(
-    (state) => state.panelConfigs[metadata.id as PanelId]?.registryOverride
+    (state) => state.panelConfigs[panelId]?.registryOverride
   );
   const setRegistryOverride = usePanelConfigStore((state) => state.setRegistryOverride);
   const clearRegistryOverride = usePanelConfigStore((state) => state.clearRegistryOverride);
@@ -369,7 +370,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
 
   // Get panel enabled state
   const isEnabled = usePanelConfigStore((state) =>
-    state.panelConfigs?.[metadata.id]?.enabled ?? true
+    state.panelConfigs?.[panelId]?.enabled ?? true
   );
   const togglePanel = usePanelConfigStore((state) => state.togglePanel);
 
@@ -378,7 +379,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
 
   // Get current panel settings
   const panelSettings = usePanelConfigStore((state) => {
-    const settings = state.panelConfigs?.[metadata.id]?.settings;
+    const settings = state.panelConfigs?.[panelId]?.settings;
     return settings ?? panelDefinition?.defaultSettings ?? EMPTY_SETTINGS;
   });
   const schemaValues = useMemo(() => {
@@ -395,13 +396,13 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
   // Create update callback
   const onUpdateSettings = useCallback(
     (settings: Record<string, any>) => {
-      updatePanelSettings(metadata.id, settings);
+      updatePanelSettings(panelId, settings);
     },
-    [metadata.id, updatePanelSettings]
+    [panelId, updatePanelSettings]
   );
 
   // Get helpers for panel settings
-  const helpers = usePanelSettingsHelpers(metadata.id, panelSettings, onUpdateSettings);
+  const helpers = usePanelSettingsHelpers(panelId, panelSettings, onUpdateSettings);
 
   const [scopeDefinitions, setScopeDefinitions] = useState(() =>
     panelSettingsScopeRegistry.getAll()
@@ -441,7 +442,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     !!instancePanelSettings && Object.keys(instancePanelSettings).length > 0;
 
   // Resolved instance panel settings (global + instance overrides)
-  const resolvedInstancePanelSettings = useResolvePanelSettings(metadata.id, selectedInstanceId);
+  const resolvedInstancePanelSettings = useResolvePanelSettings(panelId, selectedInstanceId);
   const instanceSchemaValues = useMemo(() => {
     if (!panelDefinition?.settingsForm) {
       return resolvedInstancePanelSettings.settings as Record<string, any>;
@@ -487,9 +488,9 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                 onChange={(event) => {
                   const value = event.target.value;
                   if (value === "default") {
-                    clearRegistryOverride(metadata.id as PanelId);
+                    clearRegistryOverride(panelId);
                   } else {
-                    setRegistryOverride(metadata.id as PanelId, {
+                    setRegistryOverride(panelId, {
                       supportsMultipleInstances: value === "allow",
                     });
                   }
@@ -544,7 +545,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                       <ScopeModeSelect
                         value={mode}
                         onChange={(next) =>
-                          setScope(selectedInstanceId, metadata.id, scope.id, next)
+                          setScope(selectedInstanceId, panelId, scope.id, next)
                         }
                       />
                     </div>
@@ -580,7 +581,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                     schema={panelDefinition.settingsForm}
                     values={instanceSchemaValues}
                     setValue={(fieldId, value) =>
-                      setInstancePanelSetting(selectedInstanceId, metadata.id, fieldId, value)
+                      setInstancePanelSetting(selectedInstanceId, panelId, fieldId, value)
                     }
                     instanceOverrides={instancePanelSettings}
                     onResetField={(fieldId) =>
@@ -603,7 +604,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
                       key={componentId}
                       componentId={componentId}
                       instanceId={selectedInstanceId}
-                      panelId={metadata.id}
+                      panelId={panelId}
                     />
                   ))}
                 </div>
@@ -651,7 +652,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
         label: "Panel Settings",
         order: 10,
         content: (
-          <PanelSettingsErrorBoundary panelId={metadata.id}>
+          <PanelSettingsErrorBoundary panelId={panelId}>
             {panelDefinition.settingsComponent ? (
               <panelDefinition.settingsComponent settings={panelSettings} helpers={helpers} />
             ) : panelDefinition.settingsSections ? (
@@ -788,7 +789,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
           label: tab.label,
           order: tab.order ?? 50,
           content: (
-            <PanelSettingsErrorBoundary panelId={metadata.id} sectionId={tab.id}>
+            <PanelSettingsErrorBoundary panelId={panelId} sectionId={tab.id}>
               <tab.component settings={panelSettings} helpers={helpers} />
             </PanelSettingsErrorBoundary>
           ),
@@ -807,7 +808,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
     hasInteractionRules,
     hasPanelSettings,
     helpers,
-    metadata.id,
+    panelId,
     metadata.interactionRules,
     metadata.retraction,
     panelDefinition,
@@ -872,7 +873,7 @@ function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: Pane
               </p>
             </div>
             <button
-              onClick={() => togglePanel(metadata.id)}
+              onClick={() => togglePanel(panelId)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 isEnabled
                   ? 'bg-blue-600 dark:bg-blue-500'

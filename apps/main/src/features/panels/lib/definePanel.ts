@@ -23,7 +23,6 @@
 
 import type { CapabilityDeclaration, PanelAvailabilityPolicy, PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 import type { ComponentType } from 'react';
-import type { z } from 'zod';
 
 import type {
   ContextLabelStrategy,
@@ -81,7 +80,9 @@ export interface DefinePanelOptions<TSettings = any> {
   // Settings
   defaultSettings?: TSettings;
   settingsVersion?: number;
-  settingsSchema?: z.ZodSchema<TSettings>;
+  settingsSchema?: {
+    safeParse: (data: unknown) => { success: boolean; data: TSettings; error: unknown };
+  };
   settingsComponent?: ComponentType<PanelSettingsProps<TSettings>>;
   settingsSections?: PanelSettingsSection<TSettings>[];
   settingsTabs?: PanelSettingsTab<TSettings>[];

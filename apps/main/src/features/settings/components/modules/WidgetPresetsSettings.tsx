@@ -5,11 +5,11 @@
  * This is a layout-only view today; future UI presets can extend this surface.
  */
 
-import type { DockZoneDefinition } from "@lib/dockview/dockZoneRegistry";
 import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDockviewHost } from "@lib/dockview";
+import type { DockZoneDefinition } from "@lib/dockview/dockZoneRegistry";
 import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";
@@ -114,7 +114,7 @@ export function WidgetPresetsSettings() {
         const panelIds = dockWidgetSelectors.getPanelIds(widget.dockviewId);
         applyFallbackLayout(host.api, panelIds);
       }
-      setActivePreset(widget.presetScope, preset.id);
+      setActivePreset(widget.presetScope as PresetScope, preset.id);
     } catch (err) {
       console.warn("[WidgetPresets] Failed to apply preset:", err);
       window.alert("Failed to apply preset. Check console for details.");
@@ -131,7 +131,7 @@ export function WidgetPresetsSettings() {
     if (!name) return;
     try {
       const layout = host.api.toJSON();
-      savePreset(name, widget.presetScope, layout);
+      savePreset(name, widget.presetScope as PresetScope, layout);
     } catch (err) {
       console.warn("[WidgetPresets] Failed to save preset:", err);
       window.alert("Failed to save preset. Check console for details.");
@@ -167,7 +167,7 @@ export function WidgetPresetsSettings() {
         return;
       }
       const name = parsed.name ?? "Imported Preset";
-      savePreset(name, widget.presetScope, parsed.layout);
+      savePreset(name, widget.presetScope as PresetScope, parsed.layout);
     } catch (err) {
       console.warn("[WidgetPresets] Failed to import preset:", err);
       window.alert("Invalid preset JSON.");
@@ -185,8 +185,8 @@ export function WidgetPresetsSettings() {
         <div className="text-sm text-neutral-500">No dock widgets registered.</div>
       ) : (
         widgets.map((widget) => {
-          const widgetPresets = getWidgetPresets(presets, widget.presetScope);
-          const activeId = activePresetByScope[widget.presetScope] ?? null;
+          const widgetPresets = getWidgetPresets(presets, widget.presetScope as PresetScope);
+          const activeId = activePresetByScope[widget.presetScope as PresetScope] ?? null;
           const isMounted = !!resolveWidgetHost(widget);
 
           return (

@@ -11,6 +11,8 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { arePanelsInitialized, initializePanels } from './initializePanels';
 import type { PanelMetadata } from './types';
 
+export type { PanelMetadata } from './types';
+
 
 function getRegistryPanelMetadata(): PanelMetadata[] {
   return panelSelectors

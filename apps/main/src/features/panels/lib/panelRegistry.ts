@@ -7,13 +7,13 @@
 
 import type { BasePanelDefinition, PanelRegistryLike, PanelInstancePolicy } from "@pixsim7/shared.ui.panels";
 import type { ComponentType } from "react";
-import type { z } from "zod";
+
+import type { EditorContext } from "@lib/context/editorContext";
 
 import type { SettingGroup, SettingTab } from "@features/settings";
+import type { PanelId } from "@features/workspace";
 
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
-import type { EditorContext } from "../../context/editorContext";
-import type { PanelId } from "../../stores/workspaceStore";
 
 import type { PanelCategory } from "./panelConstants";
 import type { PanelMetadata } from "./types";
@@ -115,6 +115,10 @@ export interface PanelSettingsFormSchema {
   groups?: SettingGroup[];
 }
 
+type SettingsSchema<T> = {
+  safeParse: (data: unknown) => { success: boolean; data: T; error: unknown };
+};
+
 /**
  * Full panel definition for workspace panels.
  * Extends BasePanelDefinition with rich metadata, settings, and orchestration.
@@ -136,7 +140,7 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
    * Zod schema for validating and type-checking settings.
    * Used to validate stored settings and provide defaults.
    */
-  settingsSchema?: z.ZodSchema<TSettings>;
+  settingsSchema?: SettingsSchema<TSettings>;
 
   /**
    * Single settings component for simple panels.

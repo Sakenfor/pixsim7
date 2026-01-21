@@ -6,7 +6,20 @@
  */
 
 // Panel Orchestration System (declarative panel interactions)
-export type * from './lib/types';
+export type {
+  PanelType,
+  WorkspaceZone,
+  PanelMode,
+  PanelMetadata,
+  PanelState,
+  ZoneState,
+  PanelManagerState,
+  OpenPanelOptions,
+  MovePanelOptions,
+  PanelManagerEvent,
+  PanelManagerListener,
+  PanelManagerStateListener,
+} from './lib/types';
 export { PanelManager, panelManager } from './lib/PanelManager';
 export {
   getAllPanelMetadata,
@@ -98,7 +111,7 @@ export {
 } from "./lib/panelPlugin";
 export { initializePanels } from "./lib/initializePanels";
 export { PanelHostLite } from "./components/host/PanelHostLite";
-export { PanelHostDockview } from "./components/host/PanelHostDockview";
+export { PanelHostDockview, type PanelHostDockviewRef } from "./components/host/PanelHostDockview";
 
 // Panel actions
 export * from "./lib/actions";

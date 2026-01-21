@@ -5,38 +5,13 @@
  * Part of Task 50 Phase 50.4 - Decentralized Panel Settings System
  */
 
-import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { deepMerge } from '@pixsim7/shared.helpers.core';
-import type { PanelSettingsUpdateHelpers } from './panelRegistry';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
+
 import type { PanelId } from '@features/workspace';
 
-/**
- * Deep set a value in an object using dot notation path
- */
-function deepSet<T extends Record<string, any>>(
-  obj: T,
-  path: string | (string | number)[],
-  value: any
-): T {
-  const pathArray = Array.isArray(path) ? path : path.split('.');
-  const result = { ...obj };
+import type { PanelSettingsUpdateHelpers } from './panelRegistry';
 
-  let current: any = result;
-  for (let i = 0; i < pathArray.length - 1; i++) {
-    const key = pathArray[i];
-    if (!(key in current) || typeof current[key] !== 'object') {
-      current[key] = {};
-    } else {
-      current[key] = { ...current[key] };
-    }
-    current = current[key];
-  }
-
-  const lastKey = pathArray[pathArray.length - 1];
-  current[lastKey] = value;
-
-  return result;
-}
 
 interface DebouncedUpdateOptions {
   /** Debounce delay in milliseconds */
@@ -63,7 +38,7 @@ export function usePanelSettingsHelpers<TSettings extends Record<string, any>>(
   } = options;
 
   const pendingUpdatesRef = useRef<Partial<TSettings>>({});
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCallTimeRef = useRef<number>(0);
 
   // Flush pending updates
@@ -124,7 +99,7 @@ export function usePanelSettingsHelpers<TSettings extends Record<string, any>>(
         debouncedUpdate(patch);
       },
       set: <K extends keyof TSettings>(key: K, value: TSettings[K]) => {
-        debouncedUpdate({ [key]: value } as Partial<TSettings>);
+        debouncedUpdate({ [key]: value } as unknown as Partial<TSettings>);
       },
       replace: (settings: TSettings) => {
         // Replace doesn't debounce - it's immediate

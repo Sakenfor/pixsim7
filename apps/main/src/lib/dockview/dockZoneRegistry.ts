@@ -25,17 +25,18 @@ export type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.panels'
 class DockZoneRegistry extends BaseRegistry<DockZoneDefinition> {
   private dockviewIdIndex = new Map<string, string>();
 
-  override register(item: DockZoneDefinition): void {
-    super.register(item);
+  override register(item: DockZoneDefinition): boolean {
+    const registered = super.register(item);
     this.dockviewIdIndex.set(item.dockviewId, item.id);
+    return registered;
   }
 
-  override unregister(id: string): void {
+  override unregister(id: string): boolean {
     const item = this.get(id);
     if (item) {
       this.dockviewIdIndex.delete(item.dockviewId);
     }
-    super.unregister(id);
+    return super.unregister(id);
   }
 
   /**

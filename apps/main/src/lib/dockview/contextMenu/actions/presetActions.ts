@@ -11,15 +11,15 @@
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
-import { resolvePresetScope, type PresetScope } from '@features/panels';
-import type { LayoutPreset } from '@features/workspace/stores/workspaceStore';
+import { resolvePresetScope } from '@features/panels';
+import type { LayoutPreset, PresetScope as WorkspacePresetScope } from '@features/workspace/stores/workspaceStore';
 
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 // Re-export types for convenience
-export type { LayoutPreset, PresetScope };
+export type { LayoutPreset, WorkspacePresetScope as PresetScope };
 
 /**
  * Get presets for a specific scope from workspaceStore
@@ -28,7 +28,7 @@ function getPresetsForScope(ctx: MenuActionContext): LayoutPreset[] {
   if (!ctx.workspaceStore) return [];
 
   const state = ctx.workspaceStore.getState();
-  const currentScope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
+  const currentScope = resolvePresetScope(ctx.currentDockviewId) as WorkspacePresetScope;
 
   return state.getPresetsForScope(currentScope);
 }
@@ -51,7 +51,7 @@ export const savePresetAction: MenuAction = {
     if (!name) return;
 
     // Get scope from dockview ID
-    const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
+    const scope = resolvePresetScope(ctx.currentDockviewId) as WorkspacePresetScope;
 
     // Save to workspaceStore with scope
     if (ctx.workspaceStore) {
@@ -102,7 +102,7 @@ export const loadPresetAction: MenuAction = {
         }
 
         // Update active preset in store
-        const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
+        const scope = resolvePresetScope(ctx.currentDockviewId) as WorkspacePresetScope;
         state.setActivePreset(scope, preset.id);
       },
     }));
@@ -172,7 +172,7 @@ export const resetLayoutAction: MenuAction = {
 
         // Reset active preset to default for this scope
         if (ctx.workspaceStore) {
-          const scope = resolvePresetScope(ctx.currentDockviewId) as PresetScope;
+          const scope = resolvePresetScope(ctx.currentDockviewId) as WorkspacePresetScope;
           const state = ctx.workspaceStore.getState();
           const defaultPreset = state.presets.find(
             (p) => p.isDefault && p.scope === scope

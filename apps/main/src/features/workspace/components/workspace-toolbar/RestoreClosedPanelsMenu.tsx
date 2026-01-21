@@ -1,6 +1,6 @@
 import type { PanelId } from "../../stores/workspaceStore";
 
-const PANEL_NAMES: Record<PanelId, string> = {
+const PANEL_NAMES: Partial<Record<PanelId, string>> = {
   gallery: "Gallery",
   scene: "Scene Builder",
   graph: "Graph",
@@ -45,7 +45,7 @@ export function RestoreClosedPanelsMenu({
               className="w-full text-left text-xs px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded"
               onClick={() => onRestorePanel(panelId)}
             >
-              {PANEL_NAMES[panelId]}
+              {PANEL_NAMES[panelId] ?? panelId}
             </button>
           ))}
           <div className="border-t dark:border-neutral-700 my-1" />

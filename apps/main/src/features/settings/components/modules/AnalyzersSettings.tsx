@@ -5,6 +5,7 @@
  * Analyzer instances are user-specific configurations that override default analyzer behavior.
  */
 import { useState, useEffect, useCallback } from 'react';
+
 import {
   listAnalyzers,
   listAnalyzerInstances,
@@ -16,6 +17,7 @@ import {
   type CreateAnalyzerInstanceRequest,
   type UpdateAnalyzerInstanceRequest,
 } from '@lib/api/analyzers';
+
 import { settingsRegistry } from '../../lib/core/registry';
 
 type FormMode = 'create' | 'edit';
@@ -434,8 +436,8 @@ export function AnalyzersSettings() {
         listAnalyzers(),
         listAnalyzerInstances({ include_disabled: true }),
       ]);
-      setAnalyzers(analyzersRes.analyzers);
-      setInstances(instancesRes.instances);
+      setAnalyzers([...analyzersRes.analyzers]);
+      setInstances([...instancesRes.instances]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {

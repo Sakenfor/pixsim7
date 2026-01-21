@@ -1,11 +1,14 @@
-import { useState, useEffect } from "react";
+import { parseNpcKey } from "@pixsim7/game.engine";
+import { SessionId as toSessionId } from "@pixsim7/shared.types";
 import { Button, Select, useToast } from "@pixsim7/shared.ui";
+import { useState, useEffect } from "react";
+
 import {
   getGameSession,
   listGameSessions,
   type GameSessionDTO,
 } from "@lib/api/game";
-import { parseNpcKey, parseArcKey, parseQuestKey } from "@pixsim7/game.engine";
+
 
 /**
  * Session State Viewer
@@ -66,7 +69,7 @@ export function SessionStateViewer() {
   const loadSession = async (sessionId: number) => {
     setIsLoading(true);
     try {
-      const data = await getGameSession(sessionId);
+      const data = await getGameSession(toSessionId(sessionId));
       setSession(data);
     } catch (error) {
       toast.error(

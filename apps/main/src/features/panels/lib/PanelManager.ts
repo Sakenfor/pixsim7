@@ -6,6 +6,7 @@
  */
 
 import type { DockviewHost } from '@lib/dockview';
+
 import type {
   PanelMetadata,
   PanelState,
@@ -370,7 +371,7 @@ export class PanelManager {
     if (!panel) return;
 
     // Remove from dockview
-    dockviewApi.removePanel(subPanelId);
+    dockviewApi.removePanel(panel);
 
     // Create floating panel ID
     const floatingPanelId = `${parentPanelId}:${subPanelId}:floating`;
@@ -575,6 +576,6 @@ export class PanelManager {
 export const panelManager = new PanelManager();
 
 // Expose on window for debugging (development only)
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+if (typeof window !== 'undefined' && import.meta.env.DEV) {
   (window as any).__panelManager = panelManager;
 }

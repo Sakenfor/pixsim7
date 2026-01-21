@@ -21,7 +21,7 @@ export function useScopeInstanceId(scopeId?: string): string | undefined {
   const ids = Object.values(scopes);
   if (ids.length === 1) return ids[0];
 
-  if (process.env.NODE_ENV === "development") {
+  if (import.meta.env.DEV) {
     console.warn(
       "[ScopeInstanceProvider] useScopeInstanceId called without scopeId while multiple scopes are active."
     );

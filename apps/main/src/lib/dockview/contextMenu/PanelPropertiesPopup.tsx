@@ -12,6 +12,7 @@ import {
   getScopeMode,
   ScopeModeSelect,
 } from "@features/panels";
+import type { PanelId } from "@features/workspace";
 
 import type { ContextMenuContext } from "./types";
 
@@ -182,7 +183,7 @@ function PanelProperties({
                 </div>
                 <ScopeModeSelect
                   value={mode}
-                  onChange={(next) => setScope(instanceId, panelId, scope.id, next)}
+                  onChange={(next) => setScope(instanceId, panelId as PanelId | undefined, scope.id, next)}
                 />
               </div>
             );

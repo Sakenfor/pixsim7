@@ -19,8 +19,9 @@ import {
 } from 'react';
 
 import { useContextHubOverridesStore, useContextHubState, type ContextHubState } from '@features/contextHub';
+import type { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
-import { createDockviewHost } from '../host';
+import { createDockviewHost, type DockviewHost } from '../host';
 import {
   getDockviewHost as getHostFromRegistry,
   getDockviewApi as getApiFromRegistry,
@@ -33,6 +34,7 @@ import {
 
 import { ContextMenuContext, type ContextMenuContextValue } from './ContextMenuContext';
 import { contextMenuRegistry } from './ContextMenuRegistry';
+import type { ContextMenuRegistry } from './ContextMenuRegistry';
 import type { MenuActionContext, PanelRegistryLike } from './types';
 
 
@@ -49,7 +51,7 @@ interface ContextMenuState {
 /** Services that can be injected into the context menu system */
 export interface ContextMenuServices {
   /** Workspace store for preset management */
-  workspaceStore?: unknown;
+  workspaceStore?: typeof useWorkspaceStore;
   /** Panel registry for querying available panels */
   panelRegistry?: PanelRegistryLike;
 }

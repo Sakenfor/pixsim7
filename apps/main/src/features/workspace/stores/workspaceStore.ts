@@ -1,6 +1,6 @@
 import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import { addDockviewPanel, focusPanel, getDockviewHost } from "@lib/dockview";
 
@@ -480,7 +480,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage("workspace"),
+      storage: createJSONStorage(() => createBackendStorage("workspace")),
       version: 5, // Bumped: removed layoutByScope (now in localStorage via SmartDockview)
       partialize: (state) => ({
         closedPanels: state.closedPanels,
@@ -489,7 +489,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         fullscreenPanel: state.fullscreenPanel,
         floatingPanels: state.floatingPanels,
         activePresetByScope: state.activePresetByScope,
-      }),
+      }) as Partial<WorkspaceState & WorkspaceActions>,
       onRehydrateStorage: () => (state) => {
         if (state && !Array.isArray(state.floatingPanels)) {
           state.floatingPanels = [];

@@ -23,9 +23,11 @@
  */
 
 import { useCallback, useMemo } from "react";
+
 import { useWorkspaceStore, type PanelId } from "@features/workspace";
-import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
+
 import { usePanelConfigStore } from "../stores/panelConfigStore";
+import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
 
 /** State scope determines where the value is persisted */
 export type PanelStateScope = "instance" | "panel";
@@ -288,7 +290,7 @@ export function usePanelStateObject<T extends Record<string, any>>(
   // Set a single field
   const setField = useCallback(
     <K extends keyof T>(key: K, value: T[K]) => {
-      setState({ [key]: value } as Partial<T>);
+      setState({ [key]: value } as unknown as Partial<T>);
     },
     [setState]
   );
