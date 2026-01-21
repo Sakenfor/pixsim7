@@ -5,7 +5,14 @@
  * Ensures plugins cannot access the parent window or make unauthorized API calls.
  */
 
-import type { Plugin, PluginAPI, PluginManifest } from './types';
+import type {
+  Plugin,
+  PluginAPI,
+  PluginManifest,
+  PluginOverlay,
+  PluginMenuItem,
+  PluginNotification,
+} from './types';
 
 /**
  * RPC message types for iframe communication
@@ -30,7 +37,16 @@ type RPCNotification = {
   data: unknown;
 };
 
-type RPCMessage = RPCRequest | RPCResponse | RPCNotification;
+type RPCReady = {
+  type: 'pluginReady';
+};
+
+type RPCError = {
+  type: 'pluginError';
+  error?: string;
+};
+
+type RPCMessage = RPCRequest | RPCResponse | RPCNotification | RPCReady | RPCError;
 
 /**
  * Validate that a message is a valid RPC message
@@ -397,7 +413,7 @@ export class SandboxedPlugin implements Plugin {
       }
     } else if (parts[0] === 'ui') {
       if (parts[1] === 'addOverlay') {
-        const overlay = args[0];
+        const overlay = args[0] as PluginOverlay & { _renderStr?: string };
         // Convert render string back to function
         if (overlay.render && typeof overlay.render === 'string') {
           // Store original render string for later use
@@ -410,9 +426,9 @@ export class SandboxedPlugin implements Plugin {
         }
         return this.api.ui.addOverlay(overlay);
       } else if (parts[1] === 'removeOverlay') {
-        return this.api.ui.removeOverlay(args[0]);
+        return this.api.ui.removeOverlay(String(args[0]));
       } else if (parts[1] === 'addMenuItem') {
-        const item = args[0];
+        const item = args[0] as PluginMenuItem & { _onClickStr?: string };
         // Convert onClick string back to function
         if (item.onClick && typeof item.onClick === 'string') {
           const onClickStr = item.onClick;
@@ -424,19 +440,19 @@ export class SandboxedPlugin implements Plugin {
         }
         return this.api.ui.addMenuItem(item);
       } else if (parts[1] === 'removeMenuItem') {
-        return this.api.ui.removeMenuItem(args[0]);
+        return this.api.ui.removeMenuItem(String(args[0]));
       } else if (parts[1] === 'showNotification') {
-        return this.api.ui.showNotification(args[0]);
+        return this.api.ui.showNotification(args[0] as PluginNotification);
       } else if (parts[1] === 'updateTheme') {
-        return this.api.ui.updateTheme(args[0]);
+        return this.api.ui.updateTheme(String(args[0]));
       }
     } else if (parts[0] === 'storage') {
       if (parts[1] === 'get') {
-        return this.api.storage.get(args[0], args[1]);
+        return this.api.storage.get(String(args[0]), args[1]);
       } else if (parts[1] === 'set') {
-        return this.api.storage.set(args[0], args[1]);
+        return this.api.storage.set(String(args[0]), args[1]);
       } else if (parts[1] === 'remove') {
-        return this.api.storage.remove(args[0]);
+        return this.api.storage.remove(String(args[0]));
       } else if (parts[1] === 'clear') {
         return this.api.storage.clear();
       }
@@ -493,6 +509,7 @@ export class SandboxedPlugin implements Plugin {
    */
   async onEnable(api: PluginAPI): Promise<void> {
     // Already handled in constructor
+    void api;
   }
 
   /**
@@ -516,7 +533,7 @@ export class SandboxedPlugin implements Plugin {
    */
   destroy(): void {
     // Clear all pending requests and their timeouts
-    for (const [id, request] of this.pendingRequests.entries()) {
+    for (const [, request] of this.pendingRequests.entries()) {
       clearTimeout(request.timeoutId);
       request.reject(new Error('Plugin destroyed'));
     }
@@ -532,6 +549,10 @@ export class SandboxedPlugin implements Plugin {
     if (this.iframe.parentNode) {
       this.iframe.parentNode.removeChild(this.iframe);
     }
+  }
+
+  getContentWindow(): Window | null {
+    return this.iframe.contentWindow;
   }
 }
 
@@ -561,7 +582,7 @@ export async function loadPluginInSandbox(
       }, 10000);
 
       messageHandler = (event: MessageEvent) => {
-        if (event.source !== pluginInstance.iframe.contentWindow) return;
+        if (event.source !== pluginInstance.getContentWindow()) return;
 
         // Validate message
         if (!isValidRPCMessage(event.data)) {

@@ -5,9 +5,10 @@
  * Allows selecting and combining segments to create new prompt blocks.
  */
 
-import { useState, useMemo } from 'react';
-import clsx from 'clsx';
 import { Button, Modal } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import { useState, useMemo } from 'react';
+
 import { Icon } from '@lib/icons';
 
 // ============================================================================
@@ -41,15 +42,6 @@ const roleBadgeColors: Record<string, string> = {
   mood: 'bg-yellow-500',
   romance: 'bg-pink-500',
   other: 'bg-neutral-500',
-};
-
-const roleTextColors: Record<string, string> = {
-  character: 'text-blue-600 dark:text-blue-400',
-  action: 'text-green-600 dark:text-green-400',
-  setting: 'text-purple-600 dark:text-purple-400',
-  mood: 'text-yellow-600 dark:text-yellow-400',
-  romance: 'text-pink-600 dark:text-pink-400',
-  other: 'text-neutral-600 dark:text-neutral-400',
 };
 
 // ============================================================================
@@ -141,7 +133,7 @@ export function BlockBuilderModal({
   const roleOrder = ['character', 'action', 'setting', 'mood', 'romance', 'other'];
 
   return (
-    <Modal open={open} onClose={onClose} title="Block Builder">
+    <Modal isOpen={open} onClose={onClose} title="Block Builder">
       <div className="space-y-4">
         {/* Instructions */}
         <p className="text-sm text-neutral-600 dark:text-neutral-400">

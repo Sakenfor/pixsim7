@@ -95,7 +95,6 @@ export async function ensureBackendPluginCatalogEntry(
     description: entry.description ?? manifest.description,
     author: entry.author,
     tags: entry.tags ?? manifest.tags,
-    category: entry.kind,
     pluginType,
     bundleFamily,
     icon: manifest.icon,

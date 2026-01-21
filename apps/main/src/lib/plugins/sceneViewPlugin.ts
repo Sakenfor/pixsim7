@@ -102,5 +102,3 @@ class SceneViewRegistry {
 }
 
 export const sceneViewRegistry = new SceneViewRegistry();
-
-export type { SceneViewRenderProps };

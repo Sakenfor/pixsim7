@@ -7,18 +7,22 @@
  * This is a simplified version focused on browsing within the Plugin Workspace.
  */
 
-import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '@lib/plugins/types';
-import { PluginDependencies } from '../capabilities/PluginDependencies';
 import type { ExtendedPluginMetadata } from '@lib/plugins/pluginSystem';
+import type { UnifiedPluginDescriptor, UnifiedPluginFamily } from '@lib/plugins/types';
+
 import { usePluginBrowserController } from '@/hooks/usePluginBrowserController';
 import type { PanelCategory, PanelOrigin } from '@/hooks/usePluginBrowserController';
+
+import { PluginDependencies } from '../capabilities/PluginDependencies';
 
 // Plugin family labels
 const PLUGIN_FAMILY_LABELS: Record<UnifiedPluginFamily, string> = {
   'world-tool': 'World Tool',
   'helper': 'Session Helper',
   'interaction': 'Interaction',
+  'brain-tool': 'Brain Tool',
   'gallery-tool': 'Gallery Tool',
+  'gallery-surface': 'Gallery Surface',
   'node-type': 'Node Type',
   'renderer': 'Renderer',
   'ui-plugin': 'UI Plugin',
@@ -49,6 +53,8 @@ const PLUGIN_FAMILY_ICONS: Record<UnifiedPluginFamily, string> = {
   'dock-widget': '📌',
   'gizmo-surface': '🧲',
   'generation-ui': '✨',
+  'brain-tool': '??',
+  'gallery-surface': '???',
 };
 
 interface PluginBrowserProps {

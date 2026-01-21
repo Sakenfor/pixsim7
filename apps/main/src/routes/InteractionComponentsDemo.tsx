@@ -4,15 +4,23 @@
  * Demonstrates all new interaction components with mock data.
  */
 
-import { useState } from 'react';
-import { NpcInteractionPanel } from '@/components/game/panels/NpcInteractionPanel';
 import type {
   MoodState,
   InteractionSuggestion,
   ChainState,
-  InteractionHistoryEntry,
+  InteractionChain,
 } from '@pixsim7/game.engine';
+import type {
+  NpcInteractionDefinition,
+  NpcInteractionInstance,
+  StatDelta,
+} from '@pixsim7/shared.types';
 import { Button, Panel } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import type { InteractionHistoryEntry } from '@features/interactions';
+
+import { NpcInteractionPanel } from '@/components/game/panels/NpcInteractionPanel';
 import './InteractionComponentsDemo.css';
 
 // Mock data
@@ -44,57 +52,95 @@ const mockMood: MoodState = {
 
 const mockSuggestions: InteractionSuggestion[] = [
   {
-    interaction: {
-      id: 'morning-coffee',
-      label: 'Share morning coffee',
-      icon: '☕',
-      surface: 'dialogue',
-      priority: 50,
-    } as any,
+    interaction: createMockInteraction(
+      'morning-coffee',
+      'Share morning coffee',
+      'dialogue',
+      '???'
+    ),
     score: 85,
     reason: 'chain_continuation',
     explanation: 'Continue the "Daily Routine" chain with Sarah',
     context: {
-      chainId: 'daily-routine',
-      chainName: 'Daily Routine',
-      currentStep: 2,
-      totalSteps: 5,
-      nextInteractionId: 'morning-coffee',
+      chainInfo: {
+        chainId: 'daily-routine',
+        chainName: 'Daily Routine',
+        stepNumber: 3,
+        totalSteps: 5,
+      },
+      timeRemaining: 900,
     },
   },
   {
-    interaction: {
-      id: 'ask-about-work',
-      label: 'Ask about her work',
-      icon: '💼',
-      surface: 'dialogue',
-      priority: 40,
-    } as any,
+    interaction: createMockInteraction(
+      'ask-about-work',
+      'Ask about her work',
+      'dialogue',
+      '????'
+    ),
     score: 70,
     reason: 'relationship_milestone',
-    explanation: 'You\'re close to reaching "Friend" tier (85/100)',
+    explanation: "You're close to reaching \"Friend\" tier (85/100)",
     context: {
-      tier: 'Acquaintance',
-      nextTier: 'Friend',
-      nextTierAffinity: 100,
+      tierProgress: {
+        current: 'Acquaintance',
+        next: 'Friend',
+        affinityNeeded: 15,
+      },
     },
   },
   {
-    interaction: {
-      id: 'compliment-outfit',
-      label: 'Compliment her outfit',
-      icon: '👗',
-      surface: 'inline',
-      priority: 30,
-    } as any,
+    interaction: createMockInteraction(
+      'compliment-outfit',
+      'Compliment her outfit',
+      'inline',
+      '????'
+    ),
     score: 60,
     reason: 'npc_preference',
     explanation: 'Perfect for her current mood (playful)',
   },
 ];
 
-const mockChains: ChainState[] = [
+const mockChains: InteractionChain[] = [
   {
+    id: 'daily-routine',
+    name: 'Daily Routine',
+    npcId: 1,
+    description: 'Start the day together and build momentum.',
+    category: 'friendship',
+    steps: [
+      {
+        stepId: 'wake-up',
+        interaction: createMockDefinition('wake-up', 'Morning greeting', 'dialogue'),
+      },
+      {
+        stepId: 'breakfast',
+        interaction: createMockDefinition('breakfast', 'Have breakfast together', 'dialogue'),
+      },
+      {
+        stepId: 'morning-coffee',
+        interaction: createMockDefinition('morning-coffee', 'Share morning coffee', 'dialogue'),
+      },
+    ],
+  },
+  {
+    id: 'coffee-date',
+    name: 'Coffee Date',
+    npcId: 1,
+    description: 'Plan a casual coffee date.',
+    category: 'romance',
+    steps: [
+      {
+        stepId: 'invite',
+        interaction: createMockDefinition('invite-coffee', 'Invite for coffee', 'dialogue'),
+      },
+    ],
+  },
+];
+
+const mockChainStates: Record<string, ChainState | null> = {
+  'daily-routine': {
     chainId: 'daily-routine',
     currentStep: 2,
     completed: false,
@@ -102,7 +148,7 @@ const mockChains: ChainState[] = [
     completedSteps: ['wake-up', 'breakfast'],
     skippedSteps: [],
   },
-  {
+  'coffee-date': {
     chainId: 'coffee-date',
     currentStep: 0,
     completed: false,
@@ -110,54 +156,38 @@ const mockChains: ChainState[] = [
     completedSteps: [],
     skippedSteps: [],
   },
-];
+};
 
 const mockHistory: InteractionHistoryEntry[] = [
   {
     interactionId: 'breakfast',
     label: 'Have breakfast together',
-    surface: 'dialogue',
     timestamp: Math.floor(Date.now() / 1000) - 1800,
-    outcome: {
-      success: true,
-      message: 'Sarah enjoyed breakfast with you. She shared stories about her childhood.',
-    },
-    relationshipChanges: {
-      affinity: 5,
-      trust: 3,
-    },
+    npcId: 1,
+    message: 'Sarah enjoyed breakfast with you. She shared stories about her childhood.',
+    statDeltas: [createRelationshipDelta({ affinity: 5, trust: 3 })],
   },
   {
     interactionId: 'wake-up',
     label: 'Morning greeting',
-    surface: 'inline',
     timestamp: Math.floor(Date.now() / 1000) - 3600,
-    outcome: {
-      success: true,
-      message: 'Sarah greeted you warmly.',
-    },
-    relationshipChanges: {
-      affinity: 2,
-    },
+    npcId: 1,
+    message: 'Sarah greeted you warmly.',
+    statDeltas: [createRelationshipDelta({ affinity: 2 })],
   },
   {
     interactionId: 'goodnight',
     label: 'Say goodnight',
-    surface: 'dialogue',
     timestamp: Math.floor(Date.now() / 1000) - 43200,
-    outcome: {
-      success: true,
-      message: 'Sarah wished you sweet dreams.',
-    },
-    relationshipChanges: {
-      affinity: 3,
-    },
+    npcId: 1,
+    message: 'Sarah wished you sweet dreams.',
+    statDeltas: [createRelationshipDelta({ affinity: 3 })],
   },
 ];
 
 export function InteractionComponentsDemo() {
   const [showPanel, setShowPanel] = useState(true);
-  const [hasPendingDialogue, setHasPendingDialogue] = useState(true);
+  const [showPendingDialogue, setShowPendingDialogue] = useState(true);
 
   return (
     <div className="interaction-demo">
@@ -210,9 +240,9 @@ export function InteractionComponentsDemo() {
             </Button>
             <Button
               variant="secondary"
-              onClick={() => setHasPendingDialogue(!hasPendingDialogue)}
+              onClick={() => setShowPendingDialogue(!showPendingDialogue)}
             >
-              {hasPendingDialogue ? 'Clear' : 'Show'} Pending Dialogue
+              {showPendingDialogue ? 'Hide' : 'Show'} Pending Dialogue
             </Button>
           </div>
         </Panel>
@@ -222,27 +252,22 @@ export function InteractionComponentsDemo() {
             <NpcInteractionPanel
               npcId={1}
               npcName="Sarah"
+              sessionId={101}
+              showPendingDialogue={showPendingDialogue}
+              onDialogueExecuted={() => {
+                setShowPendingDialogue(false);
+              }}
               mood={mockMood}
               suggestions={mockSuggestions}
-              onSuggestionClick={(suggestion) => {
-                alert(
-                  `Clicked suggestion: ${suggestion.interaction.label}\nReason: ${suggestion.explanation}`
-                );
+              onSuggestionSelect={(interaction) => {
+                alert(`Clicked suggestion: ${interaction.label}`);
               }}
               activeChains={mockChains}
+              chainStates={mockChainStates}
               onChainStepClick={(chainId, stepId) => {
                 alert(`Clicked chain step: ${chainId} / ${stepId}`);
               }}
               history={mockHistory}
-              hasPendingDialogue={hasPendingDialogue}
-              pendingDialogueMessage="Hey! I wanted to talk to you about something..."
-              onAcceptDialogue={() => {
-                alert('Accepted dialogue - would open dialogue interface');
-                setHasPendingDialogue(false);
-              }}
-              onDismissDialogue={() => {
-                setHasPendingDialogue(false);
-              }}
               onClose={() => setShowPanel(false)}
             />
           </div>
@@ -250,4 +275,44 @@ export function InteractionComponentsDemo() {
       </div>
     </div>
   );
+}
+
+function createMockInteraction(
+  id: string,
+  label: string,
+  surface: NpcInteractionInstance['surface'],
+  icon?: string
+): NpcInteractionInstance {
+  return {
+    id,
+    definitionId: id,
+    npcId: 1,
+    worldId: 1,
+    sessionId: 101,
+    surface,
+    label,
+    icon,
+    available: true,
+    priority: 50,
+  };
+}
+
+function createMockDefinition(
+  id: string,
+  label: string,
+  surface: NpcInteractionDefinition['surface']
+): NpcInteractionDefinition {
+  return {
+    id,
+    label,
+    surface,
+  };
+}
+
+function createRelationshipDelta(axes: Record<string, number>): StatDelta {
+  return {
+    packageId: 'core.relationships',
+    definitionId: 'relationships',
+    axes,
+  };
 }

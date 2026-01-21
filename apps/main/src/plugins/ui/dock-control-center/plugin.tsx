@@ -17,6 +17,7 @@ export const manifest: ControlCenterPluginManifest = {
   version: '1.0.0',
   author: 'PixSim7 Team',
   description: 'Traditional sliding panel interface with multi-position docking',
+  family: 'control-center',
   icon: '🪟',
 
   type: 'ui-overlay',

@@ -8,10 +8,11 @@
  * - Configure plugin settings
  */
 
-import { useState, useEffect } from 'react';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
 import { pluginManager } from '@lib/plugins';
-import type { PluginEntry } from '@lib/plugins/types';
+import type { PluginBundle, PluginEntry, PluginManifest } from '@lib/plugins/types';
 
 export function PluginManagerUI() {
   const [plugins, setPlugins] = useState<PluginEntry[]>([]);
@@ -133,8 +134,8 @@ export function PluginManagerUI() {
         };
       `;
 
-      const bundle = {
-        manifest,
+      const bundle: PluginBundle = {
+        manifest: manifest as PluginManifest,
         code: pluginCode,
       };
 

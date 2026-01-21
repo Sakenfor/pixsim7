@@ -1,11 +1,10 @@
 
-import type { GenerationUIPlugin } from '@features/providers';
-import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
 
 import type { DevToolDefinition } from '@lib/dev/devtools';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
-import { nodeTypeRegistry, type NodeTypeDefinition } from '@lib/registries';
+import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
+import { nodeTypeRegistry, type SceneNodeTypeDefinition } from '@lib/registries';
 
 import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
@@ -14,6 +13,7 @@ import type { GizmoSurfaceDefinition } from '@features/gizmos';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition } from '@features/panels';
+import type { GenerationUIPlugin } from '@features/providers';
 import type { WorldToolPlugin } from '@features/worldTools';
 
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
@@ -85,9 +85,9 @@ function buildHelperMetadata(
 
   if (helper.category === 'inventory') {
     capabilities.modifiesInventory = true;
-  } else if (helper.category === 'relationship') {
+  } else if (helper.category === 'relationships') {
     capabilities.modifiesRelationships = true;
-  } else if (helper.category === 'event') {
+  } else if (helper.category === 'events') {
     capabilities.triggersEvents = true;
   }
 
@@ -143,7 +143,7 @@ function buildInteractionMetadata(
 }
 
 function buildNodeTypeMetadata(
-  nodeType: NodeTypeDefinition,
+  nodeType: SceneNodeTypeDefinition,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'node-type'> {
   const metadata = extractCommonMetadata(nodeType);
@@ -526,7 +526,7 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildInteractionMetadata,
   },
   'node-type': {
-    register: (nodeType: NodeTypeDefinition) => nodeTypeRegistry.register(nodeType),
+    register: (nodeType: SceneNodeTypeDefinition) => nodeTypeRegistry.register(nodeType),
     buildMetadata: buildNodeTypeMetadata,
   },
   'renderer': {
@@ -558,7 +558,9 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
     buildMetadata: buildGraphEditorMetadata,
   },
   'dev-tool': {
-    register: (tool: DevToolDefinition) => devToolRegistry.register(tool),
+    register: (tool: DevToolDefinition) => {
+      devToolRegistry.register(tool);
+    },
     buildMetadata: buildDevToolMetadata,
   },
   'workspace-panel': {

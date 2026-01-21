@@ -314,6 +314,7 @@ async function loadBundlesForPlugins(plugins: PluginInfo[]) {
           controlCenter: plugin.metadata.control_center ? {
             id: plugin.metadata.control_center.control_center_id,
             displayName: plugin.metadata.control_center.display_name ?? plugin.name,
+            description: plugin.description ?? '',
             features: plugin.metadata.control_center.features,
             preview: plugin.metadata.control_center.preview ?? undefined,
             default: plugin.metadata.control_center.default,

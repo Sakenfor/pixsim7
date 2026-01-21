@@ -7,11 +7,10 @@
  * Storage: localStorage with key 'pixsim7_plugin_projects'
  */
 
-import type { PluginManifest, PluginBundle } from './types';
-import type { InteractionPlugin, BaseInteractionConfig, FormField } from '../game/interactions/types';
-import type { NodeTypeDefinition } from '@lib/registries';
-import type { GalleryToolPlugin } from '../gallery/types';
+import type { FormField } from '../game/interactions/types';
+
 import { pluginManager } from './PluginManager';
+import type { PluginManifest, PluginBundle } from './types';
 
 export type PluginProjectKind =
   | 'ui-plugin'
@@ -192,6 +191,7 @@ function createUiPluginScaffold(
     version: '0.1.0',
     author: 'local-dev',
     description: `A custom UI plugin: ${label}`,
+    family: 'ui',
     type: 'ui-overlay',
     permissions: ['read:session', 'ui:overlay', 'storage', 'notifications'],
     main: 'index.js',
@@ -740,7 +740,7 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
   const projectId = `project-${now}`;
 
   switch (exportData.kind) {
-    case 'ui-plugin':
+    case 'ui-plugin': {
       const uiProject: UIPluginProject = {
         id: projectId,
         kind: 'ui-plugin',
@@ -754,8 +754,9 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       projects.push(uiProject);
       saveProjects(projects);
       return uiProject;
+    }
 
-    case 'interaction':
+    case 'interaction': {
       const interactionProject: InteractionPluginProject = {
         id: projectId,
         kind: 'interaction',
@@ -770,8 +771,9 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       projects2.push(interactionProject);
       saveProjects(projects2);
       return interactionProject;
+    }
 
-    case 'node-type':
+    case 'node-type': {
       const nodeTypeProject: NodeTypePluginProject = {
         id: projectId,
         kind: 'node-type',
@@ -785,8 +787,9 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       projects3.push(nodeTypeProject);
       saveProjects(projects3);
       return nodeTypeProject;
+    }
 
-    case 'gallery-tool':
+    case 'gallery-tool': {
       const galleryProject: GalleryToolPluginProject = {
         id: projectId,
         kind: 'gallery-tool',
@@ -800,8 +803,9 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       projects4.push(galleryProject);
       saveProjects(projects4);
       return galleryProject;
+    }
 
-    case 'world-tool':
+    case 'world-tool': {
       const worldProject: WorldToolPluginProject = {
         id: projectId,
         kind: 'world-tool',
@@ -815,6 +819,7 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       projects5.push(worldProject);
       saveProjects(projects5);
       return worldProject;
+    }
 
     default:
       throw new Error(`Unknown plugin kind: ${(exportData as any).kind}`);
@@ -826,10 +831,14 @@ export function downloadProjectAsJSON(project: PluginProject): void {
   const json = JSON.stringify(exportData, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
+  const pluginId =
+    project.kind === 'ui-plugin'
+      ? project.uiManifest.id
+      : project.metadata?.id ?? project.id;
 
   const a = document.createElement('a');
   a.href = url;
-  a.download = `plugin-${project.kind}-${project.metadata?.id || (project as any).uiManifest?.id || project.id}.json`;
+  a.download = `plugin-${project.kind}-${pluginId}.json`;
   a.click();
 
   URL.revokeObjectURL(url);

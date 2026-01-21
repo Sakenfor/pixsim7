@@ -224,7 +224,7 @@ export async function updateGameSession(
 
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {
   const res = await apiClient.get<PaginatedWorldsResponse>('/game/worlds');
-  return res.data.worlds;
+  return [...res.data.worlds];
 }
 
 export async function createGameWorld(

@@ -391,12 +391,12 @@ export function useStateValue<T = any>(id: string): T | undefined {
     }
 
     // Set initial value
-    setValue(stateCapability.getValue());
+    setValue(stateCapability.getValue() as T | undefined);
 
     // Subscribe to changes if supported
     if (stateCapability.subscribe) {
       const unsubscribe = stateCapability.subscribe((newValue) => {
-        setValue(newValue);
+        setValue(newValue as T | undefined);
       });
       return unsubscribe;
     }
