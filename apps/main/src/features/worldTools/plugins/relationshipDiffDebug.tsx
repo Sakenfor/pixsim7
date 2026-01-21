@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Relationship Diff Tool World Tool Plugin
  *
@@ -5,13 +6,14 @@
  * Shows all relationship axes and flags for easy comparison.
  */
 
-import { useState, useEffect } from 'react';
-import type { WorldToolPlugin } from '../lib/types';
-import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import {
   parseNpcKey,
   getNpcRelationshipState,
 } from '@pixsim7/game.engine';
+import { Badge, ProgressBar } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import type { WorldToolPlugin } from '../lib/types';
 
 export const relationshipDiffDebugTool: WorldToolPlugin = {
   id: 'relationship-diff-debug',
@@ -50,16 +52,23 @@ export const relationshipDiffDebugTool: WorldToolPlugin = {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
         const relState = getNpcRelationshipState(session, npcId);
+        if (!relState) {
+          continue;
+        }
+        const values = relState.values ?? {};
+        const flagMap = Array.isArray(relState.flags)
+          ? Object.fromEntries(relState.flags.map((flag) => [flag, true]))
+          : {};
 
         npcRelationships.push({
           npcId,
-          affinity: relState.affinity,
-          trust: relState.trust,
-          chemistry: relState.chemistry,
-          tension: relState.tension,
-          tierId: relState.tierId,
-          levelId: relState.levelId,
-          flags: relState.flags || {},
+          affinity: values.affinity ?? 0,
+          trust: values.trust ?? 0,
+          chemistry: values.chemistry ?? 0,
+          tension: values.tension ?? 0,
+          tierId: relState.tierId ?? null,
+          levelId: relState.levelId ?? null,
+          flags: flagMap,
         });
       }
     }

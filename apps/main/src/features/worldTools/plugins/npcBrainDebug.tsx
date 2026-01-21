@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * NPC Brain Inspector World Tool Plugin
  *
@@ -5,10 +6,12 @@
  * Uses data-driven BrainState that adapts to whatever stat packages a world uses.
  */
 
-import { useState } from 'react';
-import type { WorldToolPlugin } from '../lib/types';
-import { Badge, ProgressBar } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
+import { NpcId as toNpcId, WorldId as toWorldId } from '@pixsim7/shared.types';
+import type { GameSessionDTO } from '@pixsim7/shared.types';
+import { Badge, ProgressBar } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
 import type { BrainState, BrainStatSnapshot } from '@lib/core';
 import {
   getMood,
@@ -17,30 +20,33 @@ import {
   getIntimacyLevel,
 } from '@lib/core';
 
+import type { WorldToolPlugin } from '../lib/types';
+
 /**
  * Build a simple BrainState from session data for the debug view
  * This is a lightweight version - full computation would happen via backend
  */
 function buildSimpleBrainState(
   npcId: number,
-  session: { world_id: number; relationships?: Record<string, unknown> }
+  session: GameSessionDTO
 ): BrainState | null {
-  const relState = getNpcRelationshipState(session as any, npcId);
+  const relState = getNpcRelationshipState(session, npcId);
   if (!relState) return null;
 
   const stats: Record<string, BrainStatSnapshot> = {};
   const derived: Record<string, unknown> = {};
+  const values = relState.values ?? {};
 
   // Build relationships stat
   stats['relationships'] = {
     axes: {
-      affinity: relState.affinity,
-      trust: relState.trust,
-      chemistry: relState.chemistry,
-      tension: relState.tension,
+      affinity: values.affinity ?? 0,
+      trust: values.trust ?? 0,
+      chemistry: values.chemistry ?? 0,
+      tension: values.tension ?? 0,
     },
-    tiers: {},
-    levelId: relState.tierId,
+    tiers: relState.tiers ?? {},
+    levelId: relState.levelId ?? relState.tierId,
   };
 
   if (relState.levelId) {
@@ -48,8 +54,8 @@ function buildSimpleBrainState(
   }
 
   // Derive simple mood
-  const valence = relState.affinity * 0.6 + relState.chemistry * 0.4;
-  const arousal = relState.chemistry * 0.5 + relState.tension * 0.5;
+  const valence = (values.affinity ?? 0) * 0.6 + (values.chemistry ?? 0) * 0.4;
+  const arousal = (values.chemistry ?? 0) * 0.5 + (values.tension ?? 0) * 0.5;
   let label = 'neutral';
   if (valence >= 50 && arousal >= 50) label = 'excited';
   else if (valence >= 50 && arousal < 50) label = 'content';
@@ -65,8 +71,8 @@ function buildSimpleBrainState(
   derived['mood'] = { valence, arousal, label, source: 'derived' };
 
   return {
-    npcId,
-    worldId: session.world_id,
+    npcId: toNpcId(npcId),
+    worldId: toWorldId(session.world_id ?? 0),
     stats,
     derived,
     computedAt: Date.now(),

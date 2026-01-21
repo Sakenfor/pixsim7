@@ -11,18 +11,23 @@
  * - Keyboard shortcuts
  */
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
-import { clsx } from 'clsx';
-import { useCubeStore, type CubeType, type FormationPattern } from './useCubeStore';
-import { useCubeSettingsStore } from './stores/cubeSettingsStore';
 import {
   calculateFormation,
   interpolatePosition,
   easeInOutCubic,
 } from '@pixsim7/pixcubes';
-import { DraggableCube } from './components/DraggableCube';
-import { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
+import { clsx } from 'clsx';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
+
+import { getCubeFaceContent, getMinimizedPanelFaceContent } from './components/CubeFaceContent';
+import { DraggableCube } from './components/DraggableCube';
+import { useCubeSettingsStore } from './stores/cubeSettingsStore';
+import { useCubeStore, type CubeType, type FormationPattern } from './useCubeStore';
+
+
+
 
 const CUBE_SIZE = 80;
 
@@ -180,13 +185,12 @@ export function CubeWidgetOverlay(props: CubeWidgetOverlayProps) {
       if (cube.minimizedPanel) {
         const panelData = restorePanelFromCube(cubeId);
         if (panelData) {
-          openFloatingPanel(
-            panelData.panelId as PanelId,
-            panelData.originalPosition.x,
-            panelData.originalPosition.y,
-            panelData.originalSize.width,
-            panelData.originalSize.height
-          );
+          openFloatingPanel(panelData.panelId as PanelId, {
+            x: panelData.originalPosition.x,
+            y: panelData.originalPosition.y,
+            width: panelData.originalSize.width,
+            height: panelData.originalSize.height,
+          });
         }
       }
     },

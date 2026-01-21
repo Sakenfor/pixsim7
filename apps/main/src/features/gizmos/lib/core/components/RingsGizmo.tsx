@@ -3,16 +3,15 @@
  * Allows controlling multiple parameters with concentric rotating rings
  */
 
+import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import type { GizmoComponentProps, GizmoZone } from '@pixsim7/scene.gizmos';
 import './RingsGizmo.css';
 
-export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onResult, videoElement }) => {
+export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onAction }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [selectedRing, setSelectedRing] = useState<number>(0);
   const [rotation, setRotation] = useState<number[]>([0, 0, 0]); // Rotation for each ring
   const [isDragging, setIsDragging] = useState(false);
-  const [mouseAngle, setMouseAngle] = useState(0);
   const lastAngleRef = useRef(0);
 
   const rings = config.zones || [];
@@ -40,7 +39,6 @@ export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onResult, vi
     });
 
     lastAngleRef.current = angle;
-    setMouseAngle(angle);
   }, [isDragging, selectedRing]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -69,17 +67,16 @@ export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onResult, vi
       lastAngleRef.current = Math.atan2(mouseY, mouseX);
 
       // Emit result immediately on ring selection
-      if (onResult) {
-        const zone = rings[clickedRing];
-        onResult({
-          segmentId: zone.segmentId,
-          intensity: zone.intensity || 0.5,
+      const zone = rings[clickedRing];
+      if (zone.segmentId) {
+        onAction({
+          type: 'segment',
+          value: zone.segmentId,
           transition: 'smooth',
-          tags: zone.tags,
         });
       }
     }
-  }, [rings, onResult]);
+  }, [rings, onAction]);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
@@ -139,10 +136,10 @@ export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onResult, vi
       }
 
       // Glow effect for selected ring
-      if (isSelected && config.visual?.glow) {
+      if (isSelected && (config.visual?.glowIntensity ?? 0) > 0) {
         ctx.strokeStyle = ring.color || '#00D9FF';
         ctx.lineWidth = 8;
-        ctx.globalAlpha = 0.3;
+        ctx.globalAlpha = Math.min(0.6, (config.visual?.glowIntensity ?? 0) / 2);
         ctx.beginPath();
         ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
         ctx.stroke();
@@ -160,7 +157,8 @@ export const RingsGizmo: React.FC<GizmoComponentProps> = ({ config, onResult, vi
       setRotation(prev =>
         prev.map((rot, index) => {
           const ring = rings[index];
-          const speed = ring.meta?.rotationSpeed || 0.01;
+          const speed =
+            (ring as { meta?: { rotationSpeed?: number } }).meta?.rotationSpeed ?? 0.01;
           return (rot + speed) % (Math.PI * 2);
         })
       );

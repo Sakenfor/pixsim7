@@ -4,15 +4,17 @@
  * Registers cubes as a feature in the capabilities system with actions and states.
  */
 
+import type { FormationPattern } from '@pixsim7/pixcubes';
+
 import {
   registerCompleteFeature,
   unregisterAction,
   unregisterFeature,
   unregisterState,
 } from '@lib/capabilities';
-import { useCubeStore } from '../useCubeStore';
+
 import { useCubeSettingsStore } from '../stores/cubeSettingsStore';
-import type { FormationPattern } from '@pixsim7/pixcubes';
+import { useCubeStore } from '../useCubeStore';
 
 // Formation cycle order
 const FORMATIONS: FormationPattern[] = [
@@ -117,6 +119,7 @@ export function registerCubesCapabilities(): void {
     actions: [
       {
         id: 'cubes.toggle',
+        featureId: 'cubes',
         name: 'Toggle Cubes',
         description: 'Show or hide the cube overlay',
         icon: '👁️',
@@ -127,6 +130,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.show',
+        featureId: 'cubes',
         name: 'Show Cubes',
         description: 'Show the cube overlay',
         icon: '👁️',
@@ -137,6 +141,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.hide',
+        featureId: 'cubes',
         name: 'Hide Cubes',
         description: 'Hide the cube overlay',
         icon: '🙈',
@@ -147,6 +152,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.cycleFormation',
+        featureId: 'cubes',
         name: 'Cycle Formation',
         description: 'Switch to next formation pattern',
         icon: '🔄',
@@ -157,6 +163,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.dock',
+        featureId: 'cubes',
         name: 'Dock Formation',
         description: 'Arrange cubes in dock layout',
         icon: '📥',
@@ -165,6 +172,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.arc',
+        featureId: 'cubes',
         name: 'Arc Formation',
         description: 'Arrange cubes in arc layout',
         icon: '🌈',
@@ -173,6 +181,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.circle',
+        featureId: 'cubes',
         name: 'Circle Formation',
         description: 'Arrange cubes in circle layout',
         icon: '⭕',
@@ -181,6 +190,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.grid',
+        featureId: 'cubes',
         name: 'Grid Formation',
         description: 'Arrange cubes in grid layout',
         icon: '📊',
@@ -189,6 +199,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.constellation',
+        featureId: 'cubes',
         name: 'Constellation Formation',
         description: 'Arrange cubes in constellation layout',
         icon: '✨',
@@ -197,6 +208,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.formation.scattered',
+        featureId: 'cubes',
         name: 'Scattered Formation',
         description: 'Arrange cubes in scattered layout',
         icon: '🎯',
@@ -205,6 +217,7 @@ export function registerCubesCapabilities(): void {
       },
       {
         id: 'cubes.clearAll',
+        featureId: 'cubes',
         name: 'Clear All Cubes',
         description: 'Remove all cubes from the overlay',
         icon: '🗑️',

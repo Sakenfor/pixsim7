@@ -4,17 +4,19 @@
  * Registers the cube overlay as a widget in the unified widget system.
  */
 
-import type { OverlayWidget, OverlayWidgetPosition, OverlayWidgetVisibility } from '@lib/ui/overlay';
+import { createElement } from 'react';
+
+import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '@lib/ui/overlay';
 import type { WidgetDefinition } from '@lib/widgets/types';
 import { registerWidget } from '@lib/widgets/widgetRegistry';
+
+import { CubeWidgetOverlay } from '../CubeWidgetOverlay';
 
 import {
   getCubesVisibility,
   getFormation,
   subscribeToVisibility,
   subscribeToFormation,
-  toggleCubesVisibility,
-  cycleFormation,
 } from './capabilities';
 
 /**
@@ -22,8 +24,8 @@ import {
  */
 function createCubeOverlayWidget(config?: {
   id?: string;
-  position?: OverlayWidgetPosition;
-  visibility?: OverlayWidgetVisibility;
+  position?: WidgetPosition;
+  visibility?: VisibilityConfig;
 }): OverlayWidget {
   let visible = getCubesVisibility();
   let formation = getFormation();
@@ -43,25 +45,16 @@ function createCubeOverlayWidget(config?: {
 
   return {
     id: config?.id || 'cube-overlay',
-    position: config?.position || { mode: 'fixed' },
-    visibility: config?.visibility || { mode: 'always' },
+    type: 'cube-overlay',
+    position: config?.position || { anchor: 'center' },
+    visibility: config?.visibility || { trigger: 'always' },
     priority: 100, // High priority - always on top
 
-    render: () => {
-      if (!visible) return null;
-
-      // Return a render descriptor for the cube overlay
-      // The actual rendering is handled by CubeWidgetOverlay component
-      return {
-        type: 'cube-overlay',
-        props: {
-          formation,
-          visible,
-          onToggle: toggleCubesVisibility,
-          onCycleFormation: cycleFormation,
-        },
-      };
-    },
+    render: () =>
+      createElement(CubeWidgetOverlay, {
+        visible,
+        initialFormation: formation,
+      }),
 
     onUpdate: (callback) => {
       updateCallback = callback;
@@ -100,7 +93,7 @@ export const cubeOverlayWidget: WidgetDefinition = {
   defaultConfig: {
     type: 'cube-overlay',
     componentType: 'overlay',
-    position: { mode: 'fixed' },
+    position: { mode: 'anchor', anchor: 'center', offset: { x: 0, y: 0 } },
     visibility: { simple: 'always' },
     props: {},
     version: 1,

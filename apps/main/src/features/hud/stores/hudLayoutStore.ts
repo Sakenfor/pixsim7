@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 import { createBackendStorage } from '@lib/backendStorage';
 import { createComposition } from '@lib/ui/composer';
@@ -372,7 +372,7 @@ export const useHudLayoutStore = create<HudLayoutState & HudLayoutActions>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage('hud-layouts'),
+      storage: createJSONStorage(() => createBackendStorage('hud-layouts')),
       version: 1,
     }
   )

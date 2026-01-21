@@ -8,10 +8,11 @@
  * - Keeps package boundaries clean
  */
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
-import { Panel } from '@pixsim7/shared.ui';
 import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/scene.gizmos';
-import { getGizmoRenderer } from '@/gizmos/renderers';
+import { Panel } from '@pixsim7/shared.ui';
+import { useEffect, useState, useCallback, Suspense } from 'react';
+
+import { getGizmoRenderer } from '@features/gizmos';
 
 interface SceneGizmoMiniGameProps {
   onResult: (result: GizmoResult) => void;
@@ -31,7 +32,7 @@ export function SceneGizmoMiniGame({
     activeZone: undefined as string | undefined,
   });
 
-  const [isActive, setIsActive] = useState(true);
+  const [isActive] = useState(true);
   const [currentSegment, setCurrentSegment] = useState<string | undefined>();
   const [intensity, setIntensity] = useState(0.5);
 

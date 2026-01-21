@@ -1,12 +1,15 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * World Theme Editor World Tool Plugin
  *
  * Allows designers to configure per-world UI theme and view mode.
  */
 
-import type { WorldToolPlugin } from '../lib/types';
-import { WorldThemeEditor } from '@/components/game/WorldThemeEditor';
 import { useToast } from '@pixsim7/shared.ui';
+
+import { WorldThemeEditor } from '@/components/game/WorldThemeEditor';
+
+import type { WorldToolPlugin, WorldToolContext } from '../lib/types';
 
 export const worldThemeEditorTool: WorldToolPlugin = {
   id: 'world-theme-editor',
@@ -20,7 +23,6 @@ export const worldThemeEditorTool: WorldToolPlugin = {
 
   render: (context) => {
     const { worldDetail } = context;
-    const { showToast } = useToast();
 
     if (!worldDetail) {
       return (
@@ -29,39 +31,38 @@ export const worldThemeEditorTool: WorldToolPlugin = {
         </div>
       );
     }
-
-    const handleSave = async (updatedWorld: typeof worldDetail) => {
-      try {
-        // Update world via API
-        const response = await fetch(`/api/game/worlds/${worldDetail.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            meta: updatedWorld.meta,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to update world');
-        }
-
-        showToast({
-          type: 'success',
-          message: 'World theme and view mode updated successfully',
-        });
-
-        // Optionally trigger a refresh of the world detail
-        // This would need to be handled by the parent component
-        console.log('[WorldThemeEditor] Saved world UI config', updatedWorld.meta);
-      } catch (error) {
-        console.error('[WorldThemeEditor] Error saving:', error);
-        showToast({
-          type: 'error',
-          message: 'Failed to update world theme',
-        });
-      }
-    };
-
-    return <WorldThemeEditor worldDetail={worldDetail} onSave={handleSave} />;
+    return <WorldThemeEditorPanel worldDetail={worldDetail} />;
   },
 };
+
+function WorldThemeEditorPanel({ worldDetail }: { worldDetail: WorldToolContext['worldDetail'] }) {
+  const toast = useToast();
+
+  const handleSave = async (updatedWorld: typeof worldDetail) => {
+    try {
+      // Update world via API
+      const response = await fetch(`/api/game/worlds/${worldDetail.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          meta: updatedWorld.meta,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update world');
+      }
+
+      toast.success('World theme and view mode updated successfully');
+
+      // Optionally trigger a refresh of the world detail
+      // This would need to be handled by the parent component
+      console.log('[WorldThemeEditor] Saved world UI config', updatedWorld.meta);
+    } catch (error) {
+      console.error('[WorldThemeEditor] Error saving:', error);
+      toast.error('Failed to update world theme');
+    }
+  };
+
+  return <WorldThemeEditor worldDetail={worldDetail} onSave={handleSave} />;
+}

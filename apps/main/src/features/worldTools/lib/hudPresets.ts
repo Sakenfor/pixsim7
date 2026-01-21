@@ -5,7 +5,9 @@
  * Presets allow reusing HUD configurations across multiple worlds.
  */
 
-import type { HudToolPlacement } from './types';
+import type { GameWorldDetail } from '@lib/api/game';
+
+import type { HudToolPlacement, WorldUiConfig } from './types';
 
 /**
  * Phase 7: Preset scope
@@ -200,8 +202,6 @@ export function clearAllPresets(): void {
 // ============================================================================
 // Phase 7: World-Scoped Presets
 // ============================================================================
-
-import type { GameWorldDetail, WorldUiConfig } from '../api/game';
 
 /**
  * Get world presets from a GameWorld

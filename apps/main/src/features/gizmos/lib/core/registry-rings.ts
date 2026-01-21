@@ -41,7 +41,6 @@ export const ringsGizmo: GizmoDefinition = {
         color: '#00D9FF',
         segmentId: 'gentle',
         intensity: 0.3,
-        meta: { ring: 0, rotationSpeed: 0.5 },
       },
       {
         id: 'middle',
@@ -51,7 +50,6 @@ export const ringsGizmo: GizmoDefinition = {
         color: '#9333EA',
         segmentId: 'moderate',
         intensity: 0.6,
-        meta: { ring: 1, rotationSpeed: 0.3 },
       },
       {
         id: 'outer',
@@ -61,37 +59,33 @@ export const ringsGizmo: GizmoDefinition = {
         color: '#F43F5E',
         segmentId: 'intense',
         intensity: 0.9,
-        meta: { ring: 2, rotationSpeed: 0.2 },
       },
     ],
 
     visual: {
       baseColor: '#00D9FF',
       activeColor: '#9333EA',
-      highlightColor: '#F43F5E',
-      glow: true,
+      glowIntensity: 0.6,
       particleType: 'stars',
-      trailEffect: true,
+      trailLength: 0.4,
+      opacity: 0.9,
     },
 
     physics: {
-      magnetism: 0.3,
-      snap: true,
-      momentum: 0.8,
+      magnetism: true,
       friction: 0.95,
+      springiness: 0.4,
     },
 
     audio: {
-      enabled: true,
-      volume: 0.3,
-      pitch: 1.0,
-      layered: true, // Each ring has its own audio layer
+      hover: 'rings-hover',
+      select: 'rings-select',
     },
 
     gestures: {
-      swipe: { type: 'speed', value: 1.5 },
-      pinch: { type: 'transition', value: 'fade' },
-      rotate: { type: 'ring', value: 'next' }, // Rotate to switch rings
+      swipeUp: { type: 'speed', value: 1.5 },
+      pinch: { type: 'mode', value: 'transition' },
+      rotateClockwise: { type: 'mode', value: 'next' },
     },
   },
 };

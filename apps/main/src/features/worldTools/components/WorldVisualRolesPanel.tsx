@@ -11,8 +11,9 @@
  * - Uses Task 99 asset resolver for suggestions
  */
 
+import { Panel, Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo } from 'react';
-import { Panel, Button, Input } from '@pixsim7/shared.ui';
+
 import {
   listGameWorlds,
   getGameWorld,
@@ -24,7 +25,9 @@ import {
   type GameNpcSummary,
   type GameLocationSummary,
 } from '@lib/api/game';
-import { useAssetPickerStore, type SelectedAsset } from '@features/assets';
+
+import { useAssetPickerStore } from '@features/assets';
+import type { SelectedAsset as PickerSelectedAsset } from '@features/assets/stores/assetPickerStore';
 
 /**
  * Visual roles data structure stored in world.meta.visualRoles
@@ -224,7 +227,7 @@ export function WorldVisualRolesPanel() {
   const handleAssignAsset = (slotId: string, multiple: boolean) => {
     if (!selectedEntity) return;
 
-    enterSelectionMode((asset: SelectedAsset) => {
+    enterSelectionMode((asset: PickerSelectedAsset) => {
       const updatedRoles = { ...visualRoles };
 
       if (selectedEntity.type === 'character') {

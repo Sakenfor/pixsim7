@@ -5,7 +5,6 @@
  * Now with NPC preference support!
  */
 
-import { useEffect, useRef, useState } from 'react';
 import {
   InteractiveTool as ToolType,
   Vector3D,
@@ -13,6 +12,7 @@ import {
   NpcPreferences,
   calculateFeedback,
 } from '@pixsim7/scene.gizmos';
+import { useEffect, useRef, useState } from 'react';
 import './InteractiveTool.css';
 
 interface InteractiveToolProps {
@@ -58,14 +58,14 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
   isLocked = false,
   unlockLevel,
 }) => {
+  void targetElement;
   const toolRef = useRef<HTMLDivElement>(null);
   const trailCanvasRef = useRef<HTMLCanvasElement>(null);
   const [pressure, setPressure] = useState(0);
-  const [temperature, setTemperature] = useState(0.5);
+  const [temperature] = useState(0.5);
   const [isDragging, setIsDragging] = useState(false);
   const [trail, setTrail] = useState<Vector3D[]>([]);
   const [particles, setParticles] = useState<Particle[]>([]);
-  const [currentPattern, setCurrentPattern] = useState<TouchPattern | undefined>();
   const [feedbackGlow, setFeedbackGlow] = useState(0); // 0-1, visual feedback intensity
 
   // Handle pressure from mouse/touch
@@ -151,7 +151,6 @@ export const InteractiveTool: React.FC<InteractiveToolProps> = ({
       pattern = 'zigzag';
     }
 
-    setCurrentPattern(pattern);
     onPatternDetected(pattern);
 
     // Calculate NPC feedback if preferences provided
@@ -423,7 +422,7 @@ const HandVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
 
 const FeatherVisual: React.FC = () => {
   const [movement, setMovement] = useState({ x: 0, y: 0 });
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number | null>(null);
   const pendingMovementRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -651,16 +650,19 @@ const SilkVisual: React.FC<{ pressure: number }> = ({ pressure }) => {
   );
 };
 
-const IceVisual: React.FC<{ temperature: number }> = ({ temperature }) => (
-  <div className="ice-visual">
-    <div className="ice-crystal">
-      <div className="crystal-facet facet-1" />
-      <div className="crystal-facet facet-2" />
-      <div className="crystal-facet facet-3" />
+const IceVisual: React.FC<{ temperature: number }> = ({ temperature }) => {
+  void temperature;
+  return (
+    <div className="ice-visual">
+      <div className="ice-crystal">
+        <div className="crystal-facet facet-1" />
+        <div className="crystal-facet facet-2" />
+        <div className="crystal-facet facet-3" />
+      </div>
+      <div className="frost-particles" />
     </div>
-    <div className="frost-particles" />
-  </div>
-);
+  );
+};
 
 const FlameVisual: React.FC<{ temperature: number }> = ({ temperature }) => (
   <div className="flame-visual">

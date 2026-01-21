@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { useGraphStore, type GraphState } from '@features/graph';
-import { validateScene, type ValidationResult } from '@domain/sceneBuilder/validation';
+
 import type { ExpansionComponentProps } from '@features/cubes';
+import { useGraphStore, type GraphState } from '@features/graph';
+
+import { validateScene, type ValidationResult } from '@domain/sceneBuilder/validation';
 
 /**
  * Health status expansion for cube
  * Shows compact summary of scene validation issues
  */
-export function HealthCubeExpansion({ cubeId }: ExpansionComponentProps) {
-  const draft = useGraphStore((s: GraphState) => s.draft);
+export function HealthCubeExpansion(props: ExpansionComponentProps) {
+  void props;
+  const currentScene = useGraphStore((s: GraphState) => s.getCurrentScene());
   const [validation, setValidation] = useState<ValidationResult>({
     valid: true,
     issues: [],
@@ -17,9 +20,9 @@ export function HealthCubeExpansion({ cubeId }: ExpansionComponentProps) {
   });
 
   useEffect(() => {
-    const result = validateScene(draft);
+    const result = validateScene(currentScene);
     setValidation(result);
-  }, [draft]);
+  }, [currentScene]);
 
   const errorCount = validation.errors.length;
   const warningCount = validation.warnings.length;

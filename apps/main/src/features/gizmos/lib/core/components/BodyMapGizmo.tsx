@@ -8,7 +8,6 @@
  * - Soft anatomical SVG silhouette
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import {
   GizmoComponentProps,
   findZoneAtPoint,
@@ -18,16 +17,19 @@ import {
   getZoneColorByEffectiveness,
   getZoneEffectivenessDescription,
 } from '@pixsim7/scene.gizmos';
-import type { NpcBodyZone, ZoneInteractionContext } from '@lib/registries';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+
 import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
+
 import { useStatsDecay } from '@/hooks/useStatsDecay';
+
+import { getFullAnatomicalZones, type NpcBodyZone, type ZoneInteractionContext } from '../../bodyMap/zones';
 import {
   calculateStatChanges,
   DEFAULT_STAT_CONFIGS,
   getActiveStats,
   getDominantStat,
-} from '@/gizmos/interactionStats';
-import { getFullAnatomicalZones } from '../../bodyMap/zones';
+} from '../interactionStats';
 import './BodyMapGizmo.css';
 
 /** Cached anatomical zones (computed once) */
@@ -55,7 +57,6 @@ interface BodyMapGizmoProps extends GizmoComponentProps {
 
 export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
   config,
-  state,
   onStateChange,
   onAction,
   isActive,

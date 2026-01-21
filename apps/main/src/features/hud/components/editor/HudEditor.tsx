@@ -11,17 +11,17 @@
  * - This allows HUD to interoperate with the unified editing-core layer
  */
 
-import {
-  type HudSurfaceConfig,
-  fromHudToolPlacements,
-  toHudToolPlacements,
-} from '@lib/gameplay-ui-core';
 import { Button, Select, Modal, FormField, Input } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo } from 'react';
 
 import type { GameWorldDetail } from '@lib/api/game';
 import { updateGameWorldMeta } from '@lib/api/game';
 import { useUndoRedo } from '@lib/editing-core';
+import {
+  type HudSurfaceConfig,
+  fromHudToolPlacements,
+  toHudToolPlacements,
+} from '@lib/gameplay-ui-core';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { HudToolPlacement, HudRegion, WorldUiConfig } from '@features/worldTools';
@@ -242,8 +242,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   // Handle region change
   const handleRegionChange = (toolId: string, newRegion: HudRegion) => {
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId
           ? { ...p, region: newRegion }
           : p
@@ -253,8 +253,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   // Handle order change
   const handleOrderChange = (toolId: string, newOrder: number) => {
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId
           ? { ...p, order: newOrder }
           : p
@@ -264,7 +264,7 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   // Handle remove tool
   const handleRemoveTool = (toolId: string) => {
-    setPlacements((prev) => prev.filter((p) => p.toolId !== toolId));
+    setPlacements(placements.filter((p) => p.toolId !== toolId));
   };
 
   // Handle add tool
@@ -288,14 +288,14 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
       order: placements.length,
     };
 
-    setPlacements((prev) => [...prev, newPlacement]);
+    setPlacements([...placements, newPlacement]);
   };
 
   // Handle visibility condition change
   const handleConditionKindChange = (toolId: string, kind: string) => {
 
-    setPlacements((prev) =>
-      prev.map((p) => {
+    setPlacements(
+      placements.map((p) => {
         if (p.toolId !== toolId) return p;
         if (!kind) {
           // Remove condition
@@ -318,8 +318,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
   // Handle time condition changes
   const handleTimeConditionChange = (toolId: string, field: 'dayOfWeek' | 'hourStart' | 'hourEnd', value: any) => {
 
-    setPlacements((prev) =>
-      prev.map((p) => {
+    setPlacements(
+      placements.map((p) => {
         if (p.toolId !== toolId || !p.visibleWhen) return p;
 
         if (field === 'dayOfWeek') {
@@ -358,8 +358,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
   // Handle relationship condition change
   const handleRelationshipConditionChange = (toolId: string, minLevel: number) => {
 
-    setPlacements((prev) =>
-      prev.map((p) => {
+    setPlacements(
+      placements.map((p) => {
         if (p.toolId !== toolId || !p.visibleWhen) return p;
         return {
           ...p,
@@ -374,8 +374,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   // Handle visibility condition ID change
   const handleConditionIdChange = (toolId: string, id: string) => {
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId && p.visibleWhen
           ? { ...p, visibleWhen: { ...p.visibleWhen, id } }
           : p
@@ -386,8 +386,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
   // Phase 6: Enhanced layout control handlers
   const handleSizeChange = (toolId: string, size: string) => {
 
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId ? { ...p, size: size as any || undefined } : p
       )
     );
@@ -395,8 +395,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   const handleCollapsedChange = (toolId: string, collapsed: boolean) => {
 
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId ? { ...p, defaultCollapsed: collapsed } : p
       )
     );
@@ -404,8 +404,8 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
 
   const handleZIndexChange = (toolId: string, zIndex: number) => {
 
-    setPlacements((prev) =>
-      prev.map((p) =>
+    setPlacements(
+      placements.map((p) =>
         p.toolId === toolId
           ? { ...p, zIndex: isNaN(zIndex) ? undefined : zIndex }
           : p
@@ -463,33 +463,6 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
     setWarnings(newWarnings);
   }, [placements]);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        if (e.key === 's') {
-          e.preventDefault();
-          handleSave();
-        }
-        if (e.key === 'z' && !e.shiftKey) {
-          e.preventDefault();
-          undo();
-        }
-        if (e.key === 'z' && e.shiftKey) {
-          e.preventDefault();
-          redo();
-        }
-        if (e.key === 'y') {
-          e.preventDefault();
-          redo();
-        }
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, handleSave]);  // Task 101: Updated dependencies for useUndoRedo
-
   // Handle save
   const handleSave = async () => {
     setIsSaving(true);
@@ -541,6 +514,33 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
       setIsSaving(false);
     }
   };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 's') {
+          e.preventDefault();
+          handleSave();
+        }
+        if (e.key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          undo();
+        }
+        if (e.key === 'z' && e.shiftKey) {
+          e.preventDefault();
+          redo();
+        }
+        if (e.key === 'y') {
+          e.preventDefault();
+          redo();
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [undo, redo, handleSave]);  // Task 101: Updated dependencies for useUndoRedo
 
   // Preset management handlers
   const handleSaveAsPreset = () => {

@@ -12,7 +12,7 @@
  * - Zones have multipliers for each stat
  */
 
-import type { NpcBodyZone } from '@lib/registries';
+import type { NpcBodyZone } from '../bodyMap/zones';
 
 // ============================================================================
 // Core Types
@@ -419,7 +419,7 @@ export function getDominantStat(stats: StatValues): { stat: string; value: numbe
  */
 export function getActiveStats(stats: StatValues, threshold: number = 0.1): string[] {
   return Object.entries(stats)
-    .filter(([_, value]) => value > threshold)
+    .filter(([, value]) => value > threshold)
     .sort((a, b) => b[1] - a[1])
     .map(([stat]) => stat);
 }

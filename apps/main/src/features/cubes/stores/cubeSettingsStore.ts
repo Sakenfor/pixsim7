@@ -4,9 +4,10 @@
  * Persists cube overlay defaults (visibility, formation).
  */
 
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { FormationPattern } from '@pixsim7/pixcubes';
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
 import { createBackendStorage } from '@lib/backendStorage';
 
 interface CubeSettingsState {
@@ -34,7 +35,7 @@ export const useCubeSettingsStore = create<CubeSettingsState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createBackendStorage(STORAGE_KEY),
+      storage: createJSONStorage(() => createBackendStorage(STORAGE_KEY)),
     }
   )
 );

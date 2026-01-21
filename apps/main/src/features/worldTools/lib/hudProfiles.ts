@@ -7,7 +7,10 @@
  */
 
 import type { HudProfile, HudToolPlacement, ViewMode } from './types';
+
+export type { HudProfile };
 import type { GameWorldDetail } from '@lib/api/game';
+
 import {
   getPlayerPreferences,
   updatePlayerPreferences,
@@ -176,6 +179,7 @@ export function deleteProfileLayout(
 
   const key = buildProfileLayoutKey(profileId, viewMode);
   const { [key]: removed, ...remainingLayouts } = existingProfileLayouts;
+  void removed;
 
   const updatedMeta: Record<string, unknown> = {
     ...worldDetail.meta,

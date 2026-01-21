@@ -112,8 +112,7 @@ export function ActiveGizmosIndicator({
                 </div>
                 {surface!.category && (
                   <Badge
-                    variant="secondary"
-                    size="sm"
+                    color="gray"
                     className="text-[10px] px-1.5 py-0.5"
                   >
                     {surface!.category}

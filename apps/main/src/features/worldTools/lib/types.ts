@@ -27,10 +27,12 @@ import type { NpcSlotAssignment } from '@pixsim7/game.engine';
 import type { WorldToolPlugin as SharedWorldToolPlugin } from '@pixsim7/shared.ui.tools';
 
 import { ToolRegistryBase } from '@lib/core/ToolRegistryBase';
+import type { HudVisibilityCondition } from '@lib/gameplay-ui-core/hudVisibility';
 import { debugFlags } from '@lib/utils/debugFlags';
 
 // Re-export shared contracts
 export type { WorldToolCategory } from '@pixsim7/shared.ui.tools';
+export type { ViewMode } from '@pixsim7/shared.types';
 
 // Re-export context types from separate file
 export type { WorldTime, WorldToolContext } from './context';
@@ -94,7 +96,6 @@ export const worldToolRegistry = new WorldToolRegistry();
 /**
  * Re-export HudVisibilityCondition from gameplay-ui-core (circular dependency now resolved)
  */
-
 export type { HudVisibilityCondition } from '@lib/gameplay-ui-core/hudVisibility';
 
 /**

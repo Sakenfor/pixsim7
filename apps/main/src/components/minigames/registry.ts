@@ -6,6 +6,7 @@
  */
 
 import { registerMiniGame, type MiniGameDefinition, type SceneGizmoConfig, type GizmoResult } from '@pixsim7/scene.gizmos';
+
 import { SceneGizmoMiniGame } from './SceneGizmoMiniGame';
 
 /**
@@ -24,14 +25,16 @@ export function registerSceneGizmoMiniGame() {
       anchors: [],
       physics: {
         friction: 0.95,
-        snapStrength: 0.8,
-        smoothing: 0.85,
+        springiness: 0.85,
+        magnetism: true,
       },
       visual: {
-        showZones: true,
-        showAnchors: true,
-        showTrails: true,
-        particleEffects: true,
+        baseColor: '#5f9ed8',
+        activeColor: '#9fe7ff',
+        particleType: 'stars',
+        glowIntensity: 0.6,
+        trailLength: 0.4,
+        opacity: 0.9,
       },
     },
     component: SceneGizmoMiniGame,

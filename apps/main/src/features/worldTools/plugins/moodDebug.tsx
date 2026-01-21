@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Mood Debug World Tool Plugin
  *
@@ -5,10 +6,12 @@
  * Uses data-driven BrainState for mood derivation.
  */
 
-import type { WorldToolPlugin } from '../lib/types';
-import { Badge } from '@pixsim7/shared.ui';
 import { parseNpcKey, getNpcRelationshipState } from '@pixsim7/game.engine';
+import { Badge } from '@pixsim7/shared.ui';
+
 import { useUnifiedMood } from '@/hooks/useUnifiedMood';
+
+import type { WorldToolPlugin } from '../lib/types';
 
 export const moodDebugTool: WorldToolPlugin = {
   id: 'mood-debug',
@@ -48,9 +51,9 @@ export const moodDebugTool: WorldToolPlugin = {
         const relState = getNpcRelationshipState(session, npcId);
 
         // Derive mood from relationship values
-        const affinity = relState?.affinity ?? 50;
-        const chemistry = relState?.chemistry ?? 50;
-        const tension = relState?.tension ?? 20;
+        const affinity = relState?.values?.affinity ?? 50;
+        const chemistry = relState?.values?.chemistry ?? 50;
+        const tension = relState?.values?.tension ?? 20;
 
         const valence = affinity * 0.6 + chemistry * 0.4;
         const arousal = chemistry * 0.5 + tension * 0.5;
@@ -62,10 +65,14 @@ export const moodDebugTool: WorldToolPlugin = {
         else if (valence < 50 && arousal >= 50) label = 'anxious';
         else if (valence < 50 && arousal < 50) label = 'calm';
 
+        const flagMap = Array.isArray(relState?.flags)
+          ? Object.fromEntries(relState.flags.map((flag) => [flag, true]))
+          : {};
+
         npcMoods.push({
           npcId,
           mood: { valence, arousal, label },
-          flags: relState?.flags || {},
+          flags: flagMap,
           relationship: relState,
           sessionId: session.id,
           worldId: context.selectedWorldId!,
@@ -132,13 +139,13 @@ function NpcMoodCard({ npcMood }: NpcMoodCardProps) {
     sessionId,
     relationshipValues: relationship
       ? {
-          affinity: relationship.affinity,
-          trust: relationship.trust,
-          chemistry: relationship.chemistry,
-          tension: relationship.tension,
+          affinity: relationship.values?.affinity ?? 0,
+          trust: relationship.values?.trust ?? 0,
+          chemistry: relationship.values?.chemistry ?? 0,
+          tension: relationship.values?.tension ?? 0,
         }
       : undefined,
-    levelId: relationship?.levelId ?? null,
+    intimacyLevelId: relationship?.levelId ?? null,
   });
 
   const getMoodColor = (label?: string): 'blue' | 'green' | 'yellow' | 'red' | 'gray' => {

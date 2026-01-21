@@ -1,12 +1,14 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Turn History Viewer World Tool Plugin
  *
  * Displays turn history for turn-based game sessions.
  */
 
-import type { WorldToolPlugin } from '../lib/types';
-import type { TurnRecord, SessionFlags } from '@lib/registries';
+import type { TurnRecord, SessionFlags } from '@pixsim7/shared.types';
 import { Badge } from '@pixsim7/shared.ui';
+
+import type { WorldToolPlugin } from '../lib/types';
 
 export const turnHistoryDebugTool: WorldToolPlugin = {
   id: 'turn-history-debug',
