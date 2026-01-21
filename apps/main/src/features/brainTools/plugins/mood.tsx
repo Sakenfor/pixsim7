@@ -5,9 +5,11 @@
  * Uses data-driven BrainState - accesses mood via brain.stats['mood'] or brain.derived['mood']
  */
 
-import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar } from '@pixsim7/shared.ui';
+
 import { getMood } from '@lib/core';
+
+import type { BrainToolPlugin } from '../lib/types';
 
 export const moodTool: BrainToolPlugin = {
   id: 'npc-mood',
@@ -60,7 +62,7 @@ export const moodTool: BrainToolPlugin = {
             <ProgressBar
               value={mood.valence}
               max={100}
-              variant={mood.valence >= 50 ? 'success' : 'warning'}
+              color={mood.valence >= 50 ? 'green' : 'yellow'}
             />
           </div>
 
@@ -69,7 +71,7 @@ export const moodTool: BrainToolPlugin = {
               <span>Arousal (Energy)</span>
               <span className="font-mono">{mood.arousal.toFixed(1)}</span>
             </div>
-            <ProgressBar value={mood.arousal} max={100} variant="primary" />
+            <ProgressBar value={mood.arousal} max={100} color="blue" />
           </div>
         </div>
       </div>

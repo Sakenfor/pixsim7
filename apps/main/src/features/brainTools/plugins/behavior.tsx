@@ -5,14 +5,16 @@
  * Uses data-driven BrainState via getBehaviorUrgency helper.
  */
 
-import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar, Badge } from '@pixsim7/shared.ui';
+
 import {
   getBehaviorUrgency,
   getTopBehaviorUrges,
   hasBehaviorUrgency,
   type BehaviorUrge,
 } from '@lib/core';
+
+import type { BrainToolPlugin } from '../lib/types';
 
 /**
  * Human-readable labels for behavior keys
@@ -43,11 +45,11 @@ const BEHAVIOR_ICONS: Record<string, string> = {
 /**
  * Color variants for progress bars based on urgency level
  */
-function getUrgencyVariant(value: number): 'success' | 'warning' | 'danger' | 'primary' {
-  if (value >= 80) return 'danger';
-  if (value >= 60) return 'warning';
-  if (value >= 40) return 'primary';
-  return 'success';
+function getUrgencyColor(value: number): 'green' | 'yellow' | 'red' | 'blue' {
+  if (value >= 80) return 'red';
+  if (value >= 60) return 'yellow';
+  if (value >= 40) return 'blue';
+  return 'green';
 }
 
 /**
@@ -111,7 +113,7 @@ export const behaviorTool: BrainToolPlugin = {
 
     // Get all urges sorted by value
     const allUrges: BehaviorUrge[] = Object.entries(urgency)
-      .filter(([_, value]) => value !== undefined)
+      .filter(([, value]) => value !== undefined)
       .map(([key, value]) => ({ key, value: value as number }))
       .sort((a, b) => b.value - a.value);
 
@@ -166,7 +168,7 @@ export const behaviorTool: BrainToolPlugin = {
                 <ProgressBar
                   value={urge.value}
                   max={100}
-                  variant={getUrgencyVariant(urge.value)}
+                  color={getUrgencyColor(urge.value)}
                 />
               </div>
             ))}

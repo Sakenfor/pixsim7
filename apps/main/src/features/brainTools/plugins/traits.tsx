@@ -5,9 +5,11 @@
  * Uses data-driven BrainState - accesses personality via brain.stats['personality']
  */
 
-import type { BrainToolPlugin } from '../lib/types';
 import { ProgressBar, Badge } from '@pixsim7/shared.ui';
+
 import { getDerived, hasStat } from '@lib/core';
+
+import type { BrainToolPlugin } from '../lib/types';
 
 export const traitsTool: BrainToolPlugin = {
   id: 'npc-traits',
@@ -58,7 +60,7 @@ export const traitsTool: BrainToolPlugin = {
                     <span className="capitalize">{trait}</span>
                     <span className="font-mono">{value.toFixed(0)}</span>
                   </div>
-                  <ProgressBar value={value} max={100} variant="primary" />
+                  <ProgressBar value={value} max={100} color="blue" />
                 </div>
               ))}
             </div>
