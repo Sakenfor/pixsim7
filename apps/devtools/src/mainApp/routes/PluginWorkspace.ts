@@ -1,1 +1,1 @@
-export { PluginWorkspaceRoute } from '../../../main/src/routes/PluginWorkspace';
+export { PluginWorkspaceRoute } from '../../../../main/src/routes/PluginWorkspace';

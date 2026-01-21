@@ -1,1 +1,1 @@
-export { AppMapDev } from '../../../main/src/routes/AppMapDev';
+export { AppMapDev } from '../../../../main/src/routes/AppMapDev';

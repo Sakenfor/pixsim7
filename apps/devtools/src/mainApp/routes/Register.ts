@@ -1,1 +1,1 @@
-export { Register } from '../../../main/src/routes/Register';
+export { Register } from '../../../../main/src/routes/Register';

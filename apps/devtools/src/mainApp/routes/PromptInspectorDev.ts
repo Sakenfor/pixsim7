@@ -1,1 +1,1 @@
-export { PromptInspectorDev } from '../../../main/src/routes/PromptInspectorDev';
+export { PromptInspectorDev } from '../../../../main/src/routes/PromptInspectorDev';

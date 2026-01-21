@@ -1,1 +1,1 @@
-export { ModulesDev } from '../../../main/src/routes/ModulesDev';
+export { ModulesDev } from '../../../../main/src/routes/ModulesDev';

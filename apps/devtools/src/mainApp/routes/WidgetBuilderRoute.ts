@@ -1,1 +1,1 @@
-export { WidgetBuilderRoute } from '../../../main/src/routes/WidgetBuilderRoute';
+export { WidgetBuilderRoute } from '../../../../main/src/routes/WidgetBuilderRoute';

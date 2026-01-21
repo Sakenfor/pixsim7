@@ -1,1 +1,1 @@
-export { BlockFitDev } from '../../../main/src/routes/BlockFitDev';
+export { BlockFitDev } from '../../../../main/src/routes/BlockFitDev';
