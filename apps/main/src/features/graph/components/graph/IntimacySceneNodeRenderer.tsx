@@ -7,7 +7,7 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * as the intimacy scene editor UX evolves.
  */
 function IntimacySceneNodeRenderer({ node, isSelected, hasErrors }: NodeRendererProps) {
-  const data = node.data as { sceneType?: string; intensity?: string } | undefined;
+  const data = node.metadata as { sceneType?: string; intensity?: string } | undefined;
   const sceneType = data?.sceneType ?? 'intimacy_scene';
   const intensity = data?.intensity ?? 'light';
 

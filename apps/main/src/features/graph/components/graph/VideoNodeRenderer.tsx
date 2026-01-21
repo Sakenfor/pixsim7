@@ -4,15 +4,23 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * Custom renderer for video nodes - shows media thumbnail and playback info
  */
 export function VideoNodeRenderer({ node }: NodeRendererProps) {
+  const nodeData = node as unknown as {
+    mediaUrl?: string;
+    media?: Array<{ url?: string }>;
+    playback?: { kind?: string };
+    selection?: { kind?: string };
+    metadata?: Record<string, any>;
+  };
+
   // Extract media info
-  const mediaUrl = node.mediaUrl || node.media?.[0]?.url;
+  const mediaUrl = nodeData.mediaUrl || nodeData.media?.[0]?.url;
   const hasMedia = !!mediaUrl;
-  const mediaCount = node.media?.length || 0;
-  const playbackMode = node.playback?.kind || 'normal';
-  const selectionMode = node.selection?.kind || 'ordered';
+  const mediaCount = nodeData.media?.length || 0;
+  const playbackMode = nodeData.playback?.kind || 'normal';
+  const selectionMode = nodeData.selection?.kind || 'ordered';
 
   // Check if it's a mini-game
-  const isMiniGame = node.metadata?.isMiniGame;
+  const isMiniGame = nodeData.metadata?.isMiniGame;
 
   return (
     <div className="space-y-2">
@@ -78,16 +86,16 @@ export function VideoNodeRenderer({ node }: NodeRendererProps) {
         )}
 
         {/* NPC Metadata */}
-        {(node.metadata?.speakerRole || node.metadata?.npc_id) && (
+        {(nodeData.metadata?.speakerRole || nodeData.metadata?.npc_id) && (
           <div className="flex flex-wrap gap-1">
-            {node.metadata?.speakerRole && (
+            {nodeData.metadata?.speakerRole && (
               <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded font-medium" title="Speaker Role">
-                👤 {node.metadata.speakerRole}
+                👤 {nodeData.metadata.speakerRole}
               </span>
             )}
-            {node.metadata?.npc_id && (
+            {nodeData.metadata?.npc_id && (
               <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 rounded font-medium" title="NPC Binding">
-                🔒 NPC #{node.metadata.npc_id}
+                🔒 NPC #{nodeData.metadata.npc_id}
               </span>
             )}
           </div>

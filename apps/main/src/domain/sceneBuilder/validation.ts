@@ -10,12 +10,13 @@
  * - Invalid configurations
  */
 
-import type { DraftScene } from './index';
 import type {
   ValidationIssue,
   ValidationResult,
   SceneValidationIssueType,
 } from '../validation/types';
+
+import type { DraftScene } from './index';
 
 // Re-export shared types for backwards compatibility
 export type { ValidationIssue, ValidationResult, SceneValidationIssueType };
@@ -89,7 +90,7 @@ export function validateScene(draft: DraftScene | undefined | null): ValidationR
 
     const hasOutgoingEdges =
       (draft.edges || []).some((e) => e.from === node.id) ||
-      (node.connections || []).length > 0;
+      getLegacyConnections(node).length > 0;
 
     if (!hasOutgoingEdges) {
       issues.push({
@@ -190,7 +191,7 @@ function getReachableNodes(draft: DraftScene): Set<string> {
     });
 
     // From node.connections (legacy)
-    (node.connections || []).forEach((targetId) => {
+    getLegacyConnections(node).forEach((targetId) => {
       targets.add(targetId);
     });
 
@@ -233,7 +234,7 @@ function detectCycles(draft: DraftScene): string[][] {
     (draft.edges || []).forEach((edge) => {
       if (edge.from === nodeId) targets.add(edge.to);
     });
-    (node.connections || []).forEach((targetId) => targets.add(targetId));
+    getLegacyConnections(node).forEach((targetId) => targets.add(targetId));
 
     for (const targetId of targets) {
       if (!visited.has(targetId)) {
@@ -258,6 +259,13 @@ function detectCycles(draft: DraftScene): string[][] {
   });
 
   return cycles;
+}
+
+function getLegacyConnections(node: DraftScene['nodes'][number]): string[] {
+  if ('connections' in node) {
+    return (node as { connections?: string[] }).connections ?? [];
+  }
+  return [];
 }
 
 /**

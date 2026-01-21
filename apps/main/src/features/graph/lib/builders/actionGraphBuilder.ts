@@ -10,7 +10,7 @@ import type {
   ActionGraphNode,
   ActionGraphEdge,
   ActionBlock,
-} from '../../types/promptGraphs';
+} from '@/types/promptGraphs';
 
 export interface BuildActionGraphOptions {
   includePackages?: boolean;

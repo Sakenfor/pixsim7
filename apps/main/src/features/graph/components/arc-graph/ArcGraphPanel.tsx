@@ -200,13 +200,53 @@ export function ArcGraphPanel() {
 
       const finalPosition = position || { x: 100, y: 100 };
 
-      const newNode: ArcGraphNode = {
-        id: crypto.randomUUID(),
-        type: nodeTypeId as ArcGraphNode['type'],
-        label: `New ${nodeTypeDef.name}`,
-        position: finalPosition,
-        ...nodeTypeDef.defaultData,
-      };
+      const nodeId = crypto.randomUUID();
+      let newNode: ArcGraphNode;
+
+      switch (nodeTypeId) {
+        case 'arc_group':
+          newNode = {
+            id: nodeId,
+            type: 'arc_group',
+            label: `New ${nodeTypeDef.name}`,
+            position: finalPosition,
+            childNodeIds: [],
+            collapsed: false,
+            ...nodeTypeDef.defaultData,
+          };
+          break;
+        case 'quest':
+          newNode = {
+            id: nodeId,
+            type: 'quest',
+            label: `New ${nodeTypeDef.name}`,
+            position: finalPosition,
+            questId: '',
+            ...nodeTypeDef.defaultData,
+          };
+          break;
+        case 'milestone':
+          newNode = {
+            id: nodeId,
+            type: 'milestone',
+            label: `New ${nodeTypeDef.name}`,
+            position: finalPosition,
+            milestoneId: '',
+            ...nodeTypeDef.defaultData,
+          };
+          break;
+        case 'arc':
+        default:
+          newNode = {
+            id: nodeId,
+            type: 'arc',
+            label: `New ${nodeTypeDef.name}`,
+            position: finalPosition,
+            arcId: '',
+            ...nodeTypeDef.defaultData,
+          };
+          break;
+      }
 
       addArcNode(newNode);
       toast.success(`Added ${nodeTypeDef.name} node`);
@@ -316,7 +356,7 @@ export function ArcGraphPanel() {
             <Button onClick={handleSetStartNode} size="sm">
               Set Start
             </Button>
-            <Button onClick={handleDeleteNode} size="sm" variant="danger">
+            <Button onClick={handleDeleteNode} size="sm" variant="outline">
               Delete
             </Button>
           </>
@@ -368,4 +408,3 @@ export function ArcGraphPanel() {
     </div>
   );
 }
-

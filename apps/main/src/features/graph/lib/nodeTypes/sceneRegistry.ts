@@ -12,7 +12,7 @@ export type SceneNodeTypeDefinition<TData = Record<string, unknown>> = NodeTypeD
   SceneRuntimeNode
 >;
 
-export const sceneNodeTypeRegistry = new NodeTypeRegistry<SceneNodeTypeDefinition>({
+export const sceneNodeTypeRegistry = new NodeTypeRegistry<SceneNodeTypeDefinition<any>>({
   duplicatePolicy: 'error',
 });
 

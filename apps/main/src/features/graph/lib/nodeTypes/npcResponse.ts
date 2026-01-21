@@ -6,6 +6,8 @@
 
 import type { InstanceRef, CharacterRef } from '@pixsim7/shared.types';
 
+import type { NpcZoneConfiguration } from '@features/gizmos/lib/bodyMap/zones';
+
 import {
   normalizeInstanceRef,
   normalizeCharacterRef,
@@ -18,7 +20,6 @@ import {
   type TemplateRef,
 } from '../refs/objectLinks';
 
-import type { NpcZoneConfiguration } from './npcZones';
 import { sceneNodeTypeRegistry, type SceneNodeTypeDefinition } from './sceneRegistry';
 
 // ============================================================================

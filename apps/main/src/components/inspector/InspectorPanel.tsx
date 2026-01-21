@@ -1,11 +1,15 @@
-import { useState, useEffect, Suspense } from 'react';
+import { useToast } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
 import type { ComponentType } from 'react';
-import { type DraftSceneNode } from '@domain/sceneBuilder';
+
+import { nodeEditorRegistry } from '@lib/nodeEditorRegistry';
+import { nodeTypeRegistry } from '@lib/registries';
+
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@features/graph';
-import { useToast } from '@pixsim7/shared.ui';
-import { nodeTypeRegistry } from '@lib/registries';
-import { nodeEditorRegistry } from '@lib/nodeEditorRegistry';
+
+import { type DraftSceneNode } from '@domain/sceneBuilder';
+
 
 /**
  * Dynamic Editor Loader Component
@@ -150,7 +154,7 @@ export function InspectorPanel() {
   }
 
   // Get node type definition from registry
-  const nodeTypeDef = nodeTypeRegistry.get(selectedNode.type);
+  const nodeTypeDef = nodeTypeRegistry.getSync(selectedNode.type);
 
   return (
     <div className="h-full flex flex-col">

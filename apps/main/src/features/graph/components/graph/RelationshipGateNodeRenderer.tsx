@@ -9,7 +9,7 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * - Simple status chips for validation issues
  */
 function RelationshipGateNodeRenderer({ node, hasErrors, isSelected }: NodeRendererProps) {
-  const data = node.data as {
+  const data = node.metadata as {
     gate?: { name?: string; requiredTier?: string };
     passedTargetNodeId?: string;
     failedTargetNodeId?: string;

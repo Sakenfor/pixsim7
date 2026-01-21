@@ -7,7 +7,7 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * for a richer progression visualization.
  */
 function ProgressionStageNodeRenderer({ node, hasErrors }: NodeRendererProps) {
-  const data = node.data as { stageName?: string; tier?: string } | undefined;
+  const data = node.metadata as { stageName?: string; tier?: string } | undefined;
   const stageName = data?.stageName ?? 'Progression Stage';
   const tier = data?.tier ?? 'friend';
 

@@ -126,7 +126,7 @@ export function registerBuiltinNodeTypes() {
           outputs: choicesData.map((choice) => ({
             id: choice.id,
             label: choice.label,
-            position: 'bottom',
+            position: 'bottom' as const,
             color: choice.color,
             description: choice.description,
           })),

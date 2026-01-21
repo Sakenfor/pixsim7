@@ -164,7 +164,7 @@ export function useGraphCapabilityBridge(
   }, []);
 
   const getAvailableNodeTypes = useCallback(() => {
-    const types = sceneNodeTypeRegistry.getAllSync();
+    const types = sceneNodeTypeRegistry.getAll();
     return types
       .filter((t) => t.userCreatable)
       .map((t) => ({

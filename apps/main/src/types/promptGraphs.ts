@@ -9,8 +9,8 @@
  */
 
 // Re-export prompt types from canonical source
-export type { PromptSegment, PromptSegmentRole, PromptParseResult } from './prompts';
-import type { PromptSegmentRole } from './prompts';
+export type { PromptSegment, PromptSegmentRole, PromptParseResult } from '@pixsim7/shared.types/prompt';
+import type { PromptSegmentRole } from '@pixsim7/shared.types/prompt';
 
 // ===== Prompt Segment Graph Types =====
 

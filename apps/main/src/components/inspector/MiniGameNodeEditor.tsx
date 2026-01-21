@@ -1,9 +1,12 @@
-import { useMemo } from 'react';
 import { Button } from '@pixsim7/shared.ui';
-import { useNodeEditor } from './useNodeEditor';
+import { useMemo } from 'react';
+
+import { getAllGizmos } from '@features/gizmos';
+
 import type { NodeEditorProps, MiniGameConfig } from './editorTypes';
 import { validateMiniGameConfig, logValidationError } from './editorValidation';
-import { getAllGizmos } from '@/gizmos/loadDefaultPacks';
+import { useNodeEditor } from './useNodeEditor';
+
 
 export function MiniGameNodeEditor({ node, onUpdate }: NodeEditorProps) {
   const availableGizmos = useMemo(() => getAllGizmos(), []);

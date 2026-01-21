@@ -8,7 +8,7 @@ import {
 } from '@pixsim7/shared.graph.utilities';
 import { useToastStore } from '@pixsim7/shared.ui';
 
-import { validateArcGraphReferences, type ArcGraphEdge, type ArcGraphNode } from '@features/graph/models/arcGraph';
+import { validateArcGraphReferences, type ArcGraph, type ArcGraphEdge, type ArcGraphNode } from '@features/graph/models/arcGraph';
 
 import { useGraphStore } from '../graphStore';
 
@@ -47,7 +47,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     // Validate scene reference if present
     if (node.type !== 'arc_group' && node.sceneId) {
       const sceneIds = useGraphStore.getState().getSceneIds();
-      const updatedGraph = addNode(graph, node);
+      const updatedGraph = addNode<ArcGraphNode, ArcGraph>(graph, node as ArcGraphNode);
       const issues = validateArcGraphReferences(updatedGraph, sceneIds);
 
       const errors = issues.filter(i => i.severity === 'error');
@@ -61,7 +61,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       }
     }
 
-    const updatedGraph = addNode(graph, node);
+    const updatedGraph = addNode<ArcGraphNode, ArcGraph>(graph, node);
 
     set((state) => ({
       arcGraphs: {
@@ -99,7 +99,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     // Validate scene reference if sceneId is being updated
     if ('sceneId' in patch && patch.sceneId) {
       const sceneIds = useGraphStore.getState().getSceneIds();
-      const updatedGraph = updateNode(graph, id, patch);
+      const updatedGraph = updateNode<ArcGraphNode, ArcGraph>(graph, id, patch as Partial<ArcGraphNode>);
       const issues = validateArcGraphReferences(updatedGraph, sceneIds);
 
       const errors = issues.filter(i => i.severity === 'error');
@@ -113,7 +113,7 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
       }
     }
 
-    const updatedGraph = updateNode(graph, id, patch);
+    const updatedGraph = updateNode<ArcGraphNode, ArcGraph>(graph, id, patch);
 
     set((state) => ({
       arcGraphs: {
@@ -285,4 +285,3 @@ export const createArcNodeSlice: ArcStateCreator<ArcNodeManagementState> = (set,
     return findNode(graph.nodes, id) || null;
   },
 });
-

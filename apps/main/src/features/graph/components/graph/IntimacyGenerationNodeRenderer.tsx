@@ -7,7 +7,7 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
  * mirroring the style of other custom node renderers.
  */
 function IntimacyGenerationNodeRenderer({ node, hasErrors, isSelected }: NodeRendererProps) {
-  const data = node.data as {
+  const data = node.metadata as {
     generationType?: string;
     purpose?: string;
     strategy?: string;

@@ -5,5 +5,14 @@
  */
 
 export * from './types';
-export * from './utils';
-export * from './validation';
+export {
+  createEmptyArcGraph,
+  exportArcGraph,
+  importArcGraph,
+  validateArcGraph as validateArcGraphBasic,
+} from './utils';
+export {
+  validateArcGraph,
+  validateArcGraphReferences,
+  validateArcGraphStructure,
+} from './validation';

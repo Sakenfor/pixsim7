@@ -87,6 +87,7 @@ export {
   type ArcNodeRendererProps,
 } from './lib/editor/nodeRendererRegistry';
 export { useTemplateAnalyticsStore } from './stores/templateAnalyticsStore';
+export type { TemplateUsageStats, RefactoringHint } from './stores/templateAnalyticsStore';
 export { useTemplateStore } from './stores/templatesStore';
 export { graphClipboard } from './lib/editor/clipboard';
 

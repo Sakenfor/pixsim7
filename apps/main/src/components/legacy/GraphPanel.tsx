@@ -15,6 +15,7 @@ import 'reactflow/dist/style.css';
 import { Button, useToast } from '@pixsim7/shared.ui';
 import { ReactFlowProvider } from 'reactflow';
 
+import { previewBridge } from '@lib/preview-bridge';
 import { nodeTypeRegistry } from '@lib/registries';
 import { logEvent } from '@lib/utils/logging';
 
@@ -23,25 +24,26 @@ import { useGraphStore, type GraphState, SceneNode, NodeGroup, NodePalette, type
 import { useSelectionStore } from '@features/graph';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
-
 import { captureTemplate, applyTemplate } from '@features/graph' // graphTemplates';
-import { WorldContextSelector } from '@/components/game/WorldContextSelector';
-import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
-import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
-import { Breadcrumbs } from '../navigation/Breadcrumbs';
-
-import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
-
-import { previewBridge } from '@lib/preview-bridge';
-
-import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
-import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';
-
-
-
-import { useWorldContextStore } from '@features/scene';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
 import { graphClipboard } from '@features/graph' // clipboard';
+import { useWorldContextStore } from '@features/scene';
+
+import { WorldContextSelector } from '@/components/game/WorldContextSelector';
+
+import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
+import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
+import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
+
+import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';
+import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
+import { Breadcrumbs } from '../navigation/Breadcrumbs';
+
+
+
+
+
+
 
 // Default edge options (defined outside to avoid re-creating on every render)
 const defaultEdgeOptions = {
@@ -248,7 +250,7 @@ export function GraphPanel() {
       }
 
       // Get node type definition from registry
-      const nodeTypeDef = nodeTypeRegistry.get(nodeType);
+      const nodeTypeDef = nodeTypeRegistry.getSync(nodeType);
 
       const nextIndex = currentScene.nodes.length + 1;
       const id = `${nodeType}_${nextIndex}`;
@@ -260,19 +262,26 @@ export function GraphPanel() {
       };
 
       // Create node with default data from registry
-      const newNode: Partial<DraftSceneNode> = {
+      const resolvedType = nodeType === 'miniGame'
+        ? 'video'
+        : (nodeType as DraftSceneNode['type']);
+
+      const defaultData = nodeTypeDef?.defaultData as Record<string, unknown> | undefined;
+      const defaultMetadata = (defaultData?.metadata ?? {}) as Record<string, unknown>;
+
+      const newNode = {
         id,
-        type: nodeType === 'miniGame' ? 'video' : nodeType, // Map miniGame to video for backwards compatibility
+        type: resolvedType, // Map miniGame to video for backwards compatibility
         metadata: {
           label: `${nodeTypeDef?.name || nodeType} ${nextIndex}`,
           position: nodePosition,
-          ...(nodeTypeDef?.defaultData?.metadata || {}),
+          ...defaultMetadata,
         },
         // Merge in default data from registry (excluding metadata which we handle separately)
-        ...(nodeTypeDef?.defaultData ? Object.fromEntries(
-          Object.entries(nodeTypeDef.defaultData).filter(([key]) => key !== 'metadata')
+        ...(defaultData ? Object.fromEntries(
+          Object.entries(defaultData).filter(([key]) => key !== 'metadata')
         ) : {}),
-      };
+      } as DraftSceneNode;
 
       addNode(newNode);
 

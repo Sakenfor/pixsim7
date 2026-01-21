@@ -13,7 +13,7 @@ export function DefaultNodeRenderer({ node }: NodeRendererProps<unknown>) {
     ? (nodeRecord.metadata as Record<string, unknown>)
     : undefined;
 
-  const typeDef = sceneNodeTypeRegistry.get(nodeType) ?? arcNodeTypeRegistry.get(nodeType);
+  const typeDef = sceneNodeTypeRegistry.getSync(nodeType) ?? arcNodeTypeRegistry.getSync(nodeType);
 
   return (
     <div className="px-3 py-3 space-y-2">

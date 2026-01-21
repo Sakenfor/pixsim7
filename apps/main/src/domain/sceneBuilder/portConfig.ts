@@ -1,4 +1,5 @@
 import type { DraftSceneNode } from './index';
+
 import { nodeTypeRegistry, type PortDefinition as RegistryPortDef } from '@lib/registries';
 
 // Re-export DSL helpers and types for convenience
@@ -20,8 +21,8 @@ import {
   singleInOut,
   branchOutputs,
   branchWithFallback,
-  multiChoiceOutputs,
   terminalNode,
+  type PortDefinition,
   type NodePortConfig,
 } from './portConfigDsl';
 

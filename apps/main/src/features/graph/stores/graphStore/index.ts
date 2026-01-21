@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, devtools } from 'zustand/middleware';
+import { createJSONStorage, devtools, persist } from 'zustand/middleware';
 
 import { createBackendStorage } from '@lib/backendStorage';
 import { sceneNodeTypeRegistry, type Scene } from '@lib/registries';
@@ -7,7 +7,7 @@ import { logEvent } from '@lib/utils/logging';
 
 import { createTemporalStore, graphStorePartialize } from '@/stores/_shared/temporal';
 
-import type { DraftSceneNode } from '@domain/sceneBuilder';
+import type { DraftScene, DraftSceneNode } from '@domain/sceneBuilder';
 
 import { createCrossSceneSlice } from './crossSceneSlice';
 import { createImportExportSlice } from './importExportSlice';
@@ -34,7 +34,10 @@ import type { GraphState } from './types';
 export const useGraphStore = create<GraphState>()(
   devtools(
     persist(
-      createTemporalStore(
+      createTemporalStore<
+        GraphState,
+        [['zustand/devtools', never], ['zustand/persist', unknown]]
+      >(
         (set, get, api) => {
           const slices = {
             ...createSceneSlice(set, get, api),
@@ -88,7 +91,6 @@ export const useGraphStore = create<GraphState>()(
                 id: scene.id,
                 title: scene.title,
                 startNodeId: scene.startNodeId,
-                meta: scene.metadata, // Include scene metadata (arc_id, tags, etc.)
                 nodes: scene.nodes
                   .map(convertNode)
                   .filter((n): n is NonNullable<typeof n> => n !== null),
@@ -127,7 +129,7 @@ export const useGraphStore = create<GraphState>()(
       ),
       {
         name: 'scene-graph-v2',
-        storage: createBackendStorage('sceneGraph'),
+        storage: createJSONStorage(() => createBackendStorage('sceneGraph')),
         version: 2,
         partialize: (state) => ({
           scenes: state.scenes,
@@ -136,8 +138,8 @@ export const useGraphStore = create<GraphState>()(
         }),
         migrate: (persistedState: unknown, version: number) => {
           // Migrate from v1 (single draft) to v2 (multi-scene)
-          if (version === 1 && persistedState.draft) {
-            const legacyDraft = persistedState.draft;
+          if (version === 1 && persistedState && typeof persistedState === 'object' && 'draft' in persistedState) {
+            const legacyDraft = (persistedState as { draft: DraftScene }).draft;
             const sceneId = legacyDraft.id || `scene_${Date.now()}`;
 
             logEvent('INFO', 'graph_store_migration', { from: 'v1', to: 'v2', sceneId });
@@ -150,7 +152,7 @@ export const useGraphStore = create<GraphState>()(
             };
           }
 
-          return persistedState;
+          return persistedState as GraphState;
         },
       }
     ),
@@ -159,8 +161,8 @@ export const useGraphStore = create<GraphState>()(
 );
 
 // Export temporal actions for undo/redo
-export const useGraphStoreUndo = () => useGraphStore.temporal.undo;
-export const useGraphStoreRedo = () => useGraphStore.temporal.redo;
+export const useGraphStoreUndo = () => useGraphStore.temporal.getState().undo;
+export const useGraphStoreRedo = () => useGraphStore.temporal.getState().redo;
 export const useGraphStoreCanUndo = () => useGraphStore.temporal.getState().pastStates.length > 0;
 export const useGraphStoreCanRedo = () => useGraphStore.temporal.getState().futureStates.length > 0;
 

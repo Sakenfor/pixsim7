@@ -1,5 +1,7 @@
-import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@lib/registries';
+import type { SceneNodeType } from '@pixsim7/shared.types';
 import type { AssetRef, NpcRef, LocationRef } from '@pixsim7/shared.types';
+
+import type { MediaSegment, SelectionStrategy, PlaybackMode } from '@lib/registries';
 
 /**
  * Scene Builder Types - Scene as Function Architecture
@@ -59,6 +61,7 @@ export interface BaseNodeData {
   selection?: SelectionStrategy
   playback?: PlaybackMode
   metadata?: Record<string, any>
+  [key: string]: any
 }
 
 // Scene Call Node - calls another scene as a function
@@ -118,12 +121,10 @@ export interface NodeGroupData extends BaseNodeData {
 }
 
 // Union of all node types
+type SimpleSceneNodeType = Exclude<SceneNodeType, 'scene_call' | 'return' | 'node_group'>;
+
 export type DraftSceneNode =
-  | (BaseNodeData & { type: 'video' })
-  | (BaseNodeData & { type: 'choice' })
-  | (BaseNodeData & { type: 'end' })
-  | (BaseNodeData & { type: 'condition' })
-  | (BaseNodeData & { type: 'generation' })
+  | (BaseNodeData & { type: SimpleSceneNodeType })
   | SceneCallNodeData
   | ReturnNodeData
   | NodeGroupData
@@ -131,6 +132,7 @@ export type DraftSceneNode =
 // ===== Edge Metadata =====
 
 export interface DraftEdgeMeta {
+  label?: string
   fromPort?: string // 'default' | 'success' | 'failure' | return point id
   toPort?: string // 'input'
   conditions?: any[] // Future: conditional edge activation

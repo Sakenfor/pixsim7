@@ -11,7 +11,7 @@ import type {
   PromptGraphEdge,
   PromptSegment,
   PromptSegmentRole,
-} from '../../types/promptGraphs';
+} from '@/types/promptGraphs';
 
 export interface BuildPromptGraphOptions {
   versionId?: string;

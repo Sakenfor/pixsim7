@@ -24,7 +24,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import type { PromptSegment } from '@/types/promptGraphs';
+import type { PromptSegment, PromptSegmentRole } from '@/types/promptGraphs';
 
 import { buildPromptSegmentGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/builders/promptGraphBuilder';
 
@@ -74,7 +74,7 @@ export function PromptBlockGraphSurface({
         position,
         data: {
           label: node.label,
-          role: node.role,
+          role: node.role as PromptSegmentRole | undefined,
           text: node.text,
           kind: node.kind,
         },
@@ -183,7 +183,7 @@ function PromptNode({ data }: { data: PromptNodeData }) {
 
 interface SegmentNodeData {
   label: string;
-  role?: string;
+  role?: PromptSegmentRole;
   text?: string;
 }
 

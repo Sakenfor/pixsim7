@@ -122,7 +122,7 @@ export function extractNpcIdFromRef(value: unknown): NpcId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'npc' ? parsed.id : null;
+  return parsed?.type === 'npc' ? toNpcId(parsed.id) : null;
 }
 
 // ============================================================================
@@ -168,7 +168,7 @@ export function extractInstanceIdFromRef(value: unknown): InstanceId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'instance' ? parsed.id : null;
+  return parsed?.type === 'instance' ? toInstanceId(parsed.id) : null;
 }
 
 // ============================================================================
@@ -214,7 +214,7 @@ export function extractCharacterIdFromRef(value: unknown): CharacterId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'character' ? parsed.id : null;
+  return parsed?.type === 'character' ? toCharacterId(parsed.id) : null;
 }
 
 // ============================================================================
@@ -278,7 +278,7 @@ export function extractSceneIdFromRef(value: unknown): SceneId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'scene' ? parsed.id : null;
+  return parsed?.type === 'scene' ? toSceneId(parsed.id) : null;
 }
 
 // ============================================================================
@@ -328,7 +328,7 @@ export function extractLocationIdFromRef(value: unknown): LocationId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'location' ? parsed.id : null;
+  return parsed?.type === 'location' ? toLocationId(parsed.id) : null;
 }
 
 // ============================================================================
@@ -378,7 +378,7 @@ export function extractAssetIdFromRef(value: unknown): AssetId | null {
   if (!result.success) return null;
 
   const parsed = parseRef(result.ref);
-  return parsed?.type === 'asset' ? parsed.id : null;
+  return parsed?.type === 'asset' ? toAssetId(parsed.id) : null;
 }
 
 // ============================================================================

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { devtools, persist } from 'zustand/middleware';
+import { createJSONStorage, devtools, persist } from 'zustand/middleware';
 
 import { createBackendStorage } from '@lib/backendStorage';
 
@@ -25,7 +25,10 @@ import type { ArcGraphState } from './types';
 export const useArcGraphStore = create<ArcGraphState>()(
   devtools(
     persist(
-      createTemporalStore(
+      createTemporalStore<
+        ArcGraphState,
+        [['zustand/devtools', never], ['zustand/persist', unknown]]
+      >(
         (set, get, api) => ({
           ...createArcGraphSlice(set, get, api),
           ...createArcNodeSlice(set, get, api),
@@ -39,7 +42,7 @@ export const useArcGraphStore = create<ArcGraphState>()(
       ),
       {
         name: 'arc-graph-storage',
-        storage: createBackendStorage(),
+        storage: createJSONStorage(() => createBackendStorage('arc-graph-storage')),
       }
     ),
     {
@@ -49,8 +52,8 @@ export const useArcGraphStore = create<ArcGraphState>()(
 );
 
 // Export temporal actions for undo/redo
-export const useArcGraphStoreUndo = () => useArcGraphStore.temporal.undo;
-export const useArcGraphStoreRedo = () => useArcGraphStore.temporal.redo;
+export const useArcGraphStoreUndo = () => useArcGraphStore.temporal.getState().undo;
+export const useArcGraphStoreRedo = () => useArcGraphStore.temporal.getState().redo;
 export const useArcGraphStoreCanUndo = () => useArcGraphStore.temporal.getState().pastStates.length > 0;
 export const useArcGraphStoreCanRedo = () => useArcGraphStore.temporal.getState().futureStates.length > 0;
 

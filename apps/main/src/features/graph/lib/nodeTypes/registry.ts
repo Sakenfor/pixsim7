@@ -265,8 +265,8 @@ export class NodeTypeRegistry<TDefinition extends NodeTypeDefinition = NodeTypeD
     }
 
     // Start loading
-    const loadPromise = type.loader()
-      .then(loadedType => {
+    const loadPromise = (type.loader() as Promise<TDefinition>)
+      .then((loadedType) => {
         // Replace the stub with the loaded definition
         this.types.set(id, loadedType);
         this.cache.set(id, loadedType);
