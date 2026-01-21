@@ -1,16 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import '@/index.css';
+import '@devtools/mainApp/styles';
 
-import { registerContextMenuActions } from '@lib/dockview';
-import { registerModules, moduleRegistry } from '@app/modules';
+import { registerContextMenuActions } from '@devtools/mainApp/dockview';
+import { registerModules, moduleRegistry } from '@devtools/mainApp/modules';
 
-import { initializeConsole } from '@lib/dev/console';
-import { initWebLogger, logEvent } from '@lib/utils/logging';
-import { DevToolProvider } from '@lib/dev/devtools/devToolContext';
-
-import '@lib/dockview';
+import { initializeConsole } from '@devtools/mainApp/devConsole';
+import { initWebLogger, logEvent } from '@devtools/mainApp/logging';
+import { DevToolProvider } from '@devtools/mainApp/devToolContext';
 
 import App from './App';
 

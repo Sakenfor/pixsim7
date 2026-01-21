@@ -9,16 +9,16 @@ export interface DevtoolsRoute {
   hideFromHome?: boolean;
 }
 
-const AppMapDev = lazy(() => import('@/routes/AppMapDev').then(m => ({ default: m.AppMapDev })));
-const TemplateAnalyticsDev = lazy(() => import('@/routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev })));
-const ModulesDev = lazy(() => import('@/routes/ModulesDev').then(m => ({ default: m.ModulesDev })));
-const PromptInspectorDev = lazy(() => import('@/routes/PromptInspectorDev').then(m => ({ default: m.PromptInspectorDev })));
-const DevPromptImporter = lazy(() => import('@/routes/DevPromptImporter').then(m => ({ default: m.DevPromptImporter })));
-const PromptLabDev = lazy(() => import('@/routes/PromptLabDev').then(m => ({ default: m.PromptLabDev })));
-const ActionBlockGraphDev = lazy(() => import('@/routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev })));
-const BlockFitDev = lazy(() => import('@/routes/BlockFitDev').then(m => ({ default: m.BlockFitDev })));
-const WidgetBuilderRoute = lazy(() => import('@/routes/WidgetBuilderRoute').then(m => ({ default: m.WidgetBuilderRoute })));
-const PluginWorkspaceRoute = lazy(() => import('@/routes/PluginWorkspace').then(m => ({ default: m.PluginWorkspaceRoute })));
+const AppMapDev = lazy(() => import('@devtools/mainApp/routes/AppMapDev').then(m => ({ default: m.AppMapDev })));
+const TemplateAnalyticsDev = lazy(() => import('@devtools/mainApp/routes/TemplateAnalyticsDev').then(m => ({ default: m.TemplateAnalyticsDev })));
+const ModulesDev = lazy(() => import('@devtools/mainApp/routes/ModulesDev').then(m => ({ default: m.ModulesDev })));
+const PromptInspectorDev = lazy(() => import('@devtools/mainApp/routes/PromptInspectorDev').then(m => ({ default: m.PromptInspectorDev })));
+const DevPromptImporter = lazy(() => import('@devtools/mainApp/routes/DevPromptImporter').then(m => ({ default: m.DevPromptImporter })));
+const PromptLabDev = lazy(() => import('@devtools/mainApp/routes/PromptLabDev').then(m => ({ default: m.PromptLabDev })));
+const ActionBlockGraphDev = lazy(() => import('@devtools/mainApp/routes/ActionBlockGraphDev').then(m => ({ default: m.ActionBlockGraphDev })));
+const BlockFitDev = lazy(() => import('@devtools/mainApp/routes/BlockFitDev').then(m => ({ default: m.BlockFitDev })));
+const WidgetBuilderRoute = lazy(() => import('@devtools/mainApp/routes/WidgetBuilderRoute').then(m => ({ default: m.WidgetBuilderRoute })));
+const PluginWorkspaceRoute = lazy(() => import('@devtools/mainApp/routes/PluginWorkspace').then(m => ({ default: m.PluginWorkspaceRoute })));
 
 export const devtoolsRoutes: DevtoolsRoute[] = [
   {

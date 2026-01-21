@@ -5,19 +5,19 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import {
   ContextMenuProvider,
   ContextMenuPortal,
-} from '@lib/dockview';
-import { PanelPropertiesPopup } from '@lib/dockview';
-import { panelSelectors } from '@lib/plugins/catalogSelectors';
+  PanelPropertiesPopup,
+} from '@devtools/mainApp/dockview';
+import { panelSelectors } from '@devtools/mainApp/panelSelectors';
 
-import { ContextHubHost } from '@features/contextHub';
-import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import { ContextHubHost } from '@devtools/mainApp/contextHub';
+import { ContextHubRootProviders } from '@devtools/mainApp/contextHubRootProviders';
+import { useWorkspaceStore } from '@devtools/mainApp/workspaceStore';
 
-import { ProtectedRoute } from '@/routes/ProtectedRoute';
-import { Login } from '@/routes/Login';
-import { Register } from '@/routes/Register';
-import { useAuthStore } from '@/stores/authStore';
-import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+import { ProtectedRoute } from '@devtools/mainApp/routes/ProtectedRoute';
+import { Login } from '@devtools/mainApp/routes/Login';
+import { Register } from '@devtools/mainApp/routes/Register';
+import { useAuthStore } from '@devtools/mainApp/authStore';
+import { usePluginCatalogStore } from '@devtools/mainApp/pluginCatalogStore';
 
 import { DevtoolsHome } from './DevtoolsHome';
 import { devtoolsRoutes } from './devtoolsRoutes';
