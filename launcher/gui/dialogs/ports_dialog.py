@@ -25,12 +25,14 @@ def show_ports_dialog(parent, current_ports: Ports) -> Ports | None:
     game_frontend_input = QLineEdit(str(current_ports.game_frontend))
     game_service_input = QLineEdit(str(current_ports.game_service))
     devtools_input = QLineEdit(str(current_ports.devtools))
+    admin_input = QLineEdit(str(current_ports.admin))
 
     layout.addRow('Backend Port:', backend_input)
     layout.addRow('Frontend Port:', frontend_input)
     layout.addRow('Game Frontend Port:', game_frontend_input)
     layout.addRow('Game Service Port:', game_service_input)
     layout.addRow('DevTools Port:', devtools_input)
+    layout.addRow('Admin Port:', admin_input)
 
     result: Ports | None = None
 
@@ -44,6 +46,7 @@ def show_ports_dialog(parent, current_ports: Ports) -> Ports | None:
                 'Game Frontend': int(game_frontend_input.text()),
                 'Game Service': int(game_service_input.text()),
                 'DevTools': int(devtools_input.text()),
+                'Admin': int(admin_input.text()),
             }
 
             # Validate port range
@@ -78,6 +81,7 @@ def show_ports_dialog(parent, current_ports: Ports) -> Ports | None:
                 game_frontend=ports_dict['Game Frontend'],
                 game_service=ports_dict['Game Service'],
                 devtools=ports_dict['DevTools'],
+                admin=ports_dict['Admin'],
             )
             dlg.accept()
         except ValueError as e:

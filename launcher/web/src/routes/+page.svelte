@@ -4,6 +4,7 @@
 	import LogViewer from '$lib/components/LogViewer.svelte';
 	import { services, loading, error, selectedService, runningCount, healthyCount, loadServices, startService, stopService, restartService, startAll, stopAll } from '$lib/stores/services';
 	import { wsConnected, events } from '$lib/stores/websocket';
+	import { buildables, buildablesLoading, buildablesError, loadBuildables } from '$lib/stores/buildables';
 
 	let showLogs = false;
 
@@ -43,6 +44,7 @@
 	onMount(() => {
 		loadPageSettings();
 		loadServices();
+		loadBuildables();
 
 		// Refresh services every 5 seconds
 		const interval = setInterval(loadServices, 5000);
@@ -103,6 +105,19 @@
 
 	function toggleLogs() {
 		showLogs = !showLogs;
+	}
+
+	async function copyBuildCommand(buildable) {
+		const command = [buildable.command, ...(buildable.args || [])].join(' ');
+		if (typeof navigator === 'undefined' || !navigator.clipboard) {
+			console.warn('Clipboard API unavailable.');
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(command);
+		} catch (err) {
+			console.error('Failed to copy build command:', err);
+		}
 	}
 </script>
 
@@ -219,6 +234,73 @@
 					<LogViewer serviceKey={$selectedService} />
 				</div>
 			{/if}
+
+			<!-- Buildables -->
+			<section class="mt-8">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+						Buildables
+					</h2>
+					<div class="text-xs text-gray-500 dark:text-gray-400">
+						{$buildables.length} packages
+					</div>
+				</div>
+
+				{#if $buildablesError}
+					<div class="mb-3 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg">
+						{$buildablesError}
+					</div>
+				{/if}
+
+				{#if $buildablesLoading && $buildables.length === 0}
+					<div class="text-sm text-gray-600 dark:text-gray-400">
+						Loading buildables...
+					</div>
+				{:else if $buildables.length === 0}
+					<div class="text-sm text-gray-600 dark:text-gray-400">
+						No buildable packages found.
+					</div>
+				{:else}
+					<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+						{#each $buildables as buildable (buildable.id)}
+							<div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 border border-gray-200 dark:border-gray-700">
+								<div class="flex items-start justify-between mb-2">
+									<div>
+										<h3 class="font-semibold text-gray-900 dark:text-white">
+											{buildable.title}
+										</h3>
+										<p class="text-xs text-gray-500 dark:text-gray-400">
+											{buildable.package}
+										</p>
+									</div>
+									{#if buildable.category}
+										<span class="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-900 text-gray-600 dark:text-gray-300">
+											{buildable.category}
+										</span>
+									{/if}
+								</div>
+
+								{#if buildable.description}
+									<p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+										{buildable.description}
+									</p>
+								{/if}
+
+								<div class="text-xs font-mono text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-900 rounded p-2 mb-3">
+									{buildable.command} {buildable.args.join(' ')}
+								</div>
+
+								<button
+									on:click={() => copyBuildCommand(buildable)}
+									class="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm py-2 px-3 rounded transition-colors"
+								>
+									Copy Build Command
+								</button>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</section>
 		{/if}
 
 		<!-- Recent events (debug) -->

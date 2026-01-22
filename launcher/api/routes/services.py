@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from typing import List
 
 from launcher.core import ProcessManager, HealthManager
+from launcher.core.shared_settings import load_shared_settings
 from launcher.core.types import ServiceStatus, HealthStatus
 
 from ..models import (
@@ -302,10 +303,17 @@ async def start_all_services(
         Action result with count of started services
     """
     states = process_mgr.get_all_states()
+    try:
+        shared = load_shared_settings()
+        skip_db = shared.use_local_datastores
+    except Exception:
+        skip_db = False
     started = 0
     failed = []
 
     for service_key in states.keys():
+        if skip_db and service_key == "db":
+            continue
         if not process_mgr.is_running(service_key):
             success = process_mgr.start(service_key)
             if success:

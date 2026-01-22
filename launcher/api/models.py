@@ -87,6 +87,49 @@ class ServicesListResponse(BaseModel):
 
 
 # ============================================================================
+# Buildable Models
+# ============================================================================
+
+class BuildableDefinitionResponse(BaseModel):
+    """Buildable package definition."""
+    id: str
+    title: str
+    package: str
+    directory: str
+    description: Optional[str] = None
+    command: str
+    args: List[str]
+    category: Optional[str] = None
+    tags: List[str] = []
+
+
+class BuildablesListResponse(BaseModel):
+    """List of buildable workspace packages."""
+    buildables: List[BuildableDefinitionResponse]
+    total: int
+
+
+# ============================================================================
+# Shared Settings Models
+# ============================================================================
+
+class SharedSettingsResponse(BaseModel):
+    """Shared launcher settings."""
+    sql_logging_enabled: bool
+    worker_debug_flags: str
+    backend_log_level: str
+    use_local_datastores: bool
+
+
+class SharedSettingsUpdateRequest(BaseModel):
+    """Shared launcher settings update."""
+    sql_logging_enabled: Optional[bool] = None
+    worker_debug_flags: Optional[str] = None
+    backend_log_level: Optional[str] = None
+    use_local_datastores: Optional[bool] = None
+
+
+# ============================================================================
 # Log Models
 # ============================================================================
 

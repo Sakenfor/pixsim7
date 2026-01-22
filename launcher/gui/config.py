@@ -4,6 +4,24 @@ import shutil
 from dataclasses import dataclass, asdict
 from typing import Dict, Optional
 
+try:
+    from launcher.core.shared_settings import (
+        load_shared_settings,
+        update_shared_settings,
+        shared_settings_to_env,
+    )
+except Exception:
+    try:
+        from core.shared_settings import (
+            load_shared_settings,
+            update_shared_settings,
+            shared_settings_to_env,
+        )
+    except Exception:
+        load_shared_settings = None
+        update_shared_settings = None
+        shared_settings_to_env = None
+
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 # Global setting for SQL logging (set by launcher on startup)
@@ -19,18 +37,30 @@ def set_sql_logging(enabled: bool) -> None:
     """Set the global SQL logging preference."""
     global _sql_logging_enabled
     _sql_logging_enabled = enabled
+    if update_shared_settings:
+        update_shared_settings({"sql_logging_enabled": bool(enabled)})
 
 
 def set_worker_debug_flags(flags: str) -> None:
     """Set global worker debug categories (comma-separated)."""
     global _worker_debug_flags
     _worker_debug_flags = flags or ""
+    if update_shared_settings:
+        update_shared_settings({"worker_debug_flags": _worker_debug_flags})
 
 
 def set_backend_log_level(level: str) -> None:
     """Set global backend log level (LOG_LEVEL env)."""
     global _backend_log_level
     _backend_log_level = (level or "INFO").upper()
+    if update_shared_settings:
+        update_shared_settings({"backend_log_level": _backend_log_level})
+
+
+def set_use_local_datastores(enabled: bool) -> None:
+    """Set preference for local datastores and persist shared settings."""
+    if update_shared_settings:
+        update_shared_settings({"use_local_datastores": bool(enabled)})
 
 
 @dataclass
@@ -40,6 +70,7 @@ class Ports:
     game_frontend: int = 5174
     game_service: int = 8050
     devtools: int = 5176
+    admin: int = 5175
 
 
 def read_env_ports(env_path: Optional[str] = None) -> Ports:
@@ -65,6 +96,8 @@ def read_env_ports(env_path: Optional[str] = None) -> Ports:
                         p.game_service = int(v)
                     elif k == 'DEVTOOLS_PORT':
                         p.devtools = int(v)
+                    elif k == 'ADMIN_PORT':
+                        p.admin = int(v)
         except Exception:
             pass
     return p
@@ -90,6 +123,7 @@ def write_env_ports(ports: Ports, env_path: Optional[str] = None) -> None:
         'GAME_FRONTEND_PORT': str(ports.game_frontend),
         'GAME_SERVICE_PORT': str(ports.game_service),
         'DEVTOOLS_PORT': str(ports.devtools),
+        'ADMIN_PORT': str(ports.admin),
     }
     
     updated_keys = set()
@@ -164,14 +198,27 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
         devtools_base_url = os.getenv("DEVTOOLS_BASE_URL")
         env['VITE_DEVTOOLS_URL'] = devtools_base_url or f"http://localhost:{p.devtools}"
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
-    # SQL logging control (use parameter if provided, otherwise use global setting)
-    sql_log_enabled = sql_logging if sql_logging is not None else _sql_logging_enabled
-    env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
+    shared = None
+    if load_shared_settings:
+        try:
+            shared = load_shared_settings()
+        except Exception:
+            shared = None
 
-    # Worker debug flags (if set via launcher, propagate to services)
-    if _worker_debug_flags:
-        env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
-    env['LOG_LEVEL'] = _backend_log_level
+    if shared and shared_settings_to_env:
+        env.update(shared_settings_to_env(shared))
+    else:
+        if _worker_debug_flags:
+            env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
+        env['LOG_LEVEL'] = _backend_log_level
+    # SQL logging control (use parameter if provided, otherwise use shared setting if available)
+    if sql_logging is not None:
+        sql_log_enabled = sql_logging
+    elif shared:
+        sql_log_enabled = shared.sql_logging_enabled
+    else:
+        sql_log_enabled = _sql_logging_enabled
+    env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
     # Prefer direct DB ingestion via env if configured globally (.env)
     # If LOG_DATABASE_URL/PIXSIM_LOG_DB_URL exists, pixsim_logging will use it automatically.
     # We intentionally do NOT set PIXSIM_LOG_INGESTION_URL here to avoid routing through backend.
@@ -251,10 +298,26 @@ def load_ui_state() -> UIState:
                     data['health_check_startup_interval'] = 2.0
                 if 'health_check_stable_interval' not in data:
                     data['health_check_stable_interval'] = 10.0
-                return UIState(**data)
+                state = UIState(**data)
+                return _apply_shared_settings(state)
         except Exception:
             pass
-    return UIState()
+    return _apply_shared_settings(UIState())
+
+
+def _apply_shared_settings(state: UIState) -> UIState:
+    """Sync UI state fields from shared settings if available."""
+    if not load_shared_settings:
+        return state
+    try:
+        shared = load_shared_settings()
+        state.sql_logging_enabled = shared.sql_logging_enabled
+        state.worker_debug_flags = shared.worker_debug_flags
+        state.backend_debug_enabled = shared.backend_log_level.upper() == "DEBUG"
+        state.use_local_datastores = shared.use_local_datastores
+    except Exception:
+        pass
+    return state
 
 
 def save_ui_state(state: UIState) -> None:
@@ -289,8 +352,8 @@ def read_env_file(env_path: Optional[str] = None) -> Dict[str, str]:
     return env_vars
 
 
-def write_env_file(env_vars: Dict[str, str], env_path: Optional[str] = None) -> None:
-    """Write environment variables to .env file."""
+def write_env_file(env_vars: Dict[str, Optional[str]], env_path: Optional[str] = None) -> None:
+    """Write environment variables to .env file (None values remove keys)."""
     path = env_path or os.path.join(ROOT, '.env')
 
     # Read existing .env to preserve comments and order
@@ -305,12 +368,15 @@ def write_env_file(env_vars: Dict[str, str], env_path: Optional[str] = None) -> 
     updated_keys = set()
     new_lines = []
 
-    # Update existing keys
+    # Update existing keys (skip keys set to None)
     for line in existing_lines:
         stripped = line.strip()
         if stripped and '=' in stripped and not stripped.startswith('#'):
             key = stripped.split('=', 1)[0].strip()
             if key in env_vars:
+                if env_vars[key] is None:
+                    updated_keys.add(key)
+                    continue
                 new_lines.append(f'{key}={env_vars[key]}\n')
                 updated_keys.add(key)
             else:
@@ -320,7 +386,7 @@ def write_env_file(env_vars: Dict[str, str], env_path: Optional[str] = None) -> 
 
     # Add new keys
     for key, value in sorted(env_vars.items()):
-        if key not in updated_keys:
+        if key not in updated_keys and value is not None:
             new_lines.append(f'{key}={value}\n')
 
     # Write back

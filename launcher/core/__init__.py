@@ -61,6 +61,14 @@ from .config import LauncherConfig, ProcessManagerConfig, HealthManagerConfig, L
 from .event_bus import EventBus, Event, EventTypes, get_event_bus, reset_event_bus
 from .container import LauncherContainer, create_container
 from .interfaces import IProcessManager, IHealthManager, ILogManager, IEventBus
+from .buildables import BuildableDefinition, load_buildables
+from .shared_settings import (
+    SharedLauncherSettings,
+    load_shared_settings,
+    save_shared_settings,
+    update_shared_settings,
+    apply_shared_settings_to_env,
+)
 
 __all__ = [
     # Core types
@@ -99,6 +107,17 @@ __all__ = [
     'IHealthManager',
     'ILogManager',
     'IEventBus',
+
+    # Buildables
+    'BuildableDefinition',
+    'load_buildables',
+
+    # Shared settings
+    'SharedLauncherSettings',
+    'load_shared_settings',
+    'save_shared_settings',
+    'update_shared_settings',
+    'apply_shared_settings_to_env',
 ]
 
 __version__ = '0.2.0'  # Phase 3-4 complete

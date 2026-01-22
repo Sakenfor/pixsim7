@@ -222,6 +222,10 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
     game_frontend_base_url = _get_env_value("GAME_FRONTEND_BASE_URL", env_vars) or f"http://localhost:{ports.game_frontend}"
     devtools_base_url = _get_env_value("DEVTOOLS_BASE_URL", env_vars) or f"http://localhost:{ports.devtools}"
     launcher_base_url = _get_env_value("LAUNCHER_BASE_URL", env_vars) or "http://localhost:8100"
+    admin_port = _get_env_value("ADMIN_PORT", env_vars) or str(getattr(ports, "admin", 5175))
+    admin_base_url = _get_env_value("ADMIN_BASE_URL", env_vars)
+    if not admin_base_url:
+        admin_base_url = f"http://localhost:{admin_port}"
     generation_port = _get_env_value("GENERATION_API_PORT", env_vars)
     generation_base_url = _get_env_value("GENERATION_BASE_URL", env_vars)
     if not generation_base_url and generation_port:
@@ -235,6 +239,7 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
         value = value.replace("$FRONTEND_PORT", str(ports.frontend))
         value = value.replace("$GAME_FRONTEND_PORT", str(ports.game_frontend))
         value = value.replace("$DEVTOOLS_PORT", str(ports.devtools))
+        value = value.replace("$ADMIN_PORT", str(admin_port))
         value = value.replace("$BACKEND_BASE_URL", backend_base_url)
         value = value.replace("$FRONTEND_BASE_URL", frontend_base_url)
         value = value.replace("$GENERATION_BASE_URL", generation_base_url or "")
@@ -242,6 +247,7 @@ def _substitute_env_vars(env_overrides: Dict[str, str], ports, service_port: int
             value = value.replace("$GENERATION_API_PORT", generation_port)
         value = value.replace("$GAME_FRONTEND_BASE_URL", game_frontend_base_url)
         value = value.replace("$DEVTOOLS_BASE_URL", devtools_base_url)
+        value = value.replace("$ADMIN_BASE_URL", admin_base_url)
         value = value.replace("$LAUNCHER_BASE_URL", launcher_base_url)
         substituted[key] = value
 

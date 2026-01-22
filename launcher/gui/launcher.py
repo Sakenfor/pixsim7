@@ -26,7 +26,8 @@ try:
     from .config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags
+        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags,
+        set_use_local_datastores
     )
     from .docker_utils import compose_ps, compose_up_detached, compose_down
     from .dialogs.git_tools_dialog import show_git_tools_dialog
@@ -42,7 +43,8 @@ except ImportError:
     from config import (
         service_env, read_env_ports, write_env_ports, Ports,
         check_tool_available, load_ui_state, save_ui_state, UIState, ROOT,
-        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags
+        read_env_file, write_env_file, set_sql_logging, set_backend_log_level, set_worker_debug_flags,
+        set_use_local_datastores
     )
     from docker_utils import compose_ps, compose_up_detached, compose_down
     from dialogs.git_tools_dialog import show_git_tools_dialog
@@ -211,6 +213,7 @@ class LauncherWindow(QWidget):
         set_sql_logging(self.ui_state.sql_logging_enabled)
         set_worker_debug_flags(self.ui_state.worker_debug_flags)
         set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
+        set_use_local_datastores(self.ui_state.use_local_datastores)
         # Set minimum window size
         self.setMinimumSize(800, 500)
 
@@ -1657,6 +1660,7 @@ class LauncherWindow(QWidget):
         set_sql_logging(self.ui_state.sql_logging_enabled)
         set_worker_debug_flags(self.ui_state.worker_debug_flags)
         set_backend_log_level('DEBUG' if self.ui_state.backend_debug_enabled else 'INFO')
+        set_use_local_datastores(self.ui_state.use_local_datastores)
 
         # Apply window flags if changed
         if old_always_on_top != self.ui_state.window_always_on_top:

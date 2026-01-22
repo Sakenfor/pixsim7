@@ -8,7 +8,8 @@
       "frontend": 5173,
       "game_frontend": 5174,
       "game_service": 8050,
-      "devtools": 5176
+      "devtools": 5176,
+      "admin": 5175
     },
     "base_urls": {
       "backend": "",
@@ -16,7 +17,8 @@
       "frontend": "",
       "game_frontend": "",
       "launcher": "",
-      "devtools": ""
+      "devtools": "",
+      "admin": ""
     }
   },
   "https_local": {
@@ -28,7 +30,8 @@
       "frontend": 5173,
       "game_frontend": 5174,
       "game_service": 8050,
-      "devtools": 5176
+      "devtools": 5176,
+      "admin": 5175
     },
     "base_urls": {
       "backend": "https://api.pixsim7.local",
@@ -36,7 +39,8 @@
       "frontend": "https://app.pixsim7.local",
       "game_frontend": "https://game.pixsim7.local",
       "launcher": "https://launcher.pixsim7.local",
-      "devtools": "https://dev.pixsim7.local"
+      "devtools": "https://dev.pixsim7.local",
+      "admin": "https://admin.pixsim7.local"
     }
   }
 }
