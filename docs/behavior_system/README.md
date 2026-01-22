@@ -884,7 +884,7 @@ import {
   getNarrativeEmphasisWeight,
   shouldFavorNarrativeProgram,
   getNarrativeFrequency,
-} from '@pixsim7/game-core';
+} from '@pixsim7/game.engine';
 
 // Get scoring weights from profile
 const weights = getDefaultScoringWeights('work_focused');

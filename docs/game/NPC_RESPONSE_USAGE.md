@@ -168,7 +168,7 @@ The NPC Response node has ports:
 ### From InteractiveTool Component:
 
 ```typescript
-import { NpcResponseEvaluator } from '@pixsim7/scene-gizmos';
+import { NpcResponseEvaluator } from '@pixsim7/scene.gizmos';
 
 // Create evaluator with node metadata
 const evaluator = new NpcResponseEvaluator(npcNodeMetadata);

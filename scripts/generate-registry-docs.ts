@@ -16,9 +16,9 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 // Import registries and their registration functions
-import { sessionHelperRegistry } from '../packages/game-core/src/session/helperRegistry.js';
-import { registerBuiltinHelpers } from '../packages/game-core/src/session/builtinHelpers.js';
-import { generateHelperDocs } from '../packages/game-core/src/session/generateDocs.js';
+import { sessionHelperRegistry } from '../packages/game/engine/src/session/helperRegistry.js';
+import { registerBuiltinHelpers } from '../packages/game/engine/src/session/builtinHelpers.js';
+import { generateHelperDocs } from '../packages/game/engine/src/session/generateDocs.js';
 import { nodeTypeRegistry } from '../packages/shared/graph-core/src/nodeTypeRegistry.js';
 import { registerBuiltinNodeTypes } from '../packages/shared/graph-core/src/builtinNodeTypes.js';
 

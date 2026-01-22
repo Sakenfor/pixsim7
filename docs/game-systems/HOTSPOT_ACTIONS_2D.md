@@ -22,7 +22,7 @@ TypeScript helpers define this behavior.
 
 Relevant code:
 - `@pixsim7/game.engine` (hotspot actions and playback helpers)
-- `apps/main/src/lib/game/interactionSchema.ts` (re-exports game-core helpers)
+- `apps/main/src/lib/game/interactionSchema.ts` (re-exports game engine helpers)
 - `apps/main/src/routes/Game2D.tsx`
 - `apps/main/src/routes/GameWorld.tsx`
 
@@ -145,7 +145,7 @@ Logic:
 - If node `type === 'end'` → `'completed'`.
 - Otherwise → `'playing'`.
 
-`ScenePlayer` (in `@pixsim7/game-ui`) exposes `onStateChange(state)`. `Game2D`
+`ScenePlayer` (in `@pixsim7/game.components`) exposes `onStateChange(state)`. `Game2D`
 subscribes to this callback and immediately maps `SceneRuntimeState` into a
 simple `ScenePlaybackPhase` for UI decisions.
 

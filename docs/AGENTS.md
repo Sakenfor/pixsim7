@@ -85,7 +85,7 @@ Follow these rules when working on game features:
 **Shared Packages:**
 - `packages/types/` – Shared TypeScript types
 - `packages/ui/` – Reusable UI components
-- `packages/game-ui/` – ScenePlayer component
+- `packages/game/components/` – ScenePlayer component
 
 ### Quick Reference Links
 

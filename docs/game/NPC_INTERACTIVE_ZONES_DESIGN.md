@@ -465,7 +465,7 @@ function isPointInZone(x: number, y: number, zone: NpcBodyZone): boolean {
 
 ### 2. Update NpcResponseEvaluator with Zone Context
 
-**File: `packages/scene-gizmos/src/npcResponseEvaluator.ts`**
+**File: `packages/scene/gizmos/src/npcResponseEvaluator.ts`**
 
 ```typescript
 export class NpcResponseEvaluator {

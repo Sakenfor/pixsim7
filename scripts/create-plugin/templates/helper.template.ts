@@ -4,7 +4,7 @@
  */
 
 import type { GameSessionDTO } from '@pixsim7/types';
-import { getFlag, setFlag } from '@pixsim7/game-core';
+import { getFlag, setFlag } from '@pixsim7/game.engine';
 
 /**
  * Custom state interface for {{PLUGIN_NAME}}

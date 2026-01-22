@@ -23,7 +23,7 @@ The UI has grown to cover:
 
 - Core app shell (home/workspace/assets/graph).
 - Game/editor surfaces (scene graph, behavior editor, interaction tools).
-- Shared UI library (`@pixsim7/ui`) and game‑focused UI (`@pixsim7/game-ui`).
+- Shared UI library (`@pixsim7/ui`) and game‑focused UI (`@pixsim7/game.components`).
 
 You have already done one large consolidation pass:
 
@@ -167,7 +167,7 @@ Ensure there’s a **current, concise map** of major UI surfaces and where their
 
 **Shared Package Exports:**
 - `@pixsim7/ui`: Button, Badge, Dropdown, FormField, Input, Modal, Panel, ProgressBar, PromptInput, Select, StatusBadge, Table, Tabs, ThemeToggle, Toast, Tooltip, useTheme, useToast
-- `@pixsim7/game-ui`: ScenePlayer, ReflexMiniGame (generic game UI, no frontend dependencies)
+- `@pixsim7/game.components`: ScenePlayer, ReflexMiniGame (generic game UI, no frontend dependencies)
 
 ---
 
@@ -303,7 +303,7 @@ These are low-priority suggestions that could improve discoverability:
 ## Phase 18.3 – Shared vs Feature UI Boundaries
 
 **Goal**  
-Ensure that **truly generic UI** lives in `@pixsim7/ui` / `@pixsim7/game-ui`, and that feature‑specific logic stays in `frontend/`.
+Ensure that **truly generic UI** lives in `@pixsim7/ui` / `@pixsim7/game.components`, and that feature‑specific logic stays in `frontend/`.
 
 **Scope**
 
@@ -344,7 +344,7 @@ The shared UI packages maintain clean architectural boundaries with no violation
 - **Dependency Integrity**: ✅ No imports from `frontend/` or parent applications
 - **Usage**: Widely imported across frontend (20+ files use Toast, Button, etc.)
 
-**`@pixsim7/game-ui` Analysis:**
+**`@pixsim7/game.components` Analysis:**
 - **Exports**: 3 game-specific reusable components
   - ScenePlayer - Generic scene playback component
   - ReflexMiniGame - Generic reflex-based mini-game
@@ -360,7 +360,7 @@ The shared UI packages maintain clean architectural boundaries with no violation
 
 **Appropriate Use of Shared Components:**
 - ✅ Frontend extensively uses `@pixsim7/ui` components (Button, Modal, Panel, Toast, etc.)
-- ✅ Frontend uses `@pixsim7/game-ui` for ScenePlayer and mini-games
+- ✅ Frontend uses `@pixsim7/game.components` for ScenePlayer and mini-games
 - ✅ No duplicate Button/Modal/Toast implementations in frontend (previous consolidation successful)
 - ✅ StatusBadge from `@pixsim7/ui` used for generic status indicators
 
@@ -395,7 +395,7 @@ From `UI_CONSOLIDATION_COMPLETED.md` (2025-11-19):
 
 2. **When Adding New Generic Components:**
    - Add to `@pixsim7/ui` if truly generic (buttons, inputs, badges, etc.)
-   - Add to `@pixsim7/game-ui` if game-specific but reusable across worlds
+   - Add to `@pixsim7/game.components` if game-specific but reusable across worlds
    - Keep in `frontend/` if app-specific or tightly coupled to features
 
 3. **Watch For:**
@@ -556,7 +556,7 @@ Add a short “Agent UI Checklist” section either here or in `apps/main/src/co
   - Don’t put heavy logic in the route file; delegate to components.
 - When adding a **new reusable UI element**:
   - Check `@pixsim7/ui` first; add there if generic and then import into frontend.
-  - If game‑specific but reusable across worlds, consider `@pixsim7/game-ui`.
+  - If game‑specific but reusable across worlds, consider `@pixsim7/game.components`.
 - When adding a **status/indicator widget**:
   - Prefer a `*Status` or `*Badge` naming convention.
   - Co‑locate with the feature area (`generations`, `plugins`, `game`) rather than `common` unless truly generic.
@@ -593,7 +593,7 @@ Add a short “Agent UI Checklist” section either here or in `apps/main/src/co
      - Truly generic (Button, Input, Modal, Badge, etc.)
      - No domain knowledge (no references to graphs, plugins, NPCs, worlds, etc.)
      - Reusable across any application
-   - ✅ **`@pixsim7/game-ui`** if:
+   - ✅ **`@pixsim7/game.components`** if:
      - Game-specific but reusable across different games/worlds
      - Generic game concepts (ScenePlayer, MiniGameHost)
      - No hardcoded world/character data
@@ -679,7 +679,7 @@ Need a new UI component?
 │  └─ Use @pixsim7/ui component ✓
 │
 ├─ Is it generic game UI (ScenePlayer, MiniGame)?
-│  └─ Add to @pixsim7/game-ui
+│  └─ Add to @pixsim7/game.components
 │
 ├─ Is it a major dockable panel used across routes?
 │  └─ Add to top-level components/ (e.g., GraphPanel)
@@ -758,7 +758,7 @@ Keep docs in sync so humans and agents can quickly see how the UI is organized.
 
 2. **Shared Package Boundaries**: Excellent with zero violations
    - `@pixsim7/ui`: 16 generic components, no domain logic
-   - `@pixsim7/game-ui`: 3 reusable game components, no frontend dependencies
+   - `@pixsim7/game.components`: 3 reusable game components, no frontend dependencies
    - Frontend properly uses shared components
 
 3. **No Significant Duplication**: Previous consolidation work (Nov 2025) successful

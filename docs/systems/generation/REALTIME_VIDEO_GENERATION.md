@@ -55,7 +55,7 @@ import {
   NpcResponseEvaluator,
   QUALITY_PRESETS,
   getCommonNpcStates,
-} from '@pixsim7/scene-gizmos';
+} from '@pixsim7/scene.gizmos';
 import type { NpcResponseMetadata } from '@pixsim7/types/npcResponseNode';
 
 // Create manager with NPC's settings
@@ -123,7 +123,7 @@ if (npcMetadata.videoGen.realtime?.preGenerate) {
 ### 3. Handle Tool Interactions in Real-Time
 
 ```typescript
-import { InteractiveTool } from '@pixsim7/scene-gizmos';
+import { InteractiveTool } from '@pixsim7/scene.gizmos';
 
 // Create NPC response evaluator
 const responseEvaluator = new NpcResponseEvaluator(npcMetadata);
@@ -197,7 +197,7 @@ function handleFallback(fallback: FallbackVideo) {
 ### 5. Progressive Loading (Low → High Quality)
 
 ```typescript
-import { ProgressiveVideoLoader } from '@pixsim7/scene-gizmos';
+import { ProgressiveVideoLoader } from '@pixsim7/scene.gizmos';
 
 async function handleToolInteractionProgressive(/* ... */) {
   const videoParams = responseEvaluator.evaluate(/* ... */);

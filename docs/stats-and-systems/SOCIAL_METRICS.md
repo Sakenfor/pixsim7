@@ -6,7 +6,7 @@ This document describes the social metrics system for PixSim7, which provides a 
 
 > **For Agents**
 > - Backend evaluators in `pixsim7/backend/main/domain/metrics/*` and the preview APIs are **authoritative** for metric values; TS helpers mirror them for tools and UI.
-> - When adding or changing a metric, update **both**: Python evaluators + TypeScript types (`packages/types/src/game.ts`) and game-core helpers.
+> - When adding or changing a metric, update **both**: Python evaluators + TypeScript types (`packages/types/src/game.ts`) and game engine helpers.
 > - Do not compute relationship tiers/intimacy in arbitrary frontend code; use preview APIs or backend‑normalized session data.
 > - Related tasks (roadmap/status):  
 >   - `claude-tasks/07-relationship-preview-api-and-metrics.md`  
@@ -19,7 +19,7 @@ The social metrics system consists of:
 1. **Backend Evaluators**: Python functions that compute metrics from session state and world schemas
 2. **Preview API**: REST endpoints for stateless metric computation ("what-if" scenarios)
 3. **TypeScript Types**: Shared type definitions in `@pixsim7/types`
-4. **Game-Core Helpers**: Client-side computation and API client functions
+4. **Game Engine Helpers**: Client-side computation and API client functions
 5. **World Schemas**: JSON configuration in `GameWorld.meta` defining metric thresholds and bands
 
 The system is designed to be:
@@ -55,7 +55,7 @@ The system is designed to be:
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-tier`
 
-**Game-Core Helper**: `previewRelationshipTier(args)`
+**Game Engine Helper**: `previewRelationshipTier(args)`
 
 ---
 
@@ -77,7 +77,7 @@ The system is designed to be:
 
 **Preview Endpoint**: `POST /api/v1/game/relationships/preview-intimacy`
 
-**Game-Core Helper**: `previewIntimacyLevel(args)`
+**Game Engine Helper**: `previewIntimacyLevel(args)`
 
 ---
 
@@ -116,7 +116,7 @@ arousal = chemistry * 0.5 + tension * 0.5
 
 **Preview Endpoint**: `POST /api/v1/game/npc/preview-mood`
 
-**Game-Core Helper**: `previewNpcMood(args)`
+**Game Engine Helper**: `previewNpcMood(args)`
 
 **Client-Side Computation**: `getNpcBrainState()` from `@pixsim7/game.engine`
 
@@ -248,7 +248,7 @@ else:
 
 **Preview Endpoint**: `POST /api/v1/game/npc/preview-unified-mood`
 
-**Game-Core Helper**: `previewUnifiedMood(args)` from `@pixsim7/game.engine`
+**Game Engine Helper**: `previewUnifiedMood(args)` from `@pixsim7/game.engine`
 
 **NPC Brain Integration**: `getNpcBrainState({ unifiedMood })` accepts optional unified mood parameter
 
@@ -293,7 +293,7 @@ else:
 
 **Preview Endpoint**: `POST /api/v1/game/reputation/preview-reputation`
 
-**Game-Core Helper**: `previewReputationBand(args)`
+**Game Engine Helper**: `previewReputationBand(args)`
 
 ---
 
@@ -361,7 +361,7 @@ All endpoints:
 
 **Design**: Generic types with type parameter `M` for metric-specific constraints
 
-### Game-Core Layer
+### Game Engine Layer
 
 **Location**: `packages/game/engine/src/`
 
@@ -792,8 +792,8 @@ Future validation features:
 4. **Create API endpoint**: New file in `pixsim7/backend/main/api/v1/`
 5. **Create route plugin**: New manifest in `pixsim7/backend/main/routes/`
 6. **Add TypeScript types**: Extend `packages/types/src/game.ts`
-7. **Add game-core helper**: Extend `packages/game/engine/src/metrics/preview.ts`
-8. **Export from game-core**: Add to `packages/game/engine/src/index.ts`
+7. **Add game engine helper**: Extend `packages/game/engine/src/metrics/preview.ts`
+8. **Export from game engine**: Add to `packages/game/engine/src/index.ts`
 9. **Document schema location**: Update this doc and Phase 7 summary
 10. **Update APP_MAP.md**: Add to social metrics section
 

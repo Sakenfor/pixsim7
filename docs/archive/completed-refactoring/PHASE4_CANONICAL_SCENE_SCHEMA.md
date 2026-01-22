@@ -267,7 +267,7 @@ async def get_scene(scene_id: int, db: DatabaseSession, asset_service: AssetSvc,
 
 **Consumption:**
 - Consume Scene from `/api/v1/game/scenes/{id}` endpoint
-- Use ScenePlayer from `@pixsim7/game-ui` for playback
+- Use ScenePlayer from `@pixsim7/game.components` for playback
 - Never parse or depend on storage format details
 - Trust that MediaSegment.url is ready to use
 
@@ -409,7 +409,7 @@ The backend already properly implements this pattern:
 Game frontend properly consumes Scene:
 
 - [x] game-frontend/src/lib/gameApi.ts → fetchSceneById returns Scene
-- [x] ScenePlayer from @pixsim7/game-ui accepts Scene prop
+- [x] ScenePlayer from @pixsim7/game.components accepts Scene prop
 - [x] MediaSegment URLs ready to use (no further hydration needed)
 - [x] Full TypeScript type safety via @pixsim7/types
 
@@ -464,7 +464,7 @@ Game frontend properly consumes Scene:
 - ✅ Backend stores asset_ids in GameSceneNode
 - ✅ API layer hydrates asset_ids → MediaSegment with URLs
 - ✅ game-frontend consumes canonical Scene format
-- ✅ ScenePlayer uses Scene from @pixsim7/game-ui
+- ✅ ScenePlayer uses Scene from @pixsim7/game.components
 - ✅ Permission enforcement via AssetService
 - ✅ Multi-clip nodes supported via meta.segments
 

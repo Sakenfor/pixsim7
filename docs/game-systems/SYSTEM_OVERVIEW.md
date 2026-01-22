@@ -97,10 +97,10 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - `effects`: Set/unset flags, update relationships, advance arcs
 - `isDefault`: True for default fallback edges
 
-**ScenePlayer** (game-ui component):
+**ScenePlayer** (game components package):
 - React component that renders scenes with video playback, choices, mini-games
 - Exposes `onStateChange(state)` callback for playback phase tracking
-- Lives in `@pixsim7/game-ui` package
+- Lives in `@pixsim7/game.components` package
 
 **Backend:**
 - `/api/v1/game/scenes` (scene CRUD)
@@ -188,7 +188,7 @@ This document provides a high-level map of how PixSim7's game systems fit togeth
 - Used by scene editor to provide world-aware authoring
 
 **Related packages:**
-- `@pixsim7/game-ui` – ScenePlayer component for playback
+- `@pixsim7/game.components` – ScenePlayer component for playback
 - `@pixsim7/types` – Shared Scene/Node/Edge types
 
 **See:**

@@ -151,7 +151,7 @@ class OperationType(str, Enum):
 
 Refactor `VideoGenerationManager` to use existing backend instead of custom generation function:
 
-**File: `packages/scene-gizmos/src/videoGenerationManager.ts`**
+**File: `packages/scene/gizmos/src/videoGenerationManager.ts`**
 
 ```typescript
 export class VideoGenerationManager {
@@ -618,8 +618,8 @@ generationUIPluginRegistry.register(npcResponsePlugin);
 ## Example Usage After Integration
 
 ```typescript
-import { VideoGenerationManager } from '@pixsim7/scene-gizmos';
-import { NpcResponseEvaluator } from '@pixsim7/scene-gizmos';
+import { VideoGenerationManager } from '@pixsim7/scene.gizmos';
+import { NpcResponseEvaluator } from '@pixsim7/scene.gizmos';
 
 // Create manager (now uses Jobs API)
 const videoManager = new VideoGenerationManager({

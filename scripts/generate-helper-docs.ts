@@ -6,8 +6,8 @@
  * Run with: npx ts-node scripts/generate-helper-docs.ts
  */
 
-import { registerBuiltinHelpers } from '../packages/game-core/src/session/builtinHelpers.js';
-import { generateHelperDocs } from '../packages/game-core/src/session/generateDocs.js';
+import { registerBuiltinHelpers } from '../packages/game/engine/src/session/builtinHelpers.js';
+import { generateHelperDocs } from '../packages/game/engine/src/session/generateDocs.js';
 import fs from 'fs';
 import path from 'path';
 

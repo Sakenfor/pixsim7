@@ -1157,7 +1157,7 @@ for npc in world.npcs:
 **Modules Involved:**
 - **Frontend:** `apps/game/` - Game player React app
 - **Frontend:** `apps/main/src/routes/game-2d.tsx` - 2D game UI
-- **Frontend:** `packages/game-ui/` - HUD, panels, overlays
+- **Frontend:** `packages/game/components/` - ScenePlayer, mini-games, shared game UI
 - **Backend:** `services/game/session_service.py` - Session lifecycle
 - **Backend:** `services/npc/npc_interaction_service.py` - Interaction execution
 - **Backend:** `services/llm/llm_service.py` - Dialogue generation

@@ -27,8 +27,8 @@ Existing infrastructure to leverage:
 // Shared UI components (@pixsim7/shared.ui)
 import { Button, Modal, Tabs, Tooltip, Toast, Panel } from '@pixsim7/shared.ui';
 
-// Game components (@pixsim7/game-ui)
-import { ScenePlayer } from '@pixsim7/game-ui';
+// Game components (@pixsim7/game.components)
+import { ScenePlayer } from '@pixsim7/game.components';
 
 // Graph templates (already exists!)
 import { GraphTemplate, TemplateParameter } from '../lib/graph/graphTemplates';
@@ -54,7 +54,7 @@ Includes:
 - `apps/main/src/components/graph-template/` - Template browser and wizard UI
 - `apps/main/src/lib/graph/clipboard.ts` - Copy/paste utilities for nodes
 - Integration with existing `@pixsim7/shared.ui` components
-- Integration with existing `ScenePlayer` from `@pixsim7/game-ui`
+- Integration with existing `ScenePlayer` from `@pixsim7/game.components`
 - Integration with existing `GraphTemplate` system
 
 Out of scope:
@@ -81,14 +81,14 @@ Create `apps/main/src/components/scene-player/ScenePlaybackPanel.tsx`:
 
 ```typescript
 import { useState, useCallback } from 'react';
-import { ScenePlayer } from '@pixsim7/game-ui';
+import { ScenePlayer } from '@pixsim7/game.components';
 import { Button, Tabs, Panel, Modal } from '@pixsim7/shared.ui';
 import { useGraphStore } from '../../stores/graphStore';
 
 /**
  * Scene Playback Panel - In-editor scene testing
  *
- * Leverages existing ScenePlayer from @pixsim7/game-ui
+ * Leverages existing ScenePlayer from @pixsim7/game.components
  * Adds editor-specific controls (step-through, mock state, start from node)
  */
 export function ScenePlaybackPanel() {
@@ -203,7 +203,7 @@ Acceptance:
 - Step-through mode allows debugging
 - Mock state editor allows testing conditions
 - Execution timeline shows path taken
-- Uses existing ScenePlayer from @pixsim7/game-ui
+- Uses existing ScenePlayer from @pixsim7/game.components
 
 2. Visual Content Preview in Nodes
 
@@ -680,7 +680,7 @@ All components leverage existing infrastructure:
 import { Button, Modal, Tabs, Tooltip, Toast, Panel, Input, Badge } from '@pixsim7/shared.ui';
 
 // Game components
-import { ScenePlayer } from '@pixsim7/game-ui';
+import { ScenePlayer } from '@pixsim7/game.components';
 
 // Graph templates (already exists)
 import { GraphTemplate, TemplateParameter } from '../lib/graph/graphTemplates';
@@ -761,12 +761,12 @@ This task is part of the editor improvement series:
 Related Work:
 
 - GraphTemplate system: Already implemented, needs UI
-- ScenePlayer: Already exists in @pixsim7/game-ui
+- ScenePlayer: Already exists in @pixsim7/game.components
 - Preview bridge: Exists but underutilized
 
 Success Criteria
 
-- [ ] Scene playback panel uses existing ScenePlayer from @pixsim7/game-ui
+- [ ] Scene playback panel uses existing ScenePlayer from @pixsim7/game.components
 - [ ] "Play from here" context menu works on all nodes
 - [ ] Step-through mode and mock state editor functional
 - [ ] Execution timeline shows playback path
