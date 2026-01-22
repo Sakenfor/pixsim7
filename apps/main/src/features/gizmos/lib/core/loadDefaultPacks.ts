@@ -2,7 +2,7 @@
  * Load Default Gizmo & Tool Packs
  *
  * Importing this module ensures all default packs are loaded and registered
- * with the canonical registry in @pixsim7/scene-gizmos.
+ * with the canonical registry in @pixsim7/scene.gizmos.
  *
  * Use this in:
  * - App initialization/bootstrap

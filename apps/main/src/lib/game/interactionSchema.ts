@@ -4,7 +4,7 @@
  * This module re-exports the canonical implementation from
  * `@pixsim7/game.engine
  * from `frontend/src/lib/game/interactionSchema` continue to work
- * while all logic lives in the shared game-core package.
+ * while all logic lives in the shared game engine package.
  */
 export {
   parseHotspotAction,

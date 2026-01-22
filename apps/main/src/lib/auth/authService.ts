@@ -6,7 +6,7 @@
  * - Preview bridge token sync
  * - Logout redirect handling
  *
- * Re-exports the configured authService from @pixsim7/shared.auth.
+ * Re-exports the configured authService from @pixsim7/shared.auth.core.
  */
 import {
   authService,

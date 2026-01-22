@@ -45,7 +45,7 @@ export function RelationshipDashboard({ session, onClose }: RelationshipDashboar
     for (const [key] of Object.entries(relationshipData)) {
       const npcId = parseNpcKey(key);
       if (npcId !== null) {
-        // Use game-core helper instead of manual extraction
+        // Use game engine helper instead of manual extraction
         const relState = getNpcRelationshipState(session, npcId);
 
         if (!relState) {

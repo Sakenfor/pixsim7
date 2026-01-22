@@ -3,14 +3,14 @@
  * Centralized mapping of gizmo IDs to React components
  * Single source of truth for gizmo rendering
  *
- * Architecture Note: This file lives in frontend (not game-ui) because:
+ * Architecture Note: This file lives in frontend (not game components) because:
  * - Gizmo implementations are application-specific
- * - game-ui should remain generic and reusable
+ * - game components should remain generic and reusable
  * - Keeps package boundaries clean (no packages importing from frontend)
  */
 
-import { lazy, type ComponentType } from 'react';
 import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
+import { lazy, type ComponentType } from 'react';
 
 // Lazy load gizmo components for code splitting
 const gizmoRenderers: Record<string, ComponentType<GizmoComponentProps>> = {

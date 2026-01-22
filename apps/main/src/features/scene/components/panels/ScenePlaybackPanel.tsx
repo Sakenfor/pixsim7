@@ -23,7 +23,7 @@ type PlaybackMode = 'full' | 'step';
 /**
  * Scene Playback Panel - In-editor scene testing
  *
- * Leverages existing ScenePlayer from @pixsim7/game-ui
+ * Leverages existing ScenePlayer from @pixsim7/game.components
  * Adds editor-specific controls (mock state, start from node, execution timeline)
  */
 export function ScenePlaybackPanel({

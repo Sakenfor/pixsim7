@@ -5,7 +5,7 @@
  * This allows designers to see what social context would be generated for different
  * relationship states without requiring a live game session.
  *
- * @see packages/game-core/src/relationships/socialContext.ts - Runtime version
+ * @see packages/game/engine/src/relationships/socialContext.ts - Runtime version
  * @see docs/INTIMACY_SCENE_COMPOSER.md - Phase 3 documentation
  */
 
@@ -26,7 +26,7 @@ import {
 
 /**
  * Intimacy level to band mapping
- * Simplified version of the game-core mapping for preview purposes
+ * Simplified version of the game engine mapping for preview purposes
  */
 const INTIMACY_BAND_MAP: Record<string, 'none' | 'light' | 'deep' | 'intense'> = {
   // No intimacy
@@ -99,7 +99,7 @@ function deriveContentRating(
 /**
  * Build GenerationSocialContext from SimulatedRelationshipState
  *
- * This is a preview-oriented version of buildGenerationSocialContext from game-core.
+ * This is a preview-oriented version of buildGenerationSocialContext from game engine.
  * It allows designers to see what social context would be generated for different
  * relationship states in the intimacy scene composer.
  *

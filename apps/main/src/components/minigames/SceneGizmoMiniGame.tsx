@@ -2,7 +2,7 @@
  * Scene Gizmo Mini-Game
  * Interactive control system for scene progression
  *
- * Architecture Note: This component lives in frontend (not game-ui) because:
+ * Architecture Note: This component lives in frontend (not game components) because:
  * - It's tightly coupled to frontend's gizmo implementations
  * - Uses frontend-specific gizmo renderer registry
  * - Keeps package boundaries clean

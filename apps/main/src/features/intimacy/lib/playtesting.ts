@@ -553,7 +553,7 @@ export function analyzePlaytest(session: PlaytestSession): PlaytestAnalysis {
 // Utilities
 // ============================================================================
 
-// formatDuration moved to @pixsim7/shared.time
+// formatDuration moved to @pixsim7/shared.time.core
 import { formatDuration } from '@pixsim7/shared.time.core';
 
 /**

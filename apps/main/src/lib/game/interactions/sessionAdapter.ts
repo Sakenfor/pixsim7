@@ -2,7 +2,7 @@
  * Session Adapter
  *
  * Creates SessionHelpers instance for InteractionContext.
- * Binds game-core helpers to a specific GameSession, providing
+ * Binds game engine helpers to a specific GameSession, providing
  * a clean API for plugins without requiring direct imports.
  *
  * Implements optimistic updates:

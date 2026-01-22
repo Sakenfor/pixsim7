@@ -1,7 +1,7 @@
 /**
  * Auth Store
  *
- * Re-exports the auth store from @pixsim7/shared.auth.
+ * Re-exports the auth store from @pixsim7/shared.auth.core.
  *
  * IMPORTANT: Import @lib/auth before using this store to ensure
  * the auth service is configured with the API client.

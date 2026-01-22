@@ -1,7 +1,7 @@
 /**
  * Authentication System
  *
- * Configures and re-exports auth functionality from @pixsim7/shared.auth.
+ * Configures and re-exports auth functionality from @pixsim7/shared.auth.core.
  */
 
 // Export the configured auth service

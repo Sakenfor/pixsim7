@@ -60,7 +60,7 @@ context.session.addInventoryItem('flower', 1);
 - `executeSlotInteractions()` handles interaction normalization and execution
 - All session updates are type-safe via `SessionFlags`, `ArcProgress`, `QuestProgress`, etc.
 
-This ensures consistent session logic across all frontends (React/3D/CLI) and keeps plugins decoupled from game-core imports.
+This ensures consistent session logic across all frontends (React/3D/CLI) and keeps plugins decoupled from game engine imports.
 
 **Conventions:**
 - `GameSession.flags` – Quest/arc progress, inventory, events, world state
