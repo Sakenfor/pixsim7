@@ -6,7 +6,7 @@
  *
  * @status REFERENCE_IMPLEMENTATION
  * These tests serve as documentation and regression anchors.
- * Run with: npm test packages/game-core
+ * Run with: npm test packages/game/engine
  */
 
 import { describe, it, expect } from 'vitest';

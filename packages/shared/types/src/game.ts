@@ -1,6 +1,6 @@
 /**
  * Game DTO types for PixSim7 game systems
- * Shared between frontend and game-core
+ * Shared between frontend and game engine
  *
  * ## Type Sources
  *
@@ -10,7 +10,7 @@
  *    These are aliased from `openapi.generated.ts` to avoid duplication.
  *    Look for: `export type Foo = ApiComponents['schemas']['Foo']`
  *
- * 2. **Frontend-only types**: Types used only in frontend/game-core that have no
+ * 2. **Frontend-only types**: Types used only in frontend/game engine that have no
  *    backend equivalent. These are defined directly here.
  *    Look for: `// [frontend-only]` comments
  *

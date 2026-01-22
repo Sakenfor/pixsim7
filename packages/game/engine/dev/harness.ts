@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Development harness for @pixsim7/game-core
+ * Development harness for @pixsim7/game.engine
  *
  * This script exercises core game logic without React or backend dependencies.
  * Useful for quick testing and validation during development.
@@ -338,7 +338,7 @@ function main() {
   console.log('\n');
   console.log('╔════════════════════════════════════════════════════════════╗');
   console.log('║                                                            ║');
-  console.log('║       @pixsim7/game-core Development Harness               ║');
+  console.log('║       @pixsim7/game.engine Development Harness               ║');
   console.log('║                                                            ║');
   console.log('╚════════════════════════════════════════════════════════════╝');
 

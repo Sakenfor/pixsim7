@@ -1,5 +1,5 @@
 /**
- * Shared session state types for @pixsim7/game-core.
+ * Shared session state types for @pixsim7/game.engine.
  *
  * These interfaces are used by both the immutable helpers in `session/state.ts`
  * and the mutating helpers in `session/helpers.ts` to avoid type duplication.

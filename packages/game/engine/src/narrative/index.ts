@@ -21,7 +21,7 @@
  *   createProgramProvider,
  *   createNodeHandlerRegistry,
  *   createGenerationBridge,
- * } from '@pixsim7/game-core/narrative';
+ * } from '@pixsim7/game.engine/narrative';
  *
  * // Basic usage with default handlers
  * const provider = createProgramProvider([myProgram]);

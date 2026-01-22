@@ -1,5 +1,5 @@
 /**
- * Session state helpers for @pixsim7/game-core
+ * Session state helpers for @pixsim7/game.engine
  *
  * Pure, immutable helpers for manipulating GameSessionDTO state.
  * All setters return a NEW session object without mutating the original.

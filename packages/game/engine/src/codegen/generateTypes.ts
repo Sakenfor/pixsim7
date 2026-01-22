@@ -9,7 +9,7 @@
  * - Extended SessionHelpers interface
  *
  * Usage:
- *   npx ts-node packages/game-core/src/codegen/generateTypes.ts
+ *   npx ts-node packages/game/engine/src/codegen/generateTypes.ts
  *   npm run codegen:types
  */
 
@@ -353,7 +353,7 @@ export async function generatePluginTypes(config?: {
   console.log('🔧 Generating plugin types...\n');
 
   const searchPaths = config?.searchPaths || [
-    'packages/game-core/src',
+    'packages/game/engine/src',
     'frontend/src',
     'plugins',
   ];

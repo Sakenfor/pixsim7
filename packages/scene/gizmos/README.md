@@ -1,4 +1,4 @@
-# @pixsim7/scene-gizmos
+# @pixsim7/scene.gizmos
 
 Pure TypeScript contracts and registry for the scene gizmo system.
 
@@ -19,7 +19,7 @@ import type {
   InteractiveTool,
   TouchPattern,
   Vector3D,
-} from '@pixsim7/scene-gizmos';
+} from '@pixsim7/scene.gizmos';
 ```
 
 ### Registry Functions
@@ -32,7 +32,7 @@ import {
   registerTool,
   getTool,
   getAllTools,
-} from '@pixsim7/scene-gizmos';
+} from '@pixsim7/scene.gizmos';
 ```
 
 ### NPC Preference System
@@ -43,7 +43,7 @@ import {
   isToolUnlocked,
   getRecommendedTools,
   PREFERENCE_PRESETS,
-} from '@pixsim7/scene-gizmos';
+} from '@pixsim7/scene.gizmos';
 ```
 
 ## Package Responsibilities
@@ -55,7 +55,7 @@ import {
 - NPC preference calculations
 
 ❌ **This package does NOT handle:**
-- React components (those go in `frontend` or `game-ui`)
+- React components (those go in `frontend` or `game components`)
 - Visual rendering of gizmos
 - Application-specific gizmo implementations
 
@@ -68,7 +68,7 @@ import {
 Example:
 
 ```typescript
-import { registerGizmo, type GizmoDefinition } from '@pixsim7/scene-gizmos';
+import { registerGizmo, type GizmoDefinition } from '@pixsim7/scene.gizmos';
 
 const myGizmo: GizmoDefinition = {
   id: 'my-gizmo',
@@ -92,9 +92,9 @@ registerGizmo(myGizmo);
 This package follows a **separation of concerns** pattern:
 
 ```
-@pixsim7/scene-gizmos (types + registry)
+@pixsim7/scene.gizmos (types + registry)
        ↓
-@pixsim7/game-ui (generic UI components)
+@pixsim7/game.components (generic UI components)
        ↓
 frontend (app-specific gizmo implementations + renderers)
 ```

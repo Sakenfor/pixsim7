@@ -1,5 +1,5 @@
 /**
- * @pixsim7/game-core
+ * @pixsim7/game.engine
  *
  * Headless TypeScript game core for PixSim7.
  * Provides pure game logic and derived state for multiple frontends (React/3D/CLI/etc).

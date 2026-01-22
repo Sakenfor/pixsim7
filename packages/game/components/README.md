@@ -1,4 +1,4 @@
-# @pixsim7/game-ui
+# @pixsim7/game.components
 
 Generic, reusable game UI components for the Pixsim7 project.
 
@@ -14,13 +14,13 @@ This package provides **application-agnostic** UI components that can be reused 
 
 ## What Belongs Here
 
-✅ **Should be in game-ui:**
+✅ **Should be in game components:**
 - Generic scene player components
 - Reusable mini-game frameworks (like ReflexMiniGame)
 - Shared game UI utilities
 - Components that could be used in multiple applications
 
-❌ **Should NOT be in game-ui:**
+❌ **Should NOT be in game components:**
 - Application-specific implementations (belongs in `frontend`)
 - Components that import from `frontend` or other consuming apps
 - Highly specialized components tied to specific game mechanics
@@ -31,7 +31,7 @@ This package provides **application-agnostic** UI components that can be reused 
 Main component for playing game scenes.
 
 ```tsx
-import { ScenePlayer } from '@pixsim7/game-ui';
+import { ScenePlayer } from '@pixsim7/game.components';
 
 <ScenePlayer
   sceneData={sceneData}
@@ -43,7 +43,7 @@ import { ScenePlayer } from '@pixsim7/game-ui';
 Generic reflex-based mini-game component.
 
 ```tsx
-import { ReflexMiniGame } from '@pixsim7/game-ui';
+import { ReflexMiniGame } from '@pixsim7/game.components';
 
 <ReflexMiniGame
   onSuccess={handleSuccess}

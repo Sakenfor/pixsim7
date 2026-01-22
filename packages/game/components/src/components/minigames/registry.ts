@@ -32,7 +32,7 @@ export function registerReflexMiniGame() {
 }
 
 /**
- * Register all built-in mini-games from @pixsim7/game-ui
+ * Register all built-in mini-games from @pixsim7/game.components
  */
 export function registerBuiltInMiniGames() {
   registerReflexMiniGame();
