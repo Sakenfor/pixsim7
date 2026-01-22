@@ -83,6 +83,27 @@ export default function App() {
   const [refreshInterval, setRefreshInterval] = useState(5000);
   const [lastServicesRefresh, setLastServicesRefresh] = useState<Date | null>(null);
 
+  const activeProfile = useMemo(() => {
+    if (!settingsDraft) {
+      return null;
+    }
+    return settingsDraft.profiles.available?.[settingsDraft.profiles.active] ?? null;
+  }, [settingsDraft]);
+
+  const profilePorts = useMemo(() => {
+    if (!activeProfile?.ports) {
+      return [];
+    }
+    return Object.entries(activeProfile.ports).sort(([a], [b]) => a.localeCompare(b));
+  }, [activeProfile]);
+
+  const profileBaseUrls = useMemo(() => {
+    if (!activeProfile?.base_urls) {
+      return [];
+    }
+    return Object.entries(activeProfile.base_urls).sort(([a], [b]) => a.localeCompare(b));
+  }, [activeProfile]);
+
   const runningCount = useMemo(
     () => services.filter((service) => service.status === 'running' || service.status === 'starting').length,
     [services],
@@ -844,20 +865,60 @@ export default function App() {
                 {Object.keys(settingsDraft.profiles.available || {}).length === 0 ? (
                   <p className="text-sm text-[var(--ink-muted)]">No launcher profiles available.</p>
                 ) : (
-                  <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
-                    <span>Active profile</span>
-                    <select
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                      value={settingsDraft.profiles.active}
-                      onChange={(event) => updateProfileDraft(event.target.value)}
-                    >
-                      {Object.entries(settingsDraft.profiles.available).map(([key, profile]) => (
-                        <option key={key} value={key}>
-                          {profile.label || key}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="grid gap-4">
+                    <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                      <span>Active profile</span>
+                      <select
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                        value={settingsDraft.profiles.active}
+                        onChange={(event) => updateProfileDraft(event.target.value)}
+                      >
+                        {Object.entries(settingsDraft.profiles.available).map(([key, profile]) => (
+                          <option key={key} value={key}>
+                            {profile.label || key}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {activeProfile ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                          <p className="detail-label">Profile ports</p>
+                          <div className="mt-2 grid gap-1 text-xs text-[var(--ink-muted)]">
+                            {profilePorts.length === 0 ? (
+                              <span>No port overrides.</span>
+                            ) : (
+                              profilePorts.map(([key, value]) => (
+                                <span key={key}>
+                                  {key}: {value}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                          <p className="detail-label">Profile base URLs</p>
+                          <div className="mt-2 grid gap-1 text-xs text-[var(--ink-muted)]">
+                            {profileBaseUrls.length === 0 ? (
+                              <span>No base URL overrides.</span>
+                            ) : (
+                              profileBaseUrls.map(([key, value]) => (
+                                <span key={key}>
+                                  {key}: {value}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                          <p className="detail-label">Profile datastores</p>
+                          <p className="mt-2 text-xs text-[var(--ink-muted)]">
+                            Use local datastores: {activeProfile.use_local_datastores ? 'yes' : 'no'}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 )}
               </div>
 
