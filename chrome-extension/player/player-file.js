@@ -37,8 +37,7 @@
       elements.dropZone.classList.add('hidden');
       elements.captureBtn.disabled = false;
       elements.saveAssetBtn.disabled = false;
-      elements.regionBtn.disabled = false;
-      document.getElementById('polygonBtn').disabled = false;
+      elements.regionModeBtn.disabled = false;
       window.PXS7Player.controls?.updateTimeDisplay();
       window.PXS7Player.controls?.updateVideoInfo(name);
       window.PXS7Player.region?.clearRegion();
@@ -130,8 +129,7 @@
       hideConvertUI();
       elements.captureBtn.disabled = false;
       elements.saveAssetBtn.disabled = false;
-      elements.regionBtn.disabled = false;
-      document.getElementById('polygonBtn').disabled = false;
+      elements.regionModeBtn.disabled = false;
       window.PXS7Player.controls?.updateTimeDisplay();
       window.PXS7Player.controls?.updateVideoInfo(name);
       window.PXS7Player.region?.clearRegion();

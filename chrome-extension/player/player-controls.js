@@ -122,6 +122,13 @@ import {
       if (stored) {
         const settings = JSON.parse(stored);
         state.containVideo = settings.containVideo || false;
+        // Load volume settings
+        if (typeof settings.volume === 'number') {
+          state.volume = settings.volume;
+        }
+        if (typeof settings.isMuted === 'boolean') {
+          state.isMuted = settings.isMuted;
+        }
       }
     } catch (e) {
       state.containVideo = false;
@@ -133,6 +140,8 @@ import {
     try {
       localStorage.setItem(PLAYER_SETTINGS_STORAGE_KEY, JSON.stringify({
         containVideo: state.containVideo,
+        volume: state.volume,
+        isMuted: state.isMuted,
       }));
     } catch (e) {
       console.warn('Failed to save player settings:', e);
@@ -140,6 +149,7 @@ import {
   }
 
   function applyPlayerSettings() {
+    // Apply contain video setting
     if (state.containVideo) {
       elements.videoContainer.classList.add('contain-video');
     } else {
@@ -148,6 +158,16 @@ import {
     if (elements.containVideoCheck) {
       elements.containVideoCheck.checked = state.containVideo;
     }
+    // Apply volume settings
+    elements.video.volume = state.volume;
+    elements.video.muted = state.isMuted;
+    if (elements.volumeSlider) {
+      elements.volumeSlider.value = Math.round(state.volume * 100);
+    }
+    if (elements.volumeValue) {
+      elements.volumeValue.textContent = Math.round(state.volume * 100) + '%';
+    }
+    updateVolumeIcon();
   }
 
   if (elements.playerSettingsBtn) {
@@ -209,6 +229,7 @@ import {
       elements.video.muted = false;
     }
     updateVolumeIcon();
+    savePlayerSettings();
   }
 
   function toggleMute() {
@@ -221,6 +242,7 @@ import {
       state.isMuted = true;
       elements.video.muted = true;
       updateVolumeIcon();
+      savePlayerSettings();
     }
   }
 
@@ -414,17 +436,15 @@ import {
       window.PXS7Player.capture?.saveToAssetsOnly();
     } else if (matchesHotkey(e, hotkeys.regionMode)) {
       e.preventDefault();
+      window.PXS7Player.region?.setRegionType('rect');
       window.PXS7Player.region?.toggleRegionMode();
     } else if (matchesHotkey(e, hotkeys.polygonMode)) {
       e.preventDefault();
-      window.PXS7Player.region?.togglePolygonMode();
-    } else if (e.code === 'Escape' && (state.regionMode || state.polygonMode)) {
+      window.PXS7Player.region?.setRegionType('polygon');
+      window.PXS7Player.region?.toggleRegionMode();
+    } else if (e.code === 'Escape' && (state.regionMode || state.isDrawingPolygon)) {
       e.preventDefault();
-      if (state.polygonMode && window.PXS7Player.region?.togglePolygonMode) {
-        window.PXS7Player.region.togglePolygonMode();
-      } else if (state.regionMode) {
-        window.PXS7Player.region?.toggleRegionMode();
-      }
+      window.PXS7Player.region?.toggleRegionMode();
     } else if (matchesHotkey(e, hotkeys.mute)) {
       if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();

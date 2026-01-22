@@ -13,6 +13,18 @@
     return state.polygonPoints && state.polygonPoints.length >= 3;
   }
 
+  // Calculate polygon bounds from points
+  function getPolygonBounds() {
+    if (!state.polygonPoints || state.polygonPoints.length < 3) return null;
+    const xs = state.polygonPoints.map(p => p.x);
+    const ys = state.polygonPoints.map(p => p.y);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+  }
+
   // Draw polygon-clipped region to canvas
   function drawPolygonRegion(ctx, mediaSource, polygonPoints, bounds) {
     ctx.save();
@@ -42,6 +54,28 @@
     ctx.restore();
   }
 
+  // Wait for video frame to be ready for capture
+  function waitForVideoReady() {
+    return new Promise((resolve) => {
+      const video = elements.video;
+      // readyState 2+ means current frame is available
+      if (state.isImageMode || video.readyState >= 2) {
+        resolve();
+        return;
+      }
+      // Wait for seeked or canplay event
+      const onReady = () => {
+        video.removeEventListener('seeked', onReady);
+        video.removeEventListener('canplay', onReady);
+        resolve();
+      };
+      video.addEventListener('seeked', onReady, { once: true });
+      video.addEventListener('canplay', onReady, { once: true });
+      // Timeout fallback
+      setTimeout(resolve, 500);
+    });
+  }
+
   async function captureAndUpload() {
     const dims = getMediaDimensions();
     if (!state.videoLoaded || dims.width === 0) {
@@ -55,13 +89,16 @@
         elements.video.pause();
       }
 
+      // Wait for video frame to be ready
+      await waitForVideoReady();
+
       const mediaSource = getMediaSource();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
       // Check for polygon region first
       if (hasPolygonRegion()) {
-        const bounds = state.selectedRegion; // Already calculated from polygon
+        const bounds = state.polygonBounds || getPolygonBounds();
         canvas.width = Math.round(bounds.width);
         canvas.height = Math.round(bounds.height);
 
@@ -178,13 +215,16 @@
         elements.video.pause();
       }
 
+      // Wait for video frame to be ready
+      await waitForVideoReady();
+
       const mediaSource = getMediaSource();
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
 
       // Check for polygon region first
       if (hasPolygonRegion()) {
-        const bounds = state.selectedRegion;
+        const bounds = state.polygonBounds || getPolygonBounds();
         canvas.width = Math.round(bounds.width);
         canvas.height = Math.round(bounds.height);
         drawPolygonRegion(ctx, mediaSource, state.polygonPoints, bounds);

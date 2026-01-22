@@ -569,6 +569,69 @@
       font-size: 11px;
     }
 
+    /* Region mode dropdown */
+    .region-mode-btn {
+      position: relative;
+    }
+
+    .region-mode-btn .btn {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .region-mode-btn .dropdown-arrow {
+      font-size: 8px;
+      opacity: 0.7;
+    }
+
+    .region-mode-btn .btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .region-mode-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      min-width: 120px;
+      z-index: 50;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .region-mode-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .region-mode-option:last-child {
+      border-bottom: none;
+    }
+
+    .region-mode-option:hover {
+      background: var(--border);
+    }
+
+    .region-mode-option.selected {
+      background: rgba(233, 69, 96, 0.2);
+    }
+
+    .region-mode-option .hotkey-hint {
+      margin-left: auto;
+      opacity: 0.5;
+      font-size: 10px;
+    }
+
     /* Compact mode for small windows */
     @media (max-height: 400px) {
       .header { padding: 4px 8px; }
@@ -763,8 +826,24 @@
         <div class="history-dropdown hidden" id="historyDropdown"></div>
       </div>
       <button class="btn btn-secondary" id="openFileBtn" title="Open file">📁</button>
-      <button class="btn btn-secondary" id="regionBtn" disabled title="Select rectangle region (R)">⬚</button>
-      <button class="btn btn-secondary" id="polygonBtn" disabled title="Draw polygon region (P)">⬡</button>
+      <div class="region-mode-btn">
+        <button class="btn btn-secondary" id="regionModeBtn" disabled title="Select region (R/P)">
+          <span id="regionModeIcon">⬚</span>
+          <span class="dropdown-arrow">▾</span>
+        </button>
+        <div class="region-mode-dropdown hidden" id="regionModeDropdown">
+          <div class="region-mode-option" data-mode="rect">
+            <span>⬚</span>
+            <span>Rectangle</span>
+            <span class="hotkey-hint">R</span>
+          </div>
+          <div class="region-mode-option" data-mode="polygon">
+            <span>⬡</span>
+            <span>Polygon</span>
+            <span class="hotkey-hint">P</span>
+          </div>
+        </div>
+      </div>
       <div class="player-settings-btn">
         <button class="btn btn-secondary" id="playerSettingsBtn" title="Player settings">⚙</button>
         <div class="player-settings-popup hidden" id="playerSettingsPopup">

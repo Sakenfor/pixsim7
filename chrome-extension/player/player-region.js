@@ -22,6 +22,63 @@
   state.polygonMode = false;      // true = polygon, false = rect
   state.polygonPoints = [];       // current polygon points (video coords)
   state.isDrawingPolygon = false; // actively adding points
+  state.isDraggingPolygon = false; // dragging finished polygon
+  state.polygonDragStart = null;  // {x, y, points: [...]} for dragging
+
+  // Region type registry - extensible system for different selection types
+  const regionTypes = {
+    rect: {
+      hasSelection: () => !!state.selectedRegion,
+      show: () => {
+        if (state.selectedRegion) {
+          elements.regionBox.classList.remove('hidden');
+          elements.regionBox.style.display = '';
+        }
+      },
+      hide: () => {
+        elements.regionBox.classList.add('hidden');
+        elements.regionBox.style.display = 'none';
+      },
+      clear: () => {
+        state.selectedRegion = null;
+        elements.regionBox.classList.add('hidden');
+        elements.regionInfo.textContent = '';
+        state.blurAmount = 0;
+        elements.blurSlider.value = 0;
+        elements.blurValue.textContent = '0px';
+        elements.blurControls.classList.add('hidden');
+        hideBlurPreview();
+      }
+    },
+    polygon: {
+      hasSelection: () => state.polygonPoints.length >= 3,
+      show: () => {
+        const overlay = document.getElementById('polygonOverlay');
+        if (overlay && state.polygonPoints.length >= 3) {
+          overlay.classList.remove('hidden');
+          overlay.style.display = '';
+        }
+      },
+      hide: () => {
+        const overlay = document.getElementById('polygonOverlay');
+        if (overlay) {
+          overlay.classList.add('hidden');
+          overlay.style.display = 'none';
+        }
+        const preview = document.getElementById('polygonPreview');
+        if (preview) {
+          preview.classList.add('hidden');
+          preview.style.display = 'none';
+        }
+      },
+      clear: () => {
+        state.polygonPoints = [];
+        state.polygonBounds = null;
+        hidePolygonPreview();
+        hidePolygonOverlay();
+      }
+    }
+  };
 
   // Get the display element (video or image)
   function getDisplayElement() {
@@ -79,48 +136,96 @@
   }
 
   // ===== Region management =====
+  function updateRegionModeButton() {
+    const isActive = state.regionMode || state.isDrawingPolygon;
+    elements.regionModeBtn.classList.toggle('active', isActive);
+    // Update icon based on selected type
+    elements.regionModeIcon.textContent = state.selectedRegionType === 'polygon' ? '⬡' : '⬚';
+    // Update dropdown selection
+    const options = elements.regionModeDropdown.querySelectorAll('.region-mode-option');
+    options.forEach(opt => {
+      opt.classList.toggle('selected', opt.dataset.mode === state.selectedRegionType);
+    });
+  }
+
+  // Show/hide regions based on selected type (preserves both selections)
+  function updateRegionVisibility() {
+    const currentType = state.selectedRegionType;
+
+    // Iterate through all region types and show/hide appropriately
+    for (const [typeName, typeHandler] of Object.entries(regionTypes)) {
+      if (typeName === currentType) {
+        typeHandler.show();
+      } else {
+        typeHandler.hide();
+      }
+    }
+
+    // Update has-region class based on current mode's selection
+    const currentHandler = regionTypes[currentType];
+    const hasActiveRegion = currentHandler && currentHandler.hasSelection();
+    elements.videoContainer.classList.toggle('has-region', hasActiveRegion);
+
+    updateCaptureButtonLabel();
+  }
+
   function toggleRegionMode() {
     if (!state.videoLoaded) return;
+    // If polygon mode, use polygon drawing
+    if (state.selectedRegionType === 'polygon') {
+      if (state.isDrawingPolygon) {
+        cancelPolygonDrawing();
+      } else {
+        startPolygonDrawing();
+      }
+      updateRegionModeButton();
+      return;
+    }
+    // Rectangle mode
     state.regionMode = !state.regionMode;
     elements.regionOverlay.classList.toggle('hidden', !state.regionMode);
-    elements.regionBtn.style.background = state.regionMode ? 'var(--accent)' : '';
-    elements.regionBtn.style.color = state.regionMode ? 'white' : '';
+    updateRegionModeButton();
     if (state.regionMode) {
       showToast('Draw region on video (Esc to cancel)', true);
     }
   }
 
+  function setRegionType(type) {
+    state.selectedRegionType = type;
+    updateRegionModeButton();
+    updateRegionVisibility();
+    elements.regionModeDropdown.classList.add('hidden');
+  }
+
+  function clearCurrentRegion() {
+    // Only clear the currently selected mode's region using the registry
+    const handler = regionTypes[state.selectedRegionType];
+    if (handler) {
+      handler.clear();
+    }
+    updateRegionVisibility();
+  }
+
   function clearRegion() {
-    state.selectedRegion = null;
-    elements.regionBox.classList.add('hidden');
-    elements.regionInfo.textContent = '';
+    // Clear all region types using the registry
+    for (const handler of Object.values(regionTypes)) {
+      handler.clear();
+    }
     elements.videoContainer.classList.remove('has-region');
     updateCaptureButtonLabel();
-    state.blurAmount = 0;
-    elements.blurSlider.value = 0;
-    elements.blurValue.textContent = '0px';
-    elements.blurControls.classList.add('hidden');
-    hideBlurPreview();
-    // Clear polygon too
-    clearPolygon();
   }
 
   function updateCaptureButtonLabel() {
-    const hasRegion = state.selectedRegion || state.polygonPoints.length >= 3;
+    // Only show "Capture Region" if the current mode has a selection (using registry)
+    const handler = regionTypes[state.selectedRegionType];
+    const hasRegion = handler && handler.hasSelection();
     elements.captureBtn.textContent = hasRegion ? '📸 Capture Region' : '📸 Capture';
   }
 
   // ===== Polygon mode =====
   function togglePolygonMode() {
-    state.polygonMode = !state.polygonMode;
-    const polygonBtn = document.getElementById('polygonBtn');
-    if (polygonBtn) {
-      polygonBtn.style.background = state.polygonMode ? 'var(--accent)' : '';
-      polygonBtn.style.color = state.polygonMode ? 'white' : '';
-    }
-    // Update region button style (inverse)
-    elements.regionBtn.style.background = state.polygonMode ? '' : (state.regionMode ? 'var(--accent)' : '');
-    elements.regionBtn.style.color = state.polygonMode ? '' : (state.regionMode ? 'white' : '');
+    state.selectedRegionType = 'polygon';
+    toggleRegionMode();
   }
 
   function startPolygonDrawing() {
@@ -155,6 +260,7 @@
 
     state.isDrawingPolygon = false;
     elements.regionOverlay.classList.add('hidden');
+    hidePolygonPreview();
 
     // Simplify if too many points (for freehand)
     if (state.polygonPoints.length > 50) {
@@ -163,9 +269,9 @@
       state.polygonPoints = simplifyPath(state.polygonPoints, tolerance);
     }
 
-    // Calculate bounding rect for the polygon
+    // Calculate bounding rect for the polygon (for blur preview)
     const bounds = getPathRect(state.polygonPoints);
-    state.selectedRegion = bounds;
+    state.polygonBounds = bounds; // Store separately from rect region
 
     elements.videoContainer.classList.add('has-region');
     updateCaptureButtonLabel();
@@ -195,6 +301,23 @@
       canvas.id = id;
       canvas.style.cssText = `position: absolute; top: 0; left: 0; pointer-events: none; z-index: ${zIndex};`;
       elements.videoContainer.appendChild(canvas);
+
+      // Add drag handler for the main polygon overlay
+      if (id === 'polygonOverlay') {
+        canvas.addEventListener('mousedown', (e) => {
+          if (state.polygonPoints.length >= 3 && !state.isDrawingPolygon) {
+            e.preventDefault();
+            e.stopPropagation();
+            state.isDraggingPolygon = true;
+            const pos = screenToVideoCoords(e.clientX, e.clientY);
+            state.polygonDragStart = {
+              x: pos.x,
+              y: pos.y,
+              points: state.polygonPoints.map(pt => ({ ...pt }))
+            };
+          }
+        });
+      }
     }
     return canvas;
   }
@@ -287,7 +410,10 @@
 
   function hidePolygonPreview() {
     const canvas = document.getElementById('polygonPreview');
-    if (canvas) canvas.classList.add('hidden');
+    if (canvas) {
+      canvas.classList.add('hidden');
+      canvas.style.display = 'none';
+    }
   }
 
   function renderPolygonOverlay() {
@@ -566,6 +692,25 @@
       state.selectedRegion = { x, y, width, height };
       updateRegionBox();
     }
+
+    // Polygon dragging
+    if (state.isDraggingPolygon && state.polygonDragStart && state.polygonPoints.length >= 3) {
+      const dims = getMediaDimensions();
+      const current = screenToVideoCoords(e.clientX, e.clientY);
+      const dx = current.x - state.polygonDragStart.x;
+      const dy = current.y - state.polygonDragStart.y;
+
+      // Update all polygon points
+      state.polygonPoints = state.polygonDragStart.points.map(pt => {
+        let newX = pt.x + dx;
+        let newY = pt.y + dy;
+        // Clamp to video bounds
+        newX = Math.max(0, Math.min(dims.width, newX));
+        newY = Math.max(0, Math.min(dims.height, newY));
+        return { x: newX, y: newY };
+      });
+      updatePolygonOverlay();
+    }
   });
 
   document.addEventListener('mouseup', (e) => {
@@ -591,6 +736,12 @@
         elements.regionInfo.textContent = `${Math.round(state.selectedRegion.width)}×${Math.round(state.selectedRegion.height)}`;
         if (state.blurAmount > 0) updateBlurPreview();
       }
+    }
+
+    // Stop polygon dragging
+    if (state.isDraggingPolygon) {
+      state.isDraggingPolygon = false;
+      state.polygonDragStart = null;
     }
   });
 
@@ -630,18 +781,31 @@
     showToast('Region cleared', true);
   });
 
-  elements.regionBtn.addEventListener('click', toggleRegionMode);
+  // Region mode dropdown - click button to toggle dropdown
+  elements.regionModeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    elements.regionModeDropdown.classList.toggle('hidden');
+  });
 
-  // Polygon button (will be added to DOM later)
+  // Dropdown option selection - select and activate mode
+  elements.regionModeDropdown.addEventListener('click', (e) => {
+    const option = e.target.closest('.region-mode-option');
+    if (option) {
+      e.stopPropagation();
+      const mode = option.dataset.mode;
+      state.selectedRegionType = mode;
+      updateRegionModeButton();
+      elements.regionModeDropdown.classList.add('hidden');
+      // Activate the selected mode
+      toggleRegionMode();
+    }
+  });
+
+  // Close dropdown when clicking outside
   document.addEventListener('click', (e) => {
-    if (e.target.id === 'polygonBtn') {
-      if (!state.videoLoaded) return;
-      if (state.isDrawingPolygon) {
-        cancelPolygonDrawing();
-      } else {
-        // Clear any existing region first
-        if (state.selectedRegion) clearRegion();
-        startPolygonDrawing();
+    if (elements.regionModeDropdown && !elements.regionModeDropdown.classList.contains('hidden')) {
+      if (!elements.regionModeDropdown.contains(e.target) && !elements.regionModeBtn.contains(e.target)) {
+        elements.regionModeDropdown.classList.add('hidden');
       }
     }
   });
@@ -673,9 +837,14 @@
 
   // Export
   window.PXS7Player.region = {
+    // Registry for extensibility - add new region types here
+    regionTypes,
     toggleRegionMode,
     togglePolygonMode,
+    setRegionType,
     clearRegion,
+    clearCurrentRegion,
+    updateRegionVisibility,
     updateRegionBox,
     updateBlurPreview,
     screenToVideoCoords,

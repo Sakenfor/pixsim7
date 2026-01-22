@@ -26,7 +26,9 @@ import {
     openFileBtn: document.getElementById('openFileBtn'),
     captureBtn: document.getElementById('captureBtn'),
     saveAssetBtn: document.getElementById('saveAssetBtn'),
-    regionBtn: document.getElementById('regionBtn'),
+    regionModeBtn: document.getElementById('regionModeBtn'),
+    regionModeIcon: document.getElementById('regionModeIcon'),
+    regionModeDropdown: document.getElementById('regionModeDropdown'),
     regionOverlay: document.getElementById('regionOverlay'),
     regionBox: document.getElementById('regionBox'),
     regionClear: document.getElementById('regionClear'),
@@ -97,6 +99,7 @@ import {
     seekHistory: [],
     MAX_HISTORY: 20,
     // Region selection
+    selectedRegionType: 'rect', // 'rect' or 'polygon'
     regionMode: false,
     isDrawing: false,
     isDraggingRegion: false,

@@ -67,8 +67,7 @@
       elements.dropZone.classList.add('hidden');
       elements.captureBtn.disabled = false;
       elements.saveAssetBtn.disabled = false;
-      elements.regionBtn.disabled = false;
-      document.getElementById('polygonBtn').disabled = false;
+      elements.regionModeBtn.disabled = false;
       elements.videoInfo.innerHTML = `<strong>${name}</strong> | ${img.width}×${img.height} | Image`;
 
       // Clear any existing region
