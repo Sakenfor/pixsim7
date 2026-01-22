@@ -105,7 +105,7 @@ class GenerationNodeConfigSchema(BaseModel):
     - source_asset_id(s): Asset references for provider URL resolution
     - prompts: Transition prompts for video_transition operations
     """
-    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="allow")
 
     generation_type: str = Field(
         ...,
@@ -168,9 +168,6 @@ class GenerationNodeConfigSchema(BaseModel):
 
     # Multi-prompt field for video_transition
     prompts: Optional[List[str]] = None
-
-    # Allow extra fields for future extensions
-    model_config = {"extra": "allow"}
 
 
 class GenerationSocialContextSchema(BaseModel):

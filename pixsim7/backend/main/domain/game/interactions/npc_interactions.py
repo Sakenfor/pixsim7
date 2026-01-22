@@ -20,6 +20,20 @@ from pixsim7.backend.main.domain.narrative.action_blocks.types_unified import Br
 
 
 # ===================
+# Base Model
+# ===================
+
+class InteractionBaseModel(BaseModel):
+    """Base model for all interaction schemas.
+
+    Configures populate_by_name=True so schemas accept both:
+    - camelCase (alias) - for TypeScript/frontend compatibility
+    - snake_case (field name) - for Python code compatibility
+    """
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ===================
 # Core Enums
 # ===================
 
@@ -50,13 +64,13 @@ class DisabledReason(str, Enum):
 # Gating Schema
 # ===================
 
-class TimeOfDayConstraint(BaseModel):
+class TimeOfDayConstraint(InteractionBaseModel):
     """Time of day constraint"""
     periods: Optional[List[Literal["morning", "afternoon", "evening", "night"]]] = None
     hour_ranges: Optional[List[Dict[str, int]]] = Field(None, alias="hourRanges")
 
 
-class StatAxisGate(BaseModel):
+class StatAxisGate(InteractionBaseModel):
     """Generic stat gating constraint"""
     definition_id: str = Field(alias="definitionId")
     axis: Optional[str] = None
@@ -69,13 +83,13 @@ class StatAxisGate(BaseModel):
     npc_id: Optional[int] = Field(default=None, alias="npcId")
 
 
-class StatGating(BaseModel):
+class StatGating(InteractionBaseModel):
     """Stat-based gating constraints (generic)"""
     all_of: Optional[List[StatAxisGate]] = Field(None, alias="allOf")
     any_of: Optional[List[StatAxisGate]] = Field(None, alias="anyOf")
 
 
-class BehaviorGating(BaseModel):
+class BehaviorGating(InteractionBaseModel):
     """NPC behavior/state gating constraints"""
     allowed_states: Optional[List[str]] = Field(None, alias="allowedStates")
     forbidden_states: Optional[List[str]] = Field(None, alias="forbiddenStates")
@@ -86,14 +100,14 @@ class BehaviorGating(BaseModel):
     )
 
 
-class MoodGating(BaseModel):
+class MoodGating(InteractionBaseModel):
     """Mood/emotion gating constraints"""
     allowed_moods: Optional[List[str]] = Field(None, alias="allowedMoods")
     forbidden_moods: Optional[List[str]] = Field(None, alias="forbiddenMoods")
     max_emotion_intensity: Optional[float] = Field(None, ge=0, le=1, alias="maxEmotionIntensity")
 
 
-class InteractionGating(BaseModel):
+class InteractionGating(InteractionBaseModel):
     """Unified gating configuration"""
     stat_gating: Optional[StatGating] = Field(None, alias="statGating")
     time_of_day: Optional[TimeOfDayConstraint] = Field(None, alias="timeOfDay")
@@ -163,7 +177,7 @@ class StatDelta(BaseModel):
     )
 
 
-class FlagChanges(BaseModel):
+class FlagChanges(InteractionBaseModel):
     """Flag changes to apply to session"""
     set: Optional[Dict[str, Any]] = None
     delete: Optional[List[str]] = None
@@ -176,7 +190,7 @@ class FlagChanges(BaseModel):
     end_events: Optional[List[str]] = Field(None, alias="endEvents")
 
 
-class InventoryChange(BaseModel):
+class InventoryChange(InteractionBaseModel):
     """Single inventory change"""
     item_id: str = Field(alias="itemId")
     quantity: Optional[int] = 1
@@ -188,7 +202,7 @@ class InventoryChanges(BaseModel):
     remove: Optional[List[InventoryChange]] = None
 
 
-class MemoryCreation(BaseModel):
+class MemoryCreation(InteractionBaseModel):
     """Memory creation configuration"""
     topic: str
     summary: str
@@ -197,14 +211,14 @@ class MemoryCreation(BaseModel):
     tags: Optional[List[str]] = None
 
 
-class EmotionTrigger(BaseModel):
+class EmotionTrigger(InteractionBaseModel):
     """Emotion trigger configuration"""
     emotion: str
     intensity: float = Field(ge=0, le=1)
     duration_seconds: Optional[int] = Field(None, alias="durationSeconds")
 
 
-class WorldEventRegistration(BaseModel):
+class WorldEventRegistration(InteractionBaseModel):
     """World event registration configuration"""
     event_type: str = Field(alias="eventType")
     event_name: str = Field(alias="eventName")
@@ -212,14 +226,14 @@ class WorldEventRegistration(BaseModel):
     relevance_score: Optional[float] = Field(0.5, ge=0, le=1, alias="relevanceScore")
 
 
-class NpcEffects(BaseModel):
+class NpcEffects(InteractionBaseModel):
     """NPC memory/emotion effects"""
     create_memory: Optional[MemoryCreation] = Field(None, alias="createMemory")
     trigger_emotion: Optional[EmotionTrigger] = Field(None, alias="triggerEmotion")
     register_world_event: Optional[WorldEventRegistration] = Field(None, alias="registerWorldEvent")
 
 
-class SceneLaunch(BaseModel):
+class SceneLaunch(InteractionBaseModel):
     """Scene/generation launch configuration"""
     scene_intent_id: Optional[str] = Field(None, alias="sceneIntentId")
     scene_id: Optional[int] = Field(None, alias="sceneId")
@@ -227,20 +241,20 @@ class SceneLaunch(BaseModel):
     branch_intent: Optional[BranchIntent] = Field(None, alias="branchIntent")
 
 
-class DialogueGeneration(BaseModel):
+class DialogueGeneration(InteractionBaseModel):
     """Dialogue generation configuration"""
     program_id: Optional[str] = Field("default_dialogue", alias="programId")
     system_prompt: Optional[str] = Field(None, alias="systemPrompt")
 
 
-class GenerationLaunch(BaseModel):
+class GenerationLaunch(InteractionBaseModel):
     """Generation/action block configuration"""
     action_block_ids: Optional[List[str]] = Field(None, alias="actionBlockIds")
     dialogue_request: Optional[DialogueGeneration] = Field(None, alias="dialogueRequest")
     branch_intent: Optional[BranchIntent] = Field(None, alias="branchIntent")
 
 
-class InteractionOutcome(BaseModel):
+class InteractionOutcome(InteractionBaseModel):
     """Unified outcome configuration"""
     stat_deltas: Optional[List[StatDelta]] = Field(None, alias="statDeltas")
     flag_changes: Optional[FlagChanges] = Field(None, alias="flagChanges")
@@ -258,7 +272,7 @@ class InteractionOutcome(BaseModel):
 # Core Interaction Types
 # ===================
 
-class NpcInteractionDefinition(BaseModel):
+class NpcInteractionDefinition(InteractionBaseModel):
     """Interaction definition - what designers author"""
     id: str
     label: str
@@ -278,7 +292,7 @@ class NpcInteractionDefinition(BaseModel):
     meta: Optional[Dict[str, Any]] = None
 
 
-class InteractionContext(BaseModel):
+class InteractionContext(InteractionBaseModel):
     """Context snapshot for gating checks"""
     location_id: Optional[int] = Field(None, alias="locationId")
     current_activity_id: Optional[str] = Field(None, alias="currentActivityId")
@@ -290,7 +304,7 @@ class InteractionContext(BaseModel):
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
 
 
-class NpcInteractionInstance(BaseModel):
+class NpcInteractionInstance(InteractionBaseModel):
     """Concrete available interaction at runtime"""
     id: str
     definition_id: str = Field(alias="definitionId")
@@ -311,7 +325,7 @@ class NpcInteractionInstance(BaseModel):
 # Request/Response Types
 # ===================
 
-class ListInteractionsRequest(BaseModel):
+class ListInteractionsRequest(InteractionBaseModel):
     """Request to list available interactions"""
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
@@ -320,7 +334,7 @@ class ListInteractionsRequest(BaseModel):
     include_unavailable: Optional[bool] = Field(False, alias="includeUnavailable")
 
 
-class ListInteractionsResponse(BaseModel):
+class ListInteractionsResponse(InteractionBaseModel):
     """Response with available interactions"""
     interactions: List[NpcInteractionInstance]
     npc_id: int = Field(alias="npcId")
@@ -329,7 +343,7 @@ class ListInteractionsResponse(BaseModel):
     timestamp: int
 
 
-class ExecuteInteractionRequest(BaseModel):
+class ExecuteInteractionRequest(InteractionBaseModel):
     """Request to execute an interaction"""
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
@@ -345,7 +359,7 @@ class InventoryChangeSummary(BaseModel):
     removed: Optional[List[str]] = None
 
 
-class ExecuteInteractionResponse(BaseModel):
+class ExecuteInteractionResponse(InteractionBaseModel):
     """Response from interaction execution"""
     success: bool
     message: Optional[str] = None
@@ -362,28 +376,28 @@ class ExecuteInteractionResponse(BaseModel):
 # Storage Schema
 # ===================
 
-class WorldInteractionsMetadata(BaseModel):
+class WorldInteractionsMetadata(InteractionBaseModel):
     """World-level interaction definitions (in GameWorld.meta.interactions)"""
     definitions: Dict[str, NpcInteractionDefinition]
     role_defaults: Optional[Dict[str, List[str]]] = Field(None, alias="roleDefaults")
     scene_intent_mappings: Optional[Dict[str, int]] = Field(None, alias="sceneIntentMappings")
 
 
-class NpcInteractionsMetadata(BaseModel):
+class NpcInteractionsMetadata(InteractionBaseModel):
     """NPC-level interaction overrides (in GameNPC.meta.interactions)"""
     definition_overrides: Optional[Dict[str, Dict[str, Any]]] = Field(None, alias="definitionOverrides")
     disabled_interactions: Optional[List[str]] = Field(None, alias="disabledInteractions")
     additional_interactions: Optional[List[NpcInteractionDefinition]] = Field(None, alias="additionalInteractions")
 
 
-class PendingNpcInteraction(BaseModel):
+class PendingNpcInteraction(InteractionBaseModel):
     """Pending NPC-initiated interaction"""
     interaction_id: str = Field(alias="interactionId")
     created_at: int = Field(alias="createdAt")
     expires_at: Optional[int] = Field(None, alias="expiresAt")
 
 
-class SessionInteractionState(BaseModel):
+class SessionInteractionState(InteractionBaseModel):
     """Session-level interaction state (in GameSession.flags.npcs["npc:<id>"].interactions)"""
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
     interaction_state: Optional[Dict[str, Any]] = Field(None, alias="interactionState")
@@ -394,7 +408,7 @@ class SessionInteractionState(BaseModel):
 # NPC-Initiated Interactions
 # ===================
 
-class NpcInteractionIntent(BaseModel):
+class NpcInteractionIntent(InteractionBaseModel):
     """NPC-initiated interaction intent"""
     id: str
     npc_id: int = Field(alias="npcId")
