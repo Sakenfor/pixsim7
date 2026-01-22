@@ -19,7 +19,7 @@ ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT))
 
 from launcher.core import create_container, __version__
-from launcher.core.shared_settings import load_shared_settings, apply_shared_settings_to_env
+from launcher.core.launcher_settings import load_launcher_settings, apply_launcher_settings_to_env
 
 from .routes import (
     services_router,
@@ -28,6 +28,7 @@ from .routes import (
     health_router,
     buildables_router,
     settings_router,
+    codegen_router,
 )
 from .dependencies import set_container
 
@@ -53,7 +54,7 @@ async def lifespan(app: FastAPI):
 
     # Load service definitions from manifests
     try:
-        apply_shared_settings_to_env(load_shared_settings())
+        apply_launcher_settings_to_env(load_launcher_settings())
     except Exception:
         pass
 
@@ -155,6 +156,7 @@ app.include_router(events_router)
 app.include_router(health_router)
 app.include_router(buildables_router)
 app.include_router(settings_router)
+app.include_router(codegen_router)
 
 
 @app.get("/", include_in_schema=False)

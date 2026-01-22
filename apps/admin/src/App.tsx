@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   getBuildables,
+  getCodegenTasks,
   getServiceDefinition,
   getServices,
   getSettings,
@@ -12,7 +13,13 @@ import {
   stopService,
   updateSettings,
 } from './lib/api';
-import type { BuildableDefinition, ServiceDefinition, ServiceState, SharedSettings } from './lib/types';
+import type {
+  BuildableDefinition,
+  CodegenTask,
+  LauncherSettings,
+  ServiceDefinition,
+  ServiceState,
+} from './lib/types';
 
 type LoadState = 'idle' | 'loading' | 'error';
 
@@ -53,15 +60,18 @@ export default function App() {
   const [serviceDefinitionState, setServiceDefinitionState] = useState<Record<string, LoadState>>({});
   const [serviceDefinitionErrors, setServiceDefinitionErrors] = useState<Record<string, string>>({});
   const [buildables, setBuildables] = useState<BuildableDefinition[]>([]);
-  const [settings, setSettings] = useState<SharedSettings | null>(null);
-  const [settingsDraft, setSettingsDraft] = useState<SharedSettings | null>(null);
+  const [codegenTasks, setCodegenTasks] = useState<CodegenTask[]>([]);
+  const [settings, setSettings] = useState<LauncherSettings | null>(null);
+  const [settingsDraft, setSettingsDraft] = useState<LauncherSettings | null>(null);
 
   const [servicesState, setServicesState] = useState<LoadState>('idle');
   const [buildablesState, setBuildablesState] = useState<LoadState>('idle');
+  const [codegenState, setCodegenState] = useState<LoadState>('idle');
   const [settingsState, setSettingsState] = useState<LoadState>('idle');
 
   const [servicesError, setServicesError] = useState('');
   const [buildablesError, setBuildablesError] = useState('');
+  const [codegenError, setCodegenError] = useState('');
   const [settingsError, setSettingsError] = useState('');
 
   const [serviceQuery, setServiceQuery] = useState('');
@@ -196,6 +206,19 @@ export default function App() {
     }
   }, []);
 
+  const refreshCodegenTasks = useCallback(async () => {
+    setCodegenState('loading');
+    setCodegenError('');
+    try {
+      const response = await getCodegenTasks();
+      setCodegenTasks(response.tasks);
+      setCodegenState('idle');
+    } catch (error) {
+      setCodegenError(error instanceof Error ? error.message : 'Failed to load codegen tasks');
+      setCodegenState('error');
+    }
+  }, []);
+
   const refreshSettings = useCallback(async () => {
     setSettingsState('loading');
     setSettingsError('');
@@ -213,8 +236,9 @@ export default function App() {
   useEffect(() => {
     refreshServices();
     refreshBuildables();
+    refreshCodegenTasks();
     refreshSettings();
-  }, [refreshBuildables, refreshServices, refreshSettings]);
+  }, [refreshBuildables, refreshCodegenTasks, refreshServices, refreshSettings]);
 
   useEffect(() => {
     if (!autoRefresh) {
@@ -260,13 +284,13 @@ export default function App() {
     }
   }
 
-  async function handleCopyCommand(buildable: BuildableDefinition) {
+  async function handleCopyCommand(command: string, args: string[]) {
     if (typeof navigator === 'undefined' || !navigator.clipboard) {
       return;
     }
-    const command = [buildable.command, ...(buildable.args || [])].join(' ');
+    const commandLine = [command, ...(args || [])].join(' ');
     try {
-      await navigator.clipboard.writeText(command);
+      await navigator.clipboard.writeText(commandLine);
     } catch (error) {
       console.warn('Clipboard unavailable', error);
     }
@@ -279,7 +303,14 @@ export default function App() {
     setSettingsState('loading');
     setSettingsError('');
     try {
-      const updated = await updateSettings(settingsDraft);
+      const updated = await updateSettings({
+        logging: settingsDraft.logging,
+        datastores: settingsDraft.datastores,
+        ports: settingsDraft.ports,
+        base_urls: settingsDraft.base_urls,
+        advanced: settingsDraft.advanced,
+        profiles: { active: settingsDraft.profiles.active },
+      });
       setSettings(updated);
       setSettingsDraft(updated);
       setSettingsState('idle');
@@ -296,6 +327,81 @@ export default function App() {
     return JSON.stringify(settings) !== JSON.stringify(settingsDraft);
   }, [settings, settingsDraft]);
 
+  function updateLoggingDraft(
+    key: keyof LauncherSettings['logging'],
+    value: LauncherSettings['logging'][keyof LauncherSettings['logging']],
+  ) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      logging: { ...settingsDraft.logging, [key]: value },
+    });
+  }
+
+  function updateDatastoreDraft(
+    key: keyof LauncherSettings['datastores'],
+    value: LauncherSettings['datastores'][keyof LauncherSettings['datastores']],
+  ) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      datastores: { ...settingsDraft.datastores, [key]: value },
+    });
+  }
+
+  function updatePortsDraft(
+    key: keyof LauncherSettings['ports'],
+    value: LauncherSettings['ports'][keyof LauncherSettings['ports']],
+  ) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      ports: { ...settingsDraft.ports, [key]: Number(value) },
+    });
+  }
+
+  function updateBaseUrlDraft(
+    key: keyof LauncherSettings['base_urls'],
+    value: LauncherSettings['base_urls'][keyof LauncherSettings['base_urls']],
+  ) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      base_urls: { ...settingsDraft.base_urls, [key]: String(value) },
+    });
+  }
+
+  function updateAdvancedDraft(
+    key: keyof LauncherSettings['advanced'],
+    value: LauncherSettings['advanced'][keyof LauncherSettings['advanced']],
+  ) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      advanced: { ...settingsDraft.advanced, [key]: String(value) },
+    });
+  }
+
+  function updateProfileDraft(value: string) {
+    if (!settingsDraft) {
+      return;
+    }
+    setSettingsDraft({
+      ...settingsDraft,
+      profiles: { ...settingsDraft.profiles, active: value },
+    });
+  }
+
   const refreshLabel = lastServicesRefresh
     ? `Last sync ${lastServicesRefresh.toLocaleTimeString()}`
     : 'No recent sync';
@@ -310,7 +416,7 @@ export default function App() {
               Launcher Status, Buildables, and Shared Settings
             </h1>
             <p className="max-w-2xl text-sm text-[var(--ink-muted)]">
-              A single surface for local control and remote-ready admin tasks. Changes to shared settings apply on
+              A single surface for local control and remote-ready admin tasks. Changes to launcher settings apply on
               restart of affected services.
             </p>
           </div>
@@ -571,7 +677,7 @@ export default function App() {
                     {buildable.command} {buildable.args.join(' ')}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <button className="ghost-button" onClick={() => handleCopyCommand(buildable)}>
+                    <button className="ghost-button" onClick={() => handleCopyCommand(buildable.command, buildable.args)}>
                       Copy command
                     </button>
                     <span className="text-xs text-[var(--ink-muted)]">dir: {buildable.directory}</span>
@@ -585,8 +691,65 @@ export default function App() {
         <section className="panel-card fade-in">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
+              <p className="section-title">Codegen</p>
+              <h2 className="text-2xl font-semibold">Schema + type generators</h2>
+            </div>
+            <button className="ghost-button" onClick={refreshCodegenTasks}>
+              Refresh
+            </button>
+          </div>
+          {codegenError && (
+            <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+              {codegenError}
+            </div>
+          )}
+          <div className="stagger mt-6 grid gap-4 md:grid-cols-2">
+            {codegenState === 'loading' && codegenTasks.length === 0 ? (
+              <div className="text-sm text-[var(--ink-muted)]">Loading codegen tasks...</div>
+            ) : codegenTasks.length === 0 ? (
+              <div className="text-sm text-[var(--ink-muted)]">No codegen tasks discovered.</div>
+            ) : (
+              codegenTasks.map((task) => (
+                <div key={task.id} className="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold">{task.id}</h3>
+                      <p className="text-xs text-[var(--ink-muted)]">{task.description}</p>
+                    </div>
+                    {task.groups && task.groups.length > 0 ? (
+                      <span className="status-pill">{task.groups.join(', ')}</span>
+                    ) : null}
+                  </div>
+                  <div className="mt-3 mono-chip">pnpm codegen -- --only {task.id}</div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      className="ghost-button"
+                      onClick={() => handleCopyCommand('pnpm', ['codegen', '--', '--only', task.id])}
+                    >
+                      Copy run command
+                    </button>
+                    {task.supports_check ? (
+                      <button
+                        className="ghost-button"
+                        onClick={() =>
+                          handleCopyCommand('pnpm', ['codegen', '--', '--only', task.id, '--check'])
+                        }
+                      >
+                        Copy check command
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+
+        <section className="panel-card fade-in">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
               <p className="section-title">Shared settings</p>
-              <h2 className="text-2xl font-semibold">Environment controls</h2>
+              <h2 className="text-2xl font-semibold">Launcher settings</h2>
             </div>
             <div className="flex flex-wrap gap-3">
               <button className="ghost-button" onClick={refreshSettings}>
@@ -609,55 +772,180 @@ export default function App() {
           {settingsState === 'loading' && !settingsDraft ? (
             <div className="mt-4 text-sm text-[var(--ink-muted)]">Loading settings...</div>
           ) : settingsDraft ? (
-            <div className="mt-6 grid gap-4 lg:grid-cols-2">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
-                <span>SQL logging</span>
-                <input
-                  type="checkbox"
-                  checked={settingsDraft.sql_logging_enabled}
-                  onChange={(event) =>
-                    setSettingsDraft({ ...settingsDraft, sql_logging_enabled: event.target.checked })
-                  }
-                />
-              </label>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
-                <span>Use local datastores</span>
-                <input
-                  type="checkbox"
-                  checked={settingsDraft.use_local_datastores}
-                  onChange={(event) =>
-                    setSettingsDraft({ ...settingsDraft, use_local_datastores: event.target.checked })
-                  }
-                />
-              </label>
-              <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
-                <span>Worker debug flags</span>
-                <input
-                  type="text"
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                  value={settingsDraft.worker_debug_flags}
-                  onChange={(event) =>
-                    setSettingsDraft({ ...settingsDraft, worker_debug_flags: event.target.value })
-                  }
-                  placeholder="generation,provider,worker"
-                />
-              </label>
-              <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
-                <span>Backend log level</span>
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-                  value={settingsDraft.backend_log_level}
-                  onChange={(event) =>
-                    setSettingsDraft({ ...settingsDraft, backend_log_level: event.target.value })
-                  }
-                >
-                  {['INFO', 'DEBUG', 'WARNING', 'ERROR'].map((level) => (
-                    <option key={level} value={level}>
-                      {level}
-                    </option>
+            <div className="mt-6 grid gap-6">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>SQL logging</span>
+                  <input
+                    type="checkbox"
+                    checked={settingsDraft.logging.sql_logging_enabled}
+                    onChange={(event) => updateLoggingDraft('sql_logging_enabled', event.target.checked)}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>Use local datastores</span>
+                  <input
+                    type="checkbox"
+                    checked={settingsDraft.datastores.use_local_datastores}
+                    onChange={(event) => updateDatastoreDraft('use_local_datastores', event.target.checked)}
+                  />
+                </label>
+                <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>Worker debug flags</span>
+                  <input
+                    type="text"
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={settingsDraft.logging.worker_debug_flags}
+                    onChange={(event) => updateLoggingDraft('worker_debug_flags', event.target.value)}
+                    placeholder="generation,provider,worker"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>Backend log level</span>
+                  <select
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                    value={settingsDraft.logging.backend_log_level}
+                    onChange={(event) => updateLoggingDraft('backend_log_level', event.target.value)}
+                  >
+                    {['INFO', 'DEBUG', 'WARNING', 'ERROR'].map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>Local DATABASE_URL</span>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={settingsDraft.datastores.local_database_url}
+                    onChange={(event) => updateDatastoreDraft('local_database_url', event.target.value)}
+                    placeholder="postgresql://pixsim:pixsim123@127.0.0.1:5432/pixsim7"
+                  />
+                </label>
+                <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                  <span>Local REDIS_URL</span>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={settingsDraft.datastores.local_redis_url}
+                    onChange={(event) => updateDatastoreDraft('local_redis_url', event.target.value)}
+                    placeholder="redis://localhost:6379/0"
+                  />
+                </label>
+              </div>
+
+              <div>
+                <p className="section-title">Profile</p>
+                {Object.keys(settingsDraft.profiles.available || {}).length === 0 ? (
+                  <p className="text-sm text-[var(--ink-muted)]">No launcher profiles available.</p>
+                ) : (
+                  <label className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                    <span>Active profile</span>
+                    <select
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
+                      value={settingsDraft.profiles.active}
+                      onChange={(event) => updateProfileDraft(event.target.value)}
+                    >
+                      {Object.entries(settingsDraft.profiles.available).map(([key, profile]) => (
+                        <option key={key} value={key}>
+                          {profile.label || key}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              <div>
+                <p className="section-title">Ports</p>
+                <div className="mt-3 grid gap-4 md:grid-cols-3">
+                  {(
+                    [
+                      ['backend', 'Backend'],
+                      ['frontend', 'Frontend'],
+                      ['game_frontend', 'Game UI'],
+                      ['game_service', 'Game Service'],
+                      ['devtools', 'DevTools'],
+                      ['admin', 'Admin'],
+                      ['launcher', 'Launcher API'],
+                      ['generation_api', 'Generation API'],
+                      ['postgres', 'Postgres'],
+                      ['redis', 'Redis'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                      <span>{label} port</span>
+                      <input
+                        type="number"
+                        className="input-field"
+                        value={settingsDraft.ports[key]}
+                        onChange={(event) => updatePortsDraft(key, Number(event.target.value))}
+                      />
+                    </label>
                   ))}
-                </select>
-              </label>
+                </div>
+              </div>
+
+              <div>
+                <p className="section-title">Base URLs</p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  {(
+                    [
+                      ['backend', 'Backend'],
+                      ['generation', 'Generation'],
+                      ['frontend', 'Frontend'],
+                      ['game_frontend', 'Game UI'],
+                      ['devtools', 'DevTools'],
+                      ['admin', 'Admin'],
+                      ['launcher', 'Launcher API'],
+                      ['analysis', 'Analysis'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                      <span>{label} base URL</span>
+                      <input
+                        type="text"
+                        className="input-field"
+                        value={settingsDraft.base_urls[key]}
+                        onChange={(event) => updateBaseUrlDraft(key, event.target.value)}
+                        placeholder={`http://localhost:${settingsDraft.ports.backend}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="section-title">Advanced overrides</p>
+                <div className="mt-3 grid gap-4 md:grid-cols-2">
+                  {(
+                    [
+                      ['database_url', 'DATABASE_URL'],
+                      ['redis_url', 'REDIS_URL'],
+                      ['secret_key', 'SECRET_KEY'],
+                      ['cors_origins', 'CORS_ORIGINS'],
+                      ['debug', 'DEBUG'],
+                      ['service_base_urls', 'PIXSIM_SERVICE_BASE_URLS'],
+                      ['service_timeouts', 'PIXSIM_SERVICE_TIMEOUTS'],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">
+                      <span>{label}</span>
+                      <input
+                        type="text"
+                        className="input-field"
+                        value={settingsDraft.advanced[key]}
+                        onChange={(event) => updateAdvancedDraft(key, event.target.value)}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           ) : (
             <div className="mt-4 text-sm text-[var(--ink-muted)]">No settings available.</div>

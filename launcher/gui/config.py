@@ -5,22 +5,22 @@ from dataclasses import dataclass, asdict
 from typing import Dict, Optional
 
 try:
-    from launcher.core.shared_settings import (
-        load_shared_settings,
-        update_shared_settings,
-        shared_settings_to_env,
+    from launcher.core.launcher_settings import (
+        load_launcher_settings,
+        update_launcher_settings,
+        launcher_settings_to_env,
     )
 except Exception:
     try:
-        from core.shared_settings import (
-            load_shared_settings,
-            update_shared_settings,
-            shared_settings_to_env,
+        from core.launcher_settings import (
+            load_launcher_settings,
+            update_launcher_settings,
+            launcher_settings_to_env,
         )
     except Exception:
-        load_shared_settings = None
-        update_shared_settings = None
-        shared_settings_to_env = None
+        load_launcher_settings = None
+        update_launcher_settings = None
+        launcher_settings_to_env = None
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
@@ -37,30 +37,30 @@ def set_sql_logging(enabled: bool) -> None:
     """Set the global SQL logging preference."""
     global _sql_logging_enabled
     _sql_logging_enabled = enabled
-    if update_shared_settings:
-        update_shared_settings({"sql_logging_enabled": bool(enabled)})
+    if update_launcher_settings:
+        update_launcher_settings({"logging": {"sql_logging_enabled": bool(enabled)}})
 
 
 def set_worker_debug_flags(flags: str) -> None:
     """Set global worker debug categories (comma-separated)."""
     global _worker_debug_flags
     _worker_debug_flags = flags or ""
-    if update_shared_settings:
-        update_shared_settings({"worker_debug_flags": _worker_debug_flags})
+    if update_launcher_settings:
+        update_launcher_settings({"logging": {"worker_debug_flags": _worker_debug_flags}})
 
 
 def set_backend_log_level(level: str) -> None:
     """Set global backend log level (LOG_LEVEL env)."""
     global _backend_log_level
     _backend_log_level = (level or "INFO").upper()
-    if update_shared_settings:
-        update_shared_settings({"backend_log_level": _backend_log_level})
+    if update_launcher_settings:
+        update_launcher_settings({"logging": {"backend_log_level": _backend_log_level}})
 
 
 def set_use_local_datastores(enabled: bool) -> None:
-    """Set preference for local datastores and persist shared settings."""
-    if update_shared_settings:
-        update_shared_settings({"use_local_datastores": bool(enabled)})
+    """Set preference for local datastores and persist launcher settings."""
+    if update_launcher_settings:
+        update_launcher_settings({"datastores": {"use_local_datastores": bool(enabled)}})
 
 
 @dataclass
@@ -198,15 +198,15 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
         devtools_base_url = os.getenv("DEVTOOLS_BASE_URL")
         env['VITE_DEVTOOLS_URL'] = devtools_base_url or f"http://localhost:{p.devtools}"
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
-    shared = None
-    if load_shared_settings:
+    settings = None
+    if load_launcher_settings:
         try:
-            shared = load_shared_settings()
+            settings = load_launcher_settings()
         except Exception:
-            shared = None
+            settings = None
 
-    if shared and shared_settings_to_env:
-        env.update(shared_settings_to_env(shared))
+    if settings and launcher_settings_to_env:
+        env.update(launcher_settings_to_env(settings))
     else:
         if _worker_debug_flags:
             env['PIXSIM_WORKER_DEBUG'] = _worker_debug_flags
@@ -214,8 +214,8 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
     # SQL logging control (use parameter if provided, otherwise use shared setting if available)
     if sql_logging is not None:
         sql_log_enabled = sql_logging
-    elif shared:
-        sql_log_enabled = shared.sql_logging_enabled
+    elif settings:
+        sql_log_enabled = settings.logging.sql_logging_enabled
     else:
         sql_log_enabled = _sql_logging_enabled
     env['SQL_LOGGING_ENABLED'] = '1' if sql_log_enabled else '0'
@@ -299,22 +299,22 @@ def load_ui_state() -> UIState:
                 if 'health_check_stable_interval' not in data:
                     data['health_check_stable_interval'] = 10.0
                 state = UIState(**data)
-                return _apply_shared_settings(state)
+                return _apply_launcher_settings(state)
         except Exception:
             pass
-    return _apply_shared_settings(UIState())
+    return _apply_launcher_settings(UIState())
 
 
-def _apply_shared_settings(state: UIState) -> UIState:
-    """Sync UI state fields from shared settings if available."""
-    if not load_shared_settings:
+def _apply_launcher_settings(state: UIState) -> UIState:
+    """Sync UI state fields from launcher settings if available."""
+    if not load_launcher_settings:
         return state
     try:
-        shared = load_shared_settings()
-        state.sql_logging_enabled = shared.sql_logging_enabled
-        state.worker_debug_flags = shared.worker_debug_flags
-        state.backend_debug_enabled = shared.backend_log_level.upper() == "DEBUG"
-        state.use_local_datastores = shared.use_local_datastores
+        settings = load_launcher_settings()
+        state.sql_logging_enabled = settings.logging.sql_logging_enabled
+        state.worker_debug_flags = settings.logging.worker_debug_flags
+        state.backend_debug_enabled = settings.logging.backend_log_level.upper() == "DEBUG"
+        state.use_local_datastores = settings.datastores.use_local_datastores
     except Exception:
         pass
     return state

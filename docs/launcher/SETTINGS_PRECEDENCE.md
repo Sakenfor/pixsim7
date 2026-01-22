@@ -7,7 +7,7 @@ This document describes where launcher settings live and how they are resolved.
 - Service manifests: `pixsim.service` in `package.json` or `pixsim.service.json`
 - Launcher profiles (UI presets): `launcher/profiles.json`
 - Explicit overrides: `.env`
-- Shared launcher settings (runtime flags): `data/launcher/shared_settings.json`
+- Launcher settings contract (runtime flags): `data/launcher/settings.json`
 - GUI-only state (window/layout): `launcher/gui/launcher.json`
 
 ## Resolution Order
@@ -19,7 +19,7 @@ The launcher resolves settings in this order (later wins):
 3) `.env` overrides (ports, base URLs, credentials, secrets)
 4) Process environment variables (manual exports)
 
-Shared launcher settings are resolved separately and applied at runtime:
+Launcher settings are resolved separately and applied at runtime:
 - SQL logging, worker debug flags, backend log level
 - Local datastore toggle
 
@@ -34,4 +34,3 @@ Shared launcher settings are resolved separately and applied at runtime:
 If you run services manually (scripts, docker-compose, IDE):
 - Make sure `.env` contains the overrides you need, or
 - Export the environment variables before starting services.
-

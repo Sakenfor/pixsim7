@@ -110,23 +110,164 @@ class BuildablesListResponse(BaseModel):
 
 
 # ============================================================================
-# Shared Settings Models
+# Launcher Settings Models
 # ============================================================================
 
-class SharedSettingsResponse(BaseModel):
-    """Shared launcher settings."""
+class LoggingSettingsModel(BaseModel):
     sql_logging_enabled: bool
     worker_debug_flags: str
     backend_log_level: str
+
+
+class DatastoreSettingsModel(BaseModel):
+    use_local_datastores: bool
+    local_database_url: str
+    local_redis_url: str
+
+
+class PortsSettingsModel(BaseModel):
+    backend: int
+    frontend: int
+    game_frontend: int
+    game_service: int
+    devtools: int
+    admin: int
+    launcher: int
+    generation_api: int
+    postgres: int
+    redis: int
+
+
+class BaseUrlSettingsModel(BaseModel):
+    backend: str
+    generation: str
+    frontend: str
+    game_frontend: str
+    devtools: str
+    admin: str
+    launcher: str
+    analysis: str
+
+
+class AdvancedEnvSettingsModel(BaseModel):
+    database_url: str
+    redis_url: str
+    secret_key: str
+    cors_origins: str
+    debug: str
+    service_base_urls: str
+    service_timeouts: str
+
+
+class ProfileDefinitionModel(BaseModel):
+    label: str
+    ports: Dict[str, int]
+    base_urls: Dict[str, str]
     use_local_datastores: bool
 
 
-class SharedSettingsUpdateRequest(BaseModel):
-    """Shared launcher settings update."""
+class ProfileSettingsModel(BaseModel):
+    active: str
+    available: Dict[str, ProfileDefinitionModel]
+
+
+class LauncherSettingsResponse(BaseModel):
+    logging: LoggingSettingsModel
+    datastores: DatastoreSettingsModel
+    ports: PortsSettingsModel
+    base_urls: BaseUrlSettingsModel
+    advanced: AdvancedEnvSettingsModel
+    profiles: ProfileSettingsModel
+
+    @classmethod
+    def from_settings(cls, settings):
+        return cls(
+            logging=LoggingSettingsModel(**settings.logging.__dict__),
+            datastores=DatastoreSettingsModel(**settings.datastores.__dict__),
+            ports=PortsSettingsModel(**settings.ports.__dict__),
+            base_urls=BaseUrlSettingsModel(**settings.base_urls.__dict__),
+            advanced=AdvancedEnvSettingsModel(**settings.advanced.__dict__),
+            profiles=ProfileSettingsModel(
+                active=settings.profiles.active,
+                available={k: ProfileDefinitionModel(**v.__dict__) for k, v in settings.profiles.available.items()},
+            ),
+        )
+
+
+class LoggingSettingsUpdate(BaseModel):
     sql_logging_enabled: Optional[bool] = None
     worker_debug_flags: Optional[str] = None
     backend_log_level: Optional[str] = None
+
+
+class DatastoreSettingsUpdate(BaseModel):
     use_local_datastores: Optional[bool] = None
+    local_database_url: Optional[str] = None
+    local_redis_url: Optional[str] = None
+
+
+class PortsSettingsUpdate(BaseModel):
+    backend: Optional[int] = None
+    frontend: Optional[int] = None
+    game_frontend: Optional[int] = None
+    game_service: Optional[int] = None
+    devtools: Optional[int] = None
+    admin: Optional[int] = None
+    launcher: Optional[int] = None
+    generation_api: Optional[int] = None
+    postgres: Optional[int] = None
+    redis: Optional[int] = None
+
+
+class BaseUrlSettingsUpdate(BaseModel):
+    backend: Optional[str] = None
+    generation: Optional[str] = None
+    frontend: Optional[str] = None
+    game_frontend: Optional[str] = None
+    devtools: Optional[str] = None
+    admin: Optional[str] = None
+    launcher: Optional[str] = None
+    analysis: Optional[str] = None
+
+
+class AdvancedEnvSettingsUpdate(BaseModel):
+    database_url: Optional[str] = None
+    redis_url: Optional[str] = None
+    secret_key: Optional[str] = None
+    cors_origins: Optional[str] = None
+    debug: Optional[str] = None
+    service_base_urls: Optional[str] = None
+    service_timeouts: Optional[str] = None
+
+
+class ProfileSettingsUpdate(BaseModel):
+    active: Optional[str] = None
+
+
+class LauncherSettingsUpdateRequest(BaseModel):
+    logging: Optional[LoggingSettingsUpdate] = None
+    datastores: Optional[DatastoreSettingsUpdate] = None
+    ports: Optional[PortsSettingsUpdate] = None
+    base_urls: Optional[BaseUrlSettingsUpdate] = None
+    advanced: Optional[AdvancedEnvSettingsUpdate] = None
+    profiles: Optional[ProfileSettingsUpdate] = None
+
+
+# ============================================================================
+# Codegen Models
+# ============================================================================
+
+class CodegenTaskResponse(BaseModel):
+    id: str
+    description: str
+    script: str
+    supports_check: bool = False
+    groups: List[str] = []
+
+
+class CodegenTasksResponse(BaseModel):
+    tasks: List[CodegenTaskResponse]
+    total: int
 
 
 # ============================================================================

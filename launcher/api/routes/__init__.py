@@ -6,6 +6,7 @@ from .events import router as events_router
 from .health import router as health_router
 from .buildables import router as buildables_router
 from .settings import router as settings_router
+from .codegen import router as codegen_router
 
 __all__ = [
     'services_router',
@@ -14,4 +15,5 @@ __all__ = [
     'health_router',
     'buildables_router',
     'settings_router',
+    'codegen_router',
 ]

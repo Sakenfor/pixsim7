@@ -62,12 +62,12 @@ from .event_bus import EventBus, Event, EventTypes, get_event_bus, reset_event_b
 from .container import LauncherContainer, create_container
 from .interfaces import IProcessManager, IHealthManager, ILogManager, IEventBus
 from .buildables import BuildableDefinition, load_buildables
-from .shared_settings import (
-    SharedLauncherSettings,
-    load_shared_settings,
-    save_shared_settings,
-    update_shared_settings,
-    apply_shared_settings_to_env,
+from .launcher_settings import (
+    LauncherSettings,
+    load_launcher_settings,
+    save_launcher_settings,
+    update_launcher_settings,
+    apply_launcher_settings_to_env,
 )
 
 __all__ = [
@@ -112,12 +112,12 @@ __all__ = [
     'BuildableDefinition',
     'load_buildables',
 
-    # Shared settings
-    'SharedLauncherSettings',
-    'load_shared_settings',
-    'save_shared_settings',
-    'update_shared_settings',
-    'apply_shared_settings_to_env',
+    # Settings
+    'LauncherSettings',
+    'load_launcher_settings',
+    'save_launcher_settings',
+    'update_launcher_settings',
+    'apply_launcher_settings_to_env',
 ]
 
 __version__ = '0.2.0'  # Phase 3-4 complete

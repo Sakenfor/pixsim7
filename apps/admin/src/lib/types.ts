@@ -12,6 +12,64 @@ export interface ServiceState {
   tool_check_message?: string;
 }
 
+export interface LoggingSettings {
+  sql_logging_enabled: boolean;
+  worker_debug_flags: string;
+  backend_log_level: string;
+}
+
+export interface DatastoreSettings {
+  use_local_datastores: boolean;
+  local_database_url: string;
+  local_redis_url: string;
+}
+
+export interface PortsSettings {
+  backend: number;
+  frontend: number;
+  game_frontend: number;
+  game_service: number;
+  devtools: number;
+  admin: number;
+  launcher: number;
+  generation_api: number;
+  postgres: number;
+  redis: number;
+}
+
+export interface BaseUrlSettings {
+  backend: string;
+  generation: string;
+  frontend: string;
+  game_frontend: string;
+  devtools: string;
+  admin: string;
+  launcher: string;
+  analysis: string;
+}
+
+export interface AdvancedEnvSettings {
+  database_url: string;
+  redis_url: string;
+  secret_key: string;
+  cors_origins: string;
+  debug: string;
+  service_base_urls: string;
+  service_timeouts: string;
+}
+
+export interface ProfileDefinition {
+  label: string;
+  ports: Record<string, number>;
+  base_urls: Record<string, string>;
+  use_local_datastores: boolean;
+}
+
+export interface ProfileSettings {
+  active: string;
+  available: Record<string, ProfileDefinition>;
+}
+
 export interface ServiceDefinition {
   key: string;
   title: string;
@@ -21,6 +79,24 @@ export interface ServiceDefinition {
   url?: string | null;
   health_url?: string | null;
   required_tool?: string | null;
+}
+
+export interface LauncherSettings {
+  logging: LoggingSettings;
+  datastores: DatastoreSettings;
+  ports: PortsSettings;
+  base_urls: BaseUrlSettings;
+  advanced: AdvancedEnvSettings;
+  profiles: ProfileSettings;
+}
+
+export interface LauncherSettingsUpdate {
+  logging?: Partial<LoggingSettings>;
+  datastores?: Partial<DatastoreSettings>;
+  ports?: Partial<PortsSettings>;
+  base_urls?: Partial<BaseUrlSettings>;
+  advanced?: Partial<AdvancedEnvSettings>;
+  profiles?: { active?: string };
 }
 
 export interface BuildableDefinition {
@@ -35,11 +111,12 @@ export interface BuildableDefinition {
   tags?: string[];
 }
 
-export interface SharedSettings {
-  sql_logging_enabled: boolean;
-  worker_debug_flags: string;
-  backend_log_level: string;
-  use_local_datastores: boolean;
+export interface CodegenTask {
+  id: string;
+  description: string;
+  script: string;
+  supports_check?: boolean;
+  groups?: string[];
 }
 
 export interface ServicesResponse {
@@ -49,5 +126,10 @@ export interface ServicesResponse {
 
 export interface BuildablesResponse {
   buildables: BuildableDefinition[];
+  total: number;
+}
+
+export interface CodegenTasksResponse {
+  tasks: CodegenTask[];
   total: number;
 }

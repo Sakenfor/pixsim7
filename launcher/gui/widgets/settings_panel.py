@@ -441,7 +441,7 @@ class SettingsPanel(QWidget):
         self.input_log_level.setText(os.environ.get("LOG_LEVEL", self._env_vars.get("LOG_LEVEL", "")))
         self.input_log_level.setReadOnly(True)
         self.input_log_level.setPlaceholderText("Managed by logging settings")
-        self.input_log_level.setToolTip("Managed by Logging settings (shared settings).")
+        self.input_log_level.setToolTip("Managed by Logging settings (launcher settings).")
         env_layout.addRow("LOG_LEVEL:", self.input_log_level)
 
         self.input_analysis_base = QLineEdit()

@@ -1,4 +1,11 @@
-import type { BuildablesResponse, ServiceDefinition, ServicesResponse, SharedSettings } from './types';
+import type {
+  BuildablesResponse,
+  CodegenTasksResponse,
+  LauncherSettings,
+  LauncherSettingsUpdate,
+  ServiceDefinition,
+  ServicesResponse,
+} from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100';
 
@@ -57,11 +64,15 @@ export async function getBuildables(): Promise<BuildablesResponse> {
   return request('/buildables');
 }
 
-export async function getSettings(): Promise<SharedSettings> {
+export async function getCodegenTasks(): Promise<CodegenTasksResponse> {
+  return request('/codegen/tasks');
+}
+
+export async function getSettings(): Promise<LauncherSettings> {
   return request('/settings');
 }
 
-export async function updateSettings(payload: Partial<SharedSettings>): Promise<SharedSettings> {
+export async function updateSettings(payload: LauncherSettingsUpdate): Promise<LauncherSettings> {
   return request('/settings', {
     method: 'PUT',
     body: JSON.stringify(payload),

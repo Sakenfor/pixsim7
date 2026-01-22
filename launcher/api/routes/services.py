@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Body
 from typing import List
 
 from launcher.core import ProcessManager, HealthManager
-from launcher.core.shared_settings import load_shared_settings
+from launcher.core.launcher_settings import load_launcher_settings
 from launcher.core.types import ServiceStatus, HealthStatus
 
 from ..models import (
@@ -304,8 +304,8 @@ async def start_all_services(
     """
     states = process_mgr.get_all_states()
     try:
-        shared = load_shared_settings()
-        skip_db = shared.use_local_datastores
+        settings = load_launcher_settings()
+        skip_db = settings.datastores.use_local_datastores
     except Exception:
         skip_db = False
     started = 0
