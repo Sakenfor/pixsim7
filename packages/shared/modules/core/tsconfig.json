@@ -15,8 +15,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@pixsim7/shared.types": ["../types/src"],
-      "@pixsim7/shared.types/*": ["../types/src/*"]
+      "@pixsim7/shared.types": ["../../types/src"],
+      "@pixsim7/shared.types/*": ["../../types/src/*"]
     }
   },
   "include": ["src/**/*"],

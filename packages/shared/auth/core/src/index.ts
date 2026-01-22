@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.auth
+ * @pixsim7/shared.auth.core
  *
  * Shared authentication logic for PixSim7.
  * Provides login, logout, registration, and token management.

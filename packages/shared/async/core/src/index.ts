@@ -1,5 +1,5 @@
 /**
- * @pixsim7/shared.async
+ * @pixsim7/shared.async.core
  *
  * Async utilities (polling, debouncing, etc.) - framework-agnostic.
  *
