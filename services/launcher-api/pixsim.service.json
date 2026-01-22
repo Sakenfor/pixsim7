@@ -1,0 +1,17 @@
+{
+  "id": "launcher-api",
+  "type": "backend",
+  "name": "Launcher API",
+  "description": "Launcher control plane for services, settings, and buildables",
+  "module": "launcher.api.main:app",
+  "port_env": "LAUNCHER_PORT",
+  "default_port": 8100,
+  "base_url_env": "LAUNCHER_BASE_URL",
+  "subdomain": "launcher",
+  "health_endpoint": "/health",
+  "docs_endpoint": "/docs",
+  "openapi_endpoint": "/openapi.json",
+  "tags": ["launcher", "admin"],
+  "auto_start": false,
+  "enabled": true
+}
