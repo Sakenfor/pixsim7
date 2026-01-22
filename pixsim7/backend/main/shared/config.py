@@ -64,6 +64,7 @@ class Settings(BaseSettings):
         default=[
             "http://localhost:5173",  # SvelteKit default
             "http://localhost:5174",
+            "http://localhost:5175",  # Admin panel (Vite)
             "http://localhost:8001",  # Backend API docs
             "http://localhost:8002",  # Admin panel
         ],
