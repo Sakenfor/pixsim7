@@ -145,6 +145,34 @@
     font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   }
 
+  .detail-card {
+    @apply mt-4 rounded-xl border border-slate-200 bg-white/70 px-4 py-3 text-xs;
+  }
+
+  .detail-grid {
+    @apply flex flex-col gap-3;
+  }
+
+  .detail-label {
+    @apply text-[10px] uppercase tracking-[0.2em];
+    color: var(--ink-muted);
+  }
+
+  .detail-value {
+    @apply mt-1 text-xs;
+    color: var(--ink);
+  }
+
+  .link-chip {
+    @apply inline-flex items-center rounded-full border border-slate-200 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] transition;
+    color: var(--tide);
+    background: rgba(31, 79, 89, 0.08);
+  }
+
+  .link-chip:hover {
+    background: rgba(31, 79, 89, 0.14);
+  }
+
   .fade-in {
     animation: fadeIn 0.6s ease forwards;
   }

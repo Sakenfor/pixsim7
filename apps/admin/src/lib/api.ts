@@ -1,4 +1,4 @@
-import type { BuildablesResponse, ServicesResponse, SharedSettings } from './types';
+import type { BuildablesResponse, ServiceDefinition, ServicesResponse, SharedSettings } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100';
 
@@ -25,6 +25,10 @@ export async function getServices(): Promise<ServicesResponse> {
 
 export async function startService(serviceKey: string) {
   return request(`/services/${serviceKey}/start`, { method: 'POST' });
+}
+
+export async function getServiceDefinition(serviceKey: string): Promise<ServiceDefinition> {
+  return request(`/services/${serviceKey}/definition`);
 }
 
 export async function stopService(serviceKey: string, graceful = true) {

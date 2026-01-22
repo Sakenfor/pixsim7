@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   getBuildables,
+  getServiceDefinition,
   getServices,
   getSettings,
   restartService,
@@ -11,7 +12,7 @@ import {
   stopService,
   updateSettings,
 } from './lib/api';
-import type { BuildableDefinition, ServiceState, SharedSettings } from './lib/types';
+import type { BuildableDefinition, ServiceDefinition, ServiceState, SharedSettings } from './lib/types';
 
 type LoadState = 'idle' | 'loading' | 'error';
 
@@ -48,6 +49,9 @@ const STATUS_ORDER: Record<string, number> = {
 
 export default function App() {
   const [services, setServices] = useState<ServiceState[]>([]);
+  const [serviceDefinitions, setServiceDefinitions] = useState<Record<string, ServiceDefinition>>({});
+  const [serviceDefinitionState, setServiceDefinitionState] = useState<Record<string, LoadState>>({});
+  const [serviceDefinitionErrors, setServiceDefinitionErrors] = useState<Record<string, string>>({});
   const [buildables, setBuildables] = useState<BuildableDefinition[]>([]);
   const [settings, setSettings] = useState<SharedSettings | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<SharedSettings | null>(null);
@@ -62,6 +66,7 @@ export default function App() {
 
   const [serviceQuery, setServiceQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<(typeof STATUS_FILTERS)[number]['id']>('all');
+  const [serviceDetailsOpen, setServiceDetailsOpen] = useState<Record<string, boolean>>({});
   const [buildableQuery, setBuildableQuery] = useState('');
   const [buildableCategory, setBuildableCategory] = useState('all');
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -162,6 +167,22 @@ export default function App() {
     }
   }, []);
 
+  const refreshServiceDefinition = useCallback(async (serviceKey: string) => {
+    setServiceDefinitionState((prev) => ({ ...prev, [serviceKey]: 'loading' }));
+    setServiceDefinitionErrors((prev) => ({ ...prev, [serviceKey]: '' }));
+    try {
+      const response = await getServiceDefinition(serviceKey);
+      setServiceDefinitions((prev) => ({ ...prev, [serviceKey]: response }));
+      setServiceDefinitionState((prev) => ({ ...prev, [serviceKey]: 'idle' }));
+    } catch (error) {
+      setServiceDefinitionErrors((prev) => ({
+        ...prev,
+        [serviceKey]: error instanceof Error ? error.message : 'Failed to load service definition',
+      }));
+      setServiceDefinitionState((prev) => ({ ...prev, [serviceKey]: 'error' }));
+    }
+  }, []);
+
   const refreshBuildables = useCallback(async () => {
     setBuildablesState('loading');
     setBuildablesError('');
@@ -215,6 +236,14 @@ export default function App() {
       await refreshServices();
     } catch (error) {
       setServicesError(error instanceof Error ? error.message : 'Service action failed');
+    }
+  }
+
+  async function handleToggleServiceDetails(serviceKey: string) {
+    const nextState = !serviceDetailsOpen[serviceKey];
+    setServiceDetailsOpen((prev) => ({ ...prev, [serviceKey]: nextState }));
+    if (nextState && !serviceDefinitions[serviceKey] && serviceDefinitionState[serviceKey] !== 'loading') {
+      await refreshServiceDefinition(serviceKey);
     }
   }
 
@@ -421,7 +450,63 @@ export default function App() {
                         Start
                       </button>
                     )}
+                    <button className="ghost-button" onClick={() => handleToggleServiceDetails(service.key)}>
+                      {serviceDetailsOpen[service.key] ? 'Hide details' : 'Details'}
+                    </button>
                   </div>
+                  {serviceDetailsOpen[service.key] ? (
+                    <div className="detail-card">
+                      {serviceDefinitionState[service.key] === 'loading' ? (
+                        <div className="text-xs text-[var(--ink-muted)]">Loading definition…</div>
+                      ) : serviceDefinitionErrors[service.key] ? (
+                        <div className="text-xs text-rose-700">{serviceDefinitionErrors[service.key]}</div>
+                      ) : serviceDefinitions[service.key] ? (
+                        <div className="detail-grid">
+                          <div>
+                            <p className="detail-label">Command</p>
+                            <div className="mono-chip mt-2">
+                              {serviceDefinitions[service.key].program}{' '}
+                              {serviceDefinitions[service.key].args.join(' ')}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="detail-label">Working directory</p>
+                            <p className="detail-value">{serviceDefinitions[service.key].cwd}</p>
+                          </div>
+                          {serviceDefinitions[service.key].required_tool ? (
+                            <div>
+                              <p className="detail-label">Required tool</p>
+                              <p className="detail-value">{serviceDefinitions[service.key].required_tool}</p>
+                            </div>
+                          ) : null}
+                          <div className="flex flex-wrap gap-2">
+                            {serviceDefinitions[service.key].url ? (
+                              <a
+                                className="link-chip"
+                                href={serviceDefinitions[service.key].url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Open service
+                              </a>
+                            ) : null}
+                            {serviceDefinitions[service.key].health_url ? (
+                              <a
+                                className="link-chip"
+                                href={serviceDefinitions[service.key].health_url}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Health check
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-[var(--ink-muted)]">No definition available.</div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}

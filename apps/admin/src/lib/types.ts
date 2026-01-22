@@ -12,6 +12,17 @@ export interface ServiceState {
   tool_check_message?: string;
 }
 
+export interface ServiceDefinition {
+  key: string;
+  title: string;
+  program: string;
+  args: string[];
+  cwd: string;
+  url?: string | null;
+  health_url?: string | null;
+  required_tool?: string | null;
+}
+
 export interface BuildableDefinition {
   id: string;
   title: string;
