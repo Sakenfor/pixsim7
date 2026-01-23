@@ -5,7 +5,7 @@
  * Useful for quests, storylines, tutorials, and relationship progression.
  */
 
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { InteractionDefinition } from '@pixsim7/shared.types';
 
 /**
  * A chain of interactions that unlock sequentially
@@ -36,7 +36,7 @@ export interface InteractionChainStep {
   /** Step ID within the chain */
   stepId: string;
   /** Interaction definition for this step */
-  interaction: NpcInteractionDefinition;
+  interaction: InteractionDefinition;
   /** Additional requirements beyond the interaction's own gating */
   additionalGating?: {
     /** Must wait this many seconds after previous step */
@@ -108,7 +108,7 @@ export function createChain(
  */
 export function createStep(
   stepId: string,
-  interaction: NpcInteractionDefinition,
+  interaction: InteractionDefinition,
   options?: {
     minWaitSeconds?: number;
     maxWaitSeconds?: number;
@@ -335,14 +335,14 @@ export function getActiveChainInteractions(
   sessionFlags: Record<string, any>,
   currentTime?: number
 ): Array<{
-  interaction: NpcInteractionDefinition;
+  interaction: InteractionDefinition;
   chainId: string;
   stepId: string;
   chainName: string;
   isChainInteraction: true;
 }> {
   const activeInteractions: Array<{
-    interaction: NpcInteractionDefinition;
+    interaction: InteractionDefinition;
     chainId: string;
     stepId: string;
     chainName: string;
@@ -364,7 +364,7 @@ export function getActiveChainInteractions(
 
       if (availability.available) {
         // Modify interaction to include chain metadata
-        const modifiedInteraction: NpcInteractionDefinition = {
+        const modifiedInteraction: InteractionDefinition = {
           ...currentStep.interaction,
           // Override disabled message if step-specific gating blocked it
         };
@@ -378,7 +378,7 @@ export function getActiveChainInteractions(
         });
       } else if (availability.reason) {
         // Add as unavailable with reason
-        const modifiedInteraction: NpcInteractionDefinition = {
+        const modifiedInteraction: InteractionDefinition = {
           ...currentStep.interaction,
         };
 

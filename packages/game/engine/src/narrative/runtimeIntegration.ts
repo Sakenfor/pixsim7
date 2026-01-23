@@ -529,11 +529,12 @@ export class NarrativeController implements GameRuntimePlugin {
     intent: InteractionIntent,
     session: GameSessionDTO
   ): Promise<boolean> {
-    const { npcId, interactionId } = intent;
+    const { interactionId } = intent;
+    const npcId = this.getNpcIdFromIntent(intent);
 
     // npcId is required for narrative interactions
-    if (npcId === undefined) {
-      this.log(`No npcId for interaction: ${interactionId}`);
+    if (npcId === null) {
+      this.log(`No npc target for interaction: ${interactionId}`);
       return true; // Allow regular interaction handling
     }
 
@@ -588,11 +589,12 @@ export class NarrativeController implements GameRuntimePlugin {
   ): Promise<void> {
     if (!response.success) return;
 
-    const { npcId, interactionId } = intent;
+    const { interactionId } = intent;
+    const npcId = this.getNpcIdFromIntent(intent);
 
     // npcId is required for narrative interactions
-    if (npcId === undefined) {
-      this.log(`No npcId for interaction: ${interactionId}`);
+    if (npcId === null) {
+      this.log(`No npc target for interaction: ${interactionId}`);
       return;
     }
 
@@ -888,6 +890,23 @@ export class NarrativeController implements GameRuntimePlugin {
   // ===========================================================================
   // Private Helpers
   // ===========================================================================
+
+  private getNpcIdFromIntent(intent: InteractionIntent): number | null {
+    if (intent.target.kind !== 'npc') {
+      return null;
+    }
+
+    if (typeof intent.target.id === 'number') {
+      return intent.target.id;
+    }
+
+    if (typeof intent.target.id === 'string') {
+      const parsed = Number(intent.target.id);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return null;
+  }
 
   private buildStepInput(intent: InteractionIntent): StepInput | undefined {
     const context = intent.context as Record<string, unknown> | undefined;

@@ -59,7 +59,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Casual Flirting',
       sceneType: 'flirt',
       intensity: 'light',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'acquaintance_gate',
@@ -88,7 +88,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Workplace Flirting',
       sceneType: 'flirt',
       intensity: 'subtle',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'professional_gate',
@@ -121,7 +121,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Coffee Date',
       sceneType: 'date',
       intensity: 'light',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'friend_gate',
@@ -151,7 +151,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Romantic Dinner',
       sceneType: 'date',
       intensity: 'moderate',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'close_friend_gate',
@@ -182,7 +182,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Adventure Date',
       sceneType: 'date',
       intensity: 'moderate',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'friend_adventurous',
@@ -215,7 +215,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'First Kiss',
       sceneType: 'kiss',
       intensity: 'light',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'romance_ready',
@@ -248,7 +248,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Passionate Kiss',
       sceneType: 'kiss',
       intensity: 'intense',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'deep_romance',
@@ -281,7 +281,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Goodbye Kiss',
       sceneType: 'kiss',
       intensity: 'light',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'dating_gate',
@@ -314,7 +314,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Cuddling Scene',
       sceneType: 'intimate',
       intensity: 'moderate',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'lover_gate',
@@ -345,7 +345,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       name: 'Morning After',
       sceneType: 'intimate',
       intensity: 'moderate',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [
         {
           id: 'deep_intimacy',
@@ -877,14 +877,14 @@ export function getArcTemplate(id: string): ArcTemplate | undefined {
  */
 export function cloneSceneFromTemplate(
   template: SceneTemplate,
-  targetNpcIds: number[]
+  targetIds: number[]
 ): IntimacySceneConfig {
   const timestamp = Date.now();
   return {
     ...template.scene,
     id: `${template.id}_${timestamp}`,
     name: `${template.name} (Copy)`,
-    targetNpcIds,
+    targetIds,
     gates: template.scene.gates.map((gate, idx) => ({
       ...gate,
       id: `${gate.id}_${timestamp}_${idx}`,
@@ -947,7 +947,7 @@ export function saveSceneAsTemplate(
     scene: {
       ...scene,
       // Remove target NPC IDs so template can be reused
-      targetNpcIds: [],
+      targetIds: [],
     },
   };
 

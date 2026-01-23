@@ -5,7 +5,7 @@
  */
 
 import React, { useState } from 'react';
-import type { NpcInteractionDefinition } from '@lib/registries';
+import type { InteractionDefinition } from '@lib/registries';
 import {
   getTemplatesByCategory,
   createFromTemplate,
@@ -18,7 +18,7 @@ export interface TemplateSelectorProps {
   /** NPCs available for selection */
   npcs: Array<{ id: number; name: string }>;
   /** Callback when template is selected and configured */
-  onSelect: (interaction: NpcInteractionDefinition) => void;
+  onSelect: (interaction: InteractionDefinition) => void;
   /** Callback when selector is cancelled */
   onCancel: () => void;
 }
@@ -123,13 +123,13 @@ export function TemplateSelector({ npcs, onSelect, onCancel }: TemplateSelectorP
             <div className="form-group">
               <label>Target NPC</label>
               <select
-                value={options.targetNpcIds?.[0] || ''}
+                value={options.targetIds?.[0] || ''}
                 onChange={(e) => {
                   const npcId = parseInt(e.target.value, 10);
                   const npc = npcs.find((n) => n.id === npcId);
                   setOptions({
                     ...options,
-                    targetNpcIds: npcId ? [npcId] : undefined,
+                    targetIds: npcId ? [npcId] : undefined,
                     npcName: npc?.name,
                   });
                 }}

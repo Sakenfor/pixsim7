@@ -1,7 +1,7 @@
 /**
  * Interactions Feature Module
  *
- * NPC interaction UI components + intimacy domain logic.
+ * Interaction UI components + intimacy domain logic.
  *
  * **Architecture Note:**
  * - The canonical interaction **contract** lives in `@pixsim7/shared.types/interactions.ts`
@@ -15,12 +15,12 @@
  * // ✅ RECOMMENDED - Import everything from feature (convenient)
  * import {
  *   InteractionMenu,          // UI component
- *   NpcInteractionSurface,    // Contract type (re-exported from @pixsim7/shared.types)
+ *   InteractionSurfaceExtended,    // Contract type (re-exported from @pixsim7/shared.types)
  *   Intimacy                  // Domain logic
  * } from '@features/interactions';
  *
  * // ✅ ALSO VALID - Import contract directly (explicit)
- * import { NpcInteractionDefinition } from '@pixsim7/shared.types';
+ * import { InteractionDefinition } from '@pixsim7/shared.types';
  * ```
  */
 
@@ -32,7 +32,7 @@
  * Re-export canonical interaction contract from @pixsim7/shared.types
  *
  * This allows UI code to import both components and contract types from the feature:
- * `import { InteractionMenu, NpcInteractionSurface } from '@features/interactions'`
+ * `import { InteractionMenu, InteractionSurfaceExtended } from '@features/interactions'`
  *
  * Source of truth: @pixsim7/shared.types/interactions.ts
  */

@@ -65,7 +65,7 @@ export const gameRuntimeApiClient: GameApiClient = {
     // Not used by useGameRuntime - interactions are handled at route level
     return {
       interactions: [],
-      npcId: req.npcId,
+      target: req.target,
       worldId: req.worldId,
       sessionId: req.sessionId,
       timestamp: Date.now(),

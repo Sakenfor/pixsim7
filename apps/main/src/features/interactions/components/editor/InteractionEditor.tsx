@@ -8,16 +8,16 @@
 import { validateInteraction } from '@pixsim7/game.engine';
 import React, { useState } from 'react';
 
-import type { NpcInteractionDefinition } from '@lib/registries';
+import type { InteractionDefinition } from '@lib/registries';
 import './InteractionEditor.css';
 
 export interface InteractionEditorProps {
   /** Initial interaction to edit (undefined for new) */
-  initialInteraction?: NpcInteractionDefinition;
+  initialInteraction?: InteractionDefinition;
   /** Available NPCs for selection */
   npcs?: Array<{ id: number; name: string }>;
   /** Callback when interaction is saved */
-  onSave: (interaction: NpcInteractionDefinition) => void;
+  onSave: (interaction: InteractionDefinition) => void;
   /** Callback when editor is cancelled */
   onCancel: () => void;
   /** Show template selector */
@@ -34,7 +34,7 @@ export function InteractionEditor({
   onCancel,
   // showTemplates - reserved for future template selector UI
 }: InteractionEditorProps) {
-  const [interaction, setInteraction] = useState<Partial<NpcInteractionDefinition>>(
+  const [interaction, setInteraction] = useState<Partial<InteractionDefinition>>(
     initialInteraction || {
       id: '',
       label: '',
@@ -53,7 +53,7 @@ export function InteractionEditor({
       return false;
     }
 
-    const result = validateInteraction(interaction as NpcInteractionDefinition);
+    const result = validateInteraction(interaction as InteractionDefinition);
     if (!result.valid) {
       setErrors(result.errors.map((e) => `${e.field}: ${e.message}`));
       return false;
@@ -66,7 +66,7 @@ export function InteractionEditor({
   // Save interaction
   const handleSave = () => {
     if (handleValidate()) {
-      onSave(interaction as NpcInteractionDefinition);
+      onSave(interaction as InteractionDefinition);
     }
   };
 
@@ -149,9 +149,9 @@ function BasicInfoEditor({
   npcs,
   onChange,
 }: {
-  interaction: Partial<NpcInteractionDefinition>;
+  interaction: Partial<InteractionDefinition>;
   npcs: Array<{ id: number; name: string }>;
-  onChange: (updated: Partial<NpcInteractionDefinition>) => void;
+  onChange: (updated: Partial<InteractionDefinition>) => void;
 }) {
   return (
     <div className="editor-section">
@@ -201,7 +201,7 @@ function BasicInfoEditor({
           onChange={(e) =>
             onChange({
               ...interaction,
-              surface: e.target.value as NpcInteractionDefinition['surface'],
+              surface: e.target.value as InteractionDefinition['surface'],
             })
           }
         >
@@ -232,12 +232,12 @@ function BasicInfoEditor({
         <label>Target NPCs</label>
         <select
           multiple
-          value={interaction.targetNpcIds?.map(String) || []}
+          value={interaction.targetIds?.map(String) || []}
           onChange={(e) => {
             const selected = Array.from(e.target.selectedOptions).map((opt) =>
               parseInt(opt.value, 10)
             );
-            onChange({ ...interaction, targetNpcIds: selected });
+            onChange({ ...interaction, targetIds: selected });
           }}
         >
           {npcs.map((npc) => (
@@ -253,9 +253,9 @@ function BasicInfoEditor({
         <label>
           <input
             type="checkbox"
-            checked={interaction.npcCanInitiate || false}
+            checked={interaction.targetCanInitiate || false}
             onChange={(e) =>
-              onChange({ ...interaction, npcCanInitiate: e.target.checked })
+              onChange({ ...interaction, targetCanInitiate: e.target.checked })
             }
           />
           NPC can initiate this interaction
@@ -272,8 +272,8 @@ function GatingEditor({
   interaction,
   onChange,
 }: {
-  interaction: Partial<NpcInteractionDefinition>;
-  onChange: (updated: Partial<NpcInteractionDefinition>) => void;
+  interaction: Partial<InteractionDefinition>;
+  onChange: (updated: Partial<InteractionDefinition>) => void;
 }) {
   const gating = interaction.gating || {};
   const statGating = gating.statGating;
@@ -424,8 +424,8 @@ function OutcomeEditor({
   interaction,
   onChange,
 }: {
-  interaction: Partial<NpcInteractionDefinition>;
-  onChange: (updated: Partial<NpcInteractionDefinition>) => void;
+  interaction: Partial<InteractionDefinition>;
+  onChange: (updated: Partial<InteractionDefinition>) => void;
 }) {
   const outcome = interaction.outcome || {};
 

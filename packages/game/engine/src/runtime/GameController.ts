@@ -98,7 +98,7 @@ export class GameController implements IGameController {
 
     const interactionIntent: InteractionIntent = {
       interactionId: intent.interactionId,
-      npcId: intent.npcId,
+      target: intent.target,
       worldId: world?.id ?? 0,
       sessionId: session.id,
       hotspotId: intent.hotspotId,
@@ -123,7 +123,7 @@ export class GameController implements IGameController {
     // Select option is essentially an interaction with a choice
     const interactionIntent: InteractionIntent = {
       interactionId: intent.interactionId,
-      npcId: intent.npcId,
+      target: intent.target,
       worldId: world?.id ?? 0,
       sessionId: session.id,
       playerInput: intent.choiceText,

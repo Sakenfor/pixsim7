@@ -122,7 +122,7 @@ export interface IntimacySceneConfig {
   intensity: IntimacyIntensity;
 
   /** Target NPC(s) for this scene */
-  targetNpcIds: number[];
+  targetIds: number[];
 
   /** Legacy alias for target NPC IDs (editor-only) */
   npcIds?: number[];

@@ -132,7 +132,7 @@ export function validateIntimacyScene(
   }
 
   // Validate target NPCs
-  if (scene.targetNpcIds.length === 0) {
+  if (scene.targetIds.length === 0) {
     warnings.push('No target NPCs configured - scene will not be relationship-specific');
   }
 

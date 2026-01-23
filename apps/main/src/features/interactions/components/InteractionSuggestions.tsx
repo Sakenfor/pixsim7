@@ -11,14 +11,14 @@ import {
   getSuggestionColor,
   formatSuggestionScore,
 } from '@pixsim7/game.engine';
-import type { NpcInteractionInstance } from '@lib/registries';
+import type { InteractionInstance } from '@lib/registries';
 import './InteractionSuggestions.css';
 
 export interface InteractionSuggestionsProps {
   /** Suggestions to display */
   suggestions: InteractionSuggestion[];
   /** Callback when suggestion is clicked */
-  onSelect: (interaction: NpcInteractionInstance) => void;
+  onSelect: (interaction: InteractionInstance) => void;
   /** Show detailed explanations */
   showExplanations?: boolean;
   /** Compact mode */

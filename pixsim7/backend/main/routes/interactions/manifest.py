@@ -1,22 +1,22 @@
 """
-NPC Interactions API Routes Plugin
+Interactions API Routes Plugin
 
-Provides REST API for listing available NPC interactions and executing them.
+Provides REST API for listing available interactions and executing them.
 Uses PluginContext for permission-aware access to session/world data.
 """
 
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
-from pixsim7.backend.main.api.v1.npc_interactions import router
+from pixsim7.backend.main.api.v1.interactions import router
 
 manifest = PluginManifest(
-    id="npc_interactions",
-    name="NPC Interactions API",
+    id="interactions",
+    name="Interactions API",
     version="2.0.0",  # Updated to use PluginContext
-    description="NPC interaction availability and execution - core interaction framework",
+    description="Interaction availability and execution - core interaction framework",
     author="PixSim Team",
     kind="route",
     prefix="/api/v1/game/interactions",
-    tags=["npc-interactions", "game"],
+    tags=["interactions", "game"],
     dependencies=["auth"],
     requires_db=True,
     requires_redis=False,

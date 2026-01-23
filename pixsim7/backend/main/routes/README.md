@@ -150,8 +150,8 @@ Core routes:
 `characters`, `database`, `device_agents`, `dialogue_analytics`, `game_behavior`,
 `game_inventory`, `game_locations`, `game_npc_mood_preview`, `game_quests`,
 `game_reputation_preview`, `game_scenes`, `game_sessions`, `game_worlds`,
-`generations`, `lineage`, `llm_cache`, `logs`, `media`, `migrations`,
-`npc_interactions`, `npc_state`, `pixverse_sync`, `plugins`, `prompts`,
+`generations`, `interactions`, `lineage`, `llm_cache`, `logs`, `media`, `migrations`,
+`npc_state`, `pixverse_sync`, `plugins`, `prompts`,
 `prompts_git`, `providers`, `semantic_packs`, `services`, `stat_preview`,
 `tags`, `users`, `websocket`
 

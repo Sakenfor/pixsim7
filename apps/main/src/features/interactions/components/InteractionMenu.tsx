@@ -1,7 +1,7 @@
 /**
  * Interaction Menu Component
  *
- * Phase 17.4+: Display and execute NPC interactions with cooldown timers
+ * Phase 17.4+: Display and execute interactions with cooldown timers
  */
 
 import {
@@ -11,15 +11,15 @@ import {
 } from '@pixsim7/game.engine';
 import React, { useState, useEffect } from 'react';
 
-import type { NpcInteractionInstance, NpcInteractionSurface } from '@lib/registries';
+import type { InteractionInstance, InteractionSurfaceExtended } from '@lib/registries';
 import './InteractionMenu.css';
 
 export interface InteractionMenuProps {
   /** Available interactions to display */
-  interactions: NpcInteractionInstance[];
+  interactions: InteractionInstance[];
 
   /** Callback when an interaction is selected */
-  onSelect: (interaction: NpcInteractionInstance) => void;
+  onSelect: (interaction: InteractionInstance) => void;
 
   /** NPC name for display */
   npcName?: string;
@@ -46,7 +46,7 @@ export interface InteractionMenuProps {
 /**
  * Get icon for interaction surface
  */
-function getSurfaceIcon(surface: NpcInteractionSurface): string {
+function getSurfaceIcon(surface: InteractionSurfaceExtended): string {
   switch (surface) {
     case 'dialogue':
       return '💬';
@@ -75,7 +75,7 @@ function InteractionMenuItem({
   lastUsedTimestamp,
   showCooldown = true,
 }: {
-  interaction: NpcInteractionInstance;
+  interaction: InteractionInstance;
   onClick: () => void;
   cooldownSeconds?: number;
   lastUsedTimestamp?: number;
@@ -243,7 +243,7 @@ export function InlineInteractionHint({
   interactions,
   keyHint = 'E',
 }: {
-  interactions: NpcInteractionInstance[];
+  interactions: InteractionInstance[];
   keyHint?: string;
 }) {
   // Show only the highest priority available interaction

@@ -2,7 +2,7 @@
  * Helper utilities for working with interaction templates
  */
 
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { InteractionDefinition } from '@pixsim7/shared.types';
 import {
   createFromTemplate,
   getTemplate,
@@ -19,8 +19,8 @@ export function createInteractionsFromTemplates(
     templateId: string;
     options: TemplateOptions;
   }>
-): NpcInteractionDefinition[] {
-  const interactions: NpcInteractionDefinition[] = [];
+): InteractionDefinition[] {
+  const interactions: InteractionDefinition[] = [];
 
   for (const { templateId, options } of configs) {
     const interaction = createFromTemplate(templateId, options);
@@ -35,14 +35,14 @@ export function createInteractionsFromTemplates(
 /**
  * Create a standard set of social interactions for an NPC
  */
-export function createStandardSocialSet(npcId: number, npcName: string): NpcInteractionDefinition[] {
+export function createStandardSocialSet(npcId: number, npcName: string): InteractionDefinition[] {
   return createInteractionsFromTemplates([
     {
       templateId: 'greeting',
       options: {
         id: `${npcId}:greeting`,
         label: `Greet ${npcName}`,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
       },
     },
@@ -51,7 +51,7 @@ export function createStandardSocialSet(npcId: number, npcName: string): NpcInte
       options: {
         id: `${npcId}:compliment`,
         label: `Compliment ${npcName}`,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
       },
     },
@@ -60,7 +60,7 @@ export function createStandardSocialSet(npcId: number, npcName: string): NpcInte
       options: {
         id: `${npcId}:ask_day`,
         label: `Ask ${npcName} about their day`,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
       },
     },
@@ -70,14 +70,14 @@ export function createStandardSocialSet(npcId: number, npcName: string): NpcInte
 /**
  * Create a romantic interaction set for an NPC
  */
-export function createRomanticSet(npcId: number, npcName: string): NpcInteractionDefinition[] {
+export function createRomanticSet(npcId: number, npcName: string): InteractionDefinition[] {
   return createInteractionsFromTemplates([
     {
       templateId: 'flirt',
       options: {
         id: `${npcId}:flirt`,
         label: `Flirt with ${npcName}`,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
       },
     },
@@ -86,7 +86,7 @@ export function createRomanticSet(npcId: number, npcName: string): NpcInteractio
       options: {
         id: `${npcId}:date_invite`,
         label: `Ask ${npcName} on a date`,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
       },
     },
@@ -102,11 +102,11 @@ export function createGiftInteraction(
   itemId: string,
   itemName: string,
   affinityBoost: number = 5
-): NpcInteractionDefinition | null {
+): InteractionDefinition | null {
   return createFromTemplate('giftGiving', {
     id: `${npcId}:gift:${itemId}`,
     label: `Give ${itemName} to ${npcName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     itemId,
     itemName,
@@ -124,13 +124,13 @@ export function createQuestInteractions(
   questName: string,
   rewardItemId?: string,
   rewardItemName?: string
-): NpcInteractionDefinition[] {
-  const interactions: NpcInteractionDefinition[] = [];
+): InteractionDefinition[] {
+  const interactions: InteractionDefinition[] = [];
 
   const start = createFromTemplate('questStart', {
     id: `${npcId}:quest:${questId}:start`,
     label: `Accept ${questName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     questId,
     questName,
@@ -139,7 +139,7 @@ export function createQuestInteractions(
   const complete = createFromTemplate('questComplete', {
     id: `${npcId}:quest:${questId}:complete`,
     label: `Complete ${questName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     questId,
     questName,
@@ -163,11 +163,11 @@ export function createTradeInteraction(
   giveItemName: string,
   receiveItemId: string,
   receiveItemName: string
-): NpcInteractionDefinition | null {
+): InteractionDefinition | null {
   return createFromTemplate('trade', {
     id: `${npcId}:trade:${giveItemId}_for_${receiveItemId}`,
     label: `Trade ${giveItemName} for ${receiveItemName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     giveItemId,
     giveItemName,
@@ -189,13 +189,13 @@ export function createStoryArcInteractions(
     nextStage: string;
     successMessage?: string;
   }>
-): NpcInteractionDefinition[] {
+): InteractionDefinition[] {
   return stages
     .map((stage) =>
       createFromTemplate('storyBeat', {
         id: `${npcId}:arc:${arcId}:${stage.stage}`,
         label: stage.label,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         npcName,
         arcId,
         arcStage: stage.stage,
@@ -203,7 +203,7 @@ export function createStoryArcInteractions(
         successMessage: stage.successMessage,
       })
     )
-    .filter((i): i is NpcInteractionDefinition => i !== null);
+    .filter((i): i is InteractionDefinition => i !== null);
 }
 
 /**
@@ -229,8 +229,8 @@ export function createFullInteractionSuite(
       rewardItemName?: string;
     }>;
   }
-): NpcInteractionDefinition[] {
-  const interactions: NpcInteractionDefinition[] = [];
+): InteractionDefinition[] {
+  const interactions: InteractionDefinition[] = [];
 
   // Social interactions
   if (options?.includeSocial !== false) {

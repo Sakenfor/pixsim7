@@ -1,18 +1,18 @@
 /**
  * Interaction Studio
  *
- * Main page for creating and managing NPC interactions visually.
+ * Main page for creating and managing interactions visually.
  * No backend persistence - for design/prototyping purposes.
  */
 
 import React, { useState } from 'react';
 
-import type { NpcInteractionDefinition } from '@lib/registries';
+import type { InteractionDefinition } from '@lib/registries';
 
 import { InteractionEditor, TemplateSelector } from '@features/interactions';
 import './InteractionStudio.css';
 
-const getRelationshipGateSummary = (interaction: NpcInteractionDefinition): string | null => {
+const getRelationshipGateSummary = (interaction: InteractionDefinition): string | null => {
   const statGating = interaction.gating?.statGating;
   if (!statGating) {
     return null;
@@ -35,7 +35,7 @@ const getRelationshipGateSummary = (interaction: NpcInteractionDefinition): stri
   return 'relationship';
 };
 
-const getRelationshipDeltaSummary = (interaction: NpcInteractionDefinition): string | null => {
+const getRelationshipDeltaSummary = (interaction: InteractionDefinition): string | null => {
   const deltas = interaction.outcome?.statDeltas;
   if (!deltas) {
     return null;
@@ -70,8 +70,8 @@ const getRelationshipDeltaSummary = (interaction: NpcInteractionDefinition): str
  * Interaction Studio page
  */
 export function InteractionStudio() {
-  const [interactions, setInteractions] = useState<NpcInteractionDefinition[]>([]);
-  const [editing, setEditing] = useState<NpcInteractionDefinition | null>(null);
+  const [interactions, setInteractions] = useState<InteractionDefinition[]>([]);
+  const [editing, setEditing] = useState<InteractionDefinition | null>(null);
   const [showTemplateSelector, setShowTemplateSelector] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
 
@@ -82,7 +82,7 @@ export function InteractionStudio() {
     { id: 3, name: 'Elena' },
   ];
 
-  const handleSaveInteraction = (interaction: NpcInteractionDefinition) => {
+  const handleSaveInteraction = (interaction: InteractionDefinition) => {
     if (editing) {
       // Update existing
       setInteractions(
@@ -135,7 +135,7 @@ export function InteractionStudio() {
       <div className="studio-header">
         <div className="header-main">
           <h1>⚡ Interaction Studio</h1>
-          <p className="subtitle">Visual editor for NPC interactions</p>
+          <p className="subtitle">Visual editor for interactions</p>
         </div>
 
         <div className="header-actions">

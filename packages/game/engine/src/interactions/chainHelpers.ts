@@ -5,7 +5,7 @@
  */
 
 import { createFromTemplate } from './templates';
-import type { NpcInteractionDefinition, StatDelta } from '@pixsim7/shared.types';
+import type { InteractionDefinition, StatDelta } from '@pixsim7/shared.types';
 import {
   createChain,
   createStep,
@@ -39,7 +39,7 @@ export function createQuestChain(
   const startInteraction = createFromTemplate('questStart', {
     id: `${questId}:start`,
     label: `Accept: ${questName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     questId,
     questName,
@@ -54,12 +54,12 @@ export function createQuestChain(
     for (let i = 0; i < options.progressSteps.length; i++) {
       const progressStep = options.progressSteps[i];
 
-      const progressInteraction: NpcInteractionDefinition = {
+      const progressInteraction: InteractionDefinition = {
         id: `${questId}:progress:${i + 1}`,
         label: progressStep.label,
         surface: 'dialogue',
         priority: 80,
-        targetNpcIds: [npcId],
+        targetIds: [npcId],
         gating: {
           requiredFlags: progressStep.requiredFlags,
         },
@@ -91,7 +91,7 @@ export function createQuestChain(
   const completeInteraction = createFromTemplate('questComplete', {
     id: `${questId}:complete`,
     label: `Complete: ${questName}`,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     npcName,
     questId,
     questName,
@@ -122,7 +122,7 @@ export function createRomanceChain(
     minAffinity?: number;
     minChemistry?: number;
     waitDays?: number;
-    customOutcome?: NpcInteractionDefinition['outcome'];
+    customOutcome?: InteractionDefinition['outcome'];
   }>
 ): InteractionChain {
   const steps: InteractionChainStep[] = [];
@@ -130,13 +130,13 @@ export function createRomanceChain(
   for (let i = 0; i < stages.length; i++) {
     const stage = stages[i];
 
-    const interaction: NpcInteractionDefinition = {
+    const interaction: InteractionDefinition = {
       id: `${npcId}:romance:${stage.stageId}`,
       label: stage.label,
       icon: '💕',
       surface: 'scene',
       priority: 90,
-      targetNpcIds: [npcId],
+      targetIds: [npcId],
       gating: (() => {
         const gates = [];
         if (stage.minAffinity !== undefined) {
@@ -214,13 +214,13 @@ export function createFriendshipChain(
   const steps: InteractionChainStep[] = [];
 
   for (const milestone of milestones) {
-    const interaction: NpcInteractionDefinition = {
+    const interaction: InteractionDefinition = {
       id: `${npcId}:friendship:${milestone.milestoneId}`,
       label: milestone.label,
       icon: '🤝',
       surface: 'dialogue',
       priority: 85,
-      targetNpcIds: [npcId],
+      targetIds: [npcId],
       gating: (() => {
         const gates = [];
         if (milestone.minAffinity !== undefined) {
@@ -259,7 +259,7 @@ export function createFriendshipChain(
             [`friendship:${npcId}:${milestone.milestoneId}`]: true,
           },
         },
-        npcEffects: {
+        targetEffects: {
           createMemory: {
             topic: 'friendship_milestone',
             summary: milestone.description,
@@ -305,7 +305,7 @@ export function createTutorialChain(
   for (let i = 0; i < steps.length; i++) {
     const tutStep = steps[i];
 
-    const interaction: NpcInteractionDefinition = {
+    const interaction: InteractionDefinition = {
       id: `tutorial:${tutorialId}:${tutStep.stepId}`,
       label: tutStep.label,
       icon: '📚',
@@ -368,7 +368,7 @@ export function createStoryArcChain(
     const interaction = createFromTemplate('storyBeat', {
       id: `${arcId}:${beat.beatId}`,
       label: beat.label,
-      targetNpcIds: [npcId],
+      targetIds: [npcId],
       npcName,
       arcId,
       arcStage: beat.beatId,
@@ -416,13 +416,13 @@ export function createDailyQuestChain(
   const steps: InteractionChainStep[] = [];
 
   // Accept daily quest
-  const acceptInteraction: NpcInteractionDefinition = {
+  const acceptInteraction: InteractionDefinition = {
     id: `daily:${questId}:accept`,
     label: `Accept Daily: ${questName}`,
     icon: '📅',
     surface: 'dialogue',
     priority: 80,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     outcome: {
       successMessage: `${npcName}: "${taskDescription}"`,
       flagChanges: {
@@ -441,13 +441,13 @@ export function createDailyQuestChain(
   steps.push(createStep(`${questId}:accept`, acceptInteraction));
 
   // Complete daily quest
-  const completeInteraction: NpcInteractionDefinition = {
+  const completeInteraction: InteractionDefinition = {
     id: `daily:${questId}:complete`,
     label: `Turn in Daily: ${questName}`,
     icon: '✅',
     surface: 'dialogue',
     priority: 90,
-    targetNpcIds: [npcId],
+    targetIds: [npcId],
     gating: {
       requiredFlags: [`daily:${questId}:task_done`],
     },

@@ -1,10 +1,10 @@
 """
-NPC Interaction Availability & Gating Logic
+Interaction Availability & Gating Logic
 
 Phase 17.3: Pure functions to evaluate interaction availability based on:
 - Stat tiers/metrics
 - Mood/emotions
-- NPC behavior state (activities, simulation tier)
+- NPC behavior state (activities, simulation tier) for npc targets
 - Time of day (with configurable fantasy time support)
 - Session flags (arcs, quests, events)
 - Cooldowns
@@ -18,12 +18,13 @@ Design:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Union
 import time
 
-from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
-    NpcInteractionDefinition,
-    NpcInteractionInstance,
+from pixsim7.backend.main.domain.game.interactions.interactions import (
+    InteractionDefinition,
+    InteractionInstance,
+    InteractionTarget,
     InteractionContext,
     DisabledReason,
     StatGating,
@@ -587,10 +588,10 @@ def check_cooldown(
 # ===================
 
 def evaluate_interaction_availability(
-    definition: NpcInteractionDefinition,
+    definition: InteractionDefinition,
     context: InteractionContext,
     stat_definitions: Optional[Dict[str, Any]] = None,
-    npc_id: Optional[int] = None,
+    target: Optional[InteractionTarget] = None,
     current_time: Optional[int] = None,
     time_config: Optional[WorldTimeConfig] = None,
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
@@ -601,7 +602,7 @@ def evaluate_interaction_availability(
         definition: Interaction definition to evaluate
         context: Interaction context with NPC/session state
         stat_definitions: World stat definitions (stats_config.definitions)
-        npc_id: NPC ID used for npc-scoped stat gating
+        target: Interaction target used for npc-scoped stat gating
         current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
                      Falls back to real-time if not provided (for backward compatibility).
         time_config: World time configuration for custom time systems (fantasy hours/days/periods).
@@ -627,6 +628,10 @@ def evaluate_interaction_availability(
         if not passes:
             return False, DisabledReason.TIME_INCOMPATIBLE, msg
 
+    target_kind = target.kind if target else None
+    target_id = target.id if target else None
+    npc_id = target_id if target_kind == "npc" else None
+
     # Check stat-based gating
     passes, msg, _ = check_stat_gating(
         gating.stat_gating,
@@ -637,25 +642,31 @@ def evaluate_interaction_availability(
     if not passes:
         return False, DisabledReason.STAT_GATING_FAILED, msg
 
-    # Check behavior state
-    npc_state = None
-    if context.session_flags and npc_id is not None:
-        npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
-    passes, msg = check_behavior_gating(gating.behavior, npc_state)
-    if not passes:
-        if msg and "busy" in msg.lower():
-            return False, DisabledReason.NPC_BUSY, msg
-        return False, DisabledReason.NPC_UNAVAILABLE, msg
+    # Check behavior state (npc-only for now)
+    if gating.behavior:
+        if target_kind != "npc":
+            return False, DisabledReason.NPC_UNAVAILABLE, "Target kind not supported for behavior gating"
+        npc_state = None
+        if context.session_flags and npc_id is not None:
+            npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
+        passes, msg = check_behavior_gating(gating.behavior, npc_state)
+        if not passes:
+            if msg and "busy" in msg.lower():
+                return False, DisabledReason.NPC_BUSY, msg
+            return False, DisabledReason.NPC_UNAVAILABLE, msg
 
-    # Check mood
-    passes, msg = check_mood_gating(
-        gating.mood,
-        context.mood_tags,
-        # TODO: Get emotion intensities from context
-        None
-    )
-    if not passes:
-        return False, DisabledReason.MOOD_INCOMPATIBLE, msg
+    # Check mood (npc-only for now)
+    if gating.mood:
+        if target_kind != "npc":
+            return False, DisabledReason.MOOD_INCOMPATIBLE, "Target kind not supported for mood gating"
+        passes, msg = check_mood_gating(
+            gating.mood,
+            context.mood_tags,
+            # TODO: Get emotion intensities from context
+            None
+        )
+        if not passes:
+            return False, DisabledReason.MOOD_INCOMPATIBLE, msg
 
     # Check flags
     passes, msg = check_flag_gating(
@@ -679,8 +690,8 @@ def evaluate_interaction_availability(
 
 
 def create_interaction_instance(
-    definition: NpcInteractionDefinition,
-    npc_id: int,
+    definition: InteractionDefinition,
+    target: InteractionTarget,
     world_id: int,
     session_id: int,
     context: InteractionContext,
@@ -688,13 +699,13 @@ def create_interaction_instance(
     disabled_reason: Optional[DisabledReason] = None,
     disabled_message: Optional[str] = None,
     instance_id: Optional[str] = None
-) -> NpcInteractionInstance:
+) -> InteractionInstance:
     """
     Create an interaction instance from a definition and availability result.
 
     Args:
         definition: Interaction definition
-        npc_id: Target NPC ID
+        target: Target reference
         world_id: World ID
         session_id: Session ID
         context: Interaction context
@@ -704,15 +715,16 @@ def create_interaction_instance(
         instance_id: Optional custom instance ID
 
     Returns:
-        NpcInteractionInstance
+        InteractionInstance
     """
     if instance_id is None:
-        instance_id = f"{definition.id}:{npc_id}:{session_id}:{int(time.time())}"
+        target_id = target.id if target else "unknown"
+        instance_id = f"{definition.id}:{target.kind}:{target_id}:{session_id}:{int(time.time())}"
 
-    return NpcInteractionInstance(
+    return InteractionInstance(
         id=instance_id,
         definitionId=definition.id,
-        npcId=npc_id,
+        target=target,
         worldId=world_id,
         sessionId=session_id,
         surface=definition.surface,
@@ -727,38 +739,48 @@ def create_interaction_instance(
 
 
 def filter_interactions_by_target(
-    definitions: List[NpcInteractionDefinition],
-    npc_id: int,
-    npc_roles: Optional[List[str]] = None
-) -> List[NpcInteractionDefinition]:
+    definitions: List[InteractionDefinition],
+    target_kind: str,
+    target_id: Union[int, str],
+    target_roles: Optional[List[str]] = None
+) -> List[InteractionDefinition]:
     """
     Filter interaction definitions by target NPC ID or roles.
 
     Args:
         definitions: All interaction definitions
-        npc_id: Target NPC ID
-        npc_roles: NPC's roles (e.g., ["role:shopkeeper", "role:guard"])
+        target_kind: Target kind (e.g., "npc")
+        target_id: Target ID
+        target_roles: Target roles (e.g., ["role:shopkeeper", "role:guard"])
 
     Returns:
         Filtered list of applicable definitions
     """
     filtered = []
-    npc_id_str = f"npc:{npc_id}"
+    target_ref = f"{target_kind}:{target_id}"
 
     for defn in definitions:
+        has_roles_or_ids = bool(defn.target_roles_or_ids)
+        has_target_ids = bool(defn.target_ids)
+
         # No target filter = applies to all NPCs
-        if not defn.target_roles_or_ids:
+        if not has_roles_or_ids and not has_target_ids:
             filtered.append(defn)
             continue
 
         # Check if NPC ID matches
-        if npc_id_str in defn.target_roles_or_ids:
+        if has_roles_or_ids and target_ref in defn.target_roles_or_ids:
+            filtered.append(defn)
+            continue
+
+        # Check explicit target IDs
+        if has_target_ids and target_id in defn.target_ids:
             filtered.append(defn)
             continue
 
         # Check if any role matches
-        if npc_roles:
-            if any(role in defn.target_roles_or_ids for role in npc_roles):
+        if target_roles and has_roles_or_ids:
+            if any(role in defn.target_roles_or_ids for role in target_roles):
                 filtered.append(defn)
                 continue
 

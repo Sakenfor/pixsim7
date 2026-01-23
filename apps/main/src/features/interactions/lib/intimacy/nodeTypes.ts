@@ -28,7 +28,7 @@ export function registerIntimacyNodeTypes() {
     defaultData: {
       sceneType: 'flirt',
       intensity: 'light',
-      targetNpcIds: [],
+      targetIds: [],
       gates: [],
       contentRating: 'romantic',
       requiresConsent: false,

@@ -7,7 +7,7 @@
  */
 
 import type {
-  NpcInteractionDefinition,
+  InteractionDefinition,
   InteractionSurface,
   InteractionGating,
   InteractionOutcome,
@@ -33,7 +33,7 @@ export interface InteractionTemplate {
   /** Default surface */
   defaultSurface: InteractionSurface;
   /** Template function that creates the definition */
-  create: (options: TemplateOptions) => NpcInteractionDefinition;
+  create: (options: TemplateOptions) => InteractionDefinition;
 }
 
 /**
@@ -45,7 +45,7 @@ export interface TemplateOptions {
   /** Display label (required) */
   label: string;
   /** Target NPC IDs (optional, defaults to any) */
-  targetNpcIds?: number[];
+  targetIds?: number[];
   /** Icon (optional) */
   icon?: string;
   /** Override surface (optional) */
@@ -94,7 +94,7 @@ export const greetingTemplate: InteractionTemplate = {
     icon: options.icon || '👋',
     surface: options.surface || 'dialogue',
     priority: 100,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       cooldownSeconds: 3600, // 1 hour
       ...options.gating,
@@ -114,7 +114,7 @@ export const greetingTemplate: InteractionTemplate = {
       },
       ...options.outcome,
     },
-    npcCanInitiate: true,
+    targetCanInitiate: true,
   }),
 };
 
@@ -133,7 +133,7 @@ export const complimentTemplate: InteractionTemplate = {
     icon: options.icon || '💬',
     surface: options.surface || 'dialogue',
     priority: 80,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       statGating: buildRelationshipStatGating([
         { axis: 'affinity', minValue: 20 },
@@ -149,7 +149,7 @@ export const complimentTemplate: InteractionTemplate = {
           chemistry: 2,
         }),
       ],
-      npcEffects: {
+      targetEffects: {
         triggerEmotion: {
           emotion: 'happy',
           intensity: 0.6,
@@ -181,7 +181,7 @@ export const askAboutDayTemplate: InteractionTemplate = {
     icon: options.icon || '💭',
     surface: options.surface || 'dialogue',
     priority: 70,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       statGating: buildRelationshipStatGating([
         { axis: 'affinity', minValue: 10 },
@@ -197,7 +197,7 @@ export const askAboutDayTemplate: InteractionTemplate = {
           affinity: 1,
         }),
       ],
-      npcEffects: {
+      targetEffects: {
         createMemory: {
           topic: 'daily_conversation',
           summary: 'Player asked about my day',
@@ -239,7 +239,7 @@ export const giftGivingTemplate: InteractionTemplate = {
       icon: options.icon || '🎁',
       surface: options.surface || 'inline',
       priority: 90,
-      targetNpcIds: options.targetNpcIds,
+      targetIds: options.targetIds,
       gating: {
         requiredFlags: [`has_item:${itemId}`],
         statGating: buildRelationshipStatGating([
@@ -258,7 +258,7 @@ export const giftGivingTemplate: InteractionTemplate = {
         inventoryChanges: {
           remove: [{ itemId, quantity: 1 }],
         },
-        npcEffects: {
+        targetEffects: {
           createMemory: {
             topic: 'gift_received',
             summary: `Player gave me ${itemName}`,
@@ -299,7 +299,7 @@ export const tradeTemplate: InteractionTemplate = {
       icon: options.icon || '🔄',
       surface: options.surface || 'menu',
       priority: 75,
-      targetNpcIds: options.targetNpcIds,
+      targetIds: options.targetIds,
       gating: {
         requiredFlags: [`has_item:${giveItemId}`],
         ...options.gating,
@@ -344,7 +344,7 @@ export const questStartTemplate: InteractionTemplate = {
       icon: options.icon || '📜',
       surface: options.surface || 'dialogue',
       priority: 95,
-      targetNpcIds: options.targetNpcIds,
+      targetIds: options.targetIds,
       gating: {
         statGating: buildRelationshipStatGating([
           { axis: 'affinity', minValue: 25 },
@@ -367,7 +367,7 @@ export const questStartTemplate: InteractionTemplate = {
             trust: 3,
           }),
         ],
-        npcEffects: {
+        targetEffects: {
           createMemory: {
             topic: 'quest_given',
             summary: `Gave player quest: ${questName}`,
@@ -408,7 +408,7 @@ export const questCompleteTemplate: InteractionTemplate = {
       icon: options.icon || '✅',
       surface: options.surface || 'dialogue',
       priority: 100,
-      targetNpcIds: options.targetNpcIds,
+      targetIds: options.targetIds,
       gating: {
         requiredFlags: [`quest:${questId}:completed`],
         forbiddenFlags: [`quest:${questId}:rewarded`],
@@ -435,7 +435,7 @@ export const questCompleteTemplate: InteractionTemplate = {
             trust: 5,
           }),
         ],
-        npcEffects: {
+        targetEffects: {
           createMemory: {
             topic: 'quest_completed',
             summary: `Player completed quest: ${questName}`,
@@ -480,7 +480,7 @@ export const storyBeatTemplate: InteractionTemplate = {
       icon: options.icon || '🎭',
       surface: options.surface || 'scene',
       priority: 100,
-      targetNpcIds: options.targetNpcIds,
+      targetIds: options.targetIds,
       gating: {
         requiredFlags: [`arc:${arcId}:stage:${arcStage}`],
         ...options.gating,
@@ -527,7 +527,7 @@ export const flirtTemplate: InteractionTemplate = {
     icon: options.icon || '😊',
     surface: options.surface || 'dialogue',
     priority: 85,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       statGating: buildRelationshipStatGating([
         { axis: 'affinity', minValue: 40 },
@@ -544,7 +544,7 @@ export const flirtTemplate: InteractionTemplate = {
           affinity: 2,
         }),
       ],
-      npcEffects: {
+      targetEffects: {
         triggerEmotion: {
           emotion: 'excited',
           intensity: 0.7,
@@ -576,7 +576,7 @@ export const dateInvitationTemplate: InteractionTemplate = {
     icon: options.icon || '💕',
     surface: options.surface || 'dialogue',
     priority: 90,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       statGating: buildRelationshipStatGating([
         { axis: 'affinity', minValue: 60, minTierId: 'friend' },
@@ -629,7 +629,7 @@ export const insultTemplate: InteractionTemplate = {
     icon: options.icon || '😠',
     surface: options.surface || 'dialogue',
     priority: 60,
-    targetNpcIds: options.targetNpcIds,
+    targetIds: options.targetIds,
     gating: {
       ...options.gating,
     },
@@ -642,7 +642,7 @@ export const insultTemplate: InteractionTemplate = {
           tension: 2,
         }),
       ],
-      npcEffects: {
+      targetEffects: {
         triggerEmotion: {
           emotion: 'angry',
           intensity: 0.8,
@@ -708,7 +708,7 @@ export function getTemplatesByCategory(
 export function createFromTemplate(
   templateId: string,
   options: TemplateOptions
-): NpcInteractionDefinition | null {
+): InteractionDefinition | null {
   const template = getTemplate(templateId);
   if (!template) {
     console.error(`Template ${templateId} not found`);

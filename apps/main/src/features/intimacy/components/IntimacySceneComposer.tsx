@@ -342,12 +342,12 @@ export function IntimacySceneComposer({
               </label>
               <select
                 multiple
-                value={scene.targetNpcIds.map(String)}
+                value={scene.targetIds.map(String)}
                 onChange={(e) => {
                   const selected = Array.from(e.target.selectedOptions).map((opt) =>
                     parseInt(opt.value)
                   );
-                  updateScene({ targetNpcIds: selected });
+                  updateScene({ targetIds: selected });
                 }}
                 disabled={readOnly}
                 className="w-full border rounded-lg p-2 dark:bg-neutral-800 dark:border-neutral-600"

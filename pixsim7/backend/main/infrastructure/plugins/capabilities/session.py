@@ -266,20 +266,22 @@ class SessionMutationsAPI(BaseCapabilityAPI):
     async def execute_interaction(
         self,
         session_id: int,
-        npc_id: int,
-        interaction_definition: Any,  # NpcInteractionDefinition
+        target_kind: str,
+        target_id: int,
+        interaction_definition: Any,  # InteractionDefinition
         player_input: Optional[str] = None,
         context: Optional[dict] = None,
     ) -> Optional[dict]:
         """
-        Execute an NPC interaction and apply all outcomes.
+        Execute an interaction and apply all outcomes.
 
         This is a high-level method that wraps the domain execution logic,
         applying stat deltas, flag changes, inventory changes, etc.
 
         Args:
             session_id: Session ID
-            npc_id: Target NPC ID
+            target_kind: Target kind (currently only "npc" supported)
+            target_id: Target ID
             interaction_definition: Interaction definition with outcomes
             player_input: Optional player input text
             context: Optional execution context
@@ -319,7 +321,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
             result = await execute_interaction_logic(
                 self.db,
                 orm_session,
-                npc_id,
+                target_kind,
+                target_id,
                 interaction_definition,
                 player_input,
                 context or {},
@@ -350,7 +353,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
                 "execute_interaction",
                 plugin_id=self.plugin_id,
                 session_id=session_id,
-                npc_id=npc_id,
+                target_kind=target_kind,
+                target_id=target_id,
                 success=result.success,
             )
 
@@ -361,7 +365,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
                 "Failed to execute interaction",
                 plugin_id=self.plugin_id,
                 session_id=session_id,
-                npc_id=npc_id,
+                target_kind=target_kind,
+                target_id=target_id,
                 error=str(e),
             )
             return None

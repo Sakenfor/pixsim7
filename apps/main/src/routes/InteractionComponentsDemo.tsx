@@ -11,8 +11,8 @@ import type {
   InteractionChain,
 } from '@pixsim7/game.engine';
 import type {
-  NpcInteractionDefinition,
-  NpcInteractionInstance,
+  InteractionDefinition,
+  InteractionInstance,
   StatDelta,
 } from '@pixsim7/shared.types';
 import { Button, Panel } from '@pixsim7/shared.ui';
@@ -280,13 +280,13 @@ export function InteractionComponentsDemo() {
 function createMockInteraction(
   id: string,
   label: string,
-  surface: NpcInteractionInstance['surface'],
+  surface: InteractionInstance['surface'],
   icon?: string
-): NpcInteractionInstance {
+): InteractionInstance {
   return {
     id,
     definitionId: id,
-    npcId: 1,
+    target: { kind: 'npc', id: 1 },
     worldId: 1,
     sessionId: 101,
     surface,
@@ -300,8 +300,8 @@ function createMockInteraction(
 function createMockDefinition(
   id: string,
   label: string,
-  surface: NpcInteractionDefinition['surface']
-): NpcInteractionDefinition {
+  surface: InteractionDefinition['surface']
+): InteractionDefinition {
   return {
     id,
     label,

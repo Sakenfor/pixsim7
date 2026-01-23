@@ -1,2 +1,2 @@
-"""NPC Interactions API routes"""
+"""Interactions API routes"""
 # Routes are auto-registered by plugin system via manifest.py

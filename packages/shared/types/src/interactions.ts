@@ -1,9 +1,9 @@
 /**
- * Canonical NPC Interaction Model
+ * Canonical Interaction Model
  *
  * Phase 17.2: Unified interaction types that bridge:
  * - Hotspot actions (scene-centric)
- * - Plugin interactions (NPC-centric)
+ * - Plugin interactions (NPC-centric today, target-agnostic in schema)
  * - Dialogue flows (narrative-centric)
  * - Action blocks (visual generation-centric)
  *
@@ -14,7 +14,7 @@
  * - Store definitions in GameWorld.meta (no new DB tables)
  *
  * Type Alignment:
- * - Backend source: pixsim7/backend/main/domain/game/interactions/npc_interactions.py
+ * - Backend source: pixsim7/backend/main/domain/game/interactions/interactions.py
  * - These types mirror the Python Pydantic models for API compatibility
  * - OpenAPI types (ApiComponents['schemas']['InteractionSurface'] etc.) are auto-generated
  *   but may be stale. Run `pnpm openapi:gen` to regenerate after backend changes.
@@ -37,7 +37,7 @@ export type InteractionSurface = components['schemas']['InteractionSurface'];
  * Extended interaction surface - includes frontend-only 'ambient' value.
  * Use this type in frontend code that may need the ambient surface.
  */
-export type NpcInteractionSurface =
+export type InteractionSurfaceExtended =
   | InteractionSurface
   | 'ambient';      // Background/passive interaction (frontend-only)
 
@@ -54,9 +54,9 @@ export type BranchIntent =
   | 'branch:resolve';      // Resolve tension/conflict
 
 /**
- * Branch intent alias for NPC interactions.
+ * Branch intent alias for interactions.
  */
-export type NpcInteractionBranchIntent = BranchIntent;
+export type InteractionBranchIntent = BranchIntent;
 
 /**
  * Interaction availability reason codes - from OpenAPI.
@@ -240,9 +240,9 @@ export interface InventoryChanges {
 }
 
 /**
- * NPC memory/emotion effects
+ * Target memory/emotion effects (currently NPC-only)
  */
-export interface NpcEffects {
+export interface TargetEffects {
   /** Create a memory record */
   createMemory?: {
     topic: string;
@@ -282,7 +282,7 @@ export interface SceneLaunch {
   roleBindings?: Record<string, string>;
 
   /** Branch intent to pass to scene */
-  branchIntent?: NpcInteractionBranchIntent;
+  branchIntent?: InteractionBranchIntent;
 }
 
 /**
@@ -299,7 +299,7 @@ export interface GenerationLaunch {
   };
 
   /** Branch intent for generation context */
-  branchIntent?: NpcInteractionBranchIntent;
+  branchIntent?: InteractionBranchIntent;
 }
 
 /**
@@ -316,7 +316,7 @@ export interface InteractionOutcome {
   inventoryChanges?: InventoryChanges;
 
   /** NPC memory/emotion effects */
-  npcEffects?: NpcEffects;
+  targetEffects?: TargetEffects;
 
   /** Scene to launch */
   sceneLaunch?: SceneLaunch;
@@ -342,10 +342,30 @@ export interface InteractionOutcome {
 // ===================
 
 /**
+ * Target reference for an interaction
+ */
+export interface InteractionTarget {
+  /** Target kind (e.g., "npc") */
+  kind: string;
+
+  /** Runtime target ID */
+  id?: number | string;
+
+  /** Template kind for resolving via ObjectLink */
+  templateKind?: string;
+
+  /** Template entity ID */
+  templateId?: string;
+
+  /** Optional explicit link ID */
+  linkId?: string;
+}
+
+/**
  * Interaction definition - what designers author in data
  * Stored in GameWorld.meta.interactions.definitions
  */
-export interface NpcInteractionDefinition {
+export interface InteractionDefinition {
   /** Unique interaction ID (e.g., "interaction:talk_basic") */
   id: string;
 
@@ -364,10 +384,10 @@ export interface NpcInteractionDefinition {
   /** Tags for filtering */
   tags?: string[];
 
-  /** Target NPC IDs or role patterns */
+  /** Target refs or role patterns (e.g., "npc:123", "role:shopkeeper") */
   targetRolesOrIds?: string[];
-  /** @deprecated Use targetRolesOrIds */
-  targetNpcIds?: number[];
+  /** Explicit target IDs (runtime IDs) */
+  targetIds?: Array<number | string>;
 
   /** Template/Link target references (additive, backward compatible)
    * Allows interactions to target template entities that resolve to runtime entities via ObjectLink
@@ -377,10 +397,10 @@ export interface NpcInteractionDefinition {
   targetLinkId?: string;        // Optional explicit link ID
 
   /** Which surface this interaction uses */
-  surface: NpcInteractionSurface;
+  surface: InteractionSurfaceExtended;
 
   /** Branch intent (narrative direction) */
-  branchIntent?: NpcInteractionBranchIntent;
+  branchIntent?: InteractionBranchIntent;
 
   /** Gating rules */
   gating?: InteractionGating;
@@ -397,8 +417,8 @@ export interface NpcInteractionDefinition {
   /** Priority/sort order (higher = shown first) */
   priority?: number;
 
-  /** Whether this interaction can be initiated by the NPC */
-  npcCanInitiate?: boolean;
+  /** Whether this interaction can be initiated by the target */
+  targetCanInitiate?: boolean;
 
   /** Designer metadata */
   meta?: Record<string, unknown>;
@@ -408,15 +428,15 @@ export interface NpcInteractionDefinition {
  * Interaction instance - concrete available interaction at runtime
  * Returned by availability API
  */
-export interface NpcInteractionInstance {
+export interface InteractionInstance {
   /** Unique instance ID (ephemeral, for this request) */
   id: string;
 
   /** Reference to the definition */
   definitionId: string;
 
-  /** Concrete NPC this is for */
-  npcId: number;
+  /** Concrete target this is for */
+  target: InteractionTarget;
 
   /** World ID */
   worldId: number;
@@ -425,7 +445,7 @@ export interface NpcInteractionInstance {
   sessionId: number;
 
   /** Surface to use */
-  surface: NpcInteractionSurface;
+  surface: InteractionSurfaceExtended;
 
   /** Display label (may be customized) */
   label: string;
@@ -463,10 +483,10 @@ export interface InteractionContext {
   /** Location ID */
   locationId?: number;
 
-  /** NPC's current activity ID (from behavior system) */
+  /** Target's current activity ID (from behavior system) */
   currentActivityId?: string;
 
-  /** NPC's current state tags */
+  /** Target's current state tags */
   stateTags?: string[];
 
   /** Mood tags */
@@ -490,12 +510,12 @@ export interface InteractionContext {
 // ===================
 
 /**
- * Request to list available interactions for an NPC
+ * Request to list available interactions for a target
  */
 export interface ListInteractionsRequest {
   worldId: number;
   sessionId: number;
-  npcId: number;
+  target: InteractionTarget;
   locationId?: number;
   includeUnavailable?: boolean;
 }
@@ -504,8 +524,8 @@ export interface ListInteractionsRequest {
  * Response with available interactions
  */
 export interface ListInteractionsResponse {
-  interactions: NpcInteractionInstance[];
-  npcId: number;
+  interactions: InteractionInstance[];
+  target: InteractionTarget;
   worldId: number;
   sessionId: number;
   timestamp: number;
@@ -517,7 +537,7 @@ export interface ListInteractionsResponse {
 export interface ExecuteInteractionRequest {
   worldId: number;
   sessionId: number;
-  npcId: number;
+  target: InteractionTarget;
   interactionId: string;
 
   /** Optional player input (for dialogue, etc.) */
@@ -568,7 +588,7 @@ export interface ExecuteInteractionResponse {
  */
 export interface WorldInteractionsMetadata {
   /** Interaction definitions */
-  definitions: Record<string, NpcInteractionDefinition>;
+  definitions: Record<string, InteractionDefinition>;
 
   /** Default interactions by role */
   roleDefaults?: Record<string, string[]>;  // role → interaction IDs
@@ -578,23 +598,23 @@ export interface WorldInteractionsMetadata {
 }
 
 /**
- * NPC-level interaction overrides
- * Stored in GameNPC.meta.interactions
+ * Target-level interaction overrides
+ * Stored in target meta.interactions (e.g., GameNPC.meta.interactions)
  */
-export interface NpcInteractionsMetadata {
+export interface TargetInteractionsMetadata {
   /** Override specific interaction definitions */
-  definitionOverrides?: Record<string, Partial<NpcInteractionDefinition>>;
+  definitionOverrides?: Record<string, Partial<InteractionDefinition>>;
 
   /** Disable specific interactions */
   disabledInteractions?: string[];
 
-  /** Add NPC-specific interactions */
-  additionalInteractions?: NpcInteractionDefinition[];
+  /** Add target-specific interactions */
+  additionalInteractions?: InteractionDefinition[];
 }
 
 /**
  * Session-level interaction state
- * Stored in GameSession.flags.npcs["npc:<id>"].interactions
+ * Stored in GameSession.flags.npcs["npc:<id>"].interactions (npc targets)
  */
 export interface SessionInteractionState {
   /** Last used timestamps (for cooldown) */
@@ -603,8 +623,8 @@ export interface SessionInteractionState {
   /** Interaction-specific state */
   interactionState?: Record<string, unknown>;
 
-  /** Pending NPC-initiated interactions */
-  pendingFromNpc?: Array<{
+  /** Pending target-initiated interactions */
+  pendingFromTarget?: Array<{
     interactionId: string;
     createdAt: number;
     expiresAt?: number;
@@ -612,19 +632,19 @@ export interface SessionInteractionState {
 }
 
 // ===================
-// NPC-Initiated Interactions
+// Target-Initiated Interactions
 // ===================
 
 /**
- * NPC-initiated interaction intent
+ * Target-initiated interaction intent
  * Emitted by behavior system, queued in session
  */
-export interface NpcInteractionIntent {
+export interface InteractionIntent {
   /** Unique intent ID */
   id: string;
 
-  /** NPC initiating the interaction */
-  npcId: number;
+  /** Target initiating the interaction */
+  target: InteractionTarget;
 
   /** Interaction definition ID */
   definitionId: string;
@@ -639,7 +659,7 @@ export interface NpcInteractionIntent {
   priority?: number;
 
   /** Preferred surface (can be overridden by player) */
-  preferredSurface?: NpcInteractionSurface;
+  preferredSurface?: InteractionSurfaceExtended;
 
   /** Additional context */
   context?: Record<string, unknown>;
@@ -649,12 +669,12 @@ export interface NpcInteractionIntent {
  * Interaction inbox in session flags
  * Stored in GameSession.flags.interactionInbox
  */
-export type InteractionInbox = NpcInteractionIntent[];
+export type InteractionInbox = InteractionIntent[];
 
 // ===================
 // Backwards Compatibility Notes
 // ===================
 //
 // InteractionSurface is now the base OpenAPI type (backend values only).
-// NpcInteractionSurface extends it with frontend-only 'ambient' value.
-// Use NpcInteractionSurface when you need the full set including ambient.
+// InteractionSurfaceExtended extends it with frontend-only 'ambient' value.
+// Use InteractionSurfaceExtended when you need the full set including ambient.

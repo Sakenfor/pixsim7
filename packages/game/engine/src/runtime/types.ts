@@ -13,6 +13,7 @@ import type {
   ExecuteInteractionResponse,
   ListInteractionsRequest,
   ListInteractionsResponse,
+  InteractionTarget,
   ResolveTemplateResponse,
   ResolveBatchResponse,
   TemplateKind,
@@ -152,10 +153,7 @@ export interface GameRuntimeConfig {
 /**
  * InteractionIntent - encapsulates everything needed to execute an interaction
  *
- * Supports two targeting modes:
- * 1. Direct: Specify npcId directly (legacy, still supported)
- * 2. Template-based: Specify templateKind + templateId, resolved via ObjectLink
- *
+ * Targeting uses InteractionTarget (kind + id or template reference).
  * Template-based targeting is preferred for authored content as it allows
  * the same content to work across different worlds/playthroughs.
  */
@@ -163,23 +161,8 @@ export interface InteractionIntent {
   /** Unique identifier for the interaction */
   interactionId: string;
 
-  /**
-   * NPC ID to interact with (direct targeting).
-   * Optional if using template-based targeting.
-   */
-  npcId?: number;
-
-  /**
-   * Template entity kind for template-based targeting.
-   * When set with templateId, the runtime will resolve to npcId via ObjectLink.
-   */
-  templateKind?: TemplateKind;
-
-  /**
-   * Template entity ID for template-based targeting.
-   * Used with templateKind for ObjectLink resolution.
-   */
-  templateId?: string;
+  /** Interaction target (runtime id or template reference) */
+  target: InteractionTarget;
 
   /** World ID */
   worldId: number;
@@ -364,11 +347,8 @@ export type GameInputIntent =
   | {
       type: 'interact';
       interactionId: string;
-      /** Direct NPC targeting (optional if using template-based) */
-      npcId?: number;
-      /** Template-based targeting (optional if using npcId) */
-      templateKind?: TemplateKind;
-      templateId?: string;
+      /** Interaction target */
+      target: InteractionTarget;
       hotspotId?: string;
       playerInput?: string;
       context?: Record<string, unknown>;
@@ -376,11 +356,8 @@ export type GameInputIntent =
   | {
       type: 'selectOption';
       interactionId: string;
-      /** Direct NPC targeting (optional if using template-based) */
-      npcId?: number;
-      /** Template-based targeting (optional if using npcId) */
-      templateKind?: TemplateKind;
-      templateId?: string;
+      /** Interaction target */
+      target: InteractionTarget;
       choiceId: string;
       choiceText?: string;
     }

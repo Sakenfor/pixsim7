@@ -1,7 +1,7 @@
 """
-Canonical NPC Interaction Model - Python/Pydantic Schemas
+Canonical Interaction Model - Python/Pydantic Schemas
 
-Phase 17.2: Server-side schemas matching TypeScript types in @pixsim7/types/interactions
+Phase 17.2+: Server-side schemas matching TypeScript types in @pixsim7/types/interactions
 
 Design Principles:
 - Mirror TypeScript types exactly for API compatibility
@@ -11,7 +11,7 @@ Design Principles:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Literal
+from typing import Dict, Any, List, Optional, Literal, Union
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -226,8 +226,8 @@ class WorldEventRegistration(InteractionBaseModel):
     relevance_score: Optional[float] = Field(0.5, ge=0, le=1, alias="relevanceScore")
 
 
-class NpcEffects(InteractionBaseModel):
-    """NPC memory/emotion effects"""
+class TargetEffects(InteractionBaseModel):
+    """Target memory/emotion effects (currently NPC-focused)"""
     create_memory: Optional[MemoryCreation] = Field(None, alias="createMemory")
     trigger_emotion: Optional[EmotionTrigger] = Field(None, alias="triggerEmotion")
     register_world_event: Optional[WorldEventRegistration] = Field(None, alias="registerWorldEvent")
@@ -259,7 +259,7 @@ class InteractionOutcome(InteractionBaseModel):
     stat_deltas: Optional[List[StatDelta]] = Field(None, alias="statDeltas")
     flag_changes: Optional[FlagChanges] = Field(None, alias="flagChanges")
     inventory_changes: Optional[InventoryChanges] = Field(None, alias="inventoryChanges")
-    npc_effects: Optional[NpcEffects] = Field(None, alias="npcEffects")
+    target_effects: Optional[TargetEffects] = Field(None, alias="targetEffects")
     scene_launch: Optional[SceneLaunch] = Field(None, alias="sceneLaunch")
     generation_launch: Optional[GenerationLaunch] = Field(None, alias="generationLaunch")
     narrative_program_id: Optional[str] = Field(None, alias="narrativeProgramId")
@@ -272,7 +272,7 @@ class InteractionOutcome(InteractionBaseModel):
 # Core Interaction Types
 # ===================
 
-class NpcInteractionDefinition(InteractionBaseModel):
+class InteractionDefinition(InteractionBaseModel):
     """Interaction definition - what designers author"""
     id: str
     label: str
@@ -281,6 +281,10 @@ class NpcInteractionDefinition(InteractionBaseModel):
     category: Optional[str] = None
     tags: Optional[List[str]] = None
     target_roles_or_ids: Optional[List[str]] = Field(None, alias="targetRolesOrIds")
+    target_ids: Optional[List[Union[int, str]]] = Field(None, alias="targetIds")
+    target_template_kind: Optional[str] = Field(None, alias="targetTemplateKind")
+    target_template_id: Optional[str] = Field(None, alias="targetTemplateId")
+    target_link_id: Optional[str] = Field(None, alias="targetLinkId")
     surface: InteractionSurface
     branch_intent: Optional[BranchIntent] = Field(None, alias="branchIntent")
     gating: Optional[InteractionGating] = None
@@ -288,7 +292,7 @@ class NpcInteractionDefinition(InteractionBaseModel):
     plugin_config: Optional[Dict[str, Any]] = Field(None, alias="pluginConfig")
     underlying_plugin_id: Optional[str] = Field(None, alias="underlyingPluginId")
     priority: Optional[int] = 0
-    npc_can_initiate: Optional[bool] = Field(False, alias="npcCanInitiate")
+    target_can_initiate: Optional[bool] = Field(False, alias="targetCanInitiate")
     meta: Optional[Dict[str, Any]] = None
 
 
@@ -304,11 +308,20 @@ class InteractionContext(InteractionBaseModel):
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
 
 
-class NpcInteractionInstance(InteractionBaseModel):
+class InteractionTarget(InteractionBaseModel):
+    """Interaction target reference"""
+    kind: str
+    id: Optional[Union[int, str]] = None
+    template_kind: Optional[str] = Field(None, alias="templateKind")
+    template_id: Optional[str] = Field(None, alias="templateId")
+    link_id: Optional[str] = Field(None, alias="linkId")
+
+
+class InteractionInstance(InteractionBaseModel):
     """Concrete available interaction at runtime"""
     id: str
     definition_id: str = Field(alias="definitionId")
-    npc_id: int = Field(alias="npcId")
+    target: InteractionTarget
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
     surface: InteractionSurface
@@ -329,15 +342,15 @@ class ListInteractionsRequest(InteractionBaseModel):
     """Request to list available interactions"""
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
-    npc_id: int = Field(alias="npcId")
+    target: InteractionTarget
     location_id: Optional[int] = Field(None, alias="locationId")
     include_unavailable: Optional[bool] = Field(False, alias="includeUnavailable")
 
 
 class ListInteractionsResponse(InteractionBaseModel):
     """Response with available interactions"""
-    interactions: List[NpcInteractionInstance]
-    npc_id: int = Field(alias="npcId")
+    interactions: List[InteractionInstance]
+    target: InteractionTarget
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
     timestamp: int
@@ -347,7 +360,7 @@ class ExecuteInteractionRequest(InteractionBaseModel):
     """Request to execute an interaction"""
     world_id: int = Field(alias="worldId")
     session_id: int = Field(alias="sessionId")
-    npc_id: int = Field(alias="npcId")
+    target: InteractionTarget
     interaction_id: str = Field(alias="interactionId")
     player_input: Optional[str] = Field(None, alias="playerInput")
     context: Optional[Dict[str, Any]] = None
@@ -378,40 +391,40 @@ class ExecuteInteractionResponse(InteractionBaseModel):
 
 class WorldInteractionsMetadata(InteractionBaseModel):
     """World-level interaction definitions (in GameWorld.meta.interactions)"""
-    definitions: Dict[str, NpcInteractionDefinition]
+    definitions: Dict[str, InteractionDefinition]
     role_defaults: Optional[Dict[str, List[str]]] = Field(None, alias="roleDefaults")
     scene_intent_mappings: Optional[Dict[str, int]] = Field(None, alias="sceneIntentMappings")
 
 
-class NpcInteractionsMetadata(InteractionBaseModel):
-    """NPC-level interaction overrides (in GameNPC.meta.interactions)"""
+class TargetInteractionsMetadata(InteractionBaseModel):
+    """Target-level interaction overrides (e.g., GameNPC.meta.interactions)"""
     definition_overrides: Optional[Dict[str, Dict[str, Any]]] = Field(None, alias="definitionOverrides")
     disabled_interactions: Optional[List[str]] = Field(None, alias="disabledInteractions")
-    additional_interactions: Optional[List[NpcInteractionDefinition]] = Field(None, alias="additionalInteractions")
+    additional_interactions: Optional[List[InteractionDefinition]] = Field(None, alias="additionalInteractions")
 
 
-class PendingNpcInteraction(InteractionBaseModel):
-    """Pending NPC-initiated interaction"""
+class PendingInteraction(InteractionBaseModel):
+    """Pending target-initiated interaction"""
     interaction_id: str = Field(alias="interactionId")
     created_at: int = Field(alias="createdAt")
     expires_at: Optional[int] = Field(None, alias="expiresAt")
 
 
 class SessionInteractionState(InteractionBaseModel):
-    """Session-level interaction state (in GameSession.flags.npcs["npc:<id>"].interactions)"""
+    """Session-level interaction state (currently stored under GameSession.flags.npcs)."""
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
     interaction_state: Optional[Dict[str, Any]] = Field(None, alias="interactionState")
-    pending_from_npc: Optional[List[PendingNpcInteraction]] = Field(None, alias="pendingFromNpc")
+    pending_from_target: Optional[List[PendingInteraction]] = Field(None, alias="pendingFromTarget")
 
 
 # ===================
-# NPC-Initiated Interactions
+# Target-Initiated Interactions
 # ===================
 
-class NpcInteractionIntent(InteractionBaseModel):
-    """NPC-initiated interaction intent"""
+class InteractionIntent(InteractionBaseModel):
+    """Target-initiated interaction intent"""
     id: str
-    npc_id: int = Field(alias="npcId")
+    target: InteractionTarget
     definition_id: str = Field(alias="definitionId")
     created_at: int = Field(alias="createdAt")
     expires_at: Optional[int] = Field(None, alias="expiresAt")

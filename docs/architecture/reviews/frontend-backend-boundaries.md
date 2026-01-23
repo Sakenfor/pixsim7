@@ -470,7 +470,7 @@ class GameWorld:
 | **Game Data** | `listGameWorlds()`, `getNpcDetail()` | `WorldContextSelector` | `GameWorld[]`, `GameNPC` |
 | **Generations** | `createGeneration()`, `getGeneration()` | `useGenerationStatus` | `GenerationResponse` |
 | **Assets** | `uploadAsset()`, `extractFrame()` | Asset management components | `Asset` |
-| **Interactions** | `executeNpcInteraction()` | Interaction menu | `InteractionResult` |
+| **Interactions** | `executeInteraction()` | Interaction menu | `InteractionResult` |
 
 #### **Flow 2: WebSocket (Real-Time Updates)**
 

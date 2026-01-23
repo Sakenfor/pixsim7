@@ -49,8 +49,8 @@ NPC cognitive modeling:
 - **derivations/**: Plugin derivations (behavior_urgency, conversation_style, instincts, etc.)
 
 ### Interactions (`interactions/`)
-NPC interaction mechanics:
-- **npc_interactions.py**: Interaction types (StatDelta, etc.)
+Interaction mechanics:
+- **interactions.py**: Interaction types (StatDelta, etc.)
 - **interaction_execution.py**: Application logic
 
 ## Import Patterns

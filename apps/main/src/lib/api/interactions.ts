@@ -1,7 +1,7 @@
 /**
- * NPC Interactions API Client
+ * Interactions API Client
  *
- * Phase 17.3+: Client-side API for listing and executing NPC interactions
+ * Phase 17.3+: Client-side API for listing and executing interactions
  */
 
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
@@ -11,16 +11,17 @@ import type {
   ListInteractionsResponse,
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
-  NpcInteractionInstance,
+  InteractionTarget,
+  InteractionInstance,
   GameSessionDTO,
 } from '@pixsim7/shared.types';
 
 import { apiClient } from './client';
 
 /**
- * List available interactions for an NPC
+ * List available interactions for a target
  */
-export async function listNpcInteractions(
+export async function listInteractions(
   req: ListInteractionsRequest
 ): Promise<ListInteractionsResponse> {
   const response = await apiClient.post<ListInteractionsResponse>(
@@ -31,9 +32,9 @@ export async function listNpcInteractions(
 }
 
 /**
- * Execute an NPC interaction
+ * Execute an interaction
  */
-export async function executeNpcInteraction(
+export async function executeInteraction(
   req: ExecuteInteractionRequest
 ): Promise<ExecuteInteractionResponse> {
   const response = await apiClient.post<ExecuteInteractionResponse>(
@@ -49,13 +50,13 @@ export async function executeNpcInteraction(
 export async function getAvailableInteractions(
   worldId: IDs.WorldId,
   sessionId: IDs.SessionId,
-  npcId: IDs.NpcId,
+  target: InteractionTarget,
   locationId?: IDs.LocationId
-): Promise<NpcInteractionInstance[]> {
-  const response = await listNpcInteractions({
+): Promise<InteractionInstance[]> {
+  const response = await listInteractions({
     worldId,
     sessionId,
-    npcId,
+    target,
     locationId,
     includeUnavailable: false,
   });
@@ -68,38 +69,17 @@ export async function getAvailableInteractions(
 export async function getAllInteractions(
   worldId: IDs.WorldId,
   sessionId: IDs.SessionId,
-  npcId: IDs.NpcId,
+  target: InteractionTarget,
   locationId?: IDs.LocationId
-): Promise<NpcInteractionInstance[]> {
-  const response = await listNpcInteractions({
+): Promise<InteractionInstance[]> {
+  const response = await listInteractions({
     worldId,
     sessionId,
-    npcId,
+    target,
     locationId,
     includeUnavailable: true,
   });
   return response.interactions;
-}
-
-/**
- * Execute an interaction (convenience wrapper)
- */
-export async function executeInteraction(
-  worldId: IDs.WorldId,
-  sessionId: IDs.SessionId,
-  npcId: IDs.NpcId,
-  interactionId: string,
-  playerInput?: string,
-  context?: Record<string, unknown>
-): Promise<ExecuteInteractionResponse> {
-  return executeNpcInteraction({
-    worldId,
-    sessionId,
-    npcId,
-    interactionId,
-    playerInput,
-    context,
-  });
 }
 
 /**

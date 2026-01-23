@@ -1,6 +1,6 @@
-"""NPC interaction mechanics"""
+"""Interaction mechanics"""
 
-from .npc_interactions import (
+from .interactions import (
     StatDelta,
     FlagChanges,
     InventoryChanges,

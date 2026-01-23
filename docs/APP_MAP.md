@@ -71,7 +71,7 @@ The table below is auto-generated from `docs/app_map.sources.json`. Run `pnpm co
 | Asset Management | `/assets`, `/gallery` | - | `features/assets/` | `api.v1.assets`, `api.v1.assets_bulk`, `api.v1.assets_tags`, `api.v1.assets_versions`, `api.v1.assets_maintenance`, `services.asset` |
 | Image/Video Generation | `/generate` | `overview.md`, `GENERATION_GUIDE.md` | `features/generation/` | `api.v1.generations`, `services.generation` |
 | Game Worlds | `/worlds`, `/simulation` | `game.md` | `features/worldTools/` | `api.v1.game_worlds`, `api.v1.game_sessions`, `domain.game` |
-| NPC Interactions | `/interaction-studio` | `INTERACTION_AUTHORING_GUIDE.md`, `INTERACTION_PLUGIN_MANIFEST.md` | `features/interactions/` | `api.v1.npc_interactions`, `api.v1.npc_state`, `domain.game.interactions` |
+| Interactions | `/interaction-studio` | `INTERACTION_AUTHORING_GUIDE.md`, `INTERACTION_PLUGIN_MANIFEST.md` | `features/interactions/` | `api.v1.interactions`, `api.v1.npc_state`, `domain.game.interactions` |
 | Scene/Arc Graphs | `/graph/:id`, `/graph-editor` | `NPC_RESPONSE_GRAPH_DESIGN.md` | `features/graph/` | `api.v1.action_blocks`, `api.v1.game_scenes`, `api.v1.character_graph` |
 | Prompt System | `/prompt-lab` | `SEMANTIC_PACKS_IMPLEMENTATION.md`, `PROMPT_SYSTEM_REVIEW.md` | `features/prompts/` | `api.v1.prompts`, `api.v1.semantic_packs`, `api.v1.dev_prompt_categories` |
 | Provider Accounts | `/providers`, `/accounts` | `provider-accounts.md`, `provider-capabilities.md` | `features/providers/` | `api.v1.providers`, `api.v1.accounts`, `api.v1.accounts_credits`, `services.provider` |

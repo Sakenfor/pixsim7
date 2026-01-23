@@ -1,6 +1,6 @@
 # Interactions Feature
 
-This feature provides **UI components** and **domain logic** for NPC interactions and intimacy systems.
+This feature provides **UI components** and **domain logic** for interactions and intimacy systems.
 
 ---
 
@@ -18,9 +18,9 @@ The **interaction contract** lives in `@pixsim7/shared.types/interactions.ts` (n
 **What's in the contract:**
 ```typescript
 // @pixsim7/shared.types/interactions.ts
-export type NpcInteractionSurface = 'inline' | 'dialogue' | 'scene' | ...;
-export type NpcInteractionBranchIntent = 'branch:escalate' | 'branch:cool_down' | ...;
-export interface NpcInteractionDefinition { /* ... */ }
+export type InteractionSurface = 'inline' | 'dialogue' | 'scene' | ...;
+export type InteractionBranchIntent = 'branch:escalate' | 'branch:cool_down' | ...;
+export interface InteractionDefinition { /* ... */ }
 export interface StatGating { /* ... */ }
 ```
 
@@ -55,7 +55,7 @@ The feature **re-exports** the shared contract for convenience:
 // ✅ RECOMMENDED - Import everything from the feature
 import {
   InteractionMenu,           // UI component (from this feature)
-  NpcInteractionSurface,     // Contract type (re-exported from @pixsim7/shared.types)
+  InteractionSurfaceExtended, // Contract type (re-exported from @pixsim7/shared.types)
   Intimacy                   // Domain logic (from this feature)
 } from '@features/interactions';
 
@@ -71,8 +71,8 @@ For code that only needs the contract (no UI):
 ```typescript
 // ✅ ALSO VALID - Direct import from shared contract
 import {
-  NpcInteractionSurface,
-  NpcInteractionDefinition
+  InteractionSurface,
+  InteractionDefinition
 } from '@pixsim7/shared.types';
 
 // Backend, validators, or other features use this
@@ -117,10 +117,10 @@ import {
 ### Using UI Components with Contract Types
 
 ```typescript
-import { InteractionMenu, NpcInteractionSurface } from '@features/interactions';
+import { InteractionMenu, InteractionSurfaceExtended } from '@features/interactions';
 
 function MyComponent() {
-  const surface: NpcInteractionSurface = 'dialogue';
+  const surface: InteractionSurfaceExtended = 'dialogue';
 
   return <InteractionMenu surface={surface} />;
 }
@@ -147,9 +147,9 @@ function checkGate(playerState: any) {
 
 ```typescript
 // Backend or shared validator - no UI needed
-import { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import { InteractionDefinition } from '@pixsim7/shared.types';
 
-function validateInteraction(def: NpcInteractionDefinition) {
+function validateInteraction(def: InteractionDefinition) {
   // Validation logic using contract types only
 }
 ```

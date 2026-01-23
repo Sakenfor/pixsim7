@@ -165,7 +165,7 @@ Story execution, dialogue systems, narrative programs, and action blocks.
 |-------|------------------|
 | Domain Models | `pixsim7/backend/main/domain/narrative/` |
 | Services | `pixsim7/backend/main/services/narrative/`, `services/action_blocks/` |
-| API Routes | `pixsim7/backend/main/routes/action_blocks/`, `routes/npc_interactions/` |
+| API Routes | `pixsim7/backend/main/routes/action_blocks/`, `routes/interactions/` |
 | Plugins | `pixsim7/backend/main/plugins/game_dialogue/` |
 
 ### Key Components

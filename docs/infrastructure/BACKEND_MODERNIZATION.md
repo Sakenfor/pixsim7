@@ -193,7 +193,7 @@ class GenerationService:
 @router.post("/execute")
 async def execute_interaction(
     req: ExecuteInteractionRequest,
-    ctx: PluginContext = Depends(get_plugin_context("npc_interactions")),
+    ctx: PluginContext = Depends(get_plugin_context("interactions")),
     # No direct DB access!
 ):
     # Structured logging
@@ -412,7 +412,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 
 **Routes Modernized:**
 
-1. **npc_interactions** (api/v1/npc_interactions.py)
+1. **interactions** (api/v1/interactions.py)
    - Added PluginContext injection
    - Migrated reads to capability APIs (ctx.world, ctx.session)
    - Migrated writes to capability APIs (ctx.session_mutations)
@@ -425,9 +425,9 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 2. **SessionMutationsAPI** - Added `execute_interaction()` method
 
 **Commits:**
-- 96278a7 Refactor: Modernize npc_interactions API to use PluginContext
-- a387b99 Feat: Migrate npc_interactions to capability APIs
-- 5c3fea4 Feat: Complete capability API migration for npc_interactions
+- 96278a7 Refactor: Modernize interactions API to use PluginContext
+- a387b99 Feat: Migrate interactions to capability APIs
+- 5c3fea4 Feat: Complete capability API migration for interactions
 
 ### Phase 3: Documentation (2025-11-20)
 
@@ -448,7 +448,7 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 pixsim7/backend/main/
 ├── api/
 │   └── v1/
-│       ├── npc_interactions.py         # Modern: uses PluginContext
+│       ├── interactions.py         # Modern: uses PluginContext
 │       ├── dialogue.py                 # Modern: 6 focused modules
 │       ├── actions.py
 │       ├── generation.py
@@ -501,9 +501,9 @@ pixsim7/backend/main/
 **Plugin Manifest:**
 
 ```python
-# routes/npc_interactions/manifest.py
+# routes/interactions/manifest.py
 manifest = PluginManifest(
-    id="npc_interactions",
+    id="interactions",
     name="NPC Interactions API",
     version="2.0.0",
 

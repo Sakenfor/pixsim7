@@ -5,7 +5,7 @@
  * Allows behaviors to trigger interactions and interactions to affect behavior.
  */
 
-import type { NpcInteractionDefinition } from '@pixsim7/shared.types';
+import type { InteractionDefinition, InteractionTarget } from '@pixsim7/shared.types';
 
 /**
  * Behavior state types
@@ -26,7 +26,7 @@ export interface BehaviorInteractionHook {
   /** When should this hook trigger? */
   trigger: BehaviorHookTrigger;
   /** What interaction should it create/suggest? */
-  interaction: NpcInteractionDefinition | string; // ID or full definition
+  interaction: InteractionDefinition | string; // ID or full definition
   /** Priority (higher = more likely to trigger) */
   priority?: number;
   /** Conditions for this hook */
@@ -91,11 +91,11 @@ export interface BehaviorHookConditions {
 /**
  * Interaction intent emitted by behavior system
  */
-export interface NpcInteractionIntent {
+export interface InteractionIntent {
   /** Unique intent ID */
   id: string;
-  /** NPC ID */
-  npcId: number;
+  /** Target reference */
+  target: InteractionTarget;
   /** Interaction definition ID */
   interactionId: string;
   /** Priority (0-100) */
@@ -285,22 +285,22 @@ export function checkHookConditions(
  */
 export function createIntentFromHook(
   hook: BehaviorInteractionHook,
-  npcId: number,
+  target: InteractionTarget,
   behaviorContext: {
     currentState: BehaviorState;
     currentActivity?: string;
     triggerReason: string;
   },
   ttlSeconds: number = 300 // 5 minutes default
-): NpcInteractionIntent {
+): InteractionIntent {
   const now = Math.floor(Date.now() / 1000);
   const interactionId = typeof hook.interaction === 'string'
     ? hook.interaction
     : hook.interaction.id;
 
   return {
-    id: `intent:${npcId}:${interactionId}:${now}`,
-    npcId,
+    id: `intent:${target.kind}:${target.id ?? 'unknown'}:${interactionId}:${now}`,
+    target,
     interactionId,
     priority: hook.priority ?? 50,
     createdAt: now,
@@ -314,9 +314,9 @@ export function createIntentFromHook(
  * Filter expired intents
  */
 export function filterActiveIntents(
-  intents: NpcInteractionIntent[],
+  intents: InteractionIntent[],
   currentTime: number = Math.floor(Date.now() / 1000)
-): NpcInteractionIntent[] {
+): InteractionIntent[] {
   return intents.filter(
     (intent) => !intent.expiresAt || intent.expiresAt > currentTime
   );
@@ -326,8 +326,8 @@ export function filterActiveIntents(
  * Get highest priority intent
  */
 export function getHighestPriorityIntent(
-  intents: NpcInteractionIntent[]
-): NpcInteractionIntent | null {
+  intents: InteractionIntent[]
+): InteractionIntent | null {
   if (intents.length === 0) return null;
 
   return intents.reduce((highest, current) =>

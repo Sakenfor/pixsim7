@@ -63,11 +63,12 @@ class TickStep(BaseModel):
 
 
 class InteractionStep(BaseModel):
-    """Interaction step - execute an interaction with an NPC"""
+    """Interaction step - execute an interaction with a target"""
     kind: Literal["interaction"] = "interaction"
     world_id: int = Field(..., description="World ID")
     session_id: int = Field(..., description="Session ID")
-    npc_id: int = Field(..., description="NPC ID")
+    target_kind: str = Field(..., description="Target kind (e.g., npc)")
+    target_id: int = Field(..., description="Target ID")
     interaction_id: str = Field(..., description="Interaction identifier")
     params: Optional[Dict[str, Any]] = Field(default=None, description="Optional parameters")
 

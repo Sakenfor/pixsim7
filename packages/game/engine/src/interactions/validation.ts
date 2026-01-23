@@ -6,10 +6,10 @@
  */
 
 import type {
-  NpcInteractionDefinition,
+  InteractionDefinition,
   InteractionGating,
   InteractionOutcome,
-  NpcInteractionSurface,
+  InteractionSurfaceExtended,
 } from '@pixsim7/shared.types';
 
 export interface ValidationError {
@@ -38,7 +38,7 @@ export interface ValidationResult {
  * Validate an interaction definition
  */
 export function validateInteraction(
-  definition: NpcInteractionDefinition
+  definition: InteractionDefinition
 ): ValidationResult {
   const errors: ValidationError[] = [];
   const warnings: ValidationError[] = [];
@@ -110,9 +110,9 @@ export function validateInteraction(
   }
 
   // NPC can initiate without appropriate surface
-  if (definition.npcCanInitiate && definition.surface === 'menu') {
+  if (definition.targetCanInitiate && definition.surface === 'menu') {
     warnings.push({
-      field: 'npcCanInitiate',
+      field: 'targetCanInitiate',
       message: 'NPCs cannot initiate menu-surface interactions',
       severity: 'warning',
       suggestion: 'Use "inline", "dialogue", or "notification" for NPC-initiated interactions',
@@ -263,7 +263,7 @@ function validateGating(gating: InteractionGating, interactionId: string): Valid
 function validateOutcome(
   outcome: InteractionOutcome,
   interactionId: string,
-  surface: NpcInteractionSurface
+  surface: InteractionSurfaceExtended
 ): ValidationError[] {
   const errors: ValidationError[] = [];
 
@@ -468,7 +468,7 @@ export function formatValidationResult(result: ValidationResult): string {
  * Validate multiple interactions and report duplicates
  */
 export function validateInteractionSet(
-  definitions: NpcInteractionDefinition[]
+  definitions: InteractionDefinition[]
 ): {
   results: Map<string, ValidationResult>;
   duplicateIds: string[];

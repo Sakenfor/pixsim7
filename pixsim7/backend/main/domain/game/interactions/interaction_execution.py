@@ -1,11 +1,11 @@
 """
-NPC Interaction Execution Pipeline
+Interaction Execution Pipeline
 
 Phase 17.5: Apply interaction outcomes (stat deltas, flags, inventory, scenes, etc.)
 
 This module provides a unified execution pipeline that:
 - Validates interaction availability before execution
-- Applies all outcome effects (stat deltas, flags, inventory, NPC effects)
+- Applies all outcome effects (stat deltas, flags, inventory, target effects)
 - Launches scenes or generation flows
 - Tracks cooldowns
 - Provides consistent logging/telemetry
@@ -19,12 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.models import GameSession, GameWorld, GameNPC
-from .npc_interactions import (
-    NpcInteractionDefinition,
+from .interactions import (
+    InteractionDefinition,
     StatDelta,
     FlagChanges,
     InventoryChanges,
-    NpcEffects,
+    TargetEffects,
     SceneLaunch,
     GenerationLaunch,
     ExecuteInteractionResponse,
@@ -338,24 +338,28 @@ async def apply_inventory_changes(
     )
 
 
-async def apply_npc_effects(
+async def apply_target_effects(
     db: AsyncSession,
     session: GameSession,
-    npc_id: int,
-    effects: NpcEffects,
+    target_kind: str,
+    target_id: int,
+    effects: TargetEffects,
     world_time: Optional[float] = None
 ) -> None:
     """
-    Apply NPC effects (memory, emotion, world event).
+    Apply target effects (memory, emotion, world event).
 
     Args:
         db: Database session
         session: Game session
-        npc_id: Target NPC ID
-        effects: NPC effects to apply
+        target_kind: Target kind (currently only "npc" supported)
+        target_id: Target ID
+        effects: Target effects to apply
         world_time: Optional world time (game seconds). If provided, used for timestamps.
                     If not provided, falls back to real-time (for backward compatibility).
     """
+    if target_kind != "npc":
+        return
     # Determine timestamp to use
     timestamp = int(world_time) if world_time is not None else int(time.time())
 
@@ -363,7 +367,7 @@ async def apply_npc_effects(
     if effects.create_memory:
         # TODO: Integrate with NpcMemory model when available
         # For now, store in session flags
-        npc_key = f"npc:{npc_id}"
+        npc_key = f"npc:{target_id}"
         npcs = session.flags.get("npcs", {})
         if npc_key not in npcs:
             npcs[npc_key] = {}
@@ -384,7 +388,7 @@ async def apply_npc_effects(
     if effects.trigger_emotion:
         # TODO: Integrate with NpcEmotionalState model when available
         # For now, store in session flags
-        npc_key = f"npc:{npc_id}"
+        npc_key = f"npc:{target_id}"
         npcs = session.flags.get("npcs", {})
         if npc_key not in npcs:
             npcs[npc_key] = {}
@@ -407,7 +411,7 @@ async def apply_npc_effects(
             "eventName": effects.register_world_event.event_name,
             "description": effects.register_world_event.description,
             "relevanceScore": effects.register_world_event.relevance_score or 0.5,
-            "npcId": npc_id,
+            "npcId": target_id,
             "timestamp": timestamp
         })
         session.flags["worldEvents"] = world_events
@@ -497,18 +501,20 @@ async def advance_interaction_chain(
 async def execute_interaction(
     db: AsyncSession,
     session: GameSession,
-    npc_id: int,
-    definition: NpcInteractionDefinition,
+    target_kind: str,
+    target_id: int,
+    definition: InteractionDefinition,
     player_input: Optional[str] = None,
     context: Optional[Dict[str, Any]] = None
 ) -> ExecuteInteractionResponse:
     """
-    Execute an NPC interaction and apply all outcomes.
+    Execute an interaction and apply all outcomes.
 
     Args:
         db: Database session
         session: Game session
-        npc_id: Target NPC ID
+        target_kind: Target kind (currently only "npc" supported)
+        target_id: Target ID
         definition: Interaction definition
         player_input: Optional player input (for dialogue)
         context: Optional additional context
@@ -516,6 +522,12 @@ async def execute_interaction(
     Returns:
         Execution response with results
     """
+    if target_kind != "npc":
+        raise ValueError(f"Unsupported target_kind '{target_kind}'")
+    if not isinstance(target_id, int):
+        raise ValueError("NPC target_id must be an int")
+    npc_id = target_id
+
     outcome = definition.outcome
     if not outcome:
         # No outcome defined, return success with no changes
@@ -558,9 +570,16 @@ async def execute_interaction(
         summary = await apply_inventory_changes(session, outcome.inventory_changes)
         inventory_changes = summary
 
-    # 4. NPC effects
-    if outcome.npc_effects:
-        await apply_npc_effects(db, session, npc_id, outcome.npc_effects, world_time=world_time)
+    # 4. Target effects (npc-only for now)
+    if outcome.target_effects:
+        await apply_target_effects(
+            db,
+            session,
+            target_kind,
+            npc_id,
+            outcome.target_effects,
+            world_time=world_time,
+        )
 
     # 5. Scene launch
     if outcome.scene_launch:

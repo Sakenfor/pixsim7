@@ -51,7 +51,7 @@ export type {
   MotionPreset,
   WorldUiTheme,
   UserUiPreferences,
-  NpcInteractionDefinition,
+  InteractionDefinition,
   SessionUpdatePayload,
   PickpocketRequest,
   PickpocketResponse,
@@ -70,8 +70,9 @@ export type {
   ListInteractionsResponse,
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
-  NpcInteractionInstance,
-  NpcInteractionSurface,
+  InteractionInstance,
+  InteractionTarget,
+  InteractionSurfaceExtended,
   InteractionSurface,
   // Intimacy types
   RelationshipGate,
@@ -115,7 +116,7 @@ export type {
 } from '@pixsim7/game.engine';
 
 // ===== Interaction Registry =====
-// Manages NPC interaction plugins
+// Manages interaction plugins
 // Source: frontend/src/lib/game/interactions
 import { interactionRegistry, InteractionRegistry } from './game/interactions/types';
 export { interactionRegistry, InteractionRegistry };

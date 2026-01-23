@@ -127,9 +127,9 @@ All templates support these options:
 ### Basic Structure
 
 ```typescript
-import type { NpcInteractionDefinition } from '@pixsim7/types';
+import type { InteractionDefinition } from '@pixsim7/types';
 
-const customInteraction: NpcInteractionDefinition = {
+const customInteraction: InteractionDefinition = {
   id: 'unique_id',
   label: 'Display Text',
   icon: '🎯',
@@ -593,7 +593,7 @@ const romanticInteractions = [
 ### Example 4: Custom Complex Interaction
 
 ```typescript
-const customInteraction: NpcInteractionDefinition = {
+const customInteraction: InteractionDefinition = {
   id: 'tavern:perform_song',
   label: 'Perform a Song',
   icon: '🎵',
@@ -675,7 +675,7 @@ NPCs will emit interaction intents based on their behavior/mood/schedule.
 Create interactions at runtime based on game state:
 
 ```typescript
-function createDynamicGift(itemId: string, itemName: string): NpcInteractionDefinition {
+function createDynamicGift(itemId: string, itemName: string): InteractionDefinition {
   return createFromTemplate('giftGiving', {
     id: `dynamic:gift:${itemId}`,
     label: `Give ${itemName}`,

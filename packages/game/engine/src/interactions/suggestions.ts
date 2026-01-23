@@ -7,7 +7,7 @@
  * Task 23: GameProfile integration - adjusts suggestion scoring based on game style and narrative profile.
  */
 
-import type { NpcInteractionInstance, GameProfile } from '@pixsim7/shared.types';
+import type { InteractionInstance, GameProfile } from '@pixsim7/shared.types';
 import { getNarrativeEmphasisWeight } from '../world/gameProfile';
 
 /**
@@ -29,7 +29,7 @@ export type SuggestionReason =
  */
 export interface InteractionSuggestion {
   /** The interaction being suggested */
-  interaction: NpcInteractionInstance;
+  interaction: InteractionInstance;
   /** Why it's being suggested */
   reason: SuggestionReason;
   /** Score (0-100) */
@@ -56,7 +56,7 @@ export interface InteractionSuggestion {
   };
 }
 
-const getRelationshipDelta = (interaction: NpcInteractionInstance): Record<string, number> | null => {
+const getRelationshipDelta = (interaction: InteractionInstance): Record<string, number> | null => {
   const deltas = interaction.outcome?.statDeltas;
   if (!deltas) {
     return null;
@@ -102,7 +102,7 @@ export interface SuggestionConfig {
  * Generate interaction suggestions
  */
 export function generateSuggestions(
-  availableInteractions: NpcInteractionInstance[],
+  availableInteractions: InteractionInstance[],
   context: {
     /** Current relationship state */
     relationship?: {

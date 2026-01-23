@@ -32,6 +32,11 @@ import {
 } from '../session/statAdapters';
 import { getNpcRelationshipState } from '../session/state';
 
+type TemplateResolution = {
+  runtimeId: number | null;
+  runtimeKind?: string;
+};
+
 /**
  * Simple typed event emitter (reused from PixSim7Core)
  */
@@ -97,8 +102,8 @@ export class GameRuntime implements IGameRuntime {
   // Track NPC relationship states for change detection
   private relationshipCache = new Map<number, NpcRelationshipState>();
 
-  // Cache for template→runtime resolution (keyed by "templateKind:templateId")
-  private templateCache = new Map<string, number | null>();
+  // Cache for template->runtime resolution (keyed by "templateKind:templateId")
+  private templateCache = new Map<string, TemplateResolution>();
 
   constructor(config: GameRuntimeConfig) {
     this.config = config;
@@ -116,23 +121,23 @@ export class GameRuntime implements IGameRuntime {
    *
    * @param templateKind - Template entity kind (e.g., 'characterInstance')
    * @param templateId - Template entity ID
-   * @returns Runtime entity ID, or null if no active link found
+   * @returns Resolution info with runtimeId (null if no active link found)
    */
   async resolveTemplateToRuntime(
     templateKind: TemplateKind,
     templateId: string
-  ): Promise<number | null> {
+  ): Promise<TemplateResolution> {
     const cacheKey = createTemplateRefKey(templateKind, templateId);
 
     // Check cache first
     if (this.templateCache.has(cacheKey)) {
-      return this.templateCache.get(cacheKey) ?? null;
+      return this.templateCache.get(cacheKey) ?? { runtimeId: null };
     }
 
     // Check if API client supports template resolution
     if (!this.config.apiClient.resolveTemplate) {
       this.log(`API client does not support resolveTemplate, cannot resolve ${cacheKey}`);
-      return null;
+      return { runtimeId: null };
     }
 
     try {
@@ -145,21 +150,25 @@ export class GameRuntime implements IGameRuntime {
         context
       );
 
-      const runtimeId = result.resolved ? (result.runtimeId ?? null) : null;
+      const resolution: TemplateResolution = {
+        runtimeId: result.resolved ? (result.runtimeId ?? null) : null,
+        runtimeKind: result.runtimeKind,
+      };
 
       // Cache the result
-      this.templateCache.set(cacheKey, runtimeId);
+      this.templateCache.set(cacheKey, resolution);
 
       this.log(
-        `Resolved ${cacheKey} → ${runtimeId !== null ? `runtime:${runtimeId}` : 'not found'}`
+        `Resolved ${cacheKey} -> ${resolution.runtimeId !== null ? `runtime:${resolution.runtimeId}` : 'not found'}`
       );
 
-      return runtimeId;
+      return resolution;
     } catch (error) {
       this.log(`Failed to resolve ${cacheKey}: ${error}`);
       // Cache the failure to avoid repeated API calls
-      this.templateCache.set(cacheKey, null);
-      return null;
+      const resolution = { runtimeId: null };
+      this.templateCache.set(cacheKey, resolution);
+      return resolution;
     }
   }
 
@@ -289,8 +298,7 @@ export class GameRuntime implements IGameRuntime {
 
   /**
    * Apply an interaction to the current session.
-   * Supports both direct NPC targeting (npcId) and template-based targeting
-   * (templateKind + templateId, resolved via ObjectLink).
+   * Supports direct targeting or template-based targeting resolved via ObjectLink.
    */
   async applyInteraction(intent: InteractionIntent): Promise<ExecuteInteractionResponse> {
     this.checkDisposed();
@@ -299,47 +307,53 @@ export class GameRuntime implements IGameRuntime {
       throw new Error('No session loaded');
     }
 
-    // Resolve NPC ID - either direct or via template
-    let resolvedNpcId = intent.npcId;
+    const target = { ...intent.target };
 
-    if (intent.templateKind && intent.templateId && resolvedNpcId === undefined) {
-      // Template-based targeting: resolve via ObjectLink
+    if (target.id == null && target.templateKind && target.templateId) {
       this.log(
-        `Resolving template ${intent.templateKind}:${intent.templateId} for interaction ${intent.interactionId}`
+        `Resolving template ${target.templateKind}:${target.templateId} for interaction ${intent.interactionId}`
       );
 
-      resolvedNpcId = (await this.resolveTemplateToRuntime(
-        intent.templateKind,
-        intent.templateId
-      )) ?? undefined;
+      const resolution = await this.resolveTemplateToRuntime(
+        target.templateKind as TemplateKind,
+        target.templateId
+      );
 
-      if (resolvedNpcId === undefined) {
+      if (resolution.runtimeId === null) {
         this.log(
-          `Failed to resolve ${intent.templateKind}:${intent.templateId} - no active link found`
+          `Failed to resolve ${target.templateKind}:${target.templateId} - no active link found`
         );
         return {
           success: false,
-          message: `Failed to resolve ${intent.templateKind}:${intent.templateId} to runtime entity`,
+          message: `Failed to resolve ${target.templateKind}:${target.templateId} to runtime entity`,
           timestamp: Date.now(),
         };
       }
 
-      this.log(`Resolved to NPC ${resolvedNpcId}`);
+      target.id = resolution.runtimeId;
+      if (resolution.runtimeKind && resolution.runtimeKind !== target.kind) {
+        this.log(
+          `Resolved ${target.templateKind}:${target.templateId} to ${resolution.runtimeKind}; overriding target kind ${target.kind}`
+        );
+        target.kind = resolution.runtimeKind;
+      }
     }
 
-    if (resolvedNpcId === undefined) {
-      throw new Error(
-        'InteractionIntent must have either npcId or templateKind+templateId'
-      );
+    if (target.id == null) {
+      throw new Error('InteractionIntent must include target.id or template reference');
     }
 
-    this.log(`Applying interaction: ${intent.interactionId} with NPC ${resolvedNpcId}`);
+    const resolvedIntent: InteractionIntent = { ...intent, target };
+
+    this.log(
+      `Applying interaction: ${resolvedIntent.interactionId} with ${target.kind} ${target.id}`
+    );
 
     try {
       // Run before hooks (can cancel interaction)
-      const allowed = await this.runPluginHook('beforeInteraction', intent, this.session);
+      const allowed = await this.runPluginHook('beforeInteraction', resolvedIntent, this.session);
       if (allowed === false) {
-        this.log(`Interaction ${intent.interactionId} was blocked by a plugin`);
+        this.log(`Interaction ${resolvedIntent.interactionId} was blocked by a plugin`);
         return {
           success: false,
           message: 'Interaction blocked by plugin',
@@ -349,12 +363,12 @@ export class GameRuntime implements IGameRuntime {
 
       // Execute interaction via API
       const response = await this.config.apiClient.executeInteraction({
-        worldId: intent.worldId,
-        sessionId: intent.sessionId,
-        npcId: resolvedNpcId,
-        interactionId: intent.interactionId,
-        playerInput: intent.playerInput,
-        context: intent.context,
+        worldId: resolvedIntent.worldId,
+        sessionId: resolvedIntent.sessionId,
+        target,
+        interactionId: resolvedIntent.interactionId,
+        playerInput: resolvedIntent.playerInput,
+        context: resolvedIntent.context,
       });
 
       // Update session if provided in response
@@ -371,17 +385,19 @@ export class GameRuntime implements IGameRuntime {
       }
 
       // Run after hooks
-      await this.runPluginHook('afterInteraction', intent, response, this.session);
+      await this.runPluginHook('afterInteraction', resolvedIntent, response, this.session);
 
       // Emit interaction executed event
       const event: InteractionExecutedEvent = {
-        intent,
+        intent: resolvedIntent,
         response,
         success: response.success,
       };
       this.events.emit('interactionExecuted', event);
 
-      this.log(`Interaction ${intent.interactionId} completed: ${response.success ? 'success' : 'failure'}`);
+      this.log(
+        `Interaction ${resolvedIntent.interactionId} completed: ${response.success ? 'success' : 'failure'}`
+      );
       return response;
     } catch (error) {
       this.emitError(error as Error, 'applyInteraction');

@@ -8,7 +8,7 @@ stat changes through the StatEngine, replacing hardcoded clamping logic.
 import asyncio
 import pytest
 from pixsim7.backend.main.domain.game.core.models import GameSession, GameWorld
-from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
+from pixsim7.backend.main.domain.game.interactions.interactions import (
     StatDelta,
 )
 from pixsim7.backend.main.domain.game.interactions.interaction_execution import (

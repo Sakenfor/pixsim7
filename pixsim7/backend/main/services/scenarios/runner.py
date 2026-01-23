@@ -213,7 +213,8 @@ class ScenarioRunner:
         # await interaction_service.execute_interaction(
         #     world_id=step.world_id,
         #     session_id=step.session_id,
-        #     npc_id=step.npc_id,
+        #     target_kind=step.target_kind,
+        #     target_id=step.target_id,
         #     interaction_id=step.interaction_id,
         #     params=step.params,
         # )

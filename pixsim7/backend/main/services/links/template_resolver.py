@@ -20,10 +20,22 @@ Usage:
         context=execution_context
     )
 """
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Iterable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.services.links.link_service import LinkService
+
+
+def _get_value(definition: Any, keys: Iterable[str]) -> Optional[Any]:
+    if isinstance(definition, dict):
+        for key in keys:
+            if key in definition:
+                return definition[key]
+        return None
+    for key in keys:
+        if hasattr(definition, key):
+            return getattr(definition, key)
+    return None
 
 
 async def resolve_template_to_runtime(
@@ -79,7 +91,7 @@ async def resolve_template_to_runtime(
 
 async def resolve_interaction_targets(
     db: AsyncSession,
-    definition: Any,  # NpcInteractionDefinition
+    definition: Any,  # InteractionDefinition
     context: Optional[Dict[str, Any]] = None,
 ) -> List[int]:
     """
@@ -87,11 +99,11 @@ async def resolve_interaction_targets(
 
     This function handles backward compatibility:
     1. Checks targetTemplateKind/targetTemplateId first (new system)
-    2. Falls back to targetRolesOrIds/targetNpcIds (existing system)
+    2. Falls back to targetRolesOrIds/targetIds (existing system)
 
     Args:
         db: Database session
-        definition: NpcInteractionDefinition with target specifications
+        definition: InteractionDefinition with target specifications
         context: Runtime context for link resolution
 
     Returns:
@@ -106,10 +118,10 @@ async def resolve_interaction_targets(
     resolved_ids: List[int] = []
 
     # 1. Check for template-based targeting (new system)
-    if hasattr(definition, 'targetTemplateKind') and definition.targetTemplateKind:
-        template_kind = definition.targetTemplateKind
-        template_id = getattr(definition, 'targetTemplateId', None)
-        link_id = getattr(definition, 'targetLinkId', None)
+    template_kind = _get_value(definition, ("target_template_kind", "targetTemplateKind"))
+    if template_kind:
+        template_id = _get_value(definition, ("target_template_id", "targetTemplateId"))
+        link_id = _get_value(definition, ("target_link_id", "targetLinkId"))
 
         if template_id:
             runtime_id = await resolve_template_to_runtime(
@@ -123,9 +135,9 @@ async def resolve_interaction_targets(
                 resolved_ids.append(runtime_id)
 
     # 2. Fall back to direct ID targeting (existing system)
-    elif hasattr(definition, 'targetRolesOrIds') and definition.targetRolesOrIds:
+    elif _get_value(definition, ("target_roles_or_ids", "targetRolesOrIds")):
         # Parse role/ID refs like "npc:123"
-        for ref in definition.targetRolesOrIds:
+        for ref in _get_value(definition, ("target_roles_or_ids", "targetRolesOrIds")):
             if ref.startswith('npc:'):
                 try:
                     npc_id = int(ref.split(':')[1])
@@ -133,9 +145,9 @@ async def resolve_interaction_targets(
                 except (ValueError, IndexError):
                     pass
 
-    # 3. Legacy targetNpcIds (deprecated)
-    elif hasattr(definition, 'targetNpcIds') and definition.targetNpcIds:
-        resolved_ids.extend(definition.targetNpcIds)
+    # 3. Explicit targetIds
+    elif _get_value(definition, ("target_ids", "targetIds")):
+        resolved_ids.extend(_get_value(definition, ("target_ids", "targetIds")))
 
     return resolved_ids
 

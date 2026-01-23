@@ -143,7 +143,7 @@ Update execution status → WebSocket event
 | Backend | `pixsim7/backend/main/domain/game/core/game_state.py` | GameContext model |
 | Backend | `pixsim7/backend/main/domain/game/core/ecs.py` | ECS component system |
 | Backend | `pixsim7/backend/main/domain/game/interactions/interaction_execution.py` | Interaction handling |
-| Backend | `pixsim7/backend/main/api/v1/npc_interactions.py` | Interaction API |
+| Backend | `pixsim7/backend/main/api/v1/interactions.py` | Interaction API |
 | Shared | `packages/shared/types/src/game.ts` | Game types |
 | Shared | `packages/shared/types/src/interactions.ts` | Interaction types |
 | Frontend | `packages/game/engine/src/core/PixSim7Core.ts` | Headless NPC state |
