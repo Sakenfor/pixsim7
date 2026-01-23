@@ -518,6 +518,425 @@ export const DEFAULT_WORLD_MANIFEST: WorldManifestParsed = {
 };
 
 // =============================================================================
+// World Time Configuration Schemas
+// =============================================================================
+
+/**
+ * A named time period with hour boundaries.
+ * Supports wrapping (night: 21-5 means 21:00 to 05:00 next day).
+ *
+ * For fantasy worlds, hours can exceed 24 (e.g., 30-hour days).
+ * The startHour/endHour values are relative to the world's hoursPerDay.
+ */
+export const TimePeriodDefinitionSchema = z.object({
+  /** Canonical period ID (e.g., "morning", "witching_hour") */
+  id: z.string().min(1),
+  /** Display name for UI (e.g., "Morning", "The Witching Hour") */
+  displayName: z.string().min(1),
+  /** Start hour (0 to hoursPerDay-1) */
+  startHour: z.number().int().min(0),
+  /** End hour - can wrap around (e.g., night: 21-5) */
+  endHour: z.number().int().min(0),
+  /**
+   * Aliases for template portability.
+   * Standard templates can use "day" or "night" which map to world-specific periods.
+   * Example: witching_hour.aliases = ["night", "nighttime"] means templates
+   * using `time.period: "night"` will match during witching_hour.
+   */
+  aliases: z.array(z.string()).optional(),
+  /** UI color hint (hex or CSS color) */
+  color: z.string().optional(),
+  /** Reference to ambient preset (lighting, audio) */
+  ambientPreset: z.string().optional(),
+});
+
+export type TimePeriodDefinition = z.infer<typeof TimePeriodDefinitionSchema>;
+
+/**
+ * A named day in the world's week.
+ * For fantasy worlds, weeks can have any number of days.
+ */
+export const DayDefinitionSchema = z.object({
+  /** Canonical day ID (e.g., "monday", "bloodmoon") */
+  id: z.string().min(1),
+  /** Display name for UI (e.g., "Monday", "Bloodmoon") */
+  displayName: z.string().min(1),
+  /** 0-indexed position in week (must be < daysPerWeek) */
+  index: z.number().int().min(0),
+  /** Whether this is a rest day (affects NPC schedules, shop availability) */
+  isRestDay: z.boolean().optional(),
+  /** Special flags for this day (e.g., "market_day", "magic_amplified") */
+  specialFlags: z.array(z.string()).optional(),
+});
+
+export type DayDefinition = z.infer<typeof DayDefinitionSchema>;
+
+/**
+ * Configuration for time context paths in link activation.
+ * Defines where time values are placed in the context object.
+ */
+export const TimeContextPathsSchema = z.object({
+  /** Path for current period ID (default: "time.period") */
+  period: z.string().default('time.period'),
+  /** Path for current hour (default: "time.hour") */
+  hour: z.string().default('time.hour'),
+  /** Path for day of week index (default: "time.dayOfWeek") */
+  dayOfWeek: z.string().default('time.dayOfWeek'),
+  /** Path for day name/ID (default: "time.dayName") */
+  dayName: z.string().default('time.dayName'),
+  /** Path for current minute (default: "time.minute") */
+  minute: z.string().default('time.minute'),
+});
+
+export type TimeContextPaths = z.infer<typeof TimeContextPathsSchema>;
+
+/**
+ * Complete world time configuration.
+ *
+ * Allows full customization of time structure for fantasy/sci-fi settings:
+ * - Custom hours per day (24, 30, 20, etc.)
+ * - Custom days per week (7, 10, 5, etc.)
+ * - Custom period definitions with aliases
+ * - Custom day names and special flags
+ *
+ * Template portability is maintained through period aliases:
+ * - Templates use standard terms ("day", "night", "morning")
+ * - Worlds define which of their periods match these aliases
+ */
+export const WorldTimeConfigSchema = z.object({
+  /** Schema version for migrations */
+  version: z.number().int().positive().default(1),
+
+  // === Time Structure ===
+  /** Seconds per minute (default: 60, rarely changed) */
+  secondsPerMinute: z.number().int().positive().default(60),
+  /** Minutes per hour (default: 60, rarely changed) */
+  minutesPerHour: z.number().int().positive().default(60),
+  /** Hours per day (default: 24, fantasy: 30, 20, etc.) */
+  hoursPerDay: z.number().int().positive().default(24),
+  /** Days per week (default: 7, fantasy: 10, 5, etc.) */
+  daysPerWeek: z.number().int().positive().default(7),
+
+  // === Period Definitions ===
+  /** Time period definitions (morning, afternoon, etc.) */
+  periods: z.array(TimePeriodDefinitionSchema).default([]),
+
+  // === Day Definitions ===
+  /** Day definitions (Monday, Tuesday, etc.) */
+  days: z.array(DayDefinitionSchema).default([]),
+
+  // === Display Preferences ===
+  /** Use 24-hour format (true) or 12-hour with AM/PM (false) */
+  use24HourFormat: z.boolean().default(true),
+  /**
+   * Date/time format string.
+   * Placeholders: {dayName}, {dayDisplayName}, {hour}, {minute}, {periodName}, {periodDisplayName}
+   */
+  dateFormat: z.string().default('{dayName}, {hour}:{minute}'),
+
+  // === Semantic Aliases (Template Portability) ===
+  /**
+   * Maps standard period terms to world-specific period IDs.
+   * Format: aliasName -> "periodId1|periodId2|..."
+   * Example: { "day": "morning|afternoon", "night": "evening|night" }
+   *
+   * When a template uses `time.period: "day"`, it matches any period
+   * listed in the "day" alias.
+   */
+  periodAliases: z.record(z.string()).default({}),
+
+  // === Link System Integration ===
+  /** Paths where time values are placed in context for link activation */
+  timeContextPaths: TimeContextPathsSchema.default({}),
+});
+
+export type WorldTimeConfig = z.infer<typeof WorldTimeConfigSchema>;
+
+// =============================================================================
+// Default Time Period Definitions
+// =============================================================================
+
+/**
+ * Default time periods (matches common expectations)
+ * Note: These boundaries are now configurable per-world
+ */
+export const DEFAULT_TIME_PERIODS: TimePeriodDefinition[] = [
+  {
+    id: 'dawn',
+    displayName: 'Dawn',
+    startHour: 5,
+    endHour: 7,
+    aliases: ['early_morning'],
+    color: '#FFE4B5',
+  },
+  {
+    id: 'morning',
+    displayName: 'Morning',
+    startHour: 7,
+    endHour: 12,
+    aliases: ['day', 'daytime'],
+    color: '#87CEEB',
+  },
+  {
+    id: 'afternoon',
+    displayName: 'Afternoon',
+    startHour: 12,
+    endHour: 17,
+    aliases: ['day', 'daytime'],
+    color: '#F0E68C',
+  },
+  {
+    id: 'evening',
+    displayName: 'Evening',
+    startHour: 17,
+    endHour: 21,
+    aliases: ['dusk'],
+    color: '#DDA0DD',
+  },
+  {
+    id: 'night',
+    displayName: 'Night',
+    startHour: 21,
+    endHour: 5, // Wraps to next day
+    aliases: ['nighttime'],
+    color: '#191970',
+  },
+];
+
+/**
+ * Default day definitions (standard week)
+ */
+export const DEFAULT_DAYS: DayDefinition[] = [
+  { id: 'monday', displayName: 'Monday', index: 0 },
+  { id: 'tuesday', displayName: 'Tuesday', index: 1 },
+  { id: 'wednesday', displayName: 'Wednesday', index: 2 },
+  { id: 'thursday', displayName: 'Thursday', index: 3 },
+  { id: 'friday', displayName: 'Friday', index: 4 },
+  { id: 'saturday', displayName: 'Saturday', index: 5, isRestDay: true },
+  { id: 'sunday', displayName: 'Sunday', index: 6, isRestDay: true },
+];
+
+/**
+ * Default period aliases for template portability.
+ * Templates using these standard terms will work across worlds.
+ */
+export const DEFAULT_PERIOD_ALIASES: Record<string, string> = {
+  day: 'dawn|morning|afternoon',
+  night: 'evening|night',
+  daytime: 'morning|afternoon',
+  nighttime: 'evening|night',
+  early_morning: 'dawn',
+  dusk: 'evening',
+};
+
+/**
+ * Default world time configuration (24-hour day, 7-day week)
+ */
+export const DEFAULT_WORLD_TIME_CONFIG: WorldTimeConfig = {
+  version: 1,
+  secondsPerMinute: 60,
+  minutesPerHour: 60,
+  hoursPerDay: 24,
+  daysPerWeek: 7,
+  periods: DEFAULT_TIME_PERIODS,
+  days: DEFAULT_DAYS,
+  use24HourFormat: true,
+  dateFormat: '{dayName}, {hour}:{minute}',
+  periodAliases: DEFAULT_PERIOD_ALIASES,
+  timeContextPaths: {
+    period: 'time.period',
+    hour: 'time.hour',
+    dayOfWeek: 'time.dayOfWeek',
+    dayName: 'time.dayName',
+    minute: 'time.minute',
+  },
+};
+
+// =============================================================================
+// Time Utility Functions
+// =============================================================================
+
+/**
+ * Check if an hour falls within a period range, handling wrap-around.
+ * @param hour - Current hour (0 to hoursPerDay-1)
+ * @param startHour - Period start hour
+ * @param endHour - Period end hour (can wrap)
+ * @param hoursPerDay - Total hours in a day
+ * @returns True if hour is within the period
+ */
+export function isHourInPeriod(
+  hour: number,
+  startHour: number,
+  endHour: number,
+  hoursPerDay: number
+): boolean {
+  // Normalize hour to valid range
+  const normalizedHour = ((hour % hoursPerDay) + hoursPerDay) % hoursPerDay;
+
+  if (startHour <= endHour) {
+    // Simple range (e.g., morning: 7-12)
+    return normalizedHour >= startHour && normalizedHour < endHour;
+  } else {
+    // Wrapping range (e.g., night: 21-5)
+    return normalizedHour >= startHour || normalizedHour < endHour;
+  }
+}
+
+/**
+ * Find the current period for a given hour.
+ * @param hour - Current hour (0 to hoursPerDay-1)
+ * @param periods - Period definitions
+ * @param hoursPerDay - Total hours in a day
+ * @returns Matching period or undefined
+ */
+export function findPeriodForHour(
+  hour: number,
+  periods: TimePeriodDefinition[],
+  hoursPerDay: number
+): TimePeriodDefinition | undefined {
+  return periods.find((period) =>
+    isHourInPeriod(hour, period.startHour, period.endHour, hoursPerDay)
+  );
+}
+
+/**
+ * Find a day definition by index.
+ * @param dayOfWeek - Day index (0 to daysPerWeek-1)
+ * @param days - Day definitions
+ * @returns Matching day or undefined
+ */
+export function findDayForIndex(
+  dayOfWeek: number,
+  days: DayDefinition[]
+): DayDefinition | undefined {
+  return days.find((day) => day.index === dayOfWeek);
+}
+
+/**
+ * Check if a period ID matches a target (including aliases).
+ * @param actualPeriodId - Current period ID
+ * @param targetPeriodOrAlias - Target period ID or alias
+ * @param config - World time config (for aliases)
+ * @returns True if matches
+ */
+export function periodMatchesTarget(
+  actualPeriodId: string,
+  targetPeriodOrAlias: string,
+  config: WorldTimeConfig
+): boolean {
+  // Direct match
+  if (actualPeriodId === targetPeriodOrAlias) {
+    return true;
+  }
+
+  // Check if target is an alias
+  const aliasedPeriods = config.periodAliases[targetPeriodOrAlias];
+  if (aliasedPeriods) {
+    const periodIds = aliasedPeriods.split('|');
+    if (periodIds.includes(actualPeriodId)) {
+      return true;
+    }
+  }
+
+  // Check if actual period has target as an alias
+  const actualPeriod = config.periods.find((p) => p.id === actualPeriodId);
+  if (actualPeriod?.aliases?.includes(targetPeriodOrAlias)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Parse raw seconds into time components using world time config.
+ * @param worldTimeSeconds - Raw world time in seconds
+ * @param config - World time config
+ * @returns Parsed time components
+ */
+export function parseWorldTimeWithConfig(
+  worldTimeSeconds: number,
+  config: WorldTimeConfig = DEFAULT_WORLD_TIME_CONFIG
+): {
+  dayOfWeek: number;
+  hour: number;
+  minute: number;
+  second: number;
+  period: TimePeriodDefinition | undefined;
+  day: DayDefinition | undefined;
+} {
+  const secondsPerMinute = config.secondsPerMinute;
+  const secondsPerHour = secondsPerMinute * config.minutesPerHour;
+  const secondsPerDay = secondsPerHour * config.hoursPerDay;
+  const secondsPerWeek = secondsPerDay * config.daysPerWeek;
+
+  // Normalize to week cycle
+  const weekSeconds = ((worldTimeSeconds % secondsPerWeek) + secondsPerWeek) % secondsPerWeek;
+
+  const dayOfWeek = Math.floor(weekSeconds / secondsPerDay);
+  const daySeconds = weekSeconds % secondsPerDay;
+  const hour = Math.floor(daySeconds / secondsPerHour);
+  const hourSeconds = daySeconds % secondsPerHour;
+  const minute = Math.floor(hourSeconds / secondsPerMinute);
+  const second = hourSeconds % secondsPerMinute;
+
+  const period = findPeriodForHour(hour, config.periods, config.hoursPerDay);
+  const day = findDayForIndex(dayOfWeek, config.days);
+
+  return { dayOfWeek, hour, minute, second, period, day };
+}
+
+/**
+ * Build time context object for link activation.
+ * @param worldTimeSeconds - Raw world time in seconds
+ * @param config - World time config
+ * @returns Context object with time values at configured paths
+ */
+export function buildTimeContext(
+  worldTimeSeconds: number,
+  config: WorldTimeConfig = DEFAULT_WORLD_TIME_CONFIG
+): Record<string, unknown> {
+  const parsed = parseWorldTimeWithConfig(worldTimeSeconds, config);
+
+  return {
+    time: {
+      period: parsed.period?.id ?? 'unknown',
+      periodDisplayName: parsed.period?.displayName ?? 'Unknown',
+      hour: parsed.hour,
+      minute: parsed.minute,
+      second: parsed.second,
+      dayOfWeek: parsed.dayOfWeek,
+      dayName: parsed.day?.id ?? `day_${parsed.dayOfWeek}`,
+      dayDisplayName: parsed.day?.displayName ?? `Day ${parsed.dayOfWeek}`,
+      dayFlags: parsed.day?.specialFlags ?? [],
+      isRestDay: parsed.day?.isRestDay ?? false,
+      rawSeconds: worldTimeSeconds,
+    },
+  };
+}
+
+/**
+ * Calculate derived time constants from config.
+ * @param config - World time config
+ * @returns Time constants
+ */
+export function getTimeConstants(config: WorldTimeConfig = DEFAULT_WORLD_TIME_CONFIG) {
+  const secondsPerMinute = config.secondsPerMinute;
+  const secondsPerHour = secondsPerMinute * config.minutesPerHour;
+  const secondsPerDay = secondsPerHour * config.hoursPerDay;
+  const secondsPerWeek = secondsPerDay * config.daysPerWeek;
+
+  return {
+    secondsPerMinute,
+    secondsPerHour,
+    secondsPerDay,
+    secondsPerWeek,
+    hoursPerDay: config.hoursPerDay,
+    daysPerWeek: config.daysPerWeek,
+    minutesPerHour: config.minutesPerHour,
+  };
+}
+
+// =============================================================================
 // API Response Types
 // =============================================================================
 
@@ -526,6 +945,7 @@ export interface WorldConfigResponse {
   stats_config: WorldStatsConfig;
   manifest: WorldManifestParsed;
   intimacy_gating: IntimacyGatingConfig;
+  time_config: WorldTimeConfig;
   tier_order: string[];
   level_order: string[];
   merge_warnings: string[];

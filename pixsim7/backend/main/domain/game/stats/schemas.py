@@ -432,12 +432,258 @@ class WorldManifest(BaseModel):
 # Complete World Config Response
 # =============================================================================
 
+# =============================================================================
+# World Time Configuration
+# =============================================================================
+
+class TimePeriodDefinition(BaseModel):
+    """
+    A named time period with hour boundaries.
+
+    Supports wrapping (night: 21-5 means 21:00 to 05:00 next day).
+    For fantasy worlds, hours can exceed 24 (e.g., 30-hour days).
+    """
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    id: str = Field(description="Canonical period ID (e.g., 'morning', 'witching_hour')")
+    display_name: str = Field(alias="displayName", description="Display name for UI")
+    start_hour: int = Field(alias="startHour", ge=0, description="Start hour (0 to hoursPerDay-1)")
+    end_hour: int = Field(alias="endHour", ge=0, description="End hour - can wrap around")
+    aliases: Optional[List[str]] = Field(
+        default=None,
+        description="Aliases for template portability (e.g., ['night', 'nighttime'])"
+    )
+    color: Optional[str] = Field(default=None, description="UI color hint (hex or CSS color)")
+    ambient_preset: Optional[str] = Field(
+        default=None, alias="ambientPreset",
+        description="Reference to ambient preset (lighting, audio)"
+    )
+
+    @field_validator('id')
+    @classmethod
+    def id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Period ID cannot be empty')
+        return v.strip()
+
+
+class DayDefinition(BaseModel):
+    """
+    A named day in the world's week.
+    For fantasy worlds, weeks can have any number of days.
+    """
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    id: str = Field(description="Canonical day ID (e.g., 'monday', 'bloodmoon')")
+    display_name: str = Field(alias="displayName", description="Display name for UI")
+    index: int = Field(ge=0, description="0-indexed position in week")
+    is_rest_day: Optional[bool] = Field(
+        default=None, alias="isRestDay",
+        description="Whether this is a rest day (affects NPC schedules)"
+    )
+    special_flags: Optional[List[str]] = Field(
+        default=None, alias="specialFlags",
+        description="Special flags for this day (e.g., 'market_day', 'magic_amplified')"
+    )
+
+    @field_validator('id')
+    @classmethod
+    def id_not_empty(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError('Day ID cannot be empty')
+        return v.strip()
+
+
+class TimeContextPaths(BaseModel):
+    """Paths where time values are placed in context for link activation."""
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    period: str = Field(default="time.period", description="Path for current period ID")
+    hour: str = Field(default="time.hour", description="Path for current hour")
+    day_of_week: str = Field(default="time.dayOfWeek", alias="dayOfWeek", description="Path for day index")
+    day_name: str = Field(default="time.dayName", alias="dayName", description="Path for day name/ID")
+    minute: str = Field(default="time.minute", description="Path for current minute")
+
+
+class WorldTimeConfig(BaseModel):
+    """
+    Complete world time configuration.
+
+    Allows full customization of time structure for fantasy/sci-fi settings:
+    - Custom hours per day (24, 30, 20, etc.)
+    - Custom days per week (7, 10, 5, etc.)
+    - Custom period definitions with aliases
+    - Custom day names and special flags
+
+    Template portability is maintained through period aliases:
+    - Templates use standard terms ("day", "night", "morning")
+    - Worlds define which of their periods match these aliases
+    """
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+    version: int = Field(default=1, ge=1, description="Schema version for migrations")
+
+    # Time Structure
+    seconds_per_minute: int = Field(
+        default=60, ge=1, alias="secondsPerMinute",
+        description="Seconds per minute (default: 60, rarely changed)"
+    )
+    minutes_per_hour: int = Field(
+        default=60, ge=1, alias="minutesPerHour",
+        description="Minutes per hour (default: 60, rarely changed)"
+    )
+    hours_per_day: int = Field(
+        default=24, ge=1, alias="hoursPerDay",
+        description="Hours per day (default: 24, fantasy: 30, 20, etc.)"
+    )
+    days_per_week: int = Field(
+        default=7, ge=1, alias="daysPerWeek",
+        description="Days per week (default: 7, fantasy: 10, 5, etc.)"
+    )
+
+    # Period Definitions
+    periods: List[TimePeriodDefinition] = Field(
+        default_factory=list,
+        description="Time period definitions (morning, afternoon, etc.)"
+    )
+
+    # Day Definitions
+    days: List[DayDefinition] = Field(
+        default_factory=list,
+        description="Day definitions (Monday, Tuesday, etc.)"
+    )
+
+    # Display Preferences
+    use_24_hour_format: bool = Field(
+        default=True, alias="use24HourFormat",
+        description="Use 24-hour format (true) or 12-hour with AM/PM (false)"
+    )
+    date_format: str = Field(
+        default="{dayName}, {hour}:{minute}", alias="dateFormat",
+        description="Date/time format string with placeholders"
+    )
+
+    # Semantic Aliases (Template Portability)
+    period_aliases: Dict[str, str] = Field(
+        default_factory=dict, alias="periodAliases",
+        description="Maps standard period terms to world-specific period IDs (e.g., 'day': 'morning|afternoon')"
+    )
+
+    # Link System Integration
+    time_context_paths: TimeContextPaths = Field(
+        default_factory=TimeContextPaths, alias="timeContextPaths",
+        description="Paths where time values are placed in context"
+    )
+
+    @model_validator(mode='after')
+    def validate_period_hours(self):
+        """Ensure period hours are within valid range for hoursPerDay."""
+        for period in self.periods:
+            if period.start_hour >= self.hours_per_day:
+                raise ValueError(
+                    f'Period "{period.id}" startHour ({period.start_hour}) must be < hoursPerDay ({self.hours_per_day})'
+                )
+            if period.end_hour > self.hours_per_day and period.end_hour != period.start_hour:
+                # Allow end_hour == hoursPerDay for periods ending at midnight
+                # But for wrapping periods, end_hour should be < start_hour
+                if period.end_hour >= self.hours_per_day and period.end_hour > period.start_hour:
+                    raise ValueError(
+                        f'Period "{period.id}" endHour ({period.end_hour}) must be <= hoursPerDay ({self.hours_per_day}) '
+                        f'or < startHour for wrapping periods'
+                    )
+        return self
+
+    @model_validator(mode='after')
+    def validate_day_indices(self):
+        """Ensure day indices are within valid range for daysPerWeek."""
+        for day in self.days:
+            if day.index >= self.days_per_week:
+                raise ValueError(
+                    f'Day "{day.id}" index ({day.index}) must be < daysPerWeek ({self.days_per_week})'
+                )
+        return self
+
+    def get_seconds_per_hour(self) -> int:
+        """Calculate seconds per hour."""
+        return self.seconds_per_minute * self.minutes_per_hour
+
+    def get_seconds_per_day(self) -> int:
+        """Calculate seconds per day."""
+        return self.get_seconds_per_hour() * self.hours_per_day
+
+    def get_seconds_per_week(self) -> int:
+        """Calculate seconds per week."""
+        return self.get_seconds_per_day() * self.days_per_week
+
+
+# Default time periods (matches common expectations)
+DEFAULT_TIME_PERIODS = [
+    TimePeriodDefinition(
+        id="dawn", displayName="Dawn", startHour=5, endHour=7,
+        aliases=["early_morning"], color="#FFE4B5"
+    ),
+    TimePeriodDefinition(
+        id="morning", displayName="Morning", startHour=7, endHour=12,
+        aliases=["day", "daytime"], color="#87CEEB"
+    ),
+    TimePeriodDefinition(
+        id="afternoon", displayName="Afternoon", startHour=12, endHour=17,
+        aliases=["day", "daytime"], color="#F0E68C"
+    ),
+    TimePeriodDefinition(
+        id="evening", displayName="Evening", startHour=17, endHour=21,
+        aliases=["dusk"], color="#DDA0DD"
+    ),
+    TimePeriodDefinition(
+        id="night", displayName="Night", startHour=21, endHour=5,
+        aliases=["nighttime"], color="#191970"
+    ),
+]
+
+# Default day definitions (standard week)
+DEFAULT_DAYS = [
+    DayDefinition(id="monday", displayName="Monday", index=0),
+    DayDefinition(id="tuesday", displayName="Tuesday", index=1),
+    DayDefinition(id="wednesday", displayName="Wednesday", index=2),
+    DayDefinition(id="thursday", displayName="Thursday", index=3),
+    DayDefinition(id="friday", displayName="Friday", index=4),
+    DayDefinition(id="saturday", displayName="Saturday", index=5, isRestDay=True),
+    DayDefinition(id="sunday", displayName="Sunday", index=6, isRestDay=True),
+]
+
+# Default period aliases for template portability
+DEFAULT_PERIOD_ALIASES = {
+    "day": "dawn|morning|afternoon",
+    "night": "evening|night",
+    "daytime": "morning|afternoon",
+    "nighttime": "evening|night",
+    "early_morning": "dawn",
+    "dusk": "evening",
+}
+
+# Default world time config (24-hour day, 7-day week)
+DEFAULT_WORLD_TIME_CONFIG = WorldTimeConfig(
+    version=1,
+    secondsPerMinute=60,
+    minutesPerHour=60,
+    hoursPerDay=24,
+    daysPerWeek=7,
+    periods=DEFAULT_TIME_PERIODS,
+    days=DEFAULT_DAYS,
+    use24HourFormat=True,
+    dateFormat="{dayName}, {hour}:{minute}",
+    periodAliases=DEFAULT_PERIOD_ALIASES,
+    timeContextPaths=TimeContextPaths(),
+)
+
+
 class WorldConfigResponse(BaseModel):
     """Complete world configuration returned by /worlds/{id}/config endpoint."""
     schema_version: int = STATS_SCHEMA_VERSION
     stats_config: WorldStatsConfig
     manifest: WorldManifest
     intimacy_gating: IntimacyGatingConfig
+    time_config: WorldTimeConfig = Field(default_factory=lambda: DEFAULT_WORLD_TIME_CONFIG)
     # Pre-computed for frontend
     tier_order: List[str] = Field(default_factory=list)
     level_order: List[str] = Field(default_factory=list)

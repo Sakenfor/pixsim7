@@ -5,7 +5,7 @@ Phase 17.3: Pure functions to evaluate interaction availability based on:
 - Stat tiers/metrics
 - Mood/emotions
 - NPC behavior state (activities, simulation tier)
-- Time of day
+- Time of day (with configurable fantasy time support)
 - Session flags (arcs, quests, events)
 - Cooldowns
 
@@ -14,6 +14,7 @@ Design:
 - Integrates with stat packages, mood, and behavior systems
 - Clear disabled reasons for debugging
 - Supports both hard gating (not shown) and soft gating (shown but flagged)
+- Supports configurable world time (fantasy hours/days/periods)
 """
 
 from __future__ import annotations
@@ -32,57 +33,78 @@ from pixsim7.backend.main.domain.game.interactions.npc_interactions import (
     TimeOfDayConstraint,
 )
 from pixsim7.backend.main.domain.game.stats import StatDefinition, StatEngine
+from pixsim7.backend.main.domain.game.time import (
+    WorldTimeConfig,
+    DEFAULT_WORLD_TIME_CONFIG,
+    parse_world_time as _parse_world_time,
+    get_period_from_hour as _get_period_from_hour,
+    period_matches_target,
+    is_hour_in_period,
+    get_time_constants,
+)
 
 
 # ===================
 # Helper Functions
 # ===================
 
-def parse_world_time(seconds: int) -> Dict[str, int]:
+def parse_world_time(
+    seconds: int,
+    time_config: Optional[WorldTimeConfig] = None,
+) -> Dict[str, int]:
     """
     Parse world time seconds into components.
-    0 = Monday 00:00 (week starts Monday)
+    0 = Monday/Firstday 00:00 (week starts at index 0)
+
+    Args:
+        seconds: World time in seconds
+        time_config: Optional world time config. Uses DEFAULT_WORLD_TIME_CONFIG if None.
+
+    Returns:
+        Dict with dayOfWeek, hour, minute, second
     """
-    SECONDS_PER_HOUR = 3600
-    SECONDS_PER_DAY = 24 * SECONDS_PER_HOUR
-    SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY
-
-    # Normalize to week cycle
-    week_seconds = seconds % SECONDS_PER_WEEK
-
-    day_of_week = week_seconds // SECONDS_PER_DAY  # 0-6 (Mon-Sun)
-    day_seconds = week_seconds % SECONDS_PER_DAY
-    hour = day_seconds // SECONDS_PER_HOUR  # 0-23
-    minute_seconds = day_seconds % SECONDS_PER_HOUR
-    minute = minute_seconds // 60
-    second = minute_seconds % 60
-
+    components = _parse_world_time(seconds, time_config)
     return {
-        "dayOfWeek": day_of_week,
-        "hour": hour,
-        "minute": minute,
-        "second": second,
+        "dayOfWeek": components.day_of_week,
+        "hour": components.hour,
+        "minute": components.minute,
+        "second": components.second,
     }
 
 
-def get_period_from_hour(hour: int) -> str:
-    """Get period name from hour (0-23)"""
-    if 5 <= hour < 12:
-        return "morning"
-    elif 12 <= hour < 17:
-        return "afternoon"
-    elif 17 <= hour < 21:
-        return "evening"
-    else:
-        return "night"
+def get_period_from_hour(
+    hour: int,
+    time_config: Optional[WorldTimeConfig] = None,
+) -> str:
+    """
+    Get period name from hour.
+
+    Args:
+        hour: Hour of day (0 to hoursPerDay-1)
+        time_config: Optional world time config. Uses DEFAULT_WORLD_TIME_CONFIG if None.
+
+    Returns:
+        Period ID or "unknown" if no matching period.
+    """
+    return _get_period_from_hour(hour, time_config)
 
 
 def check_time_gating(
     constraint: Optional[TimeOfDayConstraint],
-    world_time: int
+    world_time: int,
+    time_config: Optional[WorldTimeConfig] = None,
 ) -> Tuple[bool, Optional[str]]:
     """
     Check if current world time passes time constraint.
+
+    Supports:
+    - Period names (with alias resolution for template portability)
+    - Hour ranges (respects world's hoursPerDay)
+
+    Args:
+        constraint: Time of day constraint
+        world_time: Current world time in seconds
+        time_config: Optional world time config. Uses DEFAULT_WORLD_TIME_CONFIG if None.
 
     Returns:
         (passes, disabled_reason_message)
@@ -90,28 +112,46 @@ def check_time_gating(
     if not constraint:
         return True, None
 
-    time_parts = parse_world_time(world_time)
-    hour = time_parts["hour"]
+    if time_config is None:
+        time_config = DEFAULT_WORLD_TIME_CONFIG
 
-    # Check periods
+    time_parts = parse_world_time(world_time, time_config)
+    hour = time_parts["hour"]
+    current_period = get_period_from_hour(hour, time_config)
+
+    # Check periods (with alias support for template portability)
     if constraint.periods:
-        current_period = get_period_from_hour(hour)
-        if current_period not in constraint.periods:
+        # Check if current period matches any of the required periods
+        # This uses alias resolution - "day" can match "morning", "afternoon", etc.
+        matches_any = False
+        for required_period in constraint.periods:
+            if period_matches_target(current_period, required_period, time_config):
+                matches_any = True
+                break
+
+        if not matches_any:
             allowed = ", ".join(constraint.periods)
             return False, f"Only available during: {allowed}"
 
-    # Check hour ranges
+    # Check hour ranges (respects world's hoursPerDay)
     if constraint.hour_ranges:
         in_range = False
+        hours_per_day = time_config.hours_per_day
+
         for hr in constraint.hour_ranges:
             start = hr.get("start", 0)
-            end = hr.get("end", 24)
-            if start <= hour < end:
+            end = hr.get("end", hours_per_day)
+
+            # Use is_hour_in_period which handles wrapping
+            if is_hour_in_period(hour, start, end, hours_per_day):
                 in_range = True
                 break
 
         if not in_range:
-            ranges_str = ", ".join([f"{r['start']:02d}:00-{r['end']:02d}:00" for r in constraint.hour_ranges])
+            ranges_str = ", ".join([
+                f"{r['start']:02d}:00-{r['end']:02d}:00"
+                for r in constraint.hour_ranges
+            ])
             return False, f"Only available during: {ranges_str}"
 
     return True, None
@@ -552,6 +592,7 @@ def evaluate_interaction_availability(
     stat_definitions: Optional[Dict[str, Any]] = None,
     npc_id: Optional[int] = None,
     current_time: Optional[int] = None,
+    time_config: Optional[WorldTimeConfig] = None,
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
     """
     Evaluate whether an interaction is currently available.
@@ -563,10 +604,15 @@ def evaluate_interaction_availability(
         npc_id: NPC ID used for npc-scoped stat gating
         current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
                      Falls back to real-time if not provided (for backward compatibility).
+        time_config: World time configuration for custom time systems (fantasy hours/days/periods).
+                    Uses DEFAULT_WORLD_TIME_CONFIG if not provided.
 
     Note:
         For gameplay consistency, always pass world_time as current_time.
         This ensures cooldowns use game time, not real-world time.
+
+        For fantasy worlds with custom time systems, pass the world's time_config
+        to enable proper period matching and alias resolution.
 
     Returns:
         (available, disabled_reason_enum, disabled_message)
@@ -575,9 +621,9 @@ def evaluate_interaction_availability(
     if not gating:
         return True, None, None
 
-    # Check time of day
+    # Check time of day (with configurable time system support)
     if context.world_time is not None:
-        passes, msg = check_time_gating(gating.time_of_day, context.world_time)
+        passes, msg = check_time_gating(gating.time_of_day, context.world_time, time_config)
         if not passes:
             return False, DisabledReason.TIME_INCOMPATIBLE, msg
 

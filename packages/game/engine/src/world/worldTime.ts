@@ -1,14 +1,32 @@
 /**
  * World Time Utilities
  *
- * Helpers for working with world_time (seconds since Monday 00:00).
+ * Helpers for working with world_time (seconds since Monday/Firstday 00:00).
  * Used across backend NPC schedules and frontend time display.
+ *
+ * Supports configurable fantasy time systems via WorldTimeConfig:
+ * - Custom hours per day (24, 30, 20, etc.)
+ * - Custom days per week (7, 10, 5, etc.)
+ * - Custom period definitions with aliases
+ * - Custom day names
  */
 
+import type {
+  WorldTimeConfig,
+  TimePeriodDefinition,
+  DayDefinition,
+} from '@pixsim7/shared.types';
+import {
+  DEFAULT_WORLD_TIME_CONFIG,
+  findPeriodForHour,
+  findDayForIndex,
+  getTimeConstants as getTimeConstantsFromConfig,
+} from '@pixsim7/shared.types';
+
 export interface WorldTimeComponents {
-  /** Day of week: 0=Monday, 1=Tuesday, ..., 6=Sunday */
+  /** Day of week: 0=Monday/Firstday, 1=Tuesday/Secondday, ... */
   dayOfWeek: number;
-  /** Hour of day: 0-23 */
+  /** Hour of day: 0 to (hoursPerDay-1) */
   hour: number;
   /** Minute of hour: 0-59 */
   minute: number;
@@ -16,11 +34,21 @@ export interface WorldTimeComponents {
   second: number;
 }
 
+export interface WorldTimeComponentsWithPeriod extends WorldTimeComponents {
+  /** Current period definition (if matched) */
+  period?: TimePeriodDefinition;
+  /** Current day definition (if matched) */
+  day?: DayDefinition;
+}
+
+// Legacy constants for backward compatibility (24-hour day, 7-day week)
+// Prefer using getTimeConstants(config) for configurable time systems
 export const SECONDS_PER_MINUTE = 60;
 export const SECONDS_PER_HOUR = 3600;
 export const SECONDS_PER_DAY = 86400;
 export const SECONDS_PER_WEEK = 604800;
 
+// Legacy day names for backward compatibility
 export const DAY_NAMES = [
   'Monday',
   'Tuesday',
@@ -34,35 +62,88 @@ export const DAY_NAMES = [
 export const DAY_NAMES_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 
 /**
+ * Get time constants from a WorldTimeConfig
+ * @param config - World time config (uses DEFAULT_WORLD_TIME_CONFIG if not provided)
+ * @returns Time constants derived from config
+ */
+export function getTimeConstants(config?: WorldTimeConfig) {
+  return getTimeConstantsFromConfig(config ?? DEFAULT_WORLD_TIME_CONFIG);
+}
+
+/**
  * Parse world time (seconds) into components
- * @param seconds - World time in seconds (0 = Monday 00:00)
+ * @param seconds - World time in seconds (0 = Monday/Firstday 00:00)
+ * @param config - Optional world time config for custom time systems
  * @returns Time components (dayOfWeek, hour, minute, second)
  */
-export function parseWorldTime(seconds: number): WorldTimeComponents {
+export function parseWorldTime(
+  seconds: number,
+  config?: WorldTimeConfig
+): WorldTimeComponents {
   const totalSeconds = Math.floor(seconds);
+  const timeConfig = config ?? DEFAULT_WORLD_TIME_CONFIG;
+  const constants = getTimeConstants(timeConfig);
 
-  // Calculate day of week (0-6)
-  const dayOfWeek = Math.floor(totalSeconds / SECONDS_PER_DAY) % 7;
+  // Normalize to week cycle (handle negative times)
+  let weekSeconds = totalSeconds % constants.secondsPerWeek;
+  if (weekSeconds < 0) {
+    weekSeconds += constants.secondsPerWeek;
+  }
+
+  // Calculate day of week
+  const dayOfWeek = Math.floor(weekSeconds / constants.secondsPerDay);
 
   // Calculate time within the day
-  const secondsInDay = totalSeconds % SECONDS_PER_DAY;
-  const hour = Math.floor(secondsInDay / SECONDS_PER_HOUR);
-  const minute = Math.floor((secondsInDay % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
-  const second = secondsInDay % SECONDS_PER_MINUTE;
+  const secondsInDay = weekSeconds % constants.secondsPerDay;
+  const hour = Math.floor(secondsInDay / constants.secondsPerHour);
+  const minute = Math.floor((secondsInDay % constants.secondsPerHour) / constants.secondsPerMinute);
+  const second = secondsInDay % constants.secondsPerMinute;
 
   return { dayOfWeek, hour, minute, second };
 }
 
 /**
+ * Parse world time with period and day resolution
+ * @param seconds - World time in seconds
+ * @param config - Optional world time config for custom time systems
+ * @returns Extended time components with period and day definitions
+ */
+export function parseWorldTimeWithPeriod(
+  seconds: number,
+  config?: WorldTimeConfig
+): WorldTimeComponentsWithPeriod {
+  const timeConfig = config ?? DEFAULT_WORLD_TIME_CONFIG;
+  const components = parseWorldTime(seconds, timeConfig);
+
+  const period = findPeriodForHour(
+    components.hour,
+    timeConfig.periods,
+    timeConfig.hoursPerDay
+  );
+  const day = findDayForIndex(components.dayOfWeek, timeConfig.days);
+
+  return {
+    ...components,
+    period,
+    day,
+  };
+}
+
+/**
  * Convert time components back to world time seconds
  * @param components - Time components
+ * @param config - Optional world time config for custom time systems
  * @returns World time in seconds
  */
-export function composeWorldTime(components: WorldTimeComponents): number {
+export function composeWorldTime(
+  components: WorldTimeComponents,
+  config?: WorldTimeConfig
+): number {
+  const constants = getTimeConstants(config);
   return (
-    components.dayOfWeek * SECONDS_PER_DAY +
-    components.hour * SECONDS_PER_HOUR +
-    components.minute * SECONDS_PER_MINUTE +
+    components.dayOfWeek * constants.secondsPerDay +
+    components.hour * constants.secondsPerHour +
+    components.minute * constants.secondsPerMinute +
     components.second
   );
 }
@@ -78,18 +159,29 @@ export function formatWorldTime(
   options: {
     shortDay?: boolean;
     showSeconds?: boolean;
+    config?: WorldTimeConfig;
   } = {}
 ): string {
-  const { dayOfWeek, hour, minute, second } = parseWorldTime(seconds);
+  const timeConfig = options.config ?? DEFAULT_WORLD_TIME_CONFIG;
+  const components = parseWorldTimeWithPeriod(seconds, timeConfig);
 
-  const dayNames = options.shortDay ? DAY_NAMES_SHORT : DAY_NAMES;
-  const dayName = dayNames[dayOfWeek];
+  // Use day name from config if available, otherwise fallback to legacy
+  let dayName: string;
+  if (components.day) {
+    dayName = options.shortDay
+      ? components.day.id.slice(0, 3) // First 3 chars as short name
+      : components.day.displayName;
+  } else {
+    // Fallback to legacy day names (only works for 7-day weeks)
+    const dayNames = options.shortDay ? DAY_NAMES_SHORT : DAY_NAMES;
+    dayName = dayNames[components.dayOfWeek % 7] ?? `Day ${components.dayOfWeek}`;
+  }
 
-  const hourStr = hour.toString().padStart(2, '0');
-  const minuteStr = minute.toString().padStart(2, '0');
+  const hourStr = components.hour.toString().padStart(2, '0');
+  const minuteStr = components.minute.toString().padStart(2, '0');
 
   if (options.showSeconds) {
-    const secondStr = second.toString().padStart(2, '0');
+    const secondStr = components.second.toString().padStart(2, '0');
     return `${dayName} ${hourStr}:${minuteStr}:${secondStr}`;
   }
 
@@ -100,19 +192,26 @@ export function formatWorldTime(
  * Add time delta to world time, wrapping at week boundary
  * @param worldTime - Current world time in seconds
  * @param deltaSeconds - Time to add (can be negative)
+ * @param config - Optional world time config for custom time systems
  * @returns New world time in seconds
  */
-export function addWorldTime(worldTime: number, deltaSeconds: number): number {
+export function addWorldTime(
+  worldTime: number,
+  deltaSeconds: number,
+  config?: WorldTimeConfig
+): number {
+  const constants = getTimeConstants(config);
   const newTime = worldTime + deltaSeconds;
 
-  // Wrap at week boundary (keep within 0-604800)
-  return ((newTime % SECONDS_PER_WEEK) + SECONDS_PER_WEEK) % SECONDS_PER_WEEK;
+  // Wrap at week boundary
+  return ((newTime % constants.secondsPerWeek) + constants.secondsPerWeek) % constants.secondsPerWeek;
 }
 
 /**
  * Check if a world time falls within a schedule window
  * @param worldTime - World time to check
  * @param schedule - Schedule definition
+ * @param config - Optional world time config for custom time systems
  * @returns True if world time is within the schedule
  */
 export function isWithinSchedule(
@@ -121,15 +220,20 @@ export function isWithinSchedule(
     dayOfWeek: number;
     startTime: number; // Seconds into day
     endTime: number;   // Seconds into day
-  }
+  },
+  config?: WorldTimeConfig
 ): boolean {
-  const { dayOfWeek, hour, minute, second } = parseWorldTime(worldTime);
+  const components = parseWorldTime(worldTime, config);
+  const constants = getTimeConstants(config);
 
-  if (dayOfWeek !== schedule.dayOfWeek) {
+  if (components.dayOfWeek !== schedule.dayOfWeek) {
     return false;
   }
 
-  const secondsInDay = hour * SECONDS_PER_HOUR + minute * SECONDS_PER_MINUTE + second;
+  const secondsInDay =
+    components.hour * constants.secondsPerHour +
+    components.minute * constants.secondsPerMinute +
+    components.second;
 
   return secondsInDay >= schedule.startTime && secondsInDay < schedule.endTime;
 }
@@ -137,22 +241,29 @@ export function isWithinSchedule(
 /**
  * Get the next occurrence of a specific time (day + hour)
  * @param currentWorldTime - Current world time
- * @param targetDayOfWeek - Target day (0-6)
- * @param targetHour - Target hour (0-23)
+ * @param targetDayOfWeek - Target day (0 to daysPerWeek-1)
+ * @param targetHour - Target hour (0 to hoursPerDay-1)
+ * @param config - Optional world time config for custom time systems
  * @returns World time in seconds for next occurrence
  */
 export function getNextOccurrence(
   currentWorldTime: number,
   targetDayOfWeek: number,
-  targetHour: number
+  targetHour: number,
+  config?: WorldTimeConfig
 ): number {
+  const constants = getTimeConstants(config);
+
   // Compose the target time within the current week
-  const targetSeconds = composeWorldTime({
-    dayOfWeek: targetDayOfWeek,
-    hour: targetHour,
-    minute: 0,
-    second: 0,
-  });
+  const targetSeconds = composeWorldTime(
+    {
+      dayOfWeek: targetDayOfWeek,
+      hour: targetHour,
+      minute: 0,
+      second: 0,
+    },
+    config
+  );
 
   // If target is in the future this week, return it
   if (targetSeconds > currentWorldTime) {
@@ -160,7 +271,7 @@ export function getNextOccurrence(
   }
 
   // Target has passed this week, wrap to next week
-  return addWorldTime(targetSeconds, SECONDS_PER_WEEK);
+  return addWorldTime(targetSeconds, constants.secondsPerWeek, config);
 }
 
 /**
@@ -176,13 +287,16 @@ export function worldTimeDiff(from: number, to: number): number {
 /**
  * Format a duration in seconds as human-readable string
  * @param seconds - Duration in seconds
+ * @param config - Optional world time config for custom time systems
  * @returns Formatted string (e.g., "2h 30m" or "1d 4h")
  */
-export function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number, config?: WorldTimeConfig): string {
+  const constants = getTimeConstants(config);
   const absSec = Math.abs(seconds);
-  const days = Math.floor(absSec / SECONDS_PER_DAY);
-  const hours = Math.floor((absSec % SECONDS_PER_DAY) / SECONDS_PER_HOUR);
-  const minutes = Math.floor((absSec % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+
+  const days = Math.floor(absSec / constants.secondsPerDay);
+  const hours = Math.floor((absSec % constants.secondsPerDay) / constants.secondsPerHour);
+  const minutes = Math.floor((absSec % constants.secondsPerHour) / constants.secondsPerMinute);
 
   const parts: string[] = [];
   if (days > 0) parts.push(`${days}d`);
@@ -190,4 +304,37 @@ export function formatDuration(seconds: number): string {
   if (minutes > 0 || parts.length === 0) parts.push(`${minutes}m`);
 
   return (seconds < 0 ? '-' : '') + parts.join(' ');
+}
+
+/**
+ * Get the current time period ID for a given world time
+ * @param worldTime - World time in seconds
+ * @param config - Optional world time config for custom time systems
+ * @returns Period ID or 'unknown' if no matching period
+ */
+export function getTimePeriod(worldTime: number, config?: WorldTimeConfig): string {
+  const components = parseWorldTimeWithPeriod(worldTime, config);
+  return components.period?.id ?? 'unknown';
+}
+
+/**
+ * Check if the current day is a rest day
+ * @param worldTime - World time in seconds
+ * @param config - Optional world time config for custom time systems
+ * @returns True if current day is marked as a rest day
+ */
+export function isRestDay(worldTime: number, config?: WorldTimeConfig): boolean {
+  const components = parseWorldTimeWithPeriod(worldTime, config);
+  return components.day?.isRestDay ?? false;
+}
+
+/**
+ * Get special flags for the current day
+ * @param worldTime - World time in seconds
+ * @param config - Optional world time config for custom time systems
+ * @returns Array of special flags for the current day
+ */
+export function getDayFlags(worldTime: number, config?: WorldTimeConfig): string[] {
+  const components = parseWorldTimeWithPeriod(worldTime, config);
+  return components.day?.specialFlags ?? [];
 }

@@ -30,17 +30,35 @@ import {
   DEFAULT_WORLD_STATS_CONFIG,
   DEFAULT_WORLD_MANIFEST,
   DEFAULT_INTIMACY_GATING,
+  DEFAULT_WORLD_TIME_CONFIG,
   TURN_PRESET_SECONDS,
   DEFAULT_TURN_PRESET,
+  WorldTimeConfigSchema,
   type WorldStatsConfig,
   type WorldManifestParsed,
   type IntimacyGatingConfig,
+  type WorldTimeConfig,
   type StatDefinition,
   type StatTier,
   type StatLevel,
 } from '@pixsim7/shared.types';
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+
+/**
+ * Parse time config from raw meta, with validation and defaults
+ */
+function parseTimeConfig(raw: unknown): WorldTimeConfig {
+  if (!raw || typeof raw !== 'object') {
+    return DEFAULT_WORLD_TIME_CONFIG;
+  }
+  try {
+    return WorldTimeConfigSchema.parse(raw);
+  } catch (error) {
+    console.warn('[WorldConfig] Failed to parse time_config, using defaults:', error);
+    return DEFAULT_WORLD_TIME_CONFIG;
+  }
+}
 
 // =============================================================================
 // Types
@@ -56,6 +74,7 @@ interface WorldConfigState {
   statsConfig: Readonly<WorldStatsConfig>;
   manifest: Readonly<WorldManifestParsed>;
   intimacyGating: Readonly<IntimacyGatingConfig>;
+  timeConfig: Readonly<WorldTimeConfig>;
 
   // Pre-computed ordering from backend (source of truth)
   backendTierOrder: string[] | null;
@@ -79,6 +98,7 @@ interface WorldConfigState {
   getStatDefinition: (definitionId: string) => Readonly<StatDefinition> | undefined;
   getRelationshipTiers: () => Readonly<StatTier[]>;
   getIntimacyLevels: () => Readonly<StatLevel[]>;
+  getTimeConfig: () => Readonly<WorldTimeConfig>;
   getPluginConfig: <T extends Record<string, unknown>>(pluginId: string, defaults: T) => Readonly<T>;
 
   // Ordering accessors (for gating comparisons)
@@ -124,6 +144,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
     statsConfig: Object.freeze(DEFAULT_WORLD_STATS_CONFIG),
     manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
     intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
+    timeConfig: Object.freeze(DEFAULT_WORLD_TIME_CONFIG),
     backendTierOrder: null,
     backendLevelOrder: null,
     turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],
@@ -138,6 +159,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       const statsConfig = Object.freeze(parseStatsConfig(meta.stats_config)) as Readonly<WorldStatsConfig>;
       const manifest = Object.freeze(parseManifest(meta.manifest)) as Readonly<WorldManifestParsed>;
       const intimacyGating = Object.freeze(parseIntimacyGating(meta.intimacy_gating)) as Readonly<IntimacyGatingConfig>;
+      const timeConfig = Object.freeze(parseTimeConfig(meta.time_config)) as Readonly<WorldTimeConfig>;
 
       set({
         worldId: world.id,
@@ -146,6 +168,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         statsConfig,
         manifest,
         intimacyGating,
+        timeConfig,
         turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
         isLoaded: true,
         // Clear backend ordering - will be fetched via loadWorldConfig
@@ -176,11 +199,15 @@ export const useWorldConfigStore = create<WorldConfigState>()(
 
         const manifest = Object.freeze(config.manifest) as Readonly<WorldManifestParsed>;
         const intimacyGating = Object.freeze(config.intimacy_gating) as Readonly<IntimacyGatingConfig>;
+        const timeConfig = Object.freeze(
+          config.time_config ?? DEFAULT_WORLD_TIME_CONFIG
+        ) as Readonly<WorldTimeConfig>;
 
         set({
           statsConfig,
           manifest,
           intimacyGating,
+          timeConfig,
           backendTierOrder: config.tier_order ? [...config.tier_order] : null,
           backendLevelOrder: config.level_order ? [...config.level_order] : null,
           turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
@@ -213,6 +240,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       const statsConfig = Object.freeze(parseStatsConfig(meta.stats_config)) as Readonly<WorldStatsConfig>;
       const manifest = Object.freeze(parseManifest(meta.manifest)) as Readonly<WorldManifestParsed>;
       const intimacyGating = Object.freeze(parseIntimacyGating(meta.intimacy_gating)) as Readonly<IntimacyGatingConfig>;
+      const timeConfig = Object.freeze(parseTimeConfig(meta.time_config)) as Readonly<WorldTimeConfig>;
 
       set({
         rawMeta: frozenMeta,
@@ -220,6 +248,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         statsConfig,
         manifest,
         intimacyGating,
+        timeConfig,
         turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
       });
     },
@@ -232,6 +261,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         statsConfig: Object.freeze(DEFAULT_WORLD_STATS_CONFIG),
         manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
         intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
+        timeConfig: Object.freeze(DEFAULT_WORLD_TIME_CONFIG),
         backendTierOrder: null,
         backendLevelOrder: null,
         turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],
@@ -254,6 +284,11 @@ export const useWorldConfigStore = create<WorldConfigState>()(
     getIntimacyLevels: (): Readonly<StatLevel[]> => {
       const { statsConfig } = get();
       return statsConfig.definitions.relationships?.levels ?? [];
+    },
+
+    getTimeConfig: (): Readonly<WorldTimeConfig> => {
+      const { timeConfig } = get();
+      return timeConfig;
     },
 
     getPluginConfig: <T extends Record<string, unknown>>(pluginId: string, defaults: T): Readonly<T> => {
@@ -404,6 +439,18 @@ export function subscribeToIntimacyGating(
   );
 }
 
+/**
+ * Subscribe to time config changes
+ */
+export function subscribeToTimeConfig(
+  callback: (timeConfig: Readonly<WorldTimeConfig>) => void
+): () => void {
+  return useWorldConfigStore.subscribe(
+    (state) => state.timeConfig,
+    callback
+  );
+}
+
 // =============================================================================
 // Selectors (for use outside React)
 // =============================================================================
@@ -413,6 +460,7 @@ export const worldConfigSelectors = {
   getStatsConfig: () => useWorldConfigStore.getState().statsConfig,
   getManifest: () => useWorldConfigStore.getState().manifest,
   getIntimacyGating: () => useWorldConfigStore.getState().intimacyGating,
+  getTimeConfig: () => useWorldConfigStore.getState().getTimeConfig(),
   getTurnDelta: () => useWorldConfigStore.getState().turnDeltaSeconds,
   getRelationshipTiers: () => useWorldConfigStore.getState().getRelationshipTiers(),
   getIntimacyLevels: () => useWorldConfigStore.getState().getIntimacyLevels(),
