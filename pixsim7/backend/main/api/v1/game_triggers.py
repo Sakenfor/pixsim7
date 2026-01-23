@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import Field
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameTriggerSvc
 from pixsim7.backend.main.api.v1.game_hotspots import (
@@ -12,14 +12,13 @@ from pixsim7.backend.main.api.v1.game_hotspots import (
     validate_scope_binding,
     validate_action,
 )
+from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 
 
 router = APIRouter()
 
 
-class GameTriggerCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class GameTriggerCreate(ApiModel):
     scope: str = Field(description="Trigger scope (location, world, scene, etc.)")
     hotspot_id: str
     world_id: Optional[int] = None
@@ -30,9 +29,7 @@ class GameTriggerCreate(BaseModel):
     meta: Optional[Dict[str, Any]] = None
 
 
-class GameTriggerUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
+class GameTriggerUpdate(ApiModel):
     scope: Optional[str] = None
     hotspot_id: Optional[str] = None
     world_id: Optional[int] = None
@@ -79,7 +76,7 @@ async def create_trigger(
     game_trigger_service: GameTriggerSvc,
     user: CurrentUser,
 ) -> GameHotspotDTO:
-    payload_dict = payload.model_dump(exclude_none=True)
+    payload_dict = payload.model_dump(exclude_none=True, by_alias=False)
     validate_scope_binding(payload_dict)
     validate_action(payload.action)
     trigger = await game_trigger_service.create_trigger(payload_dict)
@@ -93,7 +90,7 @@ async def update_trigger(
     game_trigger_service: GameTriggerSvc,
     user: CurrentUser,
 ) -> GameHotspotDTO:
-    payload_dict = payload.model_dump(exclude_none=True)
+    payload_dict = payload.model_dump(exclude_none=True, by_alias=False)
     existing = await game_trigger_service.get_trigger(trigger_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Trigger not found")

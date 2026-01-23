@@ -39,6 +39,9 @@ schema is cross-cutting:
 # ]
 """
 
+# API boundary base model for request/response schemas
+from pixsim7.backend.main.shared.schemas.api_base import ApiModel, to_api_alias
+
 # Cross-cutting entity reference type for all DTOs
 from pixsim7.backend.main.shared.schemas.entity_ref import (
     EntityRef,
@@ -62,6 +65,9 @@ from pixsim7.backend.main.shared.schemas.error_response import (
 )
 
 __all__ = [
+    # ApiModel - camelCase JSON, snake_case Python
+    "ApiModel",
+    "to_api_alias",
     # EntityRef - canonical reference type for API boundaries
     "EntityRef",
     "AssetRef",

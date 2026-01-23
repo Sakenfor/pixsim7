@@ -10,6 +10,7 @@
 ### Backend
 - [Infrastructure](./infrastructure/README.md) - Backend startup, services, middleware
 - [Database & Logging](./database-and-logging/README.md) - PostgreSQL, TimescaleDB, structured logs
+- [API Case Conventions](../pixsim7/backend/main/CASE_CONVENTIONS.md) - snake_case vs camelCase at boundaries
 
 ### Frontend
 - [Frontend Guide](./frontend/README.md) - Components, patterns, UI tasks

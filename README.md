@@ -3,6 +3,7 @@
 > Multi-provider video generation orchestration platform with REST API, background workers, and unified account management.
 
 **🤖 AI Assistant?** Read **[AI_README.md](./AI_README.md)** first - comprehensive guide to the codebase architecture and implementation status.
+**API casing rules:** See [Case Conventions](./backend/main/CASE_CONVENTIONS.md).
 
 ---
 

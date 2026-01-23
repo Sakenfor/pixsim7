@@ -3,6 +3,7 @@
 **Status:** 🚧 Foundation scaffolded (Phase 1 in progress)
 
 Clean, domain-driven architecture for video generation and scene assembly.
+See [Case Conventions](CASE_CONVENTIONS.md) for API casing rules.
 
 ---
 

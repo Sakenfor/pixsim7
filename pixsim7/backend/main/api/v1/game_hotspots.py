@@ -4,9 +4,10 @@ from fastapi import HTTPException
 from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 from pixsim7.backend.main.domain.game.core.actions import game_action_registry
+from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 
 
-class PlaySceneAction(BaseModel):
+class PlaySceneAction(ApiModel):
     type: Literal["play_scene"]
     scene_id: Optional[int] = None
 
@@ -17,7 +18,7 @@ class PlaySceneAction(BaseModel):
         return self
 
 
-class ChangeLocationAction(BaseModel):
+class ChangeLocationAction(ApiModel):
     type: Literal["change_location"]
     target_location_id: Optional[int] = None
 
@@ -28,7 +29,7 @@ class ChangeLocationAction(BaseModel):
         return self
 
 
-class NpcTalkAction(BaseModel):
+class NpcTalkAction(ApiModel):
     type: Literal["npc_talk"]
     npc_id: Optional[int] = None
 
@@ -43,22 +44,24 @@ def validate_action(action: Union[Dict[str, Any], BaseModel, None]) -> None:
     """Validate action using registry. Raises ValueError if invalid."""
     if action is None:
         return
-    action_dict = action.model_dump() if isinstance(action, BaseModel) else action
+    action_dict = (
+        action.model_dump(by_alias=False) if isinstance(action, BaseModel) else action
+    )
     game_action_registry.validate_action(action_dict)
 
 
-class HotspotTargetMesh(BaseModel):
+class HotspotTargetMesh(ApiModel):
     object_name: str = Field(description="Exact node/mesh name in glTF")
 
 
-class HotspotTargetRect2d(BaseModel):
+class HotspotTargetRect2d(ApiModel):
     x: float
     y: float
     w: float
     h: float
 
 
-class HotspotTarget(BaseModel):
+class HotspotTarget(ApiModel):
     model_config = ConfigDict(extra="allow")
 
     mesh: Optional[HotspotTargetMesh] = None
@@ -72,10 +75,8 @@ class HotspotTarget(BaseModel):
         return self
 
 
-class GameHotspotDTO(BaseModel):
+class GameHotspotDTO(ApiModel):
     """A shared trigger/hotspot definition used by 2D and 3D runtimes."""
-
-    model_config = ConfigDict(populate_by_name=True)
 
     id: Optional[int] = None
     scope: Optional[str] = None

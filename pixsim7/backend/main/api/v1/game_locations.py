@@ -3,20 +3,19 @@ from __future__ import annotations
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, ConfigDict, AliasChoices
+from pydantic import Field, AliasChoices
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
+from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO, to_hotspot_dto
 
 
 router = APIRouter()
 
 
-class GameLocationSummary(BaseModel):
+class GameLocationSummary(ApiModel):
     """Summary of a game location."""
-
-    model_config = ConfigDict(populate_by_name=True)
 
     id: int
     name: str
@@ -27,10 +26,8 @@ class GameLocationSummary(BaseModel):
     default_spawn: Optional[str] = None
 
 
-class GameLocationDetail(BaseModel):
+class GameLocationDetail(ApiModel):
     """Detailed game location with hotspots."""
-
-    model_config = ConfigDict(populate_by_name=True)
 
     id: int
     name: str
@@ -43,7 +40,7 @@ class GameLocationDetail(BaseModel):
     hotspots: List[GameHotspotDTO]
 
 
-class ReplaceHotspotsPayload(BaseModel):
+class ReplaceHotspotsPayload(ApiModel):
     hotspots: List[GameHotspotDTO]
 
 
@@ -104,10 +101,10 @@ async def replace_hotspots(
     """
     Replace all hotspots for a location.
 
-    Body shape:
+    Body shape (camelCase; snake_case also accepted):
       {
         "hotspots": [
-          { "hotspot_id": "...", "target": {...}, "action": {...}, "meta": {...} },
+          { "hotspotId": "...", "target": {...}, "action": {...}, "meta": {...} },
           ...
         ]
       }
@@ -117,7 +114,7 @@ async def replace_hotspots(
         raise HTTPException(status_code=404, detail="Location not found")
 
     hotspots_payload = [
-        h.model_dump(exclude_none=True)
+        h.model_dump(exclude_none=True, by_alias=False)
         for h in payload.hotspots
     ]
 
