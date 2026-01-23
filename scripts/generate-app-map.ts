@@ -1,13 +1,80 @@
+#!/usr/bin/env tsx
+/**
+ * Generates APP_MAP.md and action registry from code metadata and manual sources.
+ *
+ * Sources:
+ *   - Code parsing: routes, capabilities, module pages, actions
+ *   - Manual registry: docs/app_map.sources.json (docs, backend modules)
+ *
+ * Outputs:
+ *   - docs/APP_MAP.md (table updated between markers)
+ *   - docs/app_map.generated.json (intermediate, for debugging)
+ *   - docs/architecture/action-registry.md
+ *
+ * Usage:
+ *   pnpm docs:app-map        # Generate all outputs
+ *   pnpm docs:app-map:check  # Verify outputs are current (CI)
+ */
+
 import fs from 'fs';
 import path from 'path';
 import * as ts from 'typescript';
+
+// =============================================================================
+// Configuration
+// =============================================================================
+
+const CHECK_MODE = process.argv.includes('--check');
+
+const PROJECT_ROOT = process.cwd();
+const ROUTES_FILE = path.join(
+  PROJECT_ROOT,
+  'apps/main/src/lib/capabilities/routeConstants.ts'
+);
+const CAPABILITIES_FILE = path.join(
+  PROJECT_ROOT,
+  'apps/main/src/lib/capabilities/registerCoreFeatures.ts'
+);
+const MODULE_PAGES_FILE = path.join(
+  PROJECT_ROOT,
+  'apps/main/src/app/modules/pages.ts'
+);
+const FEATURES_DIR = path.join(PROJECT_ROOT, 'apps/main/src/features');
+
+// Input files
+const MANUAL_REGISTRY_FILE = path.join(PROJECT_ROOT, 'docs/app_map.sources.json');
+
+// Output files
+const GENERATED_JSON_FILE = path.join(PROJECT_ROOT, 'docs/app_map.generated.json');
+const APP_MAP_FILE = path.join(PROJECT_ROOT, 'docs/APP_MAP.md');
+const ACTIONS_DOC_FILE = path.join(PROJECT_ROOT, 'docs/architecture/action-registry.md');
+
+// =============================================================================
+// Types
+// =============================================================================
 
 type AppMapEntry = {
   id: string;
   label?: string;
   routes?: string[];
   frontend?: string[];
+  docs?: string[];
+  backend?: string[];
   sources?: string[];
+};
+
+type ManualRegistryEntry = {
+  id: string;
+  label?: string;
+  docs?: string[];
+  frontend?: string[];
+  backend?: string[];
+  routes?: string[];
+};
+
+type ManualRegistry = {
+  version: string;
+  entries: ManualRegistryEntry[];
 };
 
 type ActionDocEntry = {
@@ -25,22 +92,9 @@ type ActionDocEntry = {
   sources?: string[];
 };
 
-const PROJECT_ROOT = process.cwd();
-const ROUTES_FILE = path.join(
-  PROJECT_ROOT,
-  'apps/main/src/lib/capabilities/routeConstants.ts'
-);
-const CAPABILITIES_FILE = path.join(
-  PROJECT_ROOT,
-  'apps/main/src/lib/capabilities/registerCoreFeatures.ts'
-);
-const MODULE_PAGES_FILE = path.join(
-  PROJECT_ROOT,
-  'apps/main/src/app/modules/pages.ts'
-);
-const FEATURES_DIR = path.join(PROJECT_ROOT, 'apps/main/src/features');
-const OUTPUT_FILE = path.join(PROJECT_ROOT, 'docs/app_map.generated.json');
-const ACTIONS_DOC_FILE = path.join(PROJECT_ROOT, 'docs/architecture/action-registry.md');
+// =============================================================================
+// TypeScript Parsing Helpers
+// =============================================================================
 
 function readSource(filePath: string): ts.SourceFile {
   const text = fs.readFileSync(filePath, 'utf8');
@@ -106,6 +160,10 @@ function resolveBoolean(expr: ts.Expression | undefined): boolean | null {
   return null;
 }
 
+// =============================================================================
+// List Merging
+// =============================================================================
+
 function mergeList<T>(left: T[] | undefined, right: T[] | undefined): T[] {
   const result: T[] = [];
   const seen = new Set<string>();
@@ -124,6 +182,10 @@ function mergeList<T>(left: T[] | undefined, right: T[] | undefined): T[] {
   add(right);
   return result;
 }
+
+// =============================================================================
+// Code Parsing
+// =============================================================================
 
 function parseRoutesMap(filePath: string): Record<string, string> {
   const source = readSource(filePath);
@@ -342,7 +404,7 @@ function getFeatureModuleFiles(): string[] {
   return files;
 }
 
-function mergeEntries(
+function mergeCodeEntries(
   base: Map<string, AppMapEntry>,
   incoming: AppMapEntry[]
 ): Map<string, AppMapEntry> {
@@ -399,6 +461,146 @@ function mergeActionEntries(
   return merged;
 }
 
+// =============================================================================
+// Manual Registry Loading & Merging
+// =============================================================================
+
+function loadManualRegistry(): ManualRegistry | null {
+  if (!fs.existsSync(MANUAL_REGISTRY_FILE)) {
+    return null;
+  }
+  const content = fs.readFileSync(MANUAL_REGISTRY_FILE, 'utf8');
+  return JSON.parse(content) as ManualRegistry;
+}
+
+function mergeWithManualRegistry(
+  generatedEntries: AppMapEntry[],
+  manualEntries: ManualRegistryEntry[]
+): AppMapEntry[] {
+  const generatedById = new Map(generatedEntries.map(e => [e.id, e]));
+  const usedGenerated = new Set<string>();
+  const merged: AppMapEntry[] = [];
+
+  // Process manual entries first (they're authoritative for docs/backend)
+  for (const manual of manualEntries) {
+    const generated = generatedById.get(manual.id);
+    if (generated) {
+      // Merge: manual provides docs/backend, generated provides routes/frontend
+      merged.push({
+        id: manual.id,
+        label: manual.label ?? generated.label,
+        docs: manual.docs ?? [],
+        backend: manual.backend ?? [],
+        routes: mergeList(generated.routes, manual.routes),
+        frontend: mergeList(generated.frontend, manual.frontend),
+        sources: generated.sources,
+      });
+      usedGenerated.add(manual.id);
+    } else {
+      // Manual-only entry
+      merged.push({
+        id: manual.id,
+        label: manual.label,
+        docs: manual.docs ?? [],
+        backend: manual.backend ?? [],
+        routes: manual.routes ?? [],
+        frontend: manual.frontend ?? [],
+      });
+    }
+  }
+
+  // Add generated-only entries (not in manual registry)
+  for (const generated of generatedEntries) {
+    if (!usedGenerated.has(generated.id)) {
+      merged.push(generated);
+    }
+  }
+
+  return merged;
+}
+
+// =============================================================================
+// Markdown Formatting (ported from Python)
+// =============================================================================
+
+function formatDocs(docs: string[] | undefined): string {
+  if (!docs || docs.length === 0) return '-';
+  return docs.map(doc => {
+    const name = path.basename(doc);
+    return `\`${name}\``;
+  }).join(', ');
+}
+
+function formatFrontend(paths: string[] | undefined): string {
+  if (!paths || paths.length === 0) return '-';
+  return paths.map(p => {
+    // Simplify common prefixes
+    let compact = p;
+    if (p.startsWith('apps/main/src/')) {
+      compact = p.replace('apps/main/src/', '');
+    }
+    return `\`${compact}\``;
+  }).join(', ');
+}
+
+function formatBackend(modules: string[] | undefined): string {
+  if (!modules || modules.length === 0) return '-';
+  return modules.map(mod => {
+    // Simplify pixsim7.backend.main prefix
+    let compact = mod;
+    if (mod.startsWith('pixsim7.backend.main.')) {
+      compact = mod.replace('pixsim7.backend.main.', '');
+    }
+    return `\`${compact}\``;
+  }).join(', ');
+}
+
+function formatRoutes(routes: string[] | undefined): string {
+  if (!routes || routes.length === 0) return '-';
+  return routes.map(r => `\`${r}\``).join(', ');
+}
+
+function generateMarkdownTable(entries: AppMapEntry[]): string {
+  const lines = [
+    '| Feature | Routes | Docs | Frontend | Backend |',
+    '|---------|--------|------|----------|---------|',
+  ];
+
+  for (const entry of entries) {
+    const label = entry.label ?? entry.id;
+    const routes = formatRoutes(entry.routes);
+    const docs = formatDocs(entry.docs);
+    const frontend = formatFrontend(entry.frontend);
+    const backend = formatBackend(entry.backend);
+
+    lines.push(`| ${label} | ${routes} | ${docs} | ${frontend} | ${backend} |`);
+  }
+
+  return lines.join('\n');
+}
+
+function updateAppMapMarkdown(table: string): string {
+  const content = fs.readFileSync(APP_MAP_FILE, 'utf8');
+
+  // Check markers exist
+  if (!content.includes('<!-- APP_MAP:START -->')) {
+    throw new Error('APP_MAP:START marker not found in APP_MAP.md');
+  }
+  if (!content.includes('<!-- APP_MAP:END -->')) {
+    throw new Error('APP_MAP:END marker not found in APP_MAP.md');
+  }
+
+  // Replace content between markers
+  const pattern = /(<!-- APP_MAP:START -->)\n[\s\S]*?\n(<!-- APP_MAP:END -->)/;
+  const replacement = `$1\n${table}\n$2`;
+
+  return content.replace(pattern, replacement);
+}
+
+// =============================================================================
+// Action Registry Formatting
+// =============================================================================
+
 function escapeMarkdown(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
@@ -442,7 +644,18 @@ function formatActionRegistry(actions: ActionDocEntry[]): string {
   return lines.join('\n') + '\n';
 }
 
-function generateAppMap(): void {
+// =============================================================================
+// Main Generation Logic
+// =============================================================================
+
+function generateAppMap(): {
+  generatedJson: string;
+  appMapMd: string;
+  actionRegistryMd: string;
+  entriesCount: number;
+  actionsCount: number;
+} {
+  // 1. Parse code for routes, capabilities, modules
   const routesMap = parseRoutesMap(ROUTES_FILE);
   const capabilityEntries = parseCapabilities(CAPABILITIES_FILE, routesMap);
 
@@ -460,26 +673,137 @@ function generateAppMap(): void {
     actionEntries.push(...parsed.actions);
   }
 
-  const merged = mergeEntries(capabilityEntries, moduleEntries);
-  const entries = Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
+  // 2. Merge code-derived entries
+  const mergedCodeEntries = mergeCodeEntries(capabilityEntries, moduleEntries);
+  const codeEntries = Array.from(mergedCodeEntries.values()).sort((a, b) => a.id.localeCompare(b.id));
 
-  const output = {
+  // 3. Generate JSON output (for debugging/intermediate use)
+  const generatedJson = JSON.stringify({
     version: '1.0.0',
     generatedAt: new Date().toISOString(),
-    entries,
-  };
+    entries: codeEntries,
+  }, null, 2) + '\n';
 
-  fs.mkdirSync(path.dirname(OUTPUT_FILE), { recursive: true });
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(output, null, 2) + '\n', 'utf8');
+  // 4. Load and merge with manual registry
+  const manualRegistry = loadManualRegistry();
+  let finalEntries: AppMapEntry[];
+  if (manualRegistry) {
+    finalEntries = mergeWithManualRegistry(codeEntries, manualRegistry.entries);
+  } else {
+    finalEntries = codeEntries;
+  }
 
+  // 5. Generate markdown table and update APP_MAP.md
+  const table = generateMarkdownTable(finalEntries);
+  const appMapMd = updateAppMapMarkdown(table);
+
+  // 6. Generate action registry
   const mergedActions = mergeActionEntries(new Map(), actionEntries);
   const actions = Array.from(mergedActions.values()).sort((a, b) => a.id.localeCompare(b.id));
-  fs.mkdirSync(path.dirname(ACTIONS_DOC_FILE), { recursive: true });
-  fs.writeFileSync(ACTIONS_DOC_FILE, formatActionRegistry(actions), 'utf8');
+  const actionRegistryMd = formatActionRegistry(actions);
 
-  console.log(`Generated app map: ${path.relative(PROJECT_ROOT, OUTPUT_FILE)}`);
-  console.log(`Entries: ${entries.length}`);
-  console.log(`Actions: ${actions.length}`);
+  return {
+    generatedJson,
+    appMapMd,
+    actionRegistryMd,
+    entriesCount: finalEntries.length,
+    actionsCount: actions.length,
+  };
 }
 
-generateAppMap();
+// =============================================================================
+// Check Mode
+// =============================================================================
+
+function checkOutputs(outputs: {
+  generatedJson: string;
+  appMapMd: string;
+  actionRegistryMd: string;
+}): boolean {
+  let allCurrent = true;
+
+  // Check generated JSON
+  if (!fs.existsSync(GENERATED_JSON_FILE)) {
+    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+    allCurrent = false;
+  } else {
+    const existing = fs.readFileSync(GENERATED_JSON_FILE, 'utf8');
+    // Compare without generatedAt timestamp
+    const normalizeJson = (json: string) => {
+      const parsed = JSON.parse(json);
+      delete parsed.generatedAt;
+      return JSON.stringify(parsed, null, 2);
+    };
+    if (normalizeJson(existing) !== normalizeJson(outputs.generatedJson)) {
+      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+      allCurrent = false;
+    }
+  }
+
+  // Check APP_MAP.md
+  if (!fs.existsSync(APP_MAP_FILE)) {
+    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+    allCurrent = false;
+  } else {
+    const existing = fs.readFileSync(APP_MAP_FILE, 'utf8');
+    if (existing !== outputs.appMapMd) {
+      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+      allCurrent = false;
+    }
+  }
+
+  // Check action registry
+  if (!fs.existsSync(ACTIONS_DOC_FILE)) {
+    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+    allCurrent = false;
+  } else {
+    const existing = fs.readFileSync(ACTIONS_DOC_FILE, 'utf8');
+    if (existing !== outputs.actionRegistryMd) {
+      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+      allCurrent = false;
+    }
+  }
+
+  return allCurrent;
+}
+
+// =============================================================================
+// Main Entry Point
+// =============================================================================
+
+function main() {
+  try {
+    const outputs = generateAppMap();
+
+    if (CHECK_MODE) {
+      const allCurrent = checkOutputs(outputs);
+      if (allCurrent) {
+        console.log('✓ All app-map outputs are current');
+        process.exit(0);
+      } else {
+        console.error('\nRun: pnpm docs:app-map');
+        process.exit(1);
+      }
+    }
+
+    // Write outputs
+    fs.mkdirSync(path.dirname(GENERATED_JSON_FILE), { recursive: true });
+    fs.writeFileSync(GENERATED_JSON_FILE, outputs.generatedJson, 'utf8');
+
+    fs.writeFileSync(APP_MAP_FILE, outputs.appMapMd, 'utf8');
+
+    fs.mkdirSync(path.dirname(ACTIONS_DOC_FILE), { recursive: true });
+    fs.writeFileSync(ACTIONS_DOC_FILE, outputs.actionRegistryMd, 'utf8');
+
+    console.log(`✓ Generated: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+    console.log(`✓ Updated: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+    console.log(`✓ Generated: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+    console.log(`  Entries: ${outputs.entriesCount}`);
+    console.log(`  Actions: ${outputs.actionsCount}`);
+  } catch (error) {
+    console.error(`✗ Error: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
+}
+
+main();

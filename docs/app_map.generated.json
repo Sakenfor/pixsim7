@@ -1,0 +1,201 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-01-23T01:10:52.032Z",
+  "entries": [
+    {
+      "id": "arc-graph",
+      "label": "Arc Graph Editor",
+      "routes": [
+        "/arc-graph"
+      ],
+      "frontend": [
+        "apps/main/src/features/graph/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "assets",
+      "label": "Gallery",
+      "routes": [
+        "/assets"
+      ],
+      "frontend": [
+        "apps/main/src/features/assets/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "automation",
+      "label": "Automation",
+      "routes": [
+        "/automation"
+      ],
+      "frontend": [
+        "apps/main/src/features/automation/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "game",
+      "label": "Game World",
+      "routes": [
+        "/game-world"
+      ],
+      "frontend": [
+        "apps/main/src/features/worldTools/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "game-2d",
+      "label": "2D Game",
+      "routes": [
+        "/game-2d"
+      ],
+      "frontend": [
+        "apps/main/src/features/simulation/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "gizmo-lab",
+      "label": "Gizmo Lab",
+      "routes": [
+        "/gizmo-lab"
+      ],
+      "frontend": [
+        "apps/main/src/features/gizmos/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "graph",
+      "label": "Graph View",
+      "routes": [
+        "/graph/:id"
+      ],
+      "frontend": [
+        "apps/main/src/features/graph/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "health",
+      "label": "Health Monitor",
+      "routes": [
+        "/health"
+      ],
+      "frontend": [
+        "apps/main/src/features/devtools/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "interaction-demo",
+      "label": "Interaction Demo",
+      "routes": [
+        "/interaction-demo"
+      ],
+      "frontend": [
+        "apps/main/src/features/interactions/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "interaction-studio",
+      "label": "Interaction Studio",
+      "routes": [
+        "/interaction-studio"
+      ],
+      "frontend": [
+        "apps/main/src/features/interactions/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "npc-brain-lab",
+      "label": "NPC Brain Lab",
+      "routes": [
+        "/npc-brain-lab"
+      ],
+      "frontend": [
+        "apps/main/src/features/brainTools/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "npc-portraits",
+      "label": "NPC Portraits",
+      "routes": [
+        "/npc-portraits"
+      ],
+      "frontend": [
+        "apps/main/src/features/npcs/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "overlay-config",
+      "label": "Overlay Configuration",
+      "routes": [
+        "/settings/overlays"
+      ],
+      "frontend": [
+        "apps/main/src/features/componentSettings/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "plugin-manager",
+      "label": "Plugins",
+      "routes": [
+        "/plugins"
+      ],
+      "frontend": [
+        "apps/main/src/features/plugins/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    },
+    {
+      "id": "workspace",
+      "label": "Scene Builder",
+      "routes": [
+        "/workspace"
+      ],
+      "frontend": [
+        "apps/main/src/features/workspace/"
+      ],
+      "sources": [
+        "modules"
+      ]
+    }
+  ]
+}

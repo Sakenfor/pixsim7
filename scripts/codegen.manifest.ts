@@ -36,4 +36,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     supportsCheck: true,
     groups: ['types'],
   },
+  {
+    id: 'app-map',
+    description: 'Generate APP_MAP.md and action registry from code',
+    script: 'scripts/generate-app-map.ts',
+    supportsCheck: true,
+    groups: ['docs'],
+  },
 ];

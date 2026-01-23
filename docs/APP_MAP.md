@@ -27,7 +27,7 @@ The App Map table is a merge of two registries:
 2) **Manual registry (authoritative for docs/backend links)**  
    `docs/app_map.sources.json` contains doc paths and backend module references.
 
-`update_app_map.py` merges these into the table in this file.
+`scripts/generate-app-map.ts` merges these into the table in this file.
 
 ### Code-Derived Metadata
 
@@ -52,8 +52,8 @@ When generating `app_map.generated.json`, use:
 3) **Docs and backend**  
    Add or update the entry in `docs/app_map.sources.json`.
 
-4) **Regenerate**  
-   Run `python update_app_map.py` to update the table.
+4) **Regenerate**
+   Run `pnpm codegen --only app-map` to update the table.
 
 ### Comment Conventions (Planned)
 
@@ -62,7 +62,7 @@ on module and action definitions. Keep them concise and descriptive.
 
 ## Live App Map Registry
 
-The table below is auto-generated from `docs/app_map.sources.json`. Run `python update_app_map.py` to refresh.
+The table below is auto-generated from `docs/app_map.sources.json`. Run `pnpm codegen --only app-map` to refresh.
 
 <!-- APP_MAP:START -->
 | Feature | Routes | Docs | Frontend | Backend |
@@ -72,10 +72,10 @@ The table below is auto-generated from `docs/app_map.sources.json`. Run `python 
 | Image/Video Generation | `/generate` | `overview.md`, `GENERATION_GUIDE.md` | `features/generation/` | `api.v1.generations`, `services.generation` |
 | Game Worlds | `/worlds`, `/simulation` | `game.md` | `features/worldTools/` | `api.v1.game_worlds`, `api.v1.game_sessions`, `domain.game` |
 | NPC Interactions | `/interaction-studio` | `INTERACTION_AUTHORING_GUIDE.md`, `INTERACTION_PLUGIN_MANIFEST.md` | `features/interactions/` | `api.v1.npc_interactions`, `api.v1.npc_state`, `domain.game.interactions` |
-| Scene/Arc Graphs | `/graph-editor` | `NPC_RESPONSE_GRAPH_DESIGN.md` | `features/graph/` | `api.v1.action_blocks`, `api.v1.game_scenes`, `api.v1.character_graph` |
+| Scene/Arc Graphs | `/graph/:id`, `/graph-editor` | `NPC_RESPONSE_GRAPH_DESIGN.md` | `features/graph/` | `api.v1.action_blocks`, `api.v1.game_scenes`, `api.v1.character_graph` |
 | Prompt System | `/prompt-lab` | `SEMANTIC_PACKS_IMPLEMENTATION.md`, `PROMPT_SYSTEM_REVIEW.md` | `features/prompts/` | `api.v1.prompts`, `api.v1.semantic_packs`, `api.v1.dev_prompt_categories` |
 | Provider Accounts | `/providers`, `/accounts` | `provider-accounts.md`, `provider-capabilities.md` | `features/providers/` | `api.v1.providers`, `api.v1.accounts`, `api.v1.accounts_credits`, `services.provider` |
-| Workspace/Dockview | - | `README.md` | `features/workspace/`, `lib/dockview/` | - |
+| Workspace/Dockview | `/workspace` | `README.md` | `features/workspace/`, `lib/dockview/` | - |
 | Panel System | - | `COMPONENTS.md` | `features/panels/` | - |
 | HUD System | - | `HUD_LAYOUT_DESIGNER.md` | `features/hud/` | - |
 | Simulation Playground | `/simulation-playground` | `simulation.md` | `features/simulation/` | `services.simulation` |
@@ -87,6 +87,17 @@ The table below is auto-generated from `docs/app_map.sources.json`. Run `python 
 | Intimacy System | - | - | `features/intimacy/` | - |
 | Scene Management | - | - | `features/scene/` | `api.v1.game_scenes` |
 | Settings | `/settings` | - | `features/settings/` | - |
+| Arc Graph Editor | `/arc-graph` | - | `features/graph/` | - |
+| Game World | `/game-world` | - | `features/worldTools/` | - |
+| 2D Game | `/game-2d` | - | `features/simulation/` | - |
+| Gizmo Lab | `/gizmo-lab` | - | `features/gizmos/` | - |
+| Health Monitor | `/health` | - | `features/devtools/` | - |
+| Interaction Demo | `/interaction-demo` | - | `features/interactions/` | - |
+| Interaction Studio | `/interaction-studio` | - | `features/interactions/` | - |
+| NPC Brain Lab | `/npc-brain-lab` | - | `features/brainTools/` | - |
+| NPC Portraits | `/npc-portraits` | - | `features/npcs/` | - |
+| Overlay Configuration | `/settings/overlays` | - | `features/componentSettings/` | - |
+| Plugins | `/plugins` | - | `features/plugins/` | - |
 <!-- APP_MAP:END -->
 
 ---
