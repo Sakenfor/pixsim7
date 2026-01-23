@@ -7,8 +7,8 @@
  * - Persists layout to localStorage
  */
 
-import { useCallback, useEffect, useRef } from 'react';
-import type { DockviewApi } from 'dockview-core';
+import { useCallback, useEffect, useRef } from "react";
+import type { DockviewApi } from "dockview-core";
 
 export interface UseSmartDockviewOptions {
   /** Storage key for persisting layout (optional) */
@@ -39,7 +39,7 @@ export interface UseSmartDockviewReturn {
 }
 
 export function useSmartDockview(
-  options: UseSmartDockviewOptions = {}
+  options: UseSmartDockviewOptions = {},
 ): UseSmartDockviewReturn {
   const { storageKey, minPanelsForTabs = 2, onLayoutChange, deprecatedPanels = [] } = options;
   const apiRef = useRef<DockviewApi | null>(null);
@@ -62,15 +62,15 @@ export function useSmartDockview(
     api.groups.forEach((group) => {
       const model = (group as any).model;
       const modelSize =
-        typeof model?.size === 'number'
+        typeof model?.size === "number"
           ? model.size
           : undefined;
       const panelCount =
-        typeof modelSize === 'number'
+        typeof modelSize === "number"
           ? modelSize
           : Array.isArray((group as any).panels)
             ? (group as any).panels.length
-            : typeof (group as any).panels?.length === 'number'
+            : typeof (group as any).panels?.length === "number"
               ? (group as any).panels.length
               : 0;
       const shouldShowTabs = panelCount >= minPanelsForTabs;
@@ -79,7 +79,7 @@ export function useSmartDockview(
       // Note: This accesses internal dockview structure
       try {
         const header = (group as any).header ?? model?.header;
-        if (header && typeof header.hidden !== 'undefined') {
+        if (header && typeof header.hidden !== "undefined") {
           header.hidden = !shouldShowTabs;
         }
       } catch (e) {
@@ -96,7 +96,7 @@ export function useSmartDockview(
       // CSS fallback for cases where header hiding doesn't apply
       const groupElement = (group as any).element;
       if (groupElement && groupElement.classList) {
-        groupElement.classList.toggle('dv-tabs-hidden', !shouldShowTabs);
+        groupElement.classList.toggle("dv-tabs-hidden", !shouldShowTabs);
       }
     });
   }, [minPanelsForTabs]);
@@ -113,13 +113,13 @@ export function useSmartDockview(
       // Use a replacer to exclude circular references (like dockviewApi in context)
       const replacer = (key: string, value: any) => {
         // Skip dockviewApi to avoid circular references
-        if (key === 'dockviewApi') return undefined;
+        if (key === "dockviewApi") return undefined;
         return value;
       };
 
       localStorage.setItem(storageKey, JSON.stringify(layout, replacer));
     } catch (error) {
-      console.error('[SmartDockview] Failed to save layout:', error);
+      console.error("[SmartDockview] Failed to save layout:", error);
     }
   }, [storageKey]);
 
@@ -136,13 +136,13 @@ export function useSmartDockview(
         // Check for deprecated panels before loading (use ref to avoid dependency)
         const currentDeprecatedPanels = deprecatedPanelsRef.current;
         if (currentDeprecatedPanels.length > 0) {
-          const hasDeprecatedPanel = currentDeprecatedPanels.some(panelId =>
+          const hasDeprecatedPanel = currentDeprecatedPanels.some((panelId) =>
             saved.includes(`"${panelId}"`)
           );
 
           if (hasDeprecatedPanel) {
             console.log(
-              `[SmartDockview] Layout contains deprecated panels [${currentDeprecatedPanels.join(', ')}]. Clearing layout.`
+              `[SmartDockview] Layout contains deprecated panels [${currentDeprecatedPanels.join(", ")}]. Clearing layout.`,
             );
             localStorage.removeItem(storageKey);
             return false;
@@ -154,7 +154,7 @@ export function useSmartDockview(
         return true;
       }
     } catch (error) {
-      console.error('[SmartDockview] Failed to load layout:', error);
+      console.error("[SmartDockview] Failed to load layout:", error);
     }
     return false;
   }, [storageKey]);
@@ -207,7 +207,7 @@ export function useSmartDockview(
       // Initial tab visibility update
       requestAnimationFrame(updateTabVisibility);
     },
-    [updateTabVisibility, saveLayout]
+    [updateTabVisibility, saveLayout],
   );
 
   /**

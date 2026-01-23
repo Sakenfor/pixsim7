@@ -16,7 +16,8 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@pixsim7/shared.ui.dockview": ["../../packages/shared/ui/dockview/src"]
     }
   },
   "include": ["src"]

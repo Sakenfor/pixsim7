@@ -67,6 +67,10 @@
     backdrop-filter: blur(6px);
   }
 
+  .admin-dockview {
+    min-height: 600px;
+  }
+
   .panel-card:hover {
     border-color: rgba(31, 79, 89, 0.2);
     transform: translateY(-2px);

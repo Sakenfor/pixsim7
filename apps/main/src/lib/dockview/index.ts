@@ -11,10 +11,10 @@
 export { SmartDockview } from './SmartDockview';
 export type { SmartDockviewProps } from './SmartDockview';
 
-export { LocalPanelRegistry, createLocalPanelRegistry } from './LocalPanelRegistry';
+export { LocalPanelRegistry, createLocalPanelRegistry } from '@pixsim7/shared.ui.dockview';
 
-export { useSmartDockview } from './useSmartDockview';
-export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from './useSmartDockview';
+export { useSmartDockview } from '@pixsim7/shared.ui.dockview';
+export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from '@pixsim7/shared.ui.dockview';
 
 export {
   addDockviewPanel,
@@ -65,4 +65,4 @@ export type {
   SmartDockviewConfig,
   SmartDockviewLayout,
   SmartDockviewPanelProps,
-} from './types';
+} from '@pixsim7/shared.ui.dockview';

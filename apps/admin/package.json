@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pixsim7/shared.ui.dockview": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

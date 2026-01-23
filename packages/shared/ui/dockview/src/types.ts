@@ -1,9 +1,8 @@
 /**
  * Local Panel Registry Types
  *
- * Types for feature-scoped panel registries used with SmartDockview.
- * Unlike the global workspace PanelRegistry, these are lightweight
- * registries for feature-internal panels (e.g., AssetViewer's panels).
+ * Types for feature-scoped panel registries used with dockview.
+ * Unlike global registries, these are lightweight and app-agnostic.
  */
 
 import type { BasePanelDefinition } from "@pixsim7/shared.ui.panels";
@@ -15,7 +14,7 @@ export type { BasePanelDefinition, PanelRegistryLike } from "@pixsim7/shared.ui.
  * Position hint for default panel layout
  */
 export interface PanelPosition {
-  direction: 'left' | 'right' | 'above' | 'below' | 'within';
+  direction: "left" | "right" | "above" | "below" | "within";
   referencePanel?: string;
 }
 

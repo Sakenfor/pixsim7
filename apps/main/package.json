@@ -49,6 +49,7 @@
     "@pixsim7/shared.models.core": "workspace:*",
     "@pixsim7/shared.modules.core": "workspace:*",
     "@pixsim7/shared.ui.panels": "workspace:*",
+    "@pixsim7/shared.ui.dockview": "workspace:*",
     "@pixsim7/shared.player.core": "workspace:*",
     "@pixsim7/shared.preview.protocol": "workspace:*",
     "@pixsim7/shared.ref.core": "workspace:*",

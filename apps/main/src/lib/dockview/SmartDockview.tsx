@@ -50,12 +50,17 @@
  * - panelManagerId is used as the dockview ID for cross-dockview communication
  */
 
+import {
+  SmartDockviewBase,
+  useSmartDockview,
+  type LocalPanelDefinition,
+  type LocalPanelRegistry,
+} from '@pixsim7/shared.ui.dockview';
 import clsx from 'clsx';
-import { DockviewReact, type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview';
+import { type DockviewReadyEvent, type IDockviewPanelProps } from 'dockview';
 import type { DockviewApi } from 'dockview-core';
 import { useCallback, useEffect, useRef, useMemo, useState } from 'react';
 
-import 'dockview/dist/styles/dockview.css';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { ContextHubHost, useContextHubState, useProvideCapability, CAP_PANEL_CONTEXT } from '@features/contextHub';
@@ -75,10 +80,6 @@ import {
 } from './contextMenu';
 import { createDockviewHost } from './host';
 import { registerDockviewHost, unregisterDockviewHost, getDockviewHost } from './hostRegistry';
-import type { LocalPanelRegistry } from './LocalPanelRegistry';
-import styles from './SmartDockview.module.css';
-import type { LocalPanelDefinition } from './types';
-import { useSmartDockview } from './useSmartDockview';
 
 /** Base props shared by all modes */
 interface SmartDockviewBaseProps<TContext = any> {
@@ -442,7 +443,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     return unsubscribe;
   }, []);
 
-  const { onReady: onSmartReady, loadLayout } = useSmartDockview({
+  const layoutController = useSmartDockview({
     storageKey,
     minPanelsForTabs,
     onLayoutChange,
@@ -467,6 +468,18 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const capabilitiesRef = useRef(capabilities);
   capabilitiesRef.current = capabilities;
 
+  const applyDefaultLayout = useCallback((api: DockviewApi) => {
+    if (defaultLayoutRef.current) {
+      if (registryMode && registry) {
+        defaultLayoutRef.current(api, registry);
+      } else {
+        defaultLayoutRef.current(api, resolvedPanelDefsRef.current as any);
+      }
+    } else if (resolvedPanelDefsRef.current.length > 0) {
+      createFallbackLayout(api, resolvedPanelDefsRef.current);
+    }
+  }, [registryMode, registry]);
+
   const resetDockviewLayout = useCallback(() => {
     if (storageKey) {
       localStorage.removeItem(storageKey);
@@ -478,18 +491,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       apiRef.current?.removePanel(panel);
     });
 
-    // Rebuild layout
-    // Priority: custom defaultLayout > fallback layout for new API
-    if (defaultLayoutRef.current) {
-      if (registryMode && registry) {
-        defaultLayoutRef.current(apiRef.current, registry);
-      } else {
-        defaultLayoutRef.current(apiRef.current, resolvedPanelDefsRef.current as any);
-      }
-    } else if (resolvedPanelDefsRef.current.length > 0) {
-      createFallbackLayout(apiRef.current, resolvedPanelDefsRef.current);
-    }
-  }, [storageKey, registryMode, registry]);
+    applyDefaultLayout(apiRef.current);
+  }, [storageKey, applyDefaultLayout]);
 
   // Build components map from local registry + global registry (registry mode)
   // Or use direct components (components mode)
@@ -835,9 +838,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       apiRef.current = event.api;
       setDockviewApi(event.api);
 
-      // Initialize smart features (tab visibility, persistence)
-      onSmartReady(event.api);
-
       // Register with central hostRegistry via context menu provider.
       // This single call creates the host and registers with hostRegistry.
       // Other systems (PanelManager, context menu actions) access via hostRegistry.
@@ -862,35 +862,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
         });
       }
 
-      // Try to load saved layout
-      const loaded = loadLayout();
-
-      // Create default layout if no saved layout and no panels exist
-      if (!loaded && event.api.panels.length === 0) {
-        // Priority: custom defaultLayout > fallback layout for new API > registry mode layout
-        if (defaultLayoutRef.current) {
-          // Custom defaultLayout provided
-          if (registryMode && registry) {
-            defaultLayoutRef.current(event.api, registry);
-          } else {
-            // Call with panelDefs for new API signature
-            defaultLayoutRef.current(event.api, resolvedPanelDefsRef.current as any);
-          }
-        } else if (resolvedPanelDefsRef.current.length > 0) {
-          // New simplified API: use fallback layout (stack as tabs)
-          createFallbackLayout(event.api, resolvedPanelDefsRef.current);
-        }
-      }
-
       setIsReady(true);
       onReadyPropRef.current?.(event.api);
     },
     [
-      onSmartReady,
-      loadLayout,
-      registry,
       panelManagerId,
-      registryMode,
       enableContextMenu,
       contextMenuDockviewId,
     ]
@@ -935,7 +911,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
   if (hasNoPanels) {
     return (
-      <div className={clsx(styles.smartDockview, className)}>
+      <div className={clsx("h-full w-full", className)}>
         <div className="h-full w-full flex items-center justify-center text-neutral-500 text-sm">
           No panels available for this dockview.
         </div>
@@ -950,17 +926,20 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       dockviewApi={dockviewApi}
     >
       <div
-        className={clsx(styles.smartDockview, className)}
+        className="h-full w-full"
         onContextMenu={contextMenuActive ? handleBackgroundContextMenu : undefined}
         data-smart-dockview={contextMenuDockviewId}
       >
         <ContextHubHost hostId={dockviewHostId}>
-          <DockviewReact
+          <SmartDockviewBase
             components={components as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
             tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
             watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
             onReady={handleReady}
-            className={theme}
+            className={className}
+            theme={theme}
+            layout={layoutController}
+            defaultLayout={applyDefaultLayout}
           />
         </ContextHubHost>
       </div>

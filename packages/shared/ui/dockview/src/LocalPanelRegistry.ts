@@ -2,25 +2,12 @@
  * Local Panel Registry
  *
  * A lightweight, type-safe registry for feature-scoped panels.
- * Each feature (AssetViewer, QuickGenerate, etc.) can have its own
- * registry instance with typed panel IDs.
+ * Each feature can have its own registry instance with typed panel IDs.
  *
- * Implements PanelRegistryLike interface for compatibility with SmartDockview.
- *
- * Usage:
- * ```ts
- * type MyPanelIds = 'preview' | 'settings' | 'info';
- * const registry = new LocalPanelRegistry<MyPanelIds>();
- *
- * registry.register({
- *   id: 'preview',
- *   title: 'Preview',
- *   component: PreviewPanel,
- * });
- * ```
+ * Implements PanelRegistryLike for compatibility with dockview wrappers.
  */
 
-import type { LocalPanelDefinition, PanelRegistryLike } from './types';
+import type { LocalPanelDefinition, PanelRegistryLike } from "./types";
 
 export class LocalPanelRegistry<TPanelId extends string = string>
   implements PanelRegistryLike<LocalPanelDefinition> {
@@ -106,8 +93,8 @@ export class LocalPanelRegistry<TPanelId extends string = string>
    * Create a components map for dockview
    * Maps panel IDs to their components
    */
-  toComponentsMap(): Record<string, LocalPanelDefinition['component']> {
-    const map: Record<string, LocalPanelDefinition['component']> = {};
+  toComponentsMap(): Record<string, LocalPanelDefinition["component"]> {
+    const map: Record<string, LocalPanelDefinition["component"]> = {};
     this.panels.forEach((def, id) => {
       map[id] = def.component;
     });
