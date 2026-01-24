@@ -138,3 +138,33 @@ export {
   getZoneTrackingStats,
   getTrackingCompleteness,
 } from './zoneTrackingUtils';
+
+// =============================================================================
+// Surface Profile System
+// =============================================================================
+
+// Profile registry
+export {
+  registerProfile,
+  unregisterProfile,
+  getProfile,
+  getProfileOrThrow,
+  hasProfile,
+  getProfilesByDomain,
+  getAllProfiles,
+  getAllProfileIds,
+  getAllDomains,
+  filterProfiles,
+  clearProfileRegistry,
+  getProfileRegistryStats,
+  getProfileRegion,
+  getProfileInstrument,
+  getProfileDimension,
+  getProfileContributions,
+  type ProfileFilterOptions,
+} from './profiles';
+
+// Built-in profiles
+export { romanceProfile } from './profiles/romance';
+export { massageProfile } from './profiles/massage';
+export { botanicalProfile } from './profiles/botanical';

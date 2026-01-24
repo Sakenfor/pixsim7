@@ -94,6 +94,15 @@ export * from './game'
 export * from './interactions'
 
 // ===================
+// Generic Surface Gizmo Types
+// ===================
+
+export * from './gizmos'
+
+// Namespace export for organized access
+export * as Gizmos from './gizmos'
+
+// ===================
 // User Preferences Types
 // ===================
 

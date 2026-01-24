@@ -74,6 +74,13 @@ export { TemplateSelector } from './components/editor/TemplateSelector';
 export type { TemplateSelectorProps } from './components/editor/TemplateSelector';
 
 // ============================================================================
+// Surfaces - Interaction Surface Renderers
+// ============================================================================
+
+export { GizmoSurface } from './surfaces';
+export type { GizmoSurfaceProps } from './surfaces';
+
+// ============================================================================
 // Lib - Intimacy (from @pixsim7/shared.types migration)
 // ============================================================================
 

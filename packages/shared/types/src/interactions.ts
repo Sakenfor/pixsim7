@@ -22,6 +22,8 @@
  */
 
 import type { components } from './openapi.generated';
+import type { EntityRef } from './ids';
+import type { GizmoConfig, GizmoSessionResult } from './gizmos';
 
 // ===================
 // Core Enums
@@ -34,12 +36,13 @@ import type { components } from './openapi.generated';
 export type InteractionSurface = components['schemas']['InteractionSurface'];
 
 /**
- * Extended interaction surface - includes frontend-only 'ambient' value.
- * Use this type in frontend code that may need the ambient surface.
+ * Extended interaction surface - includes frontend-only values.
+ * Use this type in frontend code that may need extended surfaces.
  */
 export type InteractionSurfaceExtended =
   | InteractionSurface
-  | 'ambient';      // Background/passive interaction (frontend-only)
+  | 'ambient'       // Background/passive interaction (frontend-only)
+  | 'gizmo';        // Interactive gizmo surface (generic surface interaction system)
 
 /**
  * Branch intent - narrative direction control.
@@ -106,6 +109,8 @@ export interface StatAxisGate {
   minLevelId?: string;
   /** Entity scope */
   entityType?: 'npc' | 'session' | 'world';
+  /** Canonical entity reference (e.g., "npc:123") */
+  entityRef?: EntityRef;
   /** NPC ID when entityType is "npc" */
   npcId?: number;
 }
@@ -198,6 +203,8 @@ export interface StatDelta {
   axes: Record<string, number>;
   /** Entity scope for this stat delta */
   entityType?: 'npc' | 'session' | 'world';
+  /** Canonical entity reference (e.g., "npc:123") */
+  entityRef?: EntityRef;
   /** NPC ID when entityType is "npc" */
   npcId?: number;
 }
@@ -345,8 +352,10 @@ export interface InteractionOutcome {
  * Target reference for an interaction
  */
 export interface InteractionTarget {
+  /** Canonical entity reference (e.g., "npc:123") */
+  ref?: EntityRef;
   /** Target kind (e.g., "npc") */
-  kind: string;
+  kind?: string;
 
   /** Runtime target ID */
   id?: number | string;
@@ -359,6 +368,14 @@ export interface InteractionTarget {
 
   /** Optional explicit link ID */
   linkId?: string;
+}
+
+/**
+ * Interaction participant with a role label
+ */
+export interface InteractionParticipant extends InteractionTarget {
+  /** Participant role (e.g., "actor", "item", "location") */
+  role: string;
 }
 
 /**
@@ -396,6 +413,12 @@ export interface InteractionDefinition {
   targetTemplateId?: string;    // Template entity ID (usually UUID)
   targetLinkId?: string;        // Optional explicit link ID
 
+  /** Participants required by this interaction */
+  participants?: InteractionParticipant[];
+
+  /** Primary participant role */
+  primaryRole?: string;
+
   /** Which surface this interaction uses */
   surface: InteractionSurfaceExtended;
 
@@ -410,6 +433,12 @@ export interface InteractionDefinition {
 
   /** Plugin-specific configuration */
   pluginConfig?: Record<string, unknown>;
+
+  /**
+   * Gizmo configuration (when surface === 'gizmo').
+   * Specifies which profile to load and any overrides.
+   */
+  gizmoConfig?: GizmoConfig;
 
   /** Underlying plugin ID (if this wraps an existing plugin) */
   underlyingPluginId?: string;
@@ -437,6 +466,12 @@ export interface InteractionInstance {
 
   /** Concrete target this is for */
   target: InteractionTarget;
+
+  /** All participants included with the interaction */
+  participants?: InteractionParticipant[];
+
+  /** Primary participant role */
+  primaryRole?: string;
 
   /** World ID */
   worldId: number;
@@ -503,6 +538,12 @@ export interface InteractionContext {
 
   /** Last used timestamps (for cooldown) */
   lastUsedAt?: Record<string, number>;
+
+  /** Participants included in this interaction */
+  participants?: InteractionParticipant[];
+
+  /** Primary participant role */
+  primaryRole?: string;
 }
 
 // ===================
@@ -515,7 +556,9 @@ export interface InteractionContext {
 export interface ListInteractionsRequest {
   worldId: number;
   sessionId: number;
-  target: InteractionTarget;
+  target?: InteractionTarget;
+  participants?: InteractionParticipant[];
+  primaryRole?: string;
   locationId?: number;
   includeUnavailable?: boolean;
 }
@@ -525,7 +568,9 @@ export interface ListInteractionsRequest {
  */
 export interface ListInteractionsResponse {
   interactions: InteractionInstance[];
-  target: InteractionTarget;
+  target?: InteractionTarget;
+  participants?: InteractionParticipant[];
+  primaryRole?: string;
   worldId: number;
   sessionId: number;
   timestamp: number;
@@ -537,11 +582,16 @@ export interface ListInteractionsResponse {
 export interface ExecuteInteractionRequest {
   worldId: number;
   sessionId: number;
-  target: InteractionTarget;
+  target?: InteractionTarget;
+  participants?: InteractionParticipant[];
+  primaryRole?: string;
   interactionId: string;
 
   /** Optional player input (for dialogue, etc.) */
   playerInput?: string;
+
+  /** Gizmo session result (when surface === 'gizmo') */
+  gizmoResult?: GizmoSessionResult;
 
   /** Optional additional context */
   context?: Record<string, unknown>;
@@ -570,6 +620,9 @@ export interface ExecuteInteractionResponse {
 
   /** Generation request ID (if any) */
   generationRequestId?: string;
+
+  /** Gizmo session result (when surface === 'gizmo') */
+  gizmoResult?: GizmoSessionResult;
 
   /** Updated session state */
   updatedSession?: unknown;

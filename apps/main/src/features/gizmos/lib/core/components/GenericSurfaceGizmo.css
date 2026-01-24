@@ -1,0 +1,464 @@
+/**
+ * Generic Surface Gizmo Styles
+ *
+ * Profile-driven interactive surface component.
+ * Adapts to any domain (romance, massage, botanical, etc.).
+ */
+
+.generic-surface-gizmo {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: none;
+  user-select: none;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.generic-surface-gizmo.active {
+  box-shadow: 0 0 30px rgba(100, 150, 255, 0.2);
+}
+
+.generic-surface-gizmo.completed {
+  pointer-events: none;
+}
+
+/* ============================================================================
+   Region Overlays
+   ============================================================================ */
+
+.regions-container {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.region-overlay {
+  transition: all 0.2s ease;
+}
+
+.region-overlay.hovered {
+  filter: brightness(1.2);
+}
+
+.region-overlay.active {
+  animation: region-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes region-pulse {
+  0%, 100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.3);
+    transform: scale(1.02);
+  }
+}
+
+.region-polygon-svg {
+  z-index: 10;
+}
+
+/* ============================================================================
+   Touch Cursor
+   ============================================================================ */
+
+.touch-cursor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 100;
+  width: 40px;
+  height: 40px;
+  transition: opacity 0.2s ease;
+}
+
+.cursor-ring {
+  position: absolute;
+  inset: 0;
+  border: 2px solid rgba(100, 150, 255, 0.8);
+  border-radius: 50%;
+  animation: cursor-rotate 3s linear infinite;
+}
+
+@keyframes cursor-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.cursor-pulse {
+  position: absolute;
+  inset: -5px;
+  border: 1px solid rgba(100, 150, 255, 0.5);
+  border-radius: 50%;
+  animation: cursor-pulse-anim 1s ease-out infinite;
+}
+
+@keyframes cursor-pulse-anim {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+   Particle System
+   ============================================================================ */
+
+.particle-container {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 50;
+}
+
+.particle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color, #74C0FC);
+  opacity: 0;
+  animation: particle-burst 1s ease-out forwards;
+  animation-delay: var(--delay, 0s);
+  box-shadow: 0 0 6px var(--color, #74C0FC);
+}
+
+@keyframes particle-burst {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate(
+        calc(-50% + cos(var(--angle, 0deg)) * 60px),
+        calc(-50% + sin(var(--angle, 0deg)) * 60px - 20px)
+      )
+      scale(0.3);
+  }
+}
+
+/* ============================================================================
+   Region Information Display
+   ============================================================================ */
+
+.region-info {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.75);
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 150, 255, 0.5);
+  backdrop-filter: blur(10px);
+  z-index: 200;
+  min-width: 150px;
+}
+
+.region-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #74C0FC;
+  margin-bottom: 8px;
+}
+
+.region-pressure,
+.region-effective,
+.region-speed {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-bottom: 2px;
+}
+
+.region-effective {
+  color: rgba(255, 200, 100, 0.9);
+}
+
+.region-speed {
+  color: rgba(150, 200, 255, 0.9);
+}
+
+/* ============================================================================
+   Dimensions Display
+   ============================================================================ */
+
+.dimensions-container {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  max-width: calc(100% - 40px);
+  background: rgba(0, 0, 0, 0.8);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(100, 150, 255, 0.4);
+  backdrop-filter: blur(10px);
+  z-index: 200;
+}
+
+.dimensions-header {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dimensions-empty {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: center;
+  padding: 8px 0;
+  font-style: italic;
+}
+
+.dimension-bar {
+  display: grid;
+  grid-template-columns: 100px 1fr 45px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 4px 0;
+  transition: all 0.2s ease;
+}
+
+.dimension-bar:last-child {
+  margin-bottom: 0;
+}
+
+.dimension-bar.dominant {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  margin: 0 -8px 8px;
+  padding: 6px 8px;
+}
+
+.dimension-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.dimension-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.dimension-name {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.dimension-bar.dominant .dimension-name {
+  color: #fff;
+  font-weight: 600;
+}
+
+.dimension-meter {
+  position: relative;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.dimension-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.15s ease-out;
+  position: relative;
+}
+
+.dimension-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.25), transparent);
+  border-radius: 5px 5px 0 0;
+}
+
+.dimension-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 7px;
+  opacity: 0.5;
+  filter: blur(4px);
+  animation: dimension-glow-pulse 0.6s ease-in-out infinite;
+}
+
+@keyframes dimension-glow-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.dimension-value {
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.dimension-bar.dominant .dimension-value {
+  text-shadow: 0 0 8px currentColor;
+}
+
+/* ============================================================================
+   Instrument Info
+   ============================================================================ */
+
+.instrument-info {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  backdrop-filter: blur(10px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.instrument-icon {
+  font-size: 18px;
+}
+
+.instrument-name {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+}
+
+/* ============================================================================
+   Completion Overlay
+   ============================================================================ */
+
+.completion-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  animation: fade-in 0.3s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.completion-message {
+  font-size: 24px;
+  font-weight: 600;
+  color: #69DB7C;
+  text-shadow: 0 0 20px rgba(105, 219, 124, 0.5);
+  animation: completion-bounce 0.5s ease;
+}
+
+@keyframes completion-bounce {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ============================================================================
+   Control Hints
+   ============================================================================ */
+
+.control-hints {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  text-align: right;
+  z-index: 200;
+}
+
+.hint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-bottom: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  backdrop-filter: blur(5px);
+}
+
+/* ============================================================================
+   Responsive
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .generic-surface-gizmo {
+    min-height: 350px;
+  }
+
+  .dimensions-container {
+    width: 280px;
+    padding: 10px 12px;
+    bottom: 20px;
+  }
+
+  .dimension-bar {
+    grid-template-columns: 80px 1fr 40px;
+    gap: 6px;
+  }
+
+  .dimension-icon {
+    font-size: 12px;
+  }
+
+  .dimension-name {
+    font-size: 10px;
+  }
+
+  .dimension-meter {
+    height: 8px;
+  }
+
+  .region-info {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .control-hints {
+    display: none;
+  }
+}
+
+/* ============================================================================
+   Accessibility
+   ============================================================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .generic-surface-gizmo *,
+  .generic-surface-gizmo *::before,
+  .generic-surface-gizmo *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

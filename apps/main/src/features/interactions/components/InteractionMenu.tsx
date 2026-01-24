@@ -60,6 +60,8 @@ function getSurfaceIcon(surface: InteractionSurfaceExtended): string {
       return '📋';
     case 'ambient':
       return '🌫️';
+    case 'gizmo':
+      return '🎮';
     default:
       return '•';
   }
