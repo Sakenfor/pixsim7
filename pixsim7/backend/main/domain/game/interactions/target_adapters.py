@@ -190,6 +190,7 @@ class InteractionTargetAdapter(ABC):
 
 DEFAULT_ADAPTER_MODULES = (
     "pixsim7.backend.main.domain.game.interactions.adapters.npc",
+    "pixsim7.backend.main.domain.game.interactions.adapters.item",
 )
 
 
