@@ -284,11 +284,48 @@ class WorldEventRegistration(InteractionBaseModel):
     relevance_score: Optional[float] = Field(0.5, ge=0, le=1, alias="relevanceScore")
 
 
+class TargetEffect(InteractionBaseModel):
+    """Generic target effect entry for adapter-specific handling."""
+    type: str
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+
 class TargetEffects(InteractionBaseModel):
-    """Target memory/emotion effects (currently NPC-focused)"""
+    """Target effects envelope for adapter-specific handling."""
+    effects: List[TargetEffect] = Field(default_factory=list)
     create_memory: Optional[MemoryCreation] = Field(None, alias="createMemory")
     trigger_emotion: Optional[EmotionTrigger] = Field(None, alias="triggerEmotion")
     register_world_event: Optional[WorldEventRegistration] = Field(None, alias="registerWorldEvent")
+
+    @model_validator(mode="after")
+    def _merge_legacy_effects(self) -> "TargetEffects":
+        if self.effects:
+            return self
+
+        effects: List[TargetEffect] = []
+        if self.create_memory:
+            effects.append(
+                TargetEffect(
+                    type="npc.create_memory",
+                    payload=self.create_memory.model_dump(by_alias=True, exclude_none=True),
+                )
+            )
+        if self.trigger_emotion:
+            effects.append(
+                TargetEffect(
+                    type="npc.trigger_emotion",
+                    payload=self.trigger_emotion.model_dump(by_alias=True, exclude_none=True),
+                )
+            )
+        if self.register_world_event:
+            effects.append(
+                TargetEffect(
+                    type="npc.register_world_event",
+                    payload=self.register_world_event.model_dump(by_alias=True, exclude_none=True),
+                )
+            )
+        self.effects = effects
+        return self
 
 
 class SceneLaunch(InteractionBaseModel):

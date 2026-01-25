@@ -4,7 +4,7 @@ Interaction Availability & Gating Logic
 Phase 17.3: Pure functions to evaluate interaction availability based on:
 - Stat tiers/metrics
 - Mood/emotions
-- NPC behavior state (activities, simulation tier) for npc targets
+- Target behavior state (activities, simulation tier) when provided by adapter
 - Time of day (with configurable fantasy time support)
 - Session flags (arcs, quests, events)
 - Cooldowns
@@ -41,11 +41,11 @@ from pixsim7.backend.main.domain.game.time import (
     WorldTimeConfig,
     DEFAULT_WORLD_TIME_CONFIG,
     parse_world_time as _parse_world_time,
-    get_period_from_hour as _get_period_from_hour,
     period_matches_target,
     is_hour_in_period,
     get_time_constants,
 )
+from pixsim7.backend.main.domain.game.time.context import get_period_from_hour as _get_period_from_hour
 
 if TYPE_CHECKING:
     from pixsim7.backend.main.domain.game.interactions.target_adapters import InteractionTargetAdapter
@@ -393,14 +393,14 @@ def check_stat_gating(
 
 def check_behavior_gating(
     gating: Optional[BehaviorGating],
-    npc_state: Optional[Dict[str, Any]]
+    target_state: Optional[Dict[str, Any]]
 ) -> Tuple[bool, Optional[str]]:
     """
-    Check if NPC behavior state passes gating requirements.
+    Check if target behavior state passes gating requirements.
 
     Args:
         gating: Behavior gating config
-        npc_state: NPC state from GameSession.flags.npcs["npc:<id>"].state
+        target_state: Target state provided by the adapter (behavior system shape)
 
     Returns:
         (passes, disabled_reason_message)
@@ -408,46 +408,46 @@ def check_behavior_gating(
     if not gating:
         return True, None
 
-    if not npc_state:
+    if not target_state:
         # No behavior state available
         if gating.allowed_states or gating.allowed_activities:
-            return False, "NPC state unavailable"
+            return False, "Target state unavailable"
         return True, None
 
     # Check state tags
-    current_state = npc_state.get("currentState") or npc_state.get("state")
+    current_state = target_state.get("currentState") or target_state.get("state")
 
     if gating.allowed_states:
         if not current_state or current_state not in gating.allowed_states:
             allowed = ", ".join(gating.allowed_states)
-            return False, f"NPC must be in state: {allowed}"
+            return False, f"Target must be in state: {allowed}"
 
     if gating.forbidden_states:
         if current_state and current_state in gating.forbidden_states:
-            return False, f"NPC is {current_state} (unavailable)"
+            return False, f"Target is {current_state} (unavailable)"
 
     # Check activity
-    current_activity = npc_state.get("currentActivity") or npc_state.get("activity")
+    current_activity = target_state.get("currentActivity") or target_state.get("activity")
 
     if gating.allowed_activities:
         if not current_activity or current_activity not in gating.allowed_activities:
             allowed = ", ".join(gating.allowed_activities)
-            return False, f"NPC must be doing: {allowed}"
+            return False, f"Target must be doing: {allowed}"
 
     if gating.forbidden_activities:
         if current_activity and current_activity in gating.forbidden_activities:
-            return False, f"NPC is busy ({current_activity})"
+            return False, f"Target is busy ({current_activity})"
 
     # Check simulation tier
     if gating.min_simulation_tier:
         tier_order = ["dormant", "ambient", "active", "detailed"]
-        current_tier = npc_state.get("simulationTier", "ambient")
+        current_tier = target_state.get("simulationTier", "ambient")
 
         try:
             current_idx = tier_order.index(current_tier)
             required_idx = tier_order.index(gating.min_simulation_tier)
             if current_idx < required_idx:
-                return False, f"NPC simulation tier too low (need {gating.min_simulation_tier})"
+                return False, f"Target simulation tier too low (need {gating.min_simulation_tier})"
         except ValueError:
             pass
 
@@ -628,9 +628,9 @@ def evaluate_interaction_availability(
 
     Args:
         definition: Interaction definition to evaluate
-        context: Interaction context with NPC/session state
+        context: Interaction context with target/session state
         stat_definitions: World stat definitions (stats_config.definitions)
-        target: Interaction target used for npc-scoped stat gating
+        target: Interaction target used for target-scoped stat gating
         current_time: Current time for cooldown checks. Should be world_time for gameplay consistency.
                      Falls back to real-time if not provided (for backward compatibility).
         time_config: World time configuration for custom time systems (fantasy hours/days/periods).
@@ -673,15 +673,9 @@ def evaluate_interaction_availability(
 
     # Check behavior state (target-specific)
     if gating.behavior:
-        if target_adapter:
-            passes, msg = target_adapter.check_behavior_gating(gating.behavior, context, target_id)
-        else:
-            if target_kind != "npc":
-                return False, DisabledReason.NPC_UNAVAILABLE, "Target kind not supported for behavior gating"
-            npc_state = None
-            if context.session_flags and npc_id is not None:
-                npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
-            passes, msg = check_behavior_gating(gating.behavior, npc_state)
+        if not target_adapter or not target_adapter.supports_behavior_gating:
+            return False, DisabledReason.CUSTOM, "Target kind not supported for behavior gating"
+        passes, msg = target_adapter.check_behavior_gating(gating.behavior, context, target_id)
         if not passes:
             if msg and "busy" in msg.lower():
                 return False, DisabledReason.NPC_BUSY, msg
@@ -689,17 +683,9 @@ def evaluate_interaction_availability(
 
     # Check mood (target-specific)
     if gating.mood:
-        if target_adapter:
-            passes, msg = target_adapter.check_mood_gating(gating.mood, context, target_id)
-        else:
-            if target_kind != "npc":
-                return False, DisabledReason.MOOD_INCOMPATIBLE, "Target kind not supported for mood gating"
-            passes, msg = check_mood_gating(
-                gating.mood,
-                context.mood_tags,
-                # TODO: Get emotion intensities from context
-                None
-            )
+        if not target_adapter or not target_adapter.supports_mood_gating:
+            return False, DisabledReason.CUSTOM, "Target kind not supported for mood gating"
+        passes, msg = target_adapter.check_mood_gating(gating.mood, context, target_id)
         if not passes:
             return False, DisabledReason.MOOD_INCOMPATIBLE, msg
 

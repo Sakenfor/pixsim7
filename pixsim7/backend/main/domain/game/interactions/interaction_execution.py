@@ -570,7 +570,9 @@ async def execute_interaction(
         inventory_changes = summary
 
     # 4. Target effects
-    if outcome and outcome.target_effects:
+    if outcome and outcome.target_effects and outcome.target_effects.effects:
+        if not target_adapter.supports_target_effects:
+            raise ValueError(f"Target kind '{target_kind}' does not support target effects")
         await target_adapter.apply_target_effects(
             db,
             session,
@@ -592,6 +594,8 @@ async def execute_interaction(
 
     # 6. Generation launch
     if outcome and outcome.generation_launch:
+        if not target_adapter.supports_generation_launch:
+            raise ValueError(f"Target kind '{target_kind}' does not support generation launches")
         generation_request_id = await target_adapter.prepare_generation_launch(
             db,
             session,
@@ -605,6 +609,8 @@ async def execute_interaction(
     # 6.5. Narrative program launch (unified runtime)
     narrative_program_result = None
     if outcome and outcome.narrative_program_id:
+        if not target_adapter.supports_narrative_program:
+            raise ValueError(f"Target kind '{target_kind}' does not support narrative programs")
         narrative_program_result = await target_adapter.launch_narrative_program(
             db,
             session,
@@ -616,6 +622,8 @@ async def execute_interaction(
 
     # 7. Track cooldown
     if definition.gating and definition.gating.cooldown_seconds:
+        if not target_adapter.supports_cooldown_tracking:
+            raise ValueError(f"Target kind '{target_kind}' does not support cooldown tracking")
         await target_adapter.track_interaction_cooldown(
             session,
             target_id,

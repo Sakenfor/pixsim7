@@ -150,11 +150,16 @@ export const complimentTemplate: InteractionTemplate = {
         }),
       ],
       targetEffects: {
-        triggerEmotion: {
-          emotion: 'happy',
-          intensity: 0.6,
-          durationSeconds: 1800,
-        },
+        effects: [
+          {
+            type: 'npc.trigger_emotion',
+            payload: {
+              emotion: 'happy',
+              intensity: 0.6,
+              durationSeconds: 1800,
+            },
+          },
+        ],
       },
       generationLaunch: {
         dialogueRequest: {
@@ -198,12 +203,17 @@ export const askAboutDayTemplate: InteractionTemplate = {
         }),
       ],
       targetEffects: {
-        createMemory: {
-          topic: 'daily_conversation',
-          summary: 'Player asked about my day',
-          importance: 'normal',
-          memoryType: 'short_term',
-        },
+        effects: [
+          {
+            type: 'npc.create_memory',
+            payload: {
+              topic: 'daily_conversation',
+              summary: 'Player asked about my day',
+              importance: 'normal',
+              memoryType: 'short_term',
+            },
+          },
+        ],
       },
       generationLaunch: {
         dialogueRequest: {
@@ -259,18 +269,26 @@ export const giftGivingTemplate: InteractionTemplate = {
           remove: [{ itemId, quantity: 1 }],
         },
         targetEffects: {
-          createMemory: {
-            topic: 'gift_received',
-            summary: `Player gave me ${itemName}`,
-            importance: 'important',
-            memoryType: 'long_term',
-            tags: ['gift', itemId],
-          },
-          triggerEmotion: {
-            emotion: 'happy',
-            intensity: 0.8,
-            durationSeconds: 3600,
-          },
+          effects: [
+            {
+              type: 'npc.create_memory',
+              payload: {
+                topic: 'gift_received',
+                summary: `Player gave me ${itemName}`,
+                importance: 'important',
+                memoryType: 'long_term',
+                tags: ['gift', itemId],
+              },
+            },
+            {
+              type: 'npc.trigger_emotion',
+              payload: {
+                emotion: 'happy',
+                intensity: 0.8,
+                durationSeconds: 3600,
+              },
+            },
+          ],
         },
         ...options.outcome,
       },
@@ -368,13 +386,18 @@ export const questStartTemplate: InteractionTemplate = {
           }),
         ],
         targetEffects: {
-          createMemory: {
-            topic: 'quest_given',
-            summary: `Gave player quest: ${questName}`,
-            importance: 'important',
-            memoryType: 'long_term',
-            tags: ['quest', questId],
-          },
+          effects: [
+            {
+              type: 'npc.create_memory',
+              payload: {
+                topic: 'quest_given',
+                summary: `Gave player quest: ${questName}`,
+                importance: 'important',
+                memoryType: 'long_term',
+                tags: ['quest', questId],
+              },
+            },
+          ],
         },
         generationLaunch: {
           dialogueRequest: {
@@ -436,18 +459,26 @@ export const questCompleteTemplate: InteractionTemplate = {
           }),
         ],
         targetEffects: {
-          createMemory: {
-            topic: 'quest_completed',
-            summary: `Player completed quest: ${questName}`,
-            importance: 'critical',
-            memoryType: 'long_term',
-            tags: ['quest', questId, 'completed'],
-          },
-          triggerEmotion: {
-            emotion: 'happy',
-            intensity: 0.9,
-            durationSeconds: 3600,
-          },
+          effects: [
+            {
+              type: 'npc.create_memory',
+              payload: {
+                topic: 'quest_completed',
+                summary: `Player completed quest: ${questName}`,
+                importance: 'critical',
+                memoryType: 'long_term',
+                tags: ['quest', questId, 'completed'],
+              },
+            },
+            {
+              type: 'npc.trigger_emotion',
+              payload: {
+                emotion: 'happy',
+                intensity: 0.9,
+                durationSeconds: 3600,
+              },
+            },
+          ],
         },
         generationLaunch: {
           dialogueRequest: {
@@ -545,11 +576,16 @@ export const flirtTemplate: InteractionTemplate = {
         }),
       ],
       targetEffects: {
-        triggerEmotion: {
-          emotion: 'excited',
-          intensity: 0.7,
-          durationSeconds: 1800,
-        },
+        effects: [
+          {
+            type: 'npc.trigger_emotion',
+            payload: {
+              emotion: 'excited',
+              intensity: 0.7,
+              durationSeconds: 1800,
+            },
+          },
+        ],
       },
       generationLaunch: {
         dialogueRequest: {
@@ -643,18 +679,26 @@ export const insultTemplate: InteractionTemplate = {
         }),
       ],
       targetEffects: {
-        triggerEmotion: {
-          emotion: 'angry',
-          intensity: 0.8,
-          durationSeconds: 3600,
-        },
-        createMemory: {
-          topic: 'conflict',
-          summary: 'Player insulted me',
-          importance: 'important',
-          memoryType: 'long_term',
-          tags: ['conflict', 'negative'],
-        },
+        effects: [
+          {
+            type: 'npc.trigger_emotion',
+            payload: {
+              emotion: 'angry',
+              intensity: 0.8,
+              durationSeconds: 3600,
+            },
+          },
+          {
+            type: 'npc.create_memory',
+            payload: {
+              topic: 'conflict',
+              summary: 'Player insulted me',
+              importance: 'important',
+              memoryType: 'long_term',
+              tags: ['conflict', 'negative'],
+            },
+          },
+        ],
       },
       generationLaunch: {
         dialogueRequest: {

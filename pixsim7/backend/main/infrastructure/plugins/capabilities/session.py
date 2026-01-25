@@ -268,9 +268,9 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         session_id: int,
         target_kind: str,
         target_id: int,
+        interaction_definition: Any,  # InteractionDefinition
         participants: Optional[list] = None,
         primary_role: Optional[str] = None,
-        interaction_definition: Any,  # InteractionDefinition
         player_input: Optional[str] = None,
         context: Optional[dict] = None,
     ) -> Optional[dict]:

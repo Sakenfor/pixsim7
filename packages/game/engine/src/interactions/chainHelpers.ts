@@ -260,13 +260,18 @@ export function createFriendshipChain(
           },
         },
         targetEffects: {
-          createMemory: {
-            topic: 'friendship_milestone',
-            summary: milestone.description,
-            importance: 'important',
-            memoryType: 'long_term',
-            tags: ['friendship', milestone.milestoneId],
-          },
+          effects: [
+            {
+              type: 'npc.create_memory',
+              payload: {
+                topic: 'friendship_milestone',
+                summary: milestone.description,
+                importance: 'important',
+                memoryType: 'long_term',
+                tags: ['friendship', milestone.milestoneId],
+              },
+            },
+          ],
         },
         generationLaunch: {
           dialogueRequest: {

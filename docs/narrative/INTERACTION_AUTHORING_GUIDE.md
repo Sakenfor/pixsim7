@@ -363,34 +363,45 @@ outcome: {
 }
 ```
 
-### NPC Effects
+### Target Effects
 
 ```typescript
 outcome: {
-  npcEffects: {
-    // Create memory
-    createMemory: {
-      topic: 'gift_received',
-      summary: 'Player gave me flowers',
-      importance: 'important',
-      memoryType: 'long_term',
-      tags: ['gift', 'flowers', 'kind'],
-    },
+  targetEffects: {
+    effects: [
+      // Create memory
+      {
+        type: 'npc.create_memory',
+        payload: {
+          topic: 'gift_received',
+          summary: 'Player gave me flowers',
+          importance: 'important',
+          memoryType: 'long_term',
+          tags: ['gift', 'flowers', 'kind'],
+        },
+      },
 
-    // Trigger emotion
-    triggerEmotion: {
-      emotion: 'happy',
-      intensity: 0.8,              // 0.0-1.0
-      durationSeconds: 3600,       // 1 hour
-    },
+      // Trigger emotion
+      {
+        type: 'npc.trigger_emotion',
+        payload: {
+          emotion: 'happy',
+          intensity: 0.8,              // 0.0-1.0
+          durationSeconds: 3600,       // 1 hour
+        },
+      },
 
-    // Register world event
-    registerWorldEvent: {
-      eventType: 'social',
-      eventName: 'player_gift',
-      description: 'Player gave Sophia flowers',
-      relevanceScore: 0.9,
-    },
+      // Register world event
+      {
+        type: 'npc.register_world_event',
+        payload: {
+          eventType: 'social',
+          eventName: 'player_gift',
+          description: 'Player gave Sophia flowers',
+          relevanceScore: 0.9,
+        },
+      },
+    ],
   },
 }
 ```

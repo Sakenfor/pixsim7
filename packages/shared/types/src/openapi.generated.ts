@@ -5773,12 +5773,12 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /**
-         * Execute Npc Interaction
-         * @description Execute an NPC interaction and apply all outcomes.
+         * Execute Interaction
+         * @description Execute an interaction and apply all outcomes.
          *
          *     This endpoint:
          *     1. Validates interaction availability
-         *     2. Applies all outcome effects (relationships, flags, inventory, NPC effects)
+         *     2. Applies all outcome effects (relationships, flags, inventory, target effects)
          *     3. Launches scenes or generation flows if configured
          *     4. Tracks cooldown
          *     5. Persists session changes to database
@@ -5786,7 +5786,7 @@ export interface paths {
          *     Uses PluginContext for logging and capability-based operations.
          *
          *     Args:
-         *         req: Request with world/session/NPC/interaction IDs
+         *         req: Request with world/session/target/interaction IDs
          *         ctx: Plugin context (provides logging and capabilities)
          *         db: Database session
          *         user: Current user
@@ -5794,7 +5794,7 @@ export interface paths {
          *     Returns:
          *         Execution response with results
          */
-        readonly post: operations["execute_npc_interaction_api_v1_game_interactions_execute_post"];
+        readonly post: operations["execute_interaction_api_v1_game_interactions_execute_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -5811,19 +5811,19 @@ export interface paths {
         readonly get?: never;
         readonly put?: never;
         /**
-         * List Npc Interactions
-         * @description List available interactions for an NPC at the current moment.
+         * List Interactions
+         * @description List available interactions for a target at the current moment.
          *
          *     This endpoint:
-         *     1. Loads interaction definitions from world + NPC metadata
-         *     2. Filters by target NPC/roles
+         *     1. Loads interaction definitions from world + target metadata
+         *     2. Filters by target and roles
          *     3. Evaluates gating for each interaction
          *     4. Returns list of interaction instances with availability flags
          *
          *     Uses PluginContext for logging and capability-based operations.
          *
          *     Args:
-         *         req: Request with world/session/NPC IDs
+         *         req: Request with world/session/target IDs
          *         ctx: Plugin context (provides logging and capabilities)
          *         db: Database session
          *         user: Current user
@@ -5831,7 +5831,7 @@ export interface paths {
          *     Returns:
          *         List of interaction instances
          */
-        readonly post: operations["list_npc_interactions_api_v1_game_interactions_list_post"];
+        readonly post: operations["list_interactions_api_v1_game_interactions_list_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -6158,10 +6158,10 @@ export interface paths {
          * Replace Hotspots
          * @description Replace all hotspots for a location.
          *
-         *     Body shape:
+         *     Body shape (camelCase; snake_case also accepted):
          *       {
          *         "hotspots": [
-         *           { "hotspot_id": "...", "target": {...}, "action": {...}, "meta": {...} },
+         *           { "hotspotId": "...", "target": {...}, "action": {...}, "meta": {...} },
          *           ...
          *         ]
          *       }
@@ -12362,8 +12362,8 @@ export interface components {
         };
         /** ChangeLocationAction */
         readonly ChangeLocationAction: {
-            /** Target Location Id */
-            readonly target_location_id?: number | null;
+            /** Targetlocationid */
+            readonly targetLocationId?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -13458,6 +13458,38 @@ export interface components {
             readonly name: string;
         };
         /**
+         * DayDefinition
+         * @description A named day in the world's week.
+         *     For fantasy worlds, weeks can have any number of days.
+         */
+        readonly DayDefinition: {
+            /**
+             * Displayname
+             * @description Display name for UI
+             */
+            readonly displayName: string;
+            /**
+             * Id
+             * @description Canonical day ID (e.g., 'monday', 'bloodmoon')
+             */
+            readonly id: string;
+            /**
+             * Index
+             * @description 0-indexed position in week
+             */
+            readonly index: number;
+            /**
+             * Isrestday
+             * @description Whether this is a rest day (affects NPC schedules)
+             */
+            readonly isRestDay?: boolean | null;
+            /**
+             * Specialflags
+             * @description Special flags for this day (e.g., 'market_day', 'magic_amplified')
+             */
+            readonly specialFlags?: readonly string[] | null;
+        };
+        /**
          * DeviceScanResponse
          * @description Response from device scan operation.
          */
@@ -13693,14 +13725,19 @@ export interface components {
         readonly ExecuteInteractionRequest: {
             /** Context */
             readonly context?: Record<string, unknown> | null;
+            /** @description Result from gizmo session (when surface === 'gizmo') */
+            readonly gizmoResult?: components["schemas"]["GizmoSessionResult"] | null;
             /** Interactionid */
             readonly interactionId: string;
-            /** Npcid */
-            readonly npcId: number;
+            /** Participants */
+            readonly participants?: readonly components["schemas"]["InteractionParticipant-Input"][] | null;
             /** Playerinput */
             readonly playerInput?: string | null;
+            /** Primaryrole */
+            readonly primaryRole?: string | null;
             /** Sessionid */
             readonly sessionId: number;
+            readonly target?: components["schemas"]["InteractionTarget-Input"] | null;
             /** Worldid */
             readonly worldId: number;
         };
@@ -13713,6 +13750,8 @@ export interface components {
             readonly flagChanges?: readonly string[] | null;
             /** Generationrequestid */
             readonly generationRequestId?: string | null;
+            /** @description Gizmo session result (when surface === 'gizmo') */
+            readonly gizmoResult?: components["schemas"]["GizmoSessionResult"] | null;
             readonly inventoryChanges?: components["schemas"]["InventoryChangeSummary"] | null;
             /** Launchedsceneid */
             readonly launchedSceneId?: number | null;
@@ -14227,21 +14266,21 @@ export interface components {
         readonly "GameHotspotDTO-Input": {
             /** Action */
             readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
-            /** Hotspot Id */
-            readonly hotspot_id: string;
+            /** Hotspotid */
+            readonly hotspotId: string;
             /** Id */
             readonly id?: number | null;
-            /** Location Id */
-            readonly location_id?: number | null;
+            /** Locationid */
+            readonly locationId?: number | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
-            /** Scene Id */
-            readonly scene_id?: number | null;
+            /** Sceneid */
+            readonly sceneId?: number | null;
             /** Scope */
             readonly scope?: string | null;
             readonly target?: components["schemas"]["HotspotTarget"] | null;
-            /** World Id */
-            readonly world_id?: number | null;
+            /** Worldid */
+            readonly worldId?: number | null;
         };
         /**
          * GameHotspotDTO
@@ -14250,21 +14289,21 @@ export interface components {
         readonly "GameHotspotDTO-Output": {
             /** Action */
             readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
-            /** Hotspot Id */
-            readonly hotspot_id: string;
+            /** Hotspotid */
+            readonly hotspotId: string;
             /** Id */
             readonly id?: number | null;
-            /** Location Id */
-            readonly location_id?: number | null;
+            /** Locationid */
+            readonly locationId?: number | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
-            /** Scene Id */
-            readonly scene_id?: number | null;
+            /** Sceneid */
+            readonly sceneId?: number | null;
             /** Scope */
             readonly scope?: string | null;
             readonly target?: components["schemas"]["HotspotTarget"] | null;
-            /** World Id */
-            readonly world_id?: number | null;
+            /** Worldid */
+            readonly worldId?: number | null;
         };
         /**
          * GameLocationDetail
@@ -14272,8 +14311,8 @@ export interface components {
          */
         readonly GameLocationDetail: {
             readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
-            /** Default Spawn */
-            readonly default_spawn?: string | null;
+            /** Defaultspawn */
+            readonly defaultSpawn?: string | null;
             /** Hotspots */
             readonly hotspots: readonly components["schemas"]["GameHotspotDTO-Output"][];
             /** Id */
@@ -14289,8 +14328,8 @@ export interface components {
          */
         readonly GameLocationSummary: {
             readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
-            /** Default Spawn */
-            readonly default_spawn?: string | null;
+            /** Defaultspawn */
+            readonly defaultSpawn?: string | null;
             /** Id */
             readonly id: number;
             /** Name */
@@ -14321,40 +14360,40 @@ export interface components {
         readonly GameTriggerCreate: {
             /** Action */
             readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
-            /** Hotspot Id */
-            readonly hotspot_id: string;
-            /** Location Id */
-            readonly location_id?: number | null;
+            /** Hotspotid */
+            readonly hotspotId: string;
+            /** Locationid */
+            readonly locationId?: number | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
-            /** Scene Id */
-            readonly scene_id?: number | null;
+            /** Sceneid */
+            readonly sceneId?: number | null;
             /**
              * Scope
              * @description Trigger scope (location, world, scene, etc.)
              */
             readonly scope: string;
             readonly target?: components["schemas"]["HotspotTarget"] | null;
-            /** World Id */
-            readonly world_id?: number | null;
+            /** Worldid */
+            readonly worldId?: number | null;
         };
         /** GameTriggerUpdate */
         readonly GameTriggerUpdate: {
             /** Action */
             readonly action?: (components["schemas"]["PlaySceneAction"] | components["schemas"]["ChangeLocationAction"] | components["schemas"]["NpcTalkAction"]) | null;
-            /** Hotspot Id */
-            readonly hotspot_id?: string | null;
-            /** Location Id */
-            readonly location_id?: number | null;
+            /** Hotspotid */
+            readonly hotspotId?: string | null;
+            /** Locationid */
+            readonly locationId?: number | null;
             /** Meta */
             readonly meta?: Record<string, unknown> | null;
-            /** Scene Id */
-            readonly scene_id?: number | null;
+            /** Sceneid */
+            readonly sceneId?: number | null;
             /** Scope */
             readonly scope?: string | null;
             readonly target?: components["schemas"]["HotspotTarget"] | null;
-            /** World Id */
-            readonly world_id?: number | null;
+            /** Worldid */
+            readonly worldId?: number | null;
         };
         /** GameWorldDetail */
         readonly GameWorldDetail: {
@@ -14666,6 +14705,53 @@ export interface components {
          */
         readonly GenerationStatus: "pending" | "processing" | "completed" | "failed" | "cancelled";
         /**
+         * GizmoSessionResult
+         * @description Result of a completed gizmo session.
+         *
+         *     Returned by frontend when gizmo interaction completes.
+         */
+        readonly GizmoSessionResult: {
+            /**
+             * Completiontype
+             * @description How the session ended
+             * @enum {string}
+             */
+            readonly completionType: "success" | "timeout" | "manual" | "cancelled";
+            /**
+             * Finaldimensions
+             * @description Final dimension values
+             */
+            readonly finalDimensions: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Instrumentusage
+             * @description Instrument usage counts
+             */
+            readonly instrumentUsage?: {
+                readonly [key: string]: number;
+            } | null;
+            /**
+             * Peakvalues
+             * @description Peak values reached
+             */
+            readonly peakValues?: {
+                readonly [key: string]: number;
+            } | null;
+            /**
+             * Regioninteractions
+             * @description Region interaction counts
+             */
+            readonly regionInteractions?: {
+                readonly [key: string]: number;
+            } | null;
+            /**
+             * Sessionduration
+             * @description Total session duration in seconds
+             */
+            readonly sessionDuration: number;
+        };
+        /**
          * HealthResponse
          * @description Health check response model.
          */
@@ -14685,17 +14771,17 @@ export interface components {
         /** HotspotTarget */
         readonly HotspotTarget: {
             readonly mesh?: components["schemas"]["HotspotTargetMesh"] | null;
-            readonly rect2d?: components["schemas"]["HotspotTargetRect2d"] | null;
+            readonly rect2D?: components["schemas"]["HotspotTargetRect2d"] | null;
         } & {
             readonly [key: string]: unknown;
         };
         /** HotspotTargetMesh */
         readonly HotspotTargetMesh: {
             /**
-             * Object Name
+             * Objectname
              * @description Exact node/mesh name in glTF
              */
-            readonly object_name: string;
+            readonly objectName: string;
         };
         /** HotspotTargetRect2d */
         readonly HotspotTargetRect2d: {
@@ -14776,6 +14862,10 @@ export interface components {
             readonly locationId?: number | null;
             /** Moodtags */
             readonly moodTags?: readonly string[] | null;
+            /** Participants */
+            readonly participants?: readonly components["schemas"]["InteractionParticipant-Output"][] | null;
+            /** Primaryrole */
+            readonly primaryRole?: string | null;
             /** Sessionflags */
             readonly sessionFlags?: Record<string, unknown> | null;
             /** Statetags */
@@ -14802,11 +14892,118 @@ export interface components {
             readonly minimumLevel?: string | null;
         };
         /**
+         * InteractionInstance
+         * @description Concrete available interaction at runtime
+         */
+        readonly InteractionInstance: {
+            /** Available */
+            readonly available: boolean;
+            readonly context?: components["schemas"]["InteractionContext"] | null;
+            /** Definitionid */
+            readonly definitionId: string;
+            /** Disabledmessage */
+            readonly disabledMessage?: string | null;
+            readonly disabledReason?: components["schemas"]["DisabledReason"] | null;
+            /** Icon */
+            readonly icon?: string | null;
+            /** Id */
+            readonly id: string;
+            /** Label */
+            readonly label: string;
+            /** Participants */
+            readonly participants?: readonly components["schemas"]["InteractionParticipant-Output"][] | null;
+            /** Primaryrole */
+            readonly primaryRole?: string | null;
+            /**
+             * Priority
+             * @default 0
+             */
+            readonly priority: number | null;
+            /** Sessionid */
+            readonly sessionId: number;
+            readonly surface: components["schemas"]["InteractionSurface"];
+            readonly target: components["schemas"]["InteractionTarget-Output"];
+            /** Worldid */
+            readonly worldId: number;
+        };
+        /**
+         * InteractionParticipant
+         * @description Interaction participant with a role label
+         */
+        readonly "InteractionParticipant-Input": {
+            /** Id */
+            readonly id?: number | string | null;
+            /** Kind */
+            readonly kind?: string | null;
+            /** Linkid */
+            readonly linkId?: string | null;
+            readonly ref?: components["schemas"]["EntityRef"] | null;
+            /** Role */
+            readonly role: string;
+            /** Templateid */
+            readonly templateId?: string | null;
+            /** Templatekind */
+            readonly templateKind?: string | null;
+        };
+        /**
+         * InteractionParticipant
+         * @description Interaction participant with a role label
+         */
+        readonly "InteractionParticipant-Output": {
+            /** Id */
+            readonly id?: number | string | null;
+            /** Kind */
+            readonly kind?: string | null;
+            /** Linkid */
+            readonly linkId?: string | null;
+            readonly ref?: string | null;
+            /** Role */
+            readonly role: string;
+            /** Templateid */
+            readonly templateId?: string | null;
+            /** Templatekind */
+            readonly templateKind?: string | null;
+        };
+        /**
          * InteractionSurface
          * @description Where/how the interaction is presented
          * @enum {string}
          */
-        readonly InteractionSurface: "inline" | "dialogue" | "scene" | "notification" | "menu";
+        readonly InteractionSurface: "inline" | "dialogue" | "scene" | "notification" | "menu" | "gizmo";
+        /**
+         * InteractionTarget
+         * @description Interaction target reference
+         */
+        readonly "InteractionTarget-Input": {
+            /** Id */
+            readonly id?: number | string | null;
+            /** Kind */
+            readonly kind?: string | null;
+            /** Linkid */
+            readonly linkId?: string | null;
+            readonly ref?: components["schemas"]["EntityRef"] | null;
+            /** Templateid */
+            readonly templateId?: string | null;
+            /** Templatekind */
+            readonly templateKind?: string | null;
+        };
+        /**
+         * InteractionTarget
+         * @description Interaction target reference
+         */
+        readonly "InteractionTarget-Output": {
+            /** Id */
+            readonly id?: number | string | null;
+            /** Kind */
+            readonly kind?: string | null;
+            /** Linkid */
+            readonly linkId?: string | null;
+            readonly ref?: string | null;
+            /** Templateid */
+            readonly templateId?: string | null;
+            /** Templatekind */
+            readonly templateKind?: string | null;
+        };
         /**
          * IntimacyBandThreshold
          * @description Threshold for an intimacy band.
@@ -14901,10 +15098,13 @@ export interface components {
             readonly includeUnavailable: boolean | null;
             /** Locationid */
             readonly locationId?: number | null;
-            /** Npcid */
-            readonly npcId: number;
+            /** Participants */
+            readonly participants?: readonly components["schemas"]["InteractionParticipant-Input"][] | null;
+            /** Primaryrole */
+            readonly primaryRole?: string | null;
             /** Sessionid */
             readonly sessionId: number;
+            readonly target?: components["schemas"]["InteractionTarget-Input"] | null;
             /** Worldid */
             readonly worldId: number;
         };
@@ -14914,11 +15114,14 @@ export interface components {
          */
         readonly ListInteractionsResponse: {
             /** Interactions */
-            readonly interactions: readonly components["schemas"]["NpcInteractionInstance"][];
-            /** Npcid */
-            readonly npcId: number;
+            readonly interactions: readonly components["schemas"]["InteractionInstance"][];
+            /** Participants */
+            readonly participants?: readonly components["schemas"]["InteractionParticipant-Output"][] | null;
+            /** Primaryrole */
+            readonly primaryRole?: string | null;
             /** Sessionid */
             readonly sessionId: number;
+            readonly target?: components["schemas"]["InteractionTarget-Output"] | null;
             /** Timestamp */
             readonly timestamp: number;
             /** Worldid */
@@ -15440,38 +15643,6 @@ export interface components {
             /** State */
             readonly state: string;
         };
-        /**
-         * NpcInteractionInstance
-         * @description Concrete available interaction at runtime
-         */
-        readonly NpcInteractionInstance: {
-            /** Available */
-            readonly available: boolean;
-            readonly context?: components["schemas"]["InteractionContext"] | null;
-            /** Definitionid */
-            readonly definitionId: string;
-            /** Disabledmessage */
-            readonly disabledMessage?: string | null;
-            readonly disabledReason?: components["schemas"]["DisabledReason"] | null;
-            /** Icon */
-            readonly icon?: string | null;
-            /** Id */
-            readonly id: string;
-            /** Label */
-            readonly label: string;
-            /** Npcid */
-            readonly npcId: number;
-            /**
-             * Priority
-             * @default 0
-             */
-            readonly priority: number | null;
-            /** Sessionid */
-            readonly sessionId: number;
-            readonly surface: components["schemas"]["InteractionSurface"];
-            /** Worldid */
-            readonly worldId: number;
-        };
         /** NpcPresenceDTO */
         readonly NpcPresenceDTO: {
             /** Location Id */
@@ -15510,8 +15681,8 @@ export interface components {
         };
         /** NpcTalkAction */
         readonly NpcTalkAction: {
-            /** Npc Id */
-            readonly npc_id?: number | null;
+            /** Npcid */
+            readonly npcId?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -15908,8 +16079,8 @@ export interface components {
         };
         /** PlaySceneAction */
         readonly PlaySceneAction: {
-            /** Scene Id */
-            readonly scene_id?: number | null;
+            /** Sceneid */
+            readonly sceneId?: number | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -17901,6 +18072,8 @@ export interface components {
              * @description Stat definition ID within the package (e.g., 'relationships'). If omitted and the package defines a single definition, it is inferred.
              */
             readonly definitionId?: string | null;
+            /** @description Canonical entity ref (e.g., 'npc:123') */
+            readonly entityRef?: string | null;
             /**
              * Entitytype
              * @description Entity scope for this stat delta
@@ -18415,6 +18588,42 @@ export interface components {
             readonly world_time_before: number;
         };
         /**
+         * TimeContextPaths
+         * @description Paths where time values are placed in context for link activation.
+         */
+        readonly TimeContextPaths: {
+            /**
+             * Dayname
+             * @description Path for day name/ID
+             * @default time.dayName
+             */
+            readonly dayName: string;
+            /**
+             * Dayofweek
+             * @description Path for day index
+             * @default time.dayOfWeek
+             */
+            readonly dayOfWeek: string;
+            /**
+             * Hour
+             * @description Path for current hour
+             * @default time.hour
+             */
+            readonly hour: string;
+            /**
+             * Minute
+             * @description Path for current minute
+             * @default time.minute
+             */
+            readonly minute: string;
+            /**
+             * Period
+             * @description Path for current period ID
+             * @default time.period
+             */
+            readonly period: string;
+        };
+        /**
          * TimelineAssetSummary
          * @description Asset summary with source tracking
          */
@@ -18470,6 +18679,50 @@ export interface components {
             readonly version_id: string;
             /** Version Number */
             readonly version_number: number;
+        };
+        /**
+         * TimePeriodDefinition
+         * @description A named time period with hour boundaries.
+         *
+         *     Supports wrapping (night: 21-5 means 21:00 to 05:00 next day).
+         *     For fantasy worlds, hours can exceed 24 (e.g., 30-hour days).
+         */
+        readonly TimePeriodDefinition: {
+            /**
+             * Aliases
+             * @description Aliases for template portability (e.g., ['night', 'nighttime'])
+             */
+            readonly aliases?: readonly string[] | null;
+            /**
+             * Ambientpreset
+             * @description Reference to ambient preset (lighting, audio)
+             */
+            readonly ambientPreset?: string | null;
+            /**
+             * Color
+             * @description UI color hint (hex or CSS color)
+             */
+            readonly color?: string | null;
+            /**
+             * Displayname
+             * @description Display name for UI
+             */
+            readonly displayName: string;
+            /**
+             * Endhour
+             * @description End hour - can wrap around
+             */
+            readonly endHour: number;
+            /**
+             * Id
+             * @description Canonical period ID (e.g., 'morning', 'witching_hour')
+             */
+            readonly id: string;
+            /**
+             * Starthour
+             * @description Start hour (0 to hoursPerDay-1)
+             */
+            readonly startHour: number;
         };
         /**
          * UnifiedActiveEmotion
@@ -19016,6 +19269,7 @@ export interface components {
             readonly stats_config: components["schemas"]["WorldStatsConfig"];
             /** Tier Order */
             readonly tier_order?: readonly string[];
+            readonly time_config?: components["schemas"]["WorldTimeConfig"];
         };
         /**
          * WorldManifest
@@ -19094,6 +19348,83 @@ export interface components {
             readonly definitions?: {
                 readonly [key: string]: components["schemas"]["StatDefinition"];
             };
+            /**
+             * Version
+             * @description Schema version for migrations
+             * @default 1
+             */
+            readonly version: number;
+        };
+        /**
+         * WorldTimeConfig
+         * @description Complete world time configuration.
+         *
+         *     Allows full customization of time structure for fantasy/sci-fi settings:
+         *     - Custom hours per day (24, 30, 20, etc.)
+         *     - Custom days per week (7, 10, 5, etc.)
+         *     - Custom period definitions with aliases
+         *     - Custom day names and special flags
+         *
+         *     Template portability is maintained through period aliases:
+         *     - Templates use standard terms ("day", "night", "morning")
+         *     - Worlds define which of their periods match these aliases
+         */
+        readonly WorldTimeConfig: {
+            /**
+             * Dateformat
+             * @description Date/time format string with placeholders
+             * @default {dayName}, {hour}:{minute}
+             */
+            readonly dateFormat: string;
+            /**
+             * Days
+             * @description Day definitions (Monday, Tuesday, etc.)
+             */
+            readonly days?: readonly components["schemas"]["DayDefinition"][];
+            /**
+             * Daysperweek
+             * @description Days per week (default: 7, fantasy: 10, 5, etc.)
+             * @default 7
+             */
+            readonly daysPerWeek: number;
+            /**
+             * Hoursperday
+             * @description Hours per day (default: 24, fantasy: 30, 20, etc.)
+             * @default 24
+             */
+            readonly hoursPerDay: number;
+            /**
+             * Minutesperhour
+             * @description Minutes per hour (default: 60, rarely changed)
+             * @default 60
+             */
+            readonly minutesPerHour: number;
+            /**
+             * Periodaliases
+             * @description Maps standard period terms to world-specific period IDs (e.g., 'day': 'morning|afternoon')
+             */
+            readonly periodAliases?: {
+                readonly [key: string]: string;
+            };
+            /**
+             * Periods
+             * @description Time period definitions (morning, afternoon, etc.)
+             */
+            readonly periods?: readonly components["schemas"]["TimePeriodDefinition"][];
+            /**
+             * Secondsperminute
+             * @description Seconds per minute (default: 60, rarely changed)
+             * @default 60
+             */
+            readonly secondsPerMinute: number;
+            /** @description Paths where time values are placed in context */
+            readonly timeContextPaths?: components["schemas"]["TimeContextPaths"];
+            /**
+             * Use24Hourformat
+             * @description Use 24-hour format (true) or 12-hour with AM/PM (false)
+             * @default true
+             */
+            readonly use24HourFormat: boolean;
             /**
              * Version
              * @description Schema version for migrations
@@ -27189,7 +27520,7 @@ export interface operations {
             };
         };
     };
-    readonly execute_npc_interaction_api_v1_game_interactions_execute_post: {
+    readonly execute_interaction_api_v1_game_interactions_execute_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
@@ -27224,7 +27555,7 @@ export interface operations {
             };
         };
     };
-    readonly list_npc_interactions_api_v1_game_interactions_list_post: {
+    readonly list_interactions_api_v1_game_interactions_list_post: {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {

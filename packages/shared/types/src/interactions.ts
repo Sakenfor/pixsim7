@@ -64,8 +64,9 @@ export type InteractionBranchIntent = BranchIntent;
 /**
  * Interaction availability reason codes - from OpenAPI.
  * NOTE: OpenAPI may be stale. Backend source has: mood_incompatible, npc_unavailable,
- * npc_busy, time_incompatible, flag_required, flag_forbidden, cooldown_active,
- * location_incompatible, stat_gating_failed, custom
+ * npc_busy (legacy names used for target availability), time_incompatible,
+ * flag_required, flag_forbidden, cooldown_active, location_incompatible,
+ * stat_gating_failed, custom
  */
 export type InteractionDisabledReason = components['schemas']['DisabledReason'];
 
@@ -247,10 +248,20 @@ export interface InventoryChanges {
 }
 
 /**
- * Target memory/emotion effects (currently NPC-only)
+ * Adapter-specific target effect entry.
+ */
+export interface TargetEffect {
+  type: string;
+  payload?: Record<string, unknown>;
+}
+
+/**
+ * Target effects envelope for adapter-specific handling.
  */
 export interface TargetEffects {
-  /** Create a memory record */
+  effects?: TargetEffect[];
+
+  /** @deprecated Use effects with type "npc.create_memory" */
   createMemory?: {
     topic: string;
     summary: string;
@@ -259,14 +270,14 @@ export interface TargetEffects {
     tags?: string[];
   };
 
-  /** Trigger an emotion */
+  /** @deprecated Use effects with type "npc.trigger_emotion" */
   triggerEmotion?: {
     emotion: string;
     intensity: number;
     durationSeconds?: number;
   };
 
-  /** Register a world event */
+  /** @deprecated Use effects with type "npc.register_world_event" */
   registerWorldEvent?: {
     eventType: string;
     eventName: string;
@@ -322,7 +333,7 @@ export interface InteractionOutcome {
   /** Inventory changes */
   inventoryChanges?: InventoryChanges;
 
-  /** NPC memory/emotion effects */
+  /** Target effects */
   targetEffects?: TargetEffects;
 
   /** Scene to launch */
