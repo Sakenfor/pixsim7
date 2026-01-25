@@ -268,6 +268,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
         session_id: int,
         target_kind: str,
         target_id: int,
+        participants: Optional[list] = None,
+        primary_role: Optional[str] = None,
         interaction_definition: Any,  # InteractionDefinition
         player_input: Optional[str] = None,
         context: Optional[dict] = None,
@@ -280,8 +282,10 @@ class SessionMutationsAPI(BaseCapabilityAPI):
 
         Args:
             session_id: Session ID
-            target_kind: Target kind (currently only "npc" supported)
+            target_kind: Target kind (adapter must be registered)
             target_id: Target ID
+            participants: Optional interaction participants
+            primary_role: Optional primary participant role
             interaction_definition: Interaction definition with outcomes
             player_input: Optional player input text
             context: Optional execution context
@@ -326,6 +330,8 @@ class SessionMutationsAPI(BaseCapabilityAPI):
                 interaction_definition,
                 player_input,
                 context or {},
+                participants=participants,
+                primary_role=primary_role,
             )
 
             # Commit changes

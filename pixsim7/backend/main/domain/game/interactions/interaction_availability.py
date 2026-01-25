@@ -18,15 +18,18 @@ Design:
 """
 
 from __future__ import annotations
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Dict, Any, List, Optional, Tuple, Union, TYPE_CHECKING
 import time
 
 from pixsim7.backend.main.domain.game.interactions.interactions import (
     InteractionDefinition,
     InteractionInstance,
+    InteractionParticipant,
     InteractionTarget,
     InteractionContext,
     DisabledReason,
+    parse_entity_ref,
+    coerce_entity_id,
     StatGating,
     StatAxisGate,
     BehaviorGating,
@@ -43,6 +46,9 @@ from pixsim7.backend.main.domain.game.time import (
     is_hour_in_period,
     get_time_constants,
 )
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.domain.game.interactions.target_adapters import InteractionTargetAdapter
 
 
 # ===================
@@ -170,7 +176,23 @@ def _get_stat_definition(
         return None
 
 
-def _get_entity_key(entity_type: str, npc_id: Optional[int]) -> Optional[str]:
+def _get_entity_key(
+    entity_type: str,
+    npc_id: Optional[int],
+    entity_ref: Optional[str] = None,
+) -> Optional[str]:
+    if entity_ref:
+        try:
+            kind, raw_id = parse_entity_ref(entity_ref)
+        except ValueError:
+            return None
+        if kind == "npc":
+            return f"npc:{coerce_entity_id(raw_id)}"
+        if kind == "session":
+            return "session"
+        if kind == "world":
+            return "world"
+        return None
     if entity_type == "npc":
         if npc_id is None:
             return None
@@ -185,8 +207,7 @@ def _get_entity_key(entity_type: str, npc_id: Optional[int]) -> Optional[str]:
 def _get_entity_stats(
     stats_snapshot: Optional[Dict[str, Dict[str, Any]]],
     definition_id: str,
-    entity_type: str,
-    npc_id: Optional[int],
+    entity_key: Optional[str],
 ) -> Optional[Dict[str, Any]]:
     if not stats_snapshot:
         return None
@@ -195,7 +216,6 @@ def _get_entity_stats(
     if not isinstance(definition_stats, dict):
         return None
 
-    entity_key = _get_entity_key(entity_type, npc_id)
     if not entity_key:
         return None
 
@@ -262,11 +282,18 @@ def _check_stat_gate(
     stat_definitions: Optional[Dict[str, Any]],
     npc_id: Optional[int],
 ) -> Tuple[bool, Optional[str]]:
+    entity_key = _get_entity_key(
+        gate.entity_type,
+        gate.npc_id or npc_id,
+        gate.entity_ref,
+    )
+    if gate.entity_ref and not entity_key:
+        return False, f"Invalid entityRef {gate.entity_ref}"
+
     entity_stats = _get_entity_stats(
         stats_snapshot,
         gate.definition_id,
-        gate.entity_type,
-        gate.npc_id or npc_id,
+        entity_key,
     )
 
     if not entity_stats:
@@ -594,6 +621,7 @@ def evaluate_interaction_availability(
     target: Optional[InteractionTarget] = None,
     current_time: Optional[int] = None,
     time_config: Optional[WorldTimeConfig] = None,
+    target_adapter: Optional["InteractionTargetAdapter"] = None,
 ) -> Tuple[bool, Optional[DisabledReason], Optional[str]]:
     """
     Evaluate whether an interaction is currently available.
@@ -607,6 +635,7 @@ def evaluate_interaction_availability(
                      Falls back to real-time if not provided (for backward compatibility).
         time_config: World time configuration for custom time systems (fantasy hours/days/periods).
                     Uses DEFAULT_WORLD_TIME_CONFIG if not provided.
+        target_adapter: Optional adapter for target-specific gating behavior.
 
     Note:
         For gameplay consistency, always pass world_time as current_time.
@@ -642,29 +671,35 @@ def evaluate_interaction_availability(
     if not passes:
         return False, DisabledReason.STAT_GATING_FAILED, msg
 
-    # Check behavior state (npc-only for now)
+    # Check behavior state (target-specific)
     if gating.behavior:
-        if target_kind != "npc":
-            return False, DisabledReason.NPC_UNAVAILABLE, "Target kind not supported for behavior gating"
-        npc_state = None
-        if context.session_flags and npc_id is not None:
-            npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
-        passes, msg = check_behavior_gating(gating.behavior, npc_state)
+        if target_adapter:
+            passes, msg = target_adapter.check_behavior_gating(gating.behavior, context, target_id)
+        else:
+            if target_kind != "npc":
+                return False, DisabledReason.NPC_UNAVAILABLE, "Target kind not supported for behavior gating"
+            npc_state = None
+            if context.session_flags and npc_id is not None:
+                npc_state = context.session_flags.get("npcs", {}).get(f"npc:{npc_id}", {}).get("state")
+            passes, msg = check_behavior_gating(gating.behavior, npc_state)
         if not passes:
             if msg and "busy" in msg.lower():
                 return False, DisabledReason.NPC_BUSY, msg
             return False, DisabledReason.NPC_UNAVAILABLE, msg
 
-    # Check mood (npc-only for now)
+    # Check mood (target-specific)
     if gating.mood:
-        if target_kind != "npc":
-            return False, DisabledReason.MOOD_INCOMPATIBLE, "Target kind not supported for mood gating"
-        passes, msg = check_mood_gating(
-            gating.mood,
-            context.mood_tags,
-            # TODO: Get emotion intensities from context
-            None
-        )
+        if target_adapter:
+            passes, msg = target_adapter.check_mood_gating(gating.mood, context, target_id)
+        else:
+            if target_kind != "npc":
+                return False, DisabledReason.MOOD_INCOMPATIBLE, "Target kind not supported for mood gating"
+            passes, msg = check_mood_gating(
+                gating.mood,
+                context.mood_tags,
+                # TODO: Get emotion intensities from context
+                None
+            )
         if not passes:
             return False, DisabledReason.MOOD_INCOMPATIBLE, msg
 
@@ -692,6 +727,8 @@ def evaluate_interaction_availability(
 def create_interaction_instance(
     definition: InteractionDefinition,
     target: InteractionTarget,
+    participants: Optional[List[InteractionParticipant]],
+    primary_role: Optional[str],
     world_id: int,
     session_id: int,
     context: InteractionContext,
@@ -725,6 +762,8 @@ def create_interaction_instance(
         id=instance_id,
         definitionId=definition.id,
         target=target,
+        participants=participants,
+        primaryRole=primary_role,
         worldId=world_id,
         sessionId=session_id,
         surface=definition.surface,
@@ -738,47 +777,95 @@ def create_interaction_instance(
     )
 
 
-def filter_interactions_by_target(
+def _get_primary_participant(
+    participants: Optional[List[InteractionParticipant]],
+    primary_role: Optional[str],
+) -> Optional[InteractionParticipant]:
+    if not participants:
+        return None
+    if primary_role:
+        for participant in participants:
+            if participant.role == primary_role:
+                return participant
+    return participants[0]
+
+
+def _participant_matches(
+    spec: InteractionParticipant,
+    participant: InteractionParticipant,
+) -> bool:
+    if spec.ref:
+        if not participant.ref:
+            return False
+        if str(spec.ref) != str(participant.ref):
+            return False
+    if spec.role and spec.role != participant.role:
+        return False
+    if spec.kind and spec.kind != participant.kind:
+        return False
+    if spec.id is not None:
+        if participant.id is None or spec.id != participant.id:
+            return False
+    if spec.template_kind is not None:
+        if participant.template_kind is None or spec.template_kind != participant.template_kind:
+            return False
+    if spec.template_id is not None:
+        if participant.template_id is None or spec.template_id != participant.template_id:
+            return False
+    return True
+
+
+def filter_interactions_by_participants(
     definitions: List[InteractionDefinition],
-    target_kind: str,
-    target_id: Union[int, str],
-    target_roles: Optional[List[str]] = None
+    participants: Optional[List[InteractionParticipant]],
+    primary_role: Optional[str],
+    target_roles: Optional[List[str]] = None,
 ) -> List[InteractionDefinition]:
     """
-    Filter interaction definitions by target NPC ID or roles.
+    Filter interaction definitions by participant roles/ids.
 
-    Args:
-        definitions: All interaction definitions
-        target_kind: Target kind (e.g., "npc")
-        target_id: Target ID
-        target_roles: Target roles (e.g., ["role:shopkeeper", "role:guard"])
-
-    Returns:
-        Filtered list of applicable definitions
+    Definitions with explicit participants require those roles to be present.
+    Legacy targetRolesOrIds/targetIds filtering is applied to the primary participant.
     """
-    filtered = []
-    target_ref = f"{target_kind}:{target_id}"
+    if not participants:
+        return definitions
+
+    primary = _get_primary_participant(participants, primary_role)
+    if not primary:
+        return definitions
+
+    filtered: List[InteractionDefinition] = []
+    target_ref = str(primary.ref) if primary.ref else None
+    if not target_ref and primary.kind and primary.id is not None:
+        target_ref = f"{primary.kind}:{primary.id}"
 
     for defn in definitions:
+        if defn.participants:
+            matches_all = True
+            for spec in defn.participants:
+                participant = next((p for p in participants if p.role == spec.role), None)
+                if not participant or not _participant_matches(spec, participant):
+                    matches_all = False
+                    break
+            if matches_all:
+                filtered.append(defn)
+            continue
+
         has_roles_or_ids = bool(defn.target_roles_or_ids)
         has_target_ids = bool(defn.target_ids)
 
-        # No target filter = applies to all NPCs
         if not has_roles_or_ids and not has_target_ids:
             filtered.append(defn)
             continue
 
-        # Check if NPC ID matches
-        if has_roles_or_ids and target_ref in defn.target_roles_or_ids:
+        if target_ref and has_roles_or_ids and target_ref in defn.target_roles_or_ids:
             filtered.append(defn)
             continue
 
-        # Check explicit target IDs
-        if has_target_ids and target_id in defn.target_ids:
+        if has_target_ids and primary.id in defn.target_ids:
             filtered.append(defn)
             continue
 
-        # Check if any role matches
         if target_roles and has_roles_or_ids:
             if any(role in defn.target_roles_or_ids for role in target_roles):
                 filtered.append(defn)

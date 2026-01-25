@@ -66,6 +66,8 @@ export const gameRuntimeApiClient: GameApiClient = {
     return {
       interactions: [],
       target: req.target,
+      participants: req.participants,
+      primaryRole: req.primaryRole,
       worldId: req.worldId,
       sessionId: req.sessionId,
       timestamp: Date.now(),

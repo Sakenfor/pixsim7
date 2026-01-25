@@ -124,18 +124,16 @@ export function getNextAvailableTime(
 }
 
 /**
- * Calculate cooldown from NPC interactions session data
+ * Calculate cooldown from session data for a target ref
  */
 export function getCooldownFromSession(
   interactionId: string,
-  npcId: number,
+  entityRef: string,
   sessionFlags: Record<string, any>
 ): { lastUsed: number | undefined; remaining: number } {
-  const npcKey = `npc:${npcId}`;
-  const npcs = sessionFlags?.npcs || {};
-  const npcData = npcs[npcKey] || {};
-  const interactions = npcData.interactions || {};
-  const lastUsedMap = interactions.lastUsedAt || {};
+  const interactions = sessionFlags?.interactions || {};
+  const targetData = interactions[entityRef] || {};
+  const lastUsedMap = targetData.lastUsedAt || {};
   const lastUsed = lastUsedMap[interactionId];
 
   return {
@@ -145,17 +143,15 @@ export function getCooldownFromSession(
 }
 
 /**
- * Extract all cooldown data for an NPC from session
+ * Extract all cooldown data for a target ref from session
  */
-export function getAllCooldownsForNpc(
-  npcId: number,
+export function getAllCooldownsForTarget(
+  entityRef: string,
   sessionFlags: Record<string, any>
 ): Record<string, number> {
-  const npcKey = `npc:${npcId}`;
-  const npcs = sessionFlags?.npcs || {};
-  const npcData = npcs[npcKey] || {};
-  const interactions = npcData.interactions || {};
-  const lastUsedMap = interactions.lastUsedAt || {};
+  const interactions = sessionFlags?.interactions || {};
+  const targetData = interactions[entityRef] || {};
+  const lastUsedMap = targetData.lastUsedAt || {};
 
   return lastUsedMap;
 }

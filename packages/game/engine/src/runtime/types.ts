@@ -13,6 +13,7 @@ import type {
   ExecuteInteractionResponse,
   ListInteractionsRequest,
   ListInteractionsResponse,
+  InteractionParticipant,
   InteractionTarget,
   ResolveTemplateResponse,
   ResolveBatchResponse,
@@ -153,7 +154,7 @@ export interface GameRuntimeConfig {
 /**
  * InteractionIntent - encapsulates everything needed to execute an interaction
  *
- * Targeting uses InteractionTarget (kind + id or template reference).
+ * Targeting uses InteractionTarget (ref or kind + id, plus optional template reference).
  * Template-based targeting is preferred for authored content as it allows
  * the same content to work across different worlds/playthroughs.
  */
@@ -162,7 +163,13 @@ export interface InteractionIntent {
   interactionId: string;
 
   /** Interaction target (runtime id or template reference) */
-  target: InteractionTarget;
+  target?: InteractionTarget;
+
+  /** Interaction participants (role-based) */
+  participants?: InteractionParticipant[];
+
+  /** Primary participant role */
+  primaryRole?: string;
 
   /** World ID */
   worldId: number;
@@ -348,7 +355,9 @@ export type GameInputIntent =
       type: 'interact';
       interactionId: string;
       /** Interaction target */
-      target: InteractionTarget;
+      target?: InteractionTarget;
+      participants?: InteractionParticipant[];
+      primaryRole?: string;
       hotspotId?: string;
       playerInput?: string;
       context?: Record<string, unknown>;
@@ -357,7 +366,9 @@ export type GameInputIntent =
       type: 'selectOption';
       interactionId: string;
       /** Interaction target */
-      target: InteractionTarget;
+      target?: InteractionTarget;
+      participants?: InteractionParticipant[];
+      primaryRole?: string;
       choiceId: string;
       choiceText?: string;
     }

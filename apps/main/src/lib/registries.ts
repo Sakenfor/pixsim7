@@ -71,6 +71,7 @@ export type {
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
   InteractionInstance,
+  InteractionParticipant,
   InteractionTarget,
   InteractionSurfaceExtended,
   InteractionSurface,

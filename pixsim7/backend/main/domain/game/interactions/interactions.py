@@ -541,7 +541,7 @@ class WorldInteractionsMetadata(InteractionBaseModel):
 
 
 class TargetInteractionsMetadata(InteractionBaseModel):
-    """Target-level interaction overrides (e.g., GameNPC.meta.interactions)"""
+    """Target-level interaction overrides (e.g., npc/item/prop meta.interactions)"""
     definition_overrides: Optional[Dict[str, Dict[str, Any]]] = Field(None, alias="definitionOverrides")
     disabled_interactions: Optional[List[str]] = Field(None, alias="disabledInteractions")
     additional_interactions: Optional[List[InteractionDefinition]] = Field(None, alias="additionalInteractions")
@@ -555,7 +555,7 @@ class PendingInteraction(InteractionBaseModel):
 
 
 class SessionInteractionState(InteractionBaseModel):
-    """Session-level interaction state (currently stored under GameSession.flags.npcs)."""
+    """Session-level interaction state (stored under GameSession.flags.interactions[entity_ref])."""
     last_used_at: Optional[Dict[str, int]] = Field(None, alias="lastUsedAt")
     interaction_state: Optional[Dict[str, Any]] = Field(None, alias="interactionState")
     pending_from_target: Optional[List[PendingInteraction]] = Field(None, alias="pendingFromTarget")

@@ -9,8 +9,11 @@ import type {
   GameSessionDTO,
   GameWorldDetail,
   ExecuteInteractionResponse,
+  InteractionParticipant,
+  InteractionTarget,
   TemplateKind,
 } from '@pixsim7/shared.types';
+import { Ref } from '@pixsim7/shared.ref.core';
 import { createTemplateRefKey } from '@pixsim7/core.links';
 import type {
   GameRuntime as IGameRuntime,
@@ -226,6 +229,246 @@ export class GameRuntime implements IGameRuntime {
     }
   }
 
+  private buildParticipantsFromIntent(
+    intent: InteractionIntent
+  ): { participants: InteractionParticipant[]; primaryRole: string } {
+    let participants = [...(intent.participants ?? [])];
+    let primaryRole = intent.primaryRole;
+
+    if (intent.target) {
+      const role = primaryRole ?? 'target';
+      const existing = participants.find((participant) => participant.role === role);
+      if (existing) {
+        const refMismatch =
+          existing.ref && intent.target.ref && existing.ref !== intent.target.ref;
+        const kindMismatch =
+          existing.kind && intent.target.kind && existing.kind !== intent.target.kind;
+        const idMismatch =
+          existing.id != null &&
+          intent.target.id != null &&
+          existing.id !== intent.target.id;
+        const templateKindMismatch =
+          existing.templateKind &&
+          intent.target.templateKind &&
+          existing.templateKind !== intent.target.templateKind;
+        const templateIdMismatch =
+          existing.templateId &&
+          intent.target.templateId &&
+          existing.templateId !== intent.target.templateId;
+        const linkIdMismatch =
+          existing.linkId &&
+          intent.target.linkId &&
+          existing.linkId !== intent.target.linkId;
+        const mismatch =
+          refMismatch ||
+          kindMismatch ||
+          idMismatch ||
+          templateKindMismatch ||
+          templateIdMismatch ||
+          linkIdMismatch;
+        if (mismatch) {
+          throw new Error(`Participant role "${role}" conflicts with target payload`);
+        }
+      } else {
+        participants.push({ role, ...intent.target });
+      }
+      primaryRole = role;
+    }
+
+    participants = participants.map((participant) => this.normalizeParticipantRef(participant));
+
+    if (participants.length === 0) {
+      throw new Error('InteractionIntent requires target or participants');
+    }
+
+    if (!primaryRole) {
+      primaryRole = participants[0].role;
+    }
+
+    const seen = new Set<string>();
+    for (const participant of participants) {
+      if (seen.has(participant.role)) {
+        throw new Error(`Duplicate participant role "${participant.role}"`);
+      }
+      seen.add(participant.role);
+    }
+
+    if (!seen.has(primaryRole)) {
+      throw new Error(`primaryRole "${primaryRole}" not found in participants`);
+    }
+
+    for (const participant of participants) {
+      if (
+        !participant.ref &&
+        participant.id == null &&
+        (!participant.templateKind || !participant.templateId)
+      ) {
+        throw new Error(`Participant "${participant.role}" requires id or template reference`);
+      }
+    }
+
+    return { participants, primaryRole };
+  }
+
+  private getPrimaryParticipant(
+    participants: InteractionParticipant[],
+    primaryRole: string
+  ): InteractionParticipant {
+    return (
+      participants.find((participant) => participant.role === primaryRole) ??
+      participants[0]
+    );
+  }
+
+  private participantToTarget(participant: InteractionParticipant): InteractionTarget {
+    const { role, ...target } = participant;
+    return target;
+  }
+
+  private normalizeParticipantRef(
+    participant: InteractionParticipant
+  ): InteractionParticipant {
+    let normalized = participant;
+    if (participant.ref) {
+      const parsed = this.parseEntityRef(participant.ref);
+      if (parsed) {
+        normalized = {
+          ...normalized,
+          kind: normalized.kind ?? parsed.kind,
+          id: normalized.id ?? parsed.id,
+        };
+        if (typeof parsed.id !== 'number') {
+          normalized = { ...normalized, ref: undefined };
+        }
+      }
+    }
+
+    if (!normalized.ref) {
+      const ref = this.buildEntityRef(normalized.kind, normalized.id);
+      if (ref) {
+        normalized = { ...normalized, ref };
+      }
+    }
+
+    return normalized;
+  }
+
+  private parseEntityRef(
+    ref: string
+  ): { kind: string; id: number | string } | null {
+    if (!ref.includes(':')) return null;
+    const parts = ref.split(':');
+    if (parts.length < 2) return null;
+    const kind = parts[0];
+    const rawId = parts[parts.length - 1];
+    if (!rawId) return null;
+    const numeric = Number(rawId);
+    const id = Number.isFinite(numeric) ? numeric : rawId;
+    return { kind, id };
+  }
+
+  private buildEntityRef(
+    kind?: string,
+    id?: number | string
+  ): string | undefined {
+    if (!kind || id == null) return undefined;
+    const numeric = typeof id === 'number' ? id : Number(id);
+    const hasNumber = Number.isFinite(numeric);
+    if (!hasNumber) return undefined;
+
+    switch (kind) {
+      case 'npc':
+        return Ref.npc(numeric);
+      case 'location':
+        return Ref.location(numeric);
+      case 'scene':
+        return Ref.scene(numeric);
+      case 'asset':
+        return Ref.asset(numeric);
+      case 'generation':
+        return Ref.generation(numeric);
+      case 'world':
+        return Ref.world(numeric);
+      case 'session':
+        return Ref.session(numeric);
+      default:
+        return `${kind}:${numeric}`;
+    }
+  }
+
+  private async resolveParticipants(
+    participants: InteractionParticipant[]
+  ): Promise<InteractionParticipant[]> {
+    const normalized = participants.map((participant) => this.normalizeParticipantRef(participant));
+    const unresolved = normalized.filter(
+      (participant) =>
+        participant.id == null && participant.templateKind && participant.templateId
+    );
+
+    if (unresolved.length === 0) {
+      return normalized;
+    }
+
+    const context = this.buildResolutionContext();
+
+    if (this.config.apiClient.resolveTemplateBatch && unresolved.length > 1) {
+      const refs = unresolved.map((participant) => ({
+        templateKind: participant.templateKind as TemplateKind,
+        templateId: participant.templateId!,
+      }));
+
+      const result = await this.config.apiClient.resolveTemplateBatch(refs, context);
+
+      return normalized.map((participant) => {
+        if (participant.id != null || !participant.templateKind || !participant.templateId) {
+          return participant;
+        }
+
+        const key = createTemplateRefKey(participant.templateKind, participant.templateId);
+        const resolved = result.results[key];
+        if (!resolved?.resolved || resolved.runtimeId == null) {
+          throw new Error(
+            `Failed to resolve ${participant.templateKind}:${participant.templateId} to runtime entity`
+          );
+        }
+
+        const resolvedParticipant = {
+          ...participant,
+          id: resolved.runtimeId,
+          kind: resolved.runtimeKind ?? participant.kind,
+        };
+        return this.normalizeParticipantRef(resolvedParticipant);
+      });
+    }
+
+    const resolvedParticipants: InteractionParticipant[] = [];
+    for (const participant of normalized) {
+      if (participant.id != null || !participant.templateKind || !participant.templateId) {
+        resolvedParticipants.push(participant);
+        continue;
+      }
+
+      const resolution = await this.resolveTemplateToRuntime(
+        participant.templateKind as TemplateKind,
+        participant.templateId
+      );
+
+      if (resolution.runtimeId === null) {
+        throw new Error(
+          `Failed to resolve ${participant.templateKind}:${participant.templateId} to runtime entity`
+        );
+      }
+
+      resolvedParticipants.push(this.normalizeParticipantRef({
+        ...participant,
+        id: resolution.runtimeId,
+        kind: resolution.runtimeKind ?? participant.kind,
+      }));
+    }
+
+    return resolvedParticipants;
+  }
+
   /**
    * Load a session (and optionally its world)
    */
@@ -307,46 +550,33 @@ export class GameRuntime implements IGameRuntime {
       throw new Error('No session loaded');
     }
 
-    const target = { ...intent.target };
+    const { participants, primaryRole } = this.buildParticipantsFromIntent(intent);
 
-    if (target.id == null && target.templateKind && target.templateId) {
-      this.log(
-        `Resolving template ${target.templateKind}:${target.templateId} for interaction ${intent.interactionId}`
-      );
-
-      const resolution = await this.resolveTemplateToRuntime(
-        target.templateKind as TemplateKind,
-        target.templateId
-      );
-
-      if (resolution.runtimeId === null) {
-        this.log(
-          `Failed to resolve ${target.templateKind}:${target.templateId} - no active link found`
-        );
-        return {
-          success: false,
-          message: `Failed to resolve ${target.templateKind}:${target.templateId} to runtime entity`,
-          timestamp: Date.now(),
-        };
-      }
-
-      target.id = resolution.runtimeId;
-      if (resolution.runtimeKind && resolution.runtimeKind !== target.kind) {
-        this.log(
-          `Resolved ${target.templateKind}:${target.templateId} to ${resolution.runtimeKind}; overriding target kind ${target.kind}`
-        );
-        target.kind = resolution.runtimeKind;
-      }
+    let resolvedParticipants: InteractionParticipant[];
+    try {
+      resolvedParticipants = await this.resolveParticipants(participants);
+    } catch (error) {
+      const message = (error as Error).message ?? 'Failed to resolve interaction participants';
+      this.log(message);
+      return {
+        success: false,
+        message,
+        timestamp: Date.now(),
+      };
     }
 
-    if (target.id == null) {
-      throw new Error('InteractionIntent must include target.id or template reference');
-    }
+    const primaryParticipant = this.getPrimaryParticipant(resolvedParticipants, primaryRole);
+    const target = this.participantToTarget(primaryParticipant);
+    const resolvedIntent: InteractionIntent = {
+      ...intent,
+      target,
+      participants: resolvedParticipants,
+      primaryRole,
+    };
 
-    const resolvedIntent: InteractionIntent = { ...intent, target };
-
+    const targetRef = target.ref ?? (target.kind && target.id != null ? `${target.kind}:${target.id}` : 'unknown');
     this.log(
-      `Applying interaction: ${resolvedIntent.interactionId} with ${target.kind} ${target.id}`
+      `Applying interaction: ${resolvedIntent.interactionId} with ${targetRef}`
     );
 
     try {
@@ -366,6 +596,8 @@ export class GameRuntime implements IGameRuntime {
         worldId: resolvedIntent.worldId,
         sessionId: resolvedIntent.sessionId,
         target,
+        participants: resolvedParticipants,
+        primaryRole,
         interactionId: resolvedIntent.interactionId,
         playerInput: resolvedIntent.playerInput,
         context: resolvedIntent.context,

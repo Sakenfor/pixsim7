@@ -4,14 +4,15 @@
  * Allows selecting from pre-built interaction templates
  */
 
-import React, { useState } from 'react';
-import type { InteractionDefinition } from '@lib/registries';
 import {
   getTemplatesByCategory,
   createFromTemplate,
   type InteractionTemplate,
   type TemplateOptions,
 } from '@pixsim7/game.engine';
+import React, { useState } from 'react';
+
+import type { InteractionDefinition } from '@lib/registries';
 import './TemplateSelector.css';
 
 export interface TemplateSelectorProps {

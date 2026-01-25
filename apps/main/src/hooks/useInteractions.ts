@@ -5,13 +5,16 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { InteractionInstance, InteractionTarget } from '@lib/registries';
+
 import { listInteractions } from '@lib/api/interactions';
+import type { InteractionInstance, InteractionParticipant, InteractionTarget } from '@lib/registries';
 
 export interface UseInteractionsOptions {
   worldId: number | null;
   sessionId: number | null;
-  target: InteractionTarget | null;
+  target?: InteractionTarget | null;
+  participants?: InteractionParticipant[] | null;
+  primaryRole?: string;
   locationId?: number | null;
   includeUnavailable?: boolean;
   autoFetch?: boolean;
@@ -34,7 +37,7 @@ export interface UseInteractionsResult {
  * const { interactions, available, loading, refetch } = useInteractions({
  *   worldId: 1,
  *   sessionId: 42,
- *   target: { kind: 'npc', id: 123 },
+ *   target: { ref: 'npc:123', kind: 'npc', id: 123 },
  *   locationId: 5,
  * });
  * ```
@@ -46,6 +49,8 @@ export function useInteractions(
     worldId,
     sessionId,
     target,
+    participants,
+    primaryRole,
     locationId,
     includeUnavailable = false,
     autoFetch = true,
@@ -57,7 +62,7 @@ export function useInteractions(
 
   const fetch = useCallback(async () => {
     // Skip if missing required params
-    if (!worldId || !sessionId || !target) {
+    if (!worldId || !sessionId || (!target && !participants)) {
       setInteractions([]);
       return;
     }
@@ -70,6 +75,8 @@ export function useInteractions(
         worldId,
         sessionId,
         target,
+        participants: participants || undefined,
+        primaryRole,
         locationId: locationId || undefined,
         includeUnavailable,
       });
@@ -82,7 +89,15 @@ export function useInteractions(
     } finally {
       setLoading(false);
     }
-  }, [worldId, sessionId, target, locationId, includeUnavailable]);
+  }, [
+    worldId,
+    sessionId,
+    target,
+    participants,
+    primaryRole,
+    locationId,
+    includeUnavailable,
+  ]);
 
   // Auto-fetch on mount and when dependencies change
   useEffect(() => {

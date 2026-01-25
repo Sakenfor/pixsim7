@@ -652,7 +652,7 @@ export interface WorldInteractionsMetadata {
 
 /**
  * Target-level interaction overrides
- * Stored in target meta.interactions (e.g., GameNPC.meta.interactions)
+ * Stored in target meta.interactions (e.g., NPC, item, or prop meta)
  */
 export interface TargetInteractionsMetadata {
   /** Override specific interaction definitions */
@@ -667,7 +667,7 @@ export interface TargetInteractionsMetadata {
 
 /**
  * Session-level interaction state
- * Stored in GameSession.flags.npcs["npc:<id>"].interactions (npc targets)
+ * Stored in GameSession.flags.interactions["<entityRef>"]
  */
 export interface SessionInteractionState {
   /** Last used timestamps (for cooldown) */

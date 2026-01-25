@@ -24,6 +24,9 @@ export interface InteractionDefinition { /* ... */ }
 export interface StatGating { /* ... */ }
 ```
 
+The contract now supports **multi-participant interactions** via `participants` and `primaryRole`
+to enable cross-entity interactions (NPC + item + location, etc.).
+
 Think of it like `game.ts` (API DTOs) or `brain.ts` (state model) - it defines **what an interaction IS**, not how to display it.
 
 ---

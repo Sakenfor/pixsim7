@@ -286,7 +286,7 @@ function createMockInteraction(
   return {
     id,
     definitionId: id,
-    target: { kind: 'npc', id: 1 },
+    target: { ref: 'npc:1', kind: 'npc', id: 1 },
     worldId: 1,
     sessionId: 101,
     surface,

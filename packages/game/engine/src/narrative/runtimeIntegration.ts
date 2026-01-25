@@ -892,17 +892,46 @@ export class NarrativeController implements GameRuntimePlugin {
   // ===========================================================================
 
   private getNpcIdFromIntent(intent: InteractionIntent): number | null {
-    if (intent.target.kind !== 'npc') {
+    const primaryRole = intent.primaryRole;
+    const participants = intent.participants ?? [];
+    const npcIdFromRef = (ref?: string): number | null => {
+      if (!ref || !ref.startsWith('npc:')) return null;
+      const rawId = ref.split(':')[1];
+      const parsed = Number(rawId);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    let candidate =
+      (primaryRole
+        ? participants.find(
+            (participant) =>
+              participant.role === primaryRole && participant.kind === 'npc'
+          )
+        : undefined) ?? participants.find((participant) => participant.kind === 'npc');
+
+    if (
+      !candidate &&
+      intent.target &&
+      (intent.target.kind === 'npc' || intent.target.ref?.startsWith('npc:'))
+    ) {
+      candidate = { role: 'target', ...intent.target };
+    }
+
+    if (!candidate) {
       return null;
     }
 
-    if (typeof intent.target.id === 'number') {
-      return intent.target.id;
+    if (typeof candidate.id === 'number') {
+      return candidate.id;
     }
 
-    if (typeof intent.target.id === 'string') {
-      const parsed = Number(intent.target.id);
+    if (typeof candidate.id === 'string') {
+      const parsed = Number(candidate.id);
       return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    const refId = npcIdFromRef(candidate.ref);
+    if (refId !== null) {
+      return refId;
     }
 
     return null;

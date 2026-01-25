@@ -5,7 +5,7 @@
  * Allows behaviors to trigger interactions and interactions to affect behavior.
  */
 
-import type { InteractionDefinition, InteractionTarget } from '@pixsim7/shared.types';
+import type { InteractionDefinition, InteractionParticipant, InteractionTarget } from '@pixsim7/shared.types';
 
 /**
  * Behavior state types
@@ -95,7 +95,9 @@ export interface InteractionIntent {
   /** Unique intent ID */
   id: string;
   /** Target reference */
-  target: InteractionTarget;
+  target?: InteractionTarget;
+  participants?: InteractionParticipant[];
+  primaryRole?: string;
   /** Interaction definition ID */
   interactionId: string;
   /** Priority (0-100) */
@@ -297,10 +299,18 @@ export function createIntentFromHook(
   const interactionId = typeof hook.interaction === 'string'
     ? hook.interaction
     : hook.interaction.id;
+  const numericTargetId =
+    typeof target.id === 'number' ? target.id : Number(target.id);
+  const hasNumericId = Number.isFinite(numericTargetId);
+  const targetRef = target.ref ?? (target.kind && hasNumericId ? `${target.kind}:${numericTargetId}` : 'unknown');
+  const normalizedTarget =
+    target.ref || (target.kind && hasNumericId) ? { ...target, ref: targetRef } : target;
 
   return {
-    id: `intent:${target.kind}:${target.id ?? 'unknown'}:${interactionId}:${now}`,
-    target,
+    id: `intent:${targetRef}:${interactionId}:${now}`,
+    target: normalizedTarget,
+    participants: [{ role: 'target', ...normalizedTarget }],
+    primaryRole: 'target',
     interactionId,
     priority: hook.priority ?? 50,
     createdAt: now,

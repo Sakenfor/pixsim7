@@ -11,6 +11,7 @@ import type {
   ListInteractionsResponse,
   ExecuteInteractionRequest,
   ExecuteInteractionResponse,
+  InteractionParticipant,
   InteractionTarget,
   InteractionInstance,
   GameSessionDTO,
@@ -50,13 +51,17 @@ export async function executeInteraction(
 export async function getAvailableInteractions(
   worldId: IDs.WorldId,
   sessionId: IDs.SessionId,
-  target: InteractionTarget,
-  locationId?: IDs.LocationId
+  target?: InteractionTarget,
+  locationId?: IDs.LocationId,
+  participants?: InteractionParticipant[],
+  primaryRole?: string
 ): Promise<InteractionInstance[]> {
   const response = await listInteractions({
     worldId,
     sessionId,
     target,
+    participants,
+    primaryRole,
     locationId,
     includeUnavailable: false,
   });
@@ -69,13 +74,17 @@ export async function getAvailableInteractions(
 export async function getAllInteractions(
   worldId: IDs.WorldId,
   sessionId: IDs.SessionId,
-  target: InteractionTarget,
-  locationId?: IDs.LocationId
+  target?: InteractionTarget,
+  locationId?: IDs.LocationId,
+  participants?: InteractionParticipant[],
+  primaryRole?: string
 ): Promise<InteractionInstance[]> {
   const response = await listInteractions({
     worldId,
     sessionId,
     target,
+    participants,
+    primaryRole,
     locationId,
     includeUnavailable: true,
   });

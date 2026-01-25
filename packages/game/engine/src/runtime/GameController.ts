@@ -99,6 +99,8 @@ export class GameController implements IGameController {
     const interactionIntent: InteractionIntent = {
       interactionId: intent.interactionId,
       target: intent.target,
+      participants: intent.participants,
+      primaryRole: intent.primaryRole,
       worldId: world?.id ?? 0,
       sessionId: session.id,
       hotspotId: intent.hotspotId,
@@ -124,6 +126,8 @@ export class GameController implements IGameController {
     const interactionIntent: InteractionIntent = {
       interactionId: intent.interactionId,
       target: intent.target,
+      participants: intent.participants,
+      primaryRole: intent.primaryRole,
       worldId: world?.id ?? 0,
       sessionId: session.id,
       playerInput: intent.choiceText,

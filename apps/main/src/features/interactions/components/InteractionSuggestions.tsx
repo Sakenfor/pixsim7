@@ -4,13 +4,14 @@
  * Shows smart, context-aware suggestions for what the player should do next
  */
 
-import React from 'react';
 import type { InteractionSuggestion } from '@pixsim7/game.engine';
 import {
   getSuggestionIcon,
   getSuggestionColor,
   formatSuggestionScore,
 } from '@pixsim7/game.engine';
+import React from 'react';
+
 import type { InteractionInstance } from '@lib/registries';
 import './InteractionSuggestions.css';
 

@@ -1,6 +1,6 @@
-# NPC Interaction Authoring Guide
+# Interaction Authoring Guide
 
-Complete guide for creating and configuring NPC interactions in Pixsim7.
+Complete guide for creating and configuring interactions (NPCs, items, locations) in Pixsim7.
 
 ## Table of Contents
 
@@ -38,7 +38,7 @@ import { createFromTemplate } from '@pixsim7/game.engine/interactions';
 const greeting = createFromTemplate('greeting', {
   id: 'sophia:greeting',
   label: 'Greet Sophia',
-  targetNpcIds: [1], // Sophia's ID
+  targetIds: [1], // Sophia's ID
   npcName: 'Sophia',
 });
 
@@ -46,7 +46,7 @@ const greeting = createFromTemplate('greeting', {
 const giftFlowers = createFromTemplate('giftGiving', {
   id: 'sophia:gift:flowers',
   label: 'Give Flowers to Sophia',
-  targetNpcIds: [1],
+  targetIds: [1],
   npcName: 'Sophia',
   itemId: 'item_flowers',
   itemName: 'flowers',
@@ -77,6 +77,27 @@ const sophiaInteractions = createFullInteractionSuite(1, 'Sophia', {
     },
   ],
 });
+```
+
+### Participants (Cross-Entity)
+
+Interactions can involve multiple entities by specifying `participants` with role labels.
+Use `primaryRole` to indicate which participant drives gating and default outcomes.
+
+```typescript
+import type { InteractionDefinition } from '@pixsim7/types';
+
+const inspectStatue: InteractionDefinition = {
+  id: 'plaza:inspect:statue',
+  label: 'Inspect Statue',
+  surface: 'inline',
+  participants: [
+    { role: 'actor', kind: 'npc', id: 12 },
+    { role: 'location', kind: 'location', id: 5 },
+    { role: 'prop', kind: 'prop', templateKind: 'propTemplate', templateId: 'statue_01' },
+  ],
+  primaryRole: 'actor',
+};
 ```
 
 ## Interaction Templates
@@ -112,7 +133,7 @@ All templates support these options:
 {
   id: string;              // Required: unique identifier
   label: string;           // Required: display text
-  targetNpcIds?: number[]; // Optional: specific NPCs
+  targetIds?: number[]; // Optional: specific NPCs
   icon?: string;           // Optional: emoji or icon
   surface?: InteractionSurface; // Optional: override default
   gating?: Partial<InteractionGating>; // Optional: additional restrictions
@@ -135,7 +156,7 @@ const customInteraction: InteractionDefinition = {
   icon: '🎯',
   surface: 'dialogue',
   priority: 75,
-  targetNpcIds: [1, 2, 3],
+  targetIds: [1, 2, 3],
 
   gating: {
     // Restrictions...
@@ -145,7 +166,7 @@ const customInteraction: InteractionDefinition = {
     // Effects...
   },
 
-  npcCanInitiate: false,
+  targetCanInitiate: false,
 };
 ```
 
@@ -159,11 +180,11 @@ const customInteraction: InteractionDefinition = {
 **Optional Fields:**
 - `icon` - Emoji or icon character
 - `priority` - Display order (0-100, higher = shown first)
-- `targetNpcIds` - Limit to specific NPCs
-- `targetRoles` - Limit to NPCs with specific roles
+- `targetIds` - Limit to specific NPCs
+- `targetRolesOrIds` - Limit to NPCs with specific roles
 - `gating` - Availability restrictions
 - `outcome` - What happens when executed
-- `npcCanInitiate` - Can NPCs trigger this?
+- `targetCanInitiate` - Can NPCs trigger this?
 
 ## Gating Rules
 
@@ -550,7 +571,7 @@ if (!result.valid) {
 const greeting = createFromTemplate('greeting', {
   id: 'marcus:greeting',
   label: 'Greet Marcus',
-  targetNpcIds: [5],
+  targetIds: [5],
   npcName: 'Marcus',
 });
 ```
@@ -576,7 +597,7 @@ const romanticInteractions = [
   createFromTemplate('flirt', {
     id: 'elena:flirt',
     label: 'Flirt with Elena',
-    targetNpcIds: [7],
+    targetIds: [7],
     npcName: 'Elena',
   }),
 
@@ -584,7 +605,7 @@ const romanticInteractions = [
   createFromTemplate('dateInvitation', {
     id: 'elena:date_invite',
     label: 'Ask Elena on a date',
-    targetNpcIds: [7],
+    targetIds: [7],
     npcName: 'Elena',
   }),
 ];
@@ -657,13 +678,13 @@ const customInteraction: InteractionDefinition = {
 
 ### NPC-Initiated Interactions
 
-Set `npcCanInitiate: true` to allow NPCs to trigger interactions:
+Set `targetCanInitiate: true` to allow NPCs to trigger interactions:
 
 ```typescript
 {
   id: 'npc_greeting',
   label: 'Greet Player',
-  npcCanInitiate: true,
+  targetCanInitiate: true,
   // ...
 }
 ```

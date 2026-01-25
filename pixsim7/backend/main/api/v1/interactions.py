@@ -21,17 +21,19 @@ from pixsim7.backend.main.domain.game.interactions.interactions import (
     ListInteractionsResponse,
     ExecuteInteractionRequest,
     ExecuteInteractionResponse,
+    InteractionParticipant,
     InteractionTarget,
-    InteractionContext,
     InteractionDefinition,
+    format_entity_ref,
 )
 from pixsim7.backend.main.domain.game.interactions.interaction_availability import (
     evaluate_interaction_availability,
     create_interaction_instance,
-    filter_interactions_by_target,
+    filter_interactions_by_participants,
 )
-from pixsim7.backend.main.services.links.template_resolver import (
-    resolve_template_to_runtime,
+from pixsim7.backend.main.domain.game.interactions.target_adapters import (
+    get_target_adapter,
+    resolve_target_id,
 )
 
 
@@ -101,58 +103,121 @@ async def load_interaction_definitions(
     return definitions
 
 
-def build_interaction_context(
-    session: Dict[str, Any],
-    target_kind: str,
-    target_id: int,
-    location_id: Optional[int] = None
-) -> InteractionContext:
+def build_participants_from_request(
+    target: Optional[InteractionTarget],
+    participants: Optional[List[InteractionParticipant]],
+    primary_role: Optional[str],
+) -> tuple[List[InteractionParticipant], str]:
+    participants_list = list(participants or [])
+
+    if target:
+        role = primary_role or "target"
+        existing = next((p for p in participants_list if p.role == role), None)
+        if existing:
+            mismatch = any([
+                existing.ref and target.ref and existing.ref != target.ref,
+                existing.kind and target.kind and existing.kind != target.kind,
+                existing.id is not None and target.id is not None and existing.id != target.id,
+                existing.template_kind and target.template_kind and existing.template_kind != target.template_kind,
+                existing.template_id and target.template_id and existing.template_id != target.template_id,
+                existing.link_id and target.link_id and existing.link_id != target.link_id,
+            ])
+            if mismatch:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Participant role '{role}' conflicts with target payload",
+                )
+        else:
+            participants_list.append(
+                InteractionParticipant(
+                    role=role,
+                    **target.model_dump()
+                )
+            )
+
+    if not participants_list:
+        raise HTTPException(status_code=400, detail="target or participants is required")
+
+    if not primary_role:
+        primary_role = "target" if target else participants_list[0].role
+
+    seen_roles = set()
+    for participant in participants_list:
+        if participant.role in seen_roles:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate participant role '{participant.role}'",
+            )
+        seen_roles.add(participant.role)
+
+    if primary_role not in seen_roles:
+        raise HTTPException(
+            status_code=400,
+            detail=f"primaryRole '{primary_role}' not found in participants",
+        )
+
+    return participants_list, primary_role
+
+
+async def resolve_participants_and_primary(
+    ctx: PluginContext,
+    target: Optional[InteractionTarget],
+    participants: Optional[List[InteractionParticipant]],
+    primary_role: Optional[str],
+    db: DatabaseSession,
+) -> tuple[Any, InteractionTarget, List[InteractionParticipant], Dict[str, Any], str]:
     """
-    Build interaction context from session state.
-
-    Args:
-        session: Session dict with flags and stats (from capability API)
-        target_kind: Target kind
-        target_id: Target ID
-        location_id: Optional location ID
-
-    Returns:
-        InteractionContext for gating checks
+    Resolve participant IDs and return the primary adapter/target.
     """
-    # Extract stats snapshot
-    stats_snapshot = session.get("stats") or {}
-
-    flags = session.get("flags", {})
-    current_activity = None
-    state_tags = []
-    mood_tags = []
-    last_used_at = {}
-    if target_kind == "npc":
-        npc_key = f"npc:{target_id}"
-        # Extract NPC state from session flags
-        npc_flags = flags.get("npcs", {}).get(npc_key, {})
-        if "state" in npc_flags:
-            state = npc_flags["state"]
-            current_activity = state.get("currentActivity") or state.get("activity")
-            state_tags = state.get("stateTags", [])
-
-        # Extract mood tags
-        mood_tags = npc_flags.get("moodTags", [])
-
-        # Extract last used timestamps for cooldowns
-        interaction_state = npc_flags.get("interactions", {})
-        last_used_at = interaction_state.get("lastUsedAt", {})
-
-    return InteractionContext(
-        locationId=location_id,
-        currentActivityId=current_activity,
-        stateTags=state_tags,
-        moodTags=mood_tags,
-        statsSnapshot=stats_snapshot or None,
-        worldTime=int(session.get("world_time", 0)),
-        sessionFlags=flags,
-        lastUsedAt=last_used_at
+    participants_list, primary_role = build_participants_from_request(
+        target,
+        participants,
+        primary_role,
     )
+
+    resolved: List[InteractionParticipant] = []
+    primary_adapter = None
+    primary_target = None
+    primary_data = None
+
+    for participant in participants_list:
+        try:
+            resolved_id = await resolve_target_id(participant, db)
+        except ValueError as exc:
+            status_code = 500 if str(exc) == "Database required for template resolution" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+        adapter = get_target_adapter(participant.kind)
+        if adapter:
+            resolved_id = adapter.normalize_target_id(resolved_id)
+            if participant.role == primary_role:
+                primary_adapter = adapter
+                primary_data = await adapter.load_target(ctx, resolved_id)
+                if not primary_data:
+                    raise HTTPException(status_code=404, detail=f"{participant.kind} not found")
+        elif participant.role == primary_role:
+            raise HTTPException(status_code=400, detail=f"Unsupported target kind: {participant.kind}")
+
+        resolved_participant = participant.model_copy(update={"id": resolved_id})
+        if not resolved_participant.ref and resolved_participant.kind and resolved_id is not None:
+            try:
+                resolved_participant = resolved_participant.model_copy(
+                    update={"ref": format_entity_ref(resolved_participant.kind, resolved_id)}
+                )
+            except ValueError:
+                pass
+        resolved.append(resolved_participant)
+        if participant.role == primary_role:
+            primary_target = resolved_participant
+
+    if not primary_adapter or not primary_target:
+        raise HTTPException(status_code=400, detail="Primary participant is not available")
+
+    primary_target_ref = InteractionTarget(
+        **primary_target.model_dump(exclude={"role"})
+    )
+
+    return primary_adapter, primary_target_ref, resolved, primary_data, primary_role
 
 
 def get_world_stat_definitions(world: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -209,8 +274,8 @@ async def list_interactions(
         "Listing interactions",
         world_id=req.world_id,
         session_id=req.session_id,
-        target_kind=target.kind,
-        target_id=target.id,
+        target_kind=target.kind if target else None,
+        target_id=target.id if target else None,
         include_unavailable=req.include_unavailable
     )
 
@@ -228,46 +293,32 @@ async def list_interactions(
 
     # Note: Authorization checked by capability API based on plugin permissions
 
-    if target.kind != "npc":
-        raise HTTPException(status_code=400, detail=f"Unsupported target kind: {target.kind}")
+    adapter, target, participants, target_data, primary_role = await resolve_participants_and_primary(
+        ctx,
+        target,
+        req.participants,
+        req.primary_role,
+        db,
+    )
     target_id = target.id
-    if target_id is None and target.template_kind and target.template_id:
-        if not db:
-            raise HTTPException(status_code=500, detail="Database required for template resolution")
-        target_id = await resolve_template_to_runtime(
-            db,
-            target.template_kind,
-            target.template_id,
-            link_id=target.link_id,
-        )
-    if target_id is None:
-        raise HTTPException(status_code=400, detail="target.id or template reference is required")
-    target = target.model_copy(update={"id": target_id})
-
-    # Load NPC via capability API
-    npc = await ctx.world.get_npc(target_id)
-    if not npc:
-        ctx.log.warning("NPC not found", npc_id=target_id)
-        raise HTTPException(status_code=404, detail="NPC not found")
 
     # Load interaction definitions
     ctx.log.debug("Loading interaction definitions", world_id=req.world_id, target_id=target_id)
-    definitions = await load_interaction_definitions(world, npc)
+    definitions = await load_interaction_definitions(world, target_data)
 
-    # Get NPC roles (from world NPC mappings)
-    target_roles = []
-    world_meta = world.get("meta") or {}
-    if "npcs" in world_meta:
-        npc_mappings = world_meta["npcs"]
-        for role, mapped_id in npc_mappings.items():
-            if mapped_id == target_id:
-                target_roles.append(role)
+    # Get target roles (from world mappings)
+    target_roles = adapter.get_target_roles(world, target_id)
 
     # Filter by target
-    applicable = filter_interactions_by_target(definitions, target.kind, target_id, target_roles)
+    applicable = filter_interactions_by_participants(
+        definitions,
+        participants,
+        primary_role,
+        target_roles,
+    )
 
     # Build context
-    context = build_interaction_context(session, target.kind, target_id, req.location_id)
+    context = adapter.build_context(session, target_id, req.location_id, participants, primary_role)
 
     # Get world stat definitions for gating comparisons
     stat_definitions = get_world_stat_definitions(world)
@@ -282,7 +333,8 @@ async def list_interactions(
             context,
             stat_definitions,
             target,
-            current_time
+            current_time,
+            target_adapter=adapter,
         )
 
         # Skip unavailable interactions unless explicitly requested
@@ -292,6 +344,8 @@ async def list_interactions(
         instance = create_interaction_instance(
             defn,
             target,
+            participants,
+            primary_role,
             req.world_id,
             req.session_id,
             context,
@@ -315,6 +369,8 @@ async def list_interactions(
     return ListInteractionsResponse(
         interactions=instances,
         target=target,
+        participants=participants,
+        primaryRole=primary_role,
         worldId=req.world_id,
         sessionId=req.session_id,
         timestamp=current_time
@@ -354,8 +410,8 @@ async def execute_interaction(
         "Executing interaction",
         world_id=req.world_id,
         session_id=req.session_id,
-        target_kind=target.kind,
-        target_id=target.id,
+        target_kind=target.kind if target else None,
+        target_id=target.id if target else None,
         interaction_id=req.interaction_id
     )
 
@@ -373,31 +429,18 @@ async def execute_interaction(
 
     # Note: Authorization checked by capability API based on plugin permissions
 
-    if target.kind != "npc":
-        raise HTTPException(status_code=400, detail=f"Unsupported target kind: {target.kind}")
+    adapter, target, participants, target_data, primary_role = await resolve_participants_and_primary(
+        ctx,
+        target,
+        req.participants,
+        req.primary_role,
+        db,
+    )
     target_id = target.id
-    if target_id is None and target.template_kind and target.template_id:
-        if not db:
-            raise HTTPException(status_code=500, detail="Database required for template resolution")
-        target_id = await resolve_template_to_runtime(
-            db,
-            target.template_kind,
-            target.template_id,
-            link_id=target.link_id,
-        )
-    if target_id is None:
-        raise HTTPException(status_code=400, detail="target.id or template reference is required")
-    target = target.model_copy(update={"id": target_id})
-
-    # Load NPC via capability API
-    npc = await ctx.world.get_npc(target_id)
-    if not npc:
-        ctx.log.warning("NPC not found for interaction execution", npc_id=target_id)
-        raise HTTPException(status_code=404, detail="NPC not found")
 
     # Load interaction definitions
     ctx.log.debug("Loading interaction definitions for execution")
-    definitions = await load_interaction_definitions(world, npc)
+    definitions = await load_interaction_definitions(world, target_data)
 
     # Find the requested interaction
     definition = next((d for d in definitions if d.id == req.interaction_id), None)
@@ -410,11 +453,12 @@ async def execute_interaction(
         raise HTTPException(status_code=404, detail=f"Interaction {req.interaction_id} not found")
 
     # Build context for availability check
-    context = build_interaction_context(
+    context = adapter.build_context(
         session,
-        target.kind,
         target_id,
         req.context.get("locationId") if req.context else None,
+        participants,
+        primary_role,
     )
 
     # Get world stat definitions for gating comparisons
@@ -427,7 +471,8 @@ async def execute_interaction(
         context,
         stat_definitions,
         target,
-        int(time.time())
+        int(time.time()),
+        target_adapter=adapter,
     )
 
     if not available:
@@ -449,6 +494,8 @@ async def execute_interaction(
         session_id=req.session_id,
         target_kind=target.kind,
         target_id=target_id,
+        participants=participants,
+        primary_role=primary_role,
         interaction_definition=definition,
         player_input=req.player_input,
         context=req.context,
