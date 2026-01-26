@@ -35,7 +35,8 @@
       ],
       "js": [
         "emojis.js",
-        "image-badges.js"
+        "image-badges.js",
+        "content/image-extractor.js"
       ],
       "run_at": "document_idle",
       "all_frames": true

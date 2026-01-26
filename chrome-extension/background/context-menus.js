@@ -51,6 +51,24 @@ async function setupContextMenus() {
       chrome.contextMenus.create({ id: 'pixsim7-separator-2', type: 'separator', contexts: ['video', 'image'] });
       chrome.contextMenus.create({ id: 'pixsim7-open-player', title: '🎬 Open in Video Player', contexts: ['video'] });
       chrome.contextMenus.create({ id: 'pixsim7-open-player-image', title: '🖼️ Open in Video Player', contexts: ['image'] });
+
+      // Universal image extraction menu (for sites where images aren't directly accessible)
+      // Appears on page/link context - useful when the image context doesn't trigger
+      chrome.contextMenus.create({
+        id: 'pixsim7-extract-separator',
+        type: 'separator',
+        contexts: ['page', 'link']
+      });
+      chrome.contextMenus.create({
+        id: 'pixsim7-extract-open-player',
+        title: '🔍 Extract & Open Image in Player',
+        contexts: ['page', 'link']
+      });
+      chrome.contextMenus.create({
+        id: 'pixsim7-extract-quick-generate',
+        title: '🔍 Extract & Quick Generate Video',
+        contexts: ['page', 'link']
+      });
     });
   } catch (e) {
     console.warn('Context menu setup failed:', e);
@@ -74,9 +92,60 @@ function initContextMenuListeners() {
   // Handle context menu clicks
   chrome.contextMenus && chrome.contextMenus.onClicked && chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
-      if (!info || !info.srcUrl) return;
       const settings = await getSettings();
       let providerId = settings.defaultUploadProvider || 'pixverse';
+
+      // Handle image extraction menu items (for sites with complex image loading)
+      if (info.menuItemId === 'pixsim7-extract-open-player' || info.menuItemId === 'pixsim7-extract-quick-generate') {
+        if (!tab || typeof tab.id !== 'number') {
+          console.warn('Cannot query content script: missing tab id');
+          return;
+        }
+
+        // Query the content script for the extracted image URL
+        let imageUrl = info.srcUrl; // Fallback to srcUrl if available
+        try {
+          const response = await chrome.tabs.sendMessage(tab.id, { action: 'getExtractedImageUrl' });
+          if (response?.imageUrl) {
+            imageUrl = response.imageUrl;
+          }
+        } catch (e) {
+          console.warn('Failed to query image extractor content script:', e);
+        }
+
+        if (!imageUrl) {
+          console.warn('No image URL found');
+          // Try to show a notification to the user
+          if (chrome.scripting) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => alert('Could not find image. Try right-clicking closer to or directly on an image.'),
+            });
+          }
+          return;
+        }
+
+        if (info.menuItemId === 'pixsim7-extract-open-player') {
+          const playerUrl = chrome.runtime.getURL('player.html') + '?url=' + encodeURIComponent(imageUrl);
+          chrome.windows.create({
+            url: playerUrl,
+            type: 'popup',
+            width: 900,
+            height: 650,
+          });
+        } else if (info.menuItemId === 'pixsim7-extract-quick-generate') {
+          if (chrome.scripting && chrome.scripting.executeScript) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: showQuickGenerateDialog,
+              args: [imageUrl, providerId]
+            });
+          }
+        }
+        return;
+      }
+
+      if (!info.srcUrl) return;
 
       // Handle open in video player
       if (info.menuItemId === 'pixsim7-open-player' || info.menuItemId === 'pixsim7-open-player-image') {
