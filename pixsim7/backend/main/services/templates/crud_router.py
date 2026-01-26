@@ -412,6 +412,33 @@ def _register_nested_entity_routes(
                 raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
             return DeleteResponse(success=True, message=f"{_nested.kind} deleted")
 
+    # Replace all endpoint - enabled when both create and delete are enabled
+    if nested.enable_create and nested.enable_delete:
+        @router.put(
+            base_path,
+            summary=f"Replace all {nested.kind} under {spec.kind}",
+            description=f"Atomically replace all {nested.kind} entities. Deletes existing and creates new ones.",
+            tags=spec.tags,
+        )
+        async def replace_all_nested(
+            parent_id: str,
+            data: Dict[str, Any],
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+
+            # Expect data in format {"items": [...]} or just a list
+            items = data.get("items", data) if isinstance(data, dict) else data
+            if not isinstance(items, list):
+                items = [items] if items else []
+
+            created = await service.replace_all(items)
+            return {"items": created, "total": len(created)}
+
 
 def _register_crud_routes(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register all enabled CRUD routes for a spec."""

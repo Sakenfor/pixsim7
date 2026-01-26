@@ -2,8 +2,9 @@
 Default Template CRUD Specs - Registration for core template types.
 
 Registers CRUD specifications for:
-- LocationTemplate
-- ItemTemplate
+- LocationTemplate (authoring)
+- ItemTemplate (authoring)
+- GameLocation (runtime) with nested hotspots
 
 Called during application startup to populate the TemplateCRUDRegistry.
 
@@ -17,8 +18,10 @@ from __future__ import annotations
 
 from .crud_registry import (
     TemplateCRUDSpec,
+    NestedEntitySpec,
     get_template_crud_registry,
     parse_uuid,
+    parse_int,
 )
 
 
@@ -89,6 +92,56 @@ def register_default_template_specs() -> None:
         # Metadata
         tags=["templates", "items"],
         description="Item template definitions for reusable item configurations.",
+    ))
+
+    # ==========================================================================
+    # GameLocation (runtime entity with nested hotspots)
+    # ==========================================================================
+    from pixsim7.backend.main.domain.game.core.models import GameLocation, GameHotspot
+
+    registry.register_spec(TemplateCRUDSpec(
+        kind="gameLocation",
+        model=GameLocation,
+        url_prefix="locations",
+
+        # ID configuration - integer PK
+        id_field="id",
+        id_parser=parse_int,
+        unique_field="name",
+
+        # Behavior - no soft delete (no is_active field)
+        supports_soft_delete=False,
+        supports_upsert=False,
+
+        # Query configuration
+        default_limit=50,
+        max_limit=200,
+        list_order_by="created_at",
+        list_order_desc=True,
+        filterable_fields=["name", "asset_id"],
+        search_fields=["name"],
+
+        # Nested entities (PUT /{id}/hotspots for replace_all is auto-generated)
+        nested_entities=[
+            NestedEntitySpec(
+                kind="hotspot",
+                parent_field="location_id",
+                url_suffix="hotspots",
+                model=GameHotspot,
+                id_field="id",
+                id_parser=parse_int,
+                enable_list=True,
+                enable_get=True,
+                enable_create=True,
+                enable_update=True,
+                enable_delete=True,
+                cascade_delete=True,
+            ),
+        ],
+
+        # Metadata
+        tags=["runtime", "locations"],
+        description="Runtime game locations with hotspots for interactions.",
     ))
 
 
