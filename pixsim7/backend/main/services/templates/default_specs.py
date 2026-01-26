@@ -5,6 +5,10 @@ Registers CRUD specifications for:
 - LocationTemplate (authoring)
 - ItemTemplate (authoring)
 - GameLocation (runtime) with nested hotspots
+- GameScene (runtime) with nested nodes and edges
+- GameNPC (runtime) with nested schedules and expressions
+- GameWorld (runtime) with owner scoping
+- GameItem (runtime)
 
 Called during application startup to populate the TemplateCRUDRegistry.
 
@@ -142,6 +146,201 @@ def register_default_template_specs() -> None:
         # Metadata
         tags=["runtime", "locations"],
         description="Runtime game locations with hotspots for interactions.",
+    ))
+
+    # ==========================================================================
+    # GameScene (with nested nodes and edges)
+    # ==========================================================================
+    from pixsim7.backend.main.domain.game.core.models import (
+        GameScene, GameSceneNode, GameSceneEdge,
+        GameNPC, NPCSchedule, NpcExpression,
+        GameWorld, GameWorldState,
+        GameItem,
+    )
+
+    registry.register_spec(TemplateCRUDSpec(
+        kind="gameScene",
+        model=GameScene,
+        url_prefix="scenes",
+
+        # ID configuration - integer PK
+        id_field="id",
+        id_parser=parse_int,
+        unique_field="title",
+
+        # Behavior - no soft delete
+        supports_soft_delete=False,
+        supports_upsert=False,
+
+        # Query configuration
+        default_limit=50,
+        max_limit=200,
+        list_order_by="created_at",
+        list_order_desc=True,
+        filterable_fields=["title", "entry_node_id"],
+        search_fields=["title", "description"],
+
+        # Nested entities
+        nested_entities=[
+            NestedEntitySpec(
+                kind="node",
+                parent_field="scene_id",
+                url_suffix="nodes",
+                model=GameSceneNode,
+                id_field="id",
+                id_parser=parse_int,
+                enable_list=True,
+                enable_get=True,
+                enable_create=True,
+                enable_update=True,
+                enable_delete=True,
+                cascade_delete=True,
+            ),
+            NestedEntitySpec(
+                kind="edge",
+                parent_field="scene_id",
+                url_suffix="edges",
+                model=GameSceneEdge,
+                id_field="id",
+                id_parser=parse_int,
+                enable_list=True,
+                enable_get=True,
+                enable_create=True,
+                enable_update=True,
+                enable_delete=True,
+                cascade_delete=True,
+            ),
+        ],
+
+        # Metadata
+        tags=["runtime", "scenes"],
+        description="Game scenes with nodes and edges for branching narratives.",
+    ))
+
+    # ==========================================================================
+    # GameNPC (with nested schedules and expressions)
+    # ==========================================================================
+    registry.register_spec(TemplateCRUDSpec(
+        kind="gameNPC",
+        model=GameNPC,
+        url_prefix="npcs",
+
+        # ID configuration - integer PK
+        id_field="id",
+        id_parser=parse_int,
+        unique_field="name",
+
+        # Behavior - no soft delete
+        supports_soft_delete=False,
+        supports_upsert=False,
+
+        # Query configuration
+        default_limit=50,
+        max_limit=200,
+        list_order_by="id",
+        list_order_desc=False,
+        filterable_fields=["name", "home_location_id"],
+        search_fields=["name"],
+
+        # Nested entities
+        nested_entities=[
+            NestedEntitySpec(
+                kind="schedule",
+                parent_field="npc_id",
+                url_suffix="schedules",
+                model=NPCSchedule,
+                id_field="id",
+                id_parser=parse_int,
+                enable_list=True,
+                enable_get=True,
+                enable_create=True,
+                enable_update=True,
+                enable_delete=True,
+                cascade_delete=True,
+            ),
+            NestedEntitySpec(
+                kind="expression",
+                parent_field="npc_id",
+                url_suffix="expressions",
+                model=NpcExpression,
+                id_field="id",
+                id_parser=parse_int,
+                enable_list=True,
+                enable_get=True,
+                enable_create=True,
+                enable_update=True,
+                enable_delete=True,
+                cascade_delete=True,
+            ),
+        ],
+
+        # Metadata
+        tags=["runtime", "npcs"],
+        description="Game NPCs with schedules and expressions.",
+    ))
+
+    # ==========================================================================
+    # GameWorld (with nested world state)
+    # ==========================================================================
+    registry.register_spec(TemplateCRUDSpec(
+        kind="gameWorld",
+        model=GameWorld,
+        url_prefix="worlds",
+
+        # ID configuration - integer PK
+        id_field="id",
+        id_parser=parse_int,
+        unique_field="name",
+
+        # Behavior - no soft delete
+        supports_soft_delete=False,
+        supports_upsert=False,
+
+        # Ownership - scope to user
+        scope_to_owner=True,
+        owner_field="owner_user_id",
+
+        # Query configuration
+        default_limit=50,
+        max_limit=200,
+        list_order_by="created_at",
+        list_order_desc=True,
+        filterable_fields=["name", "owner_user_id"],
+        search_fields=["name"],
+
+        # Metadata
+        tags=["runtime", "worlds"],
+        description="Game worlds owned by users.",
+    ))
+
+    # ==========================================================================
+    # GameItem (runtime items)
+    # ==========================================================================
+    registry.register_spec(TemplateCRUDSpec(
+        kind="gameItem",
+        model=GameItem,
+        url_prefix="items",
+
+        # ID configuration - integer PK
+        id_field="id",
+        id_parser=parse_int,
+        unique_field="name",
+
+        # Behavior - no soft delete
+        supports_soft_delete=False,
+        supports_upsert=False,
+
+        # Query configuration
+        default_limit=50,
+        max_limit=200,
+        list_order_by="created_at",
+        list_order_desc=True,
+        filterable_fields=["name"],
+        search_fields=["name", "description"],
+
+        # Metadata
+        tags=["runtime", "items"],
+        description="Runtime game items.",
     ))
 
 
