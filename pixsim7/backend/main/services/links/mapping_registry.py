@@ -8,10 +8,11 @@ Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
 Usage:
     # Register a mapping
     registry = get_mapping_registry()
-    registry.register('characterInstance->npc', NPC_FIELD_MAPPING)
+    from pixsim7.backend.main.services.links.link_types import link_type_id
+    registry.register(link_type_id('characterInstance', 'npc'), NPC_FIELD_MAPPING)
 
     # Retrieve a mapping
-    mapping = registry.get('characterInstance->npc')
+    mapping = registry.get(link_type_id('characterInstance', 'npc'))
 """
 from typing import Dict, Optional
 
@@ -37,7 +38,7 @@ class MappingRegistry(SimpleRegistry[str, Dict[str, FieldMapping]]):
             field_mappings: Dictionary of field mappings defining sync behavior
 
         Example:
-            registry.register('characterInstance->npc', {
+            registry.register(link_type_id('characterInstance', 'npc'), {
                 'name': FieldMapping(...),
                 'personality.openness': FieldMapping(...)
             })

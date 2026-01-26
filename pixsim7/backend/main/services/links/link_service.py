@@ -12,7 +12,7 @@ Usage:
         template_id='abc-123',
         runtime_kind='npc',
         runtime_id=456,
-        mapping_id='characterInstance->npc'
+        mapping_id=link_type_id('characterInstance', 'npc')
     )
 
     # Get links for a template
@@ -26,6 +26,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from pixsim7.backend.main.domain.links import ObjectLink
+from pixsim7.backend.main.services.links.link_types import link_type_id
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 from pixsim7.backend.main.services.links.activation import (
     filter_active_links,
@@ -88,7 +89,7 @@ class LinkService:
         # Auto-generate mapping_id if not provided
         # Format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
         if not mapping_id:
-            mapping_id = f"{template_kind}->{runtime_kind}"
+            mapping_id = link_type_id(template_kind, runtime_kind)
 
         # Validate mapping exists
         if not self.registry.has_mapping(mapping_id):

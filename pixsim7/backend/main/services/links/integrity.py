@@ -21,8 +21,7 @@ Usage:
     # Get integrity report
     report = await service.get_integrity_report()
 """
-from typing import List, Dict, Any, Optional, Set
-from uuid import UUID
+from typing import List, Dict, Any, Optional, Set, Tuple
 from datetime import datetime
 import logging
 
@@ -30,9 +29,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func, and_
 
 from pixsim7.backend.main.domain.links import ObjectLink
-from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
-from pixsim7.backend.main.domain.game.entities.item_template import ItemTemplate
-from pixsim7.backend.main.domain.game.core.models import GameNPC, GameItem
+from pixsim7.backend.main.services.links.link_types import (
+    get_link_type_registry,
+    LinkTypeSpec,
+    register_default_link_types,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +79,7 @@ class LinkIntegrityService:
             db: Database session for integrity operations
         """
         self.db = db
+        register_default_link_types()
 
     async def find_orphaned_links(
         self,
@@ -113,156 +115,115 @@ class LinkIntegrityService:
         result = await self.db.execute(query)
         links = list(result.scalars().all())
 
-        # Check characterInstance -> npc links
-        character_instance_links = [
-            link for link in links
-            if link.template_kind == 'characterInstance' and link.runtime_kind == 'npc'
-        ]
+        for spec in get_link_type_registry().list_specs():
+            if template_kind and spec.template_kind != template_kind:
+                continue
+            if runtime_kind and spec.runtime_kind != runtime_kind:
+                continue
 
-        if character_instance_links:
-            orphaned.extend(
-                await self._check_character_npc_links(character_instance_links)
-            )
+            spec_links = [
+                link for link in links
+                if link.template_kind == spec.template_kind and link.runtime_kind == spec.runtime_kind
+            ]
 
-        # Check itemTemplate -> item links
-        item_links = [
-            link for link in links
-            if link.template_kind == 'itemTemplate' and link.runtime_kind == 'item'
-        ]
-
-        if item_links:
-            orphaned.extend(
-                await self._check_item_links(item_links)
-            )
-
-        # TODO: Add checks for other link types as they are implemented
-        # - propTemplate -> prop
+            if spec_links:
+                orphaned.extend(await self._check_link_type(spec_links, spec))
 
         return orphaned
 
-    async def _check_character_npc_links(
+    def _parse_ids(
         self,
-        links: List[ObjectLink],
-    ) -> List[OrphanedLink]:
-        """Check characterInstance->npc links for orphaned references
-
-        Args:
-            links: Links to check
-
-        Returns:
-            List of orphaned links
-        """
-        orphaned: List[OrphanedLink] = []
-
-        # Extract IDs to check
-        instance_ids: Set[str] = {link.template_id for link in links}
-        npc_ids: Set[int] = {link.runtime_id for link in links}
-
-        # Batch check CharacterInstances
-        # Note: Include inactive instances to detect soft-deleted entities
-        existing_instances: Set[str] = set()
-        active_instances: Set[str] = set()
-
-        if instance_ids:
+        raw_ids: Set[Any],
+        parser: Any,
+        label: str,
+    ) -> List[Any]:
+        parsed: List[Any] = []
+        for raw_id in raw_ids:
             try:
-                uuids = [UUID(id_str) for id_str in instance_ids]
-                result = await self.db.execute(
-                    select(CharacterInstance.id, CharacterInstance.is_active)
-                    .where(CharacterInstance.id.in_(uuids))
-                )
-                for row in result.all():
-                    existing_instances.add(str(row[0]))
-                    if row[1]:  # is_active
-                        active_instances.add(str(row[0]))
-            except Exception as e:
-                logger.warning(f"Error checking CharacterInstances: {e}")
+                parsed.append(parser(raw_id))
+            except Exception as exc:
+                logger.warning("Invalid %s id format: %s (%s)", label, raw_id, exc)
+        return parsed
 
-        # Batch check GameNPCs
-        existing_npcs: Set[int] = set()
-        if npc_ids:
+    async def _load_template_ids(
+        self,
+        spec: LinkTypeSpec,
+        template_ids: Set[str],
+    ) -> Tuple[Set[str], Optional[Set[str]]]:
+        existing: Set[str] = set()
+        active: Optional[Set[str]] = set() if spec.template_active_attr else None
+
+        parsed_ids = self._parse_ids(template_ids, spec.template_id_parser, spec.template_label)
+        if not parsed_ids:
+            return existing, active
+
+        id_column = getattr(spec.template_model, spec.template_id_attr)
+        if spec.template_active_attr:
+            active_column = getattr(spec.template_model, spec.template_active_attr)
             result = await self.db.execute(
-                select(GameNPC.id).where(GameNPC.id.in_(list(npc_ids)))
+                select(id_column, active_column).where(id_column.in_(parsed_ids))
             )
-            existing_npcs = {row[0] for row in result.all()}
+            for row in result.all():
+                existing.add(str(row[0]))
+                if row[1] and active is not None:
+                    active.add(str(row[0]))
+        else:
+            result = await self.db.execute(
+                select(id_column).where(id_column.in_(parsed_ids))
+            )
+            existing = {str(row[0]) for row in result.all()}
 
-        # Find orphaned links
-        for link in links:
-            # Check template side
-            if link.template_id not in existing_instances:
-                orphaned.append(OrphanedLink(
-                    link=link,
-                    reason="CharacterInstance does not exist (hard deleted)",
-                    missing_entity_type="template",
-                ))
-            elif link.template_id not in active_instances:
-                orphaned.append(OrphanedLink(
-                    link=link,
-                    reason="CharacterInstance is inactive (soft deleted)",
-                    missing_entity_type="template",
-                ))
+        return existing, active
 
-            # Check runtime side
-            if link.runtime_id not in existing_npcs:
-                orphaned.append(OrphanedLink(
-                    link=link,
-                    reason="GameNPC does not exist",
-                    missing_entity_type="runtime",
-                ))
+    async def _load_runtime_ids(
+        self,
+        spec: LinkTypeSpec,
+        runtime_ids: Set[int],
+    ) -> Set[int]:
+        existing: Set[int] = set()
+        parsed_ids = self._parse_ids(runtime_ids, spec.runtime_id_parser, spec.runtime_label)
+        if not parsed_ids:
+            return existing
 
-        return orphaned
+        id_column = getattr(spec.runtime_model, spec.runtime_id_attr)
+        result = await self.db.execute(
+            select(id_column).where(id_column.in_(parsed_ids))
+        )
+        existing = {int(row[0]) for row in result.all()}
+        return existing
 
-    async def _check_item_links(
+    async def _check_link_type(
         self,
         links: List[ObjectLink],
+        spec: LinkTypeSpec,
     ) -> List[OrphanedLink]:
-        """Check itemTemplate->item links for orphaned references."""
+        """Check a link type spec for orphaned references."""
         orphaned: List[OrphanedLink] = []
 
         template_ids: Set[str] = {link.template_id for link in links}
-        item_ids: Set[int] = {link.runtime_id for link in links}
+        runtime_ids: Set[int] = {link.runtime_id for link in links}
 
-        existing_templates: Set[str] = set()
-        active_templates: Set[str] = set()
-
-        if template_ids:
-            try:
-                uuids = [UUID(id_str) for id_str in template_ids]
-                result = await self.db.execute(
-                    select(ItemTemplate.id, ItemTemplate.is_active)
-                    .where(ItemTemplate.id.in_(uuids))
-                )
-                for row in result.all():
-                    existing_templates.add(str(row[0]))
-                    if row[1]:
-                        active_templates.add(str(row[0]))
-            except Exception as e:
-                logger.warning(f"Error checking ItemTemplates: {e}")
-
-        existing_items: Set[int] = set()
-        if item_ids:
-            result = await self.db.execute(
-                select(GameItem.id).where(GameItem.id.in_(list(item_ids)))
-            )
-            existing_items = {row[0] for row in result.all()}
+        existing_templates, active_templates = await self._load_template_ids(spec, template_ids)
+        existing_runtime = await self._load_runtime_ids(spec, runtime_ids)
 
         for link in links:
             if link.template_id not in existing_templates:
                 orphaned.append(OrphanedLink(
                     link=link,
-                    reason="ItemTemplate does not exist (hard deleted)",
+                    reason=f"{spec.template_label} does not exist (hard deleted)",
                     missing_entity_type="template",
                 ))
-            elif link.template_id not in active_templates:
+            elif active_templates is not None and link.template_id not in active_templates:
                 orphaned.append(OrphanedLink(
                     link=link,
-                    reason="ItemTemplate is inactive (soft deleted)",
+                    reason=f"{spec.template_label} is inactive (soft deleted)",
                     missing_entity_type="template",
                 ))
 
-            if link.runtime_id not in existing_items:
+            if link.runtime_id not in existing_runtime:
                 orphaned.append(OrphanedLink(
                     link=link,
-                    reason="GameItem does not exist",
+                    reason=f"{spec.runtime_label} does not exist",
                     missing_entity_type="runtime",
                 ))
 
@@ -395,37 +356,36 @@ class LinkIntegrityService:
 
         issues: List[str] = []
 
-        # Check based on link type
-        if link.template_kind == 'characterInstance' and link.runtime_kind == 'npc':
-            # Check CharacterInstance
+        spec = get_link_type_registry().get_by_kinds(
+            link.template_kind,
+            link.runtime_kind,
+        )
+        if spec:
+            template_id = None
             try:
-                instance_uuid = UUID(link.template_id)
-                instance = await self.db.get(CharacterInstance, instance_uuid)
-                if not instance:
-                    issues.append("CharacterInstance not found (hard deleted)")
-                elif not instance.is_active:
-                    issues.append("CharacterInstance is inactive (soft deleted)")
-            except ValueError:
+                template_id = spec.template_id_parser(link.template_id)
+            except Exception:
                 issues.append(f"Invalid template_id format: {link.template_id}")
 
-            # Check GameNPC
-            npc = await self.db.get(GameNPC, link.runtime_id)
-            if not npc:
-                issues.append("GameNPC not found")
-        elif link.template_kind == 'itemTemplate' and link.runtime_kind == 'item':
-            try:
-                template_uuid = UUID(link.template_id)
-                template = await self.db.get(ItemTemplate, template_uuid)
+            if template_id is not None:
+                template = await self.db.get(spec.template_model, template_id)
                 if not template:
-                    issues.append("ItemTemplate not found (hard deleted)")
-                elif not template.is_active:
-                    issues.append("ItemTemplate is inactive (soft deleted)")
-            except ValueError:
-                issues.append(f"Invalid template_id format: {link.template_id}")
+                    issues.append(f"{spec.template_label} not found (hard deleted)")
+                elif spec.template_active_attr:
+                    is_active = getattr(template, spec.template_active_attr, True)
+                    if not is_active:
+                        issues.append(f"{spec.template_label} is inactive (soft deleted)")
 
-            item = await self.db.get(GameItem, link.runtime_id)
-            if not item:
-                issues.append("GameItem not found")
+            runtime_id = None
+            try:
+                runtime_id = spec.runtime_id_parser(link.runtime_id)
+            except Exception:
+                issues.append(f"Invalid runtime_id format: {link.runtime_id}")
+
+            if runtime_id is not None:
+                runtime = await self.db.get(spec.runtime_model, runtime_id)
+                if not runtime:
+                    issues.append(f"{spec.runtime_label} not found")
 
         return {
             "valid": len(issues) == 0,

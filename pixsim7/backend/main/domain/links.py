@@ -37,12 +37,14 @@ class ObjectLink(SQLModel, table=True):
     Mapping ID format: "templateKind->runtimeKind" (e.g., "characterInstance->npc")
 
     Example:
+        from pixsim7.backend.main.services.links.link_types import link_type_id
+
         ObjectLink(
             template_kind='characterInstance',
             template_id='abc-123-uuid',
             runtime_kind='npc',
             runtime_id=456,
-            mapping_id='characterInstance->npc',
+            mapping_id=link_type_id('characterInstance', 'npc'),
             priority=10,
             activation_conditions={'location.zone': 'downtown'}
         )

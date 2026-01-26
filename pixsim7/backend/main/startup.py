@@ -380,6 +380,10 @@ def setup_link_system() -> dict:
         register_default_loaders,
         get_entity_loader_registry
     )
+    from pixsim7.backend.main.services.links.link_types import (
+        register_default_link_types,
+        get_link_type_registry,
+    )
     from pixsim7.backend.main.services.links.default_mappings import (
         register_default_mappings
     )
@@ -390,6 +394,10 @@ def setup_link_system() -> dict:
         register_default_ref_mappings,
         get_entity_ref_registry
     )
+
+    # Register link types (template/runtime pairs)
+    register_default_link_types()
+    link_type_count = len(get_link_type_registry().list_specs())
 
     # Register entity loaders
     register_default_loaders()
@@ -405,12 +413,14 @@ def setup_link_system() -> dict:
 
     logger.info(
         "link_system_initialized",
+        link_types=link_type_count,
         loaders=loader_count,
         mappings=mapping_count,
         ref_mappings=ref_mapping_count
     )
 
     return {
+        'link_types': link_type_count,
         'loaders': loader_count,
         'mappings': mapping_count,
         'ref_mappings': ref_mapping_count

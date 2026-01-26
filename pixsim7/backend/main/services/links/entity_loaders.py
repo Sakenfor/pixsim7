@@ -17,7 +17,7 @@ Usage:
     # Load an entity
     entity = await registry.load('characterInstance', 'abc-123', db)
 """
-from typing import Any, Callable, Awaitable, Dict
+from typing import Any, Callable, Awaitable, Dict, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -131,6 +131,43 @@ def get_entity_loader_registry() -> EntityLoaderRegistry:
     return _entity_loader_registry
 
 
+def _register_model_loader(
+    registry: EntityLoaderRegistry,
+    entity_kind: str,
+    model: type,
+    id_parser: Callable[[Any], Any],
+) -> None:
+    async def load_entity(entity_id: Any, db: AsyncSession):
+        return await db.get(model, id_parser(entity_id))
+
+    registry.register_loader(entity_kind, load_entity)
+
+
+def register_link_type_loaders(
+    registry: Optional[EntityLoaderRegistry] = None,
+) -> None:
+    """Register entity loaders based on link type specs."""
+    from pixsim7.backend.main.services.links.link_types import get_link_type_registry
+
+    registry = registry or get_entity_loader_registry()
+
+    for spec in get_link_type_registry().list_specs():
+        if not registry.has_loader(spec.template_kind):
+            _register_model_loader(
+                registry,
+                spec.template_kind,
+                spec.template_model,
+                spec.template_id_parser,
+            )
+        if not registry.has_loader(spec.runtime_kind):
+            _register_model_loader(
+                registry,
+                spec.runtime_kind,
+                spec.runtime_model,
+                spec.runtime_id_parser,
+            )
+
+
 def register_default_loaders():
     """Register default entity loaders for standard entity types
 
@@ -139,46 +176,15 @@ def register_default_loaders():
 
     Domain-specific loaders can be registered in their respective modules.
     """
-    from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
-    from pixsim7.backend.main.domain.game.entities.item_template import ItemTemplate
-    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameLocation, GameScene, GameItem
+    from pixsim7.backend.main.domain.game.core.models import GameLocation, GameScene
     from pixsim7.backend.main.domain.assets.models import Asset
 
     registry = get_entity_loader_registry()
 
-    # Character instance loader
-    async def load_character_instance(instance_id: str, db: AsyncSession):
-        """Load CharacterInstance by UUID"""
-        from uuid import UUID
-        if isinstance(instance_id, str):
-            instance_id = UUID(instance_id)
-        return await db.get(CharacterInstance, instance_id)
-
-    registry.register_loader('characterInstance', load_character_instance)
-
-    # GameNPC loader
-    async def load_npc(npc_id: int, db: AsyncSession):
-        """Load GameNPC by ID"""
-        return await db.get(GameNPC, npc_id)
-
-    registry.register_loader('npc', load_npc)
-
-    # ItemTemplate loader
-    async def load_item_template(template_id: str, db: AsyncSession):
-        """Load ItemTemplate by UUID"""
-        from uuid import UUID
-        if isinstance(template_id, str):
-            template_id = UUID(template_id)
-        return await db.get(ItemTemplate, template_id)
-
-    registry.register_loader('itemTemplate', load_item_template)
-
-    # GameItem loader
-    async def load_item(item_id: int, db: AsyncSession):
-        """Load GameItem by ID"""
-        return await db.get(GameItem, item_id)
-
-    registry.register_loader('item', load_item)
+    # Link type loaders (template/runtime pairs)
+    from pixsim7.backend.main.services.links.link_types import register_default_link_types
+    register_default_link_types()
+    register_link_type_loaders(registry)
 
     # GameLocation loader
     async def load_location(location_id: int, db: AsyncSession):

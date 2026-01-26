@@ -1,6 +1,7 @@
 """Tests for ObjectLinkResolver"""
 import pytest
 from uuid import uuid4
+from pixsim7.backend.main.services.links.link_types import link_type_id
 from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver, EntityRef
 
 
@@ -205,7 +206,7 @@ def sample_object_link(db_session, sample_character_instance, sample_npc):
         runtime_id=sample_npc.id,
         sync_enabled=True,
         sync_direction='bidirectional',
-        mapping_id='characterInstance->npc',
+        mapping_id=link_type_id('characterInstance', 'npc'),
         priority=10
     )
 
@@ -230,7 +231,7 @@ def sample_object_link_disabled(db_session, sample_character_instance, sample_np
         runtime_id=sample_npc.id,
         sync_enabled=False,  # Disabled
         sync_direction='bidirectional',
-        mapping_id='characterInstance->npc',
+        mapping_id=link_type_id('characterInstance', 'npc'),
         priority=10
     )
 

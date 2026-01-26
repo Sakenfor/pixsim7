@@ -89,10 +89,11 @@ snapshot = await service.get_npc_prompt_context(
 
 ```
 ObjectLinkResolver
-├── EntityLoaderRegistry   # Maps entity kinds to loader functions
-├── MappingRegistry         # Maps template↔runtime pairs to field configs
-├── LinkService             # CRUD operations on ObjectLink records
-└── StatEngine             # Stat normalization (optional)
+????????? LinkTypeRegistry        # Defines template/runtime pairs
+????????? EntityLoaderRegistry    # Maps entity kinds to loader functions
+????????? MappingRegistry         # Maps template/runtime pairs to field configs
+????????? LinkService             # CRUD operations on ObjectLink records
+????????? StatEngine             # Stat normalization (optional)
 ```
 
 ### Entity Kinds
@@ -111,36 +112,32 @@ Currently registered:
 
 ## Registering New Entity Types
 
-### 1. Add Entity Loader
+### 1. Add Link Type Spec
 
-Edit `pixsim7/backend/main/services/links/entity_loaders.py`:
+Edit `pixsim7/backend/main/services/links/link_types.py`:
 
 ```python
-def register_default_loaders():
-    # ... existing loaders ...
+from pixsim7.backend.main.services.links.link_types import LinkTypeSpec
 
-    # Add your custom loader
-    async def load_my_entity(entity_id, db: AsyncSession):
-        """Load MyEntity by ID"""
-        return await db.get(MyEntity, entity_id)
-
-    registry.register_loader('myEntity', load_my_entity)
+registry.register_spec(LinkTypeSpec(
+    template_kind="myTemplate",
+    runtime_kind="myEntity",
+    template_model=MyTemplate,
+    runtime_model=MyEntity,
+    template_label="MyTemplate",
+    runtime_label="MyEntity",
+    mapping_factory=get_my_entity_mapping,
+))
 ```
 
 ### 2. Add Field Mapping
 
-Edit `pixsim7/backend/main/services/links/default_mappings.py`:
+Add the mapping factory in `pixsim7/backend/main/services/links/link_types.py`
+or `pixsim7/backend/main/services/links/default_mappings.py`:
 
 ```python
-def register_default_mappings():
-    # ... existing mappings ...
-
-    # Add your custom mapping
-    registry.register('myTemplate->myEntity', get_my_entity_mapping())
-
-
 def get_my_entity_mapping() -> Dict[str, FieldMapping]:
-    """Field mapping for myTemplate → myEntity"""
+    """Field mapping for myTemplate -> myEntity"""
     return {
         "name": FieldMapping(
             target_path="name",
@@ -166,8 +163,9 @@ def get_my_entity_mapping() -> Dict[str, FieldMapping]:
 ### 3. Startup Automatically Registers
 
 The `setup_link_system()` function in `startup.py` automatically calls:
-- `register_default_loaders()` → Registers entity loaders
-- `register_default_mappings()` → Registers field mappings
+- `register_default_link_types()` -> Registers link types
+- `register_default_loaders()` -> Registers entity loaders
+- `register_default_mappings()` -> Registers field mappings
 
 No additional startup code needed!
 
@@ -412,6 +410,7 @@ assert runtime_ref is None  # No error, just None
 
 ## See Also
 
+- `services/links/link_types.py` - Link type registry
 - `services/links/entity_loaders.py` - Entity loader registry
 - `services/links/mapping_registry.py` - Field mapping registry
 - `services/links/link_service.py` - ObjectLink CRUD operations

@@ -283,6 +283,7 @@ class TestSetupLinkSystem:
         from pixsim7.backend.main.startup import setup_link_system
         from pixsim7.backend.main.services.links.entity_loaders import get_entity_loader_registry
         from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
+        from pixsim7.backend.main.services.links.link_types import link_type_id
 
         # Clear registries first (in case previous tests left state)
         loader_registry = get_entity_loader_registry()
@@ -303,7 +304,7 @@ class TestSetupLinkSystem:
         assert loader_registry.has_loader('location')
 
         # Verify mappings registered
-        assert mapping_registry.has_mapping('characterInstance->npc')
+        assert mapping_registry.has_mapping(link_type_id('characterInstance', 'npc'))
 
     def test_setup_link_system_idempotent(self):
         """Test that setup_link_system() can be called multiple times"""

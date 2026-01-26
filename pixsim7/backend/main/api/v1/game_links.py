@@ -125,7 +125,14 @@ TEMPLATE_TO_RUNTIME_KIND: Dict[str, str] = {
 
 def get_runtime_kind(template_kind: str) -> Optional[str]:
     """Get the expected runtime kind for a template kind."""
-    return TEMPLATE_TO_RUNTIME_KIND.get(template_kind)
+    from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
+
+    try:
+        runtime_kind = get_mapping_registry().get_runtime_kind(template_kind)
+    except ValueError:
+        runtime_kind = None
+
+    return runtime_kind or TEMPLATE_TO_RUNTIME_KIND.get(template_kind)
 
 
 # =============================================================================

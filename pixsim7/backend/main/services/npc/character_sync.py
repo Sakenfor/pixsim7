@@ -28,6 +28,11 @@ from pixsim7.backend.main.domain.game import GameNPC, NPCState
 from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
 from pixsim7.backend.main.services.links.link_service import LinkService
 from pixsim7.backend.main.services.links.object_link_resolver import ObjectLinkResolver
+from pixsim7.backend.main.services.links.link_types import (
+    get_link_type_registry,
+    link_type_id,
+    register_default_link_types,
+)
 from pixsim7.backend.main.services.prompt.context.mapping import get_nested_value, set_nested_value
 
 
@@ -103,12 +108,16 @@ class CharacterNPCSyncService:
             sync_field_mappings = self._get_default_field_mappings()
 
         # Create link via LinkService
+        register_default_link_types()
+        spec = get_link_type_registry().get_by_kinds("characterInstance", "npc")
+        mapping_id = spec.mapping_id if spec else link_type_id("characterInstance", "npc")
+
         link = await self.link_service.create_link(
             template_kind='characterInstance',
             template_id=str(character_instance_id),
             runtime_kind='npc',
             runtime_id=npc_id,
-            mapping_id='characterInstance->npc',
+            mapping_id=mapping_id,
             sync_enabled=sync_enabled,
             sync_direction=sync_direction,
             priority=priority,

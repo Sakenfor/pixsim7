@@ -68,8 +68,9 @@ Each entity pair registers its FieldMapping configuration on service startup, ma
 
 ```python
 registry = get_mapping_registry()
-registry.register('characterInstance->npc', NPC_FIELD_MAPPING)
-registry.register('itemTemplate->item', ITEM_FIELD_MAPPING)
+from services.links.link_types import link_type_id
+registry.register(link_type_id('characterInstance', 'npc'), NPC_FIELD_MAPPING)
+registry.register(link_type_id('itemTemplate', 'item'), ITEM_FIELD_MAPPING)
 ```
 
 ### Entity Loader Registry
@@ -122,10 +123,14 @@ Runtime Entity (GameNPC)
 
 ### 1. Define a FieldMapping
 
-Create a FieldMapping configuration for your entity pair:
+Create a FieldMapping configuration for your entity pair and register the link type:
 
 ```python
-# In services/links/default_mappings.py
+# In services/links/link_types.py
+from pixsim7.backend.main.services.links.link_types import LinkTypeSpec, get_link_type_registry
+
+registry = get_link_type_registry()
+
 def get_my_entity_mapping() -> Dict[str, FieldMapping]:
     return {
         "name": FieldMapping(
@@ -146,12 +151,17 @@ def get_my_entity_mapping() -> Dict[str, FieldMapping]:
                 "runtime": "health"
             }
         ),
-        # More fields...
     }
 
-# Register in register_default_mappings()
-# Mapping ID format: "templateKind->runtimeKind"
-registry.register('myTemplate->myRuntime', get_my_entity_mapping())
+registry.register_spec(LinkTypeSpec(
+    template_kind="myTemplate",
+    runtime_kind="myRuntime",
+    template_model=MyTemplate,
+    runtime_model=MyRuntime,
+    template_label="MyTemplate",
+    runtime_label="MyRuntime",
+    mapping_factory=get_my_entity_mapping,
+))
 ```
 
 ### 2. Create a Link
@@ -160,6 +170,7 @@ Use the LinkService to create a template↔runtime link:
 
 ```python
 from services.links.link_service import LinkService
+from services.links.link_types import link_type_id
 
 link_service = LinkService(db)
 
@@ -168,7 +179,7 @@ link = await link_service.create_link(
     template_id='abc-123',
     runtime_kind='myRuntime',
     runtime_id=456,
-    mapping_id='myTemplate->myRuntime',  # Format: "templateKind->runtimeKind"
+    mapping_id=link_type_id('myTemplate', 'myRuntime'),
     sync_direction='bidirectional',
     priority=10,
     activation_conditions={'location.zone': 'downtown'}  # Optional
@@ -624,6 +635,8 @@ snapshot = await prompt_service.get_prompt_context_from_template(
 **Solution:** Register template + create ObjectLink using standard mappings.
 
 ```python
+from services.links.link_types import link_type_id
+
 # Mod registers new character template
 mod_character_id = 'mod:custom-companion-uuid'
 
@@ -633,7 +646,7 @@ await link_service.create_link(
     template_id=mod_character_id,
     runtime_kind='npc',
     runtime_id=mod_npc_id,
-    mapping_id='characterInstance->npc'  # Uses standard mapping
+    mapping_id=link_type_id('characterInstance', 'npc')  # Uses standard mapping
 )
 
 # All existing systems automatically work:
