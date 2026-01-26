@@ -3,7 +3,7 @@ Unified Game Domain Package
 
 This package consolidates all game-related domain logic:
 - Core: GameWorld, GameSession, GameLocation, GameScene, ECS
-- Entities: Character templates, instances, NPCs, memory models
+- Entities: Character templates, instances, item templates, NPCs, memory models
 - Stats: Abstract stat system with packages (relationships, mood, etc.)
 - Behavior: Activity simulation, scoring, conditions, effects
 - Brain: Cognitive modeling and derivations
@@ -44,6 +44,7 @@ from .core import (
     GameSceneNode,
     GameSceneEdge,
     GameNPC,
+    GameItem,
     NPCSchedule,
     NPCState,
     NpcExpression,
@@ -99,6 +100,7 @@ from .entities import (
     CharacterCapability,
     SceneCharacterManifest,
     CharacterDialogueProfile,
+    ItemTemplate,
     get_character_graph,
     find_characters_for_npc,
     find_scenes_for_character,
@@ -178,6 +180,7 @@ __all__ = [
     "GameSceneNode",
     "GameSceneEdge",
     "GameNPC",
+    "GameItem",
     "NPCSchedule",
     "NPCState",
     "NpcExpression",
@@ -233,6 +236,7 @@ __all__ = [
     "CharacterCapability",
     "SceneCharacterManifest",
     "CharacterDialogueProfile",
+    "ItemTemplate",
     "get_character_graph",
     "find_characters_for_npc",
     "find_scenes_for_character",

@@ -2,9 +2,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional, Dict, Any
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
-from ..stats import HasStats
+from ..stats import HasStats, HasStatsWithMetadata
 
 # Scene graph
 class GameScene(SQLModel, table=True):
@@ -128,6 +129,17 @@ class GameNPC(SQLModel, HasStats, table=True):
     personality: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     home_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")
     # stats field inherited from HasStats - base stats (combat skills, attributes, etc.)
+
+
+class GameItem(SQLModel, HasStatsWithMetadata, table=True):
+    __tablename__ = "game_items"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(max_length=128)
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # stats fields inherited from HasStatsWithMetadata - item modifiers/runtime state
 
 class NPCSchedule(SQLModel, table=True):
     __tablename__ = "npc_schedules"

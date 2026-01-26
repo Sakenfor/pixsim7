@@ -47,7 +47,7 @@ class PluginContext:
     direct access to internal services, DB sessions, etc.
 
     Available capability APIs:
-    - ctx.world: Read world metadata, locations, NPCs
+    - ctx.world: Read world metadata, locations, NPCs, items
     - ctx.session: Read session flags, relationships
     - ctx.session_write: Mutate session flags, relationships
     - ctx.components: Read/write NPC ECS components (namespaced per plugin)

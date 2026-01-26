@@ -17,7 +17,7 @@ Architecture:
 
 Example links:
 - characterInstance->npc: CharacterInstance ↔ GameNPC
-- itemTemplate->item: ItemTemplate ↔ ItemInstance
+- itemTemplate->item: ItemTemplate ↔ GameItem
 - propTemplate->prop: PropTemplate ↔ PropInstance
 """
 from datetime import datetime

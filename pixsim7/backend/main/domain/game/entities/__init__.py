@@ -1,4 +1,4 @@
-"""Character and NPC entity models"""
+"""Character, NPC, and item entity models"""
 
 from .character import (
     Character,
@@ -42,6 +42,10 @@ from .npc_memory import (
     DialogueAnalytics,
 )
 
+from .item_template import (
+    ItemTemplate,
+)
+
 __all__ = [
     # Character models
     "Character",
@@ -75,4 +79,6 @@ __all__ = [
     "NPCWorldContext",
     "PersonalityEvolutionEvent",
     "DialogueAnalytics",
+    # Item templates
+    "ItemTemplate",
 ]

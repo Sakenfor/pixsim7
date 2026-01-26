@@ -13,7 +13,7 @@ from ..mapping import FieldMapping
 #
 # When implementing items, this would define how item data flows into prompts:
 # - Template source: ItemDefinition (from content/templates)
-# - Runtime source: ItemInstance (from game state)
+# - Runtime source: GameItem (from game state)
 # - Config source: World/location item configuration
 #
 # Example mapping:

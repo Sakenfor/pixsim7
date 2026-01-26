@@ -22,7 +22,7 @@ def register_default_mappings():
 
     Registered mappings:
     - characterInstance->npc: CharacterInstance ↔ GameNPC (existing)
-    - itemTemplate->item: ItemTemplate ↔ ItemInstance (stub)
+    - itemTemplate->item: ItemTemplate ↔ GameItem (stub)
     - propTemplate->prop: PropTemplate ↔ PropInstance (stub)
     """
     registry = get_mapping_registry()
@@ -38,7 +38,7 @@ def register_default_mappings():
 
 
 def get_item_template_mapping() -> Dict[str, FieldMapping]:
-    """Stub mapping for ItemTemplate → ItemInstance
+    """Stub mapping for ItemTemplate → GameItem
 
     This is a placeholder for future item template/instance linking.
     Expand this as the item system is developed.
@@ -48,7 +48,7 @@ def get_item_template_mapping() -> Dict[str, FieldMapping]:
     - Quantity, durability, state: Runtime authoritative
 
     Returns:
-        Dictionary of field mappings for item template->instance links
+        Dictionary of field mappings for item template->runtime links
     """
     return {
         "name": FieldMapping(

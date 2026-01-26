@@ -85,7 +85,7 @@ def resolve_entity_context(
         mapping = get_item_field_mapping()
         sources = {
             "template": ItemDefinition(...),
-            "runtime": ItemInstance(...)
+            "runtime": GameItem(...)
         }
 
         context = resolve_entity_context(

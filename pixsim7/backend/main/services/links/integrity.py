@@ -31,7 +31,8 @@ from sqlalchemy import select, delete, func, and_
 
 from pixsim7.backend.main.domain.links import ObjectLink
 from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
-from pixsim7.backend.main.domain.game.core.models import GameNPC
+from pixsim7.backend.main.domain.game.entities.item_template import ItemTemplate
+from pixsim7.backend.main.domain.game.core.models import GameNPC, GameItem
 
 
 logger = logging.getLogger(__name__)
@@ -123,8 +124,18 @@ class LinkIntegrityService:
                 await self._check_character_npc_links(character_instance_links)
             )
 
+        # Check itemTemplate -> item links
+        item_links = [
+            link for link in links
+            if link.template_kind == 'itemTemplate' and link.runtime_kind == 'item'
+        ]
+
+        if item_links:
+            orphaned.extend(
+                await self._check_item_links(item_links)
+            )
+
         # TODO: Add checks for other link types as they are implemented
-        # - itemTemplate -> item
         # - propTemplate -> prop
 
         return orphaned
@@ -195,6 +206,63 @@ class LinkIntegrityService:
                 orphaned.append(OrphanedLink(
                     link=link,
                     reason="GameNPC does not exist",
+                    missing_entity_type="runtime",
+                ))
+
+        return orphaned
+
+    async def _check_item_links(
+        self,
+        links: List[ObjectLink],
+    ) -> List[OrphanedLink]:
+        """Check itemTemplate->item links for orphaned references."""
+        orphaned: List[OrphanedLink] = []
+
+        template_ids: Set[str] = {link.template_id for link in links}
+        item_ids: Set[int] = {link.runtime_id for link in links}
+
+        existing_templates: Set[str] = set()
+        active_templates: Set[str] = set()
+
+        if template_ids:
+            try:
+                uuids = [UUID(id_str) for id_str in template_ids]
+                result = await self.db.execute(
+                    select(ItemTemplate.id, ItemTemplate.is_active)
+                    .where(ItemTemplate.id.in_(uuids))
+                )
+                for row in result.all():
+                    existing_templates.add(str(row[0]))
+                    if row[1]:
+                        active_templates.add(str(row[0]))
+            except Exception as e:
+                logger.warning(f"Error checking ItemTemplates: {e}")
+
+        existing_items: Set[int] = set()
+        if item_ids:
+            result = await self.db.execute(
+                select(GameItem.id).where(GameItem.id.in_(list(item_ids)))
+            )
+            existing_items = {row[0] for row in result.all()}
+
+        for link in links:
+            if link.template_id not in existing_templates:
+                orphaned.append(OrphanedLink(
+                    link=link,
+                    reason="ItemTemplate does not exist (hard deleted)",
+                    missing_entity_type="template",
+                ))
+            elif link.template_id not in active_templates:
+                orphaned.append(OrphanedLink(
+                    link=link,
+                    reason="ItemTemplate is inactive (soft deleted)",
+                    missing_entity_type="template",
+                ))
+
+            if link.runtime_id not in existing_items:
+                orphaned.append(OrphanedLink(
+                    link=link,
+                    reason="GameItem does not exist",
                     missing_entity_type="runtime",
                 ))
 
@@ -344,6 +412,20 @@ class LinkIntegrityService:
             npc = await self.db.get(GameNPC, link.runtime_id)
             if not npc:
                 issues.append("GameNPC not found")
+        elif link.template_kind == 'itemTemplate' and link.runtime_kind == 'item':
+            try:
+                template_uuid = UUID(link.template_id)
+                template = await self.db.get(ItemTemplate, template_uuid)
+                if not template:
+                    issues.append("ItemTemplate not found (hard deleted)")
+                elif not template.is_active:
+                    issues.append("ItemTemplate is inactive (soft deleted)")
+            except ValueError:
+                issues.append(f"Invalid template_id format: {link.template_id}")
+
+            item = await self.db.get(GameItem, link.runtime_id)
+            if not item:
+                issues.append("GameItem not found")
 
         return {
             "valid": len(issues) == 0,

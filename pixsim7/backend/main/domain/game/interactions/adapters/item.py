@@ -12,6 +12,7 @@ from pixsim7.backend.main.domain.game.interactions.interactions import (
     InteractionContext,
     InteractionParticipant,
     StatDelta,
+    format_entity_ref,
 )
 from pixsim7.backend.main.domain.game.interactions.target_adapters import InteractionTargetAdapter
 
@@ -31,12 +32,12 @@ class ItemInteractionTargetAdapter(InteractionTargetAdapter):
     def kind(self) -> str:
         return "item"
 
-    def normalize_target_id(self, target_id: Union[int, str]) -> str:
+    def normalize_target_id(self, target_id: Union[int, str]) -> int:
         if isinstance(target_id, int):
-            return str(target_id)
-        if isinstance(target_id, str):
             return target_id
-        raise ValueError("Item target_id must be a string or int")
+        if isinstance(target_id, str) and target_id.isdigit():
+            return int(target_id)
+        raise ValueError("Item target_id must be a numeric string or int")
 
     async def load_target(
         self,
@@ -44,11 +45,10 @@ class ItemInteractionTargetAdapter(InteractionTargetAdapter):
         target_id: Union[int, str],
     ) -> Optional[Dict[str, Any]]:
         item_id = self.normalize_target_id(target_id)
-        return {
-            "id": item_id,
-            "name": None,
-            "meta": {},
-        }
+        item = await ctx.world.get_item(item_id)
+        if not item:
+            return None
+        return item
 
     def build_context(
         self,
@@ -66,7 +66,7 @@ class ItemInteractionTargetAdapter(InteractionTargetAdapter):
             primary_role,
         )
         flags = session.get("flags", {})
-        target_ref = f"item:{self.normalize_target_id(target_id)}"
+        target_ref = format_entity_ref("item", self.normalize_target_id(target_id)).to_string()
         interaction_state = flags.get("interactions", {}).get(target_ref, {})
         context.last_used_at = interaction_state.get("lastUsedAt", {})
         return context
@@ -88,7 +88,7 @@ class ItemInteractionTargetAdapter(InteractionTargetAdapter):
         primary_role: Optional[str] = None,
     ) -> None:
         timestamp = int(world_time) if world_time is not None else int(time.time())
-        target_ref = f"item:{self.normalize_target_id(target_id)}"
+        target_ref = format_entity_ref("item", self.normalize_target_id(target_id)).to_string()
 
         interactions = session.flags.get("interactions", {})
         if not isinstance(interactions, dict):
