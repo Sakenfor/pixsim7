@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.user import User
 
-from .crud_registry import TemplateCRUDSpec, get_template_crud_registry
-from .crud_service import TemplateCRUDService
+from .crud_registry import TemplateCRUDSpec, NestedEntitySpec, CustomAction, get_template_crud_registry
+from .crud_service import TemplateCRUDService, NestedEntityService, CRUDValidationError
 
 
 # =============================================================================
@@ -92,11 +92,15 @@ def _register_list_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         offset: int = Query(0, ge=0),
         is_active: Optional[bool] = Query(None),
         search: Optional[str] = Query(None, description="Search in name field"),
+        include_inactive: bool = Query(False, description="Include inactive items"),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
         _spec: TemplateCRUDSpec = spec,
     ):
-        service = TemplateCRUDService(db, _spec)
+        # Build owner ID if scoped
+        owner_id = current_user.id if _spec.scope_to_owner else None
+        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+
         filters = {}
         if is_active is not None:
             filters["is_active"] = is_active
@@ -106,6 +110,7 @@ def _register_list_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
             offset=offset,
             filters=filters if filters else None,
             search=search,
+            include_inactive=include_inactive,
         )
 
         return {
@@ -135,11 +140,13 @@ def _register_get_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         current_user: User = Depends(get_current_user),
         _spec: TemplateCRUDSpec = spec,
     ):
-        service = TemplateCRUDService(db, _spec)
+        owner_id = current_user.id if _spec.scope_to_owner else None
+        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
         item = await service.get(entity_id)
         if not item:
             raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
-        return item
+        # Apply transformation
+        return await service.transform_response(item)
 
 
 def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
@@ -161,10 +168,13 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         current_user: User = Depends(get_current_user),
         _spec: TemplateCRUDSpec = spec,
     ):
-        service = TemplateCRUDService(db, _spec)
+        owner_id = current_user.id if _spec.scope_to_owner else None
+        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
         try:
             item = await service.create(data)
-            return item
+            return await service.transform_response(item)
+        except CRUDValidationError as e:
+            raise HTTPException(status_code=422, detail=e.message)
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
@@ -189,11 +199,15 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         current_user: User = Depends(get_current_user),
         _spec: TemplateCRUDSpec = spec,
     ):
-        service = TemplateCRUDService(db, _spec)
-        item = await service.update(entity_id, data)
-        if not item:
-            raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
-        return item
+        owner_id = current_user.id if _spec.scope_to_owner else None
+        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        try:
+            item = await service.update(entity_id, data)
+            if not item:
+                raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
+            return await service.transform_response(item)
+        except CRUDValidationError as e:
+            raise HTTPException(status_code=422, detail=e.message)
 
 
 def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
@@ -210,12 +224,19 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     async def delete_item(
         entity_id: str,
         hard: bool = Query(False, description="Hard delete instead of soft delete"),
+        cascade: bool = Query(False, description="Cascade delete nested entities"),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
         _spec: TemplateCRUDSpec = spec,
     ):
-        service = TemplateCRUDService(db, _spec)
-        success = await service.delete(entity_id, hard=hard)
+        owner_id = current_user.id if _spec.scope_to_owner else None
+        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+
+        if cascade and _spec.nested_entities:
+            success = await service.delete_with_nested(entity_id, hard=hard)
+        else:
+            success = await service.delete(entity_id, hard=hard)
+
         if not success:
             raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
         return DeleteResponse(
@@ -224,8 +245,177 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         )
 
 
+def _register_custom_action_route(
+    router: APIRouter,
+    spec: TemplateCRUDSpec,
+    action: CustomAction,
+) -> None:
+    """Register a custom action endpoint."""
+    path = f"/{spec.url_prefix}{action.path_suffix}"
+
+    if action.method.upper() == "POST":
+        @router.post(
+            path,
+            response_model=action.response_schema,
+            summary=f"{spec.kind}: {action.name}",
+            description=action.description or f"Custom action: {action.name}",
+            tags=spec.tags,
+        )
+        async def custom_action_post(
+            entity_id: str = None,
+            data: Dict[str, Any] = None,
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _action: CustomAction = action,
+        ):
+            return await _action.handler(
+                db=db,
+                user=current_user,
+                entity_id=entity_id,
+                data=data,
+                spec=_spec,
+            )
+
+    elif action.method.upper() == "PUT":
+        @router.put(
+            path,
+            response_model=action.response_schema,
+            summary=f"{spec.kind}: {action.name}",
+            description=action.description or f"Custom action: {action.name}",
+            tags=spec.tags,
+        )
+        async def custom_action_put(
+            entity_id: str = None,
+            data: Dict[str, Any] = None,
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _action: CustomAction = action,
+        ):
+            return await _action.handler(
+                db=db,
+                user=current_user,
+                entity_id=entity_id,
+                data=data,
+                spec=_spec,
+            )
+
+
+def _register_nested_entity_routes(
+    router: APIRouter,
+    spec: TemplateCRUDSpec,
+    nested: NestedEntitySpec,
+) -> None:
+    """Register CRUD routes for nested entities."""
+    base_path = f"/{spec.url_prefix}/{{parent_id}}/{nested.url_suffix}"
+
+    if nested.enable_list:
+        @router.get(
+            base_path,
+            summary=f"List {nested.kind} under {spec.kind}",
+            tags=spec.tags,
+        )
+        async def list_nested(
+            parent_id: str,
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            items = await service.list()
+            return {"items": items, "total": len(items)}
+
+    if nested.enable_get:
+        @router.get(
+            f"{base_path}/{{entity_id}}",
+            summary=f"Get {nested.kind}",
+            tags=spec.tags,
+        )
+        async def get_nested(
+            parent_id: str,
+            entity_id: str,
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            item = await service.get(entity_id)
+            if not item:
+                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
+            return item
+
+    if nested.enable_create:
+        @router.post(
+            base_path,
+            summary=f"Create {nested.kind}",
+            tags=spec.tags,
+            status_code=201,
+        )
+        async def create_nested(
+            parent_id: str,
+            data: Dict[str, Any],
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            return await service.create(data)
+
+    if nested.enable_update:
+        @router.put(
+            f"{base_path}/{{entity_id}}",
+            summary=f"Update {nested.kind}",
+            tags=spec.tags,
+        )
+        async def update_nested(
+            parent_id: str,
+            entity_id: str,
+            data: Dict[str, Any],
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            item = await service.update(entity_id, data)
+            if not item:
+                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
+            return item
+
+    if nested.enable_delete:
+        @router.delete(
+            f"{base_path}/{{entity_id}}",
+            response_model=DeleteResponse,
+            summary=f"Delete {nested.kind}",
+            tags=spec.tags,
+        )
+        async def delete_nested(
+            parent_id: str,
+            entity_id: str,
+            db: AsyncSession = Depends(get_db),
+            current_user: User = Depends(get_current_user),
+            _spec: TemplateCRUDSpec = spec,
+            _nested: NestedEntitySpec = nested,
+        ):
+            parsed_parent_id = _spec.id_parser(parent_id)
+            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            success = await service.delete(entity_id)
+            if not success:
+                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
+            return DeleteResponse(success=True, message=f"{_nested.kind} deleted")
+
+
 def _register_crud_routes(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register all enabled CRUD routes for a spec."""
+    # Standard CRUD routes
     if spec.enable_list:
         _register_list_route(router, spec)
     if spec.enable_get:
@@ -236,6 +426,14 @@ def _register_crud_routes(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         _register_update_route(router, spec)
     if spec.enable_delete:
         _register_delete_route(router, spec)
+
+    # Custom action routes
+    for action in spec.custom_actions:
+        _register_custom_action_route(router, spec, action)
+
+    # Nested entity routes
+    for nested in spec.nested_entities:
+        _register_nested_entity_routes(router, spec, nested)
 
 
 # =============================================================================
@@ -302,6 +500,9 @@ def create_template_crud_router(
                         "url_prefix": s.url_prefix,
                         "supports_soft_delete": s.supports_soft_delete,
                         "supports_upsert": s.supports_upsert,
+                        "scope_to_owner": s.scope_to_owner,
+                        "filterable_fields": s.filterable_fields,
+                        "search_fields": s.search_fields,
                         "endpoints": {
                             "list": s.enable_list,
                             "get": s.enable_get,
@@ -309,6 +510,9 @@ def create_template_crud_router(
                             "update": s.enable_update,
                             "delete": s.enable_delete,
                         },
+                        "custom_actions": [a.name for a in s.custom_actions],
+                        "nested_entities": [n.kind for n in s.nested_entities],
+                        "has_hierarchy": s.parent_field is not None,
                     }
                     for s in specs
                 ],

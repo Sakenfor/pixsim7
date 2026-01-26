@@ -22,20 +22,39 @@ Usage:
 
     # Delete (soft or hard based on spec)
     success = await service.delete(uuid)
+
+    # Advanced filters
+    items = await service.list(advanced_filters={
+        "created_at": {"gte": "2024-01-01"},
+        "name": {"ilike": "%tower%"}
+    })
+
+    # With owner scoping
+    service = TemplateCRUDService(db, spec, owner_id=user.id)
+    items = await service.list()  # Auto-filtered by owner
 """
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Type
+from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Type, Union
 from uuid import UUID
 
-from sqlalchemy import select, func, and_, or_, desc, asc
+from fastapi import HTTPException
+from sqlalchemy import select, func, and_, or_, desc, asc, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
-from .crud_registry import TemplateCRUDSpec
+from .crud_registry import TemplateCRUDSpec, FilterOperator, NestedEntitySpec
 
 T = TypeVar("T", bound=SQLModel)
+
+
+class CRUDValidationError(Exception):
+    """Raised when validation fails."""
+    def __init__(self, message: str, field: Optional[str] = None):
+        self.message = message
+        self.field = field
+        super().__init__(message)
 
 
 class TemplateCRUDService(Generic[T]):
@@ -52,12 +71,108 @@ class TemplateCRUDService(Generic[T]):
         db: Async database session
         spec: CRUD specification for this template type
         model: The SQLModel class (shorthand for spec.model)
+        owner_id: Optional owner ID for scoped queries
     """
 
-    def __init__(self, db: AsyncSession, spec: TemplateCRUDSpec):
+    def __init__(
+        self,
+        db: AsyncSession,
+        spec: TemplateCRUDSpec,
+        owner_id: Optional[int] = None,
+    ):
         self.db = db
         self.spec = spec
         self.model: Type[T] = spec.model
+        self.owner_id = owner_id
+
+    def _apply_owner_scope(self, query: Any) -> Any:
+        """Apply owner scoping if configured."""
+        if self.spec.scope_to_owner and self.spec.owner_field and self.owner_id:
+            if hasattr(self.model, self.spec.owner_field):
+                column = getattr(self.model, self.spec.owner_field)
+                query = query.where(column == self.owner_id)
+        return query
+
+    def _build_filter_condition(
+        self,
+        column: Any,
+        operator: FilterOperator,
+        value: Any,
+    ) -> Any:
+        """Build a SQLAlchemy condition for a filter operator."""
+        if operator == FilterOperator.EQ:
+            return column == value
+        elif operator == FilterOperator.NE:
+            return column != value
+        elif operator == FilterOperator.GT:
+            return column > value
+        elif operator == FilterOperator.GTE:
+            return column >= value
+        elif operator == FilterOperator.LT:
+            return column < value
+        elif operator == FilterOperator.LTE:
+            return column <= value
+        elif operator == FilterOperator.IN:
+            return column.in_(value if isinstance(value, list) else [value])
+        elif operator == FilterOperator.NOT_IN:
+            return not_(column.in_(value if isinstance(value, list) else [value]))
+        elif operator == FilterOperator.LIKE:
+            return column.like(value)
+        elif operator == FilterOperator.ILIKE:
+            return column.ilike(value)
+        elif operator == FilterOperator.IS_NULL:
+            return column.is_(None)
+        elif operator == FilterOperator.NOT_NULL:
+            return column.isnot(None)
+        elif operator == FilterOperator.CONTAINS:
+            # For JSONB contains
+            return column.contains(value)
+        else:
+            return column == value
+
+    def _apply_advanced_filters(
+        self,
+        query: Any,
+        advanced_filters: Dict[str, Dict[str, Any]],
+    ) -> Tuple[Any, List[Any]]:
+        """
+        Apply advanced filters with operators.
+
+        Args:
+            query: SQLAlchemy query
+            advanced_filters: Dict of field -> {operator: value}
+                e.g., {"created_at": {"gte": "2024-01-01"}, "name": {"ilike": "%test%"}}
+
+        Returns:
+            Tuple of (modified query, list of conditions)
+        """
+        conditions = []
+        for field_name, ops in advanced_filters.items():
+            if not hasattr(self.model, field_name):
+                continue
+
+            column = getattr(self.model, field_name)
+
+            # Check if this field has advanced filter config
+            filter_config = self.spec.get_filter_field(field_name)
+            allowed_ops = (
+                [op.value for op in filter_config.operators]
+                if filter_config else [FilterOperator.EQ.value]
+            )
+
+            for op_str, value in ops.items():
+                if op_str not in allowed_ops:
+                    # Skip unsupported operators for this field
+                    continue
+                try:
+                    operator = FilterOperator(op_str)
+                    condition = self._build_filter_condition(column, operator, value)
+                    conditions.append(condition)
+                except ValueError:
+                    # Unknown operator, skip
+                    pass
+
+        return query, conditions
 
     async def list(
         self,
@@ -65,22 +180,31 @@ class TemplateCRUDService(Generic[T]):
         limit: Optional[int] = None,
         offset: int = 0,
         filters: Optional[Dict[str, Any]] = None,
+        advanced_filters: Optional[Dict[str, Dict[str, Any]]] = None,
         order_by: Optional[str] = None,
         order_desc: Optional[bool] = None,
         search: Optional[str] = None,
         search_fields: Optional[List[str]] = None,
-    ) -> Tuple[List[T], int]:
+        parent_id: Optional[Any] = None,
+        include_inactive: bool = False,
+        transform: bool = True,
+    ) -> Tuple[List[Any], int]:
         """
         List template entities with pagination and filtering.
 
         Args:
             limit: Max results (uses spec.default_limit if None)
             offset: Pagination offset
-            filters: Field filters (e.g., {"is_active": True})
+            filters: Simple field filters (e.g., {"is_active": True})
+            advanced_filters: Advanced filters with operators
+                e.g., {"created_at": {"gte": "2024-01-01"}}
             order_by: Field to order by (uses spec.list_order_by if None)
             order_desc: Descending order (uses spec.list_order_desc if None)
             search: Search term for text fields
-            search_fields: Fields to search in (defaults to ["name"])
+            search_fields: Fields to search in (uses spec.search_fields if None)
+            parent_id: Filter by parent (if parent_field is configured)
+            include_inactive: If True, include is_active=False entities
+            transform: If True, apply response transformation
 
         Returns:
             Tuple of (items, total_count)
@@ -89,13 +213,24 @@ class TemplateCRUDService(Generic[T]):
         limit = min(limit or self.spec.default_limit, self.spec.max_limit)
         order_by = order_by or self.spec.list_order_by
         order_desc = order_desc if order_desc is not None else self.spec.list_order_desc
-        search_fields = search_fields or ["name"]
+        search_fields = search_fields or self.spec.search_fields
 
         # Build base query
         query = select(self.model)
         count_query = select(func.count()).select_from(self.model)
 
-        # Apply filters
+        # Apply owner scoping
+        query = self._apply_owner_scope(query)
+        count_query = self._apply_owner_scope(count_query)
+
+        # Apply parent filter
+        if parent_id and self.spec.parent_field:
+            if hasattr(self.model, self.spec.parent_field):
+                column = getattr(self.model, self.spec.parent_field)
+                query = query.where(column == parent_id)
+                count_query = count_query.where(column == parent_id)
+
+        # Apply simple filters
         conditions = []
         if filters:
             for field_name, value in filters.items():
@@ -106,6 +241,22 @@ class TemplateCRUDService(Generic[T]):
                             conditions.append(column.in_(value))
                         else:
                             conditions.append(column == value)
+
+        # Apply advanced filters
+        if advanced_filters:
+            _, adv_conditions = self._apply_advanced_filters(query, advanced_filters)
+            conditions.extend(adv_conditions)
+
+        # Apply custom filter builder
+        if self.spec.custom_filter_builder and filters:
+            query = self.spec.custom_filter_builder(query, filters)
+            count_query = self.spec.custom_filter_builder(count_query, filters)
+
+        # Apply is_active filter (unless include_inactive is True)
+        if not include_inactive and hasattr(self.model, "is_active"):
+            # Don't add if already in filters
+            if not filters or "is_active" not in filters:
+                conditions.append(getattr(self.model, "is_active") == True)
 
         # Apply search
         if search and search_fields:
@@ -137,7 +288,29 @@ class TemplateCRUDService(Generic[T]):
         result = await self.db.execute(query)
         items = list(result.scalars().all())
 
+        # Apply transformation
+        if transform:
+            items = await self._transform_list(items)
+
         return items, total
+
+    async def _transform_list(self, items: List[T]) -> List[Any]:
+        """Apply list item transformation."""
+        if self.spec.transform_list_item:
+            return [self.spec.transform_list_item(item) for item in items]
+        elif self.spec.transform_response:
+            return [self.spec.transform_response(item) for item in items]
+        elif self.spec.async_transform_response:
+            return [await self.spec.async_transform_response(self.db, item) for item in items]
+        return items
+
+    async def transform_response(self, entity: T) -> Any:
+        """Apply response transformation to a single entity."""
+        if self.spec.async_transform_response:
+            return await self.spec.async_transform_response(self.db, entity)
+        elif self.spec.transform_response:
+            return self.spec.transform_response(entity)
+        return entity
 
     async def get(self, entity_id: Any) -> Optional[T]:
         """
@@ -174,7 +347,11 @@ class TemplateCRUDService(Generic[T]):
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
-    async def create(self, data: Dict[str, Any]) -> T:
+    async def create(
+        self,
+        data: Dict[str, Any],
+        skip_validation: bool = False,
+    ) -> T:
         """
         Create a new template entity.
 
@@ -183,10 +360,20 @@ class TemplateCRUDService(Generic[T]):
 
         Args:
             data: Entity data
+            skip_validation: If True, skip validation hooks
 
         Returns:
             The created/updated entity
+
+        Raises:
+            CRUDValidationError: If validation fails
         """
+        # Run validation hook
+        if not skip_validation and self.spec.validate_create:
+            valid, error_msg = await self.spec.validate_create(data)
+            if not valid:
+                raise CRUDValidationError(error_msg or "Validation failed")
+
         # Check for upsert
         if self.spec.supports_upsert and self.spec.unique_field:
             unique_value = data.get(self.spec.unique_field)
@@ -195,8 +382,13 @@ class TemplateCRUDService(Generic[T]):
                 if existing:
                     return await self.update(
                         getattr(existing, self.spec.id_field),
-                        data
+                        data,
+                        skip_validation=True,  # Already validated
                     )
+
+        # Set owner if configured
+        if self.spec.owner_field and self.owner_id:
+            data[self.spec.owner_field] = self.owner_id
 
         # Run before_create hook
         if self.spec.before_create:
@@ -214,28 +406,50 @@ class TemplateCRUDService(Generic[T]):
 
         return entity
 
-    async def update(self, entity_id: Any, data: Dict[str, Any]) -> Optional[T]:
+    async def update(
+        self,
+        entity_id: Any,
+        data: Dict[str, Any],
+        skip_validation: bool = False,
+    ) -> Optional[T]:
         """
         Update an existing template entity.
 
         Args:
             entity_id: The entity ID
             data: Fields to update
+            skip_validation: If True, skip validation hooks
 
         Returns:
             The updated entity or None if not found
+
+        Raises:
+            CRUDValidationError: If validation fails
         """
         entity = await self.get(entity_id)
         if not entity:
             return None
 
+        # Check owner access
+        if self.spec.scope_to_owner and self.spec.owner_field and self.owner_id:
+            owner_value = getattr(entity, self.spec.owner_field, None)
+            if owner_value != self.owner_id:
+                return None  # Not authorized
+
+        # Run validation hook
+        if not skip_validation and self.spec.validate_update:
+            valid, error_msg = await self.spec.validate_update(data)
+            if not valid:
+                raise CRUDValidationError(error_msg or "Validation failed")
+
         # Run before_update hook
         if self.spec.before_update:
             data = await self.spec.before_update(self.db, entity, data)
 
-        # Update fields
+        # Update fields (excluding protected fields)
+        protected_fields = {self.spec.id_field, self.spec.owner_field, "created_at"}
         for field_name, value in data.items():
-            if hasattr(entity, field_name) and field_name != self.spec.id_field:
+            if hasattr(entity, field_name) and field_name not in protected_fields:
                 setattr(entity, field_name, value)
 
         # Update timestamp if exists
@@ -328,6 +542,9 @@ class TemplateCRUDService(Generic[T]):
         """
         query = select(func.count()).select_from(self.model)
 
+        # Apply owner scoping
+        query = self._apply_owner_scope(query)
+
         if filters:
             conditions = []
             for field_name, value in filters.items():
@@ -339,3 +556,243 @@ class TemplateCRUDService(Generic[T]):
 
         result = await self.db.execute(query)
         return result.scalar() or 0
+
+    # =========================================================================
+    # Hierarchy Methods
+    # =========================================================================
+
+    async def get_children(
+        self,
+        parent_id: Any,
+        child_kind: Optional[str] = None,
+    ) -> List[T]:
+        """
+        Get child entities of a parent.
+
+        Requires parent_field to be configured.
+
+        Args:
+            parent_id: The parent entity ID
+            child_kind: Optional filter for specific child kind
+
+        Returns:
+            List of child entities
+        """
+        if not self.spec.parent_field:
+            return []
+
+        items, _ = await self.list(parent_id=parent_id, include_inactive=True)
+        return items
+
+    async def get_parent(self, entity_id: Any) -> Optional[T]:
+        """
+        Get the parent entity of a given entity.
+
+        Requires parent_field and parent_kind to be configured.
+
+        Args:
+            entity_id: The entity ID
+
+        Returns:
+            The parent entity or None
+        """
+        if not self.spec.parent_field or not self.spec.parent_kind:
+            return None
+
+        entity = await self.get(entity_id)
+        if not entity:
+            return None
+
+        parent_id = getattr(entity, self.spec.parent_field, None)
+        if not parent_id:
+            return None
+
+        # Get parent using parent kind's spec
+        from .crud_registry import get_template_crud_registry
+        registry = get_template_crud_registry()
+        parent_spec = registry.get_or_none(self.spec.parent_kind)
+        if not parent_spec:
+            return None
+
+        parent_service = TemplateCRUDService(self.db, parent_spec, self.owner_id)
+        return await parent_service.get(parent_id)
+
+    async def get_ancestors(self, entity_id: Any, max_depth: int = 10) -> List[T]:
+        """
+        Get all ancestors up the hierarchy.
+
+        Args:
+            entity_id: Starting entity ID
+            max_depth: Maximum depth to traverse
+
+        Returns:
+            List of ancestors (nearest first)
+        """
+        ancestors = []
+        current_id = entity_id
+        depth = 0
+
+        while current_id and depth < max_depth:
+            entity = await self.get(current_id)
+            if not entity:
+                break
+
+            parent_id = getattr(entity, self.spec.parent_field, None) if self.spec.parent_field else None
+            if not parent_id:
+                break
+
+            parent = await self.get(parent_id)
+            if parent:
+                ancestors.append(parent)
+                current_id = parent_id
+            else:
+                break
+
+            depth += 1
+
+        return ancestors
+
+    # =========================================================================
+    # Nested Entity Methods
+    # =========================================================================
+
+    def get_nested_service(
+        self,
+        nested_kind: str,
+        parent_id: Any,
+    ) -> Optional["NestedEntityService"]:
+        """
+        Get a service for managing nested entities under a parent.
+
+        Args:
+            nested_kind: Kind of nested entity
+            parent_id: Parent entity ID
+
+        Returns:
+            NestedEntityService or None if not found
+        """
+        for nested_spec in self.spec.nested_entities:
+            if nested_spec.kind == nested_kind:
+                return NestedEntityService(
+                    self.db,
+                    nested_spec,
+                    parent_id,
+                    self.spec.id_parser(parent_id),
+                )
+        return None
+
+    async def delete_with_nested(self, entity_id: Any, hard: bool = False) -> bool:
+        """
+        Delete entity and cascade delete nested entities if configured.
+
+        Args:
+            entity_id: The entity ID
+            hard: If True, hard delete
+
+        Returns:
+            True if deleted
+        """
+        # Delete nested entities first if cascade is enabled
+        for nested_spec in self.spec.nested_entities:
+            if nested_spec.cascade_delete:
+                nested_service = self.get_nested_service(nested_spec.kind, entity_id)
+                if nested_service:
+                    await nested_service.delete_all(hard=hard)
+
+        # Delete the parent entity
+        return await self.delete(entity_id, hard=hard)
+
+
+class NestedEntityService(Generic[T]):
+    """
+    Service for managing nested entities under a parent.
+
+    Provides CRUD operations scoped to a specific parent entity.
+    """
+
+    def __init__(
+        self,
+        db: AsyncSession,
+        spec: NestedEntitySpec,
+        parent_id: Any,
+        parsed_parent_id: Any,
+    ):
+        self.db = db
+        self.spec = spec
+        self.model: Type[T] = spec.model
+        self.parent_id = parent_id
+        self.parsed_parent_id = parsed_parent_id
+
+    async def list(self) -> List[T]:
+        """List all nested entities under the parent."""
+        parent_column = getattr(self.model, self.spec.parent_field)
+        query = select(self.model).where(parent_column == self.parsed_parent_id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def get(self, entity_id: Any) -> Optional[T]:
+        """Get a nested entity by ID."""
+        parsed_id = self.spec.id_parser(entity_id)
+        id_column = getattr(self.model, self.spec.id_field)
+        parent_column = getattr(self.model, self.spec.parent_field)
+
+        query = select(self.model).where(
+            and_(
+                id_column == parsed_id,
+                parent_column == self.parsed_parent_id,
+            )
+        )
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def create(self, data: Dict[str, Any]) -> T:
+        """Create a nested entity."""
+        data[self.spec.parent_field] = self.parsed_parent_id
+        entity = self.model(**data)
+        self.db.add(entity)
+        await self.db.commit()
+        await self.db.refresh(entity)
+        return entity
+
+    async def update(self, entity_id: Any, data: Dict[str, Any]) -> Optional[T]:
+        """Update a nested entity."""
+        entity = await self.get(entity_id)
+        if not entity:
+            return None
+
+        for field_name, value in data.items():
+            if hasattr(entity, field_name) and field_name not in {self.spec.id_field, self.spec.parent_field}:
+                setattr(entity, field_name, value)
+
+        await self.db.commit()
+        await self.db.refresh(entity)
+        return entity
+
+    async def delete(self, entity_id: Any) -> bool:
+        """Delete a nested entity."""
+        entity = await self.get(entity_id)
+        if not entity:
+            return False
+
+        await self.db.delete(entity)
+        await self.db.commit()
+        return True
+
+    async def delete_all(self, hard: bool = False) -> int:
+        """Delete all nested entities under the parent."""
+        items = await self.list()
+        count = 0
+        for item in items:
+            entity_id = getattr(item, self.spec.id_field)
+            if await self.delete(entity_id):
+                count += 1
+        return count
+
+    async def replace_all(self, items: List[Dict[str, Any]]) -> List[T]:
+        """Replace all nested entities with new ones."""
+        await self.delete_all(hard=True)
+        created = []
+        for data in items:
+            entity = await self.create(data)
+            created.append(entity)
+        return created
