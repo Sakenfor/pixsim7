@@ -46,6 +46,10 @@ from .item_template import (
     ItemTemplate,
 )
 
+from .location_template import (
+    LocationTemplate,
+)
+
 __all__ = [
     # Character models
     "Character",
@@ -81,4 +85,6 @@ __all__ = [
     "DialogueAnalytics",
     # Item templates
     "ItemTemplate",
+    # Location templates
+    "LocationTemplate",
 ]

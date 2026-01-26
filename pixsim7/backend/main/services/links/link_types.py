@@ -130,11 +130,70 @@ def get_item_template_mapping() -> Dict[str, FieldMapping]:
     }
 
 
+def get_location_template_mapping() -> Dict[str, FieldMapping]:
+    """Field mapping for LocationTemplate -> GameLocation."""
+    return {
+        "name": FieldMapping(
+            target_path="name",
+            source="template",
+            fallback="runtime",
+            source_paths={
+                "template": "name",
+                "runtime": "name",
+            },
+        ),
+        "description": FieldMapping(
+            target_path="description",
+            source="template",
+            fallback="runtime",
+            source_paths={
+                "template": "description",
+                "runtime": "meta.description",
+            },
+        ),
+        "location_type": FieldMapping(
+            target_path="location_type",
+            source="template",
+            fallback="runtime",
+            source_paths={
+                "template": "location_type",
+                "runtime": "meta.location_type",
+            },
+        ),
+        "asset_id": FieldMapping(
+            target_path="asset_id",
+            source="runtime",
+            fallback="template",
+            source_paths={
+                "template": "default_asset_id",
+                "runtime": "asset_id",
+            },
+        ),
+        "default_spawn": FieldMapping(
+            target_path="default_spawn",
+            source="runtime",
+            fallback="template",
+            source_paths={
+                "template": "default_spawn",
+                "runtime": "default_spawn",
+            },
+        ),
+        "coordinates": FieldMapping(
+            target_path="coordinates",
+            source="runtime",
+            source_paths={
+                "runtime": "meta.coordinates",
+            },
+        ),
+    }
+
+
 def register_default_link_types() -> None:
     """Register core link types."""
     from pixsim7.backend.main.domain.game.entities.character_integrations import CharacterInstance
     from pixsim7.backend.main.domain.game.entities.item_template import ItemTemplate
-    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameItem
+    from pixsim7.backend.main.domain.game.entities.location_template import LocationTemplate
+    from pixsim7.backend.main.domain.game.core.models import GameNPC, GameItem, GameLocation
     from pixsim7.backend.main.services.prompt.context.mappings.npc import get_npc_field_mapping
 
     registry = get_link_type_registry()
@@ -157,4 +216,14 @@ def register_default_link_types() -> None:
         template_label="ItemTemplate",
         runtime_label="GameItem",
         mapping_factory=get_item_template_mapping,
+    ))
+
+    registry.register_spec(LinkTypeSpec(
+        template_kind="locationTemplate",
+        runtime_kind="location",
+        template_model=LocationTemplate,
+        runtime_model=GameLocation,
+        template_label="LocationTemplate",
+        runtime_label="GameLocation",
+        mapping_factory=get_location_template_mapping,
     ))

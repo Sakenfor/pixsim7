@@ -170,6 +170,50 @@ class WorldReadAPI(BaseCapabilityAPI):
 
         return locations
 
+    async def get_location(self, location_id: int) -> Optional[dict]:
+        """
+        Get location by ID.
+
+        Returns:
+            Location data (id, name, asset_id, default_spawn, meta) or None if not found
+        """
+        if not self._check_permission(
+            PluginPermission.WORLD_READ.value,
+            "WorldReadAPI.get_location",
+            PermissionDeniedBehavior.WARN,
+        ):
+            return None
+
+        if not self.db:
+            self.logger.error("WorldReadAPI requires database access")
+            return None
+
+        stmt = select(GameLocation).where(GameLocation.id == location_id)
+        result = await self.db.execute(stmt)
+        location = result.scalar_one_or_none()
+
+        if not location:
+            return None
+
+        self.logger.debug(
+            "get_location",
+            plugin_id=self.plugin_id,
+            location_id=location_id,
+        )
+
+        meta = location.meta or {}
+        return {
+            "id": location.id,
+            "name": location.name,
+            "x": location.x,
+            "y": location.y,
+            "asset_id": location.asset_id,
+            "default_spawn": location.default_spawn,
+            "location_type": meta.get("location_type"),
+            "meta": meta,
+            "stats": location.stats or {},
+        }
+
     async def list_world_npcs(
         self,
         world_id: int,
