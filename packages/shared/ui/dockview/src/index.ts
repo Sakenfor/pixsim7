@@ -17,3 +17,49 @@ export type {
   SmartDockviewLayout,
   SmartDockviewPanelProps,
 } from './types';
+
+// Host infrastructure
+export type { PanelLookup } from './hostTypes';
+export {
+  addDockviewPanel,
+  findDockviewPanel,
+  focusPanel,
+  isPanelOpen,
+  resolvePanelDefinitionId,
+} from './panelAdd';
+export type { AddDockviewPanelOptions } from './panelAdd';
+
+export { createDockviewHost } from './host';
+export type { DockviewHost } from './host';
+
+export {
+  getDockviewHost,
+  getDockviewHostIds,
+  getDockviewApi,
+  getDockviewCapabilities,
+  getDockviewRegistration,
+  getAllDockviewHosts,
+  registerDockviewHost,
+  unregisterDockviewHost,
+  subscribeToDockviewRegistry,
+} from './hostRegistry';
+export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
+
+export { useDockviewIds } from './useDockviewIds';
+export type { DockviewIds } from './useDockviewIds';
+
+export {
+  dockZoneRegistry,
+  registerDockZone,
+  unregisterDockZone,
+  getDockZone,
+  getDockZoneByDockviewId,
+  resolvePresetScope,
+  setDefaultPresetScope,
+  getDefaultPresetScope,
+  getDockZonePanelIds,
+  registerDefaultDockZones,
+  areDefaultZonesRegistered,
+  DEFAULT_DOCK_ZONES,
+} from './dockZoneRegistry';
+export type { DockZoneDefinition, PresetScope } from './dockZoneRegistry';

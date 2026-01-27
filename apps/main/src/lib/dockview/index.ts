@@ -16,6 +16,9 @@ export { LocalPanelRegistry, createLocalPanelRegistry } from '@pixsim7/shared.ui
 export { useSmartDockview } from '@pixsim7/shared.ui.dockview';
 export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from '@pixsim7/shared.ui.dockview';
 
+export { useDockviewIds } from './useDockviewIds';
+export type { DockviewIds } from './useDockviewIds';
+
 export {
   addDockviewPanel,
   findDockviewPanel,
