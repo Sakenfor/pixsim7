@@ -30,6 +30,8 @@ export interface UseFrameCaptureOptions {
   asset: ViewerAsset | null;
   /** Reference to the video element */
   videoRef: RefObject<HTMLVideoElement | null>;
+  /** Reference to the image element */
+  imageRef: RefObject<HTMLImageElement | null>;
   /** Active overlay mode ID */
   activeOverlayId: MediaOverlayId | null;
 }
@@ -46,7 +48,7 @@ export interface UseFrameCaptureResult {
 }
 
 /**
- * Hook for capturing video frames with optional region cropping.
+ * Hook for capturing video frames or image crops with optional region cropping.
  *
  * @param options - Configuration options
  * @returns Frame capture state and actions
@@ -54,6 +56,7 @@ export interface UseFrameCaptureResult {
 export function useFrameCapture({
   asset,
   videoRef,
+  imageRef,
   activeOverlayId,
 }: UseFrameCaptureOptions): UseFrameCaptureResult {
   const toast = useToast();
@@ -97,16 +100,38 @@ export function useFrameCapture({
 
   // Main capture function
   const captureFrame = useCallback(async () => {
-    if (!asset || asset.type !== 'video') return;
+    if (!asset || (asset.type !== 'video' && asset.type !== 'image')) return;
     const providerId = resolveCaptureProviderId();
     if (!providerId) {
-      toast.error('Select a provider to capture frames.');
+      toast.error('Select a provider to capture.');
       return;
     }
+
+    // Determine source element and dimensions based on asset type
+    const isVideo = asset.type === 'video';
     const video = videoRef.current;
-    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-      toast.error('Video not ready for capture.');
-      return;
+    const image = imageRef.current;
+
+    let sourceElement: HTMLVideoElement | HTMLImageElement | null = null;
+    let sourceWidth = 0;
+    let sourceHeight = 0;
+
+    if (isVideo) {
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        toast.error('Video not ready for capture.');
+        return;
+      }
+      sourceElement = video;
+      sourceWidth = video.videoWidth;
+      sourceHeight = video.videoHeight;
+    } else {
+      if (!image || image.naturalWidth === 0 || image.naturalHeight === 0) {
+        toast.error('Image not ready for capture.');
+        return;
+      }
+      sourceElement = image;
+      sourceWidth = image.naturalWidth;
+      sourceHeight = image.naturalHeight;
     }
 
     setIsCapturing(true);
@@ -114,13 +139,13 @@ export function useFrameCapture({
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) {
-        throw new Error('Failed to capture frame.');
+        throw new Error('Failed to capture.');
       }
 
       let regionBounds = null;
       if (captureRegion?.type === 'rect' && captureRegion.bounds) {
         const clamped = clampRectNormalized(captureRegion.bounds);
-        const denormalized = denormalizeRect(clamped, video.videoWidth, video.videoHeight);
+        const denormalized = denormalizeRect(clamped, sourceWidth, sourceHeight);
         const sx = Math.round(denormalized.x);
         const sy = Math.round(denormalized.y);
         const sw = Math.round(denormalized.width);
@@ -131,14 +156,14 @@ export function useFrameCapture({
       }
 
       if (regionBounds) {
-        const sw = Math.min(regionBounds.sw, video.videoWidth - regionBounds.sx);
-        const sh = Math.min(regionBounds.sh, video.videoHeight - regionBounds.sy);
+        const sw = Math.min(regionBounds.sw, sourceWidth - regionBounds.sx);
+        const sh = Math.min(regionBounds.sh, sourceHeight - regionBounds.sy);
         if (sw > 1 && sh > 1) {
           canvas.width = sw;
           canvas.height = sh;
           try {
             ctx.drawImage(
-              video,
+              sourceElement,
               regionBounds.sx,
               regionBounds.sy,
               sw,
@@ -157,10 +182,10 @@ export function useFrameCapture({
       }
 
       if (!regionBounds) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = sourceWidth;
+        canvas.height = sourceHeight;
         try {
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          ctx.drawImage(sourceElement, 0, 0, canvas.width, canvas.height);
         } catch {
           throw new Error('Capture blocked by browser security.');
         }
@@ -170,16 +195,17 @@ export function useFrameCapture({
         canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.92);
       });
       if (!blob) {
-        throw new Error('Failed to capture frame.');
+        throw new Error('Failed to capture.');
       }
 
       const sourceUrl = asset.fullUrl || asset.url || undefined;
       const sourceFilename = getFilenameFromUrl(sourceUrl) || asset.name || null;
+      const frameTime = isVideo ? video.currentTime : 0;
       const uploadContext: Record<string, unknown> = {
         client: 'web_app',
         feature: 'asset_viewer_capture',
         source: 'asset_viewer',
-        frame_time: video.currentTime,
+        frame_time: frameTime,
         has_region: Boolean(regionBounds),
       };
 
@@ -205,17 +231,20 @@ export function useFrameCapture({
             uploadContext.source_site = site;
           }
         }
-        const assetId = typeof asset.id === 'number' ? asset.id : Number(asset.id);
-        if (Number.isFinite(assetId)) {
-          uploadContext.source_asset_id = assetId;
-        }
       }
 
+      // Always include source_asset_id for library assets (needed for lineage tracking)
+      const assetId = typeof asset.id === 'number' ? asset.id : Number(asset.id);
+      if (Number.isFinite(assetId)) {
+        uploadContext.source_asset_id = assetId;
+      }
+
+      const uploadMethod = isVideo ? 'video_capture' : 'image_crop';
       const uploadResult = await uploadAsset({
         file: blob,
-        filename: buildCaptureFilenameFromSource(sourceFilename, video.currentTime),
+        filename: buildCaptureFilenameFromSource(sourceFilename, frameTime),
         providerId,
-        uploadMethod: 'video_capture',
+        uploadMethod,
         uploadContext,
       });
 
@@ -231,7 +260,8 @@ export function useFrameCapture({
         }
       }
 
-      toast.success('Frame captured to library.');
+      const successMessage = isVideo ? 'Frame captured to library.' : 'Cropped image saved to library.';
+      toast.success(successMessage);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Capture failed.';
       toast.error(message);
@@ -247,6 +277,7 @@ export function useFrameCapture({
     resolveCaptureProviderId,
     toast,
     videoRef,
+    imageRef,
   ]);
 
   return {

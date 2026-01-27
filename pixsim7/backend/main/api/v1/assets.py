@@ -1045,6 +1045,37 @@ async def upload_asset_to_provider(
                             asset_id=new_asset.id,
                             error=str(e),
                         )
+
+                # Create lineage if source_asset_id provided (for video captures and image crops)
+                source_asset_id = normalized_context.get('source_asset_id') if normalized_context else None
+                if source_asset_id and new_asset:
+                    from pixsim7.backend.main.services.asset.asset_factory import create_lineage_links
+                    from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME, CROPPED_REGION
+
+                    relation_type = PAUSED_FRAME if upload_method == 'video_capture' else CROPPED_REGION
+
+                    try:
+                        await create_lineage_links(
+                            db,
+                            child_asset_id=new_asset.id,
+                            parent_asset_ids=[source_asset_id],
+                            relation_type=relation_type,
+                            operation_type=OperationType.FRAME_EXTRACTION,
+                        )
+                        logger.info(
+                            "capture_lineage_created",
+                            child_asset_id=new_asset.id,
+                            parent_asset_id=source_asset_id,
+                            relation_type=relation_type,
+                            upload_method=upload_method,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "capture_lineage_failed",
+                            child_asset_id=new_asset.id,
+                            parent_asset_id=source_asset_id,
+                            error=str(e),
+                        )
         except Exception as e:
             # Non-fatal if asset creation fails; log and return upload response anyway
             logger.error(

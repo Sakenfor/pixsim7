@@ -27,9 +27,10 @@ interface MediaPanelProps {
 
 export function MediaPanel({ context }: MediaPanelProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [fitMode, setFitMode] = useState<FitMode>('contain');
   const [zoom, setZoom] = useState(100);
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | undefined>();
+  const [mediaDimensions, setMediaDimensions] = useState<{ width: number; height: number } | undefined>();
 
   // Track video dimensions when video metadata loads
   useEffect(() => {
@@ -38,7 +39,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
     const updateDimensions = () => {
       if (video.videoWidth > 0 && video.videoHeight > 0) {
-        setVideoDimensions({ width: video.videoWidth, height: video.videoHeight });
+        setMediaDimensions({ width: video.videoWidth, height: video.videoHeight });
       }
     };
 
@@ -47,6 +48,24 @@ export function MediaPanel({ context }: MediaPanelProps) {
     updateDimensions();
 
     return () => video.removeEventListener('loadedmetadata', updateDimensions);
+  }, []);
+
+  // Track image dimensions when image loads
+  useEffect(() => {
+    const image = imageRef.current;
+    if (!image) return;
+
+    const updateDimensions = () => {
+      if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+        setMediaDimensions({ width: image.naturalWidth, height: image.naturalHeight });
+      }
+    };
+
+    image.addEventListener('load', updateDimensions);
+    // Also check if already loaded
+    updateDimensions();
+
+    return () => image.removeEventListener('load', updateDimensions);
   }, []);
 
   // Resolve viewer context (from prop or fallback selection)
@@ -97,6 +116,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const { isCapturing, captureFrame } = useFrameCapture({
     asset,
     videoRef,
+    imageRef,
     activeOverlayId,
   });
 
@@ -148,7 +168,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
           settings={settings}
           onCaptureFrame={captureFrame}
           captureDisabled={isCapturing}
-          videoDimensions={videoDimensions}
+          mediaDimensions={mediaDimensions}
         />
       )}
 
@@ -170,6 +190,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
               fitMode={fitMode}
               zoom={zoom}
               videoRef={videoRef}
+              imageRef={imageRef}
             />
           )}
         </div>

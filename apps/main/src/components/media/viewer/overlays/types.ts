@@ -13,8 +13,8 @@ export interface MediaOverlayComponentProps {
   settings: ViewerSettings;
   onCaptureFrame?: () => void;
   captureDisabled?: boolean;
-  /** Video dimensions (for capture region display) */
-  videoDimensions?: { width: number; height: number };
+  /** Media dimensions (for capture region display) */
+  mediaDimensions?: { width: number; height: number };
 }
 
 export type MediaOverlayTone = 'green' | 'purple' | 'blue' | 'amber';

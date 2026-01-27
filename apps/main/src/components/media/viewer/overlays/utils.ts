@@ -43,19 +43,19 @@ export function findActiveRegion(
  * Calculate pixel dimensions from normalized region bounds.
  *
  * @param bounds - Normalized bounds (0-1)
- * @param videoDimensions - Video width/height in pixels
+ * @param mediaDimensions - Media width/height in pixels (video or image)
  * @returns Pixel dimensions or null if invalid
  */
 export function getRegionPixelDimensions(
   bounds: { width: number; height: number } | undefined,
-  videoDimensions: { width: number; height: number } | undefined
+  mediaDimensions: { width: number; height: number } | undefined
 ): { width: number; height: number } | null {
-  if (!bounds || !videoDimensions) return null;
+  if (!bounds || !mediaDimensions) return null;
 
   const rect = denormalizeRect(
     { x: 0, y: 0, width: bounds.width, height: bounds.height },
-    videoDimensions.width,
-    videoDimensions.height
+    mediaDimensions.width,
+    mediaDimensions.height
   );
   const pw = Math.round(rect.width);
   const ph = Math.round(rect.height);

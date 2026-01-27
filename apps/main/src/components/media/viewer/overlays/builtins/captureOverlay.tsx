@@ -28,7 +28,7 @@ export function CaptureOverlayToolbar({
   asset,
   onCaptureFrame,
   captureDisabled,
-  videoDimensions,
+  mediaDimensions,
 }: MediaOverlayComponentProps) {
   const {
     regions,
@@ -43,10 +43,15 @@ export function CaptureOverlayToolbar({
   const regionPixelDimensions = useMemo(() => {
     const activeRegion = findActiveRegion(regions, selectedRegionId);
     if (!activeRegion?.bounds || activeRegion.type !== 'rect') return null;
-    return getRegionPixelDimensions(activeRegion.bounds, videoDimensions);
-  }, [videoDimensions, regions, selectedRegionId]);
+    return getRegionPixelDimensions(activeRegion.bounds, mediaDimensions);
+  }, [mediaDimensions, regions, selectedRegionId]);
 
-  const canCapture = Boolean(onCaptureFrame) && asset.type === 'video';
+  const isVideo = asset.type === 'video';
+  const canCapture = Boolean(onCaptureFrame) && (asset.type === 'video' || asset.type === 'image');
+  const buttonLabel = isVideo ? 'Capture Frame' : 'Crop';
+  const buttonTitle = canCapture
+    ? (isVideo ? 'Capture current frame' : 'Crop selected region')
+    : 'Capture requires video or image';
 
   return (
     <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
@@ -88,9 +93,9 @@ export function CaptureOverlayToolbar({
         onClick={() => onCaptureFrame?.()}
         disabled={!canCapture || captureDisabled}
         className={`${TOOLBAR_BUTTON_BASE} ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title={canCapture ? 'Capture frame' : 'Capture requires video'}
+        title={buttonTitle}
       >
-        Capture
+        {buttonLabel}
       </button>
     </div>
   );

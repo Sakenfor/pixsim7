@@ -20,11 +20,14 @@ interface MediaDisplayProps {
   fitMode: FitMode;
   zoom: number;
   videoRef?: RefObject<HTMLVideoElement>;
+  imageRef?: RefObject<HTMLImageElement>;
 }
 
-export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef }: MediaDisplayProps) {
+export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRef }: MediaDisplayProps) {
   const fallbackVideoRef = useRef<HTMLVideoElement>(null);
+  const fallbackImageRef = useRef<HTMLImageElement>(null);
   const resolvedVideoRef = videoRef ?? fallbackVideoRef;
+  const resolvedImageRef = imageRef ?? fallbackImageRef;
   const mediaUrl = asset.fullUrl || asset.url;
 
   // Auto-register context menu for the displayed asset
@@ -69,6 +72,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef }: Media
         />
       ) : (
         <img
+          ref={resolvedImageRef}
           src={mediaUrl}
           alt={asset.name}
           className={`${getFitClass()} rounded-lg`}

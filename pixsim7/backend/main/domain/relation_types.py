@@ -19,6 +19,9 @@ REFERENCE_IMAGE = "REFERENCE_IMAGE"
 PAUSED_FRAME = "PAUSED_FRAME"
 """Image extracted from a paused video frame at specific timestamp"""
 
+CROPPED_REGION = "CROPPED_REGION"
+"""Image cropped from a larger source image"""
+
 TRANSITION_INPUT = "TRANSITION_INPUT"
 """One of multiple images in a transition sequence"""
 
@@ -78,6 +81,7 @@ IMAGE_RELATIONS = {
     SOURCE_IMAGE,
     REFERENCE_IMAGE,
     PAUSED_FRAME,
+    CROPPED_REGION,
     TRANSITION_INPUT,
 }
 

@@ -36,7 +36,7 @@ registerMediaOverlay({
   shortcut: 'C',
   priority: 30,
   tone: 'amber',
-  isAvailable: (asset) => asset.type === 'video',
+  isAvailable: (asset) => asset.type === 'video' || asset.type === 'image',
   Main: CaptureOverlayMain,
   Toolbar: CaptureOverlayToolbar,
 });
