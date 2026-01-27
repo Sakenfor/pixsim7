@@ -23,6 +23,7 @@ Usage:
 """
 from typing import List, Dict, Any, Optional, Set, Tuple
 from datetime import datetime
+from uuid import UUID
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession

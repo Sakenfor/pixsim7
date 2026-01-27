@@ -27,6 +27,7 @@ from .crud_registry import (
     parse_uuid,
     parse_int,
 )
+from pixsim7.backend.main.services.ownership import OwnershipPolicy, OwnershipScope
 
 
 def register_default_template_specs() -> None:
@@ -117,6 +118,12 @@ def register_default_template_specs() -> None:
         supports_soft_delete=False,
         supports_upsert=False,
 
+        # Ownership - scope to world
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.WORLD,
+            world_field="world_id",
+        ),
+
         # Query configuration
         default_limit=50,
         max_limit=200,
@@ -171,6 +178,12 @@ def register_default_template_specs() -> None:
         # Behavior - no soft delete
         supports_soft_delete=False,
         supports_upsert=False,
+
+        # Ownership - scope to world
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.WORLD,
+            world_field="world_id",
+        ),
 
         # Query configuration
         default_limit=50,
@@ -233,6 +246,12 @@ def register_default_template_specs() -> None:
         # Behavior - no soft delete
         supports_soft_delete=False,
         supports_upsert=False,
+
+        # Ownership - scope to world
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.WORLD,
+            world_field="world_id",
+        ),
 
         # Query configuration
         default_limit=50,
@@ -297,7 +316,10 @@ def register_default_template_specs() -> None:
         supports_upsert=False,
 
         # Ownership - scope to user
-        scope_to_owner=True,
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.USER,
+            owner_field="owner_user_id",
+        ),
         owner_field="owner_user_id",
 
         # Query configuration
@@ -329,6 +351,12 @@ def register_default_template_specs() -> None:
         # Behavior - no soft delete
         supports_soft_delete=False,
         supports_upsert=False,
+
+        # Ownership - scope to world
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.WORLD,
+            world_field="world_id",
+        ),
 
         # Query configuration
         default_limit=50,
@@ -368,6 +396,12 @@ def register_character_instance_spec() -> None:
         # Behavior
         supports_soft_delete=True,
         supports_upsert=True,
+
+        # Ownership - scope to world
+        ownership_policy=OwnershipPolicy(
+            scope=OwnershipScope.WORLD,
+            world_field="world_id",
+        ),
 
         # Query configuration
         default_limit=50,

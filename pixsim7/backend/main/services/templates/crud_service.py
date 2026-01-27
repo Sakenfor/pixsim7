@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import SQLModel
 
 from .crud_registry import TemplateCRUDSpec, FilterOperator, NestedEntitySpec
+from pixsim7.backend.main.services.ownership import OwnershipScope, apply_ownership_filter
 
 T = TypeVar("T", bound=SQLModel)
 
@@ -72,6 +73,9 @@ class TemplateCRUDService(Generic[T]):
         spec: CRUD specification for this template type
         model: The SQLModel class (shorthand for spec.model)
         owner_id: Optional owner ID for scoped queries
+        user: Optional user object for ownership policies
+        world_id: Optional world ID for ownership policies
+        session_id: Optional session ID for ownership policies
     """
 
     def __init__(
@@ -79,11 +83,17 @@ class TemplateCRUDService(Generic[T]):
         db: AsyncSession,
         spec: TemplateCRUDSpec,
         owner_id: Optional[int] = None,
+        user: Any = None,
+        world_id: Optional[int] = None,
+        session_id: Optional[int] = None,
     ):
         self.db = db
         self.spec = spec
         self.model: Type[T] = spec.model
         self.owner_id = owner_id
+        self.user = user
+        self.world_id = world_id
+        self.session_id = session_id
 
     def _apply_owner_scope(self, query: Any) -> Any:
         """Apply owner scoping if configured."""
@@ -91,6 +101,16 @@ class TemplateCRUDService(Generic[T]):
             if hasattr(self.model, self.spec.owner_field):
                 column = getattr(self.model, self.spec.owner_field)
                 query = query.where(column == self.owner_id)
+        if self.spec.ownership_policy:
+            query = apply_ownership_filter(
+                query,
+                model=self.model,
+                policy=self.spec.ownership_policy,
+                user=self.user,
+                owner_id=self.owner_id,
+                world_id=self.world_id,
+                session_id=self.session_id,
+            )
         return query
 
     def _build_filter_condition(
@@ -326,6 +346,7 @@ class TemplateCRUDService(Generic[T]):
         id_column = getattr(self.model, self.spec.id_field)
 
         query = select(self.model).where(id_column == parsed_id)
+        query = self._apply_owner_scope(query)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
@@ -344,6 +365,7 @@ class TemplateCRUDService(Generic[T]):
 
         column = getattr(self.model, self.spec.unique_field)
         query = select(self.model).where(column == value)
+        query = self._apply_owner_scope(query)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
@@ -387,8 +409,23 @@ class TemplateCRUDService(Generic[T]):
                     )
 
         # Set owner if configured
-        if self.spec.owner_field and self.owner_id:
+        if self.spec.owner_field and self.owner_id and hasattr(self.model, self.spec.owner_field):
             data[self.spec.owner_field] = self.owner_id
+        if self.spec.ownership_policy:
+            if (
+                self.spec.ownership_policy.scope == OwnershipScope.WORLD
+                and self.spec.ownership_policy.world_field
+                and self.world_id is not None
+                and hasattr(self.model, self.spec.ownership_policy.world_field)
+            ):
+                data[self.spec.ownership_policy.world_field] = self.world_id
+            if (
+                self.spec.ownership_policy.scope == OwnershipScope.SESSION
+                and self.spec.ownership_policy.session_field
+                and self.session_id is not None
+                and hasattr(self.model, self.spec.ownership_policy.session_field)
+            ):
+                data[self.spec.ownership_policy.session_field] = self.session_id
 
         # Run before_create hook
         if self.spec.before_create:
@@ -448,6 +485,13 @@ class TemplateCRUDService(Generic[T]):
 
         # Update fields (excluding protected fields)
         protected_fields = {self.spec.id_field, self.spec.owner_field, "created_at"}
+        if self.spec.ownership_policy:
+            if self.spec.ownership_policy.owner_field:
+                protected_fields.add(self.spec.ownership_policy.owner_field)
+            if self.spec.ownership_policy.world_field:
+                protected_fields.add(self.spec.ownership_policy.world_field)
+            if self.spec.ownership_policy.session_field:
+                protected_fields.add(self.spec.ownership_policy.session_field)
         for field_name, value in data.items():
             if hasattr(entity, field_name) and field_name not in protected_fields:
                 setattr(entity, field_name, value)
@@ -526,6 +570,7 @@ class TemplateCRUDService(Generic[T]):
         id_column = getattr(self.model, self.spec.id_field)
 
         query = select(func.count()).select_from(self.model).where(id_column == parsed_id)
+        query = self._apply_owner_scope(query)
         result = await self.db.execute(query)
         count = result.scalar() or 0
         return count > 0
@@ -614,7 +659,14 @@ class TemplateCRUDService(Generic[T]):
         if not parent_spec:
             return None
 
-        parent_service = TemplateCRUDService(self.db, parent_spec, self.owner_id)
+        parent_service = TemplateCRUDService(
+            self.db,
+            parent_spec,
+            owner_id=self.owner_id,
+            user=self.user,
+            world_id=self.world_id,
+            session_id=self.session_id,
+        )
         return await parent_service.get(parent_id)
 
     async def get_ancestors(self, entity_id: Any, max_depth: int = 10) -> List[T]:
@@ -678,6 +730,8 @@ class TemplateCRUDService(Generic[T]):
                     nested_spec,
                     parent_id,
                     self.spec.id_parser(parent_id),
+                    world_id=self.world_id,
+                    session_id=self.session_id,
                 )
         return None
 
@@ -716,17 +770,25 @@ class NestedEntityService(Generic[T]):
         spec: NestedEntitySpec,
         parent_id: Any,
         parsed_parent_id: Any,
+        world_id: Optional[int] = None,
+        session_id: Optional[int] = None,
     ):
         self.db = db
         self.spec = spec
         self.model: Type[T] = spec.model
         self.parent_id = parent_id
         self.parsed_parent_id = parsed_parent_id
+        self.world_id = world_id
+        self.session_id = session_id
 
     async def list(self) -> List[T]:
         """List all nested entities under the parent."""
         parent_column = getattr(self.model, self.spec.parent_field)
         query = select(self.model).where(parent_column == self.parsed_parent_id)
+        if self.world_id is not None and hasattr(self.model, "world_id"):
+            query = query.where(getattr(self.model, "world_id") == self.world_id)
+        if self.session_id is not None and hasattr(self.model, "session_id"):
+            query = query.where(getattr(self.model, "session_id") == self.session_id)
         result = await self.db.execute(query)
         return list(result.scalars().all())
 
@@ -742,12 +804,20 @@ class NestedEntityService(Generic[T]):
                 parent_column == self.parsed_parent_id,
             )
         )
+        if self.world_id is not None and hasattr(self.model, "world_id"):
+            query = query.where(getattr(self.model, "world_id") == self.world_id)
+        if self.session_id is not None and hasattr(self.model, "session_id"):
+            query = query.where(getattr(self.model, "session_id") == self.session_id)
         result = await self.db.execute(query)
         return result.scalar_one_or_none()
 
     async def create(self, data: Dict[str, Any]) -> T:
         """Create a nested entity."""
         data[self.spec.parent_field] = self.parsed_parent_id
+        if self.world_id is not None and hasattr(self.model, "world_id"):
+            data["world_id"] = self.world_id
+        if self.session_id is not None and hasattr(self.model, "session_id"):
+            data["session_id"] = self.session_id
         entity = self.model(**data)
         self.db.add(entity)
         await self.db.commit()
@@ -760,8 +830,13 @@ class NestedEntityService(Generic[T]):
         if not entity:
             return None
 
+        protected_fields = {self.spec.id_field, self.spec.parent_field}
+        if hasattr(self.model, "world_id"):
+            protected_fields.add("world_id")
+        if hasattr(self.model, "session_id"):
+            protected_fields.add("session_id")
         for field_name, value in data.items():
-            if hasattr(entity, field_name) and field_name not in {self.spec.id_field, self.spec.parent_field}:
+            if hasattr(entity, field_name) and field_name not in protected_fields:
                 setattr(entity, field_name, value)
 
         await self.db.commit()

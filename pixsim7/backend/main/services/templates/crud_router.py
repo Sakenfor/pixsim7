@@ -22,6 +22,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.user import User
+from pixsim7.backend.main.services.ownership import (
+    OwnershipScope,
+    assert_can_access,
+    assert_session_access,
+    assert_world_access,
+)
 
 from .crud_registry import TemplateCRUDSpec, NestedEntitySpec, CustomAction, get_template_crud_registry
 from .crud_service import TemplateCRUDService, NestedEntityService, CRUDValidationError
@@ -76,9 +82,77 @@ def create_list_response_model(spec: TemplateCRUDSpec) -> Type[BaseModel]:
 # =============================================================================
 
 
+def _resolve_owner_id(spec: TemplateCRUDSpec, current_user: User) -> Optional[int]:
+    """Resolve owner ID for scoped or policy-based access."""
+    if spec.scope_to_owner:
+        return getattr(current_user, "id", None)
+    if spec.ownership_policy and spec.ownership_policy.scope == OwnershipScope.USER:
+        return getattr(current_user, "id", None)
+    return None
+
+
+def _resolve_scope_context(
+    spec: TemplateCRUDSpec,
+    current_user: User,
+    world_id: Optional[int],
+    session_id: Optional[int],
+) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    """Resolve owner/world/session IDs based on spec and policy."""
+    owner_id = _resolve_owner_id(spec, current_user)
+    if not spec.ownership_policy:
+        return owner_id, None, None
+    if spec.ownership_policy.scope == OwnershipScope.WORLD:
+        return owner_id, world_id, None
+    if spec.ownership_policy.scope == OwnershipScope.SESSION:
+        return owner_id, None, session_id
+    return owner_id, None, None
+
+
+async def _ensure_parent_access(
+    *,
+    spec: TemplateCRUDSpec,
+    parent_id: str,
+    db: AsyncSession,
+    current_user: User,
+    owner_id: Optional[int],
+    world_id: Optional[int],
+    session_id: Optional[int],
+) -> None:
+    if not (spec.scope_to_owner or spec.ownership_policy):
+        return
+    service = TemplateCRUDService(
+        db,
+        spec,
+        owner_id=owner_id,
+        user=current_user,
+        world_id=world_id,
+        session_id=session_id,
+    )
+    parent = await service.get(parent_id)
+    if not parent:
+        raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
+
+
+async def _ensure_scope_access(
+    *,
+    spec: TemplateCRUDSpec,
+    db: AsyncSession,
+    current_user: User,
+    world_id: Optional[int],
+    session_id: Optional[int],
+) -> None:
+    if not spec.ownership_policy:
+        return
+    if spec.ownership_policy.scope == OwnershipScope.WORLD:
+        await assert_world_access(db=db, user=current_user, world_id=world_id)
+    elif spec.ownership_policy.scope == OwnershipScope.SESSION:
+        await assert_session_access(db=db, user=current_user, session_id=session_id)
+
+
 def _register_list_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register GET list endpoint."""
     response_model = spec.list_response_schema or create_list_response_model(spec)
+    ownership_policy = spec.ownership_policy
 
     @router.get(
         f"/{spec.url_prefix}",
@@ -93,13 +167,41 @@ def _register_list_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         is_active: Optional[bool] = Query(None),
         search: Optional[str] = Query(None, description="Search in name field"),
         include_inactive: bool = Query(False, description="Include inactive items"),
+        world_id: Optional[int] = Query(None),
+        session_id: Optional[int] = Query(None),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
-        _spec: TemplateCRUDSpec = spec,
     ):
         # Build owner ID if scoped
-        owner_id = current_user.id if _spec.scope_to_owner else None
-        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        owner_id, world_id, session_id = _resolve_scope_context(
+            spec,
+            current_user,
+            world_id,
+            session_id,
+        )
+        if ownership_policy:
+            assert_can_access(
+                user=current_user,
+                policy=ownership_policy,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            await _ensure_scope_access(
+                spec=spec,
+                db=db,
+                current_user=current_user,
+                world_id=world_id,
+                session_id=session_id,
+            )
+        service = TemplateCRUDService(
+            db,
+            spec,
+            owner_id=owner_id,
+            user=current_user,
+            world_id=world_id,
+            session_id=session_id,
+        )
 
         filters = {}
         if is_active is not None:
@@ -125,6 +227,7 @@ def _register_list_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
 def _register_get_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register GET single item endpoint."""
     response_model = spec.response_schema or spec.model
+    ownership_policy = spec.ownership_policy
 
     @router.get(
         f"/{spec.url_prefix}/{{entity_id}}",
@@ -136,15 +239,43 @@ def _register_get_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     )
     async def get_item(
         entity_id: str,
+        world_id: Optional[int] = Query(None),
+        session_id: Optional[int] = Query(None),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
-        _spec: TemplateCRUDSpec = spec,
     ):
-        owner_id = current_user.id if _spec.scope_to_owner else None
-        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        owner_id, world_id, session_id = _resolve_scope_context(
+            spec,
+            current_user,
+            world_id,
+            session_id,
+        )
+        if ownership_policy:
+            assert_can_access(
+                user=current_user,
+                policy=ownership_policy,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            await _ensure_scope_access(
+                spec=spec,
+                db=db,
+                current_user=current_user,
+                world_id=world_id,
+                session_id=session_id,
+            )
+        service = TemplateCRUDService(
+            db,
+            spec,
+            owner_id=owner_id,
+            user=current_user,
+            world_id=world_id,
+            session_id=session_id,
+        )
         item = await service.get(entity_id)
         if not item:
-            raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
+            raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
         # Apply transformation
         return await service.transform_response(item)
 
@@ -153,6 +284,7 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register POST create endpoint."""
     request_model = spec.create_schema or spec.model
     response_model = spec.response_schema or spec.model
+    ownership_policy = spec.ownership_policy
 
     @router.post(
         f"/{spec.url_prefix}",
@@ -164,12 +296,40 @@ def _register_create_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     )
     async def create_item(
         data: Dict[str, Any],
+        world_id: Optional[int] = Query(None),
+        session_id: Optional[int] = Query(None),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
-        _spec: TemplateCRUDSpec = spec,
     ):
-        owner_id = current_user.id if _spec.scope_to_owner else None
-        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        owner_id, world_id, session_id = _resolve_scope_context(
+            spec,
+            current_user,
+            world_id,
+            session_id,
+        )
+        if ownership_policy:
+            assert_can_access(
+                user=current_user,
+                policy=ownership_policy,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            await _ensure_scope_access(
+                spec=spec,
+                db=db,
+                current_user=current_user,
+                world_id=world_id,
+                session_id=session_id,
+            )
+        service = TemplateCRUDService(
+            db,
+            spec,
+            owner_id=owner_id,
+            user=current_user,
+            world_id=world_id,
+            session_id=session_id,
+        )
         try:
             item = await service.create(data)
             return await service.transform_response(item)
@@ -183,6 +343,7 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register PUT/PATCH update endpoint."""
     request_model = spec.update_schema or Dict[str, Any]
     response_model = spec.response_schema or spec.model
+    ownership_policy = spec.ownership_policy
 
     @router.put(
         f"/{spec.url_prefix}/{{entity_id}}",
@@ -195,16 +356,44 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     async def update_item(
         entity_id: str,
         data: Dict[str, Any],
+        world_id: Optional[int] = Query(None),
+        session_id: Optional[int] = Query(None),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
-        _spec: TemplateCRUDSpec = spec,
     ):
-        owner_id = current_user.id if _spec.scope_to_owner else None
-        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        owner_id, world_id, session_id = _resolve_scope_context(
+            spec,
+            current_user,
+            world_id,
+            session_id,
+        )
+        if ownership_policy:
+            assert_can_access(
+                user=current_user,
+                policy=ownership_policy,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            await _ensure_scope_access(
+                spec=spec,
+                db=db,
+                current_user=current_user,
+                world_id=world_id,
+                session_id=session_id,
+            )
+        service = TemplateCRUDService(
+            db,
+            spec,
+            owner_id=owner_id,
+            user=current_user,
+            world_id=world_id,
+            session_id=session_id,
+        )
         try:
             item = await service.update(entity_id, data)
             if not item:
-                raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
+                raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
             return await service.transform_response(item)
         except CRUDValidationError as e:
             raise HTTPException(status_code=422, detail=e.message)
@@ -212,6 +401,7 @@ def _register_update_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
 
 def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
     """Register DELETE endpoint."""
+    ownership_policy = spec.ownership_policy
 
     @router.delete(
         f"/{spec.url_prefix}/{{entity_id}}",
@@ -225,23 +415,51 @@ def _register_delete_route(router: APIRouter, spec: TemplateCRUDSpec) -> None:
         entity_id: str,
         hard: bool = Query(False, description="Hard delete instead of soft delete"),
         cascade: bool = Query(False, description="Cascade delete nested entities"),
+        world_id: Optional[int] = Query(None),
+        session_id: Optional[int] = Query(None),
         db: AsyncSession = Depends(get_db),
         current_user: User = Depends(get_current_user),
-        _spec: TemplateCRUDSpec = spec,
     ):
-        owner_id = current_user.id if _spec.scope_to_owner else None
-        service = TemplateCRUDService(db, _spec, owner_id=owner_id)
+        owner_id, world_id, session_id = _resolve_scope_context(
+            spec,
+            current_user,
+            world_id,
+            session_id,
+        )
+        if ownership_policy:
+            assert_can_access(
+                user=current_user,
+                policy=ownership_policy,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            await _ensure_scope_access(
+                spec=spec,
+                db=db,
+                current_user=current_user,
+                world_id=world_id,
+                session_id=session_id,
+            )
+        service = TemplateCRUDService(
+            db,
+            spec,
+            owner_id=owner_id,
+            user=current_user,
+            world_id=world_id,
+            session_id=session_id,
+        )
 
-        if cascade and _spec.nested_entities:
+        if cascade and spec.nested_entities:
             success = await service.delete_with_nested(entity_id, hard=hard)
         else:
             success = await service.delete(entity_id, hard=hard)
 
         if not success:
-            raise HTTPException(status_code=404, detail=f"{_spec.kind} not found")
+            raise HTTPException(status_code=404, detail=f"{spec.kind} not found")
         return DeleteResponse(
             success=True,
-            message=f"{_spec.kind} {'deleted' if hard else 'deactivated'} successfully"
+            message=f"{spec.kind} {'deleted' if hard else 'deactivated'} successfully"
         )
 
 
@@ -266,7 +484,6 @@ def _register_custom_action_route(
             data: Dict[str, Any] = None,
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
             _action: CustomAction = action,
         ):
             return await _action.handler(
@@ -274,7 +491,7 @@ def _register_custom_action_route(
                 user=current_user,
                 entity_id=entity_id,
                 data=data,
-                spec=_spec,
+                spec=spec,
             )
 
     elif action.method.upper() == "PUT":
@@ -290,7 +507,6 @@ def _register_custom_action_route(
             data: Dict[str, Any] = None,
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
             _action: CustomAction = action,
         ):
             return await _action.handler(
@@ -298,7 +514,7 @@ def _register_custom_action_route(
                 user=current_user,
                 entity_id=entity_id,
                 data=data,
-                spec=_spec,
+                spec=spec,
             )
 
 
@@ -309,6 +525,7 @@ def _register_nested_entity_routes(
 ) -> None:
     """Register CRUD routes for nested entities."""
     base_path = f"/{spec.url_prefix}/{{parent_id}}/{nested.url_suffix}"
+    ownership_policy = spec.ownership_policy
 
     if nested.enable_list:
         @router.get(
@@ -318,13 +535,50 @@ def _register_nested_entity_routes(
         )
         async def list_nested(
             parent_id: str,
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
             items = await service.list()
             return {"items": items, "total": len(items)}
 
@@ -337,16 +591,53 @@ def _register_nested_entity_routes(
         async def get_nested(
             parent_id: str,
             entity_id: str,
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
             item = await service.get(entity_id)
             if not item:
-                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
+                raise HTTPException(status_code=404, detail=f"{nested.kind} not found")
             return item
 
     if nested.enable_create:
@@ -359,13 +650,50 @@ def _register_nested_entity_routes(
         async def create_nested(
             parent_id: str,
             data: Dict[str, Any],
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
             return await service.create(data)
 
     if nested.enable_update:
@@ -378,16 +706,53 @@ def _register_nested_entity_routes(
             parent_id: str,
             entity_id: str,
             data: Dict[str, Any],
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
             item = await service.update(entity_id, data)
             if not item:
-                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
+                raise HTTPException(status_code=404, detail=f"{nested.kind} not found")
             return item
 
     if nested.enable_delete:
@@ -400,17 +765,54 @@ def _register_nested_entity_routes(
         async def delete_nested(
             parent_id: str,
             entity_id: str,
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
             success = await service.delete(entity_id)
             if not success:
-                raise HTTPException(status_code=404, detail=f"{_nested.kind} not found")
-            return DeleteResponse(success=True, message=f"{_nested.kind} deleted")
+                raise HTTPException(status_code=404, detail=f"{nested.kind} not found")
+            return DeleteResponse(success=True, message=f"{nested.kind} deleted")
 
     # Replace all endpoint - enabled when both create and delete are enabled
     if nested.enable_create and nested.enable_delete:
@@ -423,13 +825,50 @@ def _register_nested_entity_routes(
         async def replace_all_nested(
             parent_id: str,
             data: Dict[str, Any],
+            world_id: Optional[int] = Query(None),
+            session_id: Optional[int] = Query(None),
             db: AsyncSession = Depends(get_db),
             current_user: User = Depends(get_current_user),
-            _spec: TemplateCRUDSpec = spec,
-            _nested: NestedEntitySpec = nested,
         ):
-            parsed_parent_id = _spec.id_parser(parent_id)
-            service = NestedEntityService(db, _nested, parent_id, parsed_parent_id)
+            parsed_parent_id = spec.id_parser(parent_id)
+            owner_id, world_id, session_id = _resolve_scope_context(
+                spec,
+                current_user,
+                world_id,
+                session_id,
+            )
+            if ownership_policy:
+                assert_can_access(
+                    user=current_user,
+                    policy=ownership_policy,
+                    owner_id=owner_id,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+                await _ensure_scope_access(
+                    spec=spec,
+                    db=db,
+                    current_user=current_user,
+                    world_id=world_id,
+                    session_id=session_id,
+                )
+            await _ensure_parent_access(
+                spec=spec,
+                parent_id=parent_id,
+                db=db,
+                current_user=current_user,
+                owner_id=owner_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
+            service = NestedEntityService(
+                db,
+                nested,
+                parent_id,
+                parsed_parent_id,
+                world_id=world_id,
+                session_id=session_id,
+            )
 
             # Expect data in format {"items": [...]} or just a list
             items = data.get("items", data) if isinstance(data, dict) else data
@@ -528,6 +967,17 @@ def create_template_crud_router(
                         "supports_soft_delete": s.supports_soft_delete,
                         "supports_upsert": s.supports_upsert,
                         "scope_to_owner": s.scope_to_owner,
+                        "ownership": (
+                            {
+                                "scope": s.ownership_policy.scope.value,
+                                "owner_field": s.ownership_policy.owner_field,
+                                "world_field": s.ownership_policy.world_field,
+                                "session_field": s.ownership_policy.session_field,
+                                "requires_admin": s.ownership_policy.requires_admin,
+                            }
+                            if s.ownership_policy
+                            else None
+                        ),
                         "filterable_fields": s.filterable_fields,
                         "search_fields": s.search_fields,
                         "endpoints": {

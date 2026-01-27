@@ -41,6 +41,7 @@ from pydantic import BaseModel
 from sqlmodel import SQLModel
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry
+from pixsim7.backend.main.services.ownership import OwnershipPolicy, OwnershipScope
 
 
 T = TypeVar("T", bound=SQLModel)
@@ -170,6 +171,7 @@ class TemplateCRUDSpec:
         # Ownership/Scoping
         owner_field: Field that stores owner user ID (enables user-scoped queries)
         scope_to_owner: If True, automatically filter by current user
+        ownership_policy: Optional centralized ownership policy (overrides scope_to_owner)
 
         # Hierarchy support
         parent_field: Field that references parent entity
@@ -238,6 +240,7 @@ class TemplateCRUDSpec:
     # Ownership/Scoping
     owner_field: Optional[str] = None
     scope_to_owner: bool = False
+    ownership_policy: Optional[OwnershipPolicy] = None
 
     # Hierarchy support
     parent_field: Optional[str] = None

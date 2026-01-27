@@ -11,6 +11,7 @@ from ..stats import HasStats, HasStatsWithMetadata
 class GameScene(SQLModel, table=True):
     __tablename__ = "game_scenes"
     id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
     title: str = Field(max_length=128)
     description: Optional[str] = None
     entry_node_id: Optional[int] = Field(
@@ -106,6 +107,7 @@ class GameWorldState(SQLModel, table=True):
 class GameLocation(SQLModel, HasStats, table=True):
     __tablename__ = "game_locations"
     id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
     name: str = Field(max_length=64)
     x: float = Field(default=0.0)
     y: float = Field(default=0.0)
@@ -125,6 +127,7 @@ class GameLocation(SQLModel, HasStats, table=True):
 class GameNPC(SQLModel, HasStats, table=True):
     __tablename__ = "game_npcs"
     id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
     name: str = Field(max_length=64)
     personality: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     home_location_id: Optional[int] = Field(default=None, foreign_key="game_locations.id")
@@ -134,6 +137,7 @@ class GameNPC(SQLModel, HasStats, table=True):
 class GameItem(SQLModel, HasStatsWithMetadata, table=True):
     __tablename__ = "game_items"
     id: Optional[int] = Field(default=None, primary_key=True)
+    world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
     name: str = Field(max_length=128)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))

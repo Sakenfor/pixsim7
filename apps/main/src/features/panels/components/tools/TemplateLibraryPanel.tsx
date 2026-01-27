@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { apiClient } from '@lib/api/client';
-import { PanelHeader } from '@features/panels';
 import { Button } from '@pixsim7/shared.ui';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+
+import { apiClient } from '@lib/api/client';
+
+import { PanelHeader } from '@features/panels';
 
 /**
  * Template Library Panel
@@ -19,6 +21,13 @@ interface TemplateTypeInfo {
   supports_soft_delete: boolean;
   supports_upsert: boolean;
   scope_to_owner: boolean;
+  ownership?: {
+    scope: 'global' | 'user' | 'world' | 'session';
+    owner_field?: string | null;
+    world_field?: string | null;
+    session_field?: string | null;
+    requires_admin: boolean;
+  } | null;
   filterable_fields: string[];
   search_fields: string[];
   endpoints: {
@@ -48,6 +57,9 @@ interface EntityListResponse {
 
 type ViewMode = 'types' | 'list' | 'detail' | 'edit' | 'create';
 
+const WORLD_ID_STORAGE_KEY = 'templateLibrary.worldId';
+const SESSION_ID_STORAGE_KEY = 'templateLibrary.sessionId';
+
 export function TemplateLibraryPanel() {
   // Registry state
   const [templateTypes, setTemplateTypes] = useState<TemplateTypeInfo[]>([]);
@@ -69,6 +81,37 @@ export function TemplateLibraryPanel() {
   // Form state
   const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
+  const [worldIdInput, setWorldIdInput] = useState('');
+  const [sessionIdInput, setSessionIdInput] = useState('');
+  const ownershipScope = selectedType?.ownership?.scope;
+  const requiresWorldId = ownershipScope === 'world';
+  const requiresSessionId = ownershipScope === 'session';
+
+  const appendScopeParams = useCallback((params: URLSearchParams) => {
+    const worldId = worldIdInput.trim();
+    const sessionId = sessionIdInput.trim();
+    if (worldId) params.set('world_id', worldId);
+    if (sessionId) params.set('session_id', sessionId);
+  }, [worldIdInput, sessionIdInput]);
+
+  const withScopeQuery = useCallback((path: string) => {
+    const params = new URLSearchParams();
+    appendScopeParams(params);
+    const query = params.toString();
+    return query ? `${path}?${query}` : path;
+  }, [appendScopeParams]);
+
+  const ensureScopeReady = useCallback(() => {
+    if (requiresWorldId && !worldIdInput.trim()) {
+      setError('world_id required');
+      return false;
+    }
+    if (requiresSessionId && !sessionIdInput.trim()) {
+      setError('session_id required');
+      return false;
+    }
+    return true;
+  }, [requiresWorldId, requiresSessionId, worldIdInput, sessionIdInput]);
 
   // Load template types from registry
   useEffect(() => {
@@ -93,9 +136,38 @@ export function TemplateLibraryPanel() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedWorldId = window.localStorage.getItem(WORLD_ID_STORAGE_KEY);
+    const savedSessionId = window.localStorage.getItem(SESSION_ID_STORAGE_KEY);
+    if (savedWorldId !== null) setWorldIdInput(savedWorldId);
+    if (savedSessionId !== null) setSessionIdInput(savedSessionId);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(WORLD_ID_STORAGE_KEY, worldIdInput);
+  }, [worldIdInput]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(SESSION_ID_STORAGE_KEY, sessionIdInput);
+  }, [sessionIdInput]);
+
+  useEffect(() => {
+    if (!requiresWorldId && !requiresSessionId) return;
+    if (!ensureScopeReady()) return;
+    setError(null);
+  }, [requiresWorldId, requiresSessionId, worldIdInput, sessionIdInput, ensureScopeReady]);
+
   // Load entities when type is selected
   const loadEntities = useCallback(async () => {
-    if (!selectedType) return;
+    if (!selectedType || !selectedType.endpoints.list) return;
+    if (!ensureScopeReady()) {
+      setEntities([]);
+      setTotalEntities(0);
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -108,6 +180,7 @@ export function TemplateLibraryPanel() {
       if (searchQuery) {
         params.set('search', searchQuery);
       }
+      appendScopeParams(params);
 
       const res = await apiClient.get<EntityListResponse>(
         `/game/${selectedType.url_prefix}?${params.toString()}`
@@ -119,7 +192,7 @@ export function TemplateLibraryPanel() {
     } finally {
       setLoading(false);
     }
-  }, [selectedType, currentPage, searchQuery]);
+  }, [selectedType, currentPage, searchQuery, appendScopeParams, ensureScopeReady]);
 
   useEffect(() => {
     if (viewMode === 'list' && selectedType) {
@@ -165,12 +238,13 @@ export function TemplateLibraryPanel() {
 
   const handleDelete = async () => {
     if (!selectedType || !selectedEntity) return;
+    if (!ensureScopeReady()) return;
 
     const id = selectedEntity.id;
     if (!confirm(`Delete this ${selectedType.kind}?`)) return;
 
     try {
-      await apiClient.delete(`/game/${selectedType.url_prefix}/${id}`);
+      await apiClient.delete(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`));
       setViewMode('list');
       setSelectedEntity(null);
       loadEntities();
@@ -181,15 +255,16 @@ export function TemplateLibraryPanel() {
 
   const handleSave = async () => {
     if (!selectedType) return;
+    if (!ensureScopeReady()) return;
 
     setSaving(true);
     setError(null);
     try {
       if (viewMode === 'create') {
-        await apiClient.post(`/game/${selectedType.url_prefix}`, formData);
+        await apiClient.post(withScopeQuery(`/game/${selectedType.url_prefix}`), formData);
       } else if (viewMode === 'edit' && selectedEntity) {
         const id = selectedEntity.id;
-        await apiClient.put(`/game/${selectedType.url_prefix}/${id}`, formData);
+        await apiClient.put(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`), formData);
       }
       setViewMode('list');
       setSelectedEntity(null);
@@ -251,6 +326,21 @@ export function TemplateLibraryPanel() {
             owner-scoped
           </span>
         )}
+        {type.ownership?.scope === 'world' && (
+          <span className="px-1.5 py-0.5 text-[10px] rounded bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300">
+            world-scoped
+          </span>
+        )}
+        {type.ownership?.scope === 'session' && (
+          <span className="px-1.5 py-0.5 text-[10px] rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+            session-scoped
+          </span>
+        )}
+        {type.ownership?.requires_admin && (
+          <span className="px-1.5 py-0.5 text-[10px] rounded bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300">
+            admin-only
+          </span>
+        )}
         {type.supports_soft_delete && (
           <span className="px-1.5 py-0.5 text-[10px] rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
             soft-delete
@@ -290,30 +380,79 @@ export function TemplateLibraryPanel() {
     if (!selectedType) return null;
 
     const totalPages = Math.ceil(totalEntities / pageSize);
+    const listEnabled = selectedType.endpoints.list;
 
     return (
       <div className="flex flex-col h-full">
         {/* Search and actions */}
-        <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex gap-2">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(0);
-            }}
-            className="flex-1 px-2 py-1 text-sm rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
-          />
-          {selectedType.endpoints.create && (
-            <Button size="sm" onClick={handleCreate}>
-              + New
-            </Button>
+        <div className="p-3 border-b border-neutral-200 dark:border-neutral-700 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder={listEnabled ? 'Search...' : 'Search disabled'}
+              value={searchQuery}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(0);
+              }}
+              disabled={!listEnabled}
+              className="flex-1 px-2 py-1 text-sm rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 disabled:opacity-60"
+            />
+            {selectedType.endpoints.create && (
+              <Button size="sm" onClick={handleCreate}>
+                + New
+              </Button>
+            )}
+          </div>
+          {(requiresWorldId || requiresSessionId) && (
+            <div className="flex gap-2">
+              {requiresWorldId && (
+                <div className="flex-1 flex flex-col gap-1">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="World ID"
+                    value={worldIdInput}
+                    onChange={(e) => {
+                      setWorldIdInput(e.target.value);
+                      setCurrentPage(0);
+                    }}
+                    className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                  />
+                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Required for world-scoped types
+                  </span>
+                </div>
+              )}
+              {requiresSessionId && (
+                <div className="flex-1 flex flex-col gap-1">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="Session ID"
+                    value={sessionIdInput}
+                    onChange={(e) => {
+                      setSessionIdInput(e.target.value);
+                      setCurrentPage(0);
+                    }}
+                    className="w-full px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800"
+                  />
+                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    Required for session-scoped types
+                  </span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
         {/* Entity list */}
         <div className="flex-1 overflow-auto">
+          {!listEnabled && (
+            <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
+              Listing is disabled for this type.
+            </div>
+          )}
           {entities.map((entity, idx) => (
             <button
               key={String(entity.id ?? idx)}
@@ -330,7 +469,7 @@ export function TemplateLibraryPanel() {
             </button>
           ))}
 
-          {entities.length === 0 && !loading && (
+          {listEnabled && entities.length === 0 && !loading && (
             <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
               No {selectedType.kind} found
             </div>
@@ -338,7 +477,7 @@ export function TemplateLibraryPanel() {
         </div>
 
         {/* Pagination */}
-        {totalPages > 1 && (
+        {listEnabled && totalPages > 1 && (
           <div className="p-2 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between text-xs">
             <Button
               size="sm"
