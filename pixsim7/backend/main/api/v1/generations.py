@@ -136,6 +136,7 @@ async def create_generation(
             prompt_version_id=request.prompt_version_id,
             force_new=request.force_new,
             analyzer_id=request.analyzer_id,
+            preferred_account_id=request.preferred_account_id,
         )
 
         # Update generation with prompt_config if we have one

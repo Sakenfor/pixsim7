@@ -167,10 +167,12 @@ function buildGenerationConfig(
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
   // extraParams from buildGenerationRequest already includes presetParams merged in,
   // so we just add prompt and preset_id for the final merged params
+  const { preferred_account_id, ...restExtra } = (req.extraParams || {}) as Record<string, any>;
+
   const mergedParams = {
     prompt: req.prompt,
     preset_id: req.presetId,
-    ...(req.extraParams || {}),
+    ...restExtra,
   };
 
   // Optional dev validation (warnings only, doesn't block)
@@ -189,19 +191,20 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   // so we pass empty object for presetParams to avoid double-merging
   const config = buildGenerationConfig(
     generationType,
-    { prompt: req.prompt, ...(req.extraParams || {}) },
+    { prompt: req.prompt, ...restExtra },
     providerId
   );
 
   // Create generation request
   // Use force_new to bypass deduplication (avoids getting stuck on pending generations)
-  const generationRequest: CreateGenerationRequest = {
+  const generationRequest: CreateGenerationRequest & { preferred_account_id?: number } = {
     config,
     provider_id: providerId,
     name: `Quick generation: ${req.prompt.slice(0, 50)}`,
     priority: 5,
     version_intent: 'new',
     force_new: true,
+    ...(preferred_account_id ? { preferred_account_id } : {}),
   };
 
   // Call new unified generations API

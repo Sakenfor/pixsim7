@@ -7,7 +7,6 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
-import { useCostEstimate, useProviderIdForModel } from '@features/providers';
 import clsx from 'clsx';
 import {
   Star,
@@ -31,7 +30,20 @@ import {
 } from '@features/contextHub';
 import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
+import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
 
+
+/** Friendly labels for aspect ratio values */
+const ASPECT_RATIO_LABELS: Record<string, string> = {
+  '1:1': 'Square (1:1)',
+  '16:9': 'Landscape (16:9)',
+  '9:16': 'Portrait (9:16)',
+  '4:3': 'Landscape (4:3)',
+  '3:4': 'Portrait (3:4)',
+  '3:2': 'Landscape (3:2)',
+  '2:3': 'Portrait (2:3)',
+  '21:9': 'Ultrawide (21:9)',
+};
 
 /** Icon configuration for param values - data-driven approach */
 const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> = {
@@ -91,19 +103,16 @@ function getParamIcon(paramName: string, value: string): React.ReactNode {
     const [w, h] = value.split(':').map(Number);
     if (!w || !h) return null;
 
-    const isSquare = w === h;
-    const isWide = w > h;
-    const isTall = w < h;
+    const maxDim = 16; // px for the longest side
+    const ratio = w / h;
+    const width = ratio >= 1 ? maxDim : Math.round(maxDim * ratio);
+    const height = ratio <= 1 ? maxDim : Math.round(maxDim / ratio);
 
     return (
       <div className="flex items-center justify-center w-5 h-5">
         <div
-          className={clsx(
-            'border-2 border-current rounded-sm',
-            isSquare && 'w-3.5 h-3.5',
-            isWide && 'w-4 h-2.5',
-            isTall && 'w-2.5 h-4'
-          )}
+          className="border-2 border-current rounded-sm"
+          style={{ width: `${width}px`, height: `${height}px` }}
         />
       </div>
     );
@@ -183,6 +192,14 @@ export function GenerationSettingsPanel({
     workbench.dynamicParams?.model as string | undefined
   );
   const inferredProviderId = providerId ?? modelProviderId;
+
+  // Account selector
+  const { accounts: allAccounts } = useProviderAccounts(inferredProviderId);
+  const activeAccounts = useMemo(
+    () => allAccounts.filter(a => a.status === 'active'),
+    [allAccounts]
+  );
+  const selectedAccountId = workbench.dynamicParams?.preferred_account_id ?? '';
 
   // Credit estimation for Go button
   const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
@@ -331,6 +348,20 @@ export function GenerationSettingsPanel({
                 <option value="fusion">Fusion</option>
               </select>
             )}
+            {activeAccounts.length > 0 && (
+              <select
+                value={selectedAccountId}
+                onChange={(e) => workbench.handleParamChange('preferred_account_id', e.target.value ? Number(e.target.value) : undefined)}
+                disabled={generating}
+                className="w-20 px-1 py-1.5 text-[10px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm truncate"
+                title="Account"
+              >
+                <option value="">Auto</option>
+                {activeAccounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.nickname || a.email}</option>
+                ))}
+              </select>
+            )}
             {showTargetButton && (
               <button
                 type="button"
@@ -379,29 +410,22 @@ export function GenerationSettingsPanel({
           if (param.type === 'boolean') return null;
           if (param.type === 'string' && !param.enum) return null;
 
-          // Duration with preset buttons
+          // Duration dropdown
           if (param.name === 'duration' && param.type === 'number' && durationOptions) {
             const currentDuration = Number(workbench.dynamicParams[param.name]) || durationOptions[0];
             return (
-              <div key="duration" className="flex flex-wrap gap-1">
+              <select
+                key="duration"
+                value={currentDuration}
+                onChange={(e) => workbench.handleParamChange('duration', Number(e.target.value))}
+                disabled={generating}
+                className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
+                title="Duration"
+              >
                 {durationOptions.map((seconds) => (
-                  <button
-                    type="button"
-                    key={seconds}
-                    onClick={() => workbench.handleParamChange('duration', seconds)}
-                    disabled={generating}
-                    className={clsx(
-                      'px-2 py-1 rounded-lg text-[11px] font-medium transition-colors',
-                      currentDuration === seconds
-                        ? 'bg-blue-600 text-white shadow-sm'
-                        : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-blue-50 dark:hover:bg-neutral-700'
-                    )}
-                    title={`${seconds} seconds`}
-                  >
-                    {seconds}s
-                  </button>
+                  <option key={seconds} value={seconds}>{seconds}s</option>
                 ))}
-              </div>
+              </select>
             );
           }
 
@@ -428,7 +452,7 @@ export function GenerationSettingsPanel({
           if (!options) return null;
 
           // Visual params that should show as button grids with icons
-          const VISUAL_PARAMS = ['aspect_ratio', 'quality', 'motion_mode', 'camera_movement'];
+          const VISUAL_PARAMS = ['quality', 'motion_mode', 'camera_movement'];
           const isVisualParam = VISUAL_PARAMS.includes(param.name);
           const currentValue = workbench.dynamicParams[param.name] ?? param.default ?? options[0];
 
@@ -475,7 +499,9 @@ export function GenerationSettingsPanel({
               title={param.name}
             >
               {options.map((opt: string) => (
-                <option key={opt} value={opt}>{opt}</option>
+                <option key={opt} value={opt}>
+                  {param.name === 'aspect_ratio' ? (ASPECT_RATIO_LABELS[opt] ?? opt) : opt}
+                </option>
               ))}
             </select>
           );

@@ -136,6 +136,12 @@ class Generation(SQLModel, table=True):
         index=True,
     )
 
+    # Account preference (user-selected)
+    preferred_account_id: Optional[int] = Field(
+        default=None,
+        description="User-preferred provider account. Worker tries this first before fallback selection."
+    )
+
     # Result
     asset_id: Optional[int] = Field(
         default=None,

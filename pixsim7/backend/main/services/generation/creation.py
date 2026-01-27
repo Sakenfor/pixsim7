@@ -274,6 +274,7 @@ class GenerationCreationService:
         prompt_version_id: Optional[UUID] = None,
         force_new: bool = False,
         analyzer_id: Optional[str] = None,
+        preferred_account_id: Optional[int] = None,
     ) -> Generation:
         """
         Create new generation with canonicalization and prompt versioning
@@ -545,6 +546,7 @@ class GenerationCreationService:
             priority=priority,
             scheduled_at=scheduled_at,
             parent_generation_id=parent_generation_id,
+            preferred_account_id=preferred_account_id,
             status=GenerationStatus.PENDING,
             # Billing fields
             estimated_credits=estimated_credits,

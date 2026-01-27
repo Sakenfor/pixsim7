@@ -249,6 +249,12 @@ class CreateGenerationRequest(BaseModel):
         description="What changed in this version (for version_intent='version'). E.g., 'Fixed hand anatomy'"
     )
 
+    # Account preference
+    preferred_account_id: Optional[int] = Field(
+        None,
+        description="Preferred provider account ID. Worker tries this account first, falls back to normal selection."
+    )
+
     # Prompt analysis settings (validated against analyzer registry)
     analyzer_id: Optional[str] = Field(
         None,
