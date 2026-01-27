@@ -5930,6 +5930,110 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/item-templates": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List itemTemplate
+         * @description Item template definitions for reusable item configurations.
+         */
+        readonly get: operations["list_items_api_v1_game_item_templates_get"];
+        readonly put?: never;
+        /**
+         * Create itemTemplate
+         * @description Create a new itemTemplate. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_item_templates_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/item-templates/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get itemTemplate
+         * @description Get a single itemTemplate by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_item_templates__entity_id__get"];
+        /**
+         * Update itemTemplate
+         * @description Update an existing itemTemplate.
+         */
+        readonly put: operations["update_item_api_v1_game_item_templates__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete itemTemplate
+         * @description Delete a itemTemplate. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_item_templates__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/items": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List gameItem
+         * @description Runtime game items.
+         */
+        readonly get: operations["list_items_api_v1_game_items_get"];
+        readonly put?: never;
+        /**
+         * Create gameItem
+         * @description Create a new gameItem. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_items_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/items/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get gameItem
+         * @description Get a single gameItem by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_items__entity_id__get"];
+        /**
+         * Update gameItem
+         * @description Update an existing gameItem.
+         */
+        readonly put: operations["update_item_api_v1_game_items__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete gameItem
+         * @description Delete a gameItem. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_items__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/links/integrity/cleanup": {
         readonly parameters: {
             readonly query?: never;
@@ -6104,6 +6208,82 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/location-templates": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List locationTemplate
+         * @description Location template definitions for reusable location configurations.
+         */
+        readonly get: operations["list_items_api_v1_game_location_templates_get"];
+        readonly put?: never;
+        /**
+         * Create locationTemplate
+         * @description Create a new locationTemplate. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_location_templates_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/location-templates/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get locationTemplate
+         * @description Get a single locationTemplate by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_location_templates__entity_id__get"];
+        /**
+         * Update locationTemplate
+         * @description Update an existing locationTemplate.
+         */
+        readonly put: operations["update_item_api_v1_game_location_templates__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete locationTemplate
+         * @description Delete a locationTemplate. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_location_templates__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/locations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List gameLocation
+         * @description Runtime game locations with hotspots for interactions.
+         */
+        readonly get: operations["list_items_api_v1_game_locations_get"];
+        readonly put?: never;
+        /**
+         * Create gameLocation
+         * @description Create a new gameLocation. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_locations_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/locations/": {
         readonly parameters: {
             readonly query?: never;
@@ -6121,6 +6301,34 @@ export interface paths {
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/locations/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get gameLocation
+         * @description Get a single gameLocation by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_locations__entity_id__get"];
+        /**
+         * Update gameLocation
+         * @description Update an existing gameLocation.
+         */
+        readonly put: operations["update_item_api_v1_game_locations__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete gameLocation
+         * @description Delete a gameLocation. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_locations__entity_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -6169,6 +6377,47 @@ export interface paths {
         readonly put: operations["replace_hotspots_api_v1_game_locations__location_id__hotspots_put"];
         readonly post?: never;
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/locations/{parent_id}/hotspots": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List hotspot under gameLocation */
+        readonly get: operations["list_nested_api_v1_game_locations__parent_id__hotspots_get"];
+        /**
+         * Replace all hotspot under gameLocation
+         * @description Atomically replace all hotspot entities. Deletes existing and creates new ones.
+         */
+        readonly put: operations["replace_all_nested_api_v1_game_locations__parent_id__hotspots_put"];
+        /** Create hotspot */
+        readonly post: operations["create_nested_api_v1_game_locations__parent_id__hotspots_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/locations/{parent_id}/hotspots/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get hotspot */
+        readonly get: operations["get_nested_api_v1_game_locations__parent_id__hotspots__entity_id__get"];
+        /** Update hotspot */
+        readonly put: operations["update_nested_api_v1_game_locations__parent_id__hotspots__entity_id__put"];
+        readonly post?: never;
+        /** Delete hotspot */
+        readonly delete: operations["delete_nested_api_v1_game_locations__parent_id__hotspots__entity_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -6240,6 +6489,30 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/npcs": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List gameNPC
+         * @description Game NPCs with schedules and expressions.
+         */
+        readonly get: operations["list_items_api_v1_game_npcs_get"];
+        readonly put?: never;
+        /**
+         * Create gameNPC
+         * @description Create a new gameNPC. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_npcs_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/npcs/": {
         readonly parameters: {
             readonly query?: never;
@@ -6257,6 +6530,34 @@ export interface paths {
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/npcs/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get gameNPC
+         * @description Get a single gameNPC by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_npcs__entity_id__get"];
+        /**
+         * Update gameNPC
+         * @description Update an existing gameNPC.
+         */
+        readonly put: operations["update_item_api_v1_game_npcs__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete gameNPC
+         * @description Delete a gameNPC. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_npcs__entity_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -6289,6 +6590,88 @@ export interface paths {
         readonly put: operations["replace_npc_expressions_api_v1_game_npcs__npc_id__expressions_put"];
         readonly post?: never;
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/npcs/{parent_id}/expressions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List expression under gameNPC */
+        readonly get: operations["list_nested_api_v1_game_npcs__parent_id__expressions_get"];
+        /**
+         * Replace all expression under gameNPC
+         * @description Atomically replace all expression entities. Deletes existing and creates new ones.
+         */
+        readonly put: operations["replace_all_nested_api_v1_game_npcs__parent_id__expressions_put"];
+        /** Create expression */
+        readonly post: operations["create_nested_api_v1_game_npcs__parent_id__expressions_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/npcs/{parent_id}/expressions/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get expression */
+        readonly get: operations["get_nested_api_v1_game_npcs__parent_id__expressions__entity_id__get"];
+        /** Update expression */
+        readonly put: operations["update_nested_api_v1_game_npcs__parent_id__expressions__entity_id__put"];
+        readonly post?: never;
+        /** Delete expression */
+        readonly delete: operations["delete_nested_api_v1_game_npcs__parent_id__expressions__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/npcs/{parent_id}/schedules": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List schedule under gameNPC */
+        readonly get: operations["list_nested_api_v1_game_npcs__parent_id__schedules_get"];
+        /**
+         * Replace all schedule under gameNPC
+         * @description Atomically replace all schedule entities. Deletes existing and creates new ones.
+         */
+        readonly put: operations["replace_all_nested_api_v1_game_npcs__parent_id__schedules_put"];
+        /** Create schedule */
+        readonly post: operations["create_nested_api_v1_game_npcs__parent_id__schedules_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/npcs/{parent_id}/schedules/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get schedule */
+        readonly get: operations["get_nested_api_v1_game_npcs__parent_id__schedules__entity_id__get"];
+        /** Update schedule */
+        readonly put: operations["update_nested_api_v1_game_npcs__parent_id__schedules__entity_id__put"];
+        readonly post?: never;
+        /** Delete schedule */
+        readonly delete: operations["delete_nested_api_v1_game_npcs__parent_id__schedules__entity_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -6562,6 +6945,140 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/scenes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List gameScene
+         * @description Game scenes with nodes and edges for branching narratives.
+         */
+        readonly get: operations["list_items_api_v1_game_scenes_get"];
+        readonly put?: never;
+        /**
+         * Create gameScene
+         * @description Create a new gameScene. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_scenes_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/scenes/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get gameScene
+         * @description Get a single gameScene by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_scenes__entity_id__get"];
+        /**
+         * Update gameScene
+         * @description Update an existing gameScene.
+         */
+        readonly put: operations["update_item_api_v1_game_scenes__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete gameScene
+         * @description Delete a gameScene. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_scenes__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/scenes/{parent_id}/edges": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List edge under gameScene */
+        readonly get: operations["list_nested_api_v1_game_scenes__parent_id__edges_get"];
+        /**
+         * Replace all edge under gameScene
+         * @description Atomically replace all edge entities. Deletes existing and creates new ones.
+         */
+        readonly put: operations["replace_all_nested_api_v1_game_scenes__parent_id__edges_put"];
+        /** Create edge */
+        readonly post: operations["create_nested_api_v1_game_scenes__parent_id__edges_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/scenes/{parent_id}/edges/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get edge */
+        readonly get: operations["get_nested_api_v1_game_scenes__parent_id__edges__entity_id__get"];
+        /** Update edge */
+        readonly put: operations["update_nested_api_v1_game_scenes__parent_id__edges__entity_id__put"];
+        readonly post?: never;
+        /** Delete edge */
+        readonly delete: operations["delete_nested_api_v1_game_scenes__parent_id__edges__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/scenes/{parent_id}/nodes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List node under gameScene */
+        readonly get: operations["list_nested_api_v1_game_scenes__parent_id__nodes_get"];
+        /**
+         * Replace all node under gameScene
+         * @description Atomically replace all node entities. Deletes existing and creates new ones.
+         */
+        readonly put: operations["replace_all_nested_api_v1_game_scenes__parent_id__nodes_put"];
+        /** Create node */
+        readonly post: operations["create_nested_api_v1_game_scenes__parent_id__nodes_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/scenes/{parent_id}/nodes/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get node */
+        readonly get: operations["get_nested_api_v1_game_scenes__parent_id__nodes__entity_id__get"];
+        /** Update node */
+        readonly put: operations["update_nested_api_v1_game_scenes__parent_id__nodes__entity_id__put"];
+        readonly post?: never;
+        /** Delete node */
+        readonly delete: operations["delete_nested_api_v1_game_scenes__parent_id__nodes__entity_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/scenes/{scene_id}": {
         readonly parameters: {
             readonly query?: never;
@@ -6714,6 +7231,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/templates/registry": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List registered template types
+         * @description Returns information about all registered template CRUD types.
+         */
+        readonly get: operations["list_template_types_api_v1_game_templates_registry_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/triggers/": {
         readonly parameters: {
             readonly query?: never;
@@ -6751,6 +7288,30 @@ export interface paths {
         readonly patch: operations["update_trigger_api_v1_game_triggers__trigger_id__patch"];
         readonly trace?: never;
     };
+    readonly "/api/v1/game/worlds": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * List gameWorld
+         * @description Game worlds owned by users.
+         */
+        readonly get: operations["list_items_api_v1_game_worlds_get"];
+        readonly put?: never;
+        /**
+         * Create gameWorld
+         * @description Create a new gameWorld. If upsert is enabled and unique field exists, updates instead.
+         */
+        readonly post: operations["create_item_api_v1_game_worlds_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/worlds/": {
         readonly parameters: {
             readonly query?: never;
@@ -6776,6 +7337,34 @@ export interface paths {
          */
         readonly post: operations["create_world_api_v1_game_worlds__post"];
         readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/{entity_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get gameWorld
+         * @description Get a single gameWorld by ID.
+         */
+        readonly get: operations["get_item_api_v1_game_worlds__entity_id__get"];
+        /**
+         * Update gameWorld
+         * @description Update an existing gameWorld.
+         */
+        readonly put: operations["update_item_api_v1_game_worlds__entity_id__put"];
+        readonly post?: never;
+        /**
+         * Delete gameWorld
+         * @description Delete a gameWorld. Uses soft delete if supported.
+         */
+        readonly delete: operations["delete_item_api_v1_game_worlds__entity_id__delete"];
         readonly options?: never;
         readonly head?: never;
         readonly patch?: never;
@@ -13490,6 +14079,16 @@ export interface components {
             readonly specialFlags?: readonly string[] | null;
         };
         /**
+         * DeleteResponse
+         * @description Response for delete operations.
+         */
+        readonly DeleteResponse: {
+            /** Message */
+            readonly message: string;
+            /** Success */
+            readonly success: boolean;
+        };
+        /**
          * DeviceScanResponse
          * @description Response from device scan operation.
          */
@@ -13717,6 +14316,14 @@ export interface components {
              * @description Entity type (e.g., 'asset', 'scene', 'npc')
              */
             readonly type: string;
+        };
+        /**
+         * ErrorResponse
+         * @description Standard error response.
+         */
+        readonly ErrorResponse: {
+            /** Detail */
+            readonly detail: string;
         };
         /**
          * ExecuteInteractionRequest
@@ -14305,6 +14912,89 @@ export interface components {
             /** Worldid */
             readonly worldId?: number | null;
         };
+        /** GameItem */
+        readonly GameItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /** Description */
+            readonly description?: string | null;
+            /** Id */
+            readonly id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /**
+             * Stats
+             * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
+             */
+            readonly stats?: Record<string, unknown>;
+            /**
+             * Stats Metadata
+             * @description Stat modification metadata (sources, expiration, history)
+             */
+            readonly stats_metadata?: Record<string, unknown>;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at?: string;
+        };
+        /** gameItemListResponse */
+        readonly gameItemListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["GameItem"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
+        };
+        /** GameLocation */
+        readonly GameLocation: {
+            /**
+             * Asset Id
+             * @description References assets.id for the primary 3D asset/scene used at this location
+             */
+            readonly asset_id?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /**
+             * Default Spawn
+             * @description Name of spawn point node in the primary 3D asset (e.g. a marker or empty)
+             */
+            readonly default_spawn?: string | null;
+            /** Id */
+            readonly id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /**
+             * Stats
+             * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
+             */
+            readonly stats?: Record<string, unknown>;
+            /**
+             * X
+             * @default 0
+             */
+            readonly x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            readonly y: number;
+        };
         /**
          * GameLocationDetail
          * @description Detailed game location with hotspots.
@@ -14322,6 +15012,19 @@ export interface components {
             /** Name */
             readonly name: string;
         };
+        /** gameLocationListResponse */
+        readonly gameLocationListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["GameLocation"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
+        };
         /**
          * GameLocationSummary
          * @description Summary of a game location.
@@ -14334,6 +15037,66 @@ export interface components {
             readonly id: number;
             /** Name */
             readonly name: string;
+        };
+        /** GameNPC */
+        readonly GameNPC: {
+            /** Home Location Id */
+            readonly home_location_id?: number | null;
+            /** Id */
+            readonly id?: number | null;
+            /** Name */
+            readonly name: string;
+            /** Personality */
+            readonly personality?: Record<string, unknown> | null;
+            /**
+             * Stats
+             * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
+             */
+            readonly stats?: Record<string, unknown>;
+        };
+        /** gameNPCListResponse */
+        readonly gameNPCListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["GameNPC"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
+        };
+        /** GameScene */
+        readonly GameScene: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /** Description */
+            readonly description?: string | null;
+            /** Entry Node Id */
+            readonly entry_node_id?: number | null;
+            /** Id */
+            readonly id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Title */
+            readonly title: string;
+        };
+        /** gameSceneListResponse */
+        readonly gameSceneListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["GameScene"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
         };
         /** GameSessionResponse */
         readonly GameSessionResponse: {
@@ -14395,6 +15158,22 @@ export interface components {
             /** Worldid */
             readonly worldId?: number | null;
         };
+        /** GameWorld */
+        readonly GameWorld: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /** Id */
+            readonly id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /** Owner User Id */
+            readonly owner_user_id: number;
+        };
         /** GameWorldDetail */
         readonly GameWorldDetail: {
             /** Id */
@@ -14405,6 +15184,19 @@ export interface components {
             readonly name: string;
             /** World Time */
             readonly world_time: number;
+        };
+        /** gameWorldListResponse */
+        readonly gameWorldListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["GameWorld"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
         };
         /** GameWorldSummary */
         readonly GameWorldSummary: {
@@ -15087,6 +15879,69 @@ export interface components {
             readonly total: number;
         };
         /**
+         * ItemTemplate
+         * @description Reusable item definition shared across worlds.
+         */
+        readonly ItemTemplate: {
+            /** Category */
+            readonly category?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /** Description */
+            readonly description?: string | null;
+            /** Display Name */
+            readonly display_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id?: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            readonly is_active: boolean;
+            /** Item Id */
+            readonly item_id: string;
+            /** Name */
+            readonly name?: string | null;
+            /**
+             * Stats
+             * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
+             */
+            readonly stats?: Record<string, unknown>;
+            /**
+             * Stats Metadata
+             * @description Stat modification metadata (sources, expiration, history)
+             */
+            readonly stats_metadata?: Record<string, unknown>;
+            /** Tags */
+            readonly tags?: Record<string, unknown>;
+            /** Template Metadata */
+            readonly template_metadata?: Record<string, unknown>;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at?: string;
+        };
+        /** itemTemplateListResponse */
+        readonly itemTemplateListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["ItemTemplate"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
+        };
+        /**
          * ListInteractionsRequest
          * @description Request to list available interactions
          */
@@ -15247,6 +16102,79 @@ export interface components {
             readonly label?: string | null;
             /** Priority */
             readonly priority?: number | null;
+        };
+        /**
+         * LocationTemplate
+         * @description Reusable location definition shared across worlds.
+         */
+        readonly LocationTemplate: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at?: string;
+            /**
+             * Default Asset Id
+             * @description Default asset ID for 3D scene/environment
+             */
+            readonly default_asset_id?: number | null;
+            /**
+             * Default Spawn
+             * @description Name of spawn point node in the 3D asset
+             */
+            readonly default_spawn?: string | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Display Name */
+            readonly display_name?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id?: string;
+            /**
+             * Is Active
+             * @default true
+             */
+            readonly is_active: boolean;
+            /** Location Id */
+            readonly location_id: string;
+            /** Location Type */
+            readonly location_type?: string | null;
+            /** Name */
+            readonly name?: string | null;
+            /**
+             * Stats
+             * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
+             */
+            readonly stats?: Record<string, unknown>;
+            /**
+             * Stats Metadata
+             * @description Stat modification metadata (sources, expiration, history)
+             */
+            readonly stats_metadata?: Record<string, unknown>;
+            /** Tags */
+            readonly tags?: Record<string, unknown>;
+            /** Template Metadata */
+            readonly template_metadata?: Record<string, unknown>;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at?: string;
+        };
+        /** locationTemplateListResponse */
+        readonly locationTemplateListResponse: {
+            /** Has More */
+            readonly has_more: boolean;
+            /** Items */
+            readonly items: readonly components["schemas"]["LocationTemplate"][];
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Total */
+            readonly total: number;
         };
         /**
          * LogBatchIngestRequest
@@ -27836,6 +28764,424 @@ export interface operations {
             };
         };
     };
+    readonly list_items_api_v1_game_item_templates_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["itemTemplateListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_item_templates_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemTemplate"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_item_templates__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemTemplate"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_item_templates__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ItemTemplate"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_item_templates__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_items_api_v1_game_items_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["gameItemListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_items_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameItem"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_items__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameItem"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_items__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameItem"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_items__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly cleanup_orphaned_links_api_v1_game_links_integrity_cleanup_post: {
         readonly parameters: {
             readonly query?: never;
@@ -28057,6 +29403,289 @@ export interface operations {
             };
         };
     };
+    readonly list_items_api_v1_game_location_templates_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["locationTemplateListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_location_templates_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LocationTemplate"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_location_templates__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LocationTemplate"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_location_templates__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["LocationTemplate"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_location_templates__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_items_api_v1_game_locations_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["gameLocationListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_locations_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameLocation"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_locations_api_v1_game_locations__get: {
         readonly parameters: {
             readonly query?: never;
@@ -28075,6 +29704,141 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["GameLocationSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_locations__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameLocation"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_locations__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameLocation"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_locations__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28158,6 +29922,219 @@ export interface operations {
             };
         };
     };
+    readonly list_nested_api_v1_game_locations__parent_id__hotspots_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly replace_all_nested_api_v1_game_locations__parent_id__hotspots_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_nested_api_v1_game_locations__parent_id__hotspots_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_nested_api_v1_game_locations__parent_id__hotspots__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_nested_api_v1_game_locations__parent_id__hotspots__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_nested_api_v1_game_locations__parent_id__hotspots__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly preview_npc_mood_api_v1_game_npc_preview_mood_post: {
         readonly parameters: {
             readonly query?: never;
@@ -28224,6 +30201,80 @@ export interface operations {
             };
         };
     };
+    readonly list_items_api_v1_game_npcs_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["gameNPCListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_npcs_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameNPC"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_npcs_api_v1_game_npcs__get: {
         readonly parameters: {
             readonly query?: never;
@@ -28242,6 +30293,141 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["NpcSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_npcs__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameNPC"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_npcs__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameNPC"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_npcs__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28312,6 +30498,432 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["NpcExpressionDTO"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_nested_api_v1_game_npcs__parent_id__expressions_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly replace_all_nested_api_v1_game_npcs__parent_id__expressions_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_nested_api_v1_game_npcs__parent_id__expressions_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_nested_api_v1_game_npcs__parent_id__expressions__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_nested_api_v1_game_npcs__parent_id__expressions__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_nested_api_v1_game_npcs__parent_id__expressions__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_nested_api_v1_game_npcs__parent_id__schedules_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly replace_all_nested_api_v1_game_npcs__parent_id__schedules_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_nested_api_v1_game_npcs__parent_id__schedules_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_nested_api_v1_game_npcs__parent_id__schedules__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_nested_api_v1_game_npcs__parent_id__schedules__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_nested_api_v1_game_npcs__parent_id__schedules__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28727,6 +31339,641 @@ export interface operations {
             };
         };
     };
+    readonly list_items_api_v1_game_scenes_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["gameSceneListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_scenes_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameScene"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_scenes__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameScene"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_scenes__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameScene"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_scenes__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_nested_api_v1_game_scenes__parent_id__edges_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly replace_all_nested_api_v1_game_scenes__parent_id__edges_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_nested_api_v1_game_scenes__parent_id__edges_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_nested_api_v1_game_scenes__parent_id__edges__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_nested_api_v1_game_scenes__parent_id__edges__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_nested_api_v1_game_scenes__parent_id__edges__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_nested_api_v1_game_scenes__parent_id__nodes_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly replace_all_nested_api_v1_game_scenes__parent_id__nodes_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_nested_api_v1_game_scenes__parent_id__nodes_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_nested_api_v1_game_scenes__parent_id__nodes__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_nested_api_v1_game_scenes__parent_id__nodes__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_nested_api_v1_game_scenes__parent_id__nodes__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+                readonly parent_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_scene_api_v1_game_scenes__scene_id__get: {
         readonly parameters: {
             readonly query?: never;
@@ -28975,6 +32222,26 @@ export interface operations {
             };
         };
     };
+    readonly list_template_types_api_v1_game_templates_registry_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": unknown;
+                };
+            };
+        };
+    };
     readonly list_triggers_api_v1_game_triggers__get: {
         readonly parameters: {
             readonly query?: {
@@ -29149,6 +32416,80 @@ export interface operations {
             };
         };
     };
+    readonly list_items_api_v1_game_worlds_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Include inactive items */
+                readonly include_inactive?: boolean;
+                readonly is_active?: boolean | null;
+                readonly limit?: number;
+                readonly offset?: number;
+                /** @description Search in name field */
+                readonly search?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["gameWorldListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly create_item_api_v1_game_worlds_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameWorld"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly list_worlds_api_v1_game_worlds__get: {
         readonly parameters: {
             readonly query?: {
@@ -29205,6 +32546,141 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["GameWorldDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_item_api_v1_game_worlds__entity_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameWorld"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly update_item_api_v1_game_worlds__entity_id__put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": Record<string, unknown>;
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameWorld"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_item_api_v1_game_worlds__entity_id__delete: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Cascade delete nested entities */
+                readonly cascade?: boolean;
+                /** @description Hard delete instead of soft delete */
+                readonly hard?: boolean;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly entity_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeleteResponse"];
+                };
+            };
+            /** @description Not Found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */

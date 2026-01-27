@@ -23,6 +23,9 @@ importers:
 
   apps/admin:
     dependencies:
+      '@pixsim7/shared.ui.dockview':
+        specifier: workspace:*
+        version: link:../../packages/shared/ui/dockview
       react:
         specifier: ^19.2.0
         version: 19.2.0
@@ -386,6 +389,9 @@ importers:
       '@pixsim7/shared.ui':
         specifier: workspace:*
         version: link:../../packages/shared/ui
+      '@pixsim7/shared.ui.dockview':
+        specifier: workspace:*
+        version: link:../../packages/shared/ui/dockview
       '@pixsim7/shared.ui.panels':
         specifier: workspace:*
         version: link:../../packages/shared/ui/panels
@@ -1036,6 +1042,37 @@ importers:
       zustand:
         specifier: ^5.0.8
         version: 5.0.8(@types/react@19.2.6)(react@19.2.0)(use-sync-external-store@1.6.0(react@19.2.0))
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.2
+        version: 19.2.6
+      '@types/react-dom':
+        specifier: ^19.2.2
+        version: 19.2.3(@types/react@19.2.6)
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/ui/dockview:
+    dependencies:
+      '@pixsim7/shared.ui.panels':
+        specifier: workspace:*
+        version: link:../panels
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      dockview:
+        specifier: ^4.11.0
+        version: 4.11.0(react@19.2.0)
+      dockview-core:
+        specifier: ^4.11.0
+        version: 4.11.0
+      react:
+        specifier: '>=18'
+        version: 19.2.0
+      react-dom:
+        specifier: '>=18'
+        version: 19.2.0(react@19.2.0)
     devDependencies:
       '@types/react':
         specifier: ^19.2.2
