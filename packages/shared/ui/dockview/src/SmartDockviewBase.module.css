@@ -109,9 +109,27 @@
   padding-top: 0;
 }
 
-/* Drop target styling */
-.smartDockview :global(.drop-target-dropzone) {
-  background: rgba(59, 130, 246, 0.1);
-  border: 2px dashed rgba(59, 130, 246, 0.5);
+/* Drop target styling (dockview 4.x uses dv- prefix) */
+.smartDockview :global(.dv-drop-target-dropzone) {
+  background: rgba(59, 130, 246, 0.15);
   border-radius: 4px;
+}
+
+.smartDockview :global(.dv-drop-target-selection) {
+  background: rgba(59, 130, 246, 0.3);
+  border: 2px solid rgba(59, 130, 246, 0.6);
+  border-radius: 4px;
+}
+
+/* Drop target anchors (the small indicators on tab bar) */
+.smartDockview :global(.dv-drop-target-anchor) {
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  border-radius: 2px;
+}
+
+.smartDockview :global(.dv-drop-target-anchor:hover),
+.smartDockview :global(.dv-drop-target-anchor.dv-drop-target-anchor-container-changed) {
+  background: rgba(59, 130, 246, 0.4);
+  border-color: rgba(59, 130, 246, 0.7);
 }

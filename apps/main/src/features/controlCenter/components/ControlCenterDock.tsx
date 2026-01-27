@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import type { DockviewApi } from 'dockview-core';
-import { useRef, useMemo, useCallback } from 'react';
+import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
 
@@ -9,7 +9,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import { PanelHostDockview } from '@features/panels';
-import type { PanelDefinition } from '@features/panels';
+import type { PanelDefinition, PanelHostDockviewRef } from '@features/panels';
 
 import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
 import { DockToolbar } from './DockToolbar';
@@ -56,9 +56,13 @@ export function ControlCenterDock() {
   const viewerMode = useAssetViewerStore((s) => s.mode);
   const viewerSettings = useAssetViewerStore((s) => s.settings);
 
+  // Panel layout reset trigger from dropdown menu
+  const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
+
   const navigate = useNavigate();
   const dockRef = useRef<HTMLDivElement>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
+  const panelHostRef = useRef<PanelHostDockviewRef>(null);
 
   // Get enabled panels based on user preferences
   const panels = useMemo(() => {
@@ -83,6 +87,13 @@ export function ControlCenterDock() {
   const handleReady = useCallback((api: DockviewApi) => {
     dockviewApiRef.current = api;
   }, []);
+
+  // Reset panel layout when dropdown menu triggers it (skip initial value of 0)
+  useEffect(() => {
+    if (panelLayoutResetTrigger > 0 && panelHostRef.current) {
+      panelHostRef.current.resetLayout();
+    }
+  }, [panelLayoutResetTrigger]);
 
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
@@ -195,6 +206,7 @@ export function ControlCenterDock() {
       >
         {allowedPanelIds.length > 0 ? (
           <PanelHostDockview
+            ref={panelHostRef}
             dockId="control-center"
             allowedPanels={allowedPanelIds}
             storageKey="dockview:control-center:v5"
