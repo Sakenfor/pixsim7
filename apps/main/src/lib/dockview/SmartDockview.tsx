@@ -363,9 +363,6 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const contextRef = useRef<TContext | undefined>(context);
   const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
   const { scopeHostId, dockviewId } = useDockviewIds(panelManagerId);
-  const defaultPanelScopesRef = useRef<string[] | undefined>(defaultPanelScopes);
-  defaultPanelScopesRef.current = defaultPanelScopes;
-
   // Determine mode
   const registryMode = isRegistryMode(props);
   const registry = registryMode ? props.registry : undefined;
@@ -477,8 +474,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     getDockviewPanelRegistry: () => dockviewPanelRegistryRef.current,
     getApiRef: () => apiRef.current,
     resetDockviewLayout,
-    defaultPanelScopes: defaultPanelScopesRef.current,
-  }), [contextMenuActive, enablePanelContentContextMenu, resetDockviewLayout]);
+    defaultPanelScopes,
+  }), [contextMenuActive, enablePanelContentContextMenu, resetDockviewLayout, defaultPanelScopes]);
 
   const components = useMemo(() => {
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};

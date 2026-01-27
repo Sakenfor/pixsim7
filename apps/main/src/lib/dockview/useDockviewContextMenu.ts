@@ -12,7 +12,7 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-core';
 import { useCallback } from 'react';
 
-import { CustomTabComponent, type useContextMenuOptional } from './contextMenu';
+import { CustomTabComponent, useContextMenuOptional } from './contextMenu';
 
 export interface UseDockviewContextMenuOptions {
   /** Whether context menu features are active (enabled + provider exists) */

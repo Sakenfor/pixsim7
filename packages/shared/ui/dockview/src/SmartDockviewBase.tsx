@@ -11,6 +11,7 @@ import clsx from "clsx";
 import {
   DockviewReact,
   type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -41,7 +42,9 @@ export interface SmartDockviewBaseProps<TContext = any> extends UseSmartDockview
   /** Default layout when no saved layout exists */
   defaultLayout?: (api: DockviewReadyEvent["api"]) => void;
   /** Optional: Custom tab components */
-  tabComponents?: Record<string, React.ComponentType<IDockviewPanelProps>>;
+  tabComponents?: Record<string, React.ComponentType<IDockviewPanelHeaderProps>>;
+  /** Optional: Default tab component override */
+  defaultTabComponent?: React.ComponentType<IDockviewPanelHeaderProps>;
   /** Optional: Custom watermark component */
   watermarkComponent?: React.ComponentType;
   /** Optional: Dockview theme class */
@@ -58,6 +61,7 @@ export function SmartDockviewBase<TContext = any>({
   onReady,
   defaultLayout,
   tabComponents,
+  defaultTabComponent,
   watermarkComponent,
   theme = "dockview-theme-abyss",
   layout,
@@ -129,7 +133,8 @@ export function SmartDockviewBase<TContext = any>({
     <div className={clsx(styles.smartDockview, className, containerClassName)} {...restContainer}>
       <DockviewReact
         components={wrappedComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
-        tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
+        tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelHeaderProps>>}
+        defaultTabComponent={defaultTabComponent as unknown as React.FunctionComponent<IDockviewPanelHeaderProps>}
         watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
         onReady={handleReady}
         className={theme}

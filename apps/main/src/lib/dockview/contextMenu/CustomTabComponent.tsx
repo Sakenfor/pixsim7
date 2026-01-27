@@ -5,10 +5,12 @@
  */
 
 import { DockviewDefaultTab } from 'dockview';
-import type { IDockviewPanelProps } from 'dockview-core';
-import { useContextMenuOptional } from './useContextMenu';
-import { useDockviewContext } from './DockviewIdContext';
+import type { IDockviewPanelHeaderProps } from 'dockview-core';
+
 import { useContextHubState } from '@features/contextHub';
+
+import { useDockviewContext } from './DockviewIdContext';
+import { useContextMenuOptional } from './useContextMenu';
 
 /**
  * Custom tab component that adds context menu support
@@ -16,7 +18,7 @@ import { useContextHubState } from '@features/contextHub';
  * Wraps the default dockview tab and intercepts right-click events
  * to show panel-specific context menu actions.
  */
-export function CustomTabComponent(props: IDockviewPanelProps) {
+export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
   const contextMenu = useContextMenuOptional();
   const { dockviewId: currentDockviewId, panelRegistry, dockviewApi } = useDockviewContext();
   const contextHubState = useContextHubState();
@@ -39,7 +41,7 @@ export function CustomTabComponent(props: IDockviewPanelProps) {
       position: { x: e.clientX, y: e.clientY },
       currentDockviewId,
       panelRegistry,
-      api: dockviewApi,
+      api: props.containerApi ?? dockviewApi,
       contextHubState,
       data: (props.api as any)?.params,
     });
