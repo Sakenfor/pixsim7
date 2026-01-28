@@ -24,6 +24,7 @@ export { GenerationSettings } from './components/modules/GenerationSettings';
 export { PanelsSettings } from './components/modules/PanelsSettings';
 export { ProfilesSettings } from './components/modules/ProfilesSettings';
 export { PromptsSettings } from './components/modules/PromptsSettings';
+export { TaggingSettings, TagsSettings } from './components/modules/TaggingSettings';
 // Note: UISettings is no longer exported - UI settings are now integrated into individual panels
 // Note: AssetsSettings, MediaSettings, GallerySettings removed - now unified in LibrarySettings
 
@@ -53,6 +54,7 @@ export { registerLibrarySettings } from './lib/schemas/library.settings';
 export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';
 export { registerPanelSettings } from './lib/schemas/panel.settings';
+export { registerTaggingSettings } from './lib/schemas/tagging.settings';
 // Note: registerAssetSettings, registerMediaSettings, registerGallerySettings removed - now unified in registerLibrarySettings
 
 // ============================================================================

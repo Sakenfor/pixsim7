@@ -29,6 +29,60 @@ export interface DevToolsPreferences {
   };
 }
 
+/**
+ * Tag display and behavior preferences.
+ */
+export interface TagDisplayPreferences {
+  /** Default namespace when creating tags without specifying one */
+  default_namespace?: string;
+  /** Namespaces to show first in tag lists */
+  favorite_namespaces?: string[];
+  /** Namespaces to hide from the UI */
+  hidden_namespaces?: string[];
+  /** What happens when clicking a tag */
+  click_action?: 'filter' | 'add_to_search' | 'copy';
+  /** Show tag usage counts in lists */
+  show_usage_counts?: boolean;
+  /** Group tags by namespace in displays */
+  group_by_namespace?: boolean;
+}
+
+/**
+ * Auto-tagging preferences for assets based on source type.
+ */
+export interface AutoTagsPreferences {
+  /** Tags for generated assets */
+  generated?: string[];
+  /** Tags for synced assets (from provider) */
+  synced?: string[];
+  /** Tags for assets from chrome extension */
+  extension?: string[];
+  /** Tags for frame captures */
+  capture?: string[];
+  /** Tags for uploaded assets */
+  uploaded?: string[];
+  /** Tags for local folder assets */
+  local_folder?: string[];
+  /** Include provider tag (e.g., "provider:pixverse") */
+  include_provider?: boolean;
+  /** Include operation type tag (e.g., "operation:image-to-video") */
+  include_operation?: boolean;
+  /** Include source site tag (e.g., "site:pinterest") */
+  include_site?: boolean;
+}
+
+/**
+ * Analyzer preferences for prompt analysis.
+ */
+export interface AnalyzerPreferences {
+  /** Default analyzer ID (e.g., "prompt:simple", "prompt:claude") */
+  default_id?: string;
+  /** Apply analysis tags to generated assets */
+  auto_apply_tags?: boolean;
+  /** Prefix for analysis tags (e.g., "prompt:" -> "prompt:has:character") */
+  tag_prefix?: string;
+}
+
 export interface UserPreferences {
   cubes?: any;
   workspace?: any;
@@ -37,6 +91,12 @@ export interface UserPreferences {
   debug?: DebugPreferences;
   /** Per-tool settings from DevTools registry */
   devtools?: DevToolsPreferences;
+  /** Tag display and behavior settings */
+  tags?: TagDisplayPreferences;
+  /** Auto-tagging settings for assets */
+  auto_tags?: AutoTagsPreferences;
+  /** Analyzer settings for prompt analysis */
+  analyzer?: AnalyzerPreferences;
   [key: string]: any;
 }
 

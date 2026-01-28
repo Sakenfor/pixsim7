@@ -187,7 +187,13 @@ class AssetCoreService:
                 existing.source_generation_id = generation.id
                 updated = True
                 # Auto-tag when linking to generation
-                await self._auto_tag_generated_asset(existing.id, generation.user_id)
+                await self._auto_tag_generated_asset(
+                    existing.id,
+                    generation.user_id,
+                    provider_id=submission.provider_id,
+                    operation_type=generation.operation_type.value if generation.operation_type else None,
+                    prompt_analysis=prompt_analysis_result,
+                )
             if metadata and not existing.media_metadata:
                 existing.media_metadata = metadata
                 updated = True
@@ -224,7 +230,13 @@ class AssetCoreService:
         await self.db.refresh(asset)
 
         # Auto-tag generated assets based on user preferences
-        await self._auto_tag_generated_asset(asset.id, generation.user_id)
+        await self._auto_tag_generated_asset(
+            asset.id,
+            generation.user_id,
+            provider_id=submission.provider_id,
+            operation_type=generation.operation_type.value if generation.operation_type else None,
+            prompt_analysis=prompt_analysis_result,
+        )
 
         # Emit event
         await event_bus.publish(ASSET_CREATED, {
@@ -240,41 +252,188 @@ class AssetCoreService:
 
         return asset
 
-    async def _auto_tag_generated_asset(self, asset_id: int, user_id: int) -> None:
-        """
-        Auto-tag a generated asset based on user preferences.
+    # Default auto_tags settings
+    DEFAULT_AUTO_TAGS = {
+        # Static tags per source type (empty list = disabled)
+        "generated": ["source:generated"],
+        "synced": ["source:synced"],
+        "extension": ["source:extension"],
+        "capture": ["source:capture"],
+        "uploaded": [],
+        "local_folder": [],
+        # Dynamic tag flags
+        "include_provider": True,    # adds "provider:{provider_id}"
+        "include_operation": True,   # adds "operation:{operation_type}"
+        "include_site": True,        # adds "site:{source_site}" for extension imports
+    }
 
-        Checks user.preferences for:
-        - "generated_asset_tags": list of tag slugs to apply (default: ["source:generated"])
-        - Set to [] (empty list) to disable auto-tagging
+    # Default analyzer settings
+    DEFAULT_ANALYZER_SETTINGS = {
+        "default_id": "prompt:simple",  # Default analyzer for prompts
+        "auto_apply_tags": True,        # Apply analysis tags to generated assets
+        "tag_prefix": "",               # Optional prefix for analysis tags (e.g., "prompt:")
+    }
+
+    async def _auto_tag_asset(
+        self,
+        asset_id: int,
+        user_id: int,
+        source_type: str,
+        *,
+        provider_id: str | None = None,
+        operation_type: str | None = None,
+        source_site: str | None = None,
+    ) -> None:
+        """
+        Auto-tag an asset based on user preferences and source context.
+
+        Checks user.preferences["auto_tags"] for configuration:
+        - Static tags per source type (generated, synced, extension, capture, uploaded, local_folder)
+        - Dynamic tag flags (include_provider, include_operation, include_site)
 
         Args:
             asset_id: The asset to tag
             user_id: The user who owns the asset (for preferences lookup)
+            source_type: One of "generated", "synced", "extension", "capture", "uploaded", "local_folder"
+            provider_id: Optional provider ID for dynamic "provider:{id}" tag
+            operation_type: Optional operation type for dynamic "operation:{type}" tag
+            source_site: Optional source site for dynamic "site:{site}" tag
         """
         try:
-            # Get user preferences
             from pixsim7.backend.main.domain.user import User
             user = await self.db.get(User, user_id)
             if not user:
                 logger.warning(f"User {user_id} not found for auto-tagging asset {asset_id}")
                 return
 
-            # Get tag list from preferences, default to ["source:generated"]
             preferences = user.preferences or {}
-            tags_to_apply = preferences.get("generated_asset_tags", ["source:generated"])
+            auto_tags_config = preferences.get("auto_tags", self.DEFAULT_AUTO_TAGS)
 
-            # Skip if explicitly set to empty list
+            # Backwards compatibility: check old "generated_asset_tags" key
+            if "auto_tags" not in preferences and "generated_asset_tags" in preferences:
+                if source_type == "generated":
+                    tags_to_apply = preferences.get("generated_asset_tags", [])
+                    if tags_to_apply:
+                        from pixsim7.backend.main.services.tag_service import TagService
+                        tag_service = TagService(self.db)
+                        await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+                    return
+
+            # Get static tags for this source type
+            static_tags = auto_tags_config.get(source_type, self.DEFAULT_AUTO_TAGS.get(source_type, []))
+            tags_to_apply = list(static_tags) if static_tags else []
+
+            # Add dynamic tags based on flags
+            if provider_id and auto_tags_config.get("include_provider", True):
+                tags_to_apply.append(f"provider:{provider_id}")
+
+            if operation_type and auto_tags_config.get("include_operation", True):
+                # Normalize operation type for tag (e.g., "image_to_video" -> "image-to-video")
+                normalized_op = operation_type.lower().replace("_", "-")
+                tags_to_apply.append(f"operation:{normalized_op}")
+
+            if source_site and auto_tags_config.get("include_site", True):
+                # Normalize site (remove www., lowercase)
+                normalized_site = source_site.lower().replace("www.", "")
+                tags_to_apply.append(f"site:{normalized_site}")
+
+            # Skip if no tags to apply
             if not tags_to_apply:
                 return
 
-            # Apply tags
             from pixsim7.backend.main.services.tag_service import TagService
             tag_service = TagService(self.db)
             await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
 
         except Exception as e:
-            logger.warning(f"Failed to auto-tag generated asset {asset_id}: {e}")
+            logger.warning(f"Failed to auto-tag asset {asset_id} (source={source_type}): {e}")
+
+    async def _auto_tag_generated_asset(
+        self,
+        asset_id: int,
+        user_id: int,
+        *,
+        provider_id: str | None = None,
+        operation_type: str | None = None,
+        prompt_analysis: dict | None = None,
+    ) -> None:
+        """
+        Auto-tag a generated asset.
+
+        Applies both source-based tags (via _auto_tag_asset) and analyzer-derived tags
+        from prompt_analysis based on user preferences.
+
+        Args:
+            asset_id: The asset to tag
+            user_id: The user who owns the asset
+            provider_id: Optional provider ID for dynamic tag
+            operation_type: Optional operation type for dynamic tag
+            prompt_analysis: Optional prompt analysis result containing extracted tags
+        """
+        # Apply source-based tags
+        await self._auto_tag_asset(
+            asset_id,
+            user_id,
+            "generated",
+            provider_id=provider_id,
+            operation_type=operation_type,
+        )
+
+        # Apply analyzer-derived tags if enabled
+        if prompt_analysis:
+            await self._apply_analyzer_tags(asset_id, user_id, prompt_analysis)
+
+    async def _apply_analyzer_tags(
+        self,
+        asset_id: int,
+        user_id: int,
+        prompt_analysis: dict,
+    ) -> None:
+        """
+        Apply tags extracted by the prompt analyzer to an asset.
+
+        Checks user.preferences["analyzer"] for configuration:
+        - auto_apply_tags: Whether to apply analysis tags (default: True)
+        - tag_prefix: Optional prefix for tags (default: "")
+
+        Args:
+            asset_id: The asset to tag
+            user_id: The user who owns the asset
+            prompt_analysis: Analysis result with "tags" field
+        """
+        try:
+            # Get analysis tags
+            analysis_tags = prompt_analysis.get("tags", [])
+            if not analysis_tags:
+                return
+
+            from pixsim7.backend.main.domain.user import User
+            user = await self.db.get(User, user_id)
+            if not user:
+                return
+
+            preferences = user.preferences or {}
+            analyzer_config = preferences.get("analyzer", self.DEFAULT_ANALYZER_SETTINGS)
+
+            # Check if auto-apply is enabled
+            if not analyzer_config.get("auto_apply_tags", True):
+                return
+
+            # Apply optional prefix
+            prefix = analyzer_config.get("tag_prefix", "")
+            if prefix:
+                tags_to_apply = [f"{prefix}{tag}" for tag in analysis_tags]
+            else:
+                tags_to_apply = list(analysis_tags)
+
+            from pixsim7.backend.main.services.tag_service import TagService
+            tag_service = TagService(self.db)
+            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+
+            logger.debug(f"Applied {len(tags_to_apply)} analyzer tags to asset {asset_id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
 
     # ===== ASSET RETRIEVAL =====
 
