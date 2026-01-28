@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 
-import { resolvePanelDefinitionId } from '@lib/dockview';
+import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
 
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@features/graph';
@@ -84,7 +84,7 @@ export function useEditorContext(): EditorContext {
       }
 
       const panels: string[] = [];
-      for (const panel of api.panels) {
+      for (const panel of getDockviewPanels(api)) {
         const panelId = resolvePanelDefinitionId(panel);
         if (typeof panelId === 'string') {
           panels.push(panelId);

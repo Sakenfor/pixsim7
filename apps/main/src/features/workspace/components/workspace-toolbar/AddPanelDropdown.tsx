@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-import { resolvePanelDefinitionId } from "@lib/dockview";
+import { getDockviewPanels, resolvePanelDefinitionId } from "@lib/dockview";
 import { Icon } from "@lib/icons";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
@@ -27,7 +27,7 @@ export function AddPanelDropdown({
     if (!api) return;
 
     const ids = new Set<PanelId>();
-    for (const panel of api.panels) {
+    for (const panel of getDockviewPanels(api)) {
       const panelId = resolvePanelDefinitionId(panel);
       if (typeof panelId === "string") {
         ids.add(panelId as PanelId);

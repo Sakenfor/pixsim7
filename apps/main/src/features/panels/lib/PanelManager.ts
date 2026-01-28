@@ -5,7 +5,7 @@
  * Handles panel interactions, retraction, zone management, and dockview integration.
  */
 
-import type { DockviewHost } from '@lib/dockview';
+import { getDockviewPanels, type DockviewHost } from '@lib/dockview';
 
 import type {
   PanelMetadata,
@@ -367,7 +367,7 @@ export class PanelManager {
       return;
     }
 
-    const panel = dockviewApi.panels.find(p => p.id === subPanelId);
+    const panel = getDockviewPanels(dockviewApi).find(p => p.id === subPanelId);
     if (!panel) return;
 
     // Remove from dockview

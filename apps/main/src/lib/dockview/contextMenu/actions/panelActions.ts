@@ -9,8 +9,8 @@
  */
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
-import { getDockviewPanels } from '@lib/dockview';
 
+import { getDockviewPanels } from '../../panelAdd';
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';

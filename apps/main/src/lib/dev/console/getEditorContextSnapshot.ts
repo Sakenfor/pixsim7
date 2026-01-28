@@ -7,7 +7,7 @@
 
 import type { EditorContext } from '@lib/context';
 import { derivePrimaryView, deriveEditorMode } from '@lib/context';
-import { resolvePanelDefinitionId } from '@lib/dockview';
+import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
 
 import { useGraphStore, type GraphState } from '@features/graph';
 import { useSelectionStore } from '@features/graph';
@@ -37,7 +37,7 @@ export function getEditorContextSnapshot(): EditorContext {
   const activePanels: string[] = [];
   const api = panelManager.getPanelState('workspace')?.dockview?.api;
   if (api) {
-    for (const panel of api.panels) {
+    for (const panel of getDockviewPanels(api)) {
       const panelId = resolvePanelDefinitionId(panel);
       if (typeof panelId === 'string') {
         activePanels.push(panelId);

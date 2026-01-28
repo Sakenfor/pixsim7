@@ -1,5 +1,6 @@
 import type { DockviewReadyEvent } from "dockview-core";
 
+import { getDockviewPanels } from "@lib/dockview";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { type PanelDefinition } from "@features/panels";
@@ -40,7 +41,7 @@ export function createDefaultLayout(
 
   // If any of the default panels are missing, add remaining known defaults as tabs
   defaultWorkspacePanels.forEach((panelId) => {
-    if (api.panels.find((p) => p.id === panelId)) return;
+    if (getDockviewPanels(api).some((panel) => panel?.id === panelId)) return;
     addPanel(panelId, { direction: "right", referencePanel: "graph" });
   });
 }

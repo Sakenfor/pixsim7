@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 
-import { resolvePanelDefinitionId } from '@lib/dockview';
+import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
@@ -24,7 +24,7 @@ export function PanelLauncherModule() {
 
     const updateOpenPanels = () => {
       const panels = new Set<PanelId>();
-      for (const panel of api.panels) {
+      for (const panel of getDockviewPanels(api)) {
         const panelId = resolvePanelDefinitionId(panel);
         if (typeof panelId === 'string') {
           panels.add(panelId as PanelId);

@@ -4,7 +4,7 @@ import clsx from 'clsx';
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
-import { useDockviewId } from '@lib/dockview';
+import { getDockviewPanels, useDockviewId } from '@lib/dockview';
 
 import {
   CAP_GENERATION_CONTEXT,
@@ -458,7 +458,8 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       // Use requestAnimationFrame to ensure layout is ready
       requestAnimationFrame(() => {
         if (!dockviewApiRef.current) return;
-        const assetPanel = dockviewApiRef.current.panels.find(p => p.id === 'quickgen-asset');
+        const assetPanel = getDockviewPanels(dockviewApiRef.current)
+          .find((panel) => panel?.id === 'quickgen-asset');
         if (assetPanel && !assetPanel.api.isActive) {
           assetPanel.api.setActive();
         }

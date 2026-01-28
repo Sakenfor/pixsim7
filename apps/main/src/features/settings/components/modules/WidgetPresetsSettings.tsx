@@ -8,7 +8,7 @@
 import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
 
-import { getDockviewHost } from "@lib/dockview";
+import { getDockviewHost, getDockviewPanels } from "@lib/dockview";
 import type { DockZoneDefinition } from "@lib/dockview/dockZoneRegistry";
 import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
@@ -21,15 +21,6 @@ type PresetScope = LayoutPreset["scope"];
 
 function resolvePanelTitle(panelId: string): string {
   return panelSelectors.get(panelId)?.title ?? panelId;
-}
-
-function getDockviewPanels(api: DockviewApi): any[] {
-  const rawPanels = (api as any).panels;
-  if (Array.isArray(rawPanels)) return rawPanels;
-  if (rawPanels && typeof rawPanels.values === "function") {
-    return Array.from(rawPanels.values());
-  }
-  return [];
 }
 
 function clearDockview(api: DockviewApi) {

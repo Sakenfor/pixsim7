@@ -53,6 +53,7 @@
 
 import {
   SmartDockviewBase,
+  getDockviewPanels,
   useSmartDockview,
   type LocalPanelRegistry,
 } from '@pixsim7/shared.ui.dockview';
@@ -397,7 +398,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     // Force all panels to re-render when context changes
     if (isReady && apiRef.current && context !== prevContext) {
-      const panels = apiRef.current.panels;
+      const panels = getDockviewPanels(apiRef.current);
       panels.forEach((panel) => {
         // Trigger re-render by updating params (even if params don't change)
         panel.api.updateParameters({});
@@ -457,7 +458,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     if (!apiRef.current) return;
 
     // Clear existing panels
-    apiRef.current.panels.forEach((panel) => {
+    getDockviewPanels(apiRef.current).forEach((panel) => {
       apiRef.current?.removePanel(panel);
     });
 
