@@ -16,6 +16,8 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number }> = {
   provider_id: { icon: 'globe', order: 2 },
   tag: { icon: 'tag', order: 3 },
   include_archived: { icon: 'archive', order: 4 },
+  upload_method: { icon: 'upload', order: 5 },
+  provider_status: { icon: 'shield', order: 6 },
 };
 
 interface DynamicFiltersProps {

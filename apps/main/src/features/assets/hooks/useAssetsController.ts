@@ -58,6 +58,8 @@ export function useAssetsController() {
       sort: 'new' as const,
       media_type: undefined,
       provider_status: undefined,
+      upload_method: undefined,
+      include_archived: undefined,
     },
   });
 

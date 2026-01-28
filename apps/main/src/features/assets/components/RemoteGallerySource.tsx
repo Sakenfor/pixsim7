@@ -1,7 +1,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useMemo } from 'react';
 
-import { enrichAsset } from '@lib/api/assets';
+import { enrichAsset, extractFrame, uploadAssetToProvider } from '@lib/api/assets';
 import { ThemedIcon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
@@ -15,9 +15,7 @@ import { MediaCard } from '@/components/media/MediaCard';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
 
-
-
-
+import { DynamicFilters } from './DynamicFilters';
 import { mediaCardPropsFromAsset } from './shared';
 
 
@@ -161,6 +159,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
               await controller.reuploadAsset(a, targetProviderId);
             },
+            onExtractLastFrameAndUpload: async () => {
+              if (a.mediaType !== 'video') return;
+              const duration = a.durationSec || 0;
+              const timestamp = Math.max(0, duration - (1 / 30));
+              try {
+                const frameAsset = await extractFrame({
+                  video_asset_id: a.id,
+                  timestamp,
+                });
+                const targetProvider = a.providerId || 'pixverse';
+                await uploadAssetToProvider(frameAsset.id, targetProvider);
+                controller.reset();
+              } catch (err: any) {
+                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+                alert(`Failed to extract/upload last frame: ${detail}`);
+              }
+            },
             onEnrichMetadata: async () => {
               try {
                 const result = await enrichAsset(a.id);
@@ -251,47 +266,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             {/* Divider */}
             <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
 
-            {/* Filter dropdowns */}
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={controller.filters.media_type || ''}
-                onChange={(e) =>
-                  controller.setFilters({
-                    media_type: (e.target.value || undefined) as any,
-                  })
-                }
-              >
-                <option value="">All Media</option>
-                <option value="image">Images</option>
-                <option value="video">Videos</option>
-                <option value="audio">Audio</option>
-                <option value="3d_model">3D Models</option>
-              </select>
-              <select
-                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={controller.filters.provider_id || ''}
-                onChange={(e) => controller.setFilters({ provider_id: e.target.value || undefined })}
-              >
-                <option value="">All Providers</option>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={controller.filters.provider_status || ''}
-                onChange={(e) => controller.setFilters({ provider_status: (e.target.value || undefined) as any })}
-              >
-                <option value="">All Status</option>
-                <option value="ok">Provider OK</option>
-                <option value="local_only">Local Only</option>
-                <option value="flagged">Flagged</option>
-                <option value="unknown">Unknown</option>
-              </select>
-            </div>
+            {/* Dynamic filters from backend registry */}
+            <DynamicFilters
+              filters={controller.filters}
+              onFiltersChange={(f) => controller.setFilters(f)}
+              exclude={['q']}
+              showCounts
+            />
 
             {/* Divider */}
             <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
