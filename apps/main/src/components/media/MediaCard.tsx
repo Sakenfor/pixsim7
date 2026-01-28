@@ -50,6 +50,7 @@ export interface MediaCardActions {
   onDelete?: (id: number) => void;
   onReupload?: (providerId: string) => void | Promise<void>;
   onEnrichMetadata?: (id: number) => void;
+  onExtractLastFrameAndUpload?: (id: number) => void | Promise<void>;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onQuickAdd?: (id: number) => void;
@@ -95,6 +96,8 @@ export interface MediaCardProps {
   onOpen?: (id: number) => void;
   status?: string;
   providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
+  /** Hash status for primary icon ring (local folders duplicate detection) */
+  hashStatus?: 'unique' | 'duplicate' | 'hashing';
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
   uploadState?: 'idle' | 'uploading' | 'success' | 'error';
   uploadProgress?: number; // 0-100 for upload progress

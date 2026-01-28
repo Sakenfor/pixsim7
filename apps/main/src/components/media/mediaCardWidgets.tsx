@@ -335,16 +335,29 @@ function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroup
  * Create primary media type icon widget (top-left)
  */
 export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
-  const { mediaType, providerStatus, badgeConfig } = props;
+  const { mediaType, providerStatus, hashStatus, badgeConfig } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
   // MediaStatusBadge keys used by MEDIA_STATUS_ICON.
   const statusKey = providerStatus === 'ok' ? 'provider_ok' : providerStatus;
   const statusMeta = statusKey ? MEDIA_STATUS_ICON[statusKey as keyof typeof MEDIA_STATUS_ICON] : null;
-  const ringColor = statusMeta?.color === 'green' ? 'ring-green-500' :
-                   statusMeta?.color === 'yellow' ? 'ring-amber-500' :
-                   statusMeta?.color === 'red' ? 'ring-red-500' :
-                   'ring-neutral-400';
+
+  // Provider status ring takes priority over hash status ring
+  let ringColor: string;
+  let hasRing = false;
+
+  if (badgeConfig?.showStatusIcon && providerStatus && statusMeta) {
+    hasRing = true;
+    ringColor = statusMeta.color === 'green' ? 'ring-green-500' :
+                statusMeta.color === 'yellow' ? 'ring-amber-500' :
+                statusMeta.color === 'red' ? 'ring-red-500' :
+                'ring-neutral-400';
+  } else if (hashStatus === 'duplicate') {
+    hasRing = true;
+    ringColor = 'ring-amber-500';
+  } else {
+    ringColor = 'ring-neutral-400';
+  }
 
   return createBadgeWidget({
     id: 'primary-icon',
@@ -354,8 +367,8 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
     icon: MEDIA_TYPE_ICON[mediaType],
     color: 'gray',
     shape: 'circle',
-    tooltip: `${mediaType} media`,
-    className: badgeConfig?.showStatusIcon && providerStatus
+    tooltip: hashStatus === 'duplicate' ? `${mediaType} - duplicate` : `${mediaType} media`,
+    className: hasRing
       ? `!bg-white dark:!bg-neutral-800 ring-2 ${ringColor} ring-offset-1`
       : '!bg-white/95 dark:!bg-neutral-800/95 backdrop-blur-sm',
     priority: 10,
@@ -367,7 +380,7 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
  * Uses MenuWidget for expandable actions when actions are available
  */
 export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { id, providerId, providerStatus, actions, presetCapabilities } = props;
+  const { id, providerId, providerStatus, actions, presetCapabilities, mediaType } = props;
 
   // If preset provides its own status widget, skip the runtime one
   if (presetCapabilities?.providesStatusWidget) {
@@ -398,7 +411,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
       : '!bg-white/80 dark:!bg-white/30';
 
   // If we have actions, create a menu widget
-  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload || actions.onEnrichMetadata)) {
+  if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload || actions.onExtractLastFrameAndUpload || actions.onEnrichMetadata)) {
     const menuItems: MenuItem[] = [];
 
     if (actions.onOpenDetails) {
@@ -416,6 +429,15 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
         label: 'Upload to provider…',
         icon: 'upload',
         onClick: () => actions.onReupload?.(providerId),
+      });
+    }
+
+    if (actions.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse')) {
+      menuItems.push({
+        id: 'extract-last-frame',
+        label: 'Upload last frame to Pixverse',
+        icon: 'image',
+        onClick: () => actions.onExtractLastFrameAndUpload?.(id),
       });
     }
 

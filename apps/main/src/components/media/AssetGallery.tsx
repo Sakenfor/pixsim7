@@ -28,11 +28,16 @@
  */
 
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
+
+import { Icons } from '@lib/icons';
+
+import { useLazyPreview } from '@/hooks/useLazyPreview';
+
+import { MasonryGrid } from '../layout/MasonryGrid';
+
 import { MediaCard } from './MediaCard';
 import type { MediaCardActions, MediaCardBadgeConfig } from './MediaCard';
-import { MasonryGrid } from '../layout/MasonryGrid';
-import { useLazyPreview } from '@/hooks/useLazyPreview';
-import { Icons } from '@lib/icons';
+
 
 /**
  * Upload state for an asset.
@@ -195,6 +200,12 @@ export interface AssetGalleryProps<T> {
   groupBy?: (asset: T) => string;
 
   /**
+   * Function to get the hash status for an asset.
+   * Used for the primary icon ring to indicate duplicate/unique/hashing state.
+   */
+  getHashStatus?: (asset: T) => 'unique' | 'duplicate' | 'hashing' | undefined;
+
+  /**
    * Badge configuration passed to MediaCard.
    */
   badgeConfig?: MediaCardBadgeConfig;
@@ -268,6 +279,7 @@ function GalleryItem({
   uploadProgress,
   onOpen,
   onUpload,
+  hashStatus,
   lazyLoadRootMargin,
   badgeConfig,
   actions,
@@ -286,6 +298,7 @@ function GalleryItem({
   uploadProgress?: number;
   onOpen?: () => void;
   onUpload?: () => Promise<void>;
+  hashStatus?: 'unique' | 'duplicate' | 'hashing';
   lazyLoadRootMargin: string;
   badgeConfig?: MediaCardBadgeConfig;
   actions?: MediaCardActions;
@@ -316,6 +329,7 @@ function GalleryItem({
         createdAt={createdAt}
         onOpen={onOpen ? () => onOpen() : undefined}
         providerStatus={providerStatus}
+        hashStatus={hashStatus}
         uploadState={uploadState}
         uploadProgress={uploadProgress}
         onUploadClick={onUpload ? async () => { await onUpload(); } : undefined}
@@ -348,6 +362,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHeight,
     getUploadState,
     getUploadProgress,
+    getHashStatus,
     onOpen,
     onUpload,
     layout = 'masonry',
@@ -413,6 +428,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       const height = getHeight?.(asset);
       const uploadState = getUploadState?.(asset);
       const uploadProgress = getUploadProgress?.(asset);
+      const hashStatus = getHashStatus?.(asset);
 
       return (
         <GalleryItem
@@ -428,6 +444,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           height={height}
           uploadState={uploadState}
           uploadProgress={uploadProgress}
+          hashStatus={hashStatus}
           onOpen={onOpen ? () => onOpen(asset) : undefined}
           onUpload={onUpload ? () => onUpload(asset) : undefined}
           lazyLoadRootMargin={lazyLoadRootMargin}
@@ -450,6 +467,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHeight,
     getUploadState,
     getUploadProgress,
+    getHashStatus,
     loadPreview,
     onOpen,
     onUpload,
