@@ -74,9 +74,11 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   useGenerationWebSocket();
   const dockviewId = useDockviewId();
   const resolvedPanelId = (props.panelId ?? props.api?.id ?? 'cc-generate') as PanelId;
+  // Use fallback dockviewId to ensure stable storage keys even if context isn't ready yet
+  const stableDockviewId = dockviewId ?? QUICKGEN_PANEL_MANAGER_ID;
   const panelInstanceId = useMemo(
-    () => getInstanceId(dockviewId, resolvedPanelId),
-    [dockviewId, resolvedPanelId],
+    () => getInstanceId(stableDockviewId, resolvedPanelId),
+    [stableDockviewId, resolvedPanelId],
   );
   const generationScopeDefinition =
     panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID) ?? GENERATION_SCOPE_FALLBACK;
@@ -130,12 +132,12 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
       return resolveScopeInstanceId(generationScopeDefinition, scopeMode, {
         instanceId: panelInstanceId,
         panelId: resolvedPanelId,
-        dockviewId,
+        dockviewId: stableDockviewId,
       });
     }
 
     return scopeMode === 'global' ? 'global' : panelInstanceId;
-  }, [generationScopeDefinition, scopeMode, panelInstanceId, resolvedPanelId, dockviewId]);
+  }, [generationScopeDefinition, scopeMode, panelInstanceId, resolvedPanelId, stableDockviewId]);
 
   const scopeLabel = generationScopeDefinition.label ?? 'Generation Settings';
 
@@ -281,7 +283,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   const maxChars = resolvePromptLimitForModel(
     providerId,
     workbench.dynamicParams?.model as string | undefined,
-    workbench.paramSpecs
+    workbench.allParamSpecs
   );
   const promptRequiredOps = new Set<ControlCenterState['operationType']>([
     'text_to_video',
@@ -408,7 +410,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     setPrompt,
     providerId,
     model: workbench.dynamicParams?.model as string | undefined,
-    paramSpecs: workbench.paramSpecs,
+    paramSpecs: workbench.allParamSpecs,
     generating,
     error,
     targetProviderId: CONTROL_CENTER_WIDGET_ID,

@@ -1,7 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
 import clsx from 'clsx';
-import type { ParamSpec } from '../types';
+import React, { useMemo, useState, useEffect } from 'react';
+
 import { useCostHints, useCostEstimate, useProviderIdForModel } from '@features/providers';
+
+import type { ParamSpec } from '../types';
+
 
 /**
  * Provider option for the provider selector dropdown.
@@ -225,11 +228,21 @@ export function GenerationSettingsBar({
     [paramSpecs]
   );
 
-  // Advanced params: all specs that are not primary.
+  // Advanced params: all specs that are not primary, filtered by applies_to_models
   const advancedParams = useMemo(() => {
     const primaryNames = new Set(primaryParams.map((p) => p.name));
-    return paramSpecs.filter((p) => !primaryNames.has(p.name));
-  }, [paramSpecs, primaryParams]);
+    const currentModel = dynamicParams.model as string | undefined;
+    return paramSpecs.filter((p) => {
+      if (primaryNames.has(p.name)) return false;
+      // Check if param has applies_to_models restriction
+      const appliesToModels = p.metadata?.applies_to_models as string[] | undefined;
+      if (appliesToModels && appliesToModels.length > 0 && currentModel) {
+        // Only show if current model is in the allowed list
+        return appliesToModels.includes(currentModel);
+      }
+      return true;
+    });
+  }, [paramSpecs, primaryParams, dynamicParams.model]);
 
   useEffectHook(() => {
     if (!durationOptions || durationOptions.options.length === 0) {

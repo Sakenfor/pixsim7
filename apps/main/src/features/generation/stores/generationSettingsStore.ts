@@ -259,6 +259,7 @@ export function createGenerationSettingsStore(
           if (state) {
             const activeParams = state.paramsPerOperation[state.activeOperationType] || {};
             state.params = activeParams;
+            state._hasHydrated = true;
           }
         },
       }

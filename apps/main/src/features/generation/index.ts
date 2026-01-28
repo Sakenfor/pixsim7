@@ -20,6 +20,7 @@ export { GenerationsPanel } from './components/GenerationsPanel';
 export type { GenerationsPanelProps } from './components/GenerationsPanel';
 export { GenerationSettingsPanel } from './components/GenerationSettingsPanel';
 export type { GenerationSettingsPanelProps } from './components/GenerationSettingsPanel';
+export { AdvancedSettingsPopover } from './components/AdvancedSettingsPopover';
 export { GenerationSourceToggle } from './components/GenerationSourceToggle';
 export type { GenerationSourceToggleProps } from './components/GenerationSourceToggle';
 export { ViewerAssetInputProvider } from './components/ViewerAssetInputProvider';

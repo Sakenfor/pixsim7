@@ -44,15 +44,13 @@ export function useQuickGenerateBindings(
 
   const { useSettingsStore, useInputStore } = useGenerationScopeStores();
 
-  const operationInputs = useInputStore(
-    s => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS
-  );
-  const operationInputIndex = useInputStore(
-    s => s.inputsByOperation[operationType]?.currentIndex ?? 1
-  );
-  const transitionInputs = useInputStore(
-    s => s.inputsByOperation.video_transition?.items ?? EMPTY_INPUTS
-  );
+  // Subscribe to the entire inputsByOperation map, then extract operation-specific data
+  // This ensures zustand properly re-renders when ANY operation's inputs change,
+  // and we correctly pick the current operation's data on each render
+  const inputsByOperation = useInputStore(s => s.inputsByOperation);
+  const operationInputs = inputsByOperation[operationType]?.items ?? EMPTY_INPUTS;
+  const operationInputIndex = inputsByOperation[operationType]?.currentIndex ?? 1;
+  const transitionInputs = inputsByOperation.video_transition?.items ?? EMPTY_INPUTS;
 
   const removeInput = useInputStore(s => s.removeInput);
   const cycleInputs = useInputStore(s => s.cycleInputs);

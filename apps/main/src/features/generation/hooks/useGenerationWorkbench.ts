@@ -51,8 +51,10 @@ export interface GenerationWorkbenchState {
   setProvider: (id: string | undefined) => void;
   /** List of available providers */
   providers: Array<{ id: string; name: string }>;
-  /** Parameter specifications for the current operation */
+  /** Parameter specifications for the current operation (filtered) */
   paramSpecs: ParamSpec[];
+  /** All parameter specifications for the current operation (unfiltered, includes prompt etc.) */
+  allParamSpecs: ParamSpec[];
   /** Current dynamic parameter values */
   dynamicParams: Record<string, any>;
   /** Update dynamic parameters */
@@ -254,15 +256,18 @@ export function useGenerationWorkbench(
       ? 'image_to_video'
       : operationType;
 
-  // Get parameter specs for current operation
-  const paramSpecs = useMemo<ParamSpec[]>(() => {
+  // All parameter specs for current operation (unfiltered)
+  const allParamSpecs = useMemo<ParamSpec[]>(() => {
     if (!specs?.operation_specs) return [];
     const opSpec = specs.operation_specs[effectiveOperationType];
-    if (!opSpec?.parameters) return [];
+    return opSpec?.parameters ?? [];
+  }, [specs, effectiveOperationType]);
 
+  // Get parameter specs for current operation (filtered)
+  const paramSpecs = useMemo<ParamSpec[]>(() => {
     const excludeSet = new Set(excludeParams);
-    return opSpec.parameters.filter((p: any) => !excludeSet.has(p.name));
-  }, [specs, effectiveOperationType, excludeParams]);
+    return allParamSpecs.filter((p: any) => !excludeSet.has(p.name));
+  }, [allParamSpecs, excludeParams]);
 
   // Create a map for quick spec lookup in handleParamChange
   const paramSpecMap = useMemo(() => {
@@ -279,6 +284,8 @@ export function useGenerationWorkbench(
   // Effect 1: Apply preset overrides when presetParams change
   useEffect(() => {
     if (!hasHydrated) return;
+    // Skip if operation types are out of sync (wait for sync effect to complete)
+    if (effectiveOperationType !== activeOperationType) return;
 
     const prevPreset = prevPresetParamsRef.current;
     prevPresetParamsRef.current = presetParams;
@@ -291,11 +298,13 @@ export function useGenerationWorkbench(
     if (!opSpec?.parameters) return;
 
     setDynamicParams((prev) => applyPresetOverrides(prev, presetParams, opSpec.parameters));
-  }, [hasHydrated, presetParams, specs, effectiveOperationType, setDynamicParams]);
+  }, [hasHydrated, presetParams, specs, effectiveOperationType, activeOperationType, setDynamicParams]);
 
   // Effect 2: Validate params and apply defaults when specs change
   useEffect(() => {
     if (!hasHydrated) return;
+    // Skip if operation types are out of sync (wait for sync effect to complete)
+    if (effectiveOperationType !== activeOperationType) return;
     if (!specs?.operation_specs) return;
     const opSpec = specs.operation_specs[effectiveOperationType];
     if (!opSpec?.parameters) return;
@@ -303,7 +312,7 @@ export function useGenerationWorkbench(
     setDynamicParams((prev) =>
       validateAndApplyDefaults(prev, opSpec.parameters, presetParams)
     );
-  }, [hasHydrated, specs, effectiveOperationType, setDynamicParams, presetParams]);
+  }, [hasHydrated, specs, effectiveOperationType, activeOperationType, setDynamicParams, presetParams]);
 
   // Handler for dynamic param changes - coerces types on input
   const handleParamChange = useCallback(
@@ -320,6 +329,7 @@ export function useGenerationWorkbench(
     setProvider,
     providers,
     paramSpecs,
+    allParamSpecs,
     dynamicParams,
     setDynamicParams,
     handleParamChange,

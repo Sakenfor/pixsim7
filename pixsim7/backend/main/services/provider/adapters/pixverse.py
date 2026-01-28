@@ -895,6 +895,13 @@ class PixverseProvider(
                 "per_model_max_length": prompt_per_model_max_length,
             },
         }
+        image_prompt = {
+            **base_prompt,
+            "max_length": 4096,
+            "metadata": {
+                "per_model_max_length": prompt_per_model_max_length,
+            },
+        }
         quality = {
             "name": "quality", "type": "enum", "required": False, "default": "720p",
             "enum": video_quality_enum, "description": "Output resolution preset", "group": "render"
@@ -1060,14 +1067,24 @@ class PixverseProvider(
             "enum": None, "description": "Transformation strength (0.0-1.0)", "group": "style", "min": 0.0, "max": 1.0
         }
         # v5.5+ only features (exposed as advanced toggles)
+        # Derive advanced models list from SDK when available
+        advanced_models: list[str] = []
+        if VideoModel is not None and getattr(VideoModel, "ADVANCED_MODELS", None):
+            advanced_models = list(VideoModel.ADVANCED_MODELS)
+        else:
+            advanced_models = ["v5.5", "v5.6"]  # Fallback
+
         multi_shot = {
             "name": "multi_shot",
             "type": "boolean",
             "required": False,
             "default": False,
             "enum": None,
-            "description": "Multi-shot video generation (v5.5+ only, enable for multi-shot)",
+            "description": "Multi-shot video generation (v5.5+ only)",
             "group": "advanced",
+            "metadata": {
+                "applies_to_models": advanced_models,
+            },
         }
         audio = {
             "name": "audio",
@@ -1075,8 +1092,11 @@ class PixverseProvider(
             "required": False,
             "default": False,
             "enum": None,
-            "description": "Native audio generation (v5.5+ only, enable for audio)",
+            "description": "Native audio generation (v5.5+ only)",
             "group": "advanced",
+            "metadata": {
+                "applies_to_models": advanced_models,
+            },
         }
         # Off-peak mode (subscription accounts - reduces credit cost)
         off_peak = {
@@ -1147,7 +1167,7 @@ class PixverseProvider(
             # Image generation uses ImageModel / QUALITIES / ASPECT_RATIOS from SDK
             "text_to_image": {
                 "parameters": [
-                    base_prompt,
+                    image_prompt,
                     image_model,
                     image_quality,
                     aspect_ratio,
@@ -1158,7 +1178,7 @@ class PixverseProvider(
             },
             "image_to_image": {
                 "parameters": [
-                    base_prompt,
+                    image_prompt,
                     composition_assets_image,
                     image_model,
                     image_quality,

@@ -28,9 +28,10 @@ import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
 } from '@features/contextHub';
-import { AdvancedSettingsPopover } from '@features/controlCenter/components/AdvancedSettingsPopover';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
+
+import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 
 
 /** Friendly labels for aspect ratio values */
@@ -527,6 +528,7 @@ export function GenerationSettingsPanel({
             values={workbench.dynamicParams}
             onChange={workbench.handleParamChange}
             disabled={generating}
+            currentModel={workbench.dynamicParams?.model as string | undefined}
           />
 
           {/* Primary Go button */}
