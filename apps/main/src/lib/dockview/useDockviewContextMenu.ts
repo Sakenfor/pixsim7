@@ -13,6 +13,7 @@ import type { IDockviewPanelHeaderProps } from 'dockview-core';
 import { useCallback } from 'react';
 
 import { CustomTabComponent, useContextMenuOptional } from './contextMenu';
+import { buildDockviewContext } from './contextMenu/buildDockviewContext';
 
 export interface UseDockviewContextMenuOptions {
   /** Whether context menu features are active (enabled + provider exists) */
@@ -53,13 +54,18 @@ export function useDockviewContextMenu(
     (e: React.MouseEvent) => {
       if (!contextMenuActive || !contextMenuRef.current) return;
       e.preventDefault();
-      contextMenuRef.current.showContextMenu({
-        contextType: 'background',
-        position: { x: e.clientX, y: e.clientY },
+      const baseContext = {
         currentDockviewId: dockviewId,
         panelRegistry: getDockviewPanelRegistry(),
         resetDockviewLayout,
-      });
+      };
+
+      contextMenuRef.current.showContextMenu(
+        buildDockviewContext(baseContext, {
+          contextType: 'background',
+          position: { x: e.clientX, y: e.clientY },
+        }),
+      );
     },
     [contextMenuActive, contextMenuRef, dockviewId, getDockviewPanelRegistry, resetDockviewLayout],
   );

@@ -17,6 +17,7 @@ import {
   extractContextFromElement,
   contextDataRegistry,
 } from './contextMenu';
+import { buildDockviewContext } from './contextMenu/buildDockviewContext';
 
 export interface PanelWrapOptions {
   /** Panel definition ID (e.g., "info", "quickGenerate") */
@@ -95,6 +96,14 @@ export function wrapPanelWithContextMenu(
       event.preventDefault();
       event.stopPropagation();
 
+      const baseContext = {
+        currentDockviewId: dockviewId,
+        panelRegistry: getDockviewPanelRegistry(),
+        api: panelProps.containerApi ?? getApiRef() ?? undefined,
+        resetDockviewLayout,
+        contextHubState,
+      };
+
       // Check for component-level context (data-context-type attribute)
       const componentContext = extractContextFromElement(event.target);
       if (componentContext) {
@@ -102,32 +111,30 @@ export function wrapPanelWithContextMenu(
           componentContext.type,
           componentContext.id,
         );
-        menu.showContextMenu({
-          contextType: componentContext.type,
-          position: { x: event.clientX, y: event.clientY },
-          data: resolvedData ?? {
-            id: componentContext.id,
-            name: componentContext.label,
-          },
-          currentDockviewId: dockviewId,
-        });
+        menu.showContextMenu(
+          buildDockviewContext(baseContext, {
+            contextType: componentContext.type,
+            position: { x: event.clientX, y: event.clientY },
+            data: resolvedData ?? {
+              id: componentContext.id,
+              name: componentContext.label,
+            },
+          }),
+        );
         return;
       }
 
       // Fall back to panel-content context
-      menu.showContextMenu({
-        contextType: 'panel-content',
-        position: { x: event.clientX, y: event.clientY },
-        panelId: panelProps.api?.id,
-        instanceId,
-        groupId: panelProps.api?.group?.id,
-        currentDockviewId: dockviewId,
-        panelRegistry: getDockviewPanelRegistry(),
-        api: panelProps.containerApi ?? getApiRef() ?? undefined,
-        resetDockviewLayout,
-        data: panelProps.params,
-        contextHubState,
-      });
+      menu.showContextMenu(
+        buildDockviewContext(baseContext, {
+          contextType: 'panel-content',
+          position: { x: event.clientX, y: event.clientY },
+          panelId: panelProps.api?.id,
+          instanceId,
+          groupId: panelProps.api?.group?.id,
+          data: panelProps.params,
+        }),
+      );
     };
 
     return (

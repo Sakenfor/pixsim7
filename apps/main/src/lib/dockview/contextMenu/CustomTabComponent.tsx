@@ -9,6 +9,7 @@ import type { IDockviewPanelHeaderProps } from 'dockview-core';
 
 import { useContextHubState } from '@features/contextHub';
 
+import { buildDockviewContext } from './buildDockviewContext';
 import { useDockviewContext } from './DockviewIdContext';
 import { useContextMenuOptional } from './useContextMenu';
 
@@ -33,18 +34,23 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
     const groupId = props.api.group.id;
     const instanceId = currentDockviewId ? `${currentDockviewId}:${panelId}` : panelId;
 
-    contextMenu.showContextMenu({
-      contextType: 'tab',
-      panelId,
-      instanceId,
-      groupId,
-      position: { x: e.clientX, y: e.clientY },
+    const baseContext = {
       currentDockviewId,
       panelRegistry,
       api: props.containerApi ?? dockviewApi,
       contextHubState,
-      data: (props.api as any)?.params,
-    });
+    };
+
+    contextMenu.showContextMenu(
+      buildDockviewContext(baseContext, {
+        contextType: 'tab',
+        panelId,
+        instanceId,
+        groupId,
+        position: { x: e.clientX, y: e.clientY },
+        data: (props.api as any)?.params,
+      }),
+    );
   };
 
   return (

@@ -15,6 +15,7 @@ export * from './DockviewIdContext';
 export * from './useComponentContextMenu';
 export * from './contextDataResolver';
 export * from './capabilityHelpers';
+export * from './buildDockviewContext';
 export { contextMenuRegistry } from './ContextMenuRegistry';
 
 // Auto-context menu system
