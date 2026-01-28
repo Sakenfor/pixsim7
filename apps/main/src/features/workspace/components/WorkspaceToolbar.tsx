@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
 
-import { getWorkspaceDockviewHost } from "@features/workspace";
+import { resolveDockviewHost } from "@lib/dockview";
+
+import { panelManager } from "@features/panels/lib/PanelManager";
 
 import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
 import { useWorkspaceStore } from "../stores/workspaceStore";
@@ -32,7 +34,10 @@ export function WorkspaceToolbar() {
   const reset = useWorkspaceStore((s) => s.reset);
 
   const getWorkspaceHost = useCallback(() => {
-    return getWorkspaceDockviewHost();
+    return resolveDockviewHost(
+      "workspace",
+      panelManager.getPanelState("workspace")?.dockview?.host,
+    );
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {

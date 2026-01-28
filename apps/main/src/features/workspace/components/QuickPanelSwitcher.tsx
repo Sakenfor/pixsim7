@@ -7,8 +7,10 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
+import { resolveDockviewHost } from "@lib/dockview";
+
 import { usePanelConfigStore } from "@features/panels";
-import { getWorkspaceDockviewHost } from "@features/workspace";
+import { panelManager } from "@features/panels/lib/PanelManager";
 
 import { useWorkspaceStore, type PanelId } from "../stores/workspaceStore";
 
@@ -60,7 +62,10 @@ export function QuickPanelSwitcher() {
   };
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const host = getWorkspaceDockviewHost();
+    const host = resolveDockviewHost(
+      "workspace",
+      panelManager.getPanelState("workspace")?.dockview?.host,
+    );
     const api = host?.api;
     if (!api) return;
 

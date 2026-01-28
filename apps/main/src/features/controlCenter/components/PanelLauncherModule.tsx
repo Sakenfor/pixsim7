@@ -1,10 +1,11 @@
 import { useMemo, useState, useEffect } from 'react';
 
-import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
+import { getDockviewPanels, resolveDockviewHost, resolvePanelDefinitionId } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
+import { panelManager } from '@features/panels/lib/PanelManager';
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
-import { getWorkspaceDockviewHost } from '@features/workspace';
+
 
 export function PanelLauncherModule() {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
@@ -18,7 +19,10 @@ export function PanelLauncherModule() {
   const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());
 
   useEffect(() => {
-    const host = getWorkspaceDockviewHost();
+    const host = resolveDockviewHost(
+      'workspace',
+      panelManager.getPanelState('workspace')?.dockview?.host,
+    );
     const api = host?.api;
     if (!api) return;
 

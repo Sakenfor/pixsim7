@@ -40,4 +40,3 @@ export { workspaceModule as workspaceConsoleModule } from "@lib/dev/console/modu
 export { workspaceManifest } from "./lib/consoleManifest";
 
 // Dockview helpers
-export { getWorkspaceDockviewHost } from "./lib/getWorkspaceDockviewHost";

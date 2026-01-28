@@ -7,9 +7,10 @@
 
 import { categoryOps, param } from '@lib/dev/console/manifests/helpers';
 import type { ConsoleManifest } from '@lib/dev/console/manifests/types';
+import { resolveDockviewHost } from '@lib/dockview';
 
 import { useSelectionStore } from '@features/graph';
-import { getWorkspaceDockviewHost } from '@features/workspace';
+import { panelManager } from '@features/panels/lib/PanelManager';
 
 import { useWorkspaceStore } from '../stores/workspaceStore';
 
@@ -52,7 +53,10 @@ export const workspaceManifest: ConsoleManifest = {
           execute: (presetId: unknown) => {
             if (typeof presetId !== 'string') throw new Error('presetId must be a string');
 
-            const host = getWorkspaceDockviewHost();
+            const host = resolveDockviewHost(
+              'workspace',
+              panelManager.getPanelState('workspace')?.dockview?.host,
+            );
             const api = host?.api;
             if (!api) throw new Error('Workspace dockview not available');
 
@@ -77,7 +81,10 @@ export const workspaceManifest: ConsoleManifest = {
           execute: (name: unknown) => {
             if (typeof name !== 'string') throw new Error('name must be a string');
 
-            const host = getWorkspaceDockviewHost();
+            const host = resolveDockviewHost(
+              'workspace',
+              panelManager.getPanelState('workspace')?.dockview?.host,
+            );
             const api = host?.api;
             if (!api) throw new Error('Workspace dockview not available');
 
