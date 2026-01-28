@@ -7,18 +7,20 @@
 
 import {
   addDockviewPanel as addDockviewPanelBase,
+  ensurePanels as ensurePanelsBase,
   findDockviewPanel,
   focusPanel,
   isPanelOpen,
   resolvePanelDefinitionId,
   type AddDockviewPanelOptions,
+  type EnsurePanelsOptions,
 } from '@pixsim7/shared.ui.dockview';
 import type { DockviewApi } from 'dockview-core';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
-export type { AddDockviewPanelOptions } from '@pixsim7/shared.ui.dockview';
+export type { AddDockviewPanelOptions, EnsurePanelsOptions } from '@pixsim7/shared.ui.dockview';
 export { findDockviewPanel, focusPanel, isPanelOpen, resolvePanelDefinitionId };
 
 export function addDockviewPanel(
@@ -27,4 +29,12 @@ export function addDockviewPanel(
   options: AddDockviewPanelOptions = {},
 ): string | null {
   return addDockviewPanelBase(api, panelId, options, panelSelectors);
+}
+
+export function ensurePanels(
+  api: DockviewApi,
+  panelIds: Iterable<string>,
+  options: EnsurePanelsOptions = {},
+): string[] {
+  return ensurePanelsBase(api, panelIds, options, panelSelectors);
 }

@@ -17,6 +17,11 @@ export interface AddDockviewPanelOptions {
   };
 }
 
+export interface EnsurePanelsOptions {
+  /** Resolve add panel options per panel (allows custom titles/positions). */
+  resolveOptions?: (panelId: string, api: DockviewApi) => AddDockviewPanelOptions | undefined;
+}
+
 function getDockviewPanels(api: DockviewApi): any[] {
   const rawPanels = (api as any).panels;
   if (Array.isArray(rawPanels)) return rawPanels;
@@ -88,4 +93,28 @@ export function addDockviewPanel(
   });
 
   return instanceId;
+}
+
+export function ensurePanels(
+  api: DockviewApi,
+  panelIds: Iterable<string>,
+  options: EnsurePanelsOptions = {},
+  panelLookup?: PanelLookup,
+): string[] {
+  const added: string[] = [];
+  if (!api) return added;
+
+  for (const panelId of panelIds) {
+    if (findDockviewPanel(api, panelId)) {
+      continue;
+    }
+
+    const resolvedOptions = options.resolveOptions?.(panelId, api) ?? {};
+    const instanceId = addDockviewPanel(api, panelId, resolvedOptions, panelLookup);
+    if (instanceId) {
+      added.push(instanceId);
+    }
+  }
+
+  return added;
 }

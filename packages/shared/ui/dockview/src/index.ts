@@ -22,12 +22,13 @@ export type {
 export type { PanelLookup } from './hostTypes';
 export {
   addDockviewPanel,
+  ensurePanels,
   findDockviewPanel,
   focusPanel,
   isPanelOpen,
   resolvePanelDefinitionId,
 } from './panelAdd';
-export type { AddDockviewPanelOptions } from './panelAdd';
+export type { AddDockviewPanelOptions, EnsurePanelsOptions } from './panelAdd';
 
 export { createDockviewHost } from './host';
 export type { DockviewHost } from './host';

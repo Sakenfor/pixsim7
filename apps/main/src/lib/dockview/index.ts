@@ -21,6 +21,7 @@ export type { DockviewIds } from './useDockviewIds';
 
 export {
   addDockviewPanel,
+  ensurePanels,
   findDockviewPanel,
   focusPanel,
   isPanelOpen,

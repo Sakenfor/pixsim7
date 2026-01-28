@@ -8,7 +8,8 @@
 import type { DockviewApi } from "dockview-core";
 import { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from "react";
 
-import { SmartDockview } from "@lib/dockview";
+import { SmartDockview, createDockviewHost, ensurePanels } from "@lib/dockview";
+import type { DockviewHost } from "@lib/dockview";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
 
@@ -55,6 +56,8 @@ export interface PanelHostDockviewRef {
   resetLayout: () => void;
   /** Get the dockview API (may be null before ready). */
   getApi: () => DockviewApi | null;
+  /** Get a dockview host wrapper (may be null before ready). */
+  getHost: () => DockviewHost | null;
 }
 
 export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockviewProps>(
@@ -81,20 +84,28 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
   ) => {
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
+    const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
 
-    const ensurePanels = useCallback(
+    const ensureDockviewPanels = useCallback(
       (api: DockviewApi) => {
-        for (const panelId of panels ?? []) {
-          if (!api.getPanel(panelId)) {
-            const position = resolvePanelPosition?.(panelId, api);
-            api.addPanel({
-              id: panelId,
-              component: panelId,
-              title: resolvePanelTitle ? resolvePanelTitle(panelId) : panelId,
-              position,
-            });
-          }
+        if (!api) {
+          return;
         }
+        ensurePanels(api, panels ?? [], {
+          resolveOptions: (panelId, apiInstance) => {
+            const position = resolvePanelPosition?.(panelId, apiInstance);
+            if (resolvePanelTitle) {
+              return {
+                title: resolvePanelTitle(panelId),
+                position,
+              };
+            }
+            if (position) {
+              return { position };
+            }
+            return undefined;
+          },
+        });
       },
       [panels, resolvePanelPosition, resolvePanelTitle]
     );
@@ -102,16 +113,17 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const handleReady = useCallback(
       (api: DockviewApi) => {
         setDockviewApi(api);
-        ensurePanels(api);
+        setDockviewHost(createDockviewHost(panelManagerId ?? storageKey, api));
+        ensureDockviewPanels(api);
         onReady?.(api);
       },
-      [ensurePanels, onReady]
+      [ensureDockviewPanels, onReady, panelManagerId, storageKey]
     );
 
     useEffect(() => {
       if (!dockviewApi) return;
-      requestAnimationFrame(() => ensurePanels(dockviewApi));
-    }, [dockviewApi, ensurePanels]);
+      requestAnimationFrame(() => ensureDockviewPanels(dockviewApi));
+    }, [dockviewApi, ensureDockviewPanels]);
 
     const resetLayout = useCallback(() => {
       if (storageKey) {
@@ -125,8 +137,9 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       () => ({
         resetLayout,
         getApi: () => dockviewApi,
+        getHost: () => dockviewHost,
       }),
-      [resetLayout, dockviewApi]
+      [resetLayout, dockviewApi, dockviewHost]
     );
 
     const resolvedPanels = panels && panels.length > 0 ? [...panels] : undefined;
