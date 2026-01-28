@@ -23,6 +23,7 @@ export type { PanelLookup } from './hostTypes';
 export {
   addDockviewPanel,
   ensurePanels,
+  getDockviewGroupCount,
   getDockviewGroups,
   getDockviewPanels,
   findDockviewPanel,

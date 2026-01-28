@@ -40,6 +40,11 @@ export function getDockviewGroups(api: DockviewApi): any[] {
   return [];
 }
 
+export function getDockviewGroupCount(api: DockviewApi, groups?: any[]): number {
+  if (Array.isArray(groups)) return groups.length;
+  return getDockviewGroups(api).length;
+}
+
 export function resolvePanelDefinitionId(panel: any): string | undefined {
   const params = panel?.params ?? panel?.api?.params;
   const paramPanelId = params?.panelId;

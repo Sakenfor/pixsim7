@@ -23,6 +23,7 @@ export { resolveDockview, resolveDockviewApi, resolveDockviewHost } from './reso
 export {
   addDockviewPanel,
   ensurePanels,
+  getDockviewGroupCount,
   getDockviewGroups,
   getDockviewPanels,
   findDockviewPanel,

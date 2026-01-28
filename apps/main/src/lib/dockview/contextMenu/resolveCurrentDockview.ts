@@ -1,12 +1,16 @@
+import { resolveDockview } from '../resolveDockview';
+
 import type { MenuActionContext } from './types';
 
 export function resolveCurrentDockview(ctx: MenuActionContext) {
-  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
+  const dockviewId = ctx.currentDockviewId;
+  const host = dockviewId ? ctx.getDockviewHost?.(dockviewId) : undefined;
   const api =
     host?.api ??
-    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
+    (dockviewId ? ctx.getDockviewApi?.(dockviewId) : undefined) ??
     ctx.api;
-  return { api, host };
+
+  return resolveDockview(dockviewId, { api, host });
 }
 
 export function resolveCurrentDockviewApi(ctx: MenuActionContext) {

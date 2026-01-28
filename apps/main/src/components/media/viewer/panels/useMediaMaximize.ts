@@ -8,7 +8,7 @@
 import type { DockviewApi } from 'dockview-core';
 import { useCallback, useMemo, type MutableRefObject } from 'react';
 
-import { getDockviewGroups, type DockviewHost } from '@lib/dockview';
+import { getDockviewGroupCount, getDockviewGroups, type DockviewHost } from '@lib/dockview';
 
 interface UseMediaMaximizeOptions {
   dockviewApi?: DockviewApi;
@@ -43,7 +43,8 @@ export function useMediaMaximize({
   const isMaximized = useMemo(() => {
     const api = getApi();
     const groups = api ? getDockviewGroups(api) : [];
-    if (!api || groups.length < 2) return false;
+    const groupCount = api ? getDockviewGroupCount(api, groups) : 0;
+    if (!api || groupCount < 2) return false;
 
     try {
       const mediaGroup = groups[0];
@@ -74,8 +75,9 @@ export function useMediaMaximize({
 
     try {
       const groups = getDockviewGroups(api);
+      const groupCount = getDockviewGroupCount(api, groups);
 
-      if (groups.length >= 2) {
+      if (groupCount >= 2) {
         const viewportHeight = window.innerHeight;
         const mediaGroupId = groups[0].id;
         const mediaGroup = api.getGroup(mediaGroupId);
@@ -101,7 +103,7 @@ export function useMediaMaximize({
 
         mediaGroup.api.setSize({ height: newHeight });
       } else {
-        console.warn('[useMediaMaximize] Expected 2+ groups but found', groups.length);
+        console.warn('[useMediaMaximize] Expected 2+ groups but found', groupCount);
       }
     } catch (e) {
       console.warn('[useMediaMaximize] Failed to toggle maximize:', e);
