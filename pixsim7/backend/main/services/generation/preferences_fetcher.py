@@ -89,8 +89,18 @@ async def fetch_user_preferences(
             "mature_implied"  # Default if not set
         )
 
+        # Dev/debug preferences (nested under 'debug' key to match frontend pattern)
+        # Falls back to env setting if not set
+        from pixsim7.backend.main.shared.config import settings
+        debug_prefs = preferences.get("debug", {}) or {}
+        validate_composition_vocabs = debug_prefs.get(
+            "validateCompositionVocabs",
+            settings.validate_composition_vocabs
+        )
+
         return {
             "maxContentRating": max_content_rating,
+            "validateCompositionVocabs": validate_composition_vocabs,
         }
 
     except Exception as e:

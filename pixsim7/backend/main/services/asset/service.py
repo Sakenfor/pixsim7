@@ -66,8 +66,109 @@ class AssetService:
     async def _extract_and_register_embedded(self, *args, **kwargs):
         return await self._enrichment._extract_and_register_embedded(*args, **kwargs)
 
-    async def create_asset_from_paused_frame(self, *args, **kwargs):
-        return await self._enrichment.create_asset_from_paused_frame(*args, **kwargs)
+    async def create_asset_from_paused_frame(
+        self,
+        video_asset_id: int,
+        user,
+        timestamp: float,
+        frame_number: Optional[int] = None,
+        last_frame: bool = False,
+    ):
+        """
+        Extract a frame from video and create image asset with deduplication.
+
+        Uses core, sync, quota, and user sub-services, so this method lives
+        on the composed AssetService rather than a single sub-service.
+        """
+        import os
+
+        from pixsim7.backend.main.domain import MediaType, SyncStatus
+        from pixsim7.backend.main.domain.enums import OperationType
+        from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+        from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME
+        from pixsim7.backend.main.services.asset.frame_extractor import extract_frame_with_metadata
+        from pixsim7.backend.main.services.asset.asset_factory import add_asset
+        from pixsim7.backend.main.services.storage.storage_service import get_storage_service
+        from pixsim7.backend.main.shared.errors import InvalidOperationError
+
+        # 1. Get video asset with authorization
+        video_asset = await self.get_asset_for_user(video_asset_id, user)
+
+        if video_asset.media_type != MediaType.VIDEO:
+            raise InvalidOperationError("Source asset must be a video")
+
+        # 2. Ensure video is downloaded locally
+        if not video_asset.local_path or not os.path.exists(video_asset.local_path):
+            video_asset = await self.sync_asset(video_asset_id, user, include_embedded=False)
+
+        # 3. Extract frame with ffmpeg
+        frame_path, sha256, width, height = extract_frame_with_metadata(
+            video_asset.local_path, timestamp, frame_number, last_frame=last_frame
+        )
+
+        try:
+            # 4. Deduplication
+            existing = await self.find_asset_by_hash(sha256, user.id)
+            if existing:
+                os.remove(frame_path)
+                return existing
+
+            # 5. Store in CAS and create asset via add_asset
+            file_size = os.path.getsize(frame_path)
+            storage = get_storage_service()
+            stored_key = await storage.store_from_path_with_hash(
+                user_id=user.id, sha256=sha256,
+                source_path=frame_path, extension=".jpg",
+            )
+            local_path = storage.get_path(stored_key)
+
+            # Clean up temp file (now copied to CAS)
+            if os.path.exists(frame_path) and os.path.abspath(frame_path) != os.path.abspath(local_path):
+                os.remove(frame_path)
+
+            asset = await add_asset(
+                self.db,
+                user_id=user.id,
+                media_type=MediaType.IMAGE,
+                provider_id=video_asset.provider_id,
+                provider_asset_id=f"{video_asset.provider_asset_id}_frame_{timestamp:.2f}",
+                provider_account_id=video_asset.provider_account_id,
+                remote_url=f"file://{local_path}",
+                local_path=local_path,
+                stored_key=stored_key,
+                sha256=sha256,
+                width=width,
+                height=height,
+                file_size_bytes=file_size,
+                mime_type="image/jpeg",
+                sync_status=SyncStatus.DOWNLOADED,
+                description=f"Frame from video at {timestamp:.2f}s",
+                upload_method="video_capture",
+                # Lineage handled separately below for timestamp metadata
+            )
+
+            # 6. Create lineage with timestamp metadata
+            self.db.add(AssetLineage(
+                child_asset_id=asset.id,
+                parent_asset_id=video_asset.id,
+                relation_type=PAUSED_FRAME,
+                operation_type=OperationType.FRAME_EXTRACTION,
+                parent_start_time=timestamp,
+                parent_frame=frame_number,
+                sequence_order=0,
+            ))
+            await self.db.commit()
+
+            # 7. Update user storage quota
+            storage_gb = file_size / (1024 ** 3)
+            await self.users.increment_storage(user, storage_gb)
+
+            return asset
+
+        except Exception as e:
+            if os.path.exists(frame_path):
+                os.remove(frame_path)
+            raise InvalidOperationError(f"Failed to create asset from paused frame: {e}")
 
     # ===== Sync Operations (delegate to AssetSyncService) =====
 

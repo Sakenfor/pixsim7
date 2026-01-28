@@ -186,6 +186,8 @@ class AssetCoreService:
             if not existing.source_generation_id:
                 existing.source_generation_id = generation.id
                 updated = True
+                # Auto-tag when linking to generation
+                await self._auto_tag_generated_asset(existing.id, generation.user_id)
             if metadata and not existing.media_metadata:
                 existing.media_metadata = metadata
                 updated = True
@@ -221,6 +223,9 @@ class AssetCoreService:
         await self.db.commit()
         await self.db.refresh(asset)
 
+        # Auto-tag generated assets based on user preferences
+        await self._auto_tag_generated_asset(asset.id, generation.user_id)
+
         # Emit event
         await event_bus.publish(ASSET_CREATED, {
             "asset_id": asset.id,
@@ -234,6 +239,42 @@ class AssetCoreService:
         await self._create_generation_lineage(asset, generation)
 
         return asset
+
+    async def _auto_tag_generated_asset(self, asset_id: int, user_id: int) -> None:
+        """
+        Auto-tag a generated asset based on user preferences.
+
+        Checks user.preferences for:
+        - "generated_asset_tags": list of tag slugs to apply (default: ["source:generated"])
+        - Set to [] (empty list) to disable auto-tagging
+
+        Args:
+            asset_id: The asset to tag
+            user_id: The user who owns the asset (for preferences lookup)
+        """
+        try:
+            # Get user preferences
+            from pixsim7.backend.main.domain.user import User
+            user = await self.db.get(User, user_id)
+            if not user:
+                logger.warning(f"User {user_id} not found for auto-tagging asset {asset_id}")
+                return
+
+            # Get tag list from preferences, default to ["source:generated"]
+            preferences = user.preferences or {}
+            tags_to_apply = preferences.get("generated_asset_tags", ["source:generated"])
+
+            # Skip if explicitly set to empty list
+            if not tags_to_apply:
+                return
+
+            # Apply tags
+            from pixsim7.backend.main.services.tag_service import TagService
+            tag_service = TagService(self.db)
+            await tag_service.assign_tags_to_asset(asset_id, tags_to_apply, auto_create=True)
+
+        except Exception as e:
+            logger.warning(f"Failed to auto-tag generated asset {asset_id}: {e}")
 
     # ===== ASSET RETRIEVAL =====
 

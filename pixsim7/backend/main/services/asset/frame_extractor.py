@@ -70,8 +70,7 @@ def extract_frame_ffmpeg(
 
     try:
         # ffmpeg command to extract single frame
-        # -ss: seek to timestamp (before input for faster seeking)
-        # -i: input file
+        # -ss before -i: fast seek (keyframe-based)
         # -vframes 1: extract only 1 frame
         # -q:v: quality (2 = high quality JPEG)
         # -y: overwrite output
@@ -81,7 +80,8 @@ def extract_frame_ffmpeg(
             "-i", video_path,
             "-vframes", "1",
             "-q:v", str(quality),
-            "-y",  # Overwrite
+            "-strict", "unofficial",  # Allow limited-range YUV in MJPEG
+            "-y",
             output_path
         ]
 
@@ -89,7 +89,7 @@ def extract_frame_ffmpeg(
             cmd,
             capture_output=True,
             text=True,
-            timeout=30  # 30 second timeout
+            timeout=30
         )
 
         if result.returncode != 0:
@@ -115,18 +115,94 @@ def extract_frame_ffmpeg(
         raise InvalidOperationError(f"Frame extraction failed: {e}")
 
 
+def extract_last_frame_ffmpeg(
+    video_path: str,
+    output_path: Optional[str] = None,
+    format: str = "jpg",
+    quality: int = 2
+) -> str:
+    """
+    Extract the very last frame from a video.
+
+    Uses -sseof to seek near the end, then -update 1 to keep overwriting
+    until the final frame, guaranteeing we get the actual last frame.
+
+    Args:
+        video_path: Path to video file
+        output_path: Optional output path (temp file created if None)
+        format: Image format (jpg, png)
+        quality: JPEG quality (1-31, lower = better)
+
+    Returns:
+        Path to extracted frame image
+    """
+    if not os.path.exists(video_path):
+        raise InvalidOperationError(f"Video file not found: {video_path}")
+
+    if not _check_ffmpeg_available():
+        raise InvalidOperationError(
+            "ffmpeg is not installed or not available in PATH."
+        )
+
+    if output_path is None:
+        fd, output_path = tempfile.mkstemp(suffix=f".{format}", prefix="frame_")
+        os.close(fd)
+
+    try:
+        # -sseof -1: start 1 second before end (for speed)
+        # -update 1: keep overwriting output with each frame until done
+        # Result: the last frame of the video
+        cmd = [
+            "ffmpeg",
+            "-sseof", "-1",
+            "-i", video_path,
+            "-update", "1",
+            "-q:v", str(quality),
+            "-strict", "unofficial",
+            "-y",
+            output_path
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        if result.returncode != 0:
+            raise InvalidOperationError(f"ffmpeg failed: {result.stderr}")
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise InvalidOperationError("Frame extraction produced empty file")
+
+        return output_path
+
+    except subprocess.TimeoutExpired:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise InvalidOperationError("Frame extraction timed out after 30s")
+
+    except Exception as e:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        raise InvalidOperationError(f"Frame extraction failed: {e}")
+
+
 def extract_frame_with_metadata(
     video_path: str,
     timestamp: float,
-    frame_number: Optional[int] = None
+    frame_number: Optional[int] = None,
+    last_frame: bool = False,
 ) -> Tuple[str, str, int, int]:
     """
     Extract frame and compute metadata (hash, dimensions).
 
     Args:
         video_path: Path to video file
-        timestamp: Time in seconds
+        timestamp: Time in seconds (ignored if last_frame=True)
         frame_number: Optional frame number for metadata
+        last_frame: If True, extract the very last frame of the video
 
     Returns:
         Tuple of (frame_path, sha256_hash, width, height)
@@ -134,9 +210,14 @@ def extract_frame_with_metadata(
     Example:
         >>> path, hash, w, h = extract_frame_with_metadata("video.mp4", 10.5, 315)
         >>> # Frame extracted with full metadata
+        >>> path, hash, w, h = extract_frame_with_metadata("video.mp4", 0, last_frame=True)
+        >>> # Last frame extracted
     """
-    # Extract frame
-    frame_path = extract_frame_ffmpeg(video_path, timestamp)
+    # Extract frame using appropriate method
+    if last_frame:
+        frame_path = extract_last_frame_ffmpeg(video_path)
+    else:
+        frame_path = extract_frame_ffmpeg(video_path, timestamp)
 
     try:
         # Compute SHA256

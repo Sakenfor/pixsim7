@@ -25,6 +25,53 @@ if TYPE_CHECKING:
 logger = get_logger()
 
 
+# ============================================================================
+# Auto-Retry Error Pattern Constants
+# ============================================================================
+# Patterns used to determine if a failed generation should be automatically retried
+
+# Non-retryable patterns - prompt/input rejections where same input = same rejection
+# These should NOT be retried because the input itself was rejected
+NON_RETRYABLE_PATTERNS = [
+    "content filtered (prompt)",  # Pixverse prompt rejection
+    "content filtered (text)",    # Text input rejection
+    "prompt was rejected",
+    "text input was rejected",
+]
+
+# Content filtering indicators - retryable because output varies
+# These CAN be retried because the same prompt might produce acceptable output
+RETRYABLE_CONTENT_FILTER_PATTERNS = [
+    "content filter",
+    "content policy",
+    "inappropriate content",
+    "safety filter",
+    "moderation",
+    "nsfw",
+    "adult content",
+    "explicit content",
+    # Phrases used when marking provider-filtered jobs (from status_poller)
+    "terminal status: filtered",
+    "terminal status: failed",
+    "provider reported terminal status",
+    # Pixverse-specific error codes (mapped in pixverse adapter)
+    "safety or policy reasons",
+    "content moderation failed",
+    "content filtered (output)",  # Output rejection - retryable
+    "content filtered (image)",   # Image output rejection - retryable
+]
+
+# Temporary error indicators - transient issues that may resolve on retry
+RETRYABLE_TEMPORARY_ERROR_PATTERNS = [
+    "timeout",
+    "rate limit",
+    "temporarily unavailable",
+    "try again",
+    "service unavailable",
+    "server error",
+]
+
+
 class GenerationRetryService:
     """
     Generation retry service
@@ -115,6 +162,8 @@ class GenerationRetryService:
             priority=original.priority,
             parent_generation_id=generation_id,  # Link to original
             prompt_version_id=original.prompt_version_id,
+            preferred_account_id=original.preferred_account_id,
+            analyzer_id=original.analyzer_id,
         )
 
         # Copy retry count from parent and increment
@@ -156,15 +205,8 @@ class GenerationRetryService:
 
         error_msg = generation.error_message.lower()
 
-        # Non-retryable patterns (prompt/input rejections - same input = same rejection)
-        non_retryable_patterns = [
-            "content filtered (prompt)",  # Pixverse prompt rejection
-            "content filtered (text)",    # Text input rejection
-            "prompt was rejected",
-            "text input was rejected",
-        ]
-
-        for pattern in non_retryable_patterns:
+        # Check non-retryable patterns first (prompt/input rejections)
+        for pattern in NON_RETRYABLE_PATTERNS:
             if pattern in error_msg:
                 logger.info(
                     f"Generation {generation.id} will NOT auto-retry: "
@@ -172,39 +214,9 @@ class GenerationRetryService:
                 )
                 return False
 
-        # Content filtering indicators (retryable - output varies)
-        content_filter_keywords = [
-            "content filter",
-            "content policy",
-            "inappropriate content",
-            "safety filter",
-            "moderation",
-            "nsfw",
-            "adult content",
-            "explicit content",
-            # Phrases used when marking provider-filtered jobs (from status_poller)
-            "terminal status: filtered",
-            "terminal status: failed",
-            "provider reported terminal status",
-            # Pixverse-specific error codes (mapped in pixverse adapter)
-            "safety or policy reasons",
-            "content moderation failed",
-            "content filtered (output)",  # Output rejection - retryable
-            "content filtered (image)",   # Image output rejection - retryable
-        ]
-
-        # Temporary error indicators
-        temporary_error_keywords = [
-            "timeout",
-            "rate limit",
-            "temporarily unavailable",
-            "try again",
-            "service unavailable",
-            "server error",
-        ]
-
-        # Check for content filter or temporary errors
-        for keyword in content_filter_keywords + temporary_error_keywords:
+        # Check for retryable content filter or temporary errors
+        retryable_patterns = RETRYABLE_CONTENT_FILTER_PATTERNS + RETRYABLE_TEMPORARY_ERROR_PATTERNS
+        for keyword in retryable_patterns:
             if keyword in error_msg:
                 logger.info(f"Generation {generation.id} should auto-retry: '{keyword}' detected in error")
                 return True
@@ -220,7 +232,5 @@ class GenerationRetryService:
 
     async def _get_generation(self, generation_id: int) -> Generation:
         """Get generation by ID or raise ResourceNotFoundError"""
-        generation = await self.db.get(Generation, generation_id)
-        if not generation:
-            raise ResourceNotFoundError(f"Generation {generation_id} not found")
-        return generation
+        from pixsim7.backend.main.services.generation.helpers import get_generation_or_404
+        return await get_generation_or_404(self.db, generation_id)

@@ -646,6 +646,59 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Extract last frame from a video asset and upload to provider
+  if (message.action === 'extractLastFrameAndUpload') {
+    (async () => {
+      try {
+        const { videoAssetId, providerId } = message;
+        const settings = await getSettings();
+        if (!settings.pixsim7Token) throw new Error('Not logged in');
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${settings.pixsim7Token}`,
+        };
+
+        // 1. Extract last frame via backend FFmpeg
+        const extractResp = await fetch(
+          `${settings.backendUrl}/api/v1/assets/extract-frame`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              video_asset_id: videoAssetId,
+              last_frame: true,
+            }),
+          },
+        );
+        if (!extractResp.ok) {
+          const txt = await extractResp.text();
+          throw new Error(`Frame extraction failed: ${extractResp.status} ${txt}`);
+        }
+        const frameAsset = await extractResp.json();
+
+        // 2. Upload extracted frame to provider
+        const uploadResp = await fetch(
+          `${settings.backendUrl}/api/v1/assets/${frameAsset.id}/reupload`,
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ provider_id: providerId || 'pixverse' }),
+          },
+        );
+        if (!uploadResp.ok) {
+          const txt = await uploadResp.text();
+          throw new Error(`Upload to provider failed: ${uploadResp.status} ${txt}`);
+        }
+
+        sendResponse({ success: true, frameAssetId: frameAsset.id });
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   // Quick generate video from image
   if (message.action === 'quickGenerate') {
     (async () => {

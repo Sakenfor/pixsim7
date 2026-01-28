@@ -273,10 +273,8 @@ class GenerationLifecycleService:
 
     async def _get_generation(self, generation_id: int) -> Generation:
         """Get generation by ID or raise ResourceNotFoundError"""
-        generation = await self.db.get(Generation, generation_id)
-        if not generation:
-            raise ResourceNotFoundError(f"Generation {generation_id} not found")
-        return generation
+        from pixsim7.backend.main.services.generation.helpers import get_generation_or_404
+        return await get_generation_or_404(self.db, generation_id)
 
     async def _increment_prompt_metrics(self, prompt_version_id) -> None:
         """Increment prompt version usage metrics"""

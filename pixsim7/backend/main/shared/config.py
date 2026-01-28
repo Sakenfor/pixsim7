@@ -143,6 +143,10 @@ class Settings(BaseSettings):
         le=50,
         description="Maximum retry attempts per generation (default: 20 for content filters and transient errors)"
     )
+    validate_composition_vocabs: bool = Field(
+        default=False,
+        description="Validate composition asset vocab fields (role, pose_id, location_id, etc.) against the vocabulary registry. Logs warnings for unknown values."
+    )
 
     # ===== NETWORK =====
     host: str = Field(

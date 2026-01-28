@@ -1509,8 +1509,9 @@ async def upload_asset_from_url(
 class ExtractFrameRequest(BaseModel):
     """Request to extract frame from video"""
     video_asset_id: int = Field(description="Source video asset ID")
-    timestamp: float = Field(description="Time in seconds to extract frame", ge=0)
+    timestamp: float = Field(0, description="Time in seconds to extract frame", ge=0)
     frame_number: Optional[int] = Field(None, description="Optional frame number for metadata")
+    last_frame: bool = Field(False, description="If true, extract the very last frame (ignores timestamp)")
 
 
 @router.post("/extract-frame", response_model=AssetResponse)
@@ -1550,7 +1551,8 @@ async def extract_frame(
             video_asset_id=request.video_asset_id,
             user=user,
             timestamp=request.timestamp,
-            frame_number=request.frame_number
+            frame_number=request.frame_number,
+            last_frame=request.last_frame,
         )
 
         return AssetResponse.model_validate(frame_asset)

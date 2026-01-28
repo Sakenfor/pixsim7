@@ -425,6 +425,57 @@
     } catch (e) { showToast(e.message || 'Sync error', false); }
   }
 
+  /**
+   * Extract the last frame of a Pixverse video via the backend and upload it.
+   * Works by syncing the video first (to get asset ID), then calling extract-frame.
+   */
+  async function extractLastFrameAndUpload(video) {
+    const mediaSrc = video.src;
+    const onPixverse = isPixverseSite();
+    const assetInfo = isPixverseMediaUrl(mediaSrc) ? extractPixverseAssetInfo(mediaSrc, video) : null;
+
+    if (!onPixverse || !assetInfo) {
+      showToast('Last frame extraction is only supported for Pixverse videos', false);
+      return;
+    }
+
+    showToast('Syncing & extracting last frame...', true);
+    try {
+      const accountId = await getPixverseSessionAccountId();
+      const syncRes = await chrome.runtime.sendMessage({
+        action: 'syncPixverseAsset',
+        mediaUrl: mediaSrc,
+        pixverseAssetId: assetInfo.numericId || assetInfo.uuid,
+        pixverseAssetUuid: assetInfo.uuid,
+        pixverseMediaType: assetInfo.mediaType,
+        isVideo: true,
+        accountId,
+      });
+      if (!syncRes || !syncRes.success) {
+        showToast(syncRes?.error || 'Sync failed', false);
+        return;
+      }
+      const videoAssetId = syncRes.data?.asset_id;
+      if (!videoAssetId) {
+        showToast('Could not determine asset ID after sync', false);
+        return;
+      }
+      const res = await chrome.runtime.sendMessage({
+        action: 'extractLastFrameAndUpload',
+        videoAssetId,
+        providerId: 'pixverse',
+      });
+      if (res && res.success) {
+        showToast('Last frame uploaded to Pixverse', true);
+      } else {
+        showToast(res?.error || 'Failed to extract/upload last frame', false);
+      }
+    } catch (err) {
+      console.error('[pxs7] Failed to extract last frame:', err);
+      showToast('Failed to extract last frame', false);
+    }
+  }
+
   let badgeEl = null;
   let currentImg = null;
   let currentVideo = null;
@@ -447,7 +498,7 @@
       const hasImage = !!(currentImg && currentImg.src);
 
       // Shift+Click on video: capture frame as image
-      if (e.shiftKey && hasVideo && currentVideo) {
+      if (e.shiftKey && !e.altKey && hasVideo && currentVideo) {
         const frameDataUrl = captureVideoFrame(currentVideo);
         if (frameDataUrl) {
           showToast('Capturing frame...', true);
@@ -456,6 +507,12 @@
         } else {
           showToast('Failed to capture frame', false);
         }
+        return;
+      }
+
+      // Alt+Click on video: extract last frame via backend and upload to provider
+      if (e.altKey && hasVideo && currentVideo) {
+        await extractLastFrameAndUpload(currentVideo);
         return;
       }
 
@@ -485,6 +542,14 @@
       const isVideo = !!(currentVideo && currentVideo.src);
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
       if (prov && src) await upload(src, prov, isVideo);
+    });
+    // Middle-click: extract last frame and upload to Pixverse
+    badgeEl.addEventListener('auxclick', async (e) => {
+      if (e.button !== 1) return; // Only middle click
+      e.preventDefault(); e.stopPropagation();
+      if (currentVideo && currentVideo.src) {
+        await extractLastFrameAndUpload(currentVideo);
+      }
     });
     return badgeEl;
   }
@@ -627,9 +692,7 @@
       badgeEl.title = `Sync to PixSim7 (${idType}: ${idDisplay})`;
     } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
-      badgeEl.title = isLocalUrl
-        ? 'Click: Save video | Shift+Click: Capture frame as image'
-        : 'Click: Save video | Shift+Click: Capture frame as image';
+      badgeEl.title = 'Click: Save video | Shift+Click: Capture frame | Middle/Alt+Click: Upload last frame';
     } else if (isFileUrl) {
       badgeEl.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
       badgeEl.title = 'Upload local image to PixSim7';

@@ -10,6 +10,8 @@ export interface DebugPreferences {
   backend?: boolean;
   registry?: boolean;
   websocket?: boolean;
+  /** Validate composition vocab fields (role, pose_id, etc.) against registry */
+  validateCompositionVocabs?: boolean;
 }
 
 /**

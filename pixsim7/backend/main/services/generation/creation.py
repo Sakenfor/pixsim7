@@ -41,6 +41,121 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Composition Metadata Field Constants
+# ============================================================================
+# Fields extracted from composition assets for lineage and metadata tracking
+#
+# Fields are categorized by whether they map to vocabulary types (validatable)
+# or are free-form values. See: shared/ontology/vocabularies/config.py
+
+# Mapping from composition field names to vocabulary types
+# These fields can be validated against the vocab registry
+# Format: field_name -> vocab_type (as defined in VOCAB_CONFIGS)
+COMPOSITION_VOCAB_FIELDS = {
+    "role": "roles",              # role:main_character, role:companion
+    "pose_id": "poses",           # pose:standing_neutral, pose:sitting
+    "location_id": "locations",   # location:park_bench, location:bedroom
+    "influence_region": "influence_regions",  # region:foreground, region:background
+    "camera_view_id": "spatial",  # spatial:medium_shot, spatial:close_up
+    "camera_framing_id": "spatial",  # spatial:centered, spatial:rule_of_thirds
+}
+
+# Free-form composition fields (no vocab validation)
+# These are workflow/structural fields without vocab backing
+COMPOSITION_FREEFORM_FIELDS = [
+    "intent",          # Workflow intent: "generate", "preserve", "modify", "add", "remove"
+    "priority",        # Numeric priority for composition ordering
+    "layer",           # Z-order layer index
+    "ref_name",        # Prompt variable binding name (e.g., "{{character}}")
+    "influence_type",  # Influence type: "content", "style", "structure", "mask"
+    "character_id",    # External character reference (game-specific)
+    "expression_id",   # Expression reference (could become vocab)
+    "surface_type",    # Surface type hint (could become vocab)
+    "prop_id",         # Prop reference (could become vocab)
+    "tags",            # Free-form tags list
+]
+
+# Core lineage fields - minimal set for structured lineage building
+# Used in _extract_composition_metadata() for trimmed lineage records
+LINEAGE_FIELDS = [
+    "role",
+    "intent",
+    "influence_type",
+    "influence_region",
+    "ref_name",
+    "priority",
+    "layer",
+]
+
+# Extended composition metadata fields - all fields for Generation.inputs
+# Derived from vocab + freeform fields for backward compatibility
+COMPOSITION_META_FIELDS = (
+    list(COMPOSITION_VOCAB_FIELDS.keys()) + COMPOSITION_FREEFORM_FIELDS
+)
+
+
+def validate_composition_vocab_fields(
+    item: Dict[str, Any],
+    strict: bool = False,
+) -> List[str]:
+    """
+    Validate vocab-backed fields in a composition asset item.
+
+    Checks that vocab-backed field values exist in the vocabulary registry.
+    Non-vocab fields are ignored.
+
+    Args:
+        item: Composition asset dict with fields to validate
+        strict: If True, raise InvalidOperationError on unknown vocab values.
+                If False (default), return list of warnings.
+
+    Returns:
+        List of warning messages for unknown vocab values (empty if all valid)
+
+    Raises:
+        InvalidOperationError: If strict=True and unknown vocab value found
+    """
+    warnings = []
+
+    try:
+        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+        registry = get_registry()
+    except Exception as e:
+        logger.debug(f"Could not load vocab registry for validation: {e}")
+        return warnings  # Skip validation if registry unavailable
+
+    for field_name, vocab_type in COMPOSITION_VOCAB_FIELDS.items():
+        value = item.get(field_name)
+        if value is None:
+            continue
+
+        # Normalize value to canonical format (type:id)
+        if isinstance(value, str):
+            # Handle both "type:id" and bare "id" formats
+            if ":" in value:
+                # Already canonical format, extract the id part
+                parts = value.split(":", 1)
+                concept_id = parts[1] if len(parts) > 1 else value
+            else:
+                concept_id = value
+        elif isinstance(value, dict) and "id" in value:
+            concept_id = value["id"]
+        else:
+            continue  # Can't validate non-string, non-dict values
+
+        # Check if concept exists in registry
+        if not registry.is_known_concept(vocab_type, concept_id):
+            msg = f"Unknown {vocab_type} value '{value}' in field '{field_name}'"
+            warnings.append(msg)
+
+            if strict:
+                from pixsim7.backend.main.shared.errors import InvalidOperationError
+                raise InvalidOperationError(msg)
+
+    return warnings
+
+
+# ============================================================================
 # Role → Relation Type Mapping
 # ============================================================================
 # Maps input roles (used in Generation.inputs) to relation_type constants
@@ -167,15 +282,6 @@ def _extract_composition_metadata(
         return None
 
     metadata: List[Dict[str, Any]] = []
-    lineage_fields = [
-        "role",
-        "intent",
-        "influence_type",
-        "influence_region",
-        "ref_name",
-        "priority",
-        "layer",
-    ]
 
     for i, item in enumerate(composition_assets):
         if hasattr(item, "model_dump"):
@@ -200,7 +306,7 @@ def _extract_composition_metadata(
         }
 
         # Extract lineage-relevant fields only
-        for key in lineage_fields:
+        for key in LINEAGE_FIELDS:
             if item.get(key) is not None:
                 entry[key] = item[key]
 
@@ -391,8 +497,13 @@ class GenerationCreationService:
             params, operation_type, provider_id
         )
 
+        # Fetch user preferences for validation settings
+        # (may already be fetched above for content rating, but fetch_user_preferences is idempotent)
+        user_prefs = await fetch_user_preferences(self.db, user.id) or {}
+        validate_vocabs = user_prefs.get("validateCompositionVocabs", False)
+
         # Derive inputs from params
-        inputs = self._extract_inputs(params, operation_type)
+        inputs = self._extract_inputs(params, operation_type, validate_vocabs=validate_vocabs)
 
         # Compute reproducible hash
         reproducible_hash = Generation.compute_hash(canonical_params, inputs)
@@ -416,7 +527,8 @@ class GenerationCreationService:
                 # Failed generations should be allowed to retry with new submission
                 if existing_generation:
                     # Handle both enum and string status (SQLModel may return either)
-                    status_value = existing_generation.status.value if hasattr(existing_generation.status, 'value') else str(existing_generation.status)
+                    from pixsim7.backend.main.services.generation.helpers import get_status_value
+                    status_value = get_status_value(existing_generation.status)
                     debug.generation(f"Found generation {existing_generation.id}, status={status_value}")
                     if status_value != "failed":
                         debug.generation(f"Returning existing (not failed)")
@@ -457,7 +569,8 @@ class GenerationCreationService:
                 cached_generation = result.scalar_one_or_none()
                 if cached_generation:
                     # Skip failed generations - allow retry with new params
-                    status_value = cached_generation.status.value if hasattr(cached_generation.status, 'value') else str(cached_generation.status)
+                    from pixsim7.backend.main.services.generation.helpers import get_status_value
+                    status_value = get_status_value(cached_generation.status)
                     if status_value == "failed":
                         debug.generation(f"Skipping failed cached generation {cached_generation_id}")
                         logger.info(f"Cache: Skipping failed generation {cached_generation_id}, allowing retry")
@@ -896,7 +1009,8 @@ class GenerationCreationService:
     def _extract_inputs(
         self,
         params: Dict[str, Any],
-        operation_type: OperationType
+        operation_type: OperationType,
+        validate_vocabs: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Extract input references from structured params.
@@ -912,6 +1026,12 @@ class GenerationCreationService:
         - EntityRef format: {"type": "asset", "id": 123} or "asset:123"
         - URL with asset ID: Contains /assets/{id}/ or asset_id=123
         - Raw asset ID: 123
+
+        Args:
+            params: Generation parameters
+            operation_type: Operation type
+            validate_vocabs: If True, validate vocab-backed composition fields
+                            against the registry (user preference)
 
         Returns:
             List of input references like:
@@ -961,56 +1081,10 @@ class GenerationCreationService:
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
             if composition_assets and isinstance(composition_assets, list):
-                for i, item in enumerate(composition_assets):
-                    if hasattr(item, "model_dump"):
-                        item = item.model_dump()
-
-                    role = "composition_reference"
-                    asset_value = None
-                    composition_meta: Dict[str, Any] = {}
-
-                    if isinstance(item, dict):
-                        role = item.get("role") or role
-                        asset_value = (
-                            item.get("asset")
-                            or item.get("asset_id")
-                            or item.get("assetId")
-                            or item.get("url")
-                        )
-                        for key in [
-                            "intent",
-                            "priority",
-                            "layer",
-                            "ref_name",
-                            # Influence hints for lineage tracking
-                            "influence_type",
-                            "influence_region",
-                            # Ontology-aligned hints
-                            "character_id",
-                            "location_id",
-                            "pose_id",
-                            "expression_id",
-                            "camera_view_id",
-                            "camera_framing_id",
-                            "surface_type",
-                            "prop_id",
-                            "tags",
-                        ]:
-                            if item.get(key) is not None:
-                                composition_meta[key] = item.get(key)
-                    else:
-                        asset_value = item
-
-                    asset_input = self._parse_asset_input(
-                        value=asset_value,
-                        role=role,
-                        sequence_order=i,
-                        gen_config=gen_config,
-                    )
-                    if asset_input:
-                        if composition_meta:
-                            asset_input.setdefault("meta", {})["composition"] = composition_meta
-                        inputs.append(asset_input)
+                inputs.extend(self._extract_composition_inputs(
+                    composition_assets, gen_config,
+                    validate_vocab=validate_vocabs,
+                ))
 
         elif operation_type == OperationType.VIDEO_EXTEND:
             # Video input
@@ -1059,56 +1133,10 @@ class GenerationCreationService:
             # Composition assets with specific roles
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
             if composition_assets and isinstance(composition_assets, list):
-                for i, item in enumerate(composition_assets):
-                    if hasattr(item, "model_dump"):
-                        item = item.model_dump()
-
-                    role = "composition_reference"
-                    asset_value = None
-                    composition_meta: Dict[str, Any] = {}
-
-                    if isinstance(item, dict):
-                        role = item.get("role") or role
-                        asset_value = (
-                            item.get("asset")
-                            or item.get("asset_id")
-                            or item.get("assetId")
-                            or item.get("url")
-                        )
-                        for key in [
-                            "intent",
-                            "priority",
-                            "layer",
-                            "ref_name",
-                            # Influence hints for lineage tracking
-                            "influence_type",
-                            "influence_region",
-                            # Ontology-aligned hints
-                            "character_id",
-                            "location_id",
-                            "pose_id",
-                            "expression_id",
-                            "camera_view_id",
-                            "camera_framing_id",
-                            "surface_type",
-                            "prop_id",
-                            "tags",
-                        ]:
-                            if item.get(key) is not None:
-                                composition_meta[key] = item.get(key)
-                    else:
-                        asset_value = item
-
-                    asset_input = self._parse_asset_input(
-                        value=asset_value,
-                        role=role,
-                        sequence_order=i,
-                        gen_config=gen_config,
-                    )
-                    if asset_input:
-                        if composition_meta:
-                            asset_input.setdefault("meta", {})["composition"] = composition_meta
-                        inputs.append(asset_input)
+                inputs.extend(self._extract_composition_inputs(
+                    composition_assets, gen_config,
+                    validate_vocab=validate_vocabs,
+                ))
 
         # ==========================
         # Extract scene-based inputs (fallback/supplement)
@@ -1294,6 +1322,70 @@ class GenerationCreationService:
             input_entry["frame"] = frame
 
         return input_entry
+
+    def _extract_composition_inputs(
+        self,
+        composition_assets: List[Any],
+        gen_config: Dict[str, Any],
+        validate_vocab: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Extract input references from composition assets.
+
+        Shared logic for IMAGE_TO_IMAGE and FUSION operations that both use
+        composition_assets with roles, metadata, and influence hints.
+
+        Args:
+            composition_assets: List of composition asset items
+            gen_config: Generation config dict for metadata extraction
+            validate_vocab: If True, validate vocab-backed fields against registry
+                           and log warnings for unknown values
+
+        Returns:
+            List of input dicts with role, asset ref, sequence_order, and meta
+        """
+        inputs = []
+
+        for i, item in enumerate(composition_assets):
+            if hasattr(item, "model_dump"):
+                item = item.model_dump()
+
+            role = "composition_reference"
+            asset_value = None
+            composition_meta: Dict[str, Any] = {}
+
+            if isinstance(item, dict):
+                role = item.get("role") or role
+                asset_value = (
+                    item.get("asset")
+                    or item.get("asset_id")
+                    or item.get("assetId")
+                    or item.get("url")
+                )
+                for key in COMPOSITION_META_FIELDS:
+                    if item.get(key) is not None:
+                        composition_meta[key] = item.get(key)
+
+                # Optionally validate vocab-backed fields
+                if validate_vocab:
+                    warnings = validate_composition_vocab_fields(item, strict=False)
+                    for warning in warnings:
+                        logger.warning(f"Composition asset {i}: {warning}")
+            else:
+                asset_value = item
+
+            asset_input = self._parse_asset_input(
+                value=asset_value,
+                role=role,
+                sequence_order=i,
+                gen_config=gen_config,
+            )
+            if asset_input:
+                if composition_meta:
+                    asset_input.setdefault("meta", {})["composition"] = composition_meta
+                inputs.append(asset_input)
+
+        return inputs
 
     def _extract_asset_from_scene(self, scene: Any) -> Optional[str]:
         """

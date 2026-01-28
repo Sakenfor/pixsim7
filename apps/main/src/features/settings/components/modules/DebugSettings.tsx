@@ -37,6 +37,7 @@ const DEBUG_CATEGORIES: DebugCategory[] = [
   { id: 'generation', label: 'Generation Pipeline', description: 'Dedup, cache, params canonicalization', location: 'backend' },
   { id: 'provider', label: 'Provider API', description: 'Provider SDK calls and responses', location: 'backend' },
   { id: 'worker', label: 'Worker Jobs', description: 'Job processing and status polling', location: 'backend' },
+  { id: 'validateCompositionVocabs', label: 'Vocab Validation', description: 'Validate composition fields (role, pose_id, etc.) against vocab registry', location: 'backend' },
 ];
 
 /** Shared hook for debug state management */

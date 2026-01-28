@@ -219,22 +219,42 @@ export function useMediaThumbnailFull(
         });
 
         // Handle 202 Accepted (thumbnail regeneration in progress)
-        if (res.status === 202 && retryCountRef.current < MAX_RETRIES) {
-          retryCountRef.current++;
-          console.log(`[useMediaThumbnail] 202 for ${fullUrl}, thumbnail regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
-          setTimeout(() => {
-            if (!cancelled) fetchWithRetry();
-          }, REGEN_RETRY_DELAY_MS);
+        if (res.status === 202) {
+          if (retryCountRef.current < MAX_RETRIES) {
+            retryCountRef.current++;
+            console.log(`[useMediaThumbnail] 202 for ${fullUrl}, thumbnail regenerating (${retryCountRef.current}/${MAX_RETRIES})...`);
+            setTimeout(() => {
+              if (!cancelled) fetchWithRetry();
+            }, REGEN_RETRY_DELAY_MS);
+            return;
+          }
+          // All retries exhausted - mark as failed so retry UI can appear
+          if (!cancelled) {
+            console.warn(`[useMediaThumbnail] Thumbnail regeneration timed out for ${fullUrl} after ${MAX_RETRIES} retries`);
+            setThumbSrc(undefined);
+            setFailed(true);
+            setLoading(false);
+          }
           return;
         }
 
         // Handle 404 (retry for CDN propagation)
-        if (res.status === 404 && retryCountRef.current < MAX_RETRIES) {
-          retryCountRef.current++;
-          console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
-          setTimeout(() => {
-            if (!cancelled) fetchWithRetry();
-          }, RETRY_DELAY_MS);
+        if (res.status === 404) {
+          if (retryCountRef.current < MAX_RETRIES) {
+            retryCountRef.current++;
+            console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+            setTimeout(() => {
+              if (!cancelled) fetchWithRetry();
+            }, RETRY_DELAY_MS);
+            return;
+          }
+          // All retries exhausted
+          if (!cancelled) {
+            console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${MAX_RETRIES} retries`);
+            setThumbSrc(remoteUrl);
+            setFailed(!remoteUrl);
+            setLoading(false);
+          }
           return;
         }
 
