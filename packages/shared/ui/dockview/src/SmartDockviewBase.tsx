@@ -14,6 +14,7 @@ import {
   type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from "dockview";
+import type { DockviewApi } from "dockview-core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "dockview/dist/styles/dockview.css";
@@ -38,9 +39,9 @@ export interface SmartDockviewBaseProps<TContext = any> extends UseSmartDockview
   /** Optional container props (events, data attributes) */
   containerProps?: React.HTMLAttributes<HTMLDivElement>;
   /** Callback when dockview is ready */
-  onReady?: (api: DockviewReadyEvent["api"]) => void;
+  onReady?: (api: DockviewApi) => void;
   /** Default layout when no saved layout exists */
-  defaultLayout?: (api: DockviewReadyEvent["api"]) => void;
+  defaultLayout?: (api: DockviewApi) => void;
   /** Optional: Custom tab components */
   tabComponents?: Record<string, React.ComponentType<IDockviewPanelHeaderProps>>;
   /** Optional: Default tab component override */

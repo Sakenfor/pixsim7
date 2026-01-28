@@ -26,7 +26,10 @@ export interface PanelHostDockviewProps {
   allowedCategories?: string[];
   /** Storage key for persisting layout. */
   storageKey: string;
-  /** Panel manager ID for settings resolution and dockview registry. */
+  /**
+   * Panel manager ID for settings resolution and dockview registry.
+   * When provided, this becomes the public dockviewId used in host registry lookups.
+   */
   panelManagerId?: string;
   /** Context object passed to panels via SmartDockview. */
   context?: unknown;

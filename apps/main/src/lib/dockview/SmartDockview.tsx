@@ -47,7 +47,8 @@
  * Context Menu:
  * - Requires ContextMenuProvider at app root
  * - Set enableContextMenu={true} to enable right-click menus
- * - panelManagerId is used as the dockview ID for cross-dockview communication
+ * - panelManagerId becomes the public dockviewId for cross-dockview communication
+ * - scopeHostId is always "dockview:{dockviewId}" and is used for ContextHubHost scoping
  */
 
 import {
@@ -86,8 +87,16 @@ interface SmartDockviewBaseProps<TContext = any> {
   /** Callback when layout changes */
   onLayoutChange?: () => void;
   /** Callback when dockview is ready */
-  onReady?: (api: DockviewReadyEvent['api']) => void;
-  /** ID for this dockview - used for panel manager and context menu cross-dockview communication */
+  onReady?: (api: DockviewApi) => void;
+  /**
+   * Stable dockview identifier used for:
+   * - panel manager registration
+   * - host registry lookup
+   * - context menu cross-dockview actions
+   *
+   * When provided, this becomes the public dockviewId (scopeHostId is "dockview:{panelManagerId}").
+   * When omitted, dockviewId falls back to a generated "dockview:{id}".
+   */
   panelManagerId?: string;
   /** Optional: Enable context menu support (requires ContextMenuProvider at app root) */
   enableContextMenu?: boolean;
@@ -113,7 +122,7 @@ interface SmartDockviewBaseProps<TContext = any> {
    * Receives the resolved panel definitions for convenience.
    */
   defaultLayout?: (
-    api: DockviewReadyEvent['api'],
+    api: DockviewApi,
     panelDefs: PanelDefinition[] | LocalPanelRegistry<any>
   ) => void;
   /**
@@ -173,7 +182,7 @@ interface SmartDockviewRegistryProps<TContext = any, TPanelId extends string = s
   /** Panel registry with component definitions */
   registry: LocalPanelRegistry<TPanelId>;
   /** Function to create the default layout */
-  defaultLayout: (api: DockviewReadyEvent['api'], registry: LocalPanelRegistry<TPanelId>) => void;
+  defaultLayout: (api: DockviewApi, registry: LocalPanelRegistry<TPanelId>) => void;
   /** Not used in registry mode */
   components?: never;
 }
@@ -534,22 +543,22 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
   // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(
-    (event: DockviewReadyEvent) => {
+    (api: DockviewApi) => {
       // Guard against multiple calls (can happen during rapid re-renders)
-      if (apiRef.current === event.api) {
+      if (apiRef.current === api) {
         return;
       }
-      apiRef.current = event.api;
-      setDockviewApi(event.api);
+      apiRef.current = api;
+      setDockviewApi(api);
 
       // Register with central hostRegistry via context menu provider.
       // This single call creates the host and registers with hostRegistry.
       // Other systems (PanelManager, context menu actions) access via hostRegistry.
       if (enableContextMenu && contextMenuRef.current) {
-        contextMenuRef.current.registerDockview(dockviewId, event.api, capabilitiesRef.current);
+        contextMenuRef.current.registerDockview(dockviewId, api, capabilitiesRef.current);
       } else {
         // If context menu not enabled, register directly with hostRegistry
-        registerDockviewHost(createDockviewHost(dockviewId, event.api), capabilitiesRef.current);
+        registerDockviewHost(createDockviewHost(dockviewId, api), capabilitiesRef.current);
       }
 
       // Register with panel manager if ID provided (stores reference in panel metadata)
@@ -558,7 +567,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
           const meta = panelManager.getPanelMetadata(panelManagerId);
           if (meta?.dockview?.hasDockview) {
             // Get host from central registry to ensure consistency
-            const host = getDockviewHost(panelManagerId) ?? createDockviewHost(panelManagerId, event.api);
+            const host = getDockviewHost(panelManagerId) ?? createDockviewHost(panelManagerId, api);
             panelManager.registerDockview(panelManagerId, host);
           }
         }).catch(() => {
@@ -567,7 +576,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       }
 
       setIsReady(true);
-      onReadyPropRef.current?.(event.api);
+      onReadyPropRef.current?.(api);
     },
     [
       panelManagerId,
