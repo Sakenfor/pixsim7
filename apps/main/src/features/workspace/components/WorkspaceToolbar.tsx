@@ -1,11 +1,14 @@
 import { useState, useCallback } from "react";
-import { useWorkspaceStore } from "../stores/workspaceStore";
+
 import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
-import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
+import { getWorkspaceDockviewHost } from "../lib/getWorkspaceDockviewHost";
+import { useWorkspaceStore } from "../stores/workspaceStore";
+
 import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
+import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
 import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
 import { SavePresetDialog } from "./workspace-toolbar/SavePresetDialog";
-import { getWorkspaceDockviewApi } from "../lib/getWorkspaceDockviewApi";
+
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
@@ -27,12 +30,13 @@ export function WorkspaceToolbar() {
   const toggleLock = useWorkspaceStore((s) => s.toggleLock);
   const reset = useWorkspaceStore((s) => s.reset);
 
-  const getWorkspaceApi = useCallback(() => {
-    return getWorkspaceDockviewApi();
+  const getWorkspaceHost = useCallback(() => {
+    return getWorkspaceDockviewHost();
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = getPresetLayout(presetId);
@@ -45,16 +49,17 @@ export function WorkspaceToolbar() {
       window.location.reload();
     }
     setActivePreset("workspace", presetId);
-  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+  }, [getWorkspaceHost, getPresetLayout, setActivePreset]);
 
   const handleSavePreset = useCallback((name: string) => {
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = api.toJSON();
     savePreset(name, "workspace", layout);
     setShowSaveDialog(false);
-  }, [getWorkspaceApi, savePreset]);
+  }, [getWorkspaceHost, savePreset]);
 
   const handleReset = useCallback(() => {
     // Clear layout from localStorage and reset store state

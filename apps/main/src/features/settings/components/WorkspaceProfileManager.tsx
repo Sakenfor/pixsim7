@@ -6,8 +6,9 @@
  */
 
 import { useState, useCallback } from 'react';
-import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
-import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
+
+import { useWorkspaceStore, useWorkspacePresets, type LayoutPreset } from '@features/workspace';
+import { getWorkspaceDockviewHost } from '@features/workspace/lib/getWorkspaceDockviewHost';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
@@ -23,12 +24,13 @@ export function WorkspaceProfileManager() {
   const [newPresetName, setNewPresetName] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  const getWorkspaceApi = useCallback(() => {
-    return getWorkspaceDockviewApi();
+  const getWorkspaceHost = useCallback(() => {
+    return getWorkspaceDockviewHost();
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = getPresetLayout(presetId);
@@ -39,19 +41,20 @@ export function WorkspaceProfileManager() {
       window.location.reload();
     }
     setActivePreset('workspace', presetId);
-  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+  }, [getWorkspaceHost, getPresetLayout, setActivePreset]);
 
   const handleSavePreset = useCallback(() => {
     if (!newPresetName.trim()) return;
 
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = api.toJSON();
     savePreset(newPresetName.trim(), 'workspace', layout);
     setNewPresetName('');
     setShowCreateForm(false);
-  }, [newPresetName, getWorkspaceApi, savePreset]);
+  }, [newPresetName, getWorkspaceHost, savePreset]);
 
   const handleDeletePreset = (id: string) => {
     if (confirm('Are you sure you want to delete this preset?')) {
@@ -140,7 +143,7 @@ function ProfileCard({
   onDelete,
   onSetGraphEditorId,
 }: {
-  preset: any;
+  preset: LayoutPreset;
   onLoad: () => void;
   onDelete: () => void;
   onSetGraphEditorId: (graphEditorId: string) => void;

@@ -13,7 +13,7 @@ import { useSelectionStore } from '@features/graph';
 
 import { useWorkspaceStore } from '../stores/workspaceStore';
 
-import { getWorkspaceDockviewApi } from './getWorkspaceDockviewApi';
+import { getWorkspaceDockviewHost } from './getWorkspaceDockviewHost';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
@@ -53,7 +53,8 @@ export const workspaceManifest: ConsoleManifest = {
           execute: (presetId: unknown) => {
             if (typeof presetId !== 'string') throw new Error('presetId must be a string');
 
-            const api = getWorkspaceDockviewApi();
+            const host = getWorkspaceDockviewHost();
+            const api = host?.api;
             if (!api) throw new Error('Workspace dockview not available');
 
             const store = useWorkspaceStore.getState();
@@ -77,7 +78,8 @@ export const workspaceManifest: ConsoleManifest = {
           execute: (name: unknown) => {
             if (typeof name !== 'string') throw new Error('name must be a string');
 
-            const api = getWorkspaceDockviewApi();
+            const host = getWorkspaceDockviewHost();
+            const api = host?.api;
             if (!api) throw new Error('Workspace dockview not available');
 
             const layout = api.toJSON();

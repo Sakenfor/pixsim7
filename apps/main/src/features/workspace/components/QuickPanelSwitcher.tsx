@@ -6,9 +6,11 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+
 import { usePanelConfigStore } from "@features/panels";
-import { useWorkspaceStore } from "../stores/workspaceStore";
-import { getWorkspaceDockviewApi } from "../lib/getWorkspaceDockviewApi";
+
+import { getWorkspaceDockviewHost } from "../lib/getWorkspaceDockviewHost";
+import { useWorkspaceStore, type PanelId } from "../stores/workspaceStore";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
@@ -25,7 +27,6 @@ export function QuickPanelSwitcher() {
   const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
   const setActivePreset = useWorkspaceStore((s) => s.setActivePreset);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -54,12 +55,13 @@ export function QuickPanelSwitcher() {
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const handleOpenPanel = (panelId: string) => {
-    openFloatingPanel(panelId as any, { width: 800, height: 600 });
+    openFloatingPanel(panelId as PanelId, { width: 800, height: 600 });
     setIsOpen(false);
   };
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const api = getWorkspaceDockviewApi();
+    const host = getWorkspaceDockviewHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = getPresetLayout(presetId);
@@ -205,7 +207,7 @@ export function QuickPanelSwitcher() {
           <div className="border-t border-neutral-200 dark:border-neutral-700 p-2">
             <button
               onClick={() => {
-                openFloatingPanel("settings" as any, {
+                openFloatingPanel("settings" as PanelId, {
                   width: 900,
                   height: 700,
                 });

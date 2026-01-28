@@ -30,7 +30,7 @@ import {
   useContextHubOverridesStore,
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
-import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useProviderCapacity } from '@features/providers';
+import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 
@@ -176,7 +176,7 @@ export function GenerationSettingsPanel({
   queueProgress,
   onGenerateBurst,
 }: GenerationSettingsPanelProps) {
-  const { useSessionStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
@@ -185,6 +185,9 @@ export function GenerationSettingsPanel({
   // Burst mode - local state (not persisted in session store)
   const [burstCount, setBurstCount] = useState(1);
   const isBurstMode = burstCount > 1;
+
+  // Input count from scoped store
+  const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
   const preferredProviderId = useContextHubOverridesStore(
     (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET)
   );
@@ -220,14 +223,6 @@ export function GenerationSettingsPanel({
     params: workbench.dynamicParams,
   });
   const creditEstimate = costEstimate?.estimated_credits ?? null;
-
-  // Provider capacity for burst mode display
-  const { capacity: providerCapacity } = useProviderCapacity();
-  const currentProviderCapacity = useMemo(() => {
-    const cap = providerCapacity.find(c => c.provider_id === inferredProviderId);
-    return cap ? { current: cap.current_jobs, max: cap.max_jobs } : null;
-  }, [providerCapacity, inferredProviderId]);
-
 
   // Filter params based on operation type
   const filteredParamSpecs = useMemo(() => {
@@ -530,40 +525,38 @@ export function GenerationSettingsPanel({
 
       {/* Fixed bottom section - Go button */}
       <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
-        {/* Burst count selector + capacity display */}
+        {/* Burst count input + queued inputs display */}
         <div className="flex items-center justify-between gap-2 text-[10px]">
-          {/* Burst count selector */}
+          {/* Burst count input */}
           <div className="flex items-center gap-1">
             <Layers size={12} className="text-neutral-500" />
-            <select
+            <input
+              type="number"
+              min={1}
+              max={50}
               value={burstCount}
-              onChange={(e) => setBurstCount(Number(e.target.value))}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) setBurstCount(Math.max(1, Math.min(50, val)));
+              }}
               disabled={generating}
               className={clsx(
-                'px-2 py-1 rounded-md font-medium border-0 shadow-sm',
+                'w-12 px-2 py-1 rounded-md font-medium border-0 shadow-sm text-center',
                 isBurstMode
                   ? 'bg-purple-600 text-white'
                   : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
               )}
               title="Number of generations to run"
-            >
-              {[1, 2, 3, 5, 10].map(n => (
-                <option key={n} value={n}>{n}x</option>
-              ))}
-            </select>
+            />
+            <span className="text-neutral-500">×</span>
           </div>
 
-          {/* Capacity indicator */}
-          {currentProviderCapacity && (
+          {/* Queued inputs indicator */}
+          {inputCount > 0 && (
             <div className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
-              <span>Slots:</span>
-              <span className={clsx(
-                'font-mono',
-                currentProviderCapacity.current >= currentProviderCapacity.max
-                  ? 'text-amber-600 dark:text-amber-400'
-                  : 'text-green-600 dark:text-green-400'
-              )}>
-                {currentProviderCapacity.max - currentProviderCapacity.current}/{currentProviderCapacity.max}
+              <span>Queued:</span>
+              <span className="font-mono text-blue-600 dark:text-blue-400">
+                {inputCount}
               </span>
             </div>
           )}

@@ -1,10 +1,10 @@
 import type { DockviewApi } from 'dockview-core';
 
-import { getDockviewHost } from '@lib/dockview';
-
 import { panelManager } from '@features/panels/lib/PanelManager';
 
+import { getWorkspaceDockviewHost } from './getWorkspaceDockviewHost';
+
 export function getWorkspaceDockviewApi(): DockviewApi | undefined {
-  return getDockviewHost('workspace')?.api
+  return getWorkspaceDockviewHost()?.api
     ?? panelManager.getPanelState('workspace')?.dockview?.api;
 }

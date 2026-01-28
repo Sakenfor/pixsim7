@@ -9,9 +9,10 @@
  */
 
 import { useCallback } from 'react';
-import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
+
 import { usePanelConfigStore } from '@features/panels';
-import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
+import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
+import { getWorkspaceDockviewHost } from '@features/workspace/lib/getWorkspaceDockviewHost';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
@@ -28,12 +29,13 @@ export function WorkspaceModule() {
 
   const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
 
-  const getWorkspaceApi = useCallback(() => {
-    return getWorkspaceDockviewApi();
+  const getWorkspaceHost = useCallback(() => {
+    return getWorkspaceDockviewHost();
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = getPresetLayout(presetId);
@@ -44,15 +46,16 @@ export function WorkspaceModule() {
       window.location.reload();
     }
     setActivePreset('workspace', presetId);
-  }, [getWorkspaceApi, getPresetLayout, setActivePreset]);
+  }, [getWorkspaceHost, getPresetLayout, setActivePreset]);
 
   const handleSavePreset = useCallback((name: string) => {
-    const api = getWorkspaceApi();
+    const host = getWorkspaceHost();
+    const api = host?.api;
     if (!api) return;
 
     const layout = api.toJSON();
     savePreset(name, 'workspace', layout);
-  }, [getWorkspaceApi, savePreset]);
+  }, [getWorkspaceHost, savePreset]);
 
   // Get enabled panels
   const enabledPanels = Object.values(panelConfigs).filter(p => p.enabled);

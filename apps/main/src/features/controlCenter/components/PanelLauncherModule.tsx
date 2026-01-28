@@ -4,7 +4,7 @@ import { resolvePanelDefinitionId } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
-import { getWorkspaceDockviewApi } from '@features/workspace/lib/getWorkspaceDockviewApi';
+import { getWorkspaceDockviewHost } from '@features/workspace/lib/getWorkspaceDockviewHost';
 
 export function PanelLauncherModule() {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);
@@ -18,7 +18,8 @@ export function PanelLauncherModule() {
   const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());
 
   useEffect(() => {
-    const api = getWorkspaceDockviewApi();
+    const host = getWorkspaceDockviewHost();
+    const api = host?.api;
     if (!api) return;
 
     const updateOpenPanels = () => {
