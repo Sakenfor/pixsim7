@@ -15,20 +15,12 @@ import { resolvePresetScope } from '@features/panels';
 import type { LayoutPreset, PresetScope as WorkspacePresetScope } from '@features/workspace/stores/workspaceStore';
 
 import { menuActionsToCapabilityActions } from '../actionAdapters';
+import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 // Re-export types for convenience
 export type { LayoutPreset, WorkspacePresetScope as PresetScope };
-
-function resolveCurrentDockviewApi(ctx: MenuActionContext) {
-  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
-  return (
-    host?.api ??
-    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
-    ctx.api
-  );
-}
 
 /**
  * Get presets for a specific scope from workspaceStore

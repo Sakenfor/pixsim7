@@ -10,17 +10,10 @@ import { registerActionsFromDefinitions } from '@lib/capabilities';
 
 import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
 import { menuActionsToCapabilityActions } from '../actionAdapters';
+import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
-function resolveCurrentDockview(ctx: MenuActionContext) {
-  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
-  const api =
-    host?.api ??
-    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
-    ctx.api;
-  return { api, host };
-}
 
 /**
  * Get panels grouped by category from the panel catalog

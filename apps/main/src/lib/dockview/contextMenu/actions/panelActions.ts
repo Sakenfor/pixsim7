@@ -12,18 +12,10 @@ import { registerActionsFromDefinitions } from '@lib/capabilities';
 
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
+import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
-
-function resolveCurrentDockviewApi(ctx: MenuActionContext) {
-  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
-  return (
-    host?.api ??
-    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
-    ctx.api
-  );
-}
 
 /**
  * Close the current panel

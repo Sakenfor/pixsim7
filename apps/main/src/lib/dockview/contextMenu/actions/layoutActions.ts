@@ -9,18 +9,10 @@
  */
 
 import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
-import type { MenuAction, MenuActionContext } from '../types';
+import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
+import type { MenuAction } from '../types';
 
 type JoinDirection = 'left' | 'right';
-
-function resolveCurrentDockviewApi(ctx: MenuActionContext) {
-  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
-  return (
-    host?.api ??
-    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
-    ctx.api
-  );
-}
 
 const findAdjacentGroup = (
   ctx: { api?: any; groupId?: string },
