@@ -5,8 +5,8 @@ import { Icon } from "@lib/icons";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
+import { getWorkspaceDockviewHost } from "@features/workspace";
 
-import { getWorkspaceDockviewHost } from "../../lib/getWorkspaceDockviewHost";
 import { type PanelId } from "../../stores/workspaceStore";
 
 interface AddPanelDropdownProps {

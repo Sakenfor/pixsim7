@@ -8,8 +8,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 import { usePanelConfigStore } from "@features/panels";
+import { getWorkspaceDockviewHost } from "@features/workspace";
 
-import { getWorkspaceDockviewHost } from "../lib/getWorkspaceDockviewHost";
 import { useWorkspaceStore, type PanelId } from "../stores/workspaceStore";
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */

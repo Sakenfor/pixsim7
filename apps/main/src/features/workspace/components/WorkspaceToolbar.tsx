@@ -1,7 +1,8 @@
 import { useState, useCallback } from "react";
 
+import { getWorkspaceDockviewHost } from "@features/workspace";
+
 import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
-import { getWorkspaceDockviewHost } from "../lib/getWorkspaceDockviewHost";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
 import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";

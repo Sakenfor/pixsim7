@@ -9,11 +9,10 @@ import { categoryOps, param } from '@lib/dev/console/manifests/helpers';
 import type { ConsoleManifest } from '@lib/dev/console/manifests/types';
 
 import { useSelectionStore } from '@features/graph';
-
+import { getWorkspaceDockviewHost } from '@features/workspace';
 
 import { useWorkspaceStore } from '../stores/workspaceStore';
 
-import { getWorkspaceDockviewHost } from './getWorkspaceDockviewHost';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';

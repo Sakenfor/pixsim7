@@ -4,7 +4,7 @@ import { resolvePanelDefinitionId } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useWorkspaceStore, type PanelId } from '@features/workspace';
-import { getWorkspaceDockviewHost } from '@features/workspace/lib/getWorkspaceDockviewHost';
+import { getWorkspaceDockviewHost } from '@features/workspace';
 
 export function PanelLauncherModule() {
   const restorePanel = useWorkspaceStore((s) => s.restorePanel);

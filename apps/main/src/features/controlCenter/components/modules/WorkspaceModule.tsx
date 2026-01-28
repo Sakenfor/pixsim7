@@ -12,7 +12,7 @@ import { useCallback } from 'react';
 
 import { usePanelConfigStore } from '@features/panels';
 import { useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
-import { getWorkspaceDockviewHost } from '@features/workspace/lib/getWorkspaceDockviewHost';
+import { getWorkspaceDockviewHost } from '@features/workspace';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
