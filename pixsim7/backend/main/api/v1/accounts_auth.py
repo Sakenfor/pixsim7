@@ -618,6 +618,34 @@ async def import_cookies(
             except Exception:
                 pass  # non-fatal
 
+            # Sync plan details for existing Pixverse accounts (best-effort)
+            if request.provider_id == "pixverse":
+                try:
+                    plan_details = await provider.get_plan_details(existing)
+                    if plan_details:
+                        provider.apply_plan_to_account(existing, plan_details)
+                        if "max_concurrent_jobs" not in updated_fields:
+                            updated_fields.append("max_concurrent_jobs")
+                        if "provider_metadata" not in updated_fields:
+                            updated_fields.append("provider_metadata")
+                        await db.commit()
+                        await db.refresh(existing)
+                        logger.info(
+                            "pixverse_plan_synced_on_update",
+                            account_id=existing.id,
+                            email=email,
+                            plan_name=plan_details.get("plan_name"),
+                            max_concurrent_jobs=existing.max_concurrent_jobs,
+                        )
+                except Exception as e:
+                    # Plan detection failure should not block account update
+                    logger.warning(
+                        "pixverse_plan_sync_failed_on_update",
+                        account_id=existing.id,
+                        email=email,
+                        error=str(e),
+                    )
+
             return CookieImportResponse(
                 success=True,
                 message=f"Updated account {email}",
@@ -671,6 +699,30 @@ async def import_cookies(
                 if credits_imported:
                     await db.commit()
                     await db.refresh(account)
+
+            # Sync plan details for new Pixverse accounts (best-effort)
+            if request.provider_id == "pixverse":
+                try:
+                    plan_details = await provider.get_plan_details(account)
+                    if plan_details:
+                        provider.apply_plan_to_account(account, plan_details)
+                        await db.commit()
+                        await db.refresh(account)
+                        logger.info(
+                            "pixverse_plan_synced_on_import",
+                            account_id=account.id,
+                            email=email,
+                            plan_name=plan_details.get("plan_name"),
+                            max_concurrent_jobs=account.max_concurrent_jobs,
+                        )
+                except Exception as e:
+                    # Plan detection failure should not block account creation
+                    logger.warning(
+                        "pixverse_plan_sync_failed_on_import",
+                        account_id=account.id,
+                        email=email,
+                        error=str(e),
+                    )
 
             # Final credit sync (fresh extraction already done above, but ensure it's reflected)
             return CookieImportResponse(

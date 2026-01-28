@@ -90,6 +90,10 @@ class BatchSyncCreditsRequest(BaseModel):
         default=False,
         description="Force sync even if recently synced or exhausted"
     )
+    sync_plans: bool = Field(
+        default=False,
+        description="Also sync subscription plans (max_concurrent_jobs) for Pixverse accounts"
+    )
 
 
 class BatchSyncCreditsResponse(BaseModel):
@@ -121,6 +125,15 @@ class InvitedAccountsResponse(BaseModel):
     items: List[Dict[str, Any]]
     total: int
     next_offset: int
+
+
+class SyncPlanResponse(BaseModel):
+    """Response from plan sync"""
+    success: bool
+    message: str
+    plan_name: Optional[str] = None
+    is_pro: bool = False
+    max_concurrent_jobs: int = 2
 
 
 # ===== ENDPOINTS =====
@@ -318,15 +331,40 @@ async def sync_all_account_credits(
                     await db.refresh(account)
                     # Update sync timestamp
                     update_sync_timestamp(account)
+
+                    # Optionally sync plan details for Pixverse accounts
+                    plan_synced = None
+                    if req.sync_plans and account_provider_id == "pixverse":
+                        try:
+                            if hasattr(provider, "get_plan_details"):
+                                plan_details = await provider.get_plan_details(account)
+                                if plan_details:
+                                    plan_result = provider.apply_plan_to_account(account, plan_details)
+                                    plan_synced = {
+                                        "plan_name": plan_result.get("plan_name"),
+                                        "is_pro": plan_result.get("is_pro"),
+                                        "max_concurrent_jobs": plan_result.get("max_concurrent_jobs"),
+                                    }
+                        except Exception as plan_exc:
+                            logger.warning(
+                                "batch_sync_plan_failed",
+                                account_id=account_id,
+                                email=account_email,
+                                error=str(plan_exc),
+                            )
+
                     await db.commit()
 
                     synced += 1
-                    details.append({
+                    detail_entry = {
                         "account_id": account_id,
                         "email": account_email,
                         "credits": updated_credits,
                         "status": "synced"
-                    })
+                    }
+                    if plan_synced:
+                        detail_entry["plan"] = plan_synced
+                    details.append(detail_entry)
                 else:
                     failed += 1
                     details.append({
@@ -553,6 +591,98 @@ async def sync_account_credits(
         raise HTTPException(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": f"Failed to sync credits: {str(e)}", "code": "sync_error"}
+        )
+
+
+@router.post("/accounts/{account_id}/sync-plan", response_model=SyncPlanResponse)
+async def sync_account_plan(
+    account_id: int,
+    user: CurrentUser,
+    account_service: AccountSvc,
+    db: DatabaseSession,
+):
+    """Manually sync subscription plan for an existing Pixverse account.
+
+    Fetches the current plan details from Pixverse and updates:
+    - max_concurrent_jobs: 2 for free accounts, 5 for pro accounts
+    - provider_metadata: stores plan details (plan_name, plan_type, qualities, etc.)
+
+    Security:
+    - Only the owner or admin can sync plan for an account.
+    - Only supported for Pixverse accounts.
+    """
+    try:
+        account = await account_service.get_account(account_id)
+
+        # Ownership or admin required
+        if account.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot sync plan for system accounts")
+        if account.user_id != user.id and not user.is_admin():
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Not allowed to sync this account's plan")
+
+        # Only Pixverse accounts support plan sync
+        if account.provider_id != "pixverse":
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Plan sync is only supported for Pixverse accounts"
+            )
+
+        # Get provider adapter
+        provider = registry.get(account.provider_id)
+
+        # Fetch plan details
+        if not hasattr(provider, "get_plan_details"):
+            raise HTTPException(
+                status.HTTP_501_NOT_IMPLEMENTED,
+                "Provider does not support plan details"
+            )
+
+        plan_details = await provider.get_plan_details(account, retry_on_session_error=True)
+        if not plan_details:
+            return SyncPlanResponse(
+                success=False,
+                message="Failed to fetch plan details from Pixverse",
+                is_pro=False,
+                max_concurrent_jobs=account.max_concurrent_jobs,
+            )
+
+        # Apply plan to account
+        result = provider.apply_plan_to_account(account, plan_details)
+        await db.commit()
+        await db.refresh(account)
+
+        logger.info(
+            "sync_account_plan_success",
+            account_id=account.id,
+            email=account.email,
+            plan_name=result.get("plan_name"),
+            is_pro=result.get("is_pro"),
+            max_concurrent_jobs=result.get("max_concurrent_jobs"),
+        )
+
+        return SyncPlanResponse(
+            success=True,
+            message=f"Successfully synced plan: {result.get('plan_name')}",
+            plan_name=result.get("plan_name"),
+            is_pro=result.get("is_pro", False),
+            max_concurrent_jobs=result.get("max_concurrent_jobs", 2),
+        )
+
+    except ResourceNotFoundError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Account not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            "sync_account_plan_error",
+            account_id=account_id,
+            error=str(e),
+            error_type=e.__class__.__name__,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"message": f"Failed to sync plan: {str(e)}", "code": "sync_error"}
         )
 
 

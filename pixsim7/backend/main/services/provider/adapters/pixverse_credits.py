@@ -5,6 +5,7 @@ Handles fetching credits and ad watch task status.
 """
 import asyncio
 import uuid
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -19,6 +20,10 @@ logger = get_logger()
 # be slow or occasionally rate-limited. We still wrap calls in wait_for so
 # hung requests won't block forever.
 PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
+
+# Default max concurrent jobs for free vs pro accounts
+PIXVERSE_FREE_MAX_CONCURRENT_JOBS = 2
+PIXVERSE_PRO_MAX_CONCURRENT_JOBS = 5
 
 
 class PixverseCreditsMixin:
@@ -475,3 +480,163 @@ class PixverseCreditsMixin:
             operation=_operation,
             retry_on_session_error=False,  # Don't trigger heavy reauth for stats
         )
+
+    async def get_plan_details(
+        self,
+        account: ProviderAccount,
+        *,
+        retry_on_session_error: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch Pixverse subscription plan details via SDK.
+
+        Args:
+            account: Provider account
+            retry_on_session_error: If True, enable auto-reauth on session errors.
+
+        Returns:
+            Dictionary with plan details including:
+            - plan_name: e.g., "Basic Plan", "Pro Plan"
+            - current_plan_type: 0 = Basic/Free, 1+ = Premium tiers
+            - qualities: list of available quality tiers
+            - batch_generation: 0/1 flag
+            - off_peak: 0/1 flag
+            Or None on failure.
+        """
+        try:
+            from pixverse import Account  # type: ignore
+        except ImportError:  # pragma: no cover
+            logger.warning("pixverse-py not installed; cannot fetch plan details")
+            return None
+
+        async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            jwt_token = session.get("jwt_token")
+            if not jwt_token:
+                logger.warning(
+                    "No JWT token available for plan details fetch",
+                    account_id=account.id,
+                    email=account.email,
+                )
+                return None
+
+            temp_account = Account(
+                email=account.email,
+                session={
+                    "jwt_token": jwt_token,
+                    "cookies": session.get("cookies", {}),
+                },
+            )
+            api = self._get_cached_api(account)
+
+            try:
+                plan_details = await asyncio.wait_for(
+                    api.get_plan_details(temp_account),
+                    timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
+                )
+                logger.debug(
+                    "pixverse_plan_details_response",
+                    account_id=account.id,
+                    email=account.email,
+                    raw_response=plan_details,
+                )
+                return plan_details
+            except asyncio.TimeoutError as exc:
+                log_provider_timeout(
+                    provider_id="pixverse",
+                    operation="get_plan_details",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                )
+                return None
+            except Exception as exc:
+                log_provider_error(
+                    provider_id="pixverse",
+                    operation="get_plan_details",
+                    account_id=account.id,
+                    email=account.email,
+                    error=str(exc),
+                    error_type=exc.__class__.__name__,
+                    severity="warning",
+                )
+                raise
+
+        try:
+            return await self.session_manager.run_with_session(
+                account=account,
+                op_name="get_plan_details",
+                operation=_operation,
+                retry_on_session_error=retry_on_session_error,
+            )
+        except Exception as exc:
+            log_provider_error(
+                provider_id="pixverse",
+                operation="get_plan_details",
+                account_id=account.id,
+                email=account.email,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                severity="warning",
+            )
+            return None
+
+    def apply_plan_to_account(
+        self,
+        account: ProviderAccount,
+        plan_details: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Apply plan details to account.
+
+        Sets max_concurrent_jobs based on plan type:
+        - plan_type=0 (Basic/Free): 2 concurrent jobs
+        - plan_type>=1 (Pro/Premium): 5 concurrent jobs
+
+        Also stores plan details in provider_metadata for reference.
+
+        Args:
+            account: Provider account to update
+            plan_details: Raw plan details from get_plan_details()
+
+        Returns:
+            Dictionary with applied changes:
+            - max_concurrent_jobs: The new value set
+            - is_pro: Whether this is a pro account
+            - plan_name: The plan name
+        """
+        plan_type = plan_details.get("current_plan_type", 0)
+        plan_name = plan_details.get("plan_name", "Unknown")
+        is_pro = plan_type >= 1
+
+        # Set max_concurrent_jobs based on plan type
+        new_max_concurrent = (
+            PIXVERSE_PRO_MAX_CONCURRENT_JOBS if is_pro
+            else PIXVERSE_FREE_MAX_CONCURRENT_JOBS
+        )
+        account.max_concurrent_jobs = new_max_concurrent
+
+        # Store plan details in provider_metadata
+        metadata = account.provider_metadata or {}
+        metadata["plan_name"] = plan_name
+        metadata["plan_type"] = plan_type
+        metadata["plan_is_pro"] = is_pro
+        metadata["plan_qualities"] = plan_details.get("qualities", [])
+        metadata["plan_batch_generation"] = plan_details.get("batch_generation", 0)
+        metadata["plan_off_peak"] = plan_details.get("off_peak", 0)
+        metadata["plan_synced_at"] = datetime.now(timezone.utc).isoformat()
+        account.provider_metadata = metadata
+
+        logger.info(
+            "pixverse_plan_applied",
+            account_id=account.id,
+            email=account.email,
+            plan_name=plan_name,
+            plan_type=plan_type,
+            is_pro=is_pro,
+            max_concurrent_jobs=new_max_concurrent,
+        )
+
+        return {
+            "max_concurrent_jobs": new_max_concurrent,
+            "is_pro": is_pro,
+            "plan_name": plan_name,
+        }
