@@ -80,6 +80,8 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const { isMaximized, toggleMaximize } = useMediaMaximize({
     dockviewApi: resolvedContext.dockviewApi,
     dockviewApiRef: resolvedContext.dockviewApiRef,
+    dockviewHost: resolvedContext.dockviewHost,
+    dockviewHostRef: resolvedContext.dockviewHostRef,
   });
 
   const {

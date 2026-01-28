@@ -4,9 +4,12 @@
  * Shared types for the asset viewer panels.
  */
 
-import type { MutableRefObject } from 'react';
-import type { ViewerAsset } from '@features/assets';
 import type { DockviewApi } from 'dockview-core';
+import type { MutableRefObject } from 'react';
+
+import type { DockviewHost } from '@lib/dockview';
+
+import type { ViewerAsset } from '@features/assets';
 
 /**
  * Settings for the asset viewer
@@ -44,4 +47,8 @@ export interface ViewerPanelContext {
   dockviewApi?: DockviewApi;
   /** Ref to dockview API for stable access without context changes */
   dockviewApiRef?: MutableRefObject<DockviewApi | undefined>;
+  /** Dockview host wrapper for higher-level operations */
+  dockviewHost?: DockviewHost | null;
+  /** Ref to dockview host for stable access without context changes */
+  dockviewHostRef?: MutableRefObject<DockviewHost | null>;
 }

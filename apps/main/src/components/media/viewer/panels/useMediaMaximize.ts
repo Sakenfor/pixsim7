@@ -5,13 +5,19 @@
  * Intelligently detects current state by checking actual panel height.
  */
 
-import { useCallback, useMemo, type MutableRefObject } from 'react';
 import type { DockviewApi } from 'dockview-core';
+import { useCallback, useMemo, type MutableRefObject } from 'react';
+
+import type { DockviewHost } from '@lib/dockview';
 
 interface UseMediaMaximizeOptions {
   dockviewApi?: DockviewApi;
   /** Ref to dockview API - preferred over dockviewApi for stable access */
   dockviewApiRef?: MutableRefObject<DockviewApi | undefined>;
+  /** Dockview host wrapper - preferred over dockviewApi for stability */
+  dockviewHost?: DockviewHost | null;
+  /** Ref to dockview host wrapper */
+  dockviewHostRef?: MutableRefObject<DockviewHost | null>;
   maximizedHeight?: number; // Percentage (default: 0.95)
   normalHeight?: number; // Percentage (default: 0.75)
 }
@@ -19,11 +25,16 @@ interface UseMediaMaximizeOptions {
 export function useMediaMaximize({
   dockviewApi,
   dockviewApiRef,
+  dockviewHost,
+  dockviewHostRef,
   maximizedHeight = 0.95,
   normalHeight = 0.75,
 }: UseMediaMaximizeOptions = {}) {
   // Prefer ref if available, fall back to direct prop
-  const getApi = useCallback(() => dockviewApiRef?.current ?? dockviewApi, [dockviewApi, dockviewApiRef]);
+  const getApi = useCallback(
+    () => dockviewHostRef?.current?.api ?? dockviewHost?.api ?? dockviewApiRef?.current ?? dockviewApi,
+    [dockviewApi, dockviewApiRef, dockviewHost, dockviewHostRef],
+  );
 
   /**
    * Check if the media panel is currently in maximized state
@@ -48,7 +59,7 @@ export function useMediaMaximize({
       const distanceToNormal = Math.abs(currentHeight - normHeight);
 
       return distanceToMax < distanceToNormal;
-    } catch (e) {
+    } catch {
       return false;
     }
   }, [getApi, maximizedHeight, normalHeight]);

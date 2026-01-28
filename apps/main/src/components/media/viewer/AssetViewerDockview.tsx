@@ -18,10 +18,11 @@
 import type { DockviewApi } from 'dockview-core';
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 
+import type { DockviewHost } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
-import { PanelHostDockview } from '@features/panels';
+import { PanelHostDockview, type PanelHostDockviewRef } from '@features/panels';
 
 import type { ViewerSettings } from './types';
 
@@ -139,6 +140,8 @@ export function AssetViewerDockview({
   // Use ref for dockviewApi to avoid context recreation when API is set
   // Components can access it via context.dockviewApiRef.current
   const dockviewApiRef = useRef<DockviewApi | undefined>(undefined);
+  const dockviewHostRef = useRef<DockviewHost | null>(null);
+  const panelHostRef = useRef<PanelHostDockviewRef>(null);
   // Keep state for triggering re-renders when needed (but not in context deps)
   const [, setDockviewApiVersion] = useState(0);
 
@@ -159,6 +162,8 @@ export function AssetViewerDockview({
       toggleFullscreen,
       dockviewApi: dockviewApiRef.current,
       dockviewApiRef,
+      dockviewHost: dockviewHostRef.current,
+      dockviewHostRef,
       // WorkspaceContext fields (for global panels)
       currentAsset: asset,
       currentSceneId: null,
@@ -181,11 +186,13 @@ export function AssetViewerDockview({
   // Capture dockview API when ready
   const handleReady = useCallback((api: DockviewApi) => {
     dockviewApiRef.current = api;
+    dockviewHostRef.current = panelHostRef.current?.getHost() ?? null;
     setDockviewApiVersion((v) => v + 1);
   }, []);
 
   return (
     <PanelHostDockview
+      ref={panelHostRef}
       panels={useDockId ? undefined : viewerPanelIds}
       dockId={useDockId ? 'asset-viewer' : undefined}
       storageKey="dockview:asset-viewer:v5"
