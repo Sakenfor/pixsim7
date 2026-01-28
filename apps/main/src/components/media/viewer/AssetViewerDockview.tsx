@@ -18,7 +18,7 @@
 import type { DockviewApi } from 'dockview-core';
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 
-import type { DockviewHost } from '@lib/dockview';
+import { getDockviewGroups, type DockviewHost } from '@lib/dockview';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
@@ -96,7 +96,7 @@ function createDefaultLayout(api: DockviewApi) {
 
   // Set initial sizes - media gets 75% of height
   try {
-    const groups = api.groups;
+    const groups = getDockviewGroups(api);
     if (groups.length >= 2) {
       const viewportHeight = window.innerHeight;
       const mediaHeight = Math.floor(viewportHeight * 0.75);

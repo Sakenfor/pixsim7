@@ -8,6 +8,7 @@
 import {
   addDockviewPanel as addDockviewPanelBase,
   ensurePanels as ensurePanelsBase,
+  getDockviewGroups,
   getDockviewPanels,
   findDockviewPanel,
   focusPanel,
@@ -22,7 +23,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 
 export type { AddDockviewPanelOptions, EnsurePanelsOptions } from '@pixsim7/shared.ui.dockview';
-export { getDockviewPanels, findDockviewPanel, focusPanel, isPanelOpen, resolvePanelDefinitionId };
+export { getDockviewGroups, getDockviewPanels, findDockviewPanel, focusPanel, isPanelOpen, resolvePanelDefinitionId };
 
 export function addDockviewPanel(
   api: DockviewApi,

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { DockviewApi } from "dockview-core";
 
+import { getDockviewGroups } from "./panelAdd";
 export interface UseSmartDockviewOptions {
   /** Storage key for persisting layout (optional) */
   storageKey?: string;
@@ -59,7 +60,7 @@ export function useSmartDockview(
     const api = apiRef.current;
     if (!api) return;
 
-    api.groups.forEach((group) => {
+    getDockviewGroups(api).forEach((group) => {
       const model = (group as any).model;
       const modelSize =
         typeof model?.size === "number"

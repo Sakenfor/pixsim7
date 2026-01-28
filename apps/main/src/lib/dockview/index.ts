@@ -18,10 +18,12 @@ export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from '@pixsim7/s
 
 export { useDockviewIds } from './useDockviewIds';
 export type { DockviewIds } from './useDockviewIds';
+export { resolveDockview, resolveDockviewApi, resolveDockviewHost } from './resolveDockview';
 
 export {
   addDockviewPanel,
   ensurePanels,
+  getDockviewGroups,
   getDockviewPanels,
   findDockviewPanel,
   focusPanel,

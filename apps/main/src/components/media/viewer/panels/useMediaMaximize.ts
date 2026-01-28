@@ -8,7 +8,7 @@
 import type { DockviewApi } from 'dockview-core';
 import { useCallback, useMemo, type MutableRefObject } from 'react';
 
-import type { DockviewHost } from '@lib/dockview';
+import { getDockviewGroups, type DockviewHost } from '@lib/dockview';
 
 interface UseMediaMaximizeOptions {
   dockviewApi?: DockviewApi;
@@ -42,10 +42,11 @@ export function useMediaMaximize({
    */
   const isMaximized = useMemo(() => {
     const api = getApi();
-    if (!api || api.groups.length < 2) return false;
+    const groups = api ? getDockviewGroups(api) : [];
+    if (!api || groups.length < 2) return false;
 
     try {
-      const mediaGroup = api.groups[0];
+      const mediaGroup = groups[0];
       const currentHeight = mediaGroup.api.height;
       const viewportHeight = window.innerHeight;
 
@@ -72,7 +73,7 @@ export function useMediaMaximize({
     }
 
     try {
-      const groups = api.groups;
+      const groups = getDockviewGroups(api);
 
       if (groups.length >= 2) {
         const viewportHeight = window.innerHeight;

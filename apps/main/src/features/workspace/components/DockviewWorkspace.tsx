@@ -2,8 +2,7 @@ import type { DockviewReadyEvent } from "dockview-core";
 import { useRef, useEffect, useMemo } from "react";
 
 
-import { SmartDockview } from "@lib/dockview";
-import { resolvePanelDefinitionId } from "@lib/dockview";
+import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
 import { registerAllWidgets } from "@lib/widgets";
 
 import { initializePanels } from "@features/panels";
@@ -40,7 +39,7 @@ export function DockviewWorkspace() {
 
     // Set locked state on initial load
     if (isLocked) {
-      api.groups.forEach((group) => {
+      getDockviewGroups(api).forEach((group) => {
         group.locked = "no-drop-target";
       });
     }
@@ -50,7 +49,7 @@ export function DockviewWorkspace() {
   useEffect(() => {
     if (!apiRef.current) return;
 
-    apiRef.current.groups.forEach((group) => {
+    getDockviewGroups(apiRef.current).forEach((group) => {
       if (isLocked) {
         group.locked = "no-drop-target";
       } else {

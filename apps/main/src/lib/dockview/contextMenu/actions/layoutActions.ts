@@ -9,6 +9,7 @@
  */
 
 import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
+import { getDockviewGroups } from '../../panelAdd';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction } from '../types';
 
@@ -19,7 +20,7 @@ const findAdjacentGroup = (
   direction: JoinDirection
 ) => {
   if (!ctx.api || !ctx.groupId) return null;
-  const groups = ctx.api.groups ?? [];
+  const groups = getDockviewGroups(ctx.api);
   const index = groups.findIndex((group: any) => group.id === ctx.groupId);
   if (index === -1) return null;
   const neighborIndex = direction === 'left' ? index - 1 : index + 1;

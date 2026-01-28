@@ -2,10 +2,11 @@ import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { addDockviewPanel, focusPanel, getDockviewHost } from "@lib/dockview";
+import { addDockviewPanel, focusPanel } from "@lib/dockview";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
+import { getWorkspaceDockviewApi } from "../lib/getWorkspaceDockviewApi";
 
 export type PanelId =
   | "assetViewer"
@@ -268,7 +269,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const closedPanels = get().closedPanels.filter((id) => id !== panelId);
         set({ closedPanels });
 
-        const api = getDockviewHost("workspace")?.api;
+        const api = getWorkspaceDockviewApi();
         if (!api) {
           console.warn(`[restorePanel] Workspace dockview not available`);
           return;

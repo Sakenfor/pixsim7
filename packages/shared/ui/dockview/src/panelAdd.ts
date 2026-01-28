@@ -31,6 +31,15 @@ export function getDockviewPanels(api: DockviewApi): any[] {
   return [];
 }
 
+export function getDockviewGroups(api: DockviewApi): any[] {
+  const rawGroups = (api as any).groups;
+  if (Array.isArray(rawGroups)) return rawGroups;
+  if (rawGroups && typeof rawGroups.values === 'function') {
+    return Array.from(rawGroups.values());
+  }
+  return [];
+}
+
 export function resolvePanelDefinitionId(panel: any): string | undefined {
   const params = panel?.params ?? panel?.api?.params;
   const paramPanelId = params?.panelId;
