@@ -21,6 +21,15 @@ import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './featu
 // Re-export types for convenience
 export type { LayoutPreset, WorkspacePresetScope as PresetScope };
 
+function resolveCurrentDockviewApi(ctx: MenuActionContext) {
+  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
+  return (
+    host?.api ??
+    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
+    ctx.api
+  );
+}
+
 /**
  * Get presets for a specific scope from workspaceStore
  */
@@ -42,9 +51,10 @@ export const savePresetAction: MenuAction = {
   icon: 'save',
   category: 'preset',
   availableIn: ['background', 'tab', 'panel-content'],
-  visible: (ctx) => !!ctx.api,
+  visible: (ctx) => !!resolveCurrentDockviewApi(ctx),
   execute: async (ctx) => {
-    if (!ctx.api) return;
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api) return;
 
     // Prompt for preset name
     const name = window.prompt('Enter preset name:');
@@ -55,7 +65,7 @@ export const savePresetAction: MenuAction = {
 
     // Save to workspaceStore with scope
     if (ctx.workspaceStore) {
-      const layout = ctx.api.toJSON();
+      const layout = api.toJSON();
       ctx.workspaceStore.getState().savePreset(name, scope, layout);
     }
   },
@@ -89,13 +99,14 @@ export const loadPresetAction: MenuAction = {
       label: `${preset.icon || '📋'} ${preset.name}`,
       availableIn: ['background'] as const,
       execute: () => {
-        if (!ctx.workspaceStore || !ctx.api) return;
+        const api = resolveCurrentDockviewApi(ctx);
+        if (!ctx.workspaceStore || !api) return;
         const state = ctx.workspaceStore.getState();
         const layout = state.getPresetLayout(preset.id);
 
         if (layout) {
           // Apply layout via dockview API
-          ctx.api.fromJSON(layout);
+          api.fromJSON(layout);
         } else if (ctx.resetDockviewLayout) {
           // Preset has null layout (use default) - reset to default
           ctx.resetDockviewLayout();

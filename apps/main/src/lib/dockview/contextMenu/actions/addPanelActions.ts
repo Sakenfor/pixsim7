@@ -13,6 +13,15 @@ import { menuActionsToCapabilityActions } from '../actionAdapters';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
+function resolveCurrentDockview(ctx: MenuActionContext) {
+  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
+  const api =
+    host?.api ??
+    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
+    ctx.api;
+  return { api, host };
+}
+
 /**
  * Get panels grouped by category from the panel catalog
  */
@@ -65,19 +74,27 @@ function formatCategoryLabel(category: string): string {
  * Add panel to the current dockview
  */
 function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolean) {
-  if (!ctx.api) return;
+  const { api, host } = resolveCurrentDockview(ctx);
+  if (!api) return;
 
   const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
   const panelTitle = registryEntry?.title ?? panelId;
 
-  if (!allowMultiple && isPanelOpen(ctx.api, panelId, allowMultiple)) {
+  if (!allowMultiple && (host?.isPanelOpen(panelId, allowMultiple) ?? isPanelOpen(api, panelId, allowMultiple))) {
     return;
   }
 
-  addDockviewPanel(ctx.api, panelId, {
-    allowMultiple,
-    title: panelTitle,
-  });
+  if (host) {
+    host.addPanel(panelId, {
+      allowMultiple,
+      title: panelTitle,
+    });
+  } else {
+    addDockviewPanel(api, panelId, {
+      allowMultiple,
+      title: panelTitle,
+    });
+  }
 }
 
 /**
@@ -89,7 +106,7 @@ export const addPanelAction: MenuAction = {
   icon: 'plus-square',
   category: 'add',
   availableIn: ['background', 'tab', 'panel-content'],
-  visible: (ctx) => !!ctx.api,
+  visible: (ctx) => !!resolveCurrentDockview(ctx).api,
   children: (ctx) => {
     if (!ctx.panelRegistry) {
       return [{
@@ -115,6 +132,7 @@ export const addPanelAction: MenuAction = {
 
     // Create category submenus
     const categoryActions: MenuAction[] = [];
+    const { api, host } = resolveCurrentDockview(ctx);
 
     // Sort categories (put "Core" first, "Other" last)
     const sortedCategories = Array.from(categories.entries()).sort(([a], [b]) => {
@@ -139,7 +157,7 @@ export const addPanelAction: MenuAction = {
           disabled: () =>
             panel.supportsMultipleInstances
               ? false
-              : ctx.api && isPanelOpen(ctx.api, panel.id, false) ? 'Already open' : false,
+              : api && (host?.isPanelOpen(panel.id, false) ?? isPanelOpen(api, panel.id, false)) ? 'Already open' : false,
           execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
         })),
         execute: () => {},
@@ -161,7 +179,10 @@ export const quickAddActions: MenuAction[] = [
     icon: 'image',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx.api, 'gallery', false),
+    visible: (ctx) => {
+      const { api, host } = resolveCurrentDockview(ctx);
+      return !!api && !(host?.isPanelOpen('gallery', false) ?? isPanelOpen(api, 'gallery', false));
+    },
     execute: (ctx) => addPanel(ctx, 'gallery', false),
   },
   {
@@ -170,7 +191,10 @@ export const quickAddActions: MenuAction[] = [
     icon: 'info',
     category: 'quick-add',
     availableIn: ['background'],
-    visible: (ctx) => !!ctx.api && !isPanelOpen(ctx.api, 'inspector', false),
+    visible: (ctx) => {
+      const { api, host } = resolveCurrentDockview(ctx);
+      return !!api && !(host?.isPanelOpen('inspector', false) ?? isPanelOpen(api, 'inspector', false));
+    },
     execute: (ctx) => addPanel(ctx, 'inspector', false),
   },
 ];

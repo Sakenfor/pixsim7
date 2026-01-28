@@ -16,6 +16,15 @@ import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
 
+function resolveCurrentDockviewApi(ctx: MenuActionContext) {
+  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
+  return (
+    host?.api ??
+    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
+    ctx.api
+  );
+}
+
 /**
  * Close the current panel
  */
@@ -26,12 +35,13 @@ export const closePanelAction: MenuAction = {
   category: 'panel',
   shortcut: '⌘W',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx),
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (panel) {
-      ctx.api.removePanel(panel);
+      api.removePanel(panel);
     }
   },
 };
@@ -40,8 +50,9 @@ export const closePanelAction: MenuAction = {
  * Helper to check if panel is maximized
  */
 function isPanelMaximized(ctx: MenuActionContext): boolean {
-  if (!ctx.api || !ctx.panelId) return false;
-  const panel = ctx.api.getPanel(ctx.panelId);
+  const api = resolveCurrentDockviewApi(ctx);
+  if (!api || !ctx.panelId) return false;
+  const panel = api.getPanel(ctx.panelId);
   return panel?.api?.isMaximized?.() ?? false;
 }
 
@@ -54,10 +65,11 @@ export const maximizePanelAction: MenuAction = {
   icon: 'maximize-2',
   category: 'panel',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api && !isPanelMaximized(ctx),
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx) && !isPanelMaximized(ctx),
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (panel) {
       panel.api.maximize();
     }
@@ -75,8 +87,9 @@ export const restorePanelAction: MenuAction = {
   availableIn: ['tab', 'panel-content'],
   visible: (ctx) => isPanelMaximized(ctx),
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (panel?.api?.isMaximized?.()) {
       panel.api.exitMaximized();
     }
@@ -100,9 +113,10 @@ export const floatPanelAction: MenuAction = {
     return !!ctx.panelId && !!ctx.floatPanelHandler;
   },
   execute: (ctx) => {
-    if (!ctx.panelId || !ctx.floatPanelHandler || !ctx.api) return;
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!ctx.panelId || !ctx.floatPanelHandler || !api) return;
 
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
 
     // Call the dockview's float handler with panel info
@@ -112,16 +126,17 @@ export const floatPanelAction: MenuAction = {
     });
 
     // Close from dockview after floating
-    ctx.api.removePanel(panel);
+    api.removePanel(panel);
   },
 };
 
 function getOpenPanels(ctx: MenuActionContext) {
-  if (!ctx.api) return [];
-  const rawPanels = Array.isArray(ctx.api.panels)
-    ? ctx.api.panels
-    : typeof (ctx.api as any).panels?.values === 'function'
-      ? Array.from((ctx.api as any).panels.values())
+  const api = resolveCurrentDockviewApi(ctx);
+  if (!api) return [];
+  const rawPanels = Array.isArray(api.panels)
+    ? api.panels
+    : typeof (api as any).panels?.values === 'function'
+      ? Array.from((api as any).panels.values())
       : [];
 
   return rawPanels.map((panel: any) => {
@@ -147,7 +162,7 @@ export const focusPanelAction: MenuAction = {
   icon: 'target',
   category: 'panel',
   availableIn: ['background', 'tab', 'panel-content'],
-  visible: (ctx) => !!ctx.api,
+  visible: (ctx) => !!resolveCurrentDockviewApi(ctx),
   children: (ctx) => {
     const openPanels = getOpenPanels(ctx).sort((a, b) => {
       return String(a.title).localeCompare(String(b.title));
@@ -249,19 +264,21 @@ export const closeOtherPanelsAction: MenuAction = {
   category: 'panel',
   availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
-    if (!ctx.api || !ctx.groupId) return false;
-    const group = ctx.api.getGroup(ctx.groupId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.groupId) return false;
+    const group = api.getGroup(ctx.groupId);
     return group ? group.panels.length > 1 : false;
   },
   execute: (ctx) => {
-    if (!ctx.api || !ctx.groupId || !ctx.panelId) return;
-    const group = ctx.api.getGroup(ctx.groupId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.groupId || !ctx.panelId) return;
+    const group = api.getGroup(ctx.groupId);
     if (!group) return;
 
     // Get all panels except the current one
     const panelsToClose = group.panels.filter(p => p.id !== ctx.panelId);
     panelsToClose.forEach(panel => {
-      ctx.api!.removePanel(panel);
+      api.removePanel(panel);
     });
   },
 };
@@ -278,19 +295,21 @@ export const closeAllInGroupAction: MenuAction = {
   divider: true,
   availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
-    if (!ctx.api || !ctx.groupId) return false;
-    const group = ctx.api.getGroup(ctx.groupId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.groupId) return false;
+    const group = api.getGroup(ctx.groupId);
     return group ? group.panels.length > 1 : false;
   },
   execute: (ctx) => {
-    if (!ctx.api || !ctx.groupId) return;
-    const group = ctx.api.getGroup(ctx.groupId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.groupId) return;
+    const group = api.getGroup(ctx.groupId);
     if (!group) return;
 
     // Close all panels in the group
     const panelsToClose = [...group.panels];
     panelsToClose.forEach(panel => {
-      ctx.api!.removePanel(panel);
+      api.removePanel(panel);
     });
   },
 };

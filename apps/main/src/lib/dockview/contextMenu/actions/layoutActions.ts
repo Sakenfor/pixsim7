@@ -9,9 +9,18 @@
  */
 
 import { addDockviewPanel, resolvePanelDefinitionId } from '../../panelAdd';
-import type { MenuAction } from '../types';
+import type { MenuAction, MenuActionContext } from '../types';
 
 type JoinDirection = 'left' | 'right';
+
+function resolveCurrentDockviewApi(ctx: MenuActionContext) {
+  const host = ctx.currentDockviewId ? ctx.getDockviewHost?.(ctx.currentDockviewId) : undefined;
+  return (
+    host?.api ??
+    (ctx.currentDockviewId ? ctx.getDockviewApi?.(ctx.currentDockviewId) : undefined) ??
+    ctx.api
+  );
+}
 
 const findAdjacentGroup = (
   ctx: { api?: any; groupId?: string },
@@ -34,17 +43,18 @@ export const splitRightAction: MenuAction = {
   icon: 'columns',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx),
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
 
     const currentGroup = panel.group;
     if (!currentGroup) return;
 
     // Create a new group to the right and move this panel to it
-    const newGroup = ctx.api.addGroup({
+    const newGroup = api.addGroup({
       direction: 'right',
       referenceGroup: currentGroup,
     });
@@ -64,17 +74,18 @@ export const splitDownAction: MenuAction = {
   icon: 'rows',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx),
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
 
     const currentGroup = panel.group;
     if (!currentGroup) return;
 
     // Create a new group below and move this panel to it
-    const newGroup = ctx.api.addGroup({
+    const newGroup = api.addGroup({
       direction: 'below',
       referenceGroup: currentGroup,
     });
@@ -95,21 +106,23 @@ export const moveToNewGroupAction: MenuAction = {
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
   visible: (ctx) => {
-    if (!ctx.api || !ctx.panelId || !ctx.groupId) return false;
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId || !ctx.groupId) return false;
     // Only show if there are multiple panels in the group
-    const group = ctx.api.getGroup(ctx.groupId);
+    const group = api.getGroup(ctx.groupId);
     return group ? group.panels.length > 1 : false;
   },
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
 
     const currentGroup = panel.group;
     if (!currentGroup) return;
 
     // Create new group and move panel to it
-    const newGroup = ctx.api.addGroup({
+    const newGroup = api.addGroup({
       direction: 'right',
       referenceGroup: currentGroup,
     });
@@ -129,16 +142,18 @@ export const joinLeftGroupAction: MenuAction = {
   icon: 'arrow-left',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
+  visible: (ctx) => !!resolveCurrentDockviewApi(ctx) && !!ctx.panelId && !!ctx.groupId,
   disabled: (ctx) => {
-    if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
-    return findAdjacentGroup(ctx, 'left') ? false : 'No group to the left';
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId || !ctx.groupId) return true;
+    return findAdjacentGroup({ api, groupId: ctx.groupId }, 'left') ? false : 'No group to the left';
   },
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId || !ctx.groupId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId || !ctx.groupId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
-    const targetGroup = findAdjacentGroup(ctx, 'left');
+    const targetGroup = findAdjacentGroup({ api, groupId: ctx.groupId }, 'left');
     if (!targetGroup) return;
 
     panel.api.moveTo({ group: targetGroup });
@@ -154,16 +169,18 @@ export const joinRightGroupAction: MenuAction = {
   icon: 'arrow-right',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.api && !!ctx.panelId && !!ctx.groupId,
+  visible: (ctx) => !!resolveCurrentDockviewApi(ctx) && !!ctx.panelId && !!ctx.groupId,
   disabled: (ctx) => {
-    if (!ctx.api || !ctx.panelId || !ctx.groupId) return true;
-    return findAdjacentGroup(ctx, 'right') ? false : 'No group to the right';
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId || !ctx.groupId) return true;
+    return findAdjacentGroup({ api, groupId: ctx.groupId }, 'right') ? false : 'No group to the right';
   },
   execute: (ctx) => {
-    if (!ctx.api || !ctx.panelId || !ctx.groupId) return;
-    const panel = ctx.api.getPanel(ctx.panelId);
+    const api = resolveCurrentDockviewApi(ctx);
+    if (!api || !ctx.panelId || !ctx.groupId) return;
+    const panel = api.getPanel(ctx.panelId);
     if (!panel) return;
-    const targetGroup = findAdjacentGroup(ctx, 'right');
+    const targetGroup = findAdjacentGroup({ api, groupId: ctx.groupId }, 'right');
     if (!targetGroup) return;
 
     panel.api.moveTo({ group: targetGroup });
@@ -180,7 +197,7 @@ const moveToDockviewAction: MenuAction = {
   availableIn: ['tab', 'panel-content'],
   visible: (ctx) =>
     !!ctx.panelId &&
-    !!ctx.api &&
+    !!resolveCurrentDockviewApi(ctx) &&
     (!!ctx.getDockviewHostIds || !!ctx.getDockviewIds) &&
     (!!ctx.getDockviewHost || !!ctx.getDockviewApi),
   children: (ctx) => {
@@ -203,8 +220,9 @@ const moveToDockviewAction: MenuAction = {
       label: id,
       availableIn: ['tab', 'panel-content'] as const,
       execute: () => {
-        if (!ctx.api || !ctx.panelId) return;
-        const panel = ctx.api.getPanel(ctx.panelId);
+        const api = resolveCurrentDockviewApi(ctx);
+        if (!api || !ctx.panelId) return;
+        const panel = api.getPanel(ctx.panelId);
         if (!panel) return;
 
         const targetHost = ctx.getDockviewHost?.(id);
@@ -222,7 +240,7 @@ const moveToDockviewAction: MenuAction = {
 
         if (!allowMultiple && targetHost?.isPanelOpen(panelId, false)) {
           targetHost.focusPanel(panelId);
-          ctx.api.removePanel(panel);
+          api.removePanel(panel);
           return;
         }
 
@@ -240,7 +258,7 @@ const moveToDockviewAction: MenuAction = {
           });
         }
 
-        ctx.api.removePanel(panel);
+        api.removePanel(panel);
       },
     }));
   },
@@ -256,7 +274,7 @@ export const splitPanelAction: MenuAction = {
   icon: 'columns',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx),
   children: [
     { ...splitRightAction, category: undefined },
     { ...splitDownAction, category: undefined },
@@ -273,7 +291,7 @@ export const movePanelAction: MenuAction = {
   icon: 'move',
   category: 'layout',
   availableIn: ['tab', 'panel-content'],
-  visible: (ctx) => !!ctx.panelId && !!ctx.api,
+  visible: (ctx) => !!ctx.panelId && !!resolveCurrentDockviewApi(ctx),
   children: (ctx) => {
     const actions: MenuAction[] = [];
 
