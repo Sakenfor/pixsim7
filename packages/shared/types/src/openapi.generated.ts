@@ -568,6 +568,34 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/accounts/{account_id}/sync-plan": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Sync Account Plan
+         * @description Manually sync subscription plan for an existing Pixverse account.
+         *
+         *     Fetches the current plan details from Pixverse and updates:
+         *     - max_concurrent_jobs: 2 for free accounts, 5 for pro accounts
+         *     - provider_metadata: stores plan details (plan_name, plan_type, qualities, etc.)
+         *
+         *     Security:
+         *     - Only the owner or admin can sync plan for an account.
+         *     - Only supported for Pixverse accounts.
+         */
+        readonly post: operations["sync_account_plan_api_v1_accounts__account_id__sync_plan_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/accounts/cleanup": {
         readonly parameters: {
             readonly query?: never;
@@ -12564,6 +12592,12 @@ export interface components {
              * @default false
              */
             readonly force: boolean;
+            /**
+             * Sync Plans
+             * @description Also sync subscription plans (max_concurrent_jobs) for Pixverse accounts
+             * @default false
+             */
+            readonly sync_plans: boolean;
         };
         /**
          * BatchSyncCreditsResponse
@@ -13893,6 +13927,11 @@ export interface components {
             readonly parent_generation?: (components["schemas"]["EntityRef"] | null) | null;
             readonly player_context?: components["schemas"]["PlayerContextSnapshotSchema"] | null;
             /**
+             * Preferred Account Id
+             * @description Preferred provider account ID. Worker tries this account first, falls back to normal selection.
+             */
+            readonly preferred_account_id?: number | null;
+            /**
              * Priority
              * @default 5
              */
@@ -14590,8 +14629,15 @@ export interface components {
              */
             readonly frame_number?: number | null;
             /**
+             * Last Frame
+             * @description If true, extract the very last frame (ignores timestamp)
+             * @default false
+             */
+            readonly last_frame: boolean;
+            /**
              * Timestamp
              * @description Time in seconds to extract frame
+             * @default 0
              */
             readonly timestamp: number;
             /**
@@ -14942,6 +14988,8 @@ export interface components {
              * Format: date-time
              */
             readonly updated_at?: string;
+            /** World Id */
+            readonly world_id?: number | null;
         };
         /** gameItemListResponse */
         readonly gameItemListResponse: {
@@ -14984,6 +15032,8 @@ export interface components {
              * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
              */
             readonly stats?: Record<string, unknown>;
+            /** World Id */
+            readonly world_id?: number | null;
             /**
              * X
              * @default 0
@@ -15053,6 +15103,8 @@ export interface components {
              * @description Entity stats. Structure: {stat_definition_id: {axis: value, ...}}
              */
             readonly stats?: Record<string, unknown>;
+            /** World Id */
+            readonly world_id?: number | null;
         };
         /** gameNPCListResponse */
         readonly gameNPCListResponse: {
@@ -15084,6 +15136,8 @@ export interface components {
             readonly meta?: Record<string, unknown> | null;
             /** Title */
             readonly title: string;
+            /** World Id */
+            readonly world_id?: number | null;
         };
         /** gameSceneListResponse */
         readonly gameSceneListResponse: {
@@ -19253,6 +19307,28 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * SyncPlanResponse
+         * @description Response from plan sync
+         */
+        readonly SyncPlanResponse: {
+            /**
+             * Is Pro
+             * @default false
+             */
+            readonly is_pro: boolean;
+            /**
+             * Max Concurrent Jobs
+             * @default 2
+             */
+            readonly max_concurrent_jobs: number;
+            /** Message */
+            readonly message: string;
+            /** Plan Name */
+            readonly plan_name?: string | null;
+            /** Success */
+            readonly success: boolean;
+        };
+        /**
          * SyncSingleAssetRequest
          * @description Request to sync a single PixVerse asset by its known ID.
          */
@@ -21178,6 +21254,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["SyncCreditsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly sync_account_plan_api_v1_accounts__account_id__sync_plan_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly account_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SyncPlanResponse"];
                 };
             };
             /** @description Validation Error */
@@ -28774,6 +28883,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -28805,7 +28916,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_item_templates_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -28840,7 +28954,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_item_templates__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -28882,7 +28999,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_item_templates__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -28933,6 +29053,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -28983,6 +29105,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29014,7 +29138,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_items_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29049,7 +29176,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_items__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29091,7 +29221,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_items__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29142,6 +29275,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29413,6 +29548,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29444,7 +29581,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_location_templates_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29479,7 +29619,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_location_templates__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29521,7 +29664,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_location_templates__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29572,6 +29718,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29622,6 +29770,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29653,7 +29803,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_locations_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29719,7 +29872,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_locations__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29761,7 +29917,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_locations__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29812,6 +29971,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -29924,7 +30085,10 @@ export interface operations {
     };
     readonly list_nested_api_v1_game_locations__parent_id__hotspots_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29957,7 +30121,10 @@ export interface operations {
     };
     readonly replace_all_nested_api_v1_game_locations__parent_id__hotspots_put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -29994,7 +30161,10 @@ export interface operations {
     };
     readonly create_nested_api_v1_game_locations__parent_id__hotspots_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30031,7 +30201,10 @@ export interface operations {
     };
     readonly get_nested_api_v1_game_locations__parent_id__hotspots__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30065,7 +30238,10 @@ export interface operations {
     };
     readonly update_nested_api_v1_game_locations__parent_id__hotspots__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30103,7 +30279,10 @@ export interface operations {
     };
     readonly delete_nested_api_v1_game_locations__parent_id__hotspots__entity_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30211,6 +30390,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -30242,7 +30423,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_npcs_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30308,7 +30492,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_npcs__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30350,7 +30537,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_npcs__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30401,6 +30591,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -30513,7 +30705,10 @@ export interface operations {
     };
     readonly list_nested_api_v1_game_npcs__parent_id__expressions_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30546,7 +30741,10 @@ export interface operations {
     };
     readonly replace_all_nested_api_v1_game_npcs__parent_id__expressions_put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30583,7 +30781,10 @@ export interface operations {
     };
     readonly create_nested_api_v1_game_npcs__parent_id__expressions_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30620,7 +30821,10 @@ export interface operations {
     };
     readonly get_nested_api_v1_game_npcs__parent_id__expressions__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30654,7 +30858,10 @@ export interface operations {
     };
     readonly update_nested_api_v1_game_npcs__parent_id__expressions__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30692,7 +30899,10 @@ export interface operations {
     };
     readonly delete_nested_api_v1_game_npcs__parent_id__expressions__entity_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30726,7 +30936,10 @@ export interface operations {
     };
     readonly list_nested_api_v1_game_npcs__parent_id__schedules_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30759,7 +30972,10 @@ export interface operations {
     };
     readonly replace_all_nested_api_v1_game_npcs__parent_id__schedules_put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30796,7 +31012,10 @@ export interface operations {
     };
     readonly create_nested_api_v1_game_npcs__parent_id__schedules_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30833,7 +31052,10 @@ export interface operations {
     };
     readonly get_nested_api_v1_game_npcs__parent_id__schedules__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30867,7 +31089,10 @@ export interface operations {
     };
     readonly update_nested_api_v1_game_npcs__parent_id__schedules__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -30905,7 +31130,10 @@ export interface operations {
     };
     readonly delete_nested_api_v1_game_npcs__parent_id__schedules__entity_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31349,6 +31577,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -31380,7 +31610,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_scenes_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31415,7 +31648,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_scenes__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31457,7 +31693,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_scenes__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31508,6 +31747,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -31550,7 +31791,10 @@ export interface operations {
     };
     readonly list_nested_api_v1_game_scenes__parent_id__edges_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31583,7 +31827,10 @@ export interface operations {
     };
     readonly replace_all_nested_api_v1_game_scenes__parent_id__edges_put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31620,7 +31867,10 @@ export interface operations {
     };
     readonly create_nested_api_v1_game_scenes__parent_id__edges_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31657,7 +31907,10 @@ export interface operations {
     };
     readonly get_nested_api_v1_game_scenes__parent_id__edges__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31691,7 +31944,10 @@ export interface operations {
     };
     readonly update_nested_api_v1_game_scenes__parent_id__edges__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31729,7 +31985,10 @@ export interface operations {
     };
     readonly delete_nested_api_v1_game_scenes__parent_id__edges__entity_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31763,7 +32022,10 @@ export interface operations {
     };
     readonly list_nested_api_v1_game_scenes__parent_id__nodes_get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31796,7 +32058,10 @@ export interface operations {
     };
     readonly replace_all_nested_api_v1_game_scenes__parent_id__nodes_put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31833,7 +32098,10 @@ export interface operations {
     };
     readonly create_nested_api_v1_game_scenes__parent_id__nodes_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31870,7 +32138,10 @@ export interface operations {
     };
     readonly get_nested_api_v1_game_scenes__parent_id__nodes__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31904,7 +32175,10 @@ export interface operations {
     };
     readonly update_nested_api_v1_game_scenes__parent_id__nodes__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -31942,7 +32216,10 @@ export interface operations {
     };
     readonly delete_nested_api_v1_game_scenes__parent_id__nodes__entity_id__delete: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -32426,6 +32703,8 @@ export interface operations {
                 readonly offset?: number;
                 /** @description Search in name field */
                 readonly search?: string | null;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
@@ -32457,7 +32736,10 @@ export interface operations {
     };
     readonly create_item_api_v1_game_worlds_post: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -32561,7 +32843,10 @@ export interface operations {
     };
     readonly get_item_api_v1_game_worlds__entity_id__get: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -32603,7 +32888,10 @@ export interface operations {
     };
     readonly update_item_api_v1_game_worlds__entity_id__put: {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
+            };
             readonly header?: {
                 readonly authorization?: string | null;
             };
@@ -32654,6 +32942,8 @@ export interface operations {
                 readonly cascade?: boolean;
                 /** @description Hard delete instead of soft delete */
                 readonly hard?: boolean;
+                readonly session_id?: number | null;
+                readonly world_id?: number | null;
             };
             readonly header?: {
                 readonly authorization?: string | null;
