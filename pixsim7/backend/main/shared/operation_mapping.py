@@ -12,9 +12,9 @@ When adding a new operation type, you MUST update ALL of these locations:
 
 Backend:
   [ ] 1. enums.py - Add to OperationType enum
-  [ ] 2. operation_mapping.py - Add to GENERATION_TYPE_OPERATION_MAP
+  [ ] 2. operation_mapping.py - Add to _CANONICAL_ALIASES (or _SEMANTIC_ALIASES for plugins)
   [ ] 3. operation_mapping.py - Add to OPERATION_REGISTRY (below)
-  [ ] 4. generation_schemas.py - Add to generation_type regex pattern
+  [ ] 4. (automatic) generation_schemas.py validates dynamically against GENERATION_TYPE_OPERATION_MAP
   [ ] 5. creation_service.py - Add validation in _validate_structured_params()
   [ ] 6. creation_service.py - Add canonicalization in _canonicalize_structured_params() if needed
   [ ] 7. provider_service.py - Handle media type classification if image operation
@@ -75,22 +75,23 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
     operation_type=OperationType.IMAGE_TO_IMAGE,
     output_media="image",
     required_inputs=["composition_assets"],
-    generation_type_aliases=["image_edit"],  # Canonical
+    generation_type_aliases=["image_to_image", "image_edit"],  # Canonical + legacy
   ),
   OperationType.TEXT_TO_VIDEO: OperationSpec(
     operation_type=OperationType.TEXT_TO_VIDEO,
     output_media="video",
     required_inputs=["prompt"],
-    # Canonical: (none - direct usage rare)
+    # Canonical: "text_to_video"
     # Semantic: "variation", "dialogue", "environment" (game-dialogue plugin)
-    generation_type_aliases=["variation", "dialogue", "environment"],
+    generation_type_aliases=["text_to_video", "variation", "dialogue", "environment"],
   ),
   OperationType.IMAGE_TO_VIDEO: OperationSpec(
     operation_type=OperationType.IMAGE_TO_VIDEO,
     output_media="video",
     required_inputs=["image_url"],
+    # Canonical: "image_to_video"
     # Semantic: "npc_response" (game-dialogue plugin)
-    generation_type_aliases=["npc_response"],
+    generation_type_aliases=["image_to_video", "npc_response"],
   ),
   OperationType.VIDEO_EXTEND: OperationSpec(
     operation_type=OperationType.VIDEO_EXTEND,
@@ -102,7 +103,7 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
     operation_type=OperationType.VIDEO_TRANSITION,
     output_media="video",
     required_inputs=["image_urls", "prompts"],
-    generation_type_aliases=["transition"],  # Canonical
+    generation_type_aliases=["video_transition", "transition"],  # Canonical + legacy
   ),
   OperationType.FUSION: OperationSpec(
     operation_type=OperationType.FUSION,
@@ -148,58 +149,39 @@ def get_video_operations() -> Set[OperationType]:
 # GENERATION TYPE MAPPING
 # =============================================================================
 
-# Canonical mapping from structured generation_type (JSON/config)
-# to internal OperationType enum.
-#
-# This is derived from OPERATION_REGISTRY but kept explicit for clarity,
-# backward compatibility, and so that older configs continue to work
-# even if plugins add new aliases at runtime.
-#
-# ═════════════════════════════════════════════════════════════════════════════
-# ALIAS CLASSIFICATION: CANONICAL vs SEMANTIC
-# ═════════════════════════════════════════════════════════════════════════════
-#
-# Aliases fall into two categories:
-#
-# 1. CANONICAL ALIASES - Core operation labels that directly correspond to
-#    OperationType values. These are generic, provider-agnostic operation names.
-#    - Managed by: Core (operation_mapping.py)
-#    - Examples: "text_to_image", "image_edit", "video_extend", "transition", "fusion"
-#
-# 2. SEMANTIC ALIASES - Game/domain-specific labels that map to canonical
-#    operations but express higher-level concepts.
-#    - Managed by: Plugins via register_generation_alias() in on_load()
-#    - Examples: "npc_response", "dialogue", "environment", "variation"
-#    - Owner metadata tracked in ALIAS_METADATA
-#
-# New semantic aliases should NOT be added to this map directly. Instead,
-# plugins should call register_generation_alias() during startup.
-#
-# ═════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# CANONICAL ALIASES - Core operations (1:1 with OperationType enum names)
+# ═══════════════════════════════════════════════════════════════════════════════
+_CANONICAL_ALIASES: Dict[str, OperationType] = {
+  "text_to_image": OperationType.TEXT_TO_IMAGE,
+  "text_to_video": OperationType.TEXT_TO_VIDEO,
+  "image_to_video": OperationType.IMAGE_TO_VIDEO,
+  "image_to_image": OperationType.IMAGE_TO_IMAGE,  # Canonical name for image transformations
+  "video_extend": OperationType.VIDEO_EXTEND,
+  "video_transition": OperationType.VIDEO_TRANSITION,
+  "fusion": OperationType.FUSION,
+}
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# SEMANTIC ALIASES - Plugin-managed (loaded here for startup, owned by plugins)
+# These MUST match what plugins register via register_generation_alias().
+# If a plugin stops registering an alias, remove it here too.
+# ═══════════════════════════════════════════════════════════════════════════════
+_SEMANTIC_ALIASES: Dict[str, OperationType] = {
+  # Owner: game_dialogue plugin
+  "dialogue": OperationType.TEXT_TO_VIDEO,
+  "environment": OperationType.TEXT_TO_VIDEO,
+  "variation": OperationType.TEXT_TO_VIDEO,
+  "npc_response": OperationType.IMAGE_TO_VIDEO,
+  # Legacy aliases (kept for backward compatibility)
+  "transition": OperationType.VIDEO_TRANSITION,  # Prefer "video_transition"
+  "image_edit": OperationType.IMAGE_TO_IMAGE,    # Prefer "image_to_image"
+}
+
+# Combined map (used at runtime)
 GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
-  # -------------------------------------------------------------------------
-  # CANONICAL ALIASES (core operation labels)
-  # -------------------------------------------------------------------------
-  "text_to_image": OperationType.TEXT_TO_IMAGE,  # Quick Generate image
-  "image_edit": OperationType.IMAGE_TO_IMAGE,    # Image transformations
-  "video_extend": OperationType.VIDEO_EXTEND,    # Video extension
-  "transition": OperationType.VIDEO_TRANSITION,  # Scene transitions
-  "fusion": OperationType.FUSION,                # Character-consistent video
-  # NOTE: frame_extraction is NOT here - it's a lineage-only operation, not a generation type
-
-  # -------------------------------------------------------------------------
-  # SEMANTIC ALIASES (plugin-owned game/domain concepts)
-  # -------------------------------------------------------------------------
-  # These are kept here for backward compatibility with existing configs.
-  # New semantic aliases should be registered via register_generation_alias()
-  # in plugin on_load() hooks rather than being hard-coded here.
-  #
-  # Owner: game-dialogue plugin (registered in manifest.py:on_load())
-  "variation": OperationType.TEXT_TO_VIDEO,      # Generic prompt-to-video
-  "dialogue": OperationType.TEXT_TO_VIDEO,       # Dialogue generation
-  "environment": OperationType.TEXT_TO_VIDEO,    # Environment generation
-  "npc_response": OperationType.IMAGE_TO_VIDEO,  # NPC response clips
+  **_CANONICAL_ALIASES,
+  **_SEMANTIC_ALIASES,
 }
 
 
@@ -259,10 +241,25 @@ def resolve_operation_type(generation_type: str) -> OperationType:
   """
   Resolve OperationType for a given generation_type string.
 
-  Falls back to TEXT_TO_VIDEO if the generation_type is unknown.
+  Raises ValueError if generation_type is unknown (no silent fallback).
   """
 
-  return GENERATION_TYPE_OPERATION_MAP.get(generation_type, OperationType.TEXT_TO_VIDEO)
+  result = GENERATION_TYPE_OPERATION_MAP.get(generation_type)
+  if result is None:
+    valid_types = sorted(GENERATION_TYPE_OPERATION_MAP.keys())
+    raise ValueError(
+      f"Unknown generation_type: '{generation_type}'. "
+      f"Valid types: {valid_types}"
+    )
+  return result
+
+
+def resolve_operation_type_or_default(
+  generation_type: str,
+  default: OperationType = OperationType.TEXT_TO_VIDEO
+) -> OperationType:
+  """Resolve with fallback (use sparingly - prefer explicit error)."""
+  return GENERATION_TYPE_OPERATION_MAP.get(generation_type, default)
 
 
 def list_generation_operation_metadata() -> List[dict]:
@@ -279,11 +276,8 @@ def list_generation_operation_metadata() -> List[dict]:
   - is_semantic_alias: True if plugin-owned, False if canonical core alias
   """
 
-  # Define canonical aliases (directly correspond to OperationType)
-  # NOTE: frame_extraction is excluded - it's lineage-only, not a generation type
-  canonical_aliases = {
-    "text_to_image", "image_edit", "video_extend", "transition", "fusion"
-  }
+  # Use _CANONICAL_ALIASES as the source of truth
+  canonical_aliases = set(_CANONICAL_ALIASES.keys())
 
   items: List[dict] = []
   for gen_type, op_type in GENERATION_TYPE_OPERATION_MAP.items():

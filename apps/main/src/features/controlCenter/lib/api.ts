@@ -23,28 +23,36 @@ export interface GenerateAssetResponse {
  * Map Control Center operation type to unified generation_type.
  * The backend maps these back to OperationType in api/v1/generations.py.
  */
+/**
+ * Map Control Center operation type to unified generation_type.
+ *
+ * Uses canonical aliases (matching OperationType enum names) where possible.
+ * The backend maps these to OperationType in api/v1/generations.py.
+ */
 function mapOperationToGenerationType(
   operationType?: string
-): 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response' | 'image_edit' | 'fusion' | 'text_to_image' | 'video_extend' {
+): 'video_transition' | 'text_to_video' | 'variation' | 'dialogue' | 'environment' | 'image_to_video' | 'image_to_image' | 'fusion' | 'text_to_image' | 'video_extend' {
   switch (operationType) {
     case 'text_to_image':
       return 'text_to_image';
+    case 'text_to_video':
+      return 'text_to_video';
     case 'video_transition':
-      return 'transition';
+      return 'video_transition';  // Canonical (was 'transition')
     case 'image_to_video':
-      return 'npc_response';
+      return 'image_to_video';
     case 'image_to_image':
-      return 'image_edit';
+      return 'image_to_image';  // Canonical (was 'image_edit')
     case 'video_extend':
       return 'video_extend';
     case 'dialogue':
-      return 'dialogue';
+      return 'dialogue';  // Semantic alias (game-dialogue plugin)
     case 'environment':
-      return 'environment';
+      return 'environment';  // Semantic alias (game-dialogue plugin)
     case 'fusion':
       return 'fusion';
     default:
-      return 'variation';
+      return 'text_to_video';  // Default to canonical alias for unknown operations
   }
 }
 
@@ -76,12 +84,14 @@ const CANONICAL_CONFIG_KEYS = new Set([
 
 function buildGenerationConfig(
   generationType:
-    | 'transition'
+    | 'video_transition'
+    | 'text_to_video'
+    | 'image_to_video'
     | 'variation'
     | 'dialogue'
     | 'environment'
     | 'npc_response'
-    | 'image_edit'
+    | 'image_to_image'
     | 'fusion'
     | 'text_to_image'
     | 'video_extend',

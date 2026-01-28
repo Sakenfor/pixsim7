@@ -107,11 +107,17 @@ class GenerationNodeConfigSchema(BaseModel):
     """
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="allow")
 
-    generation_type: str = Field(
-        ...,
-        pattern="^(text_to_image|transition|variation|dialogue|environment|npc_response|image_edit|video_extend|fusion)$",
-        alias="generationType"
-    )
+    generation_type: str = Field(..., alias="generationType")
+
+    @field_validator('generation_type')
+    @classmethod
+    def validate_generation_type(cls, v: str) -> str:
+        """Validate generation_type against the canonical operation map."""
+        from pixsim7.backend.main.shared.operation_mapping import GENERATION_TYPE_OPERATION_MAP
+        if v not in GENERATION_TYPE_OPERATION_MAP:
+            valid = sorted(GENERATION_TYPE_OPERATION_MAP.keys())
+            raise ValueError(f"Invalid generation_type '{v}'. Must be one of: {valid}")
+        return v
     purpose: str = Field(..., pattern="^(gap_fill|variation|adaptive|ambient)$")
     style: StyleRulesSchema
     duration: DurationRuleSchema
