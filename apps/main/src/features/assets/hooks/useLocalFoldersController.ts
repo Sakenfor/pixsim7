@@ -84,6 +84,10 @@ export function useLocalFoldersController(): LocalFoldersController {
   const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
   const hashCheckInProgressRef = useRef<Set<string>>(new Set());
 
+  // Background hashing progress
+  const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
+  const bgHashRunIdRef = useRef(0);
+
   // Upload state (persisted provider)
   const [providerId, setProviderId] = usePersistentState<string | undefined>(
     'ps7_localFolders_providerId',
@@ -291,6 +295,74 @@ export function useLocalFoldersController(): LocalFoldersController {
 
     void computeAndCheck();
   }, [selectedFolderPath, filteredAssets, getFileForAsset, updateAssetHash, updateAssetUploadStatus]);
+
+  // Background SHA computation for ALL assets after folder load.
+  // Reads/writes via useLocalFolders.getState() to avoid triggering React renders
+  // during the hashing loop (which caused "Maximum update depth exceeded").
+  const assetCount = assetList.length;
+  useEffect(() => {
+    if (!crypto.subtle || assetCount === 0) return;
+
+    // Snapshot assets that need hashing from the store directly
+    const storeAssets = Object.values(useLocalFolders.getState().assets);
+    const needsHash = storeAssets.filter(asset => {
+      if (asset.sha256 && asset.sha256_file_size === asset.size && asset.sha256_last_modified === asset.lastModified) {
+        return false;
+      }
+      if (asset.last_upload_status === 'success') return false;
+      return true;
+    });
+
+    if (needsHash.length === 0) {
+      setHashingProgress(null);
+      return;
+    }
+
+    const runId = ++bgHashRunIdRef.current;
+    setHashingProgress({ total: needsHash.length, done: 0 });
+
+    const run = async () => {
+      const CHUNK_SIZE = 3;
+      let done = 0;
+
+      for (let i = 0; i < needsHash.length; i += CHUNK_SIZE) {
+        if (bgHashRunIdRef.current !== runId) return;
+
+        const chunk = needsHash.slice(i, i + CHUNK_SIZE);
+
+        // Process each asset sequentially within a chunk to limit concurrent store writes
+        for (const asset of chunk) {
+          if (bgHashRunIdRef.current !== runId) return;
+          try {
+            const { getFileForAsset: getFile, updateAssetHash: updateHash } = useLocalFolders.getState();
+            const file = await getFile(asset);
+            if (!file) continue;
+            const sha256 = await computeFileSha256(file);
+            await updateHash(asset.key, sha256, file);
+          } catch (e) {
+            console.warn('Background hash failed:', asset.name, e);
+          }
+        }
+
+        done += chunk.length;
+        if (bgHashRunIdRef.current === runId) {
+          setHashingProgress({ total: needsHash.length, done });
+        }
+
+        // Real delay between chunks to let React process pending updates
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      if (bgHashRunIdRef.current === runId) {
+        setHashingProgress(null);
+      }
+    };
+
+    void run();
+
+    return () => { bgHashRunIdRef.current++; };
+     
+  }, [assetCount]);
 
   // Load preview for an asset
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -531,5 +603,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     busy,
     scanning,
     error: error ?? null,
+    getFileForAsset,
+    hashingProgress,
   };
 }

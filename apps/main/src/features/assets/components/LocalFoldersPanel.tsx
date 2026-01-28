@@ -135,12 +135,33 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     (asset: LocalAsset): AssetUploadState => controller.uploadStatus[asset.key] || 'idle',
     [controller.uploadStatus]
   );
-  const handleOpen = useCallback(
-    (asset: LocalAsset) => {
-      const previewUrl = controller.previews[asset.key];
-      openLocalAsset(asset, previewUrl, displayAssets, controller.previews);
+  const getHashStatus = useCallback(
+    (asset: LocalAsset): 'unique' | 'duplicate' | 'hashing' | undefined => {
+      if (controller.uploadStatus[asset.key] === 'success') return undefined;
+      if (!asset.sha256) {
+        return controller.hashingProgress ? 'hashing' : undefined;
+      }
+      const dupCount = shaDuplicates.get(asset.sha256) || 1;
+      return dupCount > 1 ? 'duplicate' : 'unique';
     },
-    [openLocalAsset, displayAssets, controller.previews]
+    [shaDuplicates, controller.uploadStatus, controller.hashingProgress]
+  );
+  const handleOpen = useCallback(
+    async (asset: LocalAsset) => {
+      const previewUrl = controller.previews[asset.key];
+      // Get full-res file blob URL for the media viewer
+      let fullUrl: string | undefined;
+      try {
+        const file = await controller.getFileForAsset(asset);
+        if (file) {
+          fullUrl = URL.createObjectURL(file);
+        }
+      } catch {
+        // Fall back to preview URL if file access fails
+      }
+      openLocalAsset(asset, previewUrl, displayAssets, controller.previews, fullUrl);
+    },
+    [openLocalAsset, displayAssets, controller.previews, controller.getFileForAsset]
   );
   const handleUpload = useCallback(
     (asset: LocalAsset) => controller.uploadOne(asset),
@@ -194,6 +215,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
         getTags={getTags}
         getCreatedAt={getCreatedAt}
         getUploadState={getUploadState}
+        getHashStatus={getHashStatus}
         onOpen={handleOpen}
         onUpload={handleUpload}
         layout={layout}
@@ -239,6 +261,14 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Hashing progress indicator */}
+            {controller.hashingProgress && (
+              <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-lg text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+                <div className="w-2.5 h-2.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
+                <span>Hashing {controller.hashingProgress.done}/{controller.hashingProgress.total}</span>
               </div>
             )}
 

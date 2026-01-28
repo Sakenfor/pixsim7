@@ -47,4 +47,7 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
 
   // Local-specific: load persisted folders on mount
   loadPersisted: () => void;
+
+  // Background SHA hashing progress (null when idle)
+  hashingProgress: { total: number; done: number } | null;
 }

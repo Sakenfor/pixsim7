@@ -35,11 +35,12 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
    * Convert local asset to ViewerAsset
    */
   const localAssetToViewer = useCallback(
-    (asset: LocalAsset, previewUrl?: string): ViewerAsset => ({
+    (asset: LocalAsset, previewUrl?: string, fullUrl?: string): ViewerAsset => ({
       id: asset.key,
       name: asset.name,
       type: asset.kind === 'video' ? 'video' : 'image',
       url: previewUrl || '',
+      fullUrl,
       source: 'local',
       metadata: {
         path: asset.relativePath,
@@ -74,9 +75,10 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
       asset: LocalAsset,
       previewUrl: string | undefined,
       allAssets?: LocalAsset[],
-      previews?: Record<string, string>
+      previews?: Record<string, string>,
+      fullUrl?: string
     ) => {
-      const viewerAsset = localAssetToViewer(asset, previewUrl);
+      const viewerAsset = localAssetToViewer(asset, previewUrl, fullUrl);
       const viewerList = allAssets?.map((a) =>
         localAssetToViewer(a, previews?.[a.key])
       );
