@@ -22,7 +22,7 @@ export interface EnsurePanelsOptions {
   resolveOptions?: (panelId: string, api: DockviewApi) => AddDockviewPanelOptions | undefined;
 }
 
-function getDockviewPanels(api: DockviewApi): any[] {
+export function getDockviewPanels(api: DockviewApi): any[] {
   const rawPanels = (api as any).panels;
   if (Array.isArray(rawPanels)) return rawPanels;
   if (rawPanels && typeof rawPanels.values === 'function') {

@@ -9,6 +9,7 @@
  */
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
+import { getDockviewPanels } from '@lib/dockview';
 
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
@@ -125,11 +126,7 @@ export const floatPanelAction: MenuAction = {
 function getOpenPanels(ctx: MenuActionContext) {
   const api = resolveCurrentDockviewApi(ctx);
   if (!api) return [];
-  const rawPanels = Array.isArray(api.panels)
-    ? api.panels
-    : typeof (api as any).panels?.values === 'function'
-      ? Array.from((api as any).panels.values())
-      : [];
+  const rawPanels = getDockviewPanels(api);
 
   return rawPanels.map((panel: any) => {
     const title =
