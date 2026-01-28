@@ -486,6 +486,8 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           onGenerate={controller.generate}
           error={controller.error}
           targetProviderId={targetProviderId}
+          queueProgress={controller.queueProgress}
+          onGenerateBurst={controller.generateBurst}
         />
       </div>
     );

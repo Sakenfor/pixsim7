@@ -21,15 +21,16 @@ import {
   ZoomIn,
   Gauge,
   Target,
+  Layers,
 } from 'lucide-react';
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 
 import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
-import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
+import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useProviderCapacity } from '@features/providers';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 
@@ -155,6 +156,10 @@ export interface GenerationSettingsPanelProps {
   excludeParams?: string[];
   /** Error message to display */
   error?: string | null;
+  /** Queue progress state */
+  queueProgress?: { queued: number; total: number } | null;
+  /** Callback for burst generation (receives count) */
+  onGenerateBurst?: (count: number) => void;
 }
 
 export function GenerationSettingsPanel({
@@ -168,12 +173,18 @@ export function GenerationSettingsPanel({
   secondaryButton,
   excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt'],
   error,
+  queueProgress,
+  onGenerateBurst,
 }: GenerationSettingsPanelProps) {
   const { useSessionStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
   const providerId = useSessionStore(s => s.providerId);
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
+
+  // Burst mode - local state (not persisted in session store)
+  const [burstCount, setBurstCount] = useState(1);
+  const isBurstMode = burstCount > 1;
   const preferredProviderId = useContextHubOverridesStore(
     (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET)
   );
@@ -209,6 +220,14 @@ export function GenerationSettingsPanel({
     params: workbench.dynamicParams,
   });
   const creditEstimate = costEstimate?.estimated_credits ?? null;
+
+  // Provider capacity for burst mode display
+  const { capacity: providerCapacity } = useProviderCapacity();
+  const currentProviderCapacity = useMemo(() => {
+    const cap = providerCapacity.find(c => c.provider_id === inferredProviderId);
+    return cap ? { current: cap.current_jobs, max: cap.max_jobs } : null;
+  }, [providerCapacity, inferredProviderId]);
+
 
   // Filter params based on operation type
   const filteredParamSpecs = useMemo(() => {
@@ -511,6 +530,58 @@ export function GenerationSettingsPanel({
 
       {/* Fixed bottom section - Go button */}
       <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
+        {/* Burst count selector + capacity display */}
+        <div className="flex items-center justify-between gap-2 text-[10px]">
+          {/* Burst count selector */}
+          <div className="flex items-center gap-1">
+            <Layers size={12} className="text-neutral-500" />
+            <select
+              value={burstCount}
+              onChange={(e) => setBurstCount(Number(e.target.value))}
+              disabled={generating}
+              className={clsx(
+                'px-2 py-1 rounded-md font-medium border-0 shadow-sm',
+                isBurstMode
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+              )}
+              title="Number of generations to run"
+            >
+              {[1, 2, 3, 5, 10].map(n => (
+                <option key={n} value={n}>{n}x</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Capacity indicator */}
+          {currentProviderCapacity && (
+            <div className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
+              <span>Slots:</span>
+              <span className={clsx(
+                'font-mono',
+                currentProviderCapacity.current >= currentProviderCapacity.max
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-green-600 dark:text-green-400'
+              )}>
+                {currentProviderCapacity.max - currentProviderCapacity.current}/{currentProviderCapacity.max}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Queue progress */}
+        {queueProgress && (
+          <div className="flex items-center gap-2 text-[10px] text-purple-600 dark:text-purple-400">
+            <div className="flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-purple-600 h-full transition-all duration-300"
+                style={{ width: `${(queueProgress.queued / queueProgress.total) * 100}%` }}
+              />
+            </div>
+            <span className="font-medium">{queueProgress.queued}/{queueProgress.total}</span>
+          </div>
+        )}
+
         {/* Error message - for prompt rejections only */}
         {error && (
           <div
@@ -533,7 +604,13 @@ export function GenerationSettingsPanel({
 
           {/* Primary Go button */}
           <button
-            onClick={onGenerate}
+            onClick={() => {
+              if (isBurstMode && onGenerateBurst) {
+                onGenerateBurst(burstCount);
+              } else {
+                onGenerate();
+              }
+            }}
             disabled={generating || !canGenerate}
             className={clsx(
               'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white',
@@ -542,20 +619,25 @@ export function GenerationSettingsPanel({
                 ? 'bg-neutral-400'
                 : error
                 ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
+                : isBurstMode
+                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
                 : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
             )}
             style={{ transition: 'none', animation: 'none' }}
           >
             {generating ? (
-              '...'
+              queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : '...'
             ) : creditLoading ? (
-              'Go'
+              isBurstMode ? `Go x${burstCount}` : 'Go'
             ) : creditEstimate !== null ? (
               <span className="flex items-center justify-center gap-1">
-                Go <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
+                {isBurstMode ? `Go x${burstCount}` : 'Go'}
+                <span className="text-amber-200 text-[10px]">
+                  +{Math.round(creditEstimate * burstCount)}
+                </span>
               </span>
             ) : (
-              'Go'
+              isBurstMode ? `Go x${burstCount}` : 'Go'
             )}
           </button>
 

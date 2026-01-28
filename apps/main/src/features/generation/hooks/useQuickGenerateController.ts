@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
@@ -49,6 +49,9 @@ export function useQuickGenerateController() {
   // Local error + generation status
   const [error, setError] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<number | null>(null);
+
+  // Queue progress state for burst mode
+  const [queueProgress, setQueueProgress] = useState<{ queued: number; total: number } | null>(null);
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore(s => s.setWatchingGeneration);
 
@@ -209,6 +212,177 @@ export function useQuickGenerateController() {
     }
   }
 
+  /**
+   * Generate multiple times (burst mode).
+   * Submits the same generation request N times for variety.
+   * Backend handles capacity limits via account selection.
+   */
+  const generateBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
+    if (count <= 1) {
+      // Just do a single generation
+      return generate(options);
+    }
+
+    setError(null);
+    setGenerating(true);
+    setGenerationId(null);
+    errorShownForRef.current = null;
+
+    const total = count;
+    let queued = 0;
+    const generatedIds: number[] = [];
+
+    setQueueProgress({ queued: 0, total });
+
+    try {
+      const overrideParams = options?.overrideDynamicParams || {};
+
+      // Build params once (same for all burst generations)
+      const modifiedDynamicParams = {
+        ...bindings.dynamicParams,
+        ...overrideParams,
+      };
+
+      // Get current input state
+      const inputState = (useInputStore as any).getState();
+      const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
+      const currentInput = inputState.getCurrentInput
+        ? inputState.getCurrentInput(operationType)
+        : null;
+
+      // Handle frame extraction for video inputs (once, reuse for all)
+      if (operationType === 'image_to_video' && currentInput) {
+        if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
+          const extractedFrame = fromAssetResponse(await extractFrame({
+            video_asset_id: currentInput.asset.id,
+            timestamp: currentInput.lockedTimestamp,
+          }));
+          modifiedDynamicParams.source_asset_id = extractedFrame.id;
+        }
+      }
+
+      // Handle video_transition frame extraction
+      const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
+      if (operationType === 'video_transition' && transitionInputs.length > 0) {
+        const extractedAssetIds: number[] = [];
+        for (const inputItem of transitionInputs) {
+          if (inputItem.lockedTimestamp !== undefined && inputItem.asset.mediaType === 'video') {
+            const extractedFrame = fromAssetResponse(await extractFrame({
+              video_asset_id: inputItem.asset.id,
+              timestamp: inputItem.lockedTimestamp,
+            }));
+            extractedAssetIds.push(extractedFrame.id);
+          } else {
+            extractedAssetIds.push(inputItem.asset.id);
+          }
+        }
+        modifiedDynamicParams.source_asset_ids = extractedAssetIds;
+      }
+
+      const buildResult = buildGenerationRequest({
+        operationType,
+        prompt,
+        presetParams,
+        dynamicParams: modifiedDynamicParams,
+        operationInputs: currentInputs,
+        prompts: bindings.prompts,
+        transitionDurations: bindings.transitionDurations,
+        activeAsset: bindings.lastSelectedAsset,
+        currentInput,
+      });
+
+      if (buildResult.error || !buildResult.params) {
+        setError(buildResult.error ?? 'Invalid generation request');
+        setGenerating(false);
+        setQueueProgress(null);
+        return;
+      }
+
+      const finalPrompt = buildResult.finalPrompt;
+      const hasAssetInput =
+        (Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0) ||
+        !!buildResult.params.source_asset_id ||
+        (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
+      const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
+
+      // Submit N generations
+      for (let i = 0; i < count; i++) {
+        try {
+          const result = await generateAsset({
+            prompt: finalPrompt,
+            providerId,
+            presetId,
+            operationType: effectiveOperationType,
+            extraParams: buildResult.params,
+            presetParams,
+          });
+
+          const genId = result.job_id;
+          generatedIds.push(genId);
+
+          addOrUpdateGeneration(createPendingGeneration({
+            id: genId,
+            operationType,
+            providerId,
+            finalPrompt,
+            params: buildResult.params,
+            status: result.status || 'pending',
+          }));
+
+          queued++;
+          setQueueProgress({ queued, total });
+
+          logEvent('INFO', 'burst_generation_created', {
+            generationId: genId,
+            operationType,
+            providerId: providerId || 'pixverse',
+            burstIndex: i + 1,
+            burstTotal: count,
+          });
+        } catch (itemErr) {
+          logEvent('ERROR', 'burst_item_failed', {
+            burstIndex: i + 1,
+            error: extractErrorMessage(itemErr, 'Unknown error'),
+          });
+        }
+      }
+
+      // Watch the last generated ID
+      if (generatedIds.length > 0) {
+        const lastId = generatedIds[generatedIds.length - 1];
+        setGenerationId(lastId);
+        setWatchingGeneration(lastId);
+      }
+
+      logEvent('INFO', 'burst_complete', {
+        queued,
+        total,
+        operationType,
+        providerId: providerId || 'pixverse',
+      });
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to queue generations'));
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setQueueProgress(null), 2000);
+    }
+  }, [
+    generate,
+    operationType,
+    prompt,
+    presetParams,
+    providerId,
+    presetId,
+    bindings.dynamicParams,
+    bindings.prompts,
+    bindings.transitionDurations,
+    bindings.lastSelectedAsset,
+    useInputStore,
+    addOrUpdateGeneration,
+    setWatchingGeneration,
+    setGenerating,
+  ]);
+
   return {
     // Core control center state
     operationType,
@@ -228,10 +402,14 @@ export function useQuickGenerateController() {
     error,
     generationId,
 
+    // Queue progress (for burst mode)
+    queueProgress,
+
     // Bindings to assets/inputs and params
     ...bindings,
 
     // Actions
     generate,
+    generateBurst,
   };
 }
