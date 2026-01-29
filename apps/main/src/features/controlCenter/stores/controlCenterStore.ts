@@ -164,12 +164,36 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           }));
         },
         setOperationType: (op) => {
-          if (get().operationType === op) return;
-          set({ operationType: op });
+          const state = get();
+          if (state.operationType === op) return;
+
+          // Save current prompt to promptPerOperation before switching
+          const updatedPromptPerOp = {
+            ...state.promptPerOperation,
+            [state.operationType]: state.prompt,
+          };
+
+          // Load prompt for the new operation (or empty if none saved)
+          const newPrompt = updatedPromptPerOp[op] ?? "";
+
+          set({
+            operationType: op,
+            promptPerOperation: updatedPromptPerOp,
+            prompt: newPrompt,
+          });
         },
         setPrompt: (value) => {
-          if (get().prompt === value) return;
-          set({ prompt: value });
+          const state = get();
+          if (state.prompt === value) return;
+
+          // Also update promptPerOperation for current operation
+          set({
+            prompt: value,
+            promptPerOperation: {
+              ...state.promptPerOperation,
+              [state.operationType]: value,
+            },
+          });
         },
         setProvider: (id) => {
           if (get().providerId === id) return;
@@ -221,12 +245,13 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         enabledModules: s.enabledModules,
         operationType: s.operationType,
         prompt: s.prompt,
+        promptPerOperation: s.promptPerOperation,
         providerId: s.providerId,
         presetId: s.presetId,
         presetParams: s.presetParams,
         assets: s.assets,
       }),
-      version: 8,
+      version: 9,
       migrate: (persistedState: any, version: number) => {
         const migrated = { ...persistedState };
 
@@ -266,6 +291,15 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         // Migrate from version 7 to 8: add conformToOtherPanels
         if (version < 8) {
           migrated.conformToOtherPanels = migrated.conformToOtherPanels ?? false;
+        }
+
+        // Migrate from version 8 to 9: add promptPerOperation
+        if (version < 9) {
+          migrated.promptPerOperation = migrated.promptPerOperation || {};
+          // Initialize current operation's prompt in promptPerOperation
+          if (migrated.prompt && migrated.operationType) {
+            migrated.promptPerOperation[migrated.operationType] = migrated.prompt;
+          }
         }
 
         return migrated;

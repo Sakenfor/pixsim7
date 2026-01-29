@@ -1,4 +1,5 @@
 import { componentRegistry } from "@features/componentSettings";
+
 import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_SETTINGS_COMPONENT_ID,
@@ -82,6 +83,13 @@ export function registerQuickGenerateComponentSettings() {
               label: "Show provider selector",
               type: "toggle",
               defaultValue: QUICKGEN_SETTINGS_DEFAULTS.showProvider,
+            },
+            {
+              id: "showInputSets",
+              label: "Show input sets",
+              description: "Save and load prompt + inputs + settings as named sets",
+              type: "toggle",
+              defaultValue: QUICKGEN_SETTINGS_DEFAULTS.showInputSets,
             },
           ],
         },

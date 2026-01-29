@@ -15,7 +15,10 @@ import type { OperationType } from "@/types/operations";
  */
 export interface GenerationSessionFields {
   operationType: OperationType;
+  /** Current active prompt (derived from promptPerOperation when available) */
   prompt: string;
+  /** Per-operation prompt storage - prompts are preserved when switching operations */
+  promptPerOperation?: Partial<Record<OperationType, string>>;
   providerId?: string;
   presetId?: string;
   presetParams: Record<string, any>;
@@ -47,6 +50,7 @@ export interface GenerationSessionState extends GenerationSessionFields, Generat
 export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   operationType: "text_to_video",
   prompt: "",
+  promptPerOperation: {},
   providerId: undefined,
   presetId: undefined,
   presetParams: {},
@@ -69,12 +73,36 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
       (set, get) => ({
         ...DEFAULT_SESSION_FIELDS,
         setOperationType: (operationType) => {
-          if (get().operationType === operationType) return;
-          set({ operationType });
+          const state = get();
+          if (state.operationType === operationType) return;
+
+          // Save current prompt to promptPerOperation before switching
+          const updatedPromptPerOp = {
+            ...state.promptPerOperation,
+            [state.operationType]: state.prompt,
+          };
+
+          // Load prompt for the new operation (or empty if none saved)
+          const newPrompt = updatedPromptPerOp[operationType] ?? "";
+
+          set({
+            operationType,
+            promptPerOperation: updatedPromptPerOp,
+            prompt: newPrompt,
+          });
         },
         setPrompt: (value) => {
-          if (get().prompt === value) return;
-          set({ prompt: value });
+          const state = get();
+          if (state.prompt === value) return;
+
+          // Also update promptPerOperation for current operation
+          set({
+            prompt: value,
+            promptPerOperation: {
+              ...state.promptPerOperation,
+              [state.operationType]: value,
+            },
+          });
         },
         setProvider: (id) => {
           if (get().providerId === id) return;
@@ -94,14 +122,29 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
       {
         name: storageKey,
         storage: createJSONStorage(() => localStorage),
-        version: 1,
+        version: 2,
         partialize: (state) => ({
           operationType: state.operationType,
           prompt: state.prompt,
+          promptPerOperation: state.promptPerOperation,
           providerId: state.providerId,
           presetId: state.presetId,
           presetParams: state.presetParams,
         }),
+        migrate: (persistedState: any, version: number) => {
+          const migrated = { ...persistedState };
+
+          // Migrate from version 1 to 2: add promptPerOperation
+          if (version < 2) {
+            migrated.promptPerOperation = migrated.promptPerOperation || {};
+            // Initialize current operation's prompt in promptPerOperation
+            if (migrated.prompt && migrated.operationType) {
+              migrated.promptPerOperation[migrated.operationType] = migrated.prompt;
+            }
+          }
+
+          return migrated;
+        },
       },
     ),
   );

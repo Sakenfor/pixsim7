@@ -33,6 +33,7 @@ import { useGenerationWorkbench, useGenerationScopeStores } from '@features/gene
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
+import { PresetSelector } from './PresetSelector';
 
 
 /** Friendly labels for aspect ratio values */
@@ -135,6 +136,8 @@ export interface GenerationSettingsPanelProps {
   showOperationType?: boolean;
   /** Whether to show provider selector (default: true) */
   showProvider?: boolean;
+  /** Whether to show preset selector (default: true) */
+  showPresets?: boolean;
   /** Optional widget provider id to target this panel for quick add */
   targetProviderId?: string;
   /** Whether generation is in progress */
@@ -165,6 +168,7 @@ export interface GenerationSettingsPanelProps {
 export function GenerationSettingsPanel({
   showOperationType = true,
   showProvider = true,
+  showPresets = true,
   targetProviderId,
   generating,
   canGenerate,
@@ -340,15 +344,15 @@ export function GenerationSettingsPanel({
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
   const showTargetButton = canTarget;
-  const showOperationRow = showOperationType || showTargetButton;
+  const showOperationRow = showOperationType || showTargetButton || showPresets;
 
   return (
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
       {/* Fixed top section - Operation type & Provider */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Operation type */}
+        {/* Operation type & Presets */}
         {showOperationRow && (
-          <div className={clsx('flex gap-1', !showOperationType && 'justify-end')}>
+          <div className={clsx('flex gap-1', !showOperationType && !showPresets && 'justify-end')}>
             {showOperationType && (
               <select
                 value={operationType}
@@ -362,6 +366,11 @@ export function GenerationSettingsPanel({
                 <option value="video_transition">Transition</option>
                 <option value="fusion">Fusion</option>
               </select>
+            )}
+            {showPresets && (
+              <PresetSelector
+                disabled={generating}
+              />
             )}
             {activeAccounts.length > 0 && (
               <select

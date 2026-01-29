@@ -21,6 +21,8 @@ export type { GenerationsPanelProps } from './components/GenerationsPanel';
 export { GenerationSettingsPanel } from './components/GenerationSettingsPanel';
 export type { GenerationSettingsPanelProps } from './components/GenerationSettingsPanel';
 export { AdvancedSettingsPopover } from './components/AdvancedSettingsPopover';
+export { PresetSelector } from './components/PresetSelector';
+export type { PresetSelectorProps } from './components/PresetSelector';
 export { GenerationSourceToggle } from './components/GenerationSourceToggle';
 export type { GenerationSourceToggleProps } from './components/GenerationSourceToggle';
 export { ViewerAssetInputProvider } from './components/ViewerAssetInputProvider';
@@ -39,6 +41,8 @@ export { useMediaCardGenerationStatus } from './hooks/useMediaCardGenerationStat
 export { useMediaGenerationActions } from './hooks/useMediaGenerationActions';
 export { useRecentGenerations } from './hooks/useRecentGenerations';
 export { useGenerationScopeStores, GenerationScopeProvider } from './hooks/useGenerationScope';
+export { useGenerationPresets } from './hooks/useGenerationPresets';
+export type { UseGenerationPresetsResult } from './hooks/useGenerationPresets';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
@@ -64,6 +68,14 @@ export {
   TERMINAL_STATUSES
 } from './stores/generationsStore';
 export type { GenerationsState, GenerationStatus } from './stores/generationsStore';
+export { useGenerationPresetStore } from './stores/generationPresetStore';
+export type {
+  GenerationPreset,
+  PresetInputRef,
+  PresetSnapshot,
+  GenerationPresetState,
+  GenerationPresetActions,
+} from './stores/generationPresetStore';
 // Lib - Generation Core
 export * from './lib/core';
 

@@ -18,9 +18,11 @@ export const QUICKGEN_PROMPT_DEFAULTS: QuickGenPromptSettings = {
 export interface QuickGenSettingsPanelSettings {
   showOperationType: boolean;
   showProvider: boolean;
+  showInputSets: boolean;
 }
 
 export const QUICKGEN_SETTINGS_DEFAULTS: QuickGenSettingsPanelSettings = {
   showOperationType: true,
   showProvider: true,
+  showInputSets: true,
 };

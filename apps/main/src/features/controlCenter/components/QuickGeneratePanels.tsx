@@ -481,6 +481,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
         <GenerationSettingsPanel
           showOperationType={resolvedSettings.showOperationType}
           showProvider={resolvedSettings.showProvider}
+          showPresets={resolvedSettings.showInputSets}
           generating={controller.generating}
           canGenerate={canGenerate}
           onGenerate={controller.generate}

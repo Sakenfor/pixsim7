@@ -387,6 +387,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       onGenerate={generate}
       error={error}
       targetProviderId={CONTROL_CENTER_WIDGET_ID}
+      showPresets={true}
     />
   ), [generating, canGenerate, generate, error]);
 
