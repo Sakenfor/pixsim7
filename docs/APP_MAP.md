@@ -18,16 +18,29 @@ For detailed repository structure, see [docs/repo-map.md](./repo-map.md).
 
 ## Sources of Truth
 
-The App Map table is a merge of two registries:
+### Canonical API (Recommended)
 
-1) **Generated registry (optional)**  
-   `docs/app_map.generated.json` is produced from code metadata when available.
-   If it does not exist, only manual entries are used.
+The **canonical source** for architecture data is the backend API:
 
-2) **Manual registry (authoritative for docs/backend links)**  
-   `docs/app_map.sources.json` contains doc paths and backend module references.
+| Endpoint | Description |
+|----------|-------------|
+| `GET /dev/architecture/map` | Backend architecture (routes, services, plugins) |
+| `GET /dev/architecture/frontend` | Frontend features (from module metadata) |
+| `GET /dev/architecture/unified` | **Combined backend + frontend** (recommended) |
 
-`scripts/generate-app-map.ts` merges these into the table in this file.
+Both the frontend App Map panel and Python launcher GUI should consume these endpoints.
+
+### Offline Fallback (JSON Files)
+
+When the backend is not running, the launcher falls back to JSON files:
+
+1) **Generated registry**
+   `docs/app_map.generated.json` - produced from module `page.appMap` metadata.
+
+2) **Manual registry (deprecated)**
+   `docs/app_map.sources.json` - being phased out in favor of inline `page.appMap`.
+
+`scripts/generate-app-map.ts` parses module definitions and outputs the generated JSON.
 
 ### Code-Derived Metadata
 
@@ -43,17 +56,32 @@ When generating `app_map.generated.json`, use:
 
 ### Add a Feature to the App Map
 
-1) **Front-end metadata**  
-   Add or update the module `page` definition (route, description, `featureId`).
+**Preferred approach (code-derived):**
 
-2) **Actions (optional)**  
-   Declare actions in `page.actions` using `ActionDefinition`.
+1) Add `page.appMap` to your module definition:
+   ```typescript
+   // apps/main/src/features/myFeature/module.ts
+   export const myModule: Module = {
+     id: 'my-feature',
+     name: 'My Feature',
+     page: {
+       route: '/my-feature',
+       featureId: 'my-feature',
+       appMap: {
+         docs: ['docs/my-feature.md'],
+         backend: ['pixsim7.backend.main.api.v1.my_feature'],
+         frontend: ['apps/main/src/features/myFeature/'],
+         notes: ['Optional implementation notes'],
+       },
+     },
+   };
+   ```
 
-3) **Docs and backend**  
-   Add or update the entry in `docs/app_map.sources.json`.
+2) Run `pnpm docs:app-map` to regenerate `app_map.generated.json`
 
-4) **Regenerate**
-   Run `pnpm codegen --only app-map` to update the table.
+**Legacy approach (deprecated):**
+
+Add entries to `docs/app_map.sources.json` - this is being phased out.
 
 ### Comment Conventions (Planned)
 

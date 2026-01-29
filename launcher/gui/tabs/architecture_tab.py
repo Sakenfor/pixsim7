@@ -2,6 +2,13 @@
 Architecture Tab for Launcher
 
 Creates the backend architecture introspection tab with app map and live metrics.
+
+Data Sources:
+- Features page: Falls back to JSON files (works offline), but canonical
+  source is GET /dev/architecture/unified when backend is running
+- Metrics/Routes pages: Live from GET /dev/architecture/map (requires backend)
+
+See also: pixsim7.backend.main.api.v1.dev_architecture for API implementation
 """
 
 import json
@@ -80,7 +87,14 @@ def _merge_app_map_entries(generated: list, manual: list) -> list:
 
 
 def load_app_map_registry() -> list:
-    """Load the merged app map registry (sources + generated)."""
+    """
+    Load the merged app map registry from JSON files (offline fallback).
+
+    When backend is running, prefer GET /dev/architecture/unified for live data.
+    This function reads from:
+    - docs/app_map.sources.json (manual entries, being deprecated)
+    - docs/app_map.generated.json (derived from module page.appMap metadata)
+    """
     launcher_dir = Path(__file__).parent.parent.parent
     project_root = launcher_dir.parent
     sources_path = project_root / "docs" / "app_map.sources.json"
@@ -149,7 +163,8 @@ class ArchitectureTab:
         """Create the Features (App Map) page."""
         page, layout = create_page(
             "App Map",
-            "Feature registry showing documentation, frontend components, and backend modules."
+            "Feature registry from module metadata. "
+            "Canonical API: GET /dev/architecture/unified"
         )
 
         entries = load_app_map_registry()
@@ -224,7 +239,9 @@ class ArchitectureTab:
             table.setItem(row, 3, QTableWidgetItem(backend_text))
 
         layout.addWidget(table, 1)
-        layout.addWidget(create_info_label(f"{len(entries)} features registered"))
+        layout.addWidget(create_info_label(
+            f"{len(entries)} features (from JSON fallback, run backend for live data)"
+        ))
 
         return page
 

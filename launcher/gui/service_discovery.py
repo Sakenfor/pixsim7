@@ -3,10 +3,14 @@ Service Discovery Module for Launcher
 
 Queries the backend architecture API to discover available routes, plugins,
 and architecture metrics. Used to enrich the launcher UI with live backend data.
+
+Endpoints consumed:
+- GET /dev/architecture/map - Backend-only architecture data
+- GET /dev/architecture/unified - Combined backend + frontend architecture (canonical)
 """
 import requests
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,6 +49,7 @@ class ServiceDiscovery:
     def __init__(self, backend_url: str = "http://localhost:8000"):
         self.backend_url = backend_url.rstrip('/')
         self.architecture_data: Optional[Dict[str, Any]] = None
+        self.unified_data: Optional[Dict[str, Any]] = None
         self.last_fetch_error: Optional[str] = None
 
     def discover_architecture(self, timeout: int = 2) -> bool:
@@ -204,3 +209,70 @@ class ServiceDiscovery:
             summary_lines.append(f"  - {tag}: {count} routes")
 
         return "\n".join(summary_lines)
+
+    # === Unified Architecture API ===
+
+    def discover_unified_architecture(self, timeout: int = 3) -> bool:
+        """
+        Fetch unified architecture data (backend + frontend).
+
+        This is the CANONICAL endpoint for full application architecture.
+        It includes frontend feature modules derived from page.appMap metadata.
+
+        Args:
+            timeout: Request timeout in seconds
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            response = requests.get(
+                f"{self.backend_url}/dev/architecture/unified",
+                timeout=timeout
+            )
+
+            if response.ok:
+                self.unified_data = response.json()
+                # Also update architecture_data with backend portion for compatibility
+                backend = self.unified_data.get("backend", {})
+                self.architecture_data = {
+                    "version": self.unified_data.get("version", "1.0"),
+                    "routes": backend.get("routes", []),
+                    "capabilities": backend.get("capabilities", []),
+                    "services": backend.get("services", []),
+                    "plugins": backend.get("plugins", []),
+                    "metrics": self.unified_data.get("metrics", {}),
+                }
+                self.last_fetch_error = None
+                logger.info("Successfully fetched unified architecture data")
+                return True
+            else:
+                self.last_fetch_error = f"HTTP {response.status_code}"
+                logger.warning(f"Failed to fetch unified architecture: {response.status_code}")
+                return False
+
+        except requests.exceptions.ConnectionError:
+            self.last_fetch_error = "Backend not running"
+            logger.debug("Backend connection failed - service not running")
+            return False
+        except requests.exceptions.Timeout:
+            self.last_fetch_error = "Request timeout"
+            logger.warning("Unified architecture API request timed out")
+            return False
+        except Exception as e:
+            self.last_fetch_error = str(e)
+            logger.error(f"Unexpected error fetching unified architecture: {e}")
+            return False
+
+    def get_frontend_features(self) -> List[Dict[str, Any]]:
+        """
+        Get frontend feature modules from unified architecture data.
+
+        Returns:
+            List of feature entries with routes, frontend paths, docs, backend refs
+        """
+        if not hasattr(self, 'unified_data') or not self.unified_data:
+            return []
+
+        frontend = self.unified_data.get("frontend", {})
+        return frontend.get("entries", [])

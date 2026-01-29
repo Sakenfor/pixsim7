@@ -58,7 +58,7 @@ export const appMapModule: Module = {
       tags: ['architecture', 'map', 'visualization', 'structure'],
     },
     appMap: {
-      docs: ['docs/development/APP_MAP.md'],
+      docs: ['docs/APP_MAP.md'],
       backend: ['pixsim7.backend.main.api.v1.dev_architecture'],
       frontend: [
         'apps/main/src/features/panels/components/dev/AppMapPanel.tsx',
