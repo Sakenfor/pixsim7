@@ -70,6 +70,15 @@ export interface VideoScrubWidgetConfig {
 
   /** Callback when clicked (not dragged) - used to open viewer */
   onClick?: (data: any) => void;
+
+  /** Callback to extract frame at current timestamp */
+  onExtractFrame?: (timestamp: number, data: any) => void;
+
+  /** Callback to extract the last frame of the video */
+  onExtractLastFrame?: (data: any) => void;
+
+  /** Show frame extraction button on timeline */
+  showExtractButton?: boolean;
 }
 
 interface VideoScrubWidgetRendererProps {
@@ -78,6 +87,7 @@ interface VideoScrubWidgetRendererProps {
   isHovering: boolean;
   showTimeline: boolean;
   showTimestamp: boolean;
+  showExtractButton: boolean;
   timelinePosition: 'bottom' | 'top';
   throttle: number;
   muted: boolean;
@@ -85,6 +95,8 @@ interface VideoScrubWidgetRendererProps {
   className: string;
   onScrub?: (timestamp: number, data: any) => void;
   onClick?: (data: any) => void;
+  onExtractFrame?: (timestamp: number, data: any) => void;
+  onExtractLastFrame?: (data: any) => void;
   data: any;
 }
 
@@ -96,6 +108,7 @@ function VideoScrubWidgetRenderer({
   isHovering,
   showTimeline,
   showTimestamp,
+  showExtractButton,
   timelinePosition,
   throttle,
   muted,
@@ -103,11 +116,14 @@ function VideoScrubWidgetRenderer({
   className,
   onScrub,
   onClick,
+  onExtractFrame,
+  onExtractLastFrame,
   data,
 }: VideoScrubWidgetRendererProps) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
   const [hoverX, setHoverX] = useState(0);
+  const [hoverPercent, setHoverPercent] = useState(0);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -116,6 +132,7 @@ function VideoScrubWidgetRenderer({
   const stillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
   const dragStartTimeRef = useRef<number | null>(null);
   const dragStartXRef = useRef<number | null>(null);
@@ -168,6 +185,28 @@ function VideoScrubWidgetRenderer({
       setIsPlaying(false);
     }
   }, [isPlaying]);
+
+  // Extract frame at current timestamp
+  const handleExtractFrame = useCallback(async () => {
+    if (!onExtractFrame || isExtracting) return;
+    setIsExtracting(true);
+    try {
+      await onExtractFrame(currentTime, data);
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [onExtractFrame, currentTime, data, isExtracting]);
+
+  // Extract last frame of video
+  const handleExtractLastFrame = useCallback(async () => {
+    if (!onExtractLastFrame || isExtracting) return;
+    setIsExtracting(true);
+    try {
+      await onExtractLastFrame(data);
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [onExtractLastFrame, data, isExtracting]);
 
   // Helper to get time from mouse X position
   const getTimeFromX = useCallback(
@@ -239,6 +278,9 @@ function VideoScrubWidgetRenderer({
     [isDragging, getTimeFromX, isVideoLoaded, onClick, data]
   );
 
+  // Height from bottom where auto-play is disabled (timeline + controls area)
+  const CONTROL_ZONE_HEIGHT = 50;
+
   // Handle mouse move over container
   const handleMouseMove = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -246,10 +288,15 @@ function VideoScrubWidgetRenderer({
 
       const rect = containerRef.current.getBoundingClientRect();
       const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
       const percentage = Math.max(0, Math.min(1, x / rect.width));
       const targetTime = percentage * videoDuration;
 
       setHoverX(x);
+      setHoverPercent(percentage * 100);
+
+      // Check if cursor is in the control zone (bottom area with timeline/controls)
+      const isInControlZone = y > rect.height - CONTROL_ZONE_HEIGHT;
 
       // Check if we should start dragging (potential drag + exceeded threshold)
       if (isPotentialDragRef.current && dragStartXRef.current !== null && !isDragging) {
@@ -301,9 +348,12 @@ function VideoScrubWidgetRenderer({
       }
 
       // Set timer to start playing if mouse stays still
-      stillTimerRef.current = setTimeout(() => {
-        startPlaying();
-      }, 500);
+      // BUT not if cursor is in the control zone (near timeline/controls)
+      if (!isInControlZone) {
+        stillTimerRef.current = setTimeout(() => {
+          startPlaying();
+        }, 500);
+      }
     },
     [videoDuration, throttle, isVideoLoaded, isPlaying, isDragging, pauseVideo, startPlaying, onScrub, data]
   );
@@ -369,7 +419,9 @@ function VideoScrubWidgetRenderer({
   }, [isHovering, isVideoLoaded]);
 
   // Calculate progress percentage
+  // Use hoverPercent for immediate feedback when scrubbing, progressPercentage when playing
   const progressPercentage = getProgressPercent(currentTime, videoDuration);
+  const displayPercentage = isPlaying ? progressPercentage : hoverPercent;
 
   // Calculate loop range percentages for visual indicator
   const loopRangeStyle = loopRange && videoDuration > 0
@@ -434,15 +486,15 @@ function VideoScrubWidgetRenderer({
         >
           {/* Timeline background - clickable to clear range */}
           <div
-            className="relative h-1.5 bg-black/30 rounded-full overflow-hidden backdrop-blur-sm cursor-pointer"
+            className="relative h-1.5 bg-black/30 rounded-full backdrop-blur-sm cursor-pointer"
             onClick={handleTimelineClick}
             title={loopRange ? 'Click to clear loop range' : undefined}
           >
             {/* Progress indicator (normal playback) */}
             {!loopRange && (
               <div
-                className="absolute h-full bg-white/90 transition-all duration-75"
-                style={{ width: `${progressPercentage}%` }}
+                className="absolute h-full bg-white/90 rounded-full"
+                style={{ width: `${displayPercentage}%` }}
               />
             )}
 
@@ -469,30 +521,104 @@ function VideoScrubWidgetRenderer({
                 style={{ left: `${progressPercentage}%` }}
               />
             )}
-          </div>
 
-          {/* Hover position indicator */}
-          <div
-            className="absolute top-0 w-0.5 h-1.5 bg-white pointer-events-none"
-            style={{ left: `${hoverX}px` }}
-          />
+            {/* Interactive scrub dot - centered on timeline */}
+            {showExtractButton && onExtractFrame ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleExtractFrame();
+                }}
+                onAuxClick={(e) => {
+                  if (e.button === 1 && onExtractLastFrame) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    handleExtractLastFrame();
+                  }
+                }}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  if (e.button === 1) e.preventDefault();
+                }}
+                disabled={isExtracting}
+                className={`
+                  absolute top-1/2 p-0 m-0 border-0 outline-none
+                  ${isExtracting ? 'bg-blue-400' : 'bg-white hover:bg-blue-400 hover:scale-150'}
+                `}
+                style={{
+                  left: `${displayPercentage}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 2px rgba(0,0,0,0.3)',
+                  transition: 'transform 100ms, background-color 100ms',
+                }}
+                title={`Click to capture frame${onExtractLastFrame ? ' (middle-click for last frame)' : ''}`}
+              />
+            ) : (
+              <div
+                className="absolute top-1/2 bg-white"
+                style={{
+                  left: `${displayPercentage}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  boxShadow: '0 0 2px rgba(0,0,0,0.3)',
+                }}
+              />
+            )}
+          </div>
         </div>
       )}
 
-      {/* Timestamp tooltip */}
+      {/* Timestamp tooltip (follows cursor) */}
       {showTimestamp && isHovering && videoDuration > 0 && (
         <div
           className="absolute pointer-events-none"
           style={{
             left: `${hoverX}px`,
             top: timelinePosition === 'bottom' ? 'auto' : '0.5rem',
-            bottom: timelinePosition === 'bottom' ? '2rem' : 'auto',
+            bottom: timelinePosition === 'bottom' ? '2.5rem' : 'auto',
             transform: 'translateX(-50%)',
           }}
         >
-          <div className="px-2 py-1 bg-black/80 text-white text-xs rounded backdrop-blur-sm">
+          <div className="px-2 py-1 bg-black/80 text-white text-xs rounded backdrop-blur-sm whitespace-nowrap">
             {formatTime(currentTime)}
             {videoDuration > 0 && ` / ${formatTime(videoDuration)}`}
+          </div>
+        </div>
+      )}
+
+      {/* Play/pause control - bottom right (simplified, no capture here) */}
+      {showExtractButton && isHovering && videoDuration > 0 && (
+        <div className="absolute bottom-2 right-2">
+          <div className="flex items-center gap-1 px-1.5 py-1 bg-black/80 rounded backdrop-blur-sm">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isPlaying) {
+                  pauseVideo();
+                } else {
+                  startPlaying();
+                }
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="p-0.5 rounded hover:bg-white/20 transition-colors text-white"
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" />
+                  <rect x="14" y="4" width="4" height="16" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
       )}
@@ -521,6 +647,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     durationBinding,
     showTimeline = true,
     showTimestamp = true,
+    showExtractButton = false,
     timelinePosition = 'bottom',
     throttle = 50,
     muted = true,
@@ -529,6 +656,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     priority,
     onScrub,
     onClick,
+    onExtractFrame,
+    onExtractLastFrame,
   } = config;
 
   return {
@@ -563,6 +692,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           isHovering={isHovering}
           showTimeline={showTimeline}
           showTimestamp={showTimestamp}
+          showExtractButton={showExtractButton}
           timelinePosition={timelinePosition}
           throttle={throttle}
           muted={muted}
@@ -570,6 +700,8 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
           className={className}
           onScrub={onScrub}
           onClick={onClick}
+          onExtractFrame={onExtractFrame}
+          onExtractLastFrame={onExtractLastFrame}
           data={data}
         />
       );

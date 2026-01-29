@@ -126,12 +126,20 @@ class AssetService:
             if os.path.exists(frame_path) and os.path.abspath(frame_path) != os.path.abspath(local_path):
                 os.remove(frame_path)
 
+            # Determine description and ID suffix based on extraction type
+            if last_frame:
+                frame_suffix = "last_frame"
+                frame_description = "Last frame from video"
+            else:
+                frame_suffix = f"frame_{timestamp:.2f}"
+                frame_description = f"Frame from video at {timestamp:.2f}s"
+
             asset = await add_asset(
                 self.db,
                 user_id=user.id,
                 media_type=MediaType.IMAGE,
                 provider_id=video_asset.provider_id,
-                provider_asset_id=f"{video_asset.provider_asset_id}_frame_{timestamp:.2f}",
+                provider_asset_id=f"{video_asset.provider_asset_id}_{frame_suffix}",
                 provider_account_id=video_asset.provider_account_id,
                 remote_url=f"file://{local_path}",
                 local_path=local_path,
@@ -142,7 +150,7 @@ class AssetService:
                 file_size_bytes=file_size,
                 mime_type="image/jpeg",
                 sync_status=SyncStatus.DOWNLOADED,
-                description=f"Frame from video at {timestamp:.2f}s",
+                description=frame_description,
                 upload_method="video_capture",
                 # Lineage handled separately below for timestamp metadata
             )

@@ -118,10 +118,17 @@ class UploadService:
 
         # Heuristic: URL vs ID
         if isinstance(uploaded, str) and (uploaded.startswith("http://") or uploaded.startswith("https://")):
+            # Extract UUID from URL for provider_asset_id (helps with dedup during enrichment)
+            extracted_id = None
+            if provider_id == "pixverse":
+                from pixsim7.backend.main.services.provider.adapters.pixverse_ids import extract_uuid_from_url
+                extracted_id = extract_uuid_from_url(uploaded)
+
             return UploadResult(
                 provider_id=provider_id,
                 media_type=media_type,
                 external_url=uploaded,
+                provider_asset_id=extracted_id,  # UUID from URL for dedup matching
                 note=(prep_note or None) or (
                     "Uploaded via OpenAPI"
                     if provider_id == "pixverse"

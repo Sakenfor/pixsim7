@@ -161,6 +161,23 @@ class MediaSettings:
             self._settings.get("generate_video_previews", False)
         )
 
+    @property
+    def frame_extraction_upload(self) -> str:
+        """
+        Frame extraction upload behavior.
+
+        Options:
+        - 'source_provider': Upload to source video's provider (default)
+        - 'always': Always upload to default provider
+        - 'never': Never upload, just save locally
+        """
+        return self._settings.get("frame_extraction_upload", "source_provider")
+
+    @property
+    def default_upload_provider(self) -> str:
+        """Default provider for uploads when frame_extraction_upload is 'always'."""
+        return self._settings.get("default_upload_provider", "pixverse")
+
     def update(self, updates: Dict[str, Any]) -> None:
         """Update settings and save."""
         self._settings.update(updates)
@@ -180,6 +197,8 @@ class MediaSettings:
             "concurrency_limit": self.concurrency_limit,
             "thumbnail_size": list(self.thumbnail_size),
             "preview_size": list(self.preview_size),
+            "frame_extraction_upload": self.frame_extraction_upload,
+            "default_upload_provider": self.default_upload_provider,
         }
 
 

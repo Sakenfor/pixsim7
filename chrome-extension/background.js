@@ -659,7 +659,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           'Authorization': `Bearer ${settings.pixsim7Token}`,
         };
 
-        // 1. Extract last frame via backend FFmpeg
+        // Extract last frame and upload to provider in one call
         const extractResp = await fetch(
           `${settings.backendUrl}/api/v1/assets/extract-frame`,
           {
@@ -668,6 +668,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             body: JSON.stringify({
               video_asset_id: videoAssetId,
               last_frame: true,
+              provider_id: providerId || 'pixverse',
             }),
           },
         );
@@ -676,20 +677,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           throw new Error(`Frame extraction failed: ${extractResp.status} ${txt}`);
         }
         const frameAsset = await extractResp.json();
-
-        // 2. Upload extracted frame to provider
-        const uploadResp = await fetch(
-          `${settings.backendUrl}/api/v1/assets/${frameAsset.id}/reupload`,
-          {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ provider_id: providerId || 'pixverse' }),
-          },
-        );
-        if (!uploadResp.ok) {
-          const txt = await uploadResp.text();
-          throw new Error(`Upload to provider failed: ${uploadResp.status} ${txt}`);
-        }
 
         sendResponse({ success: true, frameAssetId: frameAsset.id });
       } catch (error) {

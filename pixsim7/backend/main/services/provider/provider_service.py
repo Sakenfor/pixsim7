@@ -83,6 +83,21 @@ class ProviderService:
             params=params
         )
 
+        # Debug: Log mapped params to trace parameter filtering
+        logger.info(
+            "provider_mapped_params",
+            extra={
+                "generation_id": generation.id,
+                "provider_id": generation.provider_id,
+                "operation_type": generation.operation_type.value,
+                "input_keys": list(params.keys()),
+                "mapped_keys": list(mapped_params.keys()),
+                "has_aspect_ratio": "aspect_ratio" in mapped_params,
+                "has_camera_movement": "camera_movement" in mapped_params,
+                "mapped_params": mapped_params,
+            }
+        )
+
         # Provider execution params may include ephemeral local file paths for multipart uploads.
         execute_params: Dict[str, Any] = mapped_params
 

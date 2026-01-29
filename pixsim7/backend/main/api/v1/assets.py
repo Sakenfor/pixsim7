@@ -1512,6 +1512,7 @@ class ExtractFrameRequest(BaseModel):
     timestamp: float = Field(0, description="Time in seconds to extract frame", ge=0)
     frame_number: Optional[int] = Field(None, description="Optional frame number for metadata")
     last_frame: bool = Field(False, description="If true, extract the very last frame (ignores timestamp)")
+    provider_id: Optional[str] = Field(None, description="If provided, upload extracted frame to this provider")
 
 
 @router.post("/extract-frame", response_model=AssetResponse)
@@ -1533,20 +1534,30 @@ async def extract_frame(
     - SHA256 hash for deduplication
     - Local storage (already downloaded)
 
+    If provider_id is specified, the extracted frame will be uploaded to that
+    provider and the provider_uploads field will be populated.
+
     Example request:
     ```json
     {
       "video_asset_id": 123,
       "timestamp": 10.5,
-      "frame_number": 315
+      "frame_number": 315,
+      "provider_id": "pixverse"
     }
     ```
 
     Returns:
     - Image asset (either existing or newly created)
     - Asset includes lineage link to parent video via AssetLineage
+    - Based on settings and source video, may upload to provider
     """
+    from pixsim7.backend.main.services.asset import get_media_settings
+
     try:
+        # Get video asset first to determine source provider
+        video_asset = await asset_service.get_asset_for_user(request.video_asset_id, user)
+
         frame_asset = await asset_service.create_asset_from_paused_frame(
             video_asset_id=request.video_asset_id,
             user=user,
@@ -1554,6 +1565,64 @@ async def extract_frame(
             frame_number=request.frame_number,
             last_frame=request.last_frame,
         )
+
+        # Determine upload target based on settings
+        settings = get_media_settings()
+        upload_behavior = settings.frame_extraction_upload
+        target_provider_id = None
+
+        if request.provider_id:
+            # Explicit provider_id in request always takes precedence
+            target_provider_id = request.provider_id
+        elif upload_behavior == 'always':
+            # Always upload to default provider
+            target_provider_id = settings.default_upload_provider
+        elif upload_behavior == 'source_provider' and video_asset.provider_id:
+            # Upload to source video's provider
+            target_provider_id = video_asset.provider_id
+        # 'never' or no provider -> don't upload
+
+        logger.info(
+            "extract_frame_upload_decision",
+            asset_id=frame_asset.id,
+            upload_behavior=upload_behavior,
+            source_provider=video_asset.provider_id,
+            target_provider=target_provider_id,
+        )
+
+        # Upload to provider if determined
+        if target_provider_id:
+            try:
+                provider_asset_id = await asset_service.get_asset_for_provider(
+                    asset_id=frame_asset.id,
+                    target_provider_id=target_provider_id
+                )
+                # Refresh asset to get updated provider_uploads
+                frame_asset = await asset_service.get_asset(frame_asset.id)
+
+                # Update remote_url to the provider URL (like badge uploads do)
+                provider_url = frame_asset.provider_uploads.get(target_provider_id)
+                if provider_url and provider_url.startswith('http'):
+                    frame_asset.remote_url = provider_url
+                    await asset_service.db.commit()
+                    # Refresh again to get the updated remote_url
+                    frame_asset = await asset_service.get_asset(frame_asset.id)
+
+                logger.info(
+                    "extract_frame_uploaded_to_provider",
+                    asset_id=frame_asset.id,
+                    provider_id=target_provider_id,
+                    provider_asset_id=provider_asset_id,
+                    remote_url=frame_asset.remote_url,
+                )
+            except Exception as upload_error:
+                # Log but don't fail - asset was created successfully
+                logger.warning(
+                    "extract_frame_provider_upload_failed",
+                    asset_id=frame_asset.id,
+                    provider_id=target_provider_id,
+                    error=str(upload_error),
+                )
 
         return AssetResponse.model_validate(frame_asset)
 
@@ -1571,6 +1640,70 @@ async def extract_frame(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to extract frame: {str(e)}"
+        )
+
+
+# ===== ASSET REUPLOAD (UPLOAD EXISTING ASSET TO PROVIDER) =====
+
+class ReuploadAssetRequest(BaseModel):
+    """Request to upload an existing asset to a provider"""
+    provider_id: str = Field(..., description="Target provider ID (e.g., 'pixverse')")
+
+
+class ReuploadAssetResponse(BaseModel):
+    """Response from asset reupload"""
+    asset_id: int
+    provider_id: str
+    provider_asset_id: str
+    message: str = "Asset uploaded to provider"
+
+
+@router.post("/{asset_id}/reupload", response_model=ReuploadAssetResponse)
+async def reupload_asset_to_provider(
+    asset_id: int,
+    request: ReuploadAssetRequest,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+):
+    """
+    Upload an existing asset to a specific provider.
+
+    This is useful for:
+    - Uploading extracted frames to a provider
+    - Cross-provider operations (asset exists on one provider, need it on another)
+    - Re-uploading assets that failed previous upload attempts
+
+    The asset must already exist in the system (have a local file or remote URL).
+    """
+    # Verify asset belongs to user
+    asset = await asset_service.get_asset_for_user(asset_id, user)
+    if not asset:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    try:
+        # Use the cross-provider upload functionality
+        provider_asset_id = await asset_service.get_asset_for_provider(
+            asset_id=asset_id,
+            target_provider_id=request.provider_id
+        )
+
+        return ReuploadAssetResponse(
+            asset_id=asset_id,
+            provider_id=request.provider_id,
+            provider_asset_id=provider_asset_id,
+        )
+    except InvalidOperationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(
+            "reupload_asset_failed",
+            asset_id=asset_id,
+            provider_id=request.provider_id,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to upload asset to provider: {str(e)}"
         )
 
 

@@ -43,6 +43,12 @@ class MediaSettingsResponse(BaseModel):
     concurrency_limit: int = Field(description="Maximum concurrent ingestion jobs")
     thumbnail_size: list[int] = Field(description="Thumbnail dimensions [width, height]")
     preview_size: list[int] = Field(description="Preview dimensions [width, height]")
+    frame_extraction_upload: str = Field(
+        description="Frame extraction upload behavior: 'source_provider', 'always', or 'never'"
+    )
+    default_upload_provider: str = Field(
+        description="Default provider for uploads when frame_extraction_upload is 'always'"
+    )
 
 
 class MediaSettingsUpdate(BaseModel):
@@ -58,6 +64,8 @@ class MediaSettingsUpdate(BaseModel):
     concurrency_limit: Optional[int] = None
     thumbnail_size: Optional[list[int]] = None
     preview_size: Optional[list[int]] = None
+    frame_extraction_upload: Optional[str] = None
+    default_upload_provider: Optional[str] = None
 
 
 @router.get("/media/settings", response_model=MediaSettingsResponse)

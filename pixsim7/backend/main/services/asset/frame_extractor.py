@@ -115,6 +115,40 @@ def extract_frame_ffmpeg(
         raise InvalidOperationError(f"Frame extraction failed: {e}")
 
 
+def _get_video_duration(video_path: str) -> Optional[float]:
+    """Get video duration in seconds using ffprobe."""
+    from pixsim_logging import get_logger
+    logger = get_logger()
+
+    if not _check_ffprobe_available():
+        logger.warning("ffprobe_not_available", detail="Cannot get video duration")
+        return None
+
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0 and result.stdout.strip():
+            duration = float(result.stdout.strip())
+            logger.debug("video_duration_detected", video_path=video_path, duration=duration)
+            return duration
+        else:
+            logger.warning(
+                "ffprobe_duration_failed",
+                video_path=video_path,
+                returncode=result.returncode,
+                stderr=result.stderr[:200] if result.stderr else None,
+            )
+    except Exception as e:
+        logger.warning("ffprobe_duration_error", video_path=video_path, error=str(e))
+    return None
+
+
 def extract_last_frame_ffmpeg(
     video_path: str,
     output_path: Optional[str] = None,
@@ -124,8 +158,10 @@ def extract_last_frame_ffmpeg(
     """
     Extract the very last frame from a video.
 
-    Uses -sseof to seek near the end, then -update 1 to keep overwriting
-    until the final frame, guaranteeing we get the actual last frame.
+    Strategy:
+    1. Get video duration via ffprobe
+    2. Seek to (duration - 0.1s) to get very close to end
+    3. Use -update 1 to keep overwriting until final frame
 
     Args:
         video_path: Path to video file
@@ -149,19 +185,50 @@ def extract_last_frame_ffmpeg(
         os.close(fd)
 
     try:
-        # -sseof -1: start 1 second before end (for speed)
-        # -update 1: keep overwriting output with each frame until done
-        # Result: the last frame of the video
-        cmd = [
-            "ffmpeg",
-            "-sseof", "-1",
-            "-i", video_path,
-            "-update", "1",
-            "-q:v", str(quality),
-            "-strict", "unofficial",
-            "-y",
-            output_path
-        ]
+        from pixsim_logging import get_logger
+        logger = get_logger()
+
+        # Get video duration for precise seeking
+        duration = _get_video_duration(video_path)
+
+        if duration and duration > 0.5:
+            # Seek to near end (duration - 0.1s) and extract last frame
+            seek_time = max(0, duration - 0.1)
+            logger.info(
+                "extract_last_frame_seeking",
+                video_path=video_path,
+                duration=duration,
+                seek_time=seek_time,
+                method="duration_based",
+            )
+            cmd = [
+                "ffmpeg",
+                "-ss", str(seek_time),
+                "-i", video_path,
+                "-update", "1",
+                "-q:v", str(quality),
+                "-strict", "unofficial",
+                "-y",
+                output_path
+            ]
+        else:
+            # Fallback: use -sseof for short videos or if duration unknown
+            logger.info(
+                "extract_last_frame_seeking",
+                video_path=video_path,
+                duration=duration,
+                method="sseof_fallback",
+            )
+            cmd = [
+                "ffmpeg",
+                "-sseof", "-0.5",
+                "-i", video_path,
+                "-update", "1",
+                "-q:v", str(quality),
+                "-strict", "unofficial",
+                "-y",
+                output_path
+            ]
 
         result = subprocess.run(
             cmd,
