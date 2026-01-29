@@ -51,6 +51,8 @@ export interface MediaCardActions {
   onReupload?: (providerId: string) => void | Promise<void>;
   onEnrichMetadata?: (id: number) => void;
   onExtractLastFrameAndUpload?: (id: number) => void | Promise<void>;
+  onExtractFrame?: (id: number, timestamp: number) => void | Promise<void>;
+  onExtractLastFrame?: (id: number) => void | Promise<void>;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onQuickAdd?: (id: number) => void;

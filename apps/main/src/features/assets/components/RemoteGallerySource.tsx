@@ -176,6 +176,34 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 alert(`Failed to extract/upload last frame: ${detail}`);
               }
             },
+            onExtractFrame: async (_id: number, timestamp: number) => {
+              if (a.mediaType !== 'video') return;
+              try {
+                // Don't pass provider_id - let backend decide based on settings
+                await extractFrame({
+                  video_asset_id: a.id,
+                  timestamp,
+                });
+                controller.reset();
+              } catch (err: any) {
+                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+                alert(`Failed to extract frame: ${detail}`);
+              }
+            },
+            onExtractLastFrame: async () => {
+              if (a.mediaType !== 'video') return;
+              try {
+                // Don't pass provider_id - let backend decide based on settings
+                await extractFrame({
+                  video_asset_id: a.id,
+                  last_frame: true,
+                });
+                controller.reset();
+              } catch (err: any) {
+                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
+                alert(`Failed to extract last frame: ${detail}`);
+              }
+            },
             onEnrichMetadata: async () => {
               try {
                 const result = await enrichAsset(a.id);
