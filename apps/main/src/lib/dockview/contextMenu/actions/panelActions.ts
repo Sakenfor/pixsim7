@@ -115,19 +115,16 @@ export const floatPanelAction: MenuAction = {
   visible: (ctx) => {
     const api = resolveCurrentDockviewApi(ctx);
     const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
-    if (!panelId || !api) return false;
+    if (!api || !panelId) return false;
     if (ctx.floatPanelHandler) return true;
-    if (!ctx.workspaceStore) return false;
-    const panel = api.getPanel(panelId);
-    return !!resolvePanelDefinitionId(panel);
-    // Only requires a float handler - no assumptions about implementation
+    return !!ctx.workspaceStore;
   },
   execute: (ctx) => {
     const api = resolveCurrentDockviewApi(ctx);
     const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
     if (!panelId || !api) return;
 
-    const panel = api.getPanel(panelId);
+    const panel = api.getPanel(panelId) ?? (api as any)?.activePanel;
     if (!panel) return;
 
     const resolvedPanelId = resolvePanelDefinitionId(panel) ?? panelId;
