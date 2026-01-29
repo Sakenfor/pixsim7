@@ -7,10 +7,7 @@
 
 import { useState, useCallback } from 'react';
 
-import { resolveDockviewHost } from '@lib/dockview';
-
-import { panelManager } from '@features/panels/lib/PanelManager';
-import { useWorkspaceStore, useWorkspacePresets, type LayoutPreset } from '@features/workspace';
+import { resolveWorkspaceDockview, useWorkspaceStore, useWorkspacePresets, type LayoutPreset } from '@features/workspace';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
@@ -27,10 +24,7 @@ export function WorkspaceProfileManager() {
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   const getWorkspaceHost = useCallback(() => {
-    return resolveDockviewHost(
-      'workspace',
-      panelManager.getPanelState('workspace')?.dockview?.host,
-    );
+    return resolveWorkspaceDockview().host;
   }, []);
 
   const handleLoadPreset = useCallback((presetId: string) => {

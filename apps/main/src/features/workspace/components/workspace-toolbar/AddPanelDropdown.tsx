@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 
-import { getDockviewPanels, resolveDockviewHost, resolvePanelDefinitionId } from "@lib/dockview";
+import { getDockviewPanels, resolvePanelDefinitionId } from "@lib/dockview";
 import { Icon } from "@lib/icons";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
-import { panelManager } from "@features/panels/lib/PanelManager";
 
+import { resolveWorkspaceDockview } from "../../lib/resolveWorkspaceDockview";
 import { type PanelId } from "../../stores/workspaceStore";
 
 interface AddPanelDropdownProps {
@@ -22,10 +22,7 @@ export function AddPanelDropdown({
 
   // Get existing panels from the dockview API
   useEffect(() => {
-    const host = resolveDockviewHost(
-      "workspace",
-      panelManager.getPanelState("workspace")?.dockview?.host,
-    );
+    const host = resolveWorkspaceDockview().host;
     const api = host?.api;
     if (!api) return;
 
