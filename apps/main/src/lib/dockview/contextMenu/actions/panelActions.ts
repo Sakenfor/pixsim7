@@ -371,5 +371,6 @@ export function registerPanelActionCapabilities() {
  * All panel actions
  */
 export const panelActions: MenuAction[] = [
+  floatPanelAction,
   focusPanelAction,
 ];
