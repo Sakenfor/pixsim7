@@ -43,4 +43,11 @@ export const CODEGEN_TASKS: CodegenTask[] = [
     supportsCheck: true,
     groups: ['docs'],
   },
+  {
+    id: 'plugin-codegen',
+    description: 'Run plugin-contributed codegen tasks from backend manifests',
+    script: 'scripts/run-plugin-codegen.ts',
+    supportsCheck: false,
+    groups: ['plugins'],
+  },
 ];
