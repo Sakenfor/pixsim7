@@ -206,9 +206,15 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       },
     }),
     {
-      name: 'asset_viewer_v1',
+      name: 'asset_viewer_v2',
       partialize: (state) => ({
         settings: state.settings,
+        currentAsset: state.currentAsset,
+        mode: state.mode,
+        showMetadata: state.showMetadata,
+        // Note: assetList and currentIndex are not persisted as the list can be
+        // large. Navigation context is reconstructed when the user interacts
+        // with the gallery again.
       }),
     }
   )

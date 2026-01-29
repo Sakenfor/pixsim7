@@ -9,6 +9,8 @@
 import type { AssetResponse } from '@pixsim7/shared.api.client/domains';
 import type { MediaType } from '@pixsim7/shared.types';
 
+import { resolveAssetUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
+
 import type { SelectedAsset } from '../stores/assetSelectionStore';
 import type { ViewerAsset } from '../stores/assetViewerStore';
 
@@ -144,12 +146,16 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
   const viewerType: 'image' | 'video' =
     asset.mediaType === 'video' ? 'video' : 'image';
 
+  // Use URL resolver to handle file:// URLs and prefer local storage
+  const resolvedMainUrl = resolveAssetUrl(asset);
+  const resolvedThumbUrl = resolveThumbnailUrl(asset);
+
   return {
     id: asset.id,
     name: asset.description || `Asset ${asset.id}`,
     type: viewerType,
-    url: asset.thumbnailUrl || asset.remoteUrl || asset.fileUrl || '',
-    fullUrl: asset.remoteUrl || undefined,
+    url: resolvedThumbUrl || resolvedMainUrl || '',
+    fullUrl: resolvedMainUrl || undefined,
     source: 'gallery',
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     metadata: {
@@ -182,12 +188,14 @@ export function toSelectedAsset(
   asset: AssetModel,
   source: 'gallery' | 'cube' | 'panel' = 'gallery'
 ): SelectedAsset {
+  // Use URL resolver to handle file:// URLs
+  const resolvedUrl = resolveAssetUrl(asset) || resolveThumbnailUrl(asset);
   return {
     id: asset.id,
     key: `asset-${asset.id}`,
     name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
     type: asset.mediaType === 'video' ? 'video' : 'image',
-    url: asset.remoteUrl || asset.thumbnailUrl || asset.fileUrl || '',
+    url: resolvedUrl || '',
     source,
   };
 }

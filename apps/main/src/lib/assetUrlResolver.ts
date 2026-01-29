@@ -5,7 +5,7 @@
  * when available (controlled by media settings).
  */
 
-import { useMediaSettingsStore } from '@features/assets';
+import { useMediaSettingsStore } from '@features/assets/stores/mediaSettingsStore';
 
 export interface AssetWithUrls {
   id?: number | string;
@@ -87,7 +87,21 @@ export function resolveAssetUrl(asset: AssetWithUrls): string | undefined {
   }
 
   // Fall back to remote URL
-  return resolveRemoteUrl(asset);
+  const remoteUrl = resolveRemoteUrl(asset);
+
+  // Handle file:// URLs - these won't work in browsers, use stored_key or asset endpoint
+  if (remoteUrl?.startsWith('file://')) {
+    if (storedKey) {
+      return `/api/v1/media/${storedKey}`;
+    }
+    // Fallback to asset file endpoint if we have an ID
+    const assetId = asset.id;
+    if (assetId) {
+      return `/api/v1/assets/${assetId}/file`;
+    }
+  }
+
+  return remoteUrl;
 }
 
 /**
