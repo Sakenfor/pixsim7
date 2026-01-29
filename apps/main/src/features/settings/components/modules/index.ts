@@ -11,6 +11,8 @@ import './UISettings';
 import './UnifiedPanelsSettings'; // Unified panel orchestration settings (replaces old PanelsSettings)
 import './PromptsSettings';
 import './ProfilesSettings';
+import './IconSettings';
+import './WidgetsSettings'; // Overlay widget behavior settings
 import './LibrarySettings'; // Unified library settings (replaces Assets, Media, Gallery)
 import './GenerationSettings';
 import './PluginsSettings';

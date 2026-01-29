@@ -28,6 +28,95 @@ export type {
 } from '@lib/editing-core';
 
 // ============================================================================
+// Widget Settings Schema (for auto-generated settings UI)
+// ============================================================================
+
+/** Supported setting field types */
+export type WidgetSettingFieldType =
+  | 'toggle'    // boolean switch
+  | 'select'    // dropdown with options
+  | 'number'    // numeric input
+  | 'text'      // text input
+  | 'range';    // slider with min/max
+
+/** Base setting field definition */
+export interface WidgetSettingFieldBase {
+  /** Setting key (maps to defaultSettings property) */
+  key: string;
+  /** Display label */
+  label: string;
+  /** Optional description */
+  description?: string;
+  /** Field type */
+  type: WidgetSettingFieldType;
+}
+
+/** Toggle (boolean) setting */
+export interface WidgetSettingToggle extends WidgetSettingFieldBase {
+  type: 'toggle';
+}
+
+/** Select (dropdown) setting */
+export interface WidgetSettingSelect extends WidgetSettingFieldBase {
+  type: 'select';
+  options: { value: string; label: string }[];
+}
+
+/** Number input setting */
+export interface WidgetSettingNumber extends WidgetSettingFieldBase {
+  type: 'number';
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+/** Text input setting */
+export interface WidgetSettingText extends WidgetSettingFieldBase {
+  type: 'text';
+  placeholder?: string;
+  maxLength?: number;
+}
+
+/** Range (slider) setting */
+export interface WidgetSettingRange extends WidgetSettingFieldBase {
+  type: 'range';
+  min: number;
+  max: number;
+  step?: number;
+  /** Format function for display */
+  format?: (value: number) => string;
+}
+
+/** Union of all setting field types */
+export type WidgetSettingField =
+  | WidgetSettingToggle
+  | WidgetSettingSelect
+  | WidgetSettingNumber
+  | WidgetSettingText
+  | WidgetSettingRange;
+
+/** A group of related settings */
+export interface WidgetSettingsGroup {
+  /** Group ID */
+  id: string;
+  /** Optional group title */
+  title?: string;
+  /** Optional description */
+  description?: string;
+  /** Fields in this group */
+  fields: WidgetSettingField[];
+}
+
+/**
+ * Declarative settings schema for a widget.
+ * Used to auto-generate settings UI in Settings → Widgets.
+ */
+export interface WidgetSettingsSchema {
+  /** Groups of settings */
+  groups: WidgetSettingsGroup[];
+}
+
+// ============================================================================
 // Surface Types
 // ============================================================================
 
@@ -275,6 +364,12 @@ export interface WidgetDefinition<TSettings = Record<string, unknown>, TWidget =
     settings: TSettings;
     onChange: (settings: Partial<TSettings>) => void;
   }>;
+
+  /**
+   * Declarative settings schema for auto-generated settings UI.
+   * When provided, a settings tab is automatically created in Settings → Widgets.
+   */
+  settingsSchema?: WidgetSettingsSchema;
 
   // ---- Capabilities (ContextHub) ----
   /** Capabilities this widget consumes */

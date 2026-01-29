@@ -22,6 +22,16 @@ export {
   videoScrubWidget,
   progressWidget,
   sceneViewWidget,
+  // Settings interfaces
+  type BadgeWidgetSettings,
+  type PanelWidgetSettings,
+  type UploadWidgetSettings,
+  type ButtonWidgetSettings,
+  type MenuWidgetSettings,
+  type TooltipWidgetSettings,
+  type VideoScrubWidgetSettings,
+  type ProgressWidgetSettings,
+  type SceneViewWidgetSettings,
 } from './overlayWidgets';
 
 export {

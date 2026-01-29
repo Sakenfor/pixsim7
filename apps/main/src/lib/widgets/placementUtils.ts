@@ -52,14 +52,23 @@ export function placementToOverlayPosition(placement: WidgetPlacement): UnifiedP
 /**
  * Convert WidgetPlacement to full UnifiedWidgetConfig.
  * Used when rendering overlay/hud widgets via editing-core factories.
+ *
+ * Settings are merged in order (later overrides earlier):
+ * 1. widgetDef.defaultSettings - base widget defaults
+ * 2. widgetDef.defaultConfig.props - overlay-specific defaults
+ * 3. instanceSettings - per-instance overrides
  */
 export function placementToUnifiedConfig(
   instanceId: string,
   widgetDef: WidgetDefinition,
   placement: WidgetPlacement,
-  surface: 'overlay' | 'hud'
+  surface: 'overlay' | 'hud',
+  instanceSettings?: Record<string, unknown>
 ): UnifiedWidgetConfig {
   const position = placementToOverlayPosition(placement);
+
+  // Extract defaultConfig without props to avoid double-spreading
+  const { props: defaultConfigProps, ...restDefaultConfig } = widgetDef.defaultConfig ?? {};
 
   return {
     id: instanceId,
@@ -67,9 +76,14 @@ export function placementToUnifiedConfig(
     componentType: surface,
     position,
     style: placement.zIndex ? { zIndex: placement.zIndex } : undefined,
-    props: widgetDef.defaultSettings as Record<string, unknown>,
     version: 1,
-    ...widgetDef.defaultConfig,
+    ...restDefaultConfig,
+    // Merge props: defaultSettings (base) + defaultConfig.props (overlay-specific) + instanceSettings (overrides)
+    props: {
+      ...(widgetDef.defaultSettings as Record<string, unknown>),
+      ...(defaultConfigProps as Record<string, unknown>),
+      ...(instanceSettings ?? {}),
+    },
   };
 }
 

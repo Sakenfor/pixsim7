@@ -21,6 +21,12 @@ import {
   type BadgeWidgetConfig,
   type MenuItem,
 } from '@lib/ui/overlay';
+import {
+  getOverlayWidgetSettings,
+  type VideoScrubWidgetSettings,
+  type UploadWidgetSettings,
+  type TooltipWidgetSettings,
+} from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -554,13 +560,17 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget<Media
 /**
  * Create video scrub widget (covers entire card on hover)
  * Uses DataBinding for reactive video URL resolution
+ * Settings are read from overlayWidgetSettingsStore for user customization
  */
 export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { mediaType, onOpen, id } = props;
+  const { mediaType, onOpen, id, actions } = props;
 
   if (mediaType !== 'video') {
     return null;
   }
+
+  // Get user-customized settings (merged with defaults)
+  const settings = getOverlayWidgetSettings<VideoScrubWidgetSettings>('video-scrub');
 
   return createVideoScrubWidget({
     id: 'video-scrubber',
@@ -569,20 +579,32 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaC
     // Use videoSrc (processed URL that works with auth) instead of remoteUrl
     videoUrlBinding: createBindingFromValue('videoUrl', (data: MediaCardOverlayData) => data.videoSrc || data.remoteUrl),
     durationBinding: createBindingFromValue('duration', (data: MediaCardOverlayData) => data.durationSec),
-    showTimeline: true,
-    showTimestamp: true,
-    timelinePosition: 'bottom',
-    throttle: 50,
-    muted: true,
+    // Apply user settings (with action-based override for showExtractButton)
+    showTimeline: settings.showTimeline,
+    showTimestamp: settings.showTimestamp,
+    showExtractButton: settings.showExtractButton && !!actions?.onExtractFrame,
+    timelinePosition: settings.timelinePosition,
+    throttle: settings.throttle,
+    frameAccurate: settings.frameAccurate,
+    muted: settings.muted,
     priority: 10, // Within recommended z-index range (10-20), below badges/buttons
     // Pass click through to open viewer
     onClick: onOpen ? () => onOpen(id) : undefined,
+    // Extract frame at hovered timestamp
+    onExtractFrame: actions?.onExtractFrame
+      ? (timestamp: number) => actions.onExtractFrame?.(id, timestamp)
+      : undefined,
+    // Extract last frame (middle-click)
+    onExtractLastFrame: actions?.onExtractLastFrame
+      ? () => actions.onExtractLastFrame?.(id)
+      : undefined,
   });
 }
 
 /**
  * Create upload widget (bottom-left or custom position)
  * Uses REACTIVE function-based values for state and progress
+ * Settings are read from overlayWidgetSettingsStore for user customization
  */
 export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, onUploadClick, presetCapabilities } = props;
@@ -596,6 +618,9 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
     return null;
   }
 
+  // Get user-customized settings (merged with defaults)
+  const settings = getOverlayWidgetSettings<UploadWidgetSettings>('upload');
+
   return createUploadWidget({
     id: 'upload-button',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
@@ -607,8 +632,11 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
     onUpload: async () => {
       await onUploadClick(id);
     },
-    showProgress: true,
-    size: 'sm',
+    // Apply user settings
+    showProgress: settings.showProgress,
+    size: settings.size,
+    variant: settings.variant,
+    successDuration: settings.successDuration,
     priority: 25,
   });
 }
@@ -616,6 +644,7 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
 /**
  * Create tags tooltip widget
  * Uses REACTIVE function-based content for dynamic tag display
+ * Settings are read from overlayWidgetSettingsStore for user customization
  */
 export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
   const { badgeConfig, presetCapabilities } = props;
@@ -628,6 +657,9 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
   if (!badgeConfig?.showTagsInOverlay) {
     return null;
   }
+
+  // Get user-customized settings (merged with defaults)
+  const settings = getOverlayWidgetSettings<TooltipWidgetSettings>('tooltip');
 
   return createTooltipWidget({
     id: 'technical-tags',
@@ -654,8 +686,12 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
       icon: 'info',
       className: '!bg-blue-500/20 !text-blue-500',
     },
-    placement: 'top',
-    delay: 300,
+    // Apply user settings
+    placement: settings.placement,
+    showArrow: settings.showArrow,
+    delay: settings.delay,
+    maxWidth: settings.maxWidth,
+    rich: settings.rich,
     priority: 30,
   });
 }

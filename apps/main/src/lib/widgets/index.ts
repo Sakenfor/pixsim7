@@ -46,6 +46,16 @@ export type {
   WidgetPlacement,
   WidgetInstance,
   WidgetPlacementState,
+  // Widget settings schema types
+  WidgetSettingFieldType,
+  WidgetSettingField,
+  WidgetSettingToggle,
+  WidgetSettingSelect,
+  WidgetSettingNumber,
+  WidgetSettingText,
+  WidgetSettingRange,
+  WidgetSettingsGroup,
+  WidgetSettingsSchema,
   // Re-exported from editing-core
   UnifiedPosition,
   UnifiedVisibility,
@@ -110,6 +120,16 @@ export {
   metricBlockWidget,
   listBlockWidget,
   galleryGridBlockWidget,
+  // Overlay widget settings types
+  type BadgeWidgetSettings,
+  type PanelWidgetSettings,
+  type UploadWidgetSettings,
+  type ButtonWidgetSettings,
+  type MenuWidgetSettings,
+  type TooltipWidgetSettings,
+  type VideoScrubWidgetSettings,
+  type ProgressWidgetSettings,
+  type SceneViewWidgetSettings,
 } from './register';
 
 // Legacy adapters removed - use registerAllWidgets() instead
@@ -119,6 +139,15 @@ export {
   useWidgetPlacementStore,
   useWidgetInstances,
 } from './widgetPlacementStore';
+
+// Overlay Widget Settings Store
+export {
+  useOverlayWidgetSettingsStore,
+  useOverlayWidgetSettings,
+  getOverlayWidgetSettings,
+  updateOverlayWidgetSettings,
+  type WidgetSettings,
+} from './overlayWidgetSettingsStore';
 
 // Data binding (re-exported for convenience)
 export {
