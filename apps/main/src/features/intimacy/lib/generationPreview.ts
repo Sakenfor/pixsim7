@@ -132,7 +132,9 @@ export async function generateIntimacyPreview(
   // Build generation request
   const genRequest: any = {
     config: {
-      generationType: scene.sceneType || 'dialogue',
+      generationType: 'text_to_video',
+      semanticType: scene.sceneType || 'dialogue',
+      resolutionMode: 'dynamic',
       purpose: 'adaptive',
       style: {
         moodFrom: scene.mood,
@@ -241,7 +243,9 @@ export async function startIntimacyPreview(
   // Build generation request
   const genRequest: any = {
     config: {
-      generationType: scene.sceneType || 'dialogue',
+      generationType: 'text_to_video',
+      semanticType: scene.sceneType || 'dialogue',
+      resolutionMode: 'dynamic',
       purpose: 'adaptive',
       style: {
         moodFrom: scene.mood,

@@ -12,9 +12,9 @@ When adding a new operation type, you MUST update ALL of these locations:
 
 Backend:
   [ ] 1. enums.py - Add to OperationType enum
-  [ ] 2. operation_mapping.py - Add to _CANONICAL_ALIASES (or _SEMANTIC_ALIASES for plugins)
+  [ ] 2. operation_mapping.py - Add to _CANONICAL_ALIASES
   [ ] 3. operation_mapping.py - Add to OPERATION_REGISTRY (below)
-  [ ] 4. (automatic) generation_schemas.py validates dynamically against GENERATION_TYPE_OPERATION_MAP
+  [ ] 4. (automatic) generation_schemas.py validates dynamically against CANONICAL_GENERATION_TYPES
   [ ] 5. creation_service.py - Add validation in _validate_structured_params()
   [ ] 6. creation_service.py - Add canonicalization in _canonicalize_structured_params() if needed
   [ ] 7. provider_service.py - Handle media type classification if image operation
@@ -30,13 +30,9 @@ Frontend:
 
 Run validate_operation_coverage() after changes to verify completeness.
 
-Plugins (optional):
-  - Plugins that want semantic aliases (e.g. "npc_response_v2") should
-    call register_generation_alias() at startup instead of hard-coding
-    new generation_type strings in core code.
 =============================================================================
 """
-from typing import Dict, List, Set, Any, Optional
+from typing import Dict, List, Set, Any
 from dataclasses import dataclass
 
 from pixsim7.backend.main.domain.enums import OperationType
@@ -58,12 +54,7 @@ class OperationSpec:
 
 # Registry of all supported operations with their specifications.
 #
-# NOTE: generation_type_aliases lists both canonical and semantic aliases:
-#   - Canonical aliases directly match the OperationType (e.g., "text_to_image")
-#   - Semantic aliases are plugin-owned (e.g., "dialogue", "npc_response")
-#
-# Plugins can register additional semantic aliases at runtime via
-# register_generation_alias().
+# NOTE: generation_type_aliases lists canonical aliases only.
 OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   OperationType.TEXT_TO_IMAGE: OperationSpec(
     operation_type=OperationType.TEXT_TO_IMAGE,
@@ -75,23 +66,19 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
     operation_type=OperationType.IMAGE_TO_IMAGE,
     output_media="image",
     required_inputs=["composition_assets"],
-    generation_type_aliases=["image_to_image", "image_edit"],  # Canonical + legacy
+    generation_type_aliases=["image_to_image"],  # Canonical
   ),
   OperationType.TEXT_TO_VIDEO: OperationSpec(
     operation_type=OperationType.TEXT_TO_VIDEO,
     output_media="video",
     required_inputs=["prompt"],
-    # Canonical: "text_to_video"
-    # Semantic: "variation", "dialogue", "environment" (game-dialogue plugin)
-    generation_type_aliases=["text_to_video", "variation", "dialogue", "environment"],
+    generation_type_aliases=["text_to_video"],  # Canonical
   ),
   OperationType.IMAGE_TO_VIDEO: OperationSpec(
     operation_type=OperationType.IMAGE_TO_VIDEO,
     output_media="video",
     required_inputs=["image_url"],
-    # Canonical: "image_to_video"
-    # Semantic: "npc_response" (game-dialogue plugin)
-    generation_type_aliases=["image_to_video", "npc_response"],
+    generation_type_aliases=["image_to_video"],  # Canonical
   ),
   OperationType.VIDEO_EXTEND: OperationSpec(
     operation_type=OperationType.VIDEO_EXTEND,
@@ -103,7 +90,7 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
     operation_type=OperationType.VIDEO_TRANSITION,
     output_media="video",
     required_inputs=["image_urls", "prompts"],
-    generation_type_aliases=["video_transition", "transition"],  # Canonical + legacy
+    generation_type_aliases=["video_transition"],  # Canonical
   ),
   OperationType.FUSION: OperationSpec(
     operation_type=OperationType.FUSION,
@@ -163,78 +150,13 @@ _CANONICAL_ALIASES: Dict[str, OperationType] = {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SEMANTIC ALIASES - Plugin-managed (loaded here for startup, owned by plugins)
-# These MUST match what plugins register via register_generation_alias().
-# If a plugin stops registering an alias, remove it here too.
 # ═══════════════════════════════════════════════════════════════════════════════
-_SEMANTIC_ALIASES: Dict[str, OperationType] = {
-  # Owner: game_dialogue plugin
-  "dialogue": OperationType.TEXT_TO_VIDEO,
-  "environment": OperationType.TEXT_TO_VIDEO,
-  "variation": OperationType.TEXT_TO_VIDEO,
-  "npc_response": OperationType.IMAGE_TO_VIDEO,
-  # Legacy aliases (kept for backward compatibility)
-  "transition": OperationType.VIDEO_TRANSITION,  # Prefer "video_transition"
-  "image_edit": OperationType.IMAGE_TO_IMAGE,    # Prefer "image_to_image"
-}
+CANONICAL_GENERATION_TYPES: Set[str] = set(_CANONICAL_ALIASES.keys())
 
 # Combined map (used at runtime)
 GENERATION_TYPE_OPERATION_MAP: Dict[str, OperationType] = {
   **_CANONICAL_ALIASES,
-  **_SEMANTIC_ALIASES,
 }
-
-
-# Optional metadata for dynamically registered aliases. This lets plugins
-# declare their own semantic names (e.g. "npc_response_v2") without
-# hard-coding them into the core map, while still keeping everything
-# introspectable for tooling and audits.
-ALIAS_METADATA: Dict[str, Dict[str, Any]] = {}
-
-
-def register_generation_alias(
-  alias: str,
-  operation_type: OperationType,
-  owner: Optional[str] = None,
-) -> None:
-  """
-  Register a new generation_type alias at runtime.
-
-  Intended for plugins or higher-level systems that want to introduce
-  their own semantic names (e.g. "npc_response_v2") while still
-  routing through canonical OperationType values.
-
-  This function:
-  - Adds alias → OperationType to GENERATION_TYPE_OPERATION_MAP if missing.
-  - Adds alias to the OperationSpec.generation_type_aliases list.
-  - Records optional owner metadata for introspection.
-
-  It is a no-op if the alias already maps to the same OperationType.
-  If the alias exists with a *different* OperationType, an AssertionError
-  is raised to avoid silent drift.
-  """
-
-  existing = GENERATION_TYPE_OPERATION_MAP.get(alias)
-  if existing is not None and existing != operation_type:
-    raise AssertionError(
-      f"generation_type alias '{alias}' is already mapped to "
-      f"{existing.value}, cannot remap to {operation_type.value}"
-    )
-
-  # Update the primary mapping if needed
-  if existing is None:
-    GENERATION_TYPE_OPERATION_MAP[alias] = operation_type
-
-  # Ensure the alias is tracked in the OperationSpec
-  spec = OPERATION_REGISTRY.get(operation_type)
-  if spec is not None and alias not in spec.generation_type_aliases:
-    spec.generation_type_aliases.append(alias)
-
-  # Record metadata for tooling/audits
-  ALIAS_METADATA[alias] = {
-    "operation_type": operation_type.value,
-    "owner": owner,
-  }
 
 
 def resolve_operation_type(generation_type: str) -> OperationType:
@@ -262,6 +184,75 @@ def resolve_operation_type_or_default(
   return GENERATION_TYPE_OPERATION_MAP.get(generation_type, default)
 
 
+def resolve_operation_type_dynamic(config: Any) -> OperationType:
+  """
+  Resolve OperationType using heuristics based on config inputs.
+
+  Intended for semantic/intent-driven flows where the operation is not fixed.
+  """
+
+  data = config.model_dump(by_alias=True) if hasattr(config, "model_dump") else dict(config or {})
+
+  def _get_first(*keys):
+    for key in keys:
+      if key in data and data[key] is not None:
+        return data[key]
+    return None
+
+  image_urls = _get_first("image_urls", "imageUrls")
+  video_url = _get_first("video_url", "videoUrl")
+  original_video_id = _get_first("original_video_id", "originalVideoId")
+  image_url = _get_first("image_url", "imageUrl")
+  source_asset_id = _get_first("source_asset_id", "sourceAssetId")
+  source_asset_ids = _get_first("source_asset_ids", "sourceAssetIds")
+  composition_assets = _get_first("composition_assets", "compositionAssets")
+
+  if isinstance(image_urls, list) and len(image_urls) >= 2:
+    return OperationType.VIDEO_TRANSITION
+  if video_url or original_video_id:
+    return OperationType.VIDEO_EXTEND
+  if image_url or source_asset_id or (isinstance(source_asset_ids, list) and len(source_asset_ids) > 0):
+    return OperationType.IMAGE_TO_VIDEO
+  if composition_assets:
+    return OperationType.IMAGE_TO_IMAGE
+
+  # Default to text_to_video for semantic/intent-driven generation
+  return OperationType.TEXT_TO_VIDEO
+
+
+def resolve_operation_type_from_config(config: Any) -> OperationType:
+  """
+  Resolve OperationType from a GenerationNodeConfig-like object.
+
+  Resolution precedence:
+    1) operation_override (explicit)
+    2) dynamic resolver (resolution_mode == "dynamic")
+    3) generation_type (strict canonical)
+  """
+
+  if config is None:
+    raise ValueError("generation config is required")
+
+  data = config.model_dump(by_alias=True) if hasattr(config, "model_dump") else dict(config)
+  operation_override = data.get("operationOverride") or data.get("operation_override")
+  resolution_mode = data.get("resolutionMode") or data.get("resolution_mode") or "strict"
+  generation_type = data.get("generationType") or data.get("generation_type")
+
+  if operation_override:
+    return resolve_operation_type(operation_override)
+
+  if resolution_mode == "override_only":
+    raise ValueError("operationOverride is required when resolutionMode='override_only'")
+
+  if resolution_mode == "dynamic":
+    return resolve_operation_type_dynamic(data)
+
+  if not generation_type:
+    raise ValueError("generationType is required in strict mode")
+
+  return resolve_operation_type(generation_type)
+
+
 def list_generation_operation_metadata() -> List[dict]:
   """
   Return metadata for all known generation_type → operation_type mappings.
@@ -270,28 +261,20 @@ def list_generation_operation_metadata() -> List[dict]:
   to duplicate backend mappings.
 
   Each entry includes:
-  - generation_type: The alias string (e.g., "text_to_image", "npc_response")
+  - generation_type: The alias string (e.g., "text_to_image")
   - operation_type: The canonical OperationType enum value
-  - owner: Plugin ID that registered this alias (if semantic), or None for canonical
-  - is_semantic_alias: True if plugin-owned, False if canonical core alias
+  - owner: None (canonical-only)
+  - is_semantic_alias: False (canonical-only)
   """
-
-  # Use _CANONICAL_ALIASES as the source of truth
-  canonical_aliases = set(_CANONICAL_ALIASES.keys())
 
   items: List[dict] = []
   for gen_type, op_type in GENERATION_TYPE_OPERATION_MAP.items():
-    # Check if we have owner metadata from plugin registration
-    alias_meta = ALIAS_METADATA.get(gen_type, {})
-    owner = alias_meta.get("owner")
-    is_semantic = gen_type not in canonical_aliases
-
     items.append(
       {
         "generation_type": gen_type,
         "operation_type": op_type.value,
-        "owner": owner,
-        "is_semantic_alias": is_semantic,
+        "owner": None,
+        "is_semantic_alias": False,
       }
     )
   return items

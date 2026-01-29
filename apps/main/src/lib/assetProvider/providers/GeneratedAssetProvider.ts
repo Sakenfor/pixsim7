@@ -74,7 +74,7 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
 
 function buildGenerationConfig(request: AssetRequest): CreateGenerationRequest['config'] {
   const config: CreateGenerationRequest['config'] = {
-    generationType: 'transition',
+    generationType: 'text_to_video',
     purpose: 'gap_fill',
     strategy: request.strategy ?? 'per_playthrough',
     enabled: true,

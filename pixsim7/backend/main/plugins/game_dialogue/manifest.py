@@ -1121,23 +1121,8 @@ async def list_available_concepts(
 def on_load(app):
     """
     Called when plugin is loaded (before app starts).
-
-    Register semantic aliases owned by this plugin.
-
-    NOTE: These aliases are also in operation_mapping._SEMANTIC_ALIASES
-    for startup validation (runs before plugins load). The registration
-    here serves as ownership assertion and will fail if mappings drift.
     """
     from pixsim_logging import configure_logging
-    from pixsim7.backend.main.domain.enums import OperationType
-    from pixsim7.backend.main.shared.operation_mapping import register_generation_alias
-
-    # Register semantic aliases used by dialogue/narrative systems.
-    # These map high-level concepts onto canonical OperationType values.
-    register_generation_alias("npc_response", OperationType.IMAGE_TO_VIDEO, owner="game_dialogue")
-    register_generation_alias("dialogue", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
-    register_generation_alias("environment", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
-    register_generation_alias("variation", OperationType.TEXT_TO_VIDEO, owner="game_dialogue")
 
     logger = configure_logging("plugin.game-dialogue")
     logger.info("Game Dialogue plugin loaded")

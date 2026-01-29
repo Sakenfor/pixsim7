@@ -134,6 +134,7 @@ export function buildGenerateContentRequest(
   // Assemble request
   const request: GenerateContentRequest = {
     type: config.generationType,
+    semantic_type: config.semanticType,
     style: config.style,
     duration: config.duration,
     constraints: config.constraints,
@@ -147,7 +148,7 @@ export function buildGenerateContentRequest(
   };
 
   // Add NPC params if this is an NPC response generation
-  if (config.generationType === 'npc_response' && npcIds && npcIds.length > 0) {
+  if (config.semanticType === 'npc_response' && npcIds && npcIds.length > 0) {
     // NPC params would be populated here from config or session
     // For now, this is a placeholder showing the integration point
     request.npc_params = {

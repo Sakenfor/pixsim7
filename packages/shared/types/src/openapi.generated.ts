@@ -2138,6 +2138,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/reupload": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Reupload Asset To Provider
+         * @description Upload an existing asset to a specific provider.
+         *
+         *     This is useful for:
+         *     - Uploading extracted frames to a provider
+         *     - Cross-provider operations (asset exists on one provider, need it on another)
+         *     - Re-uploading assets that failed previous upload attempts
+         *
+         *     The asset must already exist in the system (have a local file or remote URL).
+         */
+        readonly post: operations["reupload_asset_to_provider_api_v1_assets__asset_id__reupload_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/siblings": {
         readonly parameters: {
             readonly query?: never;
@@ -2559,18 +2586,23 @@ export interface paths {
          *     - SHA256 hash for deduplication
          *     - Local storage (already downloaded)
          *
+         *     If provider_id is specified, the extracted frame will be uploaded to that
+         *     provider and the provider_uploads field will be populated.
+         *
          *     Example request:
          *     ```json
          *     {
          *       "video_asset_id": 123,
          *       "timestamp": 10.5,
-         *       "frame_number": 315
+         *       "frame_number": 315,
+         *       "provider_id": "pixverse"
          *     }
          *     ```
          *
          *     Returns:
          *     - Image asset (either existing or newly created)
          *     - Asset includes lineage link to parent video via AssetLineage
+         *     - If provider_id given, asset includes provider_uploads mapping
          */
         readonly post: operations["extract_frame_api_v1_assets_extract_frame_post"];
         readonly delete?: never;
@@ -14635,6 +14667,11 @@ export interface components {
              */
             readonly last_frame: boolean;
             /**
+             * Provider Id
+             * @description If provided, upload extracted frame to this provider
+             */
+            readonly provider_id?: string | null;
+            /**
              * Timestamp
              * @description Time in seconds to extract frame
              * @default 0
@@ -15390,6 +15427,15 @@ export interface components {
             readonly fallback: components["schemas"]["FallbackConfigSchema"];
             /** Generationtype */
             readonly generationType: string;
+            /** Semantic type (optional, intent-only) */
+            readonly semanticType?: string;
+            /**
+             * Resolution mode for semantic intent
+             * @default strict
+             */
+            readonly resolutionMode?: "strict" | "dynamic" | "override_only";
+            /** Explicit operation override (canonical) */
+            readonly operationOverride?: string;
             /**
              * Image Url
              * @deprecated
@@ -18000,6 +18046,34 @@ export interface components {
              * @description Echo of requested template kind
              */
             readonly template_kind: string;
+        };
+        /**
+         * ReuploadAssetRequest
+         * @description Request to upload an existing asset to a provider
+         */
+        readonly ReuploadAssetRequest: {
+            /**
+             * Provider Id
+             * @description Target provider ID (e.g., 'pixverse')
+             */
+            readonly provider_id: string;
+        };
+        /**
+         * ReuploadAssetResponse
+         * @description Response from asset reupload
+         */
+        readonly ReuploadAssetResponse: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /**
+             * Message
+             * @default Asset uploaded to provider
+             */
+            readonly message: string;
+            /** Provider Asset Id */
+            readonly provider_asset_id: string;
+            /** Provider Id */
+            readonly provider_id: string;
         };
         /**
          * RoleConceptResponse
@@ -23711,6 +23785,43 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly reupload_asset_to_provider_api_v1_assets__asset_id__reupload_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReuploadAssetRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReuploadAssetResponse"];
                 };
             };
             /** @description Validation Error */

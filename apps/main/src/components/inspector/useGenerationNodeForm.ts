@@ -9,8 +9,13 @@
  * - Validation integration
  */
 
+import {
+  validateGenerationNode,
+  getValidationStatus,
+  type ValidationStatus,
+} from '@pixsim7/game.engine';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { DraftSceneNode } from '@domain/sceneBuilder';
+
 import type {
   GenerationNodeConfig,
   GenerationStrategy,
@@ -20,16 +25,22 @@ import type {
   FallbackConfig,
   GenerationValidationResult,
 } from '@lib/registries';
-import {
-  validateGenerationNode,
-  getValidationStatus,
-  type ValidationStatus,
-} from '@pixsim7/game.engine';
+
+import type { DraftSceneNode } from '@domain/sceneBuilder';
 
 /** Form field values */
 export interface GenerationNodeFormValues {
   // Basic
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment';
+  generationType:
+    | 'text_to_image'
+    | 'text_to_video'
+    | 'image_to_video'
+    | 'image_to_image'
+    | 'video_extend'
+    | 'video_transition'
+    | 'fusion';
+  semanticType: '' | 'dialogue' | 'environment' | 'npc_response' | 'variation';
+  resolutionMode: 'strict' | 'dynamic';
   purpose: 'gap_fill' | 'variation' | 'adaptive' | 'ambient';
   strategy: GenerationStrategy;
   seedSource: 'playthrough' | 'player' | 'timestamp' | 'fixed' | '';
@@ -62,7 +73,9 @@ export interface GenerationNodeFormValues {
 
 /** Default form values */
 const DEFAULT_VALUES: GenerationNodeFormValues = {
-  generationType: 'transition',
+  generationType: 'text_to_video',
+  semanticType: '',
+  resolutionMode: 'strict',
   purpose: 'gap_fill',
   strategy: 'once',
   seedSource: '',
@@ -123,6 +136,8 @@ export function useGenerationNodeForm({
 
     setValues({
       generationType: config.generationType,
+      semanticType: config.semanticType || '',
+      resolutionMode: config.resolutionMode || 'strict',
       purpose: config.purpose,
       strategy: config.strategy,
       seedSource: config.seedSource || '',
@@ -212,6 +227,8 @@ export function useGenerationNodeForm({
 
     return {
       generationType: values.generationType,
+      semanticType: values.semanticType || undefined,
+      resolutionMode: values.resolutionMode,
       purpose: values.purpose,
       style,
       duration,

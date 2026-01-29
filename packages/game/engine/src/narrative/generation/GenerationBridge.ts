@@ -458,7 +458,7 @@ export class GenerationBridge {
 
     // Start with defaults from world config
     const request: GenerateContentRequest = {
-      type: 'transition',
+      type: 'text_to_video',
       strategy: this.mapStrategy(config.strategy),
       social_context: context.socialContext,
     };

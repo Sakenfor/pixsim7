@@ -60,7 +60,7 @@ function createTestNodeConfig(
   overrides?: Partial<GenerationNodeConfig>
 ): GenerationNodeConfig {
   return {
-    generationType: 'transition',
+    generationType: 'text_to_video',
     purpose: 'gap_fill',
     style: {},
     duration: { min: 10, max: 30, target: 20 },
@@ -283,7 +283,8 @@ describe('validateGenerationNode', () => {
 
   it('should suggest social context for NPC response without it', () => {
     const config = createTestNodeConfig({
-      generationType: 'npc_response',
+      generationType: 'image_to_video',
+      semanticType: 'npc_response',
       // No socialContext
     });
 

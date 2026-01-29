@@ -874,7 +874,7 @@ export class GenerationBridge {
 
     // Start with defaults from world config
     const request: GenerateContentRequest = {
-      type: 'transition',
+      type: 'text_to_video',
       strategy: this.mapStrategy(config.strategy),
       social_context: context.socialContext,
     };
@@ -1245,7 +1245,7 @@ export function createBlockGenerationHooks(config: {
         if (available && resolved.prompts.length > 0) {
           // Build generation request from resolved blocks
           const request: GenerateContentRequest = {
-            type: 'transition',
+            type: 'text_to_video',
             strategy: 'per_playthrough',
             social_context: context.socialContext,
             duration: {
@@ -1862,7 +1862,7 @@ export function createFusionGenerationHooks(config: {
 
       // Generate fusion video
       const request: GenerateContentRequest = {
-        type: 'transition', // Will be routed to fusion
+        type: 'fusion',
         strategy: 'per_playthrough',
         social_context: context.socialContext,
         style: worldConfig?.defaultStyle,

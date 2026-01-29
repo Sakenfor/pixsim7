@@ -29,31 +29,8 @@ export interface GenerateAssetResponse {
  * Uses canonical aliases (matching OperationType enum names) where possible.
  * The backend maps these to OperationType in api/v1/generations.py.
  */
-function mapOperationToGenerationType(
-  operationType?: string
-): 'video_transition' | 'text_to_video' | 'variation' | 'dialogue' | 'environment' | 'image_to_video' | 'image_to_image' | 'fusion' | 'text_to_image' | 'video_extend' {
-  switch (operationType) {
-    case 'text_to_image':
-      return 'text_to_image';
-    case 'text_to_video':
-      return 'text_to_video';
-    case 'video_transition':
-      return 'video_transition';  // Canonical (was 'transition')
-    case 'image_to_video':
-      return 'image_to_video';
-    case 'image_to_image':
-      return 'image_to_image';  // Canonical (was 'image_edit')
-    case 'video_extend':
-      return 'video_extend';
-    case 'dialogue':
-      return 'dialogue';  // Semantic alias (game-dialogue plugin)
-    case 'environment':
-      return 'environment';  // Semantic alias (game-dialogue plugin)
-    case 'fusion':
-      return 'fusion';
-    default:
-      return 'text_to_video';  // Default to canonical alias for unknown operations
-  }
+function mapOperationToGenerationType(operationType?: OperationType): OperationType {
+  return operationType || 'text_to_video';
 }
 
 /**
@@ -83,18 +60,7 @@ const CANONICAL_CONFIG_KEYS = new Set([
 ]);
 
 function buildGenerationConfig(
-  generationType:
-    | 'video_transition'
-    | 'text_to_video'
-    | 'image_to_video'
-    | 'variation'
-    | 'dialogue'
-    | 'environment'
-    | 'npc_response'
-    | 'image_to_image'
-    | 'fusion'
-    | 'text_to_image'
-    | 'video_extend',
+  generationType: OperationType,
   params: Record<string, any>,
   providerId: string = 'pixverse'
 ): GenerationNodeConfigSchema {

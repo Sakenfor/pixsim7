@@ -131,7 +131,9 @@ export function registerIntimacyNodeTypes() {
     color: 'text-fuchsia-700 dark:text-fuchsia-300',
     bgColor: 'bg-fuchsia-100 dark:bg-fuchsia-900/30',
     defaultData: {
-      generationType: 'transition',
+      generationType: 'text_to_video',
+      semanticType: 'dialogue',
+      resolutionMode: 'dynamic',
       purpose: 'adaptive',
       strategy: 'per_playthrough',
       socialContext: {

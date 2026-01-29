@@ -219,7 +219,7 @@ export function createFusionGenerationHooks(config: {
 
       // Generate fusion video
       const request: GenerateContentRequest = {
-        type: 'transition', // Will be routed to fusion
+        type: 'fusion',
         strategy: 'per_playthrough',
         social_context: context.socialContext,
         style: worldConfig?.defaultStyle,

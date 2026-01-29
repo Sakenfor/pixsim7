@@ -325,7 +325,7 @@ export function registerBuiltinNodeTypes() {
     bgColor: 'bg-violet-100 dark:bg-violet-900/30',
     defaultData: {
       config: {
-        generationType: 'transition',
+        generationType: 'video_transition',
         purpose: 'gap_fill',
         style: {
           pacing: 'medium',

@@ -90,7 +90,7 @@ export function createBlockGenerationHooks(config: {
         if (available && resolved.prompts.length > 0) {
           // Build generation request from resolved blocks
           const request: GenerateContentRequest = {
-            type: 'transition',
+            type: 'text_to_video',
             strategy: 'per_playthrough',
             social_context: context.socialContext,
             duration: {

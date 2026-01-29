@@ -32,12 +32,12 @@ from pixsim7.backend.main.domain import (
 def basic_generation_node_config() -> Dict[str, Any]:
     """Basic generation node configuration"""
     return {
-        "generationType": "transition",
+        "generationType": "video_transition",
         "purpose": "gap_fill",
         "strategy": "once",
         "style": {
-            "pacing": "moderate",
-            "transitionType": "smooth",
+            "pacing": "medium",
+            "transitionType": "gradual",
             "mood": "neutral"
         },
         "duration": {
@@ -61,8 +61,9 @@ def basic_generation_node_config() -> Dict[str, Any]:
 def social_context_generation_config() -> Dict[str, Any]:
     """Generation config with social context"""
     return {
-        "generationType": "npc_response",
-        "purpose": "dialogue",
+        "generationType": "image_to_video",
+        "semanticType": "npc_response",
+        "purpose": "adaptive",
         "strategy": "per_playthrough",
         "style": {
             "pacing": "moderate",

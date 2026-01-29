@@ -127,6 +127,7 @@ export function validateGenerationNode(
   const suggestions: string[] = [];
 
   const { world, userPrefs } = options || {};
+  const semanticType = config.semanticType;
 
   // Validate basic config
   if (!config.enabled) {
@@ -148,19 +149,27 @@ export function validateGenerationNode(
 
   // Validate generation type + purpose combinations
   if (config.generationType && config.purpose) {
-    const validCombinations: Record<string, string[]> = {
-      transition: ['gap_fill', 'variation', 'adaptive'],
+    const semanticPurposeMap: Record<string, string[]> = {
       variation: ['variation', 'adaptive'],
       dialogue: ['variation', 'adaptive', 'ambient'],
       environment: ['ambient', 'adaptive'],
       npc_response: ['adaptive', 'variation'],
     };
 
-    const validPurposes = validCombinations[config.generationType];
-    if (validPurposes && !validPurposes.includes(config.purpose)) {
+    const validSemanticPurposes = semanticType ? semanticPurposeMap[semanticType] : undefined;
+    if (validSemanticPurposes && !validSemanticPurposes.includes(config.purpose)) {
       warnings.push(
-        `Purpose '${config.purpose}' is unusual for generation type '${config.generationType}'. Expected: ${validPurposes.join(', ')}`
+        `Purpose '${config.purpose}' is unusual for semantic type '${semanticType}'. Expected: ${validSemanticPurposes.join(', ')}`
       );
+    }
+
+    if (!validSemanticPurposes && config.generationType === 'video_transition') {
+      const validPurposes = ['gap_fill', 'variation', 'adaptive'];
+      if (!validPurposes.includes(config.purpose)) {
+        warnings.push(
+          `Purpose '${config.purpose}' is unusual for generation type '${config.generationType}'. Expected: ${validPurposes.join(', ')}`
+        );
+      }
     }
   }
 
@@ -231,13 +240,13 @@ export function validateGenerationNode(
 
     // Suggest NPC IDs if missing
     if (!config.socialContext.npcIds || config.socialContext.npcIds.length === 0) {
-      if (config.generationType === 'npc_response') {
+      if (semanticType === 'npc_response') {
         warnings.push('NPC response generation should include npcIds in social context');
       }
     }
   } else {
     // No social context
-    if (config.generationType === 'npc_response' || config.generationType === 'dialogue') {
+    if (semanticType === 'npc_response' || semanticType === 'dialogue') {
       suggestions.push(
         'Consider adding social context to make generation relationship-aware'
       );
@@ -248,7 +257,7 @@ export function validateGenerationNode(
   if (config.style) {
     // Check for mood transition consistency
     if (
-      config.generationType === 'transition' &&
+      config.generationType === 'video_transition' &&
       (!config.style.moodFrom || !config.style.moodTo)
     ) {
       warnings.push(
@@ -284,7 +293,7 @@ export function validateGenerationNode(
     }
   } else {
     // No style rules
-    if (config.generationType === 'transition') {
+    if (config.generationType === 'video_transition') {
       suggestions.push('Consider adding style rules to guide transition mood and pacing');
     }
   }
@@ -379,7 +388,7 @@ export function validateGenerationNode(
     }
 
     // Warn about very short durations
-    if (config.generationType === 'transition' && max !== undefined && max < 2) {
+    if (config.generationType === 'video_transition' && max !== undefined && max < 2) {
       warnings.push(
         'Transition duration under 2 seconds may feel too abrupt. Consider 3-10 seconds for smooth transitions'
       );
@@ -405,7 +414,7 @@ export function validateGenerationNode(
     }
   } else {
     // No duration specified
-    if (config.generationType === 'transition' || config.generationType === 'dialogue') {
+    if (config.generationType === 'video_transition' || semanticType === 'dialogue') {
       warnings.push(
         `${config.generationType} generation should specify duration constraints for better quality`
       );
@@ -441,7 +450,7 @@ export function validateGenerationNode(
       }
     }
 
-    if (config.fallback.mode === 'placeholder' && config.generationType === 'transition') {
+    if (config.fallback.mode === 'placeholder' && config.generationType === 'video_transition') {
       warnings.push(
         'Placeholder fallback for transitions may disrupt narrative flow. Consider "default_content" or "retry"'
       );
@@ -462,7 +471,7 @@ export function validateGenerationNode(
       'Strategy "always" will regenerate content every time - may impact performance and cost'
     );
 
-    if (config.generationType === 'transition' && config.purpose === 'gap_fill') {
+    if (config.generationType === 'video_transition' && config.purpose === 'gap_fill') {
       suggestions.push(
         'Consider using "per_playthrough" strategy for transitions to enable caching'
       );

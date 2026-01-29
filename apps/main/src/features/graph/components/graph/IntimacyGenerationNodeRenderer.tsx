@@ -9,6 +9,7 @@ import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
 function IntimacyGenerationNodeRenderer({ node, hasErrors, isSelected }: NodeRendererProps) {
   const data = node.metadata as {
     generationType?: string;
+    semanticType?: string;
     purpose?: string;
     strategy?: string;
     socialContext?: {
@@ -16,7 +17,9 @@ function IntimacyGenerationNodeRenderer({ node, hasErrors, isSelected }: NodeRen
       contentRating?: string;
     };
   } | undefined;
-  const generationType = data?.generationType ?? 'transition';
+  const generationType = data?.generationType ?? 'text_to_video';
+  const semanticType = data?.semanticType;
+  const displayType = semanticType ? `${semanticType} • ${generationType}` : generationType;
   const purpose = data?.purpose ?? 'adaptive';
   const strategy = data?.strategy ?? 'per_playthrough';
   const intimacyBand = data?.socialContext?.intimacyBand ?? 'light';
@@ -33,7 +36,7 @@ function IntimacyGenerationNodeRenderer({ node, hasErrors, isSelected }: NodeRen
           </div>
         </div>
         <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-300">
-          {generationType}
+          {displayType}
         </span>
       </div>
 

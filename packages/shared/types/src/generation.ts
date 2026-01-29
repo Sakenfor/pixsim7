@@ -5,6 +5,24 @@ import type { AssetRef } from './ids';
 
 export type GenerationStrategy = 'once' | 'per_playthrough' | 'per_player' | 'always'
 
+export type GenerationType =
+  | 'text_to_image'
+  | 'text_to_video'
+  | 'image_to_video'
+  | 'image_to_image'
+  | 'video_extend'
+  | 'video_transition'
+  | 'fusion'
+
+export type GenerationResolutionMode = 'strict' | 'dynamic' | 'override_only'
+
+export type GenerationSemanticType =
+  | 'dialogue'
+  | 'environment'
+  | 'npc_response'
+  | 'variation'
+  | (string & {})
+
 // ============================================================================
 // Image Composition (Multi-Image Roles)
 // ============================================================================
@@ -130,7 +148,10 @@ export interface FallbackConfig {
 }
 
 export interface GenerationNodeConfig {
-  generationType: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
+  generationType: GenerationType
+  semanticType?: GenerationSemanticType
+  resolutionMode?: GenerationResolutionMode
+  operationOverride?: GenerationType
   purpose: 'gap_fill' | 'variation' | 'adaptive' | 'ambient'
   style: StyleRules
   duration: DurationRule
@@ -173,7 +194,8 @@ export interface GenerationEdgeMeta {
 
 // Backend Request & Response Contracts
 export interface GenerateContentRequest {
-  type: 'transition' | 'variation' | 'dialogue' | 'environment' | 'npc_response'
+  type: GenerationType
+  semantic_type?: GenerationSemanticType
   from_scene?: SceneRef
   to_scene?: SceneRef
   style?: StyleRules

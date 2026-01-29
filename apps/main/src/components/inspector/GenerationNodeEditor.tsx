@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
-import { Button } from '@pixsim7/shared.ui';
-import type { DraftSceneNode } from '@domain/sceneBuilder';
-import { useToast } from '@pixsim7/shared.ui';
-import { useGraphStore } from '@features/graph';
 import { getValidationSummary } from '@pixsim7/game.engine';
+import { useToast } from '@pixsim7/shared.ui';
+import { Button } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
 import { createGeneration, type SceneRef } from '@lib/api/generations';
+
 import { fromGenerationResponse, type GenerationModel } from '@features/generation';
+import { useGraphStore } from '@features/graph';
+
+import type { DraftSceneNode } from '@domain/sceneBuilder';
+
 import { useGenerationNodeForm } from './useGenerationNodeForm';
 
 interface GenerationNodeEditorProps {
@@ -217,11 +221,44 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
             onChange={(e) => setField('generationType', e.target.value as any)}
             className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
           >
-            <option value="transition">Transition</option>
-            <option value="variation">Variation</option>
+            <option value="text_to_image">Text to Image</option>
+            <option value="text_to_video">Text to Video</option>
+            <option value="image_to_video">Image to Video</option>
+            <option value="image_to_image">Image to Image</option>
+            <option value="video_extend">Video Extend</option>
+            <option value="video_transition">Video Transition</option>
+            <option value="fusion">Fusion</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Semantic Type (optional)</label>
+          <select
+            value={values.semanticType}
+            onChange={(e) => setField('semanticType', e.target.value as any)}
+            className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+          >
+            <option value="">None</option>
             <option value="dialogue">Dialogue</option>
             <option value="environment">Environment</option>
+            <option value="npc_response">NPC Response</option>
+            <option value="variation">Variation</option>
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">Resolution Mode</label>
+          <select
+            value={values.resolutionMode}
+            onChange={(e) => setField('resolutionMode', e.target.value as any)}
+            className="w-full px-3 py-2 border rounded text-sm bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600"
+          >
+            <option value="strict">Strict</option>
+            <option value="dynamic">Dynamic</option>
+          </select>
+          <p className="text-xs text-neutral-500 mt-1">
+            Dynamic mode allows semantic intents to resolve to the best operation at runtime.
+          </p>
         </div>
 
         <div>

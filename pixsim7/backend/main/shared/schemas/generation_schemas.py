@@ -4,8 +4,8 @@ Pydantic schemas for Generation API
 These schemas map the frontend GenerationNodeConfig types to backend
 Generation model and provide request/response validation.
 """
-from pydantic import BaseModel, Field, field_validator, ConfigDict, AliasChoices
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict, AliasChoices
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -108,16 +108,39 @@ class GenerationNodeConfigSchema(BaseModel):
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="allow")
 
     generation_type: str = Field(..., alias="generationType")
+    semantic_type: Optional[str] = Field(None, alias="semanticType")
+    resolution_mode: Literal["strict", "dynamic", "override_only"] = Field(
+        "strict", alias="resolutionMode"
+    )
+    operation_override: Optional[str] = Field(None, alias="operationOverride")
 
     @field_validator('generation_type')
     @classmethod
     def validate_generation_type(cls, v: str) -> str:
-        """Validate generation_type against the canonical operation map."""
-        from pixsim7.backend.main.shared.operation_mapping import GENERATION_TYPE_OPERATION_MAP
-        if v not in GENERATION_TYPE_OPERATION_MAP:
-            valid = sorted(GENERATION_TYPE_OPERATION_MAP.keys())
+        """Validate generation_type against canonical generation types."""
+        from pixsim7.backend.main.shared.operation_mapping import CANONICAL_GENERATION_TYPES
+        if v not in CANONICAL_GENERATION_TYPES:
+            valid = sorted(CANONICAL_GENERATION_TYPES)
             raise ValueError(f"Invalid generation_type '{v}'. Must be one of: {valid}")
         return v
+
+    @field_validator('operation_override')
+    @classmethod
+    def validate_operation_override(cls, v: Optional[str]) -> Optional[str]:
+        """Validate operation_override against canonical generation types."""
+        if v is None:
+            return v
+        from pixsim7.backend.main.shared.operation_mapping import CANONICAL_GENERATION_TYPES
+        if v not in CANONICAL_GENERATION_TYPES:
+            valid = sorted(CANONICAL_GENERATION_TYPES)
+            raise ValueError(f"Invalid operation_override '{v}'. Must be one of: {valid}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_resolution_mode(self):
+        if self.resolution_mode == "override_only" and not self.operation_override:
+            raise ValueError("operationOverride is required when resolutionMode='override_only'")
+        return self
     purpose: str = Field(..., pattern="^(gap_fill|variation|adaptive|ambient)$")
     style: StyleRulesSchema
     duration: DurationRuleSchema
@@ -272,7 +295,7 @@ class CreateGenerationRequest(BaseModel):
         json_schema_extra={
             "example": {
                 "config": {
-                    "generation_type": "transition",
+                    "generation_type": "video_transition",
                     "purpose": "gap_fill",
                     "style": {
                         "mood_from": "tense",

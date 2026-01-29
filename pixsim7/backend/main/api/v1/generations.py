@@ -32,7 +32,7 @@ from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
 )
 from pixsim7.backend.main.shared.operation_mapping import (
-    resolve_operation_type,
+    resolve_operation_type_from_config,
     list_generation_operation_metadata,
 )
 from pixsim7.backend.main.shared.rate_limit import job_create_limiter, get_client_identifier
@@ -102,8 +102,8 @@ async def create_generation(
             "social_context": social_context_dict,
         }
 
-        generation_type = request.config.generation_type if request.config else "transition"
-        operation_type = resolve_operation_type(generation_type)
+        generation_type = request.config.generation_type
+        operation_type = resolve_operation_type_from_config(request.config)
 
         # Build prompt config if template_id or prompt_version_id provided
         prompt_config = None
@@ -151,6 +151,8 @@ async def create_generation(
     except QuotaExceededError as e:
         raise HTTPException(status_code=429, detail=str(e))
     except DomainValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to create generation: {e}", exc_info=True)
