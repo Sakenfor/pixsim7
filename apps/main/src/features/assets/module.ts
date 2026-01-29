@@ -92,5 +92,15 @@ export const assetsModule: Module = {
     featured: true,
     component: lazy(() => import('../../routes/Assets').then(m => ({ default: m.AssetsRoute }))),
     actions: [openGalleryAction, uploadAssetAction, searchAssetsAction],
+    appMap: {
+      backend: [
+        'pixsim7.backend.main.api.v1.assets',
+        'pixsim7.backend.main.api.v1.assets_bulk',
+        'pixsim7.backend.main.api.v1.assets_tags',
+        'pixsim7.backend.main.api.v1.assets_versions',
+        'pixsim7.backend.main.api.v1.assets_maintenance',
+        'pixsim7.backend.main.services.asset',
+      ],
+    },
   },
 };

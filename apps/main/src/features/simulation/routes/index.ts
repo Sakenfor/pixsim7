@@ -26,5 +26,9 @@ export const simulationModule: Module = {
     featureId: 'simulation',
     hidden: true,
     component: lazy(() => import('../../../routes/SimulationPlayground').then(m => ({ default: m.SimulationPlayground }))),
+    appMap: {
+      docs: ['docs/backend/simulation.md'],
+      backend: ['pixsim7.backend.main.services.simulation'],
+    },
   },
 };

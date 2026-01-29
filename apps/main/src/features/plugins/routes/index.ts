@@ -38,6 +38,16 @@ export const pluginManagerModule: Module = {
     showInNav: true,
     actions: [openPluginManagerAction],
     component: lazy(() => import('../../../components/PluginManager').then(m => ({ default: m.PluginManagerUI }))),
+    appMap: {
+      docs: [
+        'docs/systems/plugins/PLUGIN_SYSTEM.md',
+        'docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md',
+      ],
+      backend: [
+        'pixsim7.backend.main.api.v1.plugins',
+        'pixsim7.backend.main.infrastructure.plugins',
+      ],
+    },
   },
 };
 

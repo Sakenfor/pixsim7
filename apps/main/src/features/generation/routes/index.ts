@@ -63,5 +63,15 @@ export const generationPageModule: Module = {
     showInNav: true,
     protected: true,
     actions: [quickGenerateAction, openPresetsAction, selectProviderAction],
+    appMap: {
+      docs: [
+        'docs/systems/generation/overview.md',
+        'docs/systems/generation/GENERATION_GUIDE.md',
+      ],
+      backend: [
+        'pixsim7.backend.main.api.v1.generations',
+        'pixsim7.backend.main.services.generation',
+      ],
+    },
   },
 };
