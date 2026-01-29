@@ -11,9 +11,9 @@ Workspace panels in PixSim7 are now first-class plugins integrated with the unif
 - Plugin Browser UI for panel management
 - Metadata-driven architecture
 
-**Note:** The plugin catalog is now the source of truth. `panelRegistry` and
-`registryBridge` are legacy compatibility layers and should not be used for new
-code. Prefer `registerPluginDefinition()` and `panelSelectors`.
+**Note:** The plugin catalog is now the source of truth. Use
+`registerPluginDefinition()` from `pluginRuntime.ts` for registration and
+`pluginCatalog` or `panelSelectors` for queries.
 
 ---
 
@@ -130,41 +130,6 @@ await registerPluginDefinition({
 ```
 
 ---
-
-## Registry Bridge Functions
-
-### (Deprecated) `registerPanelWithPlugin()`
-
-Legacy helper that registered a panel in both `panelRegistry` and `pluginCatalog`.
-
-```typescript
-registerPanelWithPlugin(
-  panel: PanelDefinition,
-  options?: RegisterWithMetadataOptions
-): void
-```
-
-**Options:**
-- `origin`: Where the panel came from (`'builtin'`, `'plugin-dir'`, `'ui-bundle'`)
-- `activationState`: Initial state (`'active'` or `'inactive'`)
-- `canDisable`: Whether users can disable this panel
-- `metadata`: Additional plugin metadata
-
-### (Deprecated) `registerBuiltinPanel()`
-
-Convenience function for registering built-in panels.
-
-```typescript
-registerBuiltinPanel(panel: PanelDefinition): void
-```
-
-Equivalent to:
-```typescript
-registerPanelWithPlugin(panel, {
-  origin: 'builtin',
-  canDisable: false
-});
-```
 
 ---
 
@@ -383,32 +348,12 @@ const devPanels = allPanels.filter(p => p.category === 'development');
 
 ---
 
-## Bulk Sync and Debugging
-
-### Sync All Panels to Catalog
-
-```typescript
-import { syncCatalogFromRegistries } from '@/lib/plugins/registryBridge';
-
-// Sync all registries including panels
-syncCatalogFromRegistries();
-```
-
-### Print Registry Comparison
-
-```typescript
-import { printRegistryComparison } from '@/lib/plugins/registryBridge';
-
-// Shows counts in registry vs catalog
-printRegistryComparison();
-// Output includes:
-// Workspace Panels: 13 in registry, 13 in catalog
-```
+## Debugging
 
 ### Print Catalog Summary
 
 ```typescript
-import { pluginCatalog } from '@/lib/plugins/pluginSystem';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
 pluginCatalog.printSummary();
 // Shows total plugins, counts by family, origin, and activation state
@@ -418,9 +363,9 @@ pluginCatalog.printSummary();
 
 ## Best Practices
 
-### 1. Use Registry Bridge Functions
+### 1. Use Plugin Runtime
 
-Always use `registerPluginDefinition()` instead of directly calling `panelRegistry.register()`. This ensures catalog metadata tracking.
+Always use `registerPluginDefinition()` from `pluginRuntime.ts`. This ensures catalog metadata tracking.
 
 ### 2. Set Appropriate Metadata
 
@@ -450,33 +395,25 @@ Panel IDs should be unique, lowercase, and kebab-case (e.g., `'my-custom-panel'`
 
 ---
 
-## Files Modified/Created
+## Key Files
 
-### Created
-- None (all functionality added to existing files)
-
-### Modified
 1. `apps/main/src/lib/plugins/pluginSystem.ts`
-   - Added `'workspace-panel'` to `PluginFamily`
-   - Added metadata extension for workspace panels
+   - `PluginCatalog` class - single source of truth
+   - `PluginActivationManager` - enable/disable management
+   - `PluginFamily` type includes `'workspace-panel'`
 
-2. `apps/main/src/lib/plugins/registryBridge.ts`
-   - Added `registerPanelWithPlugin()` function
-   - Added `registerBuiltinPanel()` function
-   - Added panel sync to `syncCatalogFromRegistries()`
-   - Added panels to `printRegistryComparison()`
+2. `apps/main/src/lib/plugins/pluginRuntime.ts`
+   - `registerPluginDefinition()` - unified registration entry point
 
-3. `apps/main/src/features/panels/domain/definitions/*/index.ts`
-   - Built-in panels defined for auto-discovery (registered via bridge)
+3. `apps/main/src/lib/plugins/familyAdapters.ts`
+   - Family-specific metadata builders and registry adapters
 
-4. `apps/main/src/components/plugins/PluginBrowser.tsx`
-   - Added **Workspace Panels** tab
-   - Added `WorkspacePanelsBrowser` component
-   - Added `WorkspacePanelListItem` component
+4. `apps/main/src/features/panels/domain/definitions/*/index.ts`
+   - Built-in panels defined for auto-discovery
 
-5. `apps/main/src/components/settings/PanelConfigurationPanel.tsx`
-   - Added plugin origin badges to panel cards
-   - Shows "from: {origin}" for non-builtin panels
+5. `apps/main/src/components/plugins/PluginBrowser.tsx`
+   - **Workspace Panels** tab for browsing panels
+   - `WorkspacePanelsBrowser` and `WorkspacePanelListItem` components
 
 ---
 
