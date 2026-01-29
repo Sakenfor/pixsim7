@@ -42,6 +42,8 @@ PluginProvides = Literal[
     "frontend_interactions",  # Provides frontend interactions
     "frontend_helpers",     # Provides frontend session helpers
     "frontend_gating",      # Provides frontend custom gating conditions
+    "frontend_scene_views", # Provides frontend scene view modes
+    "frontend_control_centers",  # Provides frontend control center modes
     "behavior_conditions",  # Registers behavior conditions
     "behavior_effects",     # Registers behavior effects
     "behavior_scoring",     # Registers scoring factors

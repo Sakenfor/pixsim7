@@ -9,7 +9,9 @@ Plugin families supported:
 - helpers: Session state mutation helpers
 - tools: Interactive gizmo tools
 - tool_packs: Grouped tool collections
-- gating: Custom gating conditions (future)
+- gating: Custom gating conditions
+- scene_views: Scene rendering modes
+- control_centers: Control center UI modes
 
 Usage in plugin manifest.py:
     from pixsim7.backend.main.infrastructure.plugins.frontend_manifest import (
@@ -243,6 +245,56 @@ class FrontendToolPack(BaseModel):
 
 
 # =============================================================================
+# Scene View Definitions
+# =============================================================================
+
+
+class FrontendSceneViewDef(BaseModel):
+    """
+    Scene view plugin definition for frontend registration.
+
+    Scene views provide different rendering modes for scene content
+    (e.g., comic panels, visual novel, etc.).
+    """
+
+    id: str
+    display_name: str = Field(alias="displayName")
+    description: str = ""
+    surfaces: list[str] = Field(default_factory=list)  # overlay, hud, panel
+    default: bool = False
+
+    # Bundle URL for remote loading (optional)
+    bundle_url: Optional[str] = Field(default=None, alias="bundleUrl")
+
+    model_config = {"populate_by_name": True}
+
+
+# =============================================================================
+# Control Center Definitions
+# =============================================================================
+
+
+class FrontendControlCenterDef(BaseModel):
+    """
+    Control center plugin definition for frontend registration.
+
+    Control centers provide different UI modes for the main application
+    (e.g., dock mode, cube mode, etc.).
+    """
+
+    id: str
+    display_name: str = Field(alias="displayName")
+    description: str = ""
+    default: bool = False
+    features: list[str] = Field(default_factory=list)
+
+    # Bundle URL for remote loading (optional)
+    bundle_url: Optional[str] = Field(default=None, alias="bundleUrl")
+
+    model_config = {"populate_by_name": True}
+
+
+# =============================================================================
 # Codegen Task Definition (Escape Hatch - Option A)
 # =============================================================================
 
@@ -290,6 +342,10 @@ class FrontendPluginManifest(BaseModel):
     gating: list[FrontendGatingDef] = Field(default_factory=list)
     tools: list[FrontendToolDef] = Field(default_factory=list)
     tool_packs: list[FrontendToolPack] = Field(default_factory=list, alias="toolPacks")
+
+    # UI plugin families
+    scene_views: list[FrontendSceneViewDef] = Field(default_factory=list, alias="sceneViews")
+    control_centers: list[FrontendControlCenterDef] = Field(default_factory=list, alias="controlCenters")
 
     # Escape hatch for custom codegen (Option A)
     codegen_tasks: list[CodegenTaskDef] = Field(default_factory=list, alias="codegenTasks")

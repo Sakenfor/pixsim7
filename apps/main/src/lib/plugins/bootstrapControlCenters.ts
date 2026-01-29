@@ -1,64 +1,153 @@
 /**
- * Control Center Plugin Bootstrap
+ * Control Center Plugin Auto-Discovery
  *
- * Loads and registers all control center plugins on app startup.
+ * Uses Vite's import.meta.glob for build-time discovery of control center plugins.
+ * Replaces hardcoded plugin imports with file-based auto-discovery.
+ *
+ * Convention:
+ * - Control center plugins live in `src/plugins/ui/` with `controlCenter` in manifest
+ * - Each plugin exports:
+ *   - `manifest: ControlCenterPluginManifest`
+ *   - `plugin: ControlCenterPlugin`
+ *   - `registerXxx(): Promise<void>` (optional, for manual registration)
+ *
+ * Directory structure:
+ * ```
+ * src/plugins/ui/
+ * ├── dock-control-center/
+ * │   └── plugin.tsx          # exports manifest, plugin
+ * └── cube-control-center/    # (future)
+ *     └── plugin.tsx
+ * ```
  */
+
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
+import type {
+  ControlCenterPlugin,
+  ControlCenterPluginManifest,
+} from '@lib/plugins/controlCenterPlugin';
 
 import type { PluginRegistration } from './registration';
 
 /**
- * Bootstrap control center plugins
- * This registers all available control center implementations
+ * Control center plugin module shape.
+ */
+interface ControlCenterPluginModule {
+  manifest: ControlCenterPluginManifest;
+  plugin: ControlCenterPlugin;
+}
+
+/**
+ * Discovered control center with metadata.
+ */
+export interface DiscoveredControlCenter {
+  manifest: ControlCenterPluginManifest;
+  plugin: ControlCenterPlugin;
+  sourcePath: string;
+}
+
+/**
+ * Import all control center plugin modules using Vite's glob import.
+ * This is evaluated at build time.
+ *
+ * We look for plugin.tsx files in ui/ subdirectories that have controlCenter in their manifest.
+ */
+const controlCenterModules = import.meta.glob<ControlCenterPluginModule>(
+  ['../../plugins/ui/*/plugin.tsx'],
+  { eager: true }
+);
+
+/**
+ * Check if a module is a control center plugin.
+ */
+function isControlCenterPlugin(module: unknown): module is ControlCenterPluginModule {
+  const m = module as Record<string, unknown>;
+  return (
+    m &&
+    typeof m === 'object' &&
+    'manifest' in m &&
+    'plugin' in m &&
+    typeof m.manifest === 'object' &&
+    m.manifest !== null &&
+    'controlCenter' in (m.manifest as Record<string, unknown>)
+  );
+}
+
+/**
+ * Discover all control center plugins from the plugins directory.
+ */
+export function discoverControlCenters(): DiscoveredControlCenter[] {
+  const discovered: DiscoveredControlCenter[] = [];
+
+  for (const [path, module] of Object.entries(controlCenterModules)) {
+    if (isControlCenterPlugin(module)) {
+      discovered.push({
+        manifest: module.manifest,
+        plugin: module.plugin,
+        sourcePath: path,
+      });
+    }
+    // Skip non-control-center plugins silently (they're other UI plugins)
+  }
+
+  return discovered;
+}
+
+/**
+ * Build plugin registrations for all discovered control centers.
+ * Returns PluginRegistration objects that can be merged with bundle registrations.
+ */
+export async function discoverControlCenterRegistrations(): Promise<PluginRegistration[]> {
+  const discovered = discoverControlCenters();
+  const registrations: PluginRegistration[] = [];
+
+  for (const { manifest, plugin, sourcePath } of discovered) {
+    registrations.push({
+      id: manifest.id,
+      family: 'control-center',
+      origin: 'builtin',
+      source: 'source',
+      label: manifest.name,
+      register: async () => {
+        await registerPluginDefinition({
+          id: manifest.id,
+          family: 'control-center',
+          origin: 'builtin',
+          source: 'source',
+          plugin: { manifest, plugin },
+          canDisable: false,
+        });
+        console.debug(`[ControlCenter] Registered ${manifest.id} from ${sourcePath}`);
+      },
+    });
+  }
+
+  return registrations;
+}
+
+/**
+ * Bootstrap all control center plugins.
+ * Discovers and registers all plugins, then loads user preference.
  */
 export async function bootstrapControlCenters(): Promise<void> {
-  console.info('dYZ>‹,? Bootstrapping control center plugins...');
+  console.info('[ControlCenter] Bootstrapping control center plugins...');
 
   const registrations = await discoverControlCenterRegistrations();
   for (const registration of registrations) {
-    await registration.register();
+    try {
+      await registration.register();
+    } catch (error) {
+      console.error(`[ControlCenter] Failed to register ${registration.id}:`, error);
+    }
   }
 
+  // Load user preference after all plugins are registered
   const { controlCenterRegistry } = await import('./controlCenterPlugin');
   controlCenterRegistry.loadPreference();
 
   const active = controlCenterRegistry.getActiveId();
   const available = controlCenterRegistry.getAll();
 
-  console.info(`dYZ>‹,? Control Center: Active = "${active}", Available = ${available.length}`);
-  console.info('Control center bootstrap complete');
-}
-
-export async function discoverControlCenterRegistrations(): Promise<PluginRegistration[]> {
-  const registrations: PluginRegistration[] = [];
-
-  // NOTE: Cube Formation V1 has been extracted to @features/cubes as CubeWidgetOverlay.
-  // It now works as a standalone overlay alongside Dock, not as a control center mode.
-  // See: features/cubes/CubeWidgetOverlay.tsx
-
-  // NOTE: Cube System V2 (3D WebGL) is deprecated and no longer loaded.
-  // It was an experimental full-screen 3D interface that didn't fit the workflow.
-  // See: plugins/ui/cube-system-v2/plugin.tsx for the deprecated code.
-
-  try {
-    const module = await import('../../plugins/ui/dock-control-center/plugin');
-    const manifest = module.manifest;
-    const register = module.registerDockControlCenter;
-
-    if (manifest && typeof register === 'function') {
-      registrations.push({
-        id: manifest.id,
-        family: 'control-center',
-        origin: 'builtin',
-        source: 'source',
-        label: manifest.name,
-        register,
-      });
-    } else {
-      console.warn('[ControlCenter] Dock control center plugin missing manifest or register function');
-    }
-  } catch (error) {
-    console.error('[ControlCenter] Failed to discover dock control center plugin', error);
-  }
-
-  return registrations;
+  console.info(`[ControlCenter] Active = "${active}", Available = ${available.length}`);
+  console.info(`[ControlCenter] Loaded ${registrations.length} control center plugin(s)`);
 }
