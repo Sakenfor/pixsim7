@@ -1,11 +1,10 @@
 /**
  * Interactions API Client
  *
- * Phase 17.3+: Client-side API for listing and executing interactions
+ * Wraps the shared domain client with app-specific helpers for dialogue management.
  */
-
-import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 import { IDs } from '@pixsim7/shared.types';
+import { createInteractionsApi, createGameApi } from '@pixsim7/shared.api.client/domains';
 import type {
   ListInteractionsRequest,
   ListInteractionsResponse,
@@ -19,16 +18,21 @@ import type {
 
 import { pixsimClient } from './client';
 
+// Create shared domain API instances
+const interactionsApi = createInteractionsApi(pixsimClient);
+const gameApi = createGameApi(pixsimClient);
+
+// =============================================================================
+// Core Interactions API (delegating to shared client)
+// =============================================================================
+
 /**
  * List available interactions for a target
  */
 export async function listInteractions(
   req: ListInteractionsRequest
 ): Promise<ListInteractionsResponse> {
-  return pixsimClient.post<ListInteractionsResponse>(
-    '/game/interactions/list',
-    req
-  );
+  return interactionsApi.listInteractions(req);
 }
 
 /**
@@ -37,10 +41,7 @@ export async function listInteractions(
 export async function executeInteraction(
   req: ExecuteInteractionRequest
 ): Promise<ExecuteInteractionResponse> {
-  return pixsimClient.post<ExecuteInteractionResponse>(
-    '/game/interactions/execute',
-    req
-  );
+  return interactionsApi.executeInteraction(req);
 }
 
 /**
@@ -54,16 +55,12 @@ export async function getAvailableInteractions(
   participants?: InteractionParticipant[],
   primaryRole?: string
 ): Promise<InteractionInstance[]> {
-  const response = await listInteractions({
-    worldId,
-    sessionId,
+  return interactionsApi.getAvailableInteractions(worldId, sessionId, {
     target,
+    locationId,
     participants,
     primaryRole,
-    locationId,
-    includeUnavailable: false,
   });
-  return response.interactions;
 }
 
 /**
@@ -77,17 +74,17 @@ export async function getAllInteractions(
   participants?: InteractionParticipant[],
   primaryRole?: string
 ): Promise<InteractionInstance[]> {
-  const response = await listInteractions({
-    worldId,
-    sessionId,
+  return interactionsApi.getAllInteractions(worldId, sessionId, {
     target,
+    locationId,
     participants,
     primaryRole,
-    locationId,
-    includeUnavailable: true,
   });
-  return response.interactions;
 }
+
+// =============================================================================
+// App-specific Dialogue Management
+// =============================================================================
 
 /**
  * Get pending dialogue requests from a session
@@ -106,9 +103,7 @@ export async function getPendingDialogue(
   createdAt: number;
   metadata?: Record<string, unknown>;
 }>> {
-  const session = await pixsimClient.get<GameSessionDTO>(
-    `/game/sessions/${sessionId}`
-  );
+  const session = await gameApi.getSession(sessionId);
   const pending = session.flags?.pendingDialogue as Array<{
     requestId: string;
     npcId: IDs.NpcId;
@@ -143,18 +138,13 @@ export async function executePendingDialogue(
     throw new Error(`Pending dialogue request ${requestId} not found`);
   }
 
-  // Call the dialogue generation endpoint directly
-  const payload = toSnakeCaseDeep({
+  // Use the shared dialogue execution
+  const response = await interactionsApi.executeDialogue({
     npcId: request.npcId,
     sessionId,
     playerInput: request.playerInput,
     programId: request.programId,
   });
-  const response = await pixsimClient.post<{
-    text: string;
-    cached: boolean;
-    generation_time_ms?: number;
-  }>('/game/dialogue/next-line/execute', payload);
 
   return {
     text: response.text,
@@ -171,11 +161,7 @@ export async function clearPendingDialogue(
   sessionId: IDs.SessionId,
   requestId: string
 ): Promise<void> {
-  // This would need a backend endpoint to modify session flags
-  // For now, we'll handle it client-side by filtering
-  const session = await pixsimClient.get<GameSessionDTO>(
-    `/game/sessions/${sessionId}`
-  );
+  const session = await gameApi.getSession(sessionId);
   const pending = (session.flags?.pendingDialogue as Array<{ requestId: string }> | undefined) ?? [];
   const filtered = pending.filter((r) => r.requestId !== requestId);
 
