@@ -35,5 +35,13 @@ export const gizmoLabModule: Module = {
     featurePrimary: true,
     component: lazy(() => import('../../../routes/GizmoLab').then(m => ({ default: m.GizmoLab }))),
     actions: [openGizmoLabAction],
+    appMap: {
+      docs: ['docs/ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md'],
+      frontend: [
+        'apps/main/src/features/gizmos/',
+        'apps/main/src/lib/game/gizmos/',
+        'packages/scene/gizmos/',
+      ],
+    },
   },
 };

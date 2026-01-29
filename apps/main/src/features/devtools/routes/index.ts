@@ -151,6 +151,18 @@ export const promptLabModule: Module = {
     featureId: 'prompt-lab',
     hidden: true,
     component: DevtoolsRedirect,
+    appMap: {
+      docs: [
+        'docs/prompts/SEMANTIC_PACKS_IMPLEMENTATION.md',
+        'docs/prompts/PROMPT_SYSTEM_REVIEW.md',
+      ],
+      backend: [
+        'pixsim7.backend.main.api.v1.prompts',
+        'pixsim7.backend.main.api.v1.semantic_packs',
+        'pixsim7.backend.main.api.v1.dev_prompt_categories',
+      ],
+      frontend: ['apps/main/src/features/prompts/'],
+    },
   },
 };
 
