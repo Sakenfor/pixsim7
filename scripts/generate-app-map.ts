@@ -1,10 +1,11 @@
 #!/usr/bin/env tsx
 /**
- * Generates APP_MAP.md and action registry from code metadata and manual sources.
+ * Generates APP_MAP.md and action registry from code metadata.
  *
- * Sources:
- *   - Code parsing: routes, capabilities, module pages, actions
- *   - Manual registry: docs/app_map.sources.json (docs, backend modules)
+ * Sources (in priority order):
+ *   1. Code parsing: module page.appMap (docs, backend, frontend, notes)
+ *   2. Code parsing: routes, capabilities, module pages, actions
+ *   3. DEPRECATED: docs/app_map.sources.json (fallback only)
  *
  * Outputs:
  *   - docs/APP_MAP.md (table updated between markers)
@@ -14,6 +15,8 @@
  * Usage:
  *   pnpm docs:app-map        # Generate all outputs
  *   pnpm docs:app-map:check  # Verify outputs are current (CI)
+ *
+ * Migration: Move metadata from app_map.sources.json into module.ts page.appMap
  */
 
 import fs from 'fs';
@@ -346,14 +349,45 @@ function parseModuleFile(
       if (id && pageExpr && ts.isObjectLiteralExpression(pageExpr)) {
         const route = resolveString(getObjectProp(pageExpr, 'route'), routesMap);
         const hidden = resolveBoolean(getObjectProp(pageExpr, 'hidden'));
+        const featureId = resolveString(getObjectProp(pageExpr, 'featureId'), routesMap);
+
+        // Extract appMap metadata from page definition
+        const appMapExpr = getObjectProp(pageExpr, 'appMap');
+        let appMapDocs: string[] | undefined;
+        let appMapBackend: string[] | undefined;
+        let appMapFrontend: string[] | undefined;
+        let appMapNotes: string[] | undefined;
+
+        if (appMapExpr && ts.isObjectLiteralExpression(appMapExpr)) {
+          appMapDocs = resolveStringArray(getObjectProp(appMapExpr, 'docs')) ?? undefined;
+          appMapBackend = resolveStringArray(getObjectProp(appMapExpr, 'backend')) ?? undefined;
+          appMapFrontend = resolveStringArray(getObjectProp(appMapExpr, 'frontend')) ?? undefined;
+          appMapNotes = resolveStringArray(getObjectProp(appMapExpr, 'notes')) ?? undefined;
+        }
+
+        // Use featureId as the entry id if available (for grouping)
+        const entryId = featureId ?? id;
 
         if (route && hidden !== true) {
           entries.push({
-            id,
-            label: name ?? id,
+            id: entryId,
+            label: name ?? entryId,
             routes: [route],
-            frontend: frontendPath,
-            sources: ['modules'],
+            frontend: mergeList(frontendPath, appMapFrontend),
+            docs: appMapDocs,
+            backend: appMapBackend,
+            sources: appMapDocs || appMapBackend ? ['modules:appMap'] : ['modules'],
+          });
+        } else if (appMapDocs || appMapBackend) {
+          // Entry has appMap but no visible route - still include it
+          entries.push({
+            id: entryId,
+            label: name ?? entryId,
+            routes: route ? [route] : undefined,
+            frontend: mergeList(frontendPath, appMapFrontend),
+            docs: appMapDocs,
+            backend: appMapBackend,
+            sources: ['modules:appMap'],
           });
         }
 
@@ -476,28 +510,56 @@ function loadManualRegistry(): ManualRegistry | null {
 function mergeWithManualRegistry(
   generatedEntries: AppMapEntry[],
   manualEntries: ManualRegistryEntry[]
-): AppMapEntry[] {
+): { merged: AppMapEntry[]; deprecationWarnings: string[] } {
   const generatedById = new Map(generatedEntries.map(e => [e.id, e]));
   const usedGenerated = new Set<string>();
   const merged: AppMapEntry[] = [];
+  const deprecationWarnings: string[] = [];
 
-  // Process manual entries first (they're authoritative for docs/backend)
+  // Process manual entries - but prefer module-derived appMap data
   for (const manual of manualEntries) {
     const generated = generatedById.get(manual.id);
     if (generated) {
-      // Merge: manual provides docs/backend, generated provides routes/frontend
-      merged.push({
-        id: manual.id,
-        label: manual.label ?? generated.label,
-        docs: manual.docs ?? [],
-        backend: manual.backend ?? [],
-        routes: mergeList(generated.routes, manual.routes),
-        frontend: mergeList(generated.frontend, manual.frontend),
-        sources: generated.sources,
-      });
+      // Check if module already has appMap data (sources includes 'modules:appMap')
+      const hasModuleAppMap = generated.sources?.includes('modules:appMap');
+
+      if (hasModuleAppMap) {
+        // Module has appMap - use it as primary, warn about manual registry
+        if (manual.docs?.length || manual.backend?.length) {
+          deprecationWarnings.push(
+            `  "${manual.id}": has appMap in module.ts - remove from app_map.sources.json`
+          );
+        }
+        // Use module-derived data as primary
+        merged.push({
+          id: manual.id,
+          label: generated.label ?? manual.label,
+          docs: generated.docs ?? manual.docs ?? [],
+          backend: generated.backend ?? manual.backend ?? [],
+          routes: mergeList(generated.routes, manual.routes),
+          frontend: mergeList(generated.frontend, manual.frontend),
+          sources: generated.sources,
+        });
+      } else {
+        // No module appMap - use manual registry (legacy behavior)
+        merged.push({
+          id: manual.id,
+          label: manual.label ?? generated.label,
+          docs: manual.docs ?? [],
+          backend: manual.backend ?? [],
+          routes: mergeList(generated.routes, manual.routes),
+          frontend: mergeList(generated.frontend, manual.frontend),
+          sources: generated.sources,
+        });
+      }
       usedGenerated.add(manual.id);
     } else {
-      // Manual-only entry
+      // Manual-only entry - warn that it should be added to a module
+      if (manual.docs?.length || manual.backend?.length) {
+        deprecationWarnings.push(
+          `  "${manual.id}": not found in modules - consider adding module.ts with page.appMap`
+        );
+      }
       merged.push({
         id: manual.id,
         label: manual.label,
@@ -505,6 +567,7 @@ function mergeWithManualRegistry(
         backend: manual.backend ?? [],
         routes: manual.routes ?? [],
         frontend: manual.frontend ?? [],
+        sources: ['manual-only'],
       });
     }
   }
@@ -516,7 +579,7 @@ function mergeWithManualRegistry(
     }
   }
 
-  return merged;
+  return { merged, deprecationWarnings };
 }
 
 // =============================================================================
@@ -654,6 +717,7 @@ function generateAppMap(): {
   actionRegistryMd: string;
   entriesCount: number;
   actionsCount: number;
+  deprecationWarnings: string[];
 } {
   // 1. Parse code for routes, capabilities, modules
   const routesMap = parseRoutesMap(ROUTES_FILE);
@@ -684,11 +748,14 @@ function generateAppMap(): {
     entries: codeEntries,
   }, null, 2) + '\n';
 
-  // 4. Load and merge with manual registry
+  // 4. Load and merge with manual registry (deprecated - will be removed)
   const manualRegistry = loadManualRegistry();
   let finalEntries: AppMapEntry[];
+  let deprecationWarnings: string[] = [];
   if (manualRegistry) {
-    finalEntries = mergeWithManualRegistry(codeEntries, manualRegistry.entries);
+    const result = mergeWithManualRegistry(codeEntries, manualRegistry.entries);
+    finalEntries = result.merged;
+    deprecationWarnings = result.deprecationWarnings;
   } else {
     finalEntries = codeEntries;
   }
@@ -708,6 +775,7 @@ function generateAppMap(): {
     actionRegistryMd,
     entriesCount: finalEntries.length,
     actionsCount: actions.length,
+    deprecationWarnings,
   };
 }
 
@@ -800,6 +868,18 @@ function main() {
     console.log(`✓ Generated: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
     console.log(`  Entries: ${outputs.entriesCount}`);
     console.log(`  Actions: ${outputs.actionsCount}`);
+
+    // Show deprecation warnings for entries that should be migrated to module.ts
+    if (outputs.deprecationWarnings.length > 0) {
+      console.log('');
+      console.log('⚠ DEPRECATION: app_map.sources.json entries to migrate:');
+      for (const warning of outputs.deprecationWarnings) {
+        console.log(warning);
+      }
+      console.log('');
+      console.log('  Move metadata to module.ts page.appMap property.');
+      console.log('  See: apps/main/src/features/automation/module.ts for example.');
+    }
   } catch (error) {
     console.error(`✗ Error: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
