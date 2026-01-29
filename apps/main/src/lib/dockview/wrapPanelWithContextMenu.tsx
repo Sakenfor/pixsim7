@@ -115,6 +115,9 @@ export function wrapPanelWithContextMenu(
           buildDockviewContext(baseContext, {
             contextType: componentContext.type,
             position: { x: event.clientX, y: event.clientY },
+            panelId: panelProps.api?.id,
+            instanceId,
+            groupId: panelProps.api?.group?.id,
             data: resolvedData ?? {
               id: componentContext.id,
               name: componentContext.label,

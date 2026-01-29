@@ -100,20 +100,34 @@ export const floatPanelAction: MenuAction = {
   label: 'Float Panel',
   icon: 'external-link',
   category: 'panel',
-  availableIn: ['tab', 'panel-content'],
+  availableIn: [
+    'background',
+    'tab',
+    'panel-content',
+    'asset',
+    'asset-card',
+    'node',
+    'edge',
+    'canvas',
+    'item',
+    'list-item',
+  ],
   visible: (ctx) => {
+    const api = resolveCurrentDockviewApi(ctx);
+    const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
     // Only requires a float handler - no assumptions about implementation
-    return !!ctx.panelId && !!ctx.floatPanelHandler;
+    return !!panelId && !!ctx.floatPanelHandler;
   },
   execute: (ctx) => {
     const api = resolveCurrentDockviewApi(ctx);
-    if (!ctx.panelId || !ctx.floatPanelHandler || !api) return;
+    const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
+    if (!panelId || !ctx.floatPanelHandler || !api) return;
 
-    const panel = api.getPanel(ctx.panelId);
+    const panel = api.getPanel(panelId);
     if (!panel) return;
 
     // Call the dockview's float handler with panel info
-    ctx.floatPanelHandler(ctx.panelId, panel, {
+    ctx.floatPanelHandler(panelId, panel, {
       width: 600,
       height: 400,
     });
