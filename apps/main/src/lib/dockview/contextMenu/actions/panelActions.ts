@@ -10,7 +10,7 @@
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
-import { getDockviewPanels } from '../../panelAdd';
+import { getDockviewPanels, resolvePanelDefinitionId } from '../../panelAdd';
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
@@ -115,22 +115,35 @@ export const floatPanelAction: MenuAction = {
   visible: (ctx) => {
     const api = resolveCurrentDockviewApi(ctx);
     const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
+    if (!panelId || !api) return false;
+    if (ctx.floatPanelHandler) return true;
+    if (!ctx.workspaceStore) return false;
+    const panel = api.getPanel(panelId);
+    return !!resolvePanelDefinitionId(panel);
     // Only requires a float handler - no assumptions about implementation
-    return !!panelId && !!ctx.floatPanelHandler;
   },
   execute: (ctx) => {
     const api = resolveCurrentDockviewApi(ctx);
     const panelId = ctx.panelId ?? (api as any)?.activePanel?.id;
-    if (!panelId || !ctx.floatPanelHandler || !api) return;
+    if (!panelId || !api) return;
 
     const panel = api.getPanel(panelId);
     if (!panel) return;
 
-    // Call the dockview's float handler with panel info
-    ctx.floatPanelHandler(panelId, panel, {
+    const resolvedPanelId = resolvePanelDefinitionId(panel) ?? panelId;
+    const floatOptions = {
       width: 600,
       height: 400,
-    });
+    };
+
+    if (ctx.floatPanelHandler) {
+      // Call the dockview's float handler with panel info
+      ctx.floatPanelHandler(panelId, panel, floatOptions);
+    } else if (ctx.workspaceStore && resolvedPanelId) {
+      ctx.workspaceStore.getState().openFloatingPanel(resolvedPanelId, floatOptions);
+    } else {
+      return;
+    }
 
     // Close from dockview after floating
     api.removePanel(panel);
