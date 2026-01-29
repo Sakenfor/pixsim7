@@ -19,6 +19,11 @@ import {
   resolveTemplateBatch,
 } from '../../api/game';
 
+import {
+  listInteractions as backendListInteractions,
+  executeInteraction as backendExecuteInteraction,
+} from '../../api/interactions';
+
 /**
  * GameApiClient implementation using frontend API functions
  */
@@ -62,26 +67,35 @@ export const gameRuntimeApiClient: GameApiClient = {
   },
 
   async listInteractions(req: ListInteractionsRequest): Promise<ListInteractionsResponse> {
-    // Not used by useGameRuntime - interactions are handled at route level
-    return {
-      interactions: [],
-      target: req.target,
-      participants: req.participants,
-      primaryRole: req.primaryRole,
-      worldId: req.worldId,
-      sessionId: req.sessionId,
-      timestamp: Date.now(),
-    };
+    try {
+      return await backendListInteractions(req);
+    } catch (error) {
+      // Return empty list on backend failure (graceful degradation)
+      console.warn('[GameRuntime] Backend listInteractions failed, returning empty:', error);
+      return {
+        interactions: [],
+        target: req.target,
+        participants: req.participants,
+        primaryRole: req.primaryRole,
+        worldId: req.worldId,
+        sessionId: req.sessionId,
+        timestamp: Date.now(),
+      };
+    }
   },
 
   async executeInteraction(req: ExecuteInteractionRequest): Promise<ExecuteInteractionResponse> {
-    // Not used by useGameRuntime - interactions are handled at route level
-    void req;
-    return {
-      success: false,
-      message: 'executeInteraction not implemented in runtime adapter',
-      timestamp: Date.now(),
-    };
+    try {
+      return await backendExecuteInteraction(req);
+    } catch (error) {
+      // Return failure on backend error (caller can handle or fallback to client-side plugins)
+      console.warn('[GameRuntime] Backend executeInteraction failed:', error);
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Backend interaction failed',
+        timestamp: Date.now(),
+      };
+    }
   },
 
   // Template Resolution APIs (ObjectLink system)
