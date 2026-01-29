@@ -78,14 +78,32 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         ? currentInput.asset.id
         : undefined;
 
+    // DEBUG: Log resolution steps
+    const debugSource: string[] = [];
+    if (dynamicParams.source_asset_id) {
+      debugSource.push(`dynamicParams: ${dynamicParams.source_asset_id}`);
+    }
+    if (inputAssetId) {
+      debugSource.push(`currentInput: ${inputAssetId} (${currentInput?.asset?.mediaType})`);
+    }
+    if (activeAsset) {
+      debugSource.push(`activeAsset: ${activeAsset.id} (${activeAsset.type})`);
+    }
+
     if (inputAssetId) {
       sourceAssetId = inputAssetId;
+      console.log(`[DEBUG resolveSingleSourceAssetId] Using currentInput: ${sourceAssetId}`, { sources: debugSource });
     } else if (!sourceAssetId && activeAsset) {
       const isImage = activeAsset.type === 'image';
       const isVideo = activeAsset.type === 'video';
       if (isImage || (allowVideo && isVideo)) {
         sourceAssetId = activeAsset.id;
+        console.log(`[DEBUG resolveSingleSourceAssetId] Fallback to activeAsset: ${sourceAssetId}`, { sources: debugSource });
       }
+    } else if (sourceAssetId) {
+      console.log(`[DEBUG resolveSingleSourceAssetId] Using dynamicParams: ${sourceAssetId}`, { sources: debugSource });
+    } else {
+      console.log(`[DEBUG resolveSingleSourceAssetId] No source found`, { sources: debugSource });
     }
 
     return sourceAssetId;

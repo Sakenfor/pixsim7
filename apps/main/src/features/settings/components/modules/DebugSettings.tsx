@@ -428,67 +428,18 @@ function DevToolsSettingsSection() {
   );
 }
 
-/** Default component - shows all debug settings */
-export function DebugSettings() {
-  const { debugStates, isLoading, handleToggle } = useDebugState();
-
-  const frontendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'frontend');
-  const backendCategories = DEBUG_CATEGORIES.filter(c => c.location === 'backend');
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500 dark:text-neutral-400">
-        Loading debug preferences...
-      </div>
-    );
-  }
-
+/** Dev Tools settings sub-section */
+function DebugDevToolsSettings() {
   return (
-    <div className="flex-1 overflow-auto p-4 space-y-6 text-xs text-neutral-800 dark:text-neutral-100">
-      {/* Info Banner */}
-      <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-[11px] text-blue-700 dark:text-blue-300">
-        <strong>Unified Debug System:</strong> All settings stored in backend user preferences.
-        Changes sync across devices and sessions.
-      </div>
-
-      {/* Frontend Debug */}
-      <section className="space-y-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Frontend Debug (Browser Console)
-        </h2>
-        <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-          Logs appear in browser console (F12). Useful for debugging UI, stores, and client-side logic.
-        </p>
-        <div className="mt-3">
-          <DebugCategoryList
-            categories={frontendCategories}
-            debugStates={debugStates}
-            onToggle={handleToggle}
-          />
-        </div>
-      </section>
-
-      {/* Backend Debug */}
-      <section className="space-y-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          Backend Debug (Server Logs)
-        </h2>
-        <p className="text-[11px] text-neutral-600 dark:text-neutral-400">
-          Logs appear in backend/worker console. Check terminal where backend is running.
-        </p>
-        <div className="mt-3">
-          <DebugCategoryList
-            categories={backendCategories}
-            debugStates={debugStates}
-            onToggle={handleToggle}
-          />
-        </div>
-      </section>
-
-      {/* Dev Tool Settings (from registry) */}
+    <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
       <DevToolsSettingsSection />
     </div>
   );
+}
+
+/** Default component - shows frontend settings (first sub-section) */
+export function DebugSettings() {
+  return <DebugFrontendSettings />;
 }
 
 // Register this module (only in development mode)
@@ -511,6 +462,12 @@ if (import.meta.env.DEV) {
         label: 'Backend',
         icon: '🖧',
         component: DebugBackendSettings,
+      },
+      {
+        id: 'devtools',
+        label: 'Dev Tools',
+        icon: '🔧',
+        component: DebugDevToolsSettings,
       },
     ],
   });
