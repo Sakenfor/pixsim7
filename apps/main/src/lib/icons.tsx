@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Centralized Icon System
  *
@@ -17,12 +18,15 @@ import {
   ArrowRight,
   MoveLeft,
   MoveRight,
+  Columns,
+  Rows,
   Download,
   Video,
   Camera,
   Headphones,
   Pin,
   Check,
+  CheckSquare,
   X,
   Settings,
   Wrench,
@@ -52,12 +56,17 @@ import {
   EyeOff,
   RefreshCw,
   RotateCcw,
+  Cpu,
+  Database,
+  Hash,
   Heart,
+  Brain,
   Network,
   Zap,
   BarChart3,
   Sliders,
   FileText,
+  FileCode,
   Sparkles,
   Target,
   Scissors,
@@ -69,18 +78,22 @@ import {
   Bot,
   Globe,
   Radio,
+  Cloud,
   Plug,
   Star,
   Drama,
   ClipboardList,
+  Layout,
   LayoutGrid,
   Grid3x3,
+  Library,
   LightbulbIcon,
   KeyRound,
   Lock,
   Unlock,
   Map,
   User,
+  Users,
   Clock,
   Code,
   ListPlus,
@@ -90,8 +103,24 @@ import {
   Archive,
   Package,
   Layers,
+  Box,
+  Tag,
+  Shield,
+  LogIn,
+  LogOut,
+  GitBranch,
+  FlaskConical,
+  MoreVertical,
+  Scroll,
+  History,
   type LucideIcon,
 } from 'lucide-react';
+import type { SVGProps } from 'react';
+
+
+import { BaseRegistry, type Identifiable } from '@lib/core';
+
+import { useIconSettingsStore, type IconTheme } from '@features/icons';
 
 /**
  * Icon component props
@@ -133,6 +162,8 @@ export const Icons = {
   'plus-square': PlusSquare,  // Kebab-case alias
   remove: Minus,
   minus: Minus,    // Alias for remove
+  checkSquare: CheckSquare,
+  'check-square': CheckSquare,
   delete: Trash,
   trash: Trash,
   trash2: Trash2,
@@ -151,9 +182,14 @@ export const Icons = {
   clipboard: Clipboard,
   link: Link2,
   externalLink: ExternalLink,
+  'external-link': ExternalLink, // Kebab-case alias
   listPlus: ListPlus,
   lock: Lock,
   unlock: Unlock,
+  logIn: LogIn,
+  logOut: LogOut,
+  'log-in': LogIn,
+  'log-out': LogOut,
 
   // Playback
   play: Play,
@@ -172,6 +208,8 @@ export const Icons = {
   eyeOff: EyeOff,
   sliders: Sliders,
   fileText: FileText,
+  fileCode: FileCode,
+  'file-code': FileCode,
   clock: Clock,
   code: Code,
   maximize2: Maximize2,
@@ -179,6 +217,15 @@ export const Icons = {
   minimize2: Minimize2,
   'minimize-2': Minimize2,  // Kebab-case alias
   layers: Layers,
+  moreVertical: MoreVertical,
+  'more-vertical': MoreVertical,
+  hash: Hash,
+  cpu: Cpu,
+  database: Database,
+  tag: Tag,
+  shield: Shield,
+  flask: FlaskConical,
+  'git-branch': GitBranch,
 
   // Panels & Features
   heart: Heart,
@@ -187,23 +234,32 @@ export const Icons = {
   gamepad: Gamepad2,
   zap: Zap,
   barChart: BarChart3,
+  'bar-chart': BarChart3,
   sparkles: Sparkles,
   '✨': Sparkles,  // Emoji alias
   target: Target,
+  brain: Brain,
   bot: Bot,
   globe: Globe,
   radio: Radio,
+  cloud: Cloud,
+  'google-drive': Cloud,
   plug: Plug,
   star: Star,
   drama: Drama,
   clipboardList: ClipboardList,
+  layout: Layout,
   layoutGrid: LayoutGrid,
+  columns: Columns,
+  rows: Rows,
   grid: Grid3x3,
   'grid-3x3': Grid3x3,  // Kebab-case alias
+  library: Library,
   lightbulb: LightbulbIcon,
   key: KeyRound,
   map: Map,
   user: User,
+  users: Users,
 
   // Status indicators
   loading: Loader,
@@ -219,6 +275,8 @@ export const Icons = {
   'alert-circle': AlertCircle,
   alertTriangle: AlertTriangle,
   info: Info,
+  history: History,
+  'clock-history': History,
   'ℹ️': Info,  // Emoji alias
 
   // Directional
@@ -232,6 +290,7 @@ export const Icons = {
   'arrow-right': ArrowRight,
   moveLeft: MoveLeft,
   moveRight: MoveRight,
+  move: MoveRight, // Generic move alias
   'move-left': MoveLeft,
   'move-right': MoveRight,
 
@@ -239,59 +298,13 @@ export const Icons = {
   folderTree: FolderTree,
   cursorClick: Target,
   package: Package,
+  box: Box,
+  square: Square,
+  quest: Scroll,
   '📦': Package,  // Emoji alias
 } as const;
 
 export type IconName = keyof typeof Icons;
-
-/**
- * Get an icon component by name
- */
-export function getIcon(name: IconName | string): LucideIcon | undefined {
-  return Icons[name as IconName];
-}
-
-/**
- * Render an icon by name with props
- */
-export function Icon({
-  name,
-  size = 16,
-  className = '',
-  strokeWidth = 2,
-  ...props
-}: IconProps & { name: IconName | string }) {
-  if (typeof name === 'string' && name.trim().length === 0) {
-    return null;
-  }
-
-  const IconComponent = getIcon(name);
-
-  if (!IconComponent) {
-    if (typeof name === 'string') {
-      const fontSize = typeof size === 'number' ? `${size}px` : size;
-      return (
-        <span
-          className={className}
-          style={{ fontSize, lineHeight: 1 }}
-          aria-hidden="true"
-        >
-          {name}
-        </span>
-      );
-    }
-    return null;
-  }
-
-  return (
-    <IconComponent
-      size={size}
-      className={className}
-      strokeWidth={strokeWidth}
-      {...props}
-    />
-  );
-}
 
 /**
  * Icon sizes (standardized)
@@ -319,6 +332,178 @@ export const iconVariants = {
 } as const;
 
 export type IconVariant = keyof typeof iconVariants;
+
+export interface IconSetDefinition extends Identifiable {
+  label: string;
+  description?: string;
+  icon?: string;
+  getIcon?: (name: string) => LucideIcon | undefined;
+  normalizeName?: (name: string) => string;
+  defaultVariant?: IconVariant;
+  getProps?: (name: string) => SVGProps<SVGSVGElement>;
+}
+
+class IconSetRegistry extends BaseRegistry<IconSetDefinition> {
+  getDefault(): IconSetDefinition | undefined {
+    return this.get('outline') ?? this.get('default') ?? this.getAll()[0];
+  }
+}
+
+export const iconSetRegistry = new IconSetRegistry();
+
+function registerDefaultIconSets() {
+  if (iconSetRegistry.getAll().length > 0) {
+    return;
+  }
+
+  iconSetRegistry.register({
+    id: 'outline',
+    label: 'Outline',
+    description: 'Default Lucide outline icons.',
+    icon: 'layoutGrid',
+  });
+
+  iconSetRegistry.register({
+    id: 'muted',
+    label: 'Muted Outline',
+    description: 'Outline icons with muted default color.',
+    icon: 'sliders',
+    defaultVariant: 'muted',
+  });
+
+  iconSetRegistry.register({
+    id: 'accent',
+    label: 'Accent Outline',
+    description: 'Outline icons with accent default color.',
+    icon: 'sparkles',
+    defaultVariant: 'primary',
+  });
+
+  iconSetRegistry.register({
+    id: 'filled',
+    label: 'Filled',
+    description: 'Filled icons with optional stroke for clarity.',
+    icon: 'square',
+    getProps: () => ({
+      fill: 'currentColor',
+      stroke: 'currentColor',
+      strokeWidth: 1.25,
+    }),
+  });
+}
+
+registerDefaultIconSets();
+
+const iconThemeVariants: Record<IconTheme, IconVariant> = {
+  inherit: 'default',
+  muted: 'muted',
+  accent: 'primary',
+};
+
+/**
+ * Normalize common icon name formats (kebab/snake/space/camel).
+ */
+export function normalizeIconName(name: string): string {
+  const trimmed = name.trim();
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+
+  if (Icons[trimmed as IconName]) {
+    return trimmed;
+  }
+
+  const camel = trimmed.replace(/[-_\s]+(.)?/g, (_, char) => (char ? char.toUpperCase() : ''));
+  if (Icons[camel as IconName]) {
+    return camel;
+  }
+
+  const kebab = trimmed.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
+  if (Icons[kebab as IconName]) {
+    return kebab;
+  }
+
+  return trimmed;
+}
+
+/**
+ * Get an icon component by name
+ */
+export function getBaseIcon(name: IconName | string): LucideIcon | undefined {
+  if (typeof name === 'string') {
+    const normalized = normalizeIconName(name);
+    return Icons[normalized as IconName];
+  }
+  return Icons[name];
+}
+
+/**
+ * Get an icon component by name (base icon map)
+ */
+export function getIcon(name: IconName | string): LucideIcon | undefined {
+  return getBaseIcon(name);
+}
+
+/**
+ * Render an icon by name with props
+ */
+export function Icon({
+  name,
+  size = 16,
+  className = '',
+  strokeWidth = 2,
+  ...props
+}: IconProps & { name: IconName | string }) {
+  // Hooks must be called unconditionally at the top
+  const iconTheme = useIconSettingsStore((state) => state.iconTheme);
+  const iconSetId = useIconSettingsStore((state) => state.iconSetId);
+
+  if (typeof name === 'string' && name.trim().length === 0) {
+    return null;
+  }
+  const iconSet = iconSetRegistry.get(iconSetId) ?? iconSetRegistry.getDefault();
+  const resolvedName =
+    typeof name === 'string'
+      ? iconSet?.normalizeName?.(name) ?? normalizeIconName(name)
+      : String(name);
+  const IconComponent =
+    iconSet?.getIcon?.(resolvedName) ?? getBaseIcon(resolvedName);
+  const setProps = iconSet?.getProps?.(resolvedName) ?? {};
+  // Destructure to exclude className from setSvgProps (we use the passed className prop)
+  const { strokeWidth: setStrokeWidth, className: _, ...setSvgProps } = setProps;
+  void _; // Explicitly mark as intentionally unused
+
+  if (!IconComponent) {
+    if (typeof name === 'string') {
+      const fontSize = typeof size === 'number' ? `${size}px` : size;
+      return (
+        <span
+          className={className}
+          style={{ fontSize, lineHeight: 1 }}
+          aria-hidden="true"
+        >
+          {name}
+        </span>
+      );
+    }
+    return null;
+  }
+
+  const shouldUseTheme =
+    typeof className !== 'string' || className.trim().length === 0 || className.trim() === 'text-current';
+  const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
+  const resolvedClassName = shouldUseTheme ? iconVariants[variant] ?? iconVariants.default : className;
+
+  return (
+    <IconComponent
+      size={size}
+      className={resolvedClassName}
+      strokeWidth={setStrokeWidth ?? strokeWidth}
+      {...setSvgProps}
+      {...props}
+    />
+  );
+}
 
 /**
  * Theme-aware icon wrapper

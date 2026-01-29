@@ -55,6 +55,7 @@ export { registerGenerationSettings } from './lib/schemas/generation.settings';
 export { registerPromptSettings } from './lib/schemas/prompts.settings';
 export { registerPanelSettings } from './lib/schemas/panel.settings';
 export { registerTaggingSettings } from './lib/schemas/tagging.settings';
+export { registerIconSettings } from './lib/schemas/icon.settings';
 // Note: registerAssetSettings, registerMediaSettings, registerGallerySettings removed - now unified in registerLibrarySettings
 
 // ============================================================================
