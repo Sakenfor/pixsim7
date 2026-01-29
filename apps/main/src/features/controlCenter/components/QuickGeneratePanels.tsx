@@ -38,6 +38,7 @@ import {
   GenerationSettingsPanel,
   type InputItem,
   useGenerationScopeStores,
+  useGenerationWorkbench,
   resolveDisplayAssets,
 } from '@features/generation';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
@@ -334,6 +335,9 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
   const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
+  // Get workbench for fallback model and paramSpecs when no context provided
+  const workbench = useGenerationWorkbench({ operationType: controller.operationType });
+
   // Use instance-resolved component settings (global + instance overrides)
   // The resolver already merges schema defaults -> component defaults -> global -> instance
   // Pass "generation" as scopeId to match the scope toggle key
@@ -347,8 +351,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
     prompt = controller.prompt,
     setPrompt = controller.setPrompt,
     providerId = controller.providerId,
-    model,
-    paramSpecs,
+    model = workbench.dynamicParams?.model as string | undefined,
+    paramSpecs = workbench.allParamSpecs,
     generating = controller.generating,
     operationType = controller.operationType,
     displayAssets = resolveDisplayAssets({
