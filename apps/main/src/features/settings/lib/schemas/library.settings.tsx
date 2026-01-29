@@ -143,6 +143,32 @@ const downloadsTab: SettingTab = {
       ],
     },
     {
+      id: 'frame-extraction',
+      title: 'Frame Extraction',
+      description: 'Configure behavior when extracting frames from videos.',
+      fields: [
+        {
+          id: 'frame_extraction_upload',
+          type: 'select',
+          label: 'Upload Behavior',
+          description: 'Control whether extracted frames are uploaded to a provider.',
+          defaultValue: 'source_provider',
+          options: [
+            { value: 'source_provider', label: 'Source Provider - Upload to same provider as source video' },
+            { value: 'always', label: 'Always Upload - Always upload to default provider' },
+            { value: 'never', label: 'Never Upload - Only save locally' },
+          ],
+        },
+        {
+          id: 'default_upload_provider',
+          type: 'text',
+          label: 'Default Upload Provider',
+          description: 'Provider to use when "Always Upload" is selected (e.g., pixverse, sora).',
+          defaultValue: 'pixverse',
+        },
+      ],
+    },
+    {
       id: 'limits',
       title: 'Limits',
       description: 'Control resource usage for media processing.',

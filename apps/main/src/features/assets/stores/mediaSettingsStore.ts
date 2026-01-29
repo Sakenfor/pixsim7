@@ -24,6 +24,10 @@ export interface ServerMediaSettings {
   concurrency_limit: number;
   thumbnail_size: [number, number];
   preview_size: [number, number];
+  /** Frame extraction upload behavior: 'source_provider' | 'always' | 'never' */
+  frame_extraction_upload: 'source_provider' | 'always' | 'never';
+  /** Default provider for uploads when frame_extraction_upload is 'always' */
+  default_upload_provider: string;
 }
 
 interface MediaSettingsState {
@@ -66,6 +70,8 @@ const DEFAULT_SERVER_SETTINGS: ServerMediaSettings = {
   concurrency_limit: 4,
   thumbnail_size: [320, 320],
   preview_size: [800, 800],
+  frame_extraction_upload: 'source_provider',
+  default_upload_provider: 'pixverse',
 };
 
 export const useMediaSettingsStore = create<MediaSettingsState>()(
