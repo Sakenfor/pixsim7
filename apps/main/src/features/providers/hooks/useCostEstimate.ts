@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 import { useProviderCapabilities } from './useProviderCapabilities';
 
 export interface UseCostEstimateOptions {
@@ -278,13 +278,12 @@ export function useCostEstimate({
     const method = (estimatorConfig.method || 'POST').toUpperCase();
     const request =
       method === 'GET'
-        ? apiClient.get(estimatorConfig.endpoint, { params: payload })
-        : apiClient.post(estimatorConfig.endpoint, payload);
+        ? pixsimClient.get<CostEstimateResult>(estimatorConfig.endpoint, { params: payload })
+        : pixsimClient.post<CostEstimateResult>(estimatorConfig.endpoint, payload);
 
     request
-      .then((response) => {
+      .then((data) => {
         if (!cancelled) {
-          const data = response.data as CostEstimateResult;
           setEstimate({
             estimated_credits:
               typeof data?.estimated_credits === 'number' ? data.estimated_credits : null,

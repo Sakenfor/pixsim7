@@ -1,7 +1,7 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 import { PanelHeader } from '@features/panels';
 
@@ -120,9 +120,9 @@ export function TemplateLibraryPanel() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiClient.get<RegistryResponse>('/game/templates/registry');
+        const data = await pixsimClient.get<RegistryResponse>('/game/templates/registry');
         if (!cancelled) {
-          setTemplateTypes(res.data.template_types);
+          setTemplateTypes(data.template_types);
         }
       } catch (e: unknown) {
         if (!cancelled) {
@@ -182,11 +182,11 @@ export function TemplateLibraryPanel() {
       }
       appendScopeParams(params);
 
-      const res = await apiClient.get<EntityListResponse>(
+      const data = await pixsimClient.get<EntityListResponse>(
         `/game/${selectedType.url_prefix}?${params.toString()}`
       );
-      setEntities(res.data.items);
-      setTotalEntities(res.data.total);
+      setEntities(data.items);
+      setTotalEntities(data.total);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to load entities');
     } finally {
@@ -244,7 +244,7 @@ export function TemplateLibraryPanel() {
     if (!confirm(`Delete this ${selectedType.kind}?`)) return;
 
     try {
-      await apiClient.delete(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`));
+      await pixsimClient.delete(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`));
       setViewMode('list');
       setSelectedEntity(null);
       loadEntities();
@@ -261,10 +261,10 @@ export function TemplateLibraryPanel() {
     setError(null);
     try {
       if (viewMode === 'create') {
-        await apiClient.post(withScopeQuery(`/game/${selectedType.url_prefix}`), formData);
+        await pixsimClient.post(withScopeQuery(`/game/${selectedType.url_prefix}`), formData);
       } else if (viewMode === 'edit' && selectedEntity) {
         const id = selectedEntity.id;
-        await apiClient.put(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`), formData);
+        await pixsimClient.put(withScopeQuery(`/game/${selectedType.url_prefix}/${id}`), formData);
       }
       setViewMode('list');
       setSelectedEntity(null);

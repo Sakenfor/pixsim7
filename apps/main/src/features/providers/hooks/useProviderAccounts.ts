@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 import type { AccountResponse } from '@lib/api/accounts';
 
 // ============================================================================
@@ -42,9 +42,9 @@ export function useProviderAccounts(providerId?: string, refreshKey?: number) {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiClient.get<ProviderAccount[]>('/accounts');
+        const data = await pixsimClient.get<ProviderAccount[]>('/accounts');
         if (!cancelled) {
-          let filtered = res.data;
+          let filtered = data;
           if (providerId) {
             filtered = filtered.filter(acc => acc.provider_id === providerId);
           }

@@ -11,7 +11,7 @@
  * - React hooks for easy consumption
  */
 
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 import type { ProviderCapability, ProviderInfo, ProviderLimits, CostHints } from './types';
 
 export interface CapabilityRegistryConfig {
@@ -57,8 +57,7 @@ export class ProviderCapabilityRegistry {
 
   private async _doFetch(): Promise<void> {
     try {
-      const response = await apiClient.get<ProviderInfo[]>('/providers');
-      const providers = response.data;
+      const providers = await pixsimClient.get<ProviderInfo[]>('/providers');
 
       this.capabilities.clear();
       for (const provider of providers) {

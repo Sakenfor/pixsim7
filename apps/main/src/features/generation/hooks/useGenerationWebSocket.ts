@@ -10,7 +10,7 @@
  */
 import { useSyncExternalStore } from 'react';
 
-import { apiClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
+import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
 import { debugFlags } from '@lib/utils';
 
@@ -257,7 +257,7 @@ class WebSocketManager {
           if (message.type === 'job:created') {
             debugFlags.log('websocket', 'Job created, waiting for completion event...');
             // Just update the store, wait for job:completed event
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               debugFlags.log('websocket', 'Generation data:', data);
               addOrUpdateGeneration(fromGenerationResponse(data));
             }).catch(err => {
@@ -277,11 +277,11 @@ class WebSocketManager {
               if (downloadOnGenerate && assetId) {
                 debugFlags.log('websocket', 'Auto-syncing asset to local storage:', assetId);
                 try {
-                  await apiClient.post(`/assets/${assetId}/sync`);
+                  await pixsimClient.post(`/assets/${assetId}/sync`);
                   debugFlags.log('websocket', 'Asset synced to local storage successfully');
 
                   // Re-fetch asset and emit update event so gallery refreshes thumbnails
-                   const { data: syncedAsset } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
+                   const syncedAsset = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
                   assetEvents.emitAssetUpdated(syncedAsset);
                   debugFlags.log('websocket', 'Emitted asset update event');
                 } catch (err) {
@@ -291,7 +291,7 @@ class WebSocketManager {
 
               // Trigger account cleanup to fix job counters
               // This ensures accounts don't get stuck showing jobs as running
-              apiClient.post('/accounts/cleanup').catch(err => {
+              pixsimClient.post('/accounts/cleanup').catch(err => {
                 debugFlags.log('websocket', 'Account cleanup after job completion failed:', err);
               });
             }).catch(err => {
@@ -300,7 +300,7 @@ class WebSocketManager {
           } else if (message.type === 'job:started' || message.type === 'job:running') {
             debugFlags.log('websocket', 'Job status update:', message.type);
             // Update generation status in store
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
             }).catch(err => {
               console.error('[WebSocket] Failed to fetch generation:', generationId, err);
@@ -308,11 +308,11 @@ class WebSocketManager {
           } else if (message.type === 'job:failed') {
             debugFlags.log('websocket', 'Job failed');
             // Update generation status in store
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(({ data }) => {
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then((data) => {
               addOrUpdateGeneration(fromGenerationResponse(data));
 
               // Trigger account cleanup to fix job counters
-              apiClient.post('/accounts/cleanup').catch(err => {
+              pixsimClient.post('/accounts/cleanup').catch(err => {
                 debugFlags.log('websocket', 'Account cleanup after job failure failed:', err);
               });
             }).catch(err => {
@@ -333,7 +333,7 @@ class WebSocketManager {
             setTimeout(async () => {
               debugFlags.log('websocket', 'Fetching asset data for:', assetId);
               try {
-                const { data: assetData } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
+                const assetData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
                 debugFlags.log('websocket', 'Asset data fetched:', assetData);
 
                 // Check if asset is ready (downloaded or remote URL available)
@@ -349,7 +349,7 @@ class WebSocketManager {
                   debugFlags.log('websocket', 'Asset not ready, retrying in 1s...');
                   setTimeout(async () => {
                     try {
-                       const { data: retryData } = await apiClient.get<AssetResponse>(`/assets/${assetId}`);
+                       const retryData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
                       debugFlags.log('websocket', 'Asset data refetched:', retryData);
                       assetEvents.emitAssetCreated(retryData);
                     } catch (retryErr) {

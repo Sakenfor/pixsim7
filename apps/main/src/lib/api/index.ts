@@ -1,10 +1,10 @@
 /**
  * API Client - Frontend API for backend services
+ *
+ * Use `pixsimClient` for all API requests. It returns data directly (no `.data` unwrapping needed).
+ * For reusable domain clients, see `@pixsim7/shared.api.client/domains`.
  */
-
-// Note: `apiClient` is legacy (AxiosResponse-returning) and kept for backward compatibility.
-// Prefer `pixsimClient` (data-returning) or `@pixsim7/shared.api.client/domains` for reusable domain clients.
-export { apiClient, pixsimClient, BACKEND_BASE, API_BASE_URL } from './client';
+export { pixsimClient, BACKEND_BASE, API_BASE_URL } from './client';
 export {
   // Error message extraction
   extractErrorMessage,

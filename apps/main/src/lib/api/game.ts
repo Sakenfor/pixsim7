@@ -28,7 +28,7 @@ import type {
   TemplateKind,
 } from '@lib/registries';
 
-import { apiClient } from './client';
+import { pixsimClient } from './client';
 
 // OpenAPI-generated types
 export type PaginatedWorldsResponse = ApiComponents['schemas']['PaginatedWorldsResponse'];
@@ -65,33 +65,29 @@ export type {
 };
 
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
-  const res = await apiClient.get<GameLocationSummary[]>('/game/locations');
-  return res.data;
+  return pixsimClient.get<GameLocationSummary[]>('/game/locations');
 }
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
-  const res = await apiClient.get<GameLocationDetail>(`/game/locations/${locationId}`);
-  return res.data;
+  return pixsimClient.get<GameLocationDetail>(`/game/locations/${locationId}`);
 }
 
 export async function saveGameLocationHotspots(
   locationId: IDs.LocationId,
   hotspots: GameHotspotDTO[],
 ): Promise<GameLocationDetail> {
-  const res = await apiClient.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, {
+  return pixsimClient.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, {
     hotspots,
   });
-  return res.data;
 }
 
 export async function saveGameLocationMeta(
   locationId: IDs.LocationId,
   meta: Record<string, unknown>,
 ): Promise<GameLocationDetail> {
-  const res = await apiClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
+  return pixsimClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
     meta,
   });
-  return res.data;
 }
 
 // Helper to extract NPC slots from location meta
@@ -151,18 +147,15 @@ export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest
 }
 
 export async function getGameScene(sceneId: IDs.SceneId): Promise<Scene> {
-  const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
-  return res.data;
+  return pixsimClient.get<Scene>(`/game/scenes/${sceneId}`);
 }
 
 export async function attemptPickpocket(req: PickpocketRequest): Promise<PickpocketResponse> {
-  const res = await apiClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
-  return res.data;
+  return pixsimClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
 }
 
 export async function attemptSensualTouch(req: SensualTouchRequest): Promise<SensualTouchResponse> {
-  const res = await apiClient.post<SensualTouchResponse>('/game/romance/sensual-touch', req);
-  return res.data;
+  return pixsimClient.post<SensualTouchResponse>('/game/romance/sensual-touch', req);
 }
 
 export interface GameSessionSummary {
@@ -181,16 +174,14 @@ export async function createGameSession(
   sceneId: IDs.SceneId,
   flags?: Record<string, unknown>
 ): Promise<GameSessionDTO> {
-  const res = await apiClient.post<GameSessionDTO>('/game/sessions', {
+  return pixsimClient.post<GameSessionDTO>('/game/sessions', {
     scene_id: sceneId,
     flags,
   });
-  return res.data;
 }
 
 export async function getGameSession(sessionId: IDs.SessionId): Promise<GameSessionDTO> {
-  const res = await apiClient.get<GameSessionDTO>(`/game/sessions/${sessionId}`);
-  return res.data;
+  return pixsimClient.get<GameSessionDTO>(`/game/sessions/${sessionId}`);
 }
 
 export interface SessionUpdateResponse {
@@ -204,8 +195,8 @@ export async function updateGameSession(
   payload: SessionUpdatePayload,
 ): Promise<SessionUpdateResponse> {
   try {
-    const res = await apiClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
-    return { session: res.data, conflict: false };
+    const session = await pixsimClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
+    return { session, conflict: false };
   } catch (error: any) {
     // Handle 409 Conflict responses
     if (error.response?.status === 409) {
@@ -223,21 +214,19 @@ export async function updateGameSession(
 }
 
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {
-  const res = await apiClient.get<PaginatedWorldsResponse>('/game/worlds');
-  return [...res.data.worlds];
+  const response = await pixsimClient.get<PaginatedWorldsResponse>('/game/worlds');
+  return [...response.worlds];
 }
 
 export async function createGameWorld(
   name: string,
   meta?: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.post<GameWorldDetail>('/game/worlds', { name, meta });
-  return res.data;
+  return pixsimClient.post<GameWorldDetail>('/game/worlds', { name, meta });
 }
 
 export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
-  const res = await apiClient.get<GameWorldDetail>(`/game/worlds/${worldId}`);
-  return res.data;
+  return pixsimClient.get<GameWorldDetail>(`/game/worlds/${worldId}`);
 }
 
 /**
@@ -245,28 +234,25 @@ export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
  * Backend is the source of truth - includes pre-computed ordering.
  */
 export async function getWorldConfig(worldId: number): Promise<WorldConfigResponse> {
-  const res = await apiClient.get<WorldConfigResponse>(`/game/worlds/${worldId}/config`);
-  return res.data;
+  return pixsimClient.get<WorldConfigResponse>(`/game/worlds/${worldId}/config`);
 }
 
 export async function saveGameWorldMeta(
   worldId: number,
   meta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.patch<GameWorldDetail>(`/game/worlds/${worldId}`, {
+  return pixsimClient.patch<GameWorldDetail>(`/game/worlds/${worldId}`, {
     meta,
   });
-  return res.data;
 }
 
 export async function advanceGameWorldTime(
   worldId: number,
   deltaSeconds: number,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.post<GameWorldDetail>(`/game/worlds/${worldId}/advance`, {
+  return pixsimClient.post<GameWorldDetail>(`/game/worlds/${worldId}/advance`, {
     delta_seconds: deltaSeconds,
   });
-  return res.data;
 }
 
 /**
@@ -276,46 +262,39 @@ export async function updateGameWorldMeta(
   worldId: number,
   meta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, { meta });
-  return res.data;
+  return pixsimClient.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, { meta });
 }
 
 export async function listGameNpcs(): Promise<GameNpcSummary[]> {
-  const res = await apiClient.get<GameNpcSummary[]>('/game/npcs');
-  return res.data;
+  return pixsimClient.get<GameNpcSummary[]>('/game/npcs');
 }
 
 export async function getNpcExpressions(npcId: number): Promise<NpcExpressionDTO[]> {
-  const res = await apiClient.get<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`);
-  return res.data;
+  return pixsimClient.get<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`);
 }
 
 export async function saveNpcExpressions(
   npcId: number,
   expressions: NpcExpressionDTO[],
 ): Promise<NpcExpressionDTO[]> {
-  const res = await apiClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
+  return pixsimClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
     expressions,
   });
-  return res.data;
 }
 
 export async function getNpcDetail(npcId: number): Promise<GameNpcDetail> {
-  const res = await apiClient.get<GameNpcDetail>(`/game/npcs/${npcId}`);
-  return res.data;
+  return pixsimClient.get<GameNpcDetail>(`/game/npcs/${npcId}`);
 }
 
 export async function saveNpcMeta(
   npcId: number,
   meta: Record<string, unknown>
 ): Promise<GameNpcDetail> {
-  const res = await apiClient.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
-  return res.data;
+  return pixsimClient.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
 }
 
 export async function listNpcSurfacePackages(): Promise<NpcSurfacePackage[]> {
-  const res = await apiClient.get<NpcSurfacePackage[]>('/game/npcs/surface-packages');
-  return res.data;
+  return pixsimClient.get<NpcSurfacePackage[]>('/game/npcs/surface-packages');
 }
 
 export async function getNpcPresence(params: {
@@ -323,14 +302,13 @@ export async function getNpcPresence(params: {
   world_id?: number | null;
   location_id?: number | null;
 }): Promise<NpcPresenceDTO[]> {
-  const res = await apiClient.get<NpcPresenceDTO[]>('/game/npcs/presence', {
+  return pixsimClient.get<NpcPresenceDTO[]>('/game/npcs/presence', {
     params: {
       world_time: params.world_time,
       world_id: params.world_id ?? undefined,
       location_id: params.location_id ?? undefined,
     },
   });
-  return res.data;
 }
 
 // Quest API
@@ -338,18 +316,16 @@ export async function listSessionQuests(
   sessionId: number,
   status?: string
 ): Promise<QuestDTO[]> {
-  const res = await apiClient.get<QuestDTO[]>(`/game/quests/sessions/${sessionId}/quests`, {
+  return pixsimClient.get<QuestDTO[]>(`/game/quests/sessions/${sessionId}/quests`, {
     params: status ? { status } : undefined,
   });
-  return res.data;
 }
 
 export async function getSessionQuest(
   sessionId: number,
   questId: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.get<QuestDTO>(`/game/quests/sessions/${sessionId}/quests/${questId}`);
-  return res.data;
+  return pixsimClient.get<QuestDTO>(`/game/quests/sessions/${sessionId}/quests/${questId}`);
 }
 
 export async function addQuest(
@@ -367,8 +343,7 @@ export async function addQuest(
     metadata?: Record<string, unknown>;
   }
 ): Promise<QuestDTO> {
-  const res = await apiClient.post<QuestDTO>(`/game/quests/sessions/${sessionId}/quests`, questData);
-  return res.data;
+  return pixsimClient.post<QuestDTO>(`/game/quests/sessions/${sessionId}/quests`, questData);
 }
 
 export async function updateQuestStatus(
@@ -376,11 +351,10 @@ export async function updateQuestStatus(
   questId: string,
   status: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.patch<QuestDTO>(
+  return pixsimClient.patch<QuestDTO>(
     `/game/quests/sessions/${sessionId}/quests/${questId}/status`,
     { status }
   );
-  return res.data;
 }
 
 export async function updateObjectiveProgress(
@@ -390,11 +364,10 @@ export async function updateObjectiveProgress(
   progress: number,
   completed?: boolean
 ): Promise<QuestDTO> {
-  const res = await apiClient.patch<QuestDTO>(
+  return pixsimClient.patch<QuestDTO>(
     `/game/quests/sessions/${sessionId}/quests/${questId}/objectives`,
     { objective_id: objectiveId, progress, completed }
   );
-  return res.data;
 }
 
 export async function completeObjective(
@@ -402,21 +375,18 @@ export async function completeObjective(
   questId: string,
   objectiveId: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.post<QuestDTO>(
+  return pixsimClient.post<QuestDTO>(
     `/game/quests/sessions/${sessionId}/quests/${questId}/objectives/${objectiveId}/complete`
   );
-  return res.data;
 }
 
 // Inventory API
 export async function listInventoryItems(sessionId: number): Promise<InventoryItemDTO[]> {
-  const res = await apiClient.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
-  return res.data;
+  return pixsimClient.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
 }
 
 export async function getInventoryItem(sessionId: number, itemId: string): Promise<InventoryItemDTO> {
-  const res = await apiClient.get<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`);
-  return res.data;
+  return pixsimClient.get<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`);
 }
 
 export async function addInventoryItem(
@@ -428,8 +398,7 @@ export async function addInventoryItem(
     metadata?: Record<string, unknown>;
   }
 ): Promise<InventoryItemDTO> {
-  const res = await apiClient.post<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items`, itemData);
-  return res.data;
+  return pixsimClient.post<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items`, itemData);
 }
 
 export async function removeInventoryItem(
@@ -437,10 +406,9 @@ export async function removeInventoryItem(
   itemId: string,
   quantity: number = 1
 ): Promise<MessageResponse> {
-  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
+  return pixsimClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
     data: { quantity },
   });
-  return res.data;
 }
 
 export async function updateInventoryItem(
@@ -452,18 +420,15 @@ export async function updateInventoryItem(
     metadata?: Record<string, unknown>;
   }
 ): Promise<InventoryItemDTO> {
-  const res = await apiClient.patch<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, updates);
-  return res.data;
+  return pixsimClient.patch<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, updates);
 }
 
 export async function clearInventory(sessionId: number): Promise<MessageResponse> {
-  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/clear`);
-  return res.data;
+  return pixsimClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/clear`);
 }
 
 export async function getInventoryStats(sessionId: number): Promise<InventoryStatsResponse> {
-  const res = await apiClient.get<InventoryStatsResponse>(`/game/inventory/sessions/${sessionId}/stats`);
-  return res.data;
+  return pixsimClient.get<InventoryStatsResponse>(`/game/inventory/sessions/${sessionId}/stats`);
 }
 
 // =============================================================================
@@ -484,12 +449,11 @@ export async function resolveTemplate(
   templateId: string,
   context?: Record<string, unknown>
 ): Promise<ResolveTemplateResponse> {
-  const res = await apiClient.post<ResolveTemplateResponse>('/game/links/resolve', {
+  return pixsimClient.post<ResolveTemplateResponse>('/game/links/resolve', {
     template_kind: templateKind,
     template_id: templateId,
     context,
   });
-  return res.data;
 }
 
 /**
@@ -508,7 +472,7 @@ export async function resolveTemplateBatch(
   }>,
   sharedContext?: Record<string, unknown>
 ): Promise<ResolveBatchResponse> {
-  const res = await apiClient.post<ResolveBatchResponse>('/game/links/resolve-batch', {
+  return pixsimClient.post<ResolveBatchResponse>('/game/links/resolve-batch', {
     refs: refs.map((ref) => ({
       template_kind: ref.templateKind,
       template_id: ref.templateId,
@@ -516,5 +480,4 @@ export async function resolveTemplateBatch(
     })),
     shared_context: sharedContext,
   });
-  return res.data;
 }

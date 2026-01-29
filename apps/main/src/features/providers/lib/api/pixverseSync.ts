@@ -4,7 +4,7 @@
  * Functions for syncing Pixverse videos/images to local Assets
  * and rebuilding lineage from stored metadata.
  */
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 // ============================================================================
 // Types
@@ -85,8 +85,7 @@ export async function getPixverseSyncDryRun(
   const query = searchParams.toString();
   const url = `/providers/pixverse/accounts/${accountId}/sync-dry-run${query ? `?${query}` : ''}`;
 
-  const response = await apiClient.get<SyncDryRunResponse>(url);
-  return response.data;
+  return pixsimClient.get<SyncDryRunResponse>(url);
 }
 
 /**
@@ -103,7 +102,7 @@ export async function syncPixverseAssets(
     offset?: number;
   }
 ): Promise<SyncAssetsResponse> {
-  const response = await apiClient.post<SyncAssetsResponse>(
+  return pixsimClient.post<SyncAssetsResponse>(
     `/providers/pixverse/accounts/${accountId}/sync-assets`,
     {
       mode: body.mode,
@@ -111,7 +110,6 @@ export async function syncPixverseAssets(
       offset: body.offset ?? 0,
     }
   );
-  return response.data;
 }
 
 /**
@@ -129,7 +127,7 @@ export async function refreshAssetLineage(params: {
   providerId?: string;
   clearExisting?: boolean;
 }): Promise<LineageRefreshResponse> {
-  const response = await apiClient.post<LineageRefreshResponse>(
+  return pixsimClient.post<LineageRefreshResponse>(
     '/lineage/refresh',
     {
       asset_ids: params.assetIds,
@@ -138,5 +136,4 @@ export async function refreshAssetLineage(params: {
       clear_existing: params.clearExisting ?? true,
     }
   );
-  return response.data;
 }

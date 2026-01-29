@@ -1,4 +1,4 @@
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 export interface PixverseCostEstimateRequest {
   kind?: 'video' | 'image';
@@ -39,9 +39,8 @@ export async function estimatePixverseCost(
     audio: !!body.audio,
     ...(duration !== undefined ? { duration } : {}),
   };
-  const res = await apiClient.post<PixverseCostEstimateResponse>(
+  return pixsimClient.post<PixverseCostEstimateResponse>(
     '/providers/pixverse/estimate-cost',
     payload
   );
-  return res.data;
 }

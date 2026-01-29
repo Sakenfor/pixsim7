@@ -56,62 +56,6 @@ const client = createApiClient({
 });
 
 /**
- * Legacy API client wrapper for backward compatibility.
- *
- * Provides the same interface as the old ApiClient class.
- * New code should import from @pixsim7/shared.api.client directly.
- *
- * @deprecated Prefer `pixsimClient` (returns data directly) or `pixsimClient.getRawClient()` if you need AxiosResponse.
- */
-class ApiClientWrapper {
-  private client: PixSimApiClient;
-
-  constructor(pixSimClient: PixSimApiClient) {
-    this.client = pixSimClient;
-  }
-
-  get<T>(url: string, config?: Parameters<PixSimApiClient['get']>[1]) {
-    // Return AxiosResponse shape for backward compatibility
-    return this.client.getRawClient().get<T>(url, config);
-  }
-
-  post<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['post']>[2]) {
-    return this.client.getRawClient().post<T>(url, data, config);
-  }
-
-  put<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['put']>[2]) {
-    return this.client.getRawClient().put<T>(url, data, config);
-  }
-
-  patch<T>(url: string, data?: unknown, config?: Parameters<PixSimApiClient['patch']>[2]) {
-    return this.client.getRawClient().patch<T>(url, data, config);
-  }
-
-  delete<T>(url: string, config?: Parameters<PixSimApiClient['delete']>[1]) {
-    return this.client.getRawClient().delete<T>(url, config);
-  }
-
-  getRawClient() {
-    return this.client.getRawClient();
-  }
-}
-
-/**
- * Singleton API client instance.
- *
- * @example
- * ```ts
- * import { apiClient } from '@lib/api';
- *
- * const response = await apiClient.get('/assets');
- * const assets = response.data;
- * ```
- *
- * @deprecated Prefer `pixsimClient` (data-returning) or domain helpers in `@pixsim7/shared.api.client/domains`.
- */
-export const apiClient = new ApiClientWrapper(client);
-
-/**
  * Direct access to the new PixSimApiClient.
  * Prefer this for new code.
  *

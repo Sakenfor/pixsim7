@@ -17,7 +17,7 @@ import type {
   GameSessionDTO,
 } from '@pixsim7/shared.types';
 
-import { apiClient } from './client';
+import { pixsimClient } from './client';
 
 /**
  * List available interactions for a target
@@ -25,11 +25,10 @@ import { apiClient } from './client';
 export async function listInteractions(
   req: ListInteractionsRequest
 ): Promise<ListInteractionsResponse> {
-  const response = await apiClient.post<ListInteractionsResponse>(
+  return pixsimClient.post<ListInteractionsResponse>(
     '/game/interactions/list',
     req
   );
-  return response.data;
 }
 
 /**
@@ -38,11 +37,10 @@ export async function listInteractions(
 export async function executeInteraction(
   req: ExecuteInteractionRequest
 ): Promise<ExecuteInteractionResponse> {
-  const response = await apiClient.post<ExecuteInteractionResponse>(
+  return pixsimClient.post<ExecuteInteractionResponse>(
     '/game/interactions/execute',
     req
   );
-  return response.data;
 }
 
 /**
@@ -108,10 +106,9 @@ export async function getPendingDialogue(
   createdAt: number;
   metadata?: Record<string, unknown>;
 }>> {
-  const response = await apiClient.get<GameSessionDTO>(
+  const session = await pixsimClient.get<GameSessionDTO>(
     `/game/sessions/${sessionId}`
   );
-  const session = response.data;
   const pending = session.flags?.pendingDialogue as Array<{
     requestId: string;
     npcId: IDs.NpcId;
@@ -153,16 +150,16 @@ export async function executePendingDialogue(
     playerInput: request.playerInput,
     programId: request.programId,
   });
-  const response = await apiClient.post<{
+  const response = await pixsimClient.post<{
     text: string;
     cached: boolean;
     generation_time_ms?: number;
   }>('/game/dialogue/next-line/execute', payload);
 
   return {
-    text: response.data.text,
-    cached: response.data.cached,
-    generationTimeMs: response.data.generation_time_ms,
+    text: response.text,
+    cached: response.cached,
+    generationTimeMs: response.generation_time_ms,
     requestId,
   };
 }
@@ -176,14 +173,13 @@ export async function clearPendingDialogue(
 ): Promise<void> {
   // This would need a backend endpoint to modify session flags
   // For now, we'll handle it client-side by filtering
-  const response = await apiClient.get<GameSessionDTO>(
+  const session = await pixsimClient.get<GameSessionDTO>(
     `/game/sessions/${sessionId}`
   );
-  const session = response.data;
   const pending = (session.flags?.pendingDialogue as Array<{ requestId: string }> | undefined) ?? [];
   const filtered = pending.filter((r) => r.requestId !== requestId);
 
-  await apiClient.patch(`/game/sessions/${sessionId}`, {
+  await pixsimClient.patch(`/game/sessions/${sessionId}`, {
     flags: {
       ...session.flags,
       pendingDialogue: filtered,
