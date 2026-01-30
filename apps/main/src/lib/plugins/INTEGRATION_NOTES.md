@@ -1,244 +1,182 @@
-# Plugin Catalog Integration Notes
+# Plugin System Architecture
 
-## Files Created
+## Overview
 
-### Core Implementation
+The plugin system provides unified discovery, registration, and lifecycle management
+for all plugin families in PixSim7. The architecture consists of three core layers:
 
-1. **`frontend/src/lib/plugins/catalog.ts`** (403 lines)
-   - PluginKind type union (6 plugin types)
-   - PluginMeta interface (unified metadata)
-   - PluginCapabilities interface
-   - Mapping functions for each plugin type
-   - List functions (per-kind and unified)
-   - Search, filter, and grouping utilities
+1. **Plugin Catalog** (`pluginSystem.ts`) - Single source of truth for plugin metadata
+2. **Plugin Runtime** (`pluginRuntime.ts`) - Unified registration entry point
+3. **Family Adapters** (`familyAdapters.ts`) - Family-specific registration logic
 
-2. **`frontend/src/components/PluginCatalogPanel.tsx`** (711 lines)
-   - Full-featured catalog browser UI
-   - List, Grid, and Grouped view modes
-   - Search and multi-filter support
-   - Detail panel with metadata and capabilities
-   - Responsive dark mode support
+## Core Components
 
-3. **`docs/PLUGIN_CATALOG.md`** (507 lines)
-   - Complete design documentation
-   - Usage examples
-   - Mapping function details
-   - Extension guide
-   - FAQ section
+### 1. Plugin Catalog (`pluginCatalog`)
 
-4. **`frontend/src/lib/plugins/__test_catalog.ts`** (test file)
-   - Integration test for catalog functions
-   - Validates all list/search/filter operations
-
-## Integration Points
-
-### Existing Systems (Unchanged)
-
-The catalog is a **read-only metadata layer**. These systems continue to work as-is:
-
-1. **Session Helpers**
-   - Registry: `sessionHelperRegistry` (@pixsim7/game.engine)
-   - Config: `pluginConfigStore`
-   - UI: `PluginConfigPanel` (existing)
-
-2. **Interactions**
-   - Registry: `interactionRegistry` (frontend/src/lib/game/interactions)
-   - Config: `pluginConfigStore`
-   - UI: `PluginConfigPanel` (existing)
-
-3. **Node Types**
-   - Registry: `nodeTypeRegistry` (@pixsim7/types)
-   - Config: N/A (always enabled)
-   - UI: Scene/Arc/World graph editors
-
-4. **Gallery Tools**
-   - Registry: `galleryToolRegistry` (frontend/src/lib/gallery/types)
-   - Config: N/A (conditional via `whenVisible`)
-   - UI: `GalleryToolsPanel`
-
-5. **UI Plugins**
-   - Registry: `pluginManager` (frontend/src/lib/plugins/PluginManager)
-   - Config: `PluginEntry.state` (enabled/disabled/error)
-   - UI: `PluginManager` component
-
-6. **Generation UI** (catalog-only)
-   - Selectors: `generationUiSelectors` (frontend/src/lib/plugins/catalogSelectors)
-   - Config: N/A (always enabled)
-   - UI: `QuickGenerateModule`
-   - Note: The legacy `generationUIPluginRegistry` is deprecated; use selectors instead.
-
-### New Capabilities
-
-The catalog adds these new capabilities **without breaking existing code**:
-
-1. **Unified Discovery**
-   ```typescript
-   import { listAllPlugins } from '@/lib/plugins/catalog';
-   const allPlugins = listAllPlugins(); // All 6 plugin types in one array
-   ```
-
-2. **Cross-System Search**
-   ```typescript
-   import { searchPlugins } from '@/lib/plugins/catalog';
-   const results = searchPlugins('inventory'); // Searches across all registries
-   ```
-
-3. **Metadata Normalization**
-   - Every plugin gets a consistent `PluginMeta` shape
-   - Semantic capabilities mapped from each type's native metadata
-   - Enablement state unified across different tracking mechanisms
-
-4. **UI Component**
-   - `PluginCatalogPanel` provides a visual browser
-   - Filter by kind, category, enabled state
-   - View modes: List, Grid, Grouped
-   - Links to existing config UIs for configurable plugins
-
-## Verification Checklist
-
-### Code Structure
-- [x] `catalog.ts` compiles without errors
-- [x] All imports resolve correctly
-- [x] No circular dependencies
-- [x] TypeScript types are strict (no `any`)
-
-### Mapping Functions
-- [x] `mapHelperToMeta` - extracts metadata from `HelperDefinition`
-- [x] `mapInteractionToMeta` - maps `InteractionPlugin` capabilities
-- [x] `mapNodeTypeToMeta` - filters to user-creatable/custom scope
-- [x] `mapGalleryToolToMeta` - extracts gallery tool metadata
-- [x] `mapUIPluginToMeta` - maps `PluginEntry` from PluginManager
-- [x] `mapGenerationUIToMeta` - extracts generation plugin metadata
-
-### List Functions
-- [x] `listHelperPlugins()` - returns session helpers
-- [x] `listInteractionPlugins()` - returns interactions
-- [x] `listNodeTypePlugins()` - returns node types (filtered)
-- [x] `listGalleryToolPlugins()` - returns gallery tools
-- [x] `listUIPlugins()` - returns UI plugins
-- [x] `listGenerationUIPlugins()` - returns generation plugins
-- [x] `listAllPlugins()` - unified array of all plugins
-
-### Utility Functions
-- [x] `searchPlugins(query)` - full-text search
-- [x] `filterByKind(kind)` - filter by PluginKind
-- [x] `filterByCategory(category)` - filter by category
-- [x] `filterByEnabled(enabled)` - filter by enabled state
-- [x] `getPluginCounts()` - counts by kind
-- [x] `getUniqueCategories()` - all categories
-- [x] `getUniqueTags()` - all tags
-- [x] `groupByKind()` - group plugins by kind
-- [x] `groupByCategory()` - group plugins by category
-- [x] `getPluginById(id, kind?)` - lookup by ID
-
-### UI Component
-- [x] `PluginCatalogPanel` component created
-- [x] Search input
-- [x] Kind filter dropdown
-- [x] Category filter dropdown
-- [x] Enabled state filter
-- [x] View mode toggle (List/Grid/Grouped)
-- [x] Plugin list/grid rendering
-- [x] Detail panel with metadata
-- [x] Dark mode support
-- [x] Responsive design
-
-### Documentation
-- [x] `PLUGIN_CATALOG.md` created
-- [x] Overview and design principles
-- [x] Core types documented
-- [x] Usage examples
-- [x] Mapping function details
-- [x] Extension guide
-- [x] FAQ section
-
-## Usage Example
+The `PluginCatalog` class in `pluginSystem.ts` is the single source of truth:
 
 ```typescript
-// Import the catalog
-import { listAllPlugins, searchPlugins, filterByKind } from '@/lib/plugins/catalog';
+import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
 // Get all plugins
-const allPlugins = listAllPlugins();
-console.log(`Total plugins: ${allPlugins.length}`);
+const allPlugins = pluginCatalog.getAll();
 
-// Search for inventory-related plugins
-const inventoryPlugins = searchPlugins('inventory');
-console.log(`Inventory plugins: ${inventoryPlugins.length}`);
+// Get by family
+const panels = pluginCatalog.getByFamily('workspace-panel');
+const interactions = pluginCatalog.getByFamily('interaction');
 
-// Get only interactions
-const interactions = filterByKind('interaction');
-console.log(`Interactions: ${interactions.length}`);
+// Get by origin
+const builtins = pluginCatalog.getByOrigin('builtin');
+const userPlugins = pluginCatalog.getUserPlugins();
 
-// Use in UI
-import { PluginCatalogPanel } from '@/components/PluginCatalogPanel';
+// Get specific plugin
+const panel = pluginCatalog.get('gallery');
 
-function MyPage() {
-  return <PluginCatalogPanel />;
-}
+// Get plugin object (runtime instance)
+const panelDef = pluginCatalog.getPlugin<PanelDefinition>('gallery');
 ```
 
-## Testing Strategy
+### 2. Plugin Runtime (`registerPluginDefinition`)
 
-### Manual Testing
-1. **Import Test**: Check that catalog imports work
-   ```bash
-   cd frontend
-   npm run build  # Verify no import errors
-   ```
+All plugins should be registered through `registerPluginDefinition`:
 
-2. **Runtime Test**: Use the test file
-   ```typescript
-   // Run the integration test
-   import { testCatalog } from '@/lib/plugins/__test_catalog';
-   testCatalog(); // Prints results to console
-   ```
+```typescript
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
-3. **UI Test**: Add PluginCatalogPanel to a route
-   ```typescript
-   // In any route file
-   import { PluginCatalogPanel } from '@/components/PluginCatalogPanel';
+await registerPluginDefinition({
+  id: 'my-plugin',
+  family: 'workspace-panel',
+  origin: 'plugin-dir',
+  source: 'source',
+  plugin: myPanelDefinition,
+  canDisable: true,
+});
+```
 
-   export function PluginsPage() {
-     return <PluginCatalogPanel />;
-   }
-   ```
+### 3. Family Adapters
 
-### Automated Testing (Future)
-- Unit tests for mapping functions
-- Integration tests for search/filter
-- Component tests for PluginCatalogPanel
-- E2E tests for full catalog flow
+Each plugin family has an adapter in `familyAdapters.ts` that:
+- Builds metadata from the plugin object
+- Routes to the appropriate underlying registry (if any)
 
-## Known Limitations
+## Plugin Families
 
-1. **No Real-Time Updates**: Catalog reads from registries on-demand. If plugins are registered/unregistered at runtime, call `listAllPlugins()` again to refresh.
+Currently supported families (17 total):
 
-2. **Node Type Filtering**: Only `userCreatable` or `scope === 'custom'` node types are included to avoid flooding the catalog with built-in types.
+| Family | Has Registry | Description |
+|--------|--------------|-------------|
+| `helper` | ✓ sessionHelperRegistry | Session state mutation helpers |
+| `interaction` | ✓ interactionRegistry | NPC/target action plugins |
+| `node-type` | ✓ nodeTypeRegistry | Graph node definitions |
+| `renderer` | ✓ nodeRendererRegistry | Node rendering components |
+| `dev-tool` | ✓ devToolRegistry | Developer tools |
+| `scene-view` | ✓ sceneViewRegistry | Scene rendering modes |
+| `control-center` | ✓ controlCenterRegistry | Control center UI modes |
+| `ui-plugin` | Custom | UI overlay plugins |
+| `world-tool` | Catalog only | World editing tools |
+| `gallery-tool` | Catalog only | Gallery utilities |
+| `brain-tool` | Catalog only | NPC brain tools |
+| `gallery-surface` | Catalog only | Gallery display surfaces |
+| `generation-ui` | Catalog only | Generation UI plugins |
+| `graph-editor` | Catalog only | Graph editor definitions |
+| `workspace-panel` | Catalog only | Workspace panels |
+| `dock-widget` | Catalog only | Dock widgets |
+| `gizmo-surface` | Catalog only | Gizmo surfaces |
 
-3. **Read-Only**: The catalog provides discovery and metadata. Configuration changes must go through existing UIs (`PluginConfigPanel`, `PluginManager`).
+## Usage Examples
 
-4. **No Persistence**: Plugin counts/metadata are computed on-the-fly. For performance-critical use cases, consider adding a reactive store.
+### Registering a Plugin
 
-## Next Steps
+```typescript
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
-1. **Add Route**: Create a dedicated "/plugins" route with PluginCatalogPanel
-2. **Link to Config**: Wire up "Configure Plugin" buttons in detail panel
-3. **Add Icons**: Replace emoji icons with proper icon library
-4. **Performance**: Add React Query or similar for caching if needed
-5. **Testing**: Add unit and integration tests
-6. **Extend**: Add more plugin kinds as new systems are added
+// Built-in plugin (cannot be disabled)
+await registerPluginDefinition({
+  id: 'my-builtin-panel',
+  family: 'workspace-panel',
+  origin: 'builtin',
+  source: 'source',
+  plugin: myPanelDefinition,
+  canDisable: false,
+});
 
-## Breaking Changes
+// User plugin (can be disabled)
+await registerPluginDefinition({
+  id: 'my-custom-panel',
+  family: 'workspace-panel',
+  origin: 'plugin-dir',
+  source: 'source',
+  plugin: myPanelDefinition,
+  canDisable: true,
+  metadata: {
+    version: '1.0.0',
+    author: 'My Name',
+  },
+});
+```
 
-**None.** This is a purely additive change. All existing plugin systems, registries, and UIs continue to work exactly as before.
+### Querying Plugins
 
-## Migration Guide
+```typescript
+import { pluginCatalog, pluginActivationManager } from '@lib/plugins/pluginSystem';
 
-**No migration needed.** Existing code is unaffected. To use the catalog:
+// Get all workspace panels
+const panels = pluginCatalog.getByFamily('workspace-panel');
 
-1. Import from `@/lib/plugins/catalog`
-2. Call `listAllPlugins()` or specific list functions
-3. Optionally use `PluginCatalogPanel` component
+// Check activation state
+const isActive = pluginActivationManager.isActive('my-panel');
 
-That's it!
+// Toggle activation
+await pluginActivationManager.toggle('my-panel');
+
+// Subscribe to changes
+const unsubscribe = pluginCatalog.subscribe(() => {
+  console.log('Catalog changed!');
+});
+```
+
+### Using Catalog Selectors
+
+For catalog-only families, use the selectors:
+
+```typescript
+import { generationUiSelectors, panelSelectors } from '@lib/plugins/catalogSelectors';
+
+// Get all generation UI plugins
+const genPlugins = generationUiSelectors.getAll();
+
+// Search panels
+const results = panelSelectors.search('gallery');
+```
+
+## Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Plugin Registration                       │
+│                                                              │
+│  registerPluginDefinition()  ←── Single entry point         │
+│           │                                                  │
+│           ▼                                                  │
+│  ┌─────────────────┐                                        │
+│  │ Family Adapters │ ←── buildMetadata() + register()       │
+│  └────────┬────────┘                                        │
+│           │                                                  │
+│     ┌─────┴─────┐                                           │
+│     ▼           ▼                                           │
+│ ┌────────┐ ┌────────────────┐                               │
+│ │Catalog │ │Underlying      │                               │
+│ │        │ │Registries      │                               │
+│ │metadata│ │(if any)        │                               │
+│ │+plugin │ │                │                               │
+│ └────────┘ └────────────────┘                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## Best Practices
+
+1. **Always use `registerPluginDefinition()`** - Never register directly to underlying registries
+2. **Set appropriate metadata** - Provide version, author, description, tags
+3. **Use correct origin** - `builtin` for core, `plugin-dir` for user plugins
+4. **Respect `canDisable`** - Core functionality should not be disableable
+5. **Query via catalog** - Use `pluginCatalog.getByFamily()` instead of underlying registries

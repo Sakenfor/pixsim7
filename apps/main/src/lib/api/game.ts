@@ -1,4 +1,10 @@
+/**
+ * Game API Client
+ *
+ * Wraps the shared domain client with app-specific helpers and additional endpoints.
+ */
 import { IDs, ApiComponents } from '@pixsim7/shared.types';
+import { createGameApi } from '@pixsim7/shared.api.client/domains';
 
 import type {
   Scene,
@@ -28,7 +34,10 @@ import type {
   TemplateKind,
 } from '@lib/registries';
 
-import { apiClient } from './client';
+import { pixsimClient } from './client';
+
+// Create shared domain API instance
+const gameApi = createGameApi(pixsimClient);
 
 // OpenAPI-generated types
 export type PaginatedWorldsResponse = ApiComponents['schemas']['PaginatedWorldsResponse'];
@@ -64,43 +73,44 @@ export type {
   TemplateKind,
 };
 
+// =============================================================================
+// Locations API (delegating to shared client with app-specific extensions)
+// =============================================================================
+
 export async function listGameLocations(): Promise<GameLocationSummary[]> {
-  const res = await apiClient.get<GameLocationSummary[]>('/game/locations');
-  return res.data;
+  return gameApi.listLocations();
 }
 
 export async function getGameLocation(locationId: IDs.LocationId): Promise<GameLocationDetail> {
-  const res = await apiClient.get<GameLocationDetail>(`/game/locations/${locationId}`);
-  return res.data;
+  return gameApi.getLocation(locationId);
 }
 
 export async function saveGameLocationHotspots(
   locationId: IDs.LocationId,
   hotspots: GameHotspotDTO[],
 ): Promise<GameLocationDetail> {
-  const res = await apiClient.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, {
-    hotspots,
-  });
-  return res.data;
+  return gameApi.saveLocationHotspots(locationId, hotspots);
 }
 
+// App-specific: meta update endpoint
 export async function saveGameLocationMeta(
   locationId: IDs.LocationId,
   meta: Record<string, unknown>,
 ): Promise<GameLocationDetail> {
-  const res = await apiClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
+  return pixsimClient.patch<GameLocationDetail>(`/game/locations/${locationId}`, {
     meta,
   });
-  return res.data;
 }
 
-// Helper to extract NPC slots from location meta
+// =============================================================================
+// Location Helpers (no API calls)
+// =============================================================================
+
 export function getNpcSlots(location: GameLocationDetail): NpcSlot2d[] {
   const meta = location.meta as any;
   return meta?.npcSlots2d || [];
 }
 
-// Helper to set NPC slots in location meta
 export function setNpcSlots(location: GameLocationDetail, slots: NpcSlot2d[]): GameLocationDetail {
   return {
     ...location,
@@ -111,13 +121,15 @@ export function setNpcSlots(location: GameLocationDetail, slots: NpcSlot2d[]): G
   };
 }
 
-// Helper to get NPC roles from world meta
+// =============================================================================
+// World Helpers (no API calls)
+// =============================================================================
+
 export function getWorldNpcRoles(world: GameWorldDetail): Record<string, string[]> {
   const meta = world.meta as any;
   return meta?.npcRoles || {};
 }
 
-// Helper to set NPC roles in world meta
 export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, string[]>): GameWorldDetail {
   return {
     ...world,
@@ -128,18 +140,14 @@ export function setWorldNpcRoles(world: GameWorldDetail, roles: Record<string, s
   };
 }
 
-// Helper to get world manifest from world meta.manifest
 export function getWorldManifest(world: GameWorldDetail): WorldManifest {
   if (!world.meta) {
     return {};
   }
-  // The manifest is stored under meta.manifest key
   const meta = world.meta as any;
   return (meta.manifest as WorldManifest) || {};
 }
 
-// Helper to set world manifest in world meta.manifest
-// Preserves other meta fields (e.g., npcRoles)
 export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest): GameWorldDetail {
   return {
     ...world,
@@ -150,20 +158,29 @@ export function setWorldManifest(world: GameWorldDetail, manifest: WorldManifest
   };
 }
 
+// =============================================================================
+// Scenes API
+// =============================================================================
+
 export async function getGameScene(sceneId: IDs.SceneId): Promise<Scene> {
-  const res = await apiClient.get<Scene>(`/game/scenes/${sceneId}`);
-  return res.data;
+  return gameApi.getScene(sceneId);
 }
 
+// =============================================================================
+// App-specific gameplay endpoints (not in shared client)
+// =============================================================================
+
 export async function attemptPickpocket(req: PickpocketRequest): Promise<PickpocketResponse> {
-  const res = await apiClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
-  return res.data;
+  return pixsimClient.post<PickpocketResponse>('/game/stealth/pickpocket', req);
 }
 
 export async function attemptSensualTouch(req: SensualTouchRequest): Promise<SensualTouchResponse> {
-  const res = await apiClient.post<SensualTouchResponse>('/game/romance/sensual-touch', req);
-  return res.data;
+  return pixsimClient.post<SensualTouchResponse>('/game/romance/sensual-touch', req);
 }
+
+// =============================================================================
+// Sessions API
+// =============================================================================
 
 export interface GameSessionSummary {
   id: IDs.SessionId;
@@ -181,18 +198,14 @@ export async function createGameSession(
   sceneId: IDs.SceneId,
   flags?: Record<string, unknown>
 ): Promise<GameSessionDTO> {
-  const res = await apiClient.post<GameSessionDTO>('/game/sessions', {
-    scene_id: sceneId,
-    flags,
-  });
-  return res.data;
+  return gameApi.createSession(sceneId, flags);
 }
 
 export async function getGameSession(sessionId: IDs.SessionId): Promise<GameSessionDTO> {
-  const res = await apiClient.get<GameSessionDTO>(`/game/sessions/${sessionId}`);
-  return res.data;
+  return gameApi.getSession(sessionId);
 }
 
+// App-specific: conflict-aware session update
 export interface SessionUpdateResponse {
   session?: GameSessionDTO;
   conflict?: boolean;
@@ -204,8 +217,8 @@ export async function updateGameSession(
   payload: SessionUpdatePayload,
 ): Promise<SessionUpdateResponse> {
   try {
-    const res = await apiClient.patch<GameSessionDTO>(`/game/sessions/${sessionId}`, payload);
-    return { session: res.data, conflict: false };
+    const session = await gameApi.updateSession(sessionId, payload);
+    return { session, conflict: false };
   } catch (error: any) {
     // Handle 409 Conflict responses
     if (error.response?.status === 409) {
@@ -217,105 +230,74 @@ export async function updateGameSession(
         };
       }
     }
-    // Re-throw other errors
     throw error;
   }
 }
 
+// =============================================================================
+// Worlds API
+// =============================================================================
+
 export async function listGameWorlds(): Promise<GameWorldSummary[]> {
-  const res = await apiClient.get<PaginatedWorldsResponse>('/game/worlds');
-  return [...res.data.worlds];
+  return gameApi.listWorlds();
 }
 
 export async function createGameWorld(
   name: string,
   meta?: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.post<GameWorldDetail>('/game/worlds', { name, meta });
-  return res.data;
+  return gameApi.createWorld(name, meta);
 }
 
 export async function getGameWorld(worldId: number): Promise<GameWorldDetail> {
-  const res = await apiClient.get<GameWorldDetail>(`/game/worlds/${worldId}`);
-  return res.data;
+  return gameApi.getWorld(worldId);
 }
 
-/**
- * Get unified world configuration with merged stat definitions.
- * Backend is the source of truth - includes pre-computed ordering.
- */
 export async function getWorldConfig(worldId: number): Promise<WorldConfigResponse> {
-  const res = await apiClient.get<WorldConfigResponse>(`/game/worlds/${worldId}/config`);
-  return res.data;
+  return gameApi.getWorldConfig(worldId);
 }
 
+// App-specific: uses PATCH instead of PUT
 export async function saveGameWorldMeta(
   worldId: number,
   meta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.patch<GameWorldDetail>(`/game/worlds/${worldId}`, {
+  return pixsimClient.patch<GameWorldDetail>(`/game/worlds/${worldId}`, {
     meta,
   });
-  return res.data;
 }
 
 export async function advanceGameWorldTime(
   worldId: number,
   deltaSeconds: number,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.post<GameWorldDetail>(`/game/worlds/${worldId}/advance`, {
-    delta_seconds: deltaSeconds,
-  });
-  return res.data;
+  return gameApi.advanceWorldTime(worldId, deltaSeconds);
 }
 
-/**
- * Update GameWorld metadata
- */
 export async function updateGameWorldMeta(
   worldId: number,
   meta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const res = await apiClient.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, { meta });
-  return res.data;
+  return gameApi.updateWorldMeta(worldId, meta);
 }
+
+// =============================================================================
+// NPCs API
+// =============================================================================
 
 export async function listGameNpcs(): Promise<GameNpcSummary[]> {
-  const res = await apiClient.get<GameNpcSummary[]>('/game/npcs');
-  return res.data;
-}
-
-export async function getNpcExpressions(npcId: number): Promise<NpcExpressionDTO[]> {
-  const res = await apiClient.get<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`);
-  return res.data;
-}
-
-export async function saveNpcExpressions(
-  npcId: number,
-  expressions: NpcExpressionDTO[],
-): Promise<NpcExpressionDTO[]> {
-  const res = await apiClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
-    expressions,
-  });
-  return res.data;
+  return gameApi.listNpcs();
 }
 
 export async function getNpcDetail(npcId: number): Promise<GameNpcDetail> {
-  const res = await apiClient.get<GameNpcDetail>(`/game/npcs/${npcId}`);
-  return res.data;
+  return gameApi.getNpc(npcId);
 }
 
 export async function saveNpcMeta(
   npcId: number,
   meta: Record<string, unknown>
 ): Promise<GameNpcDetail> {
-  const res = await apiClient.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
-  return res.data;
-}
-
-export async function listNpcSurfacePackages(): Promise<NpcSurfacePackage[]> {
-  const res = await apiClient.get<NpcSurfacePackage[]>('/game/npcs/surface-packages');
-  return res.data;
+  return gameApi.saveNpcMeta(npcId, meta);
 }
 
 export async function getNpcPresence(params: {
@@ -323,33 +305,47 @@ export async function getNpcPresence(params: {
   world_id?: number | null;
   location_id?: number | null;
 }): Promise<NpcPresenceDTO[]> {
-  const res = await apiClient.get<NpcPresenceDTO[]>('/game/npcs/presence', {
-    params: {
-      world_time: params.world_time,
-      world_id: params.world_id ?? undefined,
-      location_id: params.location_id ?? undefined,
-    },
+  return gameApi.getNpcPresence({
+    world_time: params.world_time,
+    world_id: params.world_id ?? undefined,
+    location_id: params.location_id ?? undefined,
   });
-  return res.data;
 }
 
-// Quest API
+// App-specific NPC endpoints (not in shared client)
+export async function getNpcExpressions(npcId: number): Promise<NpcExpressionDTO[]> {
+  return pixsimClient.get<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`);
+}
+
+export async function saveNpcExpressions(
+  npcId: number,
+  expressions: NpcExpressionDTO[],
+): Promise<NpcExpressionDTO[]> {
+  return pixsimClient.put<NpcExpressionDTO[]>(`/game/npcs/${npcId}/expressions`, {
+    expressions,
+  });
+}
+
+export async function listNpcSurfacePackages(): Promise<NpcSurfacePackage[]> {
+  return pixsimClient.get<NpcSurfacePackage[]>('/game/npcs/surface-packages');
+}
+
+// =============================================================================
+// Quests API
+// =============================================================================
+
 export async function listSessionQuests(
   sessionId: number,
   status?: string
 ): Promise<QuestDTO[]> {
-  const res = await apiClient.get<QuestDTO[]>(`/game/quests/sessions/${sessionId}/quests`, {
-    params: status ? { status } : undefined,
-  });
-  return res.data;
+  return gameApi.listQuests(sessionId, status);
 }
 
 export async function getSessionQuest(
   sessionId: number,
   questId: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.get<QuestDTO>(`/game/quests/sessions/${sessionId}/quests/${questId}`);
-  return res.data;
+  return gameApi.getQuest(sessionId, questId);
 }
 
 export async function addQuest(
@@ -367,8 +363,7 @@ export async function addQuest(
     metadata?: Record<string, unknown>;
   }
 ): Promise<QuestDTO> {
-  const res = await apiClient.post<QuestDTO>(`/game/quests/sessions/${sessionId}/quests`, questData);
-  return res.data;
+  return gameApi.addQuest(sessionId, questData);
 }
 
 export async function updateQuestStatus(
@@ -376,13 +371,10 @@ export async function updateQuestStatus(
   questId: string,
   status: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.patch<QuestDTO>(
-    `/game/quests/sessions/${sessionId}/quests/${questId}/status`,
-    { status }
-  );
-  return res.data;
+  return gameApi.updateQuestStatus(sessionId, questId, status);
 }
 
+// App-specific: objective progress update
 export async function updateObjectiveProgress(
   sessionId: number,
   questId: string,
@@ -390,33 +382,34 @@ export async function updateObjectiveProgress(
   progress: number,
   completed?: boolean
 ): Promise<QuestDTO> {
-  const res = await apiClient.patch<QuestDTO>(
+  return pixsimClient.patch<QuestDTO>(
     `/game/quests/sessions/${sessionId}/quests/${questId}/objectives`,
     { objective_id: objectiveId, progress, completed }
   );
-  return res.data;
 }
 
+// App-specific: complete objective endpoint
 export async function completeObjective(
   sessionId: number,
   questId: string,
   objectiveId: string
 ): Promise<QuestDTO> {
-  const res = await apiClient.post<QuestDTO>(
+  return pixsimClient.post<QuestDTO>(
     `/game/quests/sessions/${sessionId}/quests/${questId}/objectives/${objectiveId}/complete`
   );
-  return res.data;
 }
 
+// =============================================================================
 // Inventory API
+// =============================================================================
+
 export async function listInventoryItems(sessionId: number): Promise<InventoryItemDTO[]> {
-  const res = await apiClient.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
-  return res.data;
+  return gameApi.listInventoryItems(sessionId);
 }
 
+// App-specific: get single item
 export async function getInventoryItem(sessionId: number, itemId: string): Promise<InventoryItemDTO> {
-  const res = await apiClient.get<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`);
-  return res.data;
+  return pixsimClient.get<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`);
 }
 
 export async function addInventoryItem(
@@ -428,8 +421,7 @@ export async function addInventoryItem(
     metadata?: Record<string, unknown>;
   }
 ): Promise<InventoryItemDTO> {
-  const res = await apiClient.post<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items`, itemData);
-  return res.data;
+  return gameApi.addInventoryItem(sessionId, itemData);
 }
 
 export async function removeInventoryItem(
@@ -437,12 +429,10 @@ export async function removeInventoryItem(
   itemId: string,
   quantity: number = 1
 ): Promise<MessageResponse> {
-  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
-    data: { quantity },
-  });
-  return res.data;
+  return gameApi.removeInventoryItem(sessionId, itemId, quantity);
 }
 
+// App-specific: update item
 export async function updateInventoryItem(
   sessionId: number,
   itemId: string,
@@ -452,54 +442,30 @@ export async function updateInventoryItem(
     metadata?: Record<string, unknown>;
   }
 ): Promise<InventoryItemDTO> {
-  const res = await apiClient.patch<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, updates);
-  return res.data;
+  return pixsimClient.patch<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, updates);
 }
 
+// App-specific: clear all inventory
 export async function clearInventory(sessionId: number): Promise<MessageResponse> {
-  const res = await apiClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/clear`);
-  return res.data;
+  return pixsimClient.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/clear`);
 }
 
 export async function getInventoryStats(sessionId: number): Promise<InventoryStatsResponse> {
-  const res = await apiClient.get<InventoryStatsResponse>(`/game/inventory/sessions/${sessionId}/stats`);
-  return res.data;
+  return gameApi.getInventoryStats(sessionId);
 }
 
 // =============================================================================
 // Template Resolution API (ObjectLink system)
 // =============================================================================
 
-/**
- * Resolve a template entity to its linked runtime entity.
- * Uses the ObjectLink system with activation conditions based on context.
- *
- * @param templateKind - Template entity kind (e.g., 'characterInstance')
- * @param templateId - Template entity ID (usually UUID)
- * @param context - Optional runtime context for activation-based resolution
- * @returns Resolution result with runtimeId if found
- */
 export async function resolveTemplate(
   templateKind: TemplateKind,
   templateId: string,
   context?: Record<string, unknown>
 ): Promise<ResolveTemplateResponse> {
-  const res = await apiClient.post<ResolveTemplateResponse>('/game/links/resolve', {
-    template_kind: templateKind,
-    template_id: templateId,
-    context,
-  });
-  return res.data;
+  return gameApi.resolveTemplate(templateKind, templateId, context);
 }
 
-/**
- * Batch resolve multiple template references in one call.
- * More efficient than multiple single resolveTemplate calls.
- *
- * @param refs - Array of template references to resolve
- * @param sharedContext - Context applied to all refs (merged with per-ref context)
- * @returns Batch resolution result keyed by "templateKind:templateId"
- */
 export async function resolveTemplateBatch(
   refs: Array<{
     templateKind: TemplateKind;
@@ -508,13 +474,5 @@ export async function resolveTemplateBatch(
   }>,
   sharedContext?: Record<string, unknown>
 ): Promise<ResolveBatchResponse> {
-  const res = await apiClient.post<ResolveBatchResponse>('/game/links/resolve-batch', {
-    refs: refs.map((ref) => ({
-      template_kind: ref.templateKind,
-      template_id: ref.templateId,
-      context: ref.context,
-    })),
-    shared_context: sharedContext,
-  });
-  return res.data;
+  return gameApi.resolveTemplateBatch(refs, sharedContext);
 }

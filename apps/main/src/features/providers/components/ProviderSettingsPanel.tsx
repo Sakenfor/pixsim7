@@ -1,7 +1,7 @@
 import { Button, FormField, Input, useToast } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect } from 'react';
 
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
@@ -72,8 +72,8 @@ export function ProviderSettingsPanel() {
   // Load provider settings when activeProvider changes
   const loadProviderSettings = async (providerId: string) => {
     try {
-      const response = await apiClient.get<ProviderSettings>(`/providers/${providerId}/settings`);
-      setProviderSettings(response.data);
+      const settings = await pixsimClient.get<ProviderSettings>(`/providers/${providerId}/settings`);
+      setProviderSettings(settings);
     } catch (error) {
       console.error('Failed to load provider settings:', error);
     }
@@ -84,7 +84,7 @@ export function ProviderSettingsPanel() {
 
       setSavingSettings(true);
       try {
-        await apiClient.patch<ProviderSettings>(`/providers/${activeProvider}/settings`, {
+        await pixsimClient.patch<ProviderSettings>(`/providers/${activeProvider}/settings`, {
           global_password: providerSettings.global_password || null,
           auto_reauth_enabled: providerSettings.auto_reauth_enabled,
           auto_reauth_max_retries: providerSettings.auto_reauth_max_retries,
@@ -180,9 +180,9 @@ export function ProviderSettingsPanel() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await apiClient.get<ProviderAccount>(`/accounts/${editingAccountId}`);
+        const account = await pixsimClient.get<ProviderAccount>(`/accounts/${editingAccountId}`);
         if (!cancelled) {
-          setEditingAccount(res.data);
+          setEditingAccount(account);
         }
       } catch (error) {
         console.error('Failed to load account details', error);
@@ -436,10 +436,9 @@ export function ProviderSettingsPanel() {
                           description: 'Clearing expired cooldowns and fixing account states',
                           variant: 'info',
                         });
-                        const response = await apiClient.post<{ message: string }>(
+                        const { message } = await pixsimClient.post<{ message: string }>(
                           `/accounts/cleanup?provider_id=${activeProvider}`
                         );
-                        const { message } = response.data;
                         toast?.({
                           title: 'Cleanup complete',
                           description: message,
@@ -475,7 +474,7 @@ export function ProviderSettingsPanel() {
 
                         for (const account of accountsForProvider) {
                           try {
-                            await apiClient.post(`/accounts/${account.id}/sync-credits?force=true`);
+                            await pixsimClient.post(`/accounts/${account.id}/sync-credits?force=true`);
                             synced++;
                           } catch (err) {
                             console.error(`Failed to sync account ${account.id}:`, err);
@@ -512,11 +511,10 @@ export function ProviderSettingsPanel() {
                           variant: 'info',
                         });
 
-                        const checkRes = await apiClient.get<{
+                        const { duplicate_count, accounts } = await pixsimClient.get<{
                           duplicate_count: number;
                           accounts: Array<{ email: string }>;
                         }>(`/accounts/deduplicate?provider_id=${activeProvider}`);
-                        const { duplicate_count, accounts } = checkRes.data;
 
                         if (duplicate_count === 0) {
                           toast?.({
@@ -539,10 +537,9 @@ export function ProviderSettingsPanel() {
                         if (!confirmed) return;
 
                         // Run deduplication (POST = actually delete)
-                        const dedupeRes = await apiClient.post<{ deleted: number }>(
+                        const { deleted } = await pixsimClient.post<{ deleted: number }>(
                           `/accounts/deduplicate?provider_id=${activeProvider}`
                         );
-                        const { deleted } = dedupeRes.data;
 
                         toast?.({
                           title: 'Deduplication complete',

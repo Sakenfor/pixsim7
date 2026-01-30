@@ -14,9 +14,12 @@ Plugin Architecture:
 """
 
 import inspect
-from typing import Protocol, Callable, Any, Optional, Literal
+from typing import Protocol, Callable, Any, Optional, Literal, Union, TYPE_CHECKING
 from fastapi import APIRouter
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
+
+if TYPE_CHECKING:
+    from .frontend_manifest import FrontendPluginManifest
 
 
 # =============================================================================
@@ -37,6 +40,10 @@ PluginProvides = Literal[
     "api_routes",           # Exposes API endpoints
     "frontend_tools",       # Provides frontend gizmo tools
     "frontend_interactions",  # Provides frontend interactions
+    "frontend_helpers",     # Provides frontend session helpers
+    "frontend_gating",      # Provides frontend custom gating conditions
+    "frontend_scene_views", # Provides frontend scene view modes
+    "frontend_control_centers",  # Provides frontend control center modes
     "behavior_conditions",  # Registers behavior conditions
     "behavior_effects",     # Registers behavior effects
     "behavior_scoring",     # Registers scoring factors
@@ -181,9 +188,14 @@ class PluginManifest(BaseModel):
     enabled: bool = True             # Is plugin enabled?
     required: bool = False           # Is plugin required? (fail-fast if load fails in dev/CI)
 
-    # Frontend manifest for dynamic interaction registration
-    # See packages/plugins/stealth/shared/types.ts for FrontendPluginManifest type
-    frontend_manifest: Optional[dict] = None
+    # Frontend manifest for dynamic interaction/helper/tool registration
+    # Can be a FrontendPluginManifest instance or dict (for backwards compatibility)
+    # See infrastructure/plugins/frontend_manifest.py for canonical schema
+    frontend_manifest: Optional[Union[dict, "FrontendPluginManifest"]] = None
+
+    # Plugin-contributed codegen tasks (escape hatch for custom type generation)
+    # Prefer using the standard frontend_manifest schema instead
+    codegen_tasks: list[dict] = Field(default_factory=list)
 
     # Permissions - see pixsim7/backend/main/infrastructure/plugins/permissions.py
     # for canonical permission definitions

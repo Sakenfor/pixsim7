@@ -34,6 +34,17 @@ export const interactionStudioModule: Module = {
     featurePrimary: true,
     component: lazy(() => import('../../../routes/InteractionStudio').then(m => ({ default: m.InteractionStudio }))),
     actions: [openInteractionStudioAction],
+    appMap: {
+      docs: [
+        'docs/narrative/INTERACTION_AUTHORING_GUIDE.md',
+        'docs/game/INTERACTION_PLUGIN_MANIFEST.md',
+      ],
+      backend: [
+        'pixsim7.backend.main.api.v1.npc_interactions',
+        'pixsim7.backend.main.api.v1.npc_state',
+        'pixsim7.backend.main.domain.game.interactions',
+      ],
+    },
   },
 };
 

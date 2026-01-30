@@ -16,7 +16,7 @@ import { useMediaSettingsStore, type ServerMediaSettings } from '@features/asset
 import { useAssetSettingsStore } from '@features/assets';
 import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
 
-import { apiClient } from '@/lib/api';
+import { pixsimClient } from '@/lib/api';
 
 import { ContentBlobManagement } from '../../components/shared/ContentBlobManagement';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
@@ -28,8 +28,7 @@ const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
 
 // Fetch server settings on mount
 async function fetchServerSettings(): Promise<ServerMediaSettings> {
-  const response = await apiClient.get<ServerMediaSettings>('/media/settings');
-  return response.data;
+  return pixsimClient.get<ServerMediaSettings>('/media/settings');
 }
 
 // Update server setting
@@ -37,8 +36,7 @@ async function updateServerSetting(
   key: keyof ServerMediaSettings,
   value: any
 ): Promise<ServerMediaSettings> {
-  const response = await apiClient.patch<ServerMediaSettings>('/media/settings', { [key]: value });
-  return response.data;
+  return pixsimClient.patch<ServerMediaSettings>('/media/settings', { [key]: value });
 }
 
 // =============================================================================

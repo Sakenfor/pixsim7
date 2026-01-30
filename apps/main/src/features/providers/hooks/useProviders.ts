@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 export interface ProviderInfo {
   provider_id: string;
@@ -17,9 +17,9 @@ export function useProviders() {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiClient.get<ProviderInfo[]>('/providers');
+        const data = await pixsimClient.get<ProviderInfo[]>('/providers');
         if (!cancelled) {
-          setProviders(res.data.map(p => ({ id: p.provider_id, name: p.name })));
+          setProviders(data.map(p => ({ id: p.provider_id, name: p.name })));
         }
       } catch (e: unknown) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load providers');

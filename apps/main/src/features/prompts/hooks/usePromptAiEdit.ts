@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 /**
  * Request to edit a prompt using AI
@@ -68,19 +68,19 @@ export function usePromptAiEdit() {
     });
 
     try {
-      const response = await apiClient.post<PromptEditResponse>(
-        '/api/v1/ai/prompt-edit',
+      const response = await pixsimClient.post<PromptEditResponse>(
+        '/ai/prompt-edit',
         request
       );
 
       setState({
         loading: false,
         error: null,
-        promptAfter: response.data.prompt_after,
-        interactionId: response.data.interaction_id,
+        promptAfter: response.prompt_after,
+        interactionId: response.interaction_id,
       });
 
-      return response.data;
+      return response;
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to edit prompt';
       setState({

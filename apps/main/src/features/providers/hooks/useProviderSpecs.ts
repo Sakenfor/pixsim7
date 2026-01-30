@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 interface RawProviderInfo {
   provider_id: string;
@@ -26,8 +26,8 @@ export function useProviderSpecs(providerId?: string) {
       setLoading(true);
       setError(null);
       try {
-        const res = await apiClient.get<RawProviderInfo[]>('/providers');
-        const match = res.data.find(p => p.provider_id === providerId);
+        const data = await pixsimClient.get<RawProviderInfo[]>('/providers');
+        const match = data.find(p => p.provider_id === providerId);
         if (!cancelled) {
           setSpecs(match?.capabilities || null);
         }

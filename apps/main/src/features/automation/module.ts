@@ -40,5 +40,13 @@ export const automationModule: Module = {
     featured: true,
     component: lazy(() => import('../../routes/Automation').then(m => ({ default: m.AutomationRoute }))),
     actions: [openAutomationAction],
+    appMap: {
+      docs: ['docs/backend/automation.md'],
+      backend: [
+        'pixsim7.backend.main.api.v1.automation',
+        'pixsim7.backend.main.api.v1.device_agents',
+        'pixsim7.backend.main.services.automation',
+      ],
+    },
   },
 };

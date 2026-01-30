@@ -12,6 +12,11 @@ from typing import Dict, Any, List, Optional, Tuple
 from pixsim7.backend.main.infrastructure.plugins.observability import metrics_tracker
 from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
 from pixsim7.backend.main.infrastructure.plugins.manager import PluginManager
+from pixsim7.backend.main.infrastructure.plugins.frontend_manifest import (
+    AllFrontendManifestsResponse,
+    FrontendManifestEntry,
+    FrontendPluginManifest,
+)
 
 
 router = APIRouter(prefix="/admin/plugins", tags=["admin", "plugins"])
@@ -316,22 +321,71 @@ async def get_plugin_frontend_manifest(
     return manifest.frontend_manifest
 
 
-@router.get("/frontend/all")
+def _normalize_frontend_manifest(
+    frontend_manifest: Any
+) -> FrontendPluginManifest:
+    """
+    Normalize frontend_manifest to FrontendPluginManifest.
+
+    Handles both dict (legacy) and FrontendPluginManifest instances.
+    """
+    if isinstance(frontend_manifest, FrontendPluginManifest):
+        return frontend_manifest
+    elif isinstance(frontend_manifest, dict):
+        return FrontendPluginManifest.model_validate(frontend_manifest)
+    else:
+        raise ValueError(f"Invalid frontend_manifest type: {type(frontend_manifest)}")
+
+
+def _build_manifest_entry(
+    plugin_id: str,
+    plugin_info: Dict[str, Any],
+    manifest: Any,
+) -> Optional[FrontendManifestEntry]:
+    """Build a FrontendManifestEntry from plugin info, or None if no frontend manifest."""
+    if not manifest.frontend_manifest:
+        return None
+
+    try:
+        frontend_manifest = _normalize_frontend_manifest(manifest.frontend_manifest)
+    except Exception:
+        # Skip plugins with invalid frontend manifests
+        return None
+
+    origin = "plugin-dir" if plugin_info.get("is_external", False) else "builtin"
+
+    return FrontendManifestEntry(
+        plugin_id=plugin_id,
+        enabled=plugin_info.get("enabled", False),
+        kind=manifest.kind,
+        required=manifest.required,
+        origin=origin,
+        author=manifest.author,
+        description=manifest.description,
+        version=manifest.version,
+        tags=manifest.tags,
+        permissions=manifest.permissions,
+        manifest=frontend_manifest,
+    )
+
+
+@router.get("/frontend/all", response_model=AllFrontendManifestsResponse)
 async def list_all_frontend_manifests(
     managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
-):
+) -> AllFrontendManifestsResponse:
     """
     Get all frontend manifests from all enabled plugins.
 
     This endpoint returns a list of all plugins that have frontend manifests,
-    which the frontend can use to dynamically register all available interactions.
+    which the frontend can use to dynamically register all available interactions,
+    helpers, tools, and other frontend components.
 
     Returns:
-        List of frontend manifests from all plugins that have them
+        AllFrontendManifestsResponse with typed manifest entries
     """
     plugin_manager, routes_manager = managers
 
-    manifests = []
+    entries: List[FrontendManifestEntry] = []
 
     # Collect from feature plugins
     for plugin_id, plugin_info in plugin_manager.plugins.items():
@@ -339,21 +393,9 @@ async def list_all_frontend_manifests(
             continue
 
         manifest = plugin_info["manifest"]
-        if manifest.frontend_manifest:
-            origin = "plugin-dir" if plugin_info.get("is_external", False) else "builtin"
-            manifests.append({
-                "pluginId": plugin_id,
-                "enabled": plugin_info.get("enabled", False),
-                "kind": manifest.kind,
-                "required": manifest.required,
-                "origin": origin,
-                "author": manifest.author,
-                "description": manifest.description,
-                "version": manifest.version,
-                "tags": manifest.tags,
-                "permissions": manifest.permissions,
-                "manifest": manifest.frontend_manifest,
-            })
+        entry = _build_manifest_entry(plugin_id, plugin_info, manifest)
+        if entry:
+            entries.append(entry)
 
     # Collect from route plugins if available
     if routes_manager:
@@ -362,23 +404,11 @@ async def list_all_frontend_manifests(
                 continue
 
             manifest = plugin_info["manifest"]
-            if manifest.frontend_manifest:
-                origin = "plugin-dir" if plugin_info.get("is_external", False) else "builtin"
-                manifests.append({
-                    "pluginId": plugin_id,
-                    "enabled": plugin_info.get("enabled", False),
-                    "kind": manifest.kind,
-                    "required": manifest.required,
-                    "origin": origin,
-                    "author": manifest.author,
-                    "description": manifest.description,
-                    "version": manifest.version,
-                    "tags": manifest.tags,
-                    "permissions": manifest.permissions,
-                    "manifest": manifest.frontend_manifest,
-                })
+            entry = _build_manifest_entry(plugin_id, plugin_info, manifest)
+            if entry:
+                entries.append(entry)
 
-    return {
-        "manifests": manifests,
-        "total": len(manifests),
-    }
+    return AllFrontendManifestsResponse(
+        manifests=entries,
+        total=len(entries),
+    )

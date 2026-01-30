@@ -27,6 +27,19 @@ from .world_scoping import (
     add_enabled_plugin_for_world,
     remove_enabled_plugin_for_world,
 )
+from .frontend_manifest import (
+    FrontendPluginManifest,
+    FrontendInteractionDef,
+    FrontendHelperDef,
+    FrontendGatingDef,
+    FrontendToolDef,
+    FrontendToolPack,
+    FrontendSceneViewDef,
+    FrontendControlCenterDef,
+    CodegenTaskDef,
+    AllFrontendManifestsResponse,
+    FrontendManifestEntry,
+)
 
 __all__ = [
     # Core types
@@ -66,4 +79,17 @@ __all__ = [
     'set_enabled_plugins_for_world',
     'add_enabled_plugin_for_world',
     'remove_enabled_plugin_for_world',
+
+    # Frontend manifest schema (OpenAPI codegen)
+    'FrontendPluginManifest',
+    'FrontendInteractionDef',
+    'FrontendHelperDef',
+    'FrontendGatingDef',
+    'FrontendToolDef',
+    'FrontendToolPack',
+    'FrontendSceneViewDef',
+    'FrontendControlCenterDef',
+    'CodegenTaskDef',
+    'AllFrontendManifestsResponse',
+    'FrontendManifestEntry',
 ]

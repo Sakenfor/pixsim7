@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button, FormField, Input } from '@pixsim7/shared.ui';
-import { apiClient } from '@lib/api/client';
+import { pixsimClient } from '@lib/api/client';
 
 export interface AIProviderSettingsData {
   openai_api_key?: string;
@@ -72,15 +72,15 @@ export function AIProviderSettings({
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [settingsResponse, providersResponse, instancesResponse] = await Promise.all([
-        apiClient.get<AIProviderSettingsData>('/providers/ai-providers/settings'),
-        apiClient.get<{ providers: LlmProviderInfo[] }>('/ai/providers'),
-        apiClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances'),
+      const [settingsData, providersData, instancesData] = await Promise.all([
+        pixsimClient.get<AIProviderSettingsData>('/providers/ai-providers/settings'),
+        pixsimClient.get<{ providers: LlmProviderInfo[] }>('/ai/providers'),
+        pixsimClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances'),
       ]);
-      setSettings(settingsResponse.data);
-      const providerList = providersResponse.data.providers || [];
+      setSettings(settingsData);
+      const providerList = providersData.providers || [];
       setProviders(providerList);
-      setInstances(instancesResponse.data.instances || []);
+      setInstances(instancesData.instances || []);
       // Set initial active tab to current provider or first available
       const currentProvider = settingsResponse.data.llm_provider;
       if (providerList.find(p => p.provider_id === currentProvider)) {
@@ -108,7 +108,7 @@ export function AIProviderSettings({
 
     setSaving(true);
     try {
-      await apiClient.patch('/providers/ai-providers/settings', settings);
+      await pixsimClient.patch('/providers/ai-providers/settings', settings);
       onSaveSuccess?.();
     } catch (error) {
       console.error('Failed to save AI provider settings:', error);
@@ -154,13 +154,13 @@ export function AIProviderSettings({
 
     try {
       if (editingInstance) {
-        await apiClient.patch(`/providers/llm-instances/${editingInstance.id}`, {
+        await pixsimClient.patch(`/providers/llm-instances/${editingInstance.id}`, {
           label: instanceForm.label,
           description: instanceForm.description || undefined,
           config,
         });
       } else {
-        await apiClient.post('/providers/llm-instances', {
+        await pixsimClient.post('/providers/llm-instances', {
           provider_id: 'cmd-llm',
           label: instanceForm.label,
           description: instanceForm.description || undefined,
@@ -168,8 +168,8 @@ export function AIProviderSettings({
         });
       }
       // Reload instances
-      const response = await apiClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances');
-      setInstances(response.data.instances || []);
+      const instancesData = await pixsimClient.get<{ instances: LlmInstance[] }>('/providers/llm-instances');
+      setInstances(instancesData.instances || []);
       resetInstanceForm();
     } catch (error) {
       console.error('Failed to save instance:', error);
@@ -178,7 +178,7 @@ export function AIProviderSettings({
 
   const deleteInstance = async (instanceId: number) => {
     try {
-      await apiClient.delete(`/providers/llm-instances/${instanceId}`);
+      await pixsimClient.delete(`/providers/llm-instances/${instanceId}`);
       setInstances(instances.filter(i => i.id !== instanceId));
     } catch (error) {
       console.error('Failed to delete instance:', error);
@@ -187,7 +187,7 @@ export function AIProviderSettings({
 
   const toggleInstanceEnabled = async (instance: LlmInstance) => {
     try {
-      await apiClient.patch(`/providers/llm-instances/${instance.id}`, {
+      await pixsimClient.patch(`/providers/llm-instances/${instance.id}`, {
         enabled: !instance.enabled,
       });
       setInstances(instances.map(i =>

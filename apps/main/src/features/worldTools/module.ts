@@ -60,5 +60,13 @@ export const gameModule: Module = {
     featured: true,
     component: lazy(() => import('../../routes/GameWorld').then(m => ({ default: m.GameWorld }))),
     actions: [enterGameWorldAction, openNpcEditorAction],
+    appMap: {
+      docs: ['docs/backend/game.md'],
+      backend: [
+        'pixsim7.backend.main.api.v1.game_worlds',
+        'pixsim7.backend.main.api.v1.game_sessions',
+        'pixsim7.backend.main.domain.game',
+      ],
+    },
   },
 };

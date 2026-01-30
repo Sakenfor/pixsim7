@@ -127,5 +127,12 @@ export const workspaceModule: Module = {
     featured: true,
     component: lazy(() => import("./routes/Workspace").then(m => ({ default: m.WorkspaceRoute }))),
     actions: [openWorkspaceAction, saveSceneAction, openPanelAction],
+    appMap: {
+      docs: ['docs/architecture/README.md'],
+      frontend: [
+        'apps/main/src/features/workspace/',
+        'apps/main/src/lib/dockview/',
+      ],
+    },
   },
 };

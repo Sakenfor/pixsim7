@@ -57,6 +57,21 @@ export const appMapModule: Module = {
       category: 'graph',
       tags: ['architecture', 'map', 'visualization', 'structure'],
     },
+    appMap: {
+      docs: ['docs/APP_MAP.md'],
+      backend: ['pixsim7.backend.main.api.v1.dev_architecture'],
+      frontend: [
+        'apps/main/src/features/panels/components/dev/AppMapPanel.tsx',
+        'apps/main/src/features/panels/components/dev/appMap',
+        'scripts/generate-app-map.ts',
+      ],
+      notes: [
+        'App Map is the canonical source for architecture introspection.',
+        'Backend API: GET /dev/architecture/map',
+        'Frontend uses module-derived appMap metadata (page.appMap).',
+        'Static JSON (app_map.sources.json) is deprecated.',
+      ],
+    },
   },
 };
 
@@ -136,6 +151,18 @@ export const promptLabModule: Module = {
     featureId: 'prompt-lab',
     hidden: true,
     component: DevtoolsRedirect,
+    appMap: {
+      docs: [
+        'docs/prompts/SEMANTIC_PACKS_IMPLEMENTATION.md',
+        'docs/prompts/PROMPT_SYSTEM_REVIEW.md',
+      ],
+      backend: [
+        'pixsim7.backend.main.api.v1.prompts',
+        'pixsim7.backend.main.api.v1.semantic_packs',
+        'pixsim7.backend.main.api.v1.dev_prompt_categories',
+      ],
+      frontend: ['apps/main/src/features/prompts/'],
+    },
   },
 };
 
