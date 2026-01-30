@@ -26,3 +26,4 @@ export { pluginManagerModule, pluginWorkspaceModule } from '@features/plugins/ro
 export { overlayConfigModule } from '@features/componentSettings/routes';
 export { assetDetailModule } from '@features/assets/routes';
 export { generationPageModule } from '@features/generation/routes';
+export { routineGraphPageModule } from '@features/routine-graph/routes';

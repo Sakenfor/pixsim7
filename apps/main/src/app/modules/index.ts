@@ -34,6 +34,7 @@ import {
   actionBlockGraphModule,
   blockFitModule,
   widgetBuilderModule,
+  routineGraphPageModule,
 } from './pages';
 import { moduleRegistry } from './registry';
 
@@ -76,6 +77,7 @@ export function registerModules() {
   moduleRegistry.register(actionBlockGraphModule);
   moduleRegistry.register(blockFitModule);
   moduleRegistry.register(widgetBuilderModule);
+  moduleRegistry.register(routineGraphPageModule);
 }
 
 // Export registry for easy access
