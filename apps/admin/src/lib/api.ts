@@ -1,10 +1,16 @@
 import type {
+  APIHealthResponse,
   BuildablesResponse,
   CodegenTasksResponse,
+  EventStatsResponse,
   LauncherSettings,
   LauncherSettingsUpdate,
+  LogFileResponse,
+  LogLevel,
+  LogsResponse,
   ServiceDefinition,
   ServicesResponse,
+  StatisticsResponse,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100';
@@ -77,4 +83,49 @@ export async function updateSettings(payload: LauncherSettingsUpdate): Promise<L
     method: 'PUT',
     body: JSON.stringify(payload),
   });
+}
+
+// Logs API
+export async function getServiceLogs(
+  serviceKey: string,
+  options?: { tail?: number; filter_text?: string; filter_level?: LogLevel },
+): Promise<LogsResponse> {
+  const params = new URLSearchParams();
+  if (options?.tail !== undefined) {
+    params.set('tail', String(options.tail));
+  }
+  if (options?.filter_text) {
+    params.set('filter_text', options.filter_text);
+  }
+  if (options?.filter_level) {
+    params.set('filter_level', options.filter_level);
+  }
+  const query = params.toString();
+  return request(`/logs/${serviceKey}${query ? `?${query}` : ''}`);
+}
+
+export async function clearServiceLogs(serviceKey: string): Promise<{ success: boolean; message: string }> {
+  return request(`/logs/${serviceKey}`, { method: 'DELETE' });
+}
+
+export async function clearAllLogs(): Promise<{ success: boolean; message: string }> {
+  return request('/logs', { method: 'DELETE' });
+}
+
+export async function getLogFilePath(serviceKey: string): Promise<LogFileResponse> {
+  return request(`/logs/${serviceKey}/file`);
+}
+
+// Health API
+export async function getAPIHealth(): Promise<APIHealthResponse> {
+  return request('/health');
+}
+
+export async function getStatistics(): Promise<StatisticsResponse> {
+  return request('/stats');
+}
+
+// Events API
+export async function getEventStats(): Promise<EventStatsResponse> {
+  return request('/events/stats');
 }

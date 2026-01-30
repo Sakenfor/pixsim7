@@ -133,3 +133,43 @@ export interface CodegenTasksResponse {
   tasks: CodegenTask[];
   total: number;
 }
+
+// Logs API types
+export type LogLevel = 'ERROR' | 'WARNING' | 'INFO' | 'DEBUG' | 'CRITICAL';
+
+export interface LogsResponse {
+  service_key: string;
+  lines: string[];
+  total_lines: number;
+  filtered: boolean;
+}
+
+export interface LogFileResponse {
+  service_key: string;
+  log_file: string | null;
+}
+
+// Health API types
+export interface APIHealthResponse {
+  status: 'healthy' | 'degraded';
+  version: string;
+  managers: Record<string, boolean>;
+  event_bus: Record<string, unknown>;
+}
+
+export interface StatisticsResponse {
+  services_total: number;
+  services_running: number;
+  services_healthy: number;
+  services_unhealthy: number;
+  uptime_seconds: number;
+}
+
+// Events API types
+export interface EventStatsResponse {
+  total_events: number;
+  events_by_type: Record<string, number>;
+  subscribers: number;
+  active_websocket_connections: number;
+  [key: string]: unknown;
+}

@@ -25,6 +25,9 @@ import type {
 } from './lib/types';
 import { BuildablesPanel } from './panels/BuildablesPanel';
 import { CodegenPanel } from './panels/CodegenPanel';
+import { EventsStatsPanel } from './panels/EventsStatsPanel';
+import { HealthPanel } from './panels/HealthPanel';
+import { LogsPanel } from './panels/LogsPanel';
 import { ServiceInspectorPanel } from './panels/ServiceInspectorPanel';
 import { ServicesPanel } from './panels/ServicesPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
@@ -348,6 +351,9 @@ export default function App() {
       buildables: BuildablesPanel,
       codegen: CodegenPanel,
       settings: SettingsPanel,
+      logs: LogsPanel,
+      health: HealthPanel,
+      eventsStats: EventsStatsPanel,
     }),
     [],
   );
@@ -382,7 +388,43 @@ export default function App() {
       title: 'Settings',
       position: { referencePanel: 'codegen', direction: 'below' },
     });
+    api.addPanel({
+      id: 'logs',
+      component: 'logs',
+      title: 'Logs',
+      position: { referencePanel: 'settings', direction: 'below' },
+    });
+    api.addPanel({
+      id: 'health',
+      component: 'health',
+      title: 'Health',
+      position: { referencePanel: 'logs', direction: 'within' },
+    });
+    api.addPanel({
+      id: 'eventsStats',
+      component: 'eventsStats',
+      title: 'Events & Stats',
+      position: { referencePanel: 'logs', direction: 'within' },
+    });
   }, []);
+
+  const handleDockviewReady = useCallback(
+    (api: DockviewReadyEvent['api']) => {
+      requestAnimationFrame(() => {
+        const panelCount =
+          typeof (api.panels as { size?: number }).size === 'number'
+            ? (api.panels as { size: number }).size
+            : Array.isArray(api.panels)
+              ? api.panels.length
+              : 0;
+
+        if (panelCount === 0) {
+          defaultLayout(api);
+        }
+      });
+    },
+    [defaultLayout],
+  );
 
   const contextValue: AdminContextValue = {
     services,
@@ -453,6 +495,8 @@ export default function App() {
               components={dockComponents}
               storageKey={DOCKVIEW_STORAGE_KEY}
               defaultLayout={defaultLayout}
+              onReady={handleDockviewReady}
+              className="h-full w-full"
             />
           </div>
         </AdminContext.Provider>
