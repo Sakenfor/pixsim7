@@ -15,10 +15,18 @@ Design:
 - No LLM calls
 - Returns plain dicts/strings only
 """
-from typing import Dict, Any, List, Set, Optional
+from typing import Dict, Any, List, Set, Optional, TypedDict
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from .simple import SimplePromptParser
+
+
+class PromptTag(TypedDict, total=False):
+    """Structured tag with segment linking."""
+    tag: str
+    segments: List[int]  # Indices into segments array
+    source: str  # 'role' | 'keyword' | 'ontology'
+    confidence: float
 
 
 async def parse_prompt_to_segments(
@@ -47,6 +55,8 @@ async def parse_prompt_to_segments(
             "text": "...",
             "start_pos": int,
             "end_pos": int,
+            "confidence": float,
+            "matched_keywords": [...],
         }
     """
     # Currently only SimplePromptParser is implemented
@@ -57,12 +67,17 @@ async def parse_prompt_to_segments(
 
     segments: List[Dict[str, Any]] = []
     for seg in parsed.segments:
-        segments.append({
+        segment_dict: Dict[str, Any] = {
             "role": seg.role,
             "text": seg.text,
             "start_pos": seg.start_pos,
             "end_pos": seg.end_pos,
-        })
+            "confidence": seg.confidence,
+        }
+        # Only include matched_keywords if non-empty
+        if seg.matched_keywords:
+            segment_dict["matched_keywords"] = seg.matched_keywords
+        segments.append(segment_dict)
 
     return {"segments": segments}
 
@@ -81,33 +96,92 @@ async def parse_prompt_to_blocks(
     return {"blocks": result.get("segments", [])}
 
 
-def _derive_tags_from_segments(segments: List[Dict[str, Any]]) -> List[str]:
+def _derive_tags_from_segments(
+    segments: List[Dict[str, Any]],
+    *,
+    structured: bool = True,
+) -> tuple[List[PromptTag], List[str]]:
     """
     Derive tags from parsed prompt segments.
 
-    - Role tags: "has:character", "has:action", etc.
-    - Simple intensity/mood hints based on keywords.
-    """
-    role_tags: Set[str] = set()
-    keyword_tags: Set[str] = set()
+    Returns structured tags with segment linking and flat tags for backward compatibility.
 
-    for segment in segments:
+    Args:
+        segments: List of segment dicts from parse_prompt_to_segments
+        structured: If True, return full structured tags; if False, only flat
+
+    Returns:
+        Tuple of (structured_tags, flat_tags)
+        - structured_tags: List of PromptTag dicts with segment indices
+        - flat_tags: Simple list of tag strings for backward compatibility
+    """
+    # Track which segments contribute to each tag
+    role_tag_segments: Dict[str, List[int]] = {}
+    role_tag_confidence: Dict[str, float] = {}
+    keyword_tags: Dict[str, tuple[List[int], str]] = {}  # tag -> (segments, source)
+
+    for idx, segment in enumerate(segments):
         role = segment.get("role")
         text = (segment.get("text") or "").lower()
+        confidence = segment.get("confidence", 0.0)
 
-        if role:
-            role_tags.add(f"has:{role}")
+        # Role-based tags
+        if role and role != "other":
+            tag = f"has:{role}"
+            if tag not in role_tag_segments:
+                role_tag_segments[tag] = []
+                role_tag_confidence[tag] = 0.0
+            role_tag_segments[tag].append(idx)
+            # Keep max confidence for the tag
+            role_tag_confidence[tag] = max(role_tag_confidence[tag], confidence)
 
+        # Keyword-based tags for tone/camera
         if any(word in text for word in ("gentle", "soft", "tender")):
-            keyword_tags.add("tone:soft")
+            _add_keyword_tag(keyword_tags, "tone:soft", idx, "keyword")
         if any(word in text for word in ("intense", "harsh", "rough", "violent")):
-            keyword_tags.add("tone:intense")
+            _add_keyword_tag(keyword_tags, "tone:intense", idx, "keyword")
         if any(word in text for word in ("pov", "first-person", "viewpoint")):
-            keyword_tags.add("camera:pov")
+            _add_keyword_tag(keyword_tags, "camera:pov", idx, "keyword")
         if any(word in text for word in ("close-up", "close up", "tight framing")):
-            keyword_tags.add("camera:closeup")
+            _add_keyword_tag(keyword_tags, "camera:closeup", idx, "keyword")
 
-    return sorted(role_tags) + sorted(keyword_tags)
+    # Build structured tags
+    structured_tags: List[PromptTag] = []
+
+    # Add role tags (sorted for consistency)
+    for tag in sorted(role_tag_segments.keys()):
+        structured_tags.append({
+            "tag": tag,
+            "segments": role_tag_segments[tag],
+            "source": "role",
+            "confidence": round(role_tag_confidence[tag], 3),
+        })
+
+    # Add keyword tags
+    for tag in sorted(keyword_tags.keys()):
+        seg_indices, source = keyword_tags[tag]
+        structured_tags.append({
+            "tag": tag,
+            "segments": seg_indices,
+            "source": source,
+        })
+
+    # Build flat tags for backward compatibility
+    flat_tags = [t["tag"] for t in structured_tags]
+
+    return structured_tags, flat_tags
+
+
+def _add_keyword_tag(
+    tags_dict: Dict[str, tuple[List[int], str]],
+    tag: str,
+    segment_idx: int,
+    source: str,
+) -> None:
+    """Helper to add segment to a keyword tag."""
+    if tag not in tags_dict:
+        tags_dict[tag] = ([], source)
+    tags_dict[tag][0].append(segment_idx)
 
 
 async def analyze_prompt(
@@ -135,8 +209,22 @@ async def analyze_prompt(
     Returns:
         {
           "prompt": "<original text>",
-          "segments": [...],
-          "tags": ["has:character", "tone:soft", ...]
+          "segments": [
+            {
+              "role": "character",
+              "text": "...",
+              "start_pos": 0,
+              "end_pos": 10,
+              "confidence": 0.85,
+              "matched_keywords": ["vampire"]
+            },
+            ...
+          ],
+          "tags": [
+            {"tag": "has:character", "segments": [0], "source": "role", "confidence": 0.85},
+            ...
+          ],
+          "tags_flat": ["has:character", "has:setting", ...]
         }
     """
     if not analyzer_id:
@@ -168,10 +256,13 @@ async def analyze_prompt(
         parser_hints=parser_hints,
     )
     segments: List[Dict[str, Any]] = result.get("segments", [])
-    tags = _derive_tags_from_segments(segments)
+
+    # Derive structured tags with segment linking
+    tags, tags_flat = _derive_tags_from_segments(segments)
 
     return {
         "prompt": text,
         "segments": segments,
         "tags": tags,
+        "tags_flat": tags_flat,
     }

@@ -6,10 +6,12 @@ No external dependencies beyond standard library + Pydantic.
 """
 
 import re
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel
 
 from .ontology import ACTION_VERBS
+from .stemmer import stem, find_stem_matches
+from .negation import get_negated_words, filter_negated_keywords
 from pixsim7.backend.main.shared.ontology.vocabularies import match_keywords
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
@@ -22,6 +24,9 @@ class PromptSegment(BaseModel):
     end_pos: int
     sentence_index: int
     metadata: Dict[str, Any] = {}
+    confidence: float = 0.0
+    matched_keywords: List[str] = []
+    role_scores: Dict[str, float] = {}
 
 
 class PromptParseResult(BaseModel):
@@ -35,12 +40,18 @@ class SimplePromptParser:
     Simple sentence-level parser with keyword-based role classification.
 
     Behavior:
-    1. Split text into sentences
-    2. Classify each sentence using keyword heuristics
-    3. Store classification hints in metadata for future ontology work
+    1. Split text into sentences (handles unicode punctuation)
+    2. Classify each sentence using keyword heuristics with stemming
+    3. Exclude negated terms from classification
+    4. Return confidence scores and matched keywords
     """
 
-    SENTENCE_PATTERN = re.compile(r'([^.!?]+[.!?]+)')
+    # Extended sentence pattern to handle unicode punctuation
+    # Matches: . ! ? ... — – (em/en dashes as sentence breaks)
+    SENTENCE_PATTERN = re.compile(
+        r'([^.!?\u2026\u2014\u2013]+[.!?\u2026]+)|'  # Standard + ellipsis (…)
+        r'([^.!?\u2026\u2014\u2013]+[\u2014\u2013](?=\s|$))'  # Em/en dash as break
+    )
 
     def __init__(
         self,
@@ -56,6 +67,8 @@ class SimplePromptParser:
         """
         self.role_registry = role_registry.clone() if role_registry else PromptRoleRegistry.default()
         self.action_verbs = set(ACTION_VERBS)
+        # Pre-compute stemmed action verbs for matching
+        self.action_verb_stems = {stem(v) for v in ACTION_VERBS}
         if hints:
             self.role_registry.apply_hints(hints)
         self.role_keywords = self.role_registry.get_role_keywords()
@@ -80,7 +93,7 @@ class SimplePromptParser:
         segments: List[PromptSegment] = []
 
         for idx, (sentence_text, start_pos, end_pos) in enumerate(sentences):
-            role, metadata = self._classify_sentence(sentence_text)
+            role, metadata, confidence, matched_kw, role_scores = self._classify_sentence(sentence_text)
             segment = PromptSegment(
                 role=role,
                 text=sentence_text.strip(),
@@ -88,32 +101,56 @@ class SimplePromptParser:
                 end_pos=end_pos,
                 sentence_index=idx,
                 metadata=metadata,
+                confidence=confidence,
+                matched_keywords=matched_kw,
+                role_scores=role_scores,
             )
             segments.append(segment)
 
         return PromptParseResult(text=text, segments=segments)
 
     def _split_sentences(self, text: str) -> List[tuple[str, int, int]]:
-        """Split text into sentences with position tracking."""
-        sentences: List[tuple[str, int, int]] = []
-        current_pos = 0
+        """
+        Split text into sentences with position tracking.
 
+        Handles:
+        - Standard punctuation: . ! ?
+        - Unicode ellipsis: …
+        - Em/en dashes as breaks: — –
+        """
+        sentences: List[tuple[str, int, int]] = []
+
+        # First, try the regex pattern
         matches = list(self.SENTENCE_PATTERN.finditer(text))
 
         if not matches:
+            # No sentence-ending punctuation found - treat as single sentence
             if text.strip():
                 sentences.append((text, 0, len(text)))
             return sentences
 
+        current_pos = 0
+
         for match in matches:
-            sentence = match.group(1)
-            start = match.start(1)
-            end = match.end(1)
+            # Get the matched group (either group 1 or group 2)
+            sentence = match.group(1) or match.group(2)
+            if sentence is None:
+                continue
+
+            start = match.start()
+            end = match.end()
+
+            # Handle any text before this match that wasn't captured
+            if start > current_pos:
+                prefix = text[current_pos:start].strip()
+                if prefix:
+                    sentences.append((prefix, current_pos, start))
 
             if sentence.strip():
                 sentences.append((sentence, start, end))
             current_pos = end
 
+        # Handle remaining text after last match
         if current_pos < len(text):
             remaining = text[current_pos:].strip()
             if remaining:
@@ -121,24 +158,51 @@ class SimplePromptParser:
 
         return sentences
 
-    def _classify_sentence(self, text: str) -> tuple[str, Dict[str, Any]]:
-        """Classify a sentence into a role using keyword heuristics."""
+    def _classify_sentence(
+        self, text: str
+    ) -> tuple[str, Dict[str, Any], float, List[str], Dict[str, float]]:
+        """
+        Classify a sentence into a role using keyword heuristics.
+
+        Returns:
+            Tuple of (role, metadata, confidence, matched_keywords, role_scores)
+        """
         text_lower = text.lower()
         metadata: Dict[str, Any] = {}
-        found_roles: Dict[str, int] = {}
+        role_scores: Dict[str, float] = {}
+        all_matched_keywords: List[str] = []
 
+        # Get negated words to exclude from matching
+        negated_words = get_negated_words(text_lower)
+        if negated_words:
+            metadata["negated_words"] = list(negated_words)
+
+        # Extract words from text for matching
+        words_in_text = set(re.findall(r'\b\w+\b', text_lower))
+        stemmed_words = {stem(w) for w in words_in_text}
+
+        # Match keywords for each role using stemming
         for role, keywords in self.role_keywords.items():
-            count = sum(1 for keyword in keywords if keyword in text_lower)
-            if count > 0:
-                found_roles[role] = count
-                role_key = role.replace(":", "_")
-                metadata[f"has_{role_key}_keywords"] = count
+            matched = self._match_keywords_with_stemming(
+                text_lower, words_in_text, stemmed_words, set(keywords), negated_words
+            )
 
-        words = re.findall(r'\b\w+\b', text_lower)
-        has_verb = any(word in self.action_verbs for word in words)
+            if matched:
+                # Calculate score based on match count
+                score = len(matched) / max(len(keywords), 1)
+                role_scores[role] = round(score, 3)
+
+                role_key = role.replace(":", "_")
+                metadata[f"has_{role_key}_keywords"] = len(matched)
+                metadata[f"matched_{role_key}"] = list(matched)
+                all_matched_keywords.extend(matched)
+
+        # Check for action verbs using stemming
+        has_verb = self._has_action_verb(words_in_text, stemmed_words, negated_words)
         if has_verb:
             metadata["has_verb"] = True
 
+        # Try ontology matching
         try:
             ontology_ids = match_keywords(text_lower)
             if ontology_ids:
@@ -146,22 +210,119 @@ class SimplePromptParser:
         except Exception:
             pass
 
-        if "setting" in found_roles and "character" in found_roles and has_verb and "action" in self.role_keywords:
+        # Determine best role
+        best_role = "other"
+        confidence = 0.0
+
+        # Special case: character + verb = action
+        if "character" in role_scores and has_verb and "action" in self.role_keywords:
             metadata["character_action"] = True
-            return ("action", metadata)
-        if "character" in found_roles and has_verb and "action" in self.role_keywords:
-            metadata["character_action"] = True
-            return ("action", metadata)
+            best_role = "action"
+            # Combine character and action scores
+            char_score = role_scores.get("character", 0)
+            action_score = role_scores.get("action", 0)
+            confidence = min(0.95, (char_score + action_score + 0.3) / 2)
+            role_scores["action"] = max(role_scores.get("action", 0), confidence)
 
-        if found_roles:
-            def sort_key(item):
-                role_id, count = item
-                return (count, self.role_priorities.get(role_id, 0))
+        elif role_scores:
+            # Pick best role by score, then priority
+            def sort_key(item: tuple[str, float]) -> tuple[float, int]:
+                role_id, score = item
+                return (score, self.role_priorities.get(role_id, 0))
 
-            best_role = max(found_roles.items(), key=sort_key)[0]
-            return (best_role, metadata)
+            best_role, confidence = max(role_scores.items(), key=sort_key)
 
-        return ("other", metadata)
+        # Remove duplicates from matched keywords while preserving order
+        seen: Set[str] = set()
+        unique_matched: List[str] = []
+        for kw in all_matched_keywords:
+            if kw not in seen:
+                seen.add(kw)
+                unique_matched.append(kw)
+
+        return (best_role, metadata, round(confidence, 3), unique_matched, role_scores)
+
+    def _match_keywords_with_stemming(
+        self,
+        text_lower: str,
+        words_in_text: Set[str],
+        stemmed_words: Set[str],
+        keywords: Set[str],
+        negated_words: Set[str],
+    ) -> Set[str]:
+        """
+        Match keywords against text using stemming, excluding negated terms.
+
+        Args:
+            text_lower: Lowercase text
+            words_in_text: Set of words in text
+            stemmed_words: Set of stemmed words in text
+            keywords: Keywords to match
+            negated_words: Words to exclude (negated)
+
+        Returns:
+            Set of matched keywords
+        """
+        matched: Set[str] = set()
+
+        for keyword in keywords:
+            keyword_lower = keyword.lower()
+
+            # Skip if keyword is negated
+            if keyword_lower in negated_words:
+                continue
+
+            # Multi-word keywords: check substring
+            if ' ' in keyword_lower:
+                if keyword_lower in text_lower:
+                    # Check if any word in the phrase is negated
+                    phrase_words = set(keyword_lower.split())
+                    if not (phrase_words & negated_words):
+                        matched.add(keyword)
+                continue
+
+            # Single word: direct match
+            if keyword_lower in words_in_text:
+                matched.add(keyword)
+                continue
+
+            # Stem match
+            keyword_stem = stem(keyword_lower)
+            if keyword_stem in stemmed_words:
+                # Verify the matched stem isn't from a negated word
+                # by checking if any non-negated word has this stem
+                for word in words_in_text:
+                    if word not in negated_words and stem(word) == keyword_stem:
+                        matched.add(keyword)
+                        break
+
+        return matched
+
+    def _has_action_verb(
+        self,
+        words_in_text: Set[str],
+        stemmed_words: Set[str],
+        negated_words: Set[str],
+    ) -> bool:
+        """
+        Check if text contains an action verb (not negated).
+
+        Uses stemming to match verb forms.
+        """
+        for word in words_in_text:
+            if word in negated_words:
+                continue
+
+            # Direct match
+            if word in self.action_verbs:
+                return True
+
+            # Stem match
+            word_stem = stem(word)
+            if word_stem in self.action_verb_stems:
+                return True
+
+        return False
 
 
 async def parse_prompt(text: str) -> PromptParseResult:

@@ -42,6 +42,12 @@ export interface PromptSegment {
   end_pos: number;
   sentence_index: number;
   metadata?: Record<string, unknown>;
+  /** Confidence score for the role classification (0-1) */
+  confidence?: number;
+  /** Keywords that matched during classification */
+  matched_keywords?: string[];
+  /** Scores for all considered roles */
+  role_scores?: Record<string, number>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -55,4 +61,45 @@ export interface PromptSegment {
 export interface PromptParseResult {
   text: string;
   segments: PromptSegment[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt Tags (Structured)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Source of a tag derivation */
+export type PromptTagSource = 'role' | 'keyword' | 'ontology';
+
+/**
+ * A structured tag with segment linking.
+ * Tags are derived from segments and link back to their source segments.
+ */
+export interface PromptTag {
+  /** The tag string, e.g., "has:character", "tone:soft" */
+  tag: string;
+  /** Indices into the segments array that contributed to this tag */
+  segments: number[];
+  /** How the tag was derived */
+  source: PromptTagSource;
+  /** Confidence score (optional, typically for role-based tags) */
+  confidence?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt Analysis Result
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Complete result of analyzing a prompt.
+ * Returned by the `analyze_prompt` function in `dsl_adapter.py`.
+ */
+export interface PromptAnalysisResult {
+  /** Original prompt text */
+  prompt: string;
+  /** Parsed segments with roles, positions, and metadata */
+  segments: PromptSegment[];
+  /** Structured tags with segment linking */
+  tags: PromptTag[];
+  /** Flat list of tag strings for backward compatibility */
+  tags_flat: string[];
 }

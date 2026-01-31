@@ -29,6 +29,21 @@ from .dsl_adapter import (
     analyze_prompt,
     parse_prompt_to_segments,
     parse_prompt_to_blocks,  # Deprecated alias
+    PromptTag,
+)
+from .stemmer import stem, stems_match, find_stem_matches
+from .negation import (
+    find_negated_spans,
+    get_negated_words,
+    filter_negated_keywords,
+    NegatedSpan,
+)
+from .ontology import (
+    sync_from_vocabularies,
+    is_synced as is_ontology_synced,
+    reset_to_baseline as reset_ontology,
+    ROLE_KEYWORDS,
+    ACTION_VERBS,
 )
 
 # Re-export PromptSegmentRole from domain for convenience
@@ -59,4 +74,20 @@ __all__ = [
     "analyze_prompt",
     "parse_prompt_to_segments",
     "parse_prompt_to_blocks",  # Deprecated
+    "PromptTag",
+    # Stemmer
+    "stem",
+    "stems_match",
+    "find_stem_matches",
+    # Negation
+    "find_negated_spans",
+    "get_negated_words",
+    "filter_negated_keywords",
+    "NegatedSpan",
+    # Ontology
+    "sync_from_vocabularies",
+    "is_ontology_synced",
+    "reset_ontology",
+    "ROLE_KEYWORDS",
+    "ACTION_VERBS",
 ]
