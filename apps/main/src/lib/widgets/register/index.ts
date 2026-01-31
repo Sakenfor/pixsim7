@@ -51,6 +51,8 @@ export {
   deviceStatusWidget,
 } from '../builtIn';
 
+let widgetsRegistered = false;
+
 /**
  * Register ALL widgets in the unified registry.
  *
@@ -61,9 +63,16 @@ export {
  * - registerAllLegacyWidgets() adapters
  */
 export function registerAllWidgets(): void {
+  if (widgetsRegistered) return;
+  widgetsRegistered = true;
+
   registerOverlayWidgets();
   registerBlockWidgets();
   registerBuiltInWidgets();
 
   console.log('[widgets] All widgets registered in unified registry');
 }
+
+// Auto-register widgets on module import.
+// This ensures widgets are available before settings modules load.
+registerAllWidgets();

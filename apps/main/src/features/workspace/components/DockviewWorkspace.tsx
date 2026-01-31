@@ -3,7 +3,7 @@ import { useRef, useEffect, useMemo } from "react";
 
 
 import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
-import { registerAllWidgets } from "@lib/widgets";
+// Note: widgets auto-register on import via @lib/widgets/register
 
 import { initializePanels } from "@features/panels";
 
@@ -24,13 +24,10 @@ export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
 
-  // Initialize panels and widgets on mount
+  // Initialize panels on mount
   useEffect(() => {
-    Promise.all([
-      initializePanels(),
-      Promise.resolve(registerAllWidgets()),
-    ]).catch((error) => {
-      console.error("Failed to initialize:", error);
+    initializePanels().catch((error) => {
+      console.error("Failed to initialize panels:", error);
     });
   }, []);
 
