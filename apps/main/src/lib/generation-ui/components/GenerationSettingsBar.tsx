@@ -4,6 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useCostHints, useCostEstimate, useProviderIdForModel } from '@features/providers';
 
 import type { ParamSpec } from '../types';
+import { getDurationOptions, COMMON_ASPECT_RATIOS } from '../utils/parameterUtils';
 
 
 /**
@@ -77,89 +78,6 @@ const PRIMARY_PARAM_NAMES = [
   'resolution',
 ];
 
-type DurationOptionConfig = {
-  options: number[];
-  note?: string;
-};
-
-function coerceNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return null;
-}
-
-function normalizePresetList(values: unknown): number[] {
-  if (!Array.isArray(values)) return [];
-  const unique = new Set<number>();
-  for (const value of values) {
-    const coerced = coerceNumber(value);
-    if (coerced !== null) {
-      unique.add(coerced);
-    }
-  }
-  return Array.from(unique).sort((a, b) => a - b);
-}
-
-function getDurationOptionsFromSpecs(
-  paramSpecs: ParamSpec[],
-  modelValue: unknown
-): DurationOptionConfig | null {
-  const spec = paramSpecs.find((p) => p.name === 'duration');
-  const metadata = spec?.metadata;
-  if (!metadata) {
-    return null;
-  }
-
-  const note: string | undefined =
-    metadata.duration_note ||
-    metadata.note ||
-    metadata.presetNote;
-  const basePresets = normalizePresetList(
-    metadata.presets ?? metadata.duration_presets ?? metadata.options
-  );
-
-  if (!basePresets.length && !metadata.per_model_presets && !metadata.perModelPresets) {
-    return null;
-  }
-
-  let options = basePresets;
-  const perModelPresets =
-    (metadata.per_model_presets as Record<string, unknown[]>) ||
-    (metadata.perModelPresets as Record<string, unknown[]>);
-
-  if (perModelPresets && typeof modelValue === 'string') {
-    const normalizedModel = modelValue.toLowerCase();
-    const matchEntry = Object.entries(perModelPresets).find(
-      ([key]) => key.toLowerCase() === normalizedModel
-    );
-    if (matchEntry) {
-      const perModelOptions = normalizePresetList(matchEntry[1]);
-      if (perModelOptions.length) {
-        options = perModelOptions;
-      }
-    }
-  }
-
-  if (!options.length) {
-    options = basePresets;
-  }
-
-  if (!options.length) {
-    return null;
-  }
-
-  return {
-    options,
-    note,
-  };
-}
 
 /**
  * GenerationSettingsBar
@@ -211,7 +129,7 @@ export function GenerationSettingsBar({
   });
   const creditEstimate = costEstimate?.estimated_credits ?? null;
   const durationOptions = useMemo(
-    () => getDurationOptionsFromSpecs(paramSpecs, dynamicParams.model),
+    () => getDurationOptions(paramSpecs, dynamicParams.model),
     [paramSpecs, dynamicParams.model]
   );
 
@@ -345,7 +263,6 @@ export function GenerationSettingsBar({
             }
 
             // Common aspect ratios fallback when no enum provided
-            const COMMON_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'];
             const options = param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
 
             return (

@@ -21,3 +21,22 @@ export type { DynamicParamFormProps } from './components/DynamicParamForm';
 
 // Types
 export type { ParamSpec } from './types';
+
+// Parameter Utilities
+export {
+  getDurationOptions,
+  getQualityOptions,
+  getAspectRatioLabel,
+  ASPECT_RATIO_LABELS,
+  COMMON_ASPECT_RATIOS,
+  type DurationOptionConfig,
+} from './utils/parameterUtils';
+
+// Parameter Icons
+export {
+  getParamIcon,
+  isVisualParam,
+  AspectRatioIcon,
+  PARAM_ICON_CONFIG,
+  type AspectRatioIconProps,
+} from './components/ParamIcons';

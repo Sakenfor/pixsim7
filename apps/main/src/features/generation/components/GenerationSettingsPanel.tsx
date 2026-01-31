@@ -8,22 +8,17 @@
  */
 
 import clsx from 'clsx';
-import {
-  Star,
-  Zap,
-  Clock,
-  Camera,
-  RotateCcw,
-  Film,
-  Sparkles,
-  ArrowRightLeft,
-  ArrowUpDown,
-  ZoomIn,
-  Gauge,
-  Target,
-  Layers,
-} from 'lucide-react';
+import { Target, Layers } from 'lucide-react';
 import { useMemo, useEffect, useState } from 'react';
+
+import {
+  getDurationOptions,
+  getQualityOptions,
+  getAspectRatioLabel,
+  COMMON_ASPECT_RATIOS,
+  getParamIcon,
+  isVisualParam,
+} from '@lib/generation-ui';
 
 import {
   CAP_GENERATION_WIDGET,
@@ -34,102 +29,6 @@ import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@fe
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { PresetSelector } from './PresetSelector';
-
-
-/** Friendly labels for aspect ratio values */
-const ASPECT_RATIO_LABELS: Record<string, string> = {
-  '1:1': 'Square (1:1)',
-  '16:9': 'Landscape (16:9)',
-  '9:16': 'Portrait (9:16)',
-  '4:3': 'Landscape (4:3)',
-  '3:4': 'Portrait (3:4)',
-  '3:2': 'Landscape (3:2)',
-  '2:3': 'Portrait (2:3)',
-  '21:9': 'Ultrawide (21:9)',
-};
-
-/** Icon configuration for param values - data-driven approach */
-const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> = {
-  quality: {
-    // Quality levels
-    low: <Star size={14} />,
-    medium: (
-      <div className="flex gap-0.5">
-        <Star size={11} fill="currentColor" />
-        <Star size={11} fill="currentColor" />
-      </div>
-    ),
-    high: (
-      <div className="flex gap-0.5">
-        <Star size={10} fill="currentColor" />
-        <Star size={10} fill="currentColor" />
-        <Star size={10} fill="currentColor" />
-      </div>
-    ),
-    ultra: <Sparkles size={14} />,
-    max: <Sparkles size={14} />,
-    // Resolution levels
-    '720p': <span className="text-[9px] font-bold">HD</span>,
-    hd: <span className="text-[9px] font-bold">HD</span>,
-    '1080p': <span className="text-[9px] font-bold">FHD</span>,
-    fhd: <span className="text-[9px] font-bold">FHD</span>,
-    '4k': <span className="text-[9px] font-bold">4K</span>,
-    '8k': <span className="text-[9px] font-bold">8K</span>,
-  },
-  motion_mode: {
-    slow: <Clock size={14} />,
-    normal: <Gauge size={14} />,
-    medium: <Gauge size={14} />,
-    fast: <Zap size={14} />,
-    dynamic: <Sparkles size={14} />,
-    cinematic: <Film size={14} />,
-  },
-  camera_movement: {
-    static: <Camera size={14} />,
-    none: <Camera size={14} />,
-    pan: <ArrowRightLeft size={14} />,
-    horizontal: <ArrowRightLeft size={14} />,
-    tilt: <ArrowUpDown size={14} />,
-    vertical: <ArrowUpDown size={14} />,
-    zoom: <ZoomIn size={14} />,
-    orbit: <RotateCcw size={14} />,
-    rotate: <RotateCcw size={14} />,
-    dolly: <Film size={14} />,
-    track: <Film size={14} />,
-  },
-};
-
-/** Get icon/visual representation for param values */
-function getParamIcon(paramName: string, value: string): React.ReactNode {
-  // Aspect ratios - show actual shape representation
-  if (paramName === 'aspect_ratio') {
-    const [w, h] = value.split(':').map(Number);
-    if (!w || !h) return null;
-
-    const maxDim = 16; // px for the longest side
-    const ratio = w / h;
-    const width = ratio >= 1 ? maxDim : Math.round(maxDim * ratio);
-    const height = ratio <= 1 ? maxDim : Math.round(maxDim / ratio);
-
-    return (
-      <div className="flex items-center justify-center w-5 h-5">
-        <div
-          className="border-2 border-current rounded-sm"
-          style={{ width: `${width}px`, height: `${height}px` }}
-        />
-      </div>
-    );
-  }
-
-  // Look up icon from config
-  const paramConfig = PARAM_ICON_CONFIG[paramName];
-  if (paramConfig) {
-    const normalizedValue = value.toLowerCase();
-    return paramConfig[normalizedValue] || null;
-  }
-
-  return null;
-}
 
 export interface GenerationSettingsPanelProps {
   /** Whether to show operation type selector (default: true) */
@@ -265,83 +164,27 @@ export function GenerationSettingsPanel({
   }, [filteredParamSpecs]);
 
   // Get duration presets from param specs metadata
-  const durationOptions = useMemo(() => {
-    const spec = workbench.paramSpecs.find((p) => p.name === 'duration');
-    const metadata = spec?.metadata;
-    if (!metadata) return null;
-
-    const normalizeList = (values: unknown): number[] => {
-      if (!Array.isArray(values)) return [];
-      const unique = new Set<number>();
-      for (const v of values) {
-        const num = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : null;
-        if (num !== null && Number.isFinite(num)) unique.add(num);
-      }
-      return Array.from(unique).sort((a, b) => a - b);
-    };
-
-    const basePresets = normalizeList(
-      metadata.presets ?? metadata.duration_presets ?? metadata.options
-    );
-
-    if (!basePresets.length && !metadata.per_model_presets && !metadata.perModelPresets) {
-      return null;
-    }
-
-    let options = basePresets;
-    const perModelPresets =
-      (metadata.per_model_presets as Record<string, unknown[]>) ||
-      (metadata.perModelPresets as Record<string, unknown[]>);
-
-    const modelValue = workbench.dynamicParams?.model;
-    if (perModelPresets && typeof modelValue === 'string') {
-      const normalizedModel = modelValue.toLowerCase();
-      const matchEntry = Object.entries(perModelPresets).find(
-        ([key]) => key.toLowerCase() === normalizedModel
-      );
-      if (matchEntry) {
-        const perModelOptions = normalizeList(matchEntry[1]);
-        if (perModelOptions.length) {
-          options = perModelOptions;
-        }
-      }
-    }
-
-    return options.length > 0 ? options : null;
-  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
+  const durationOptions = useMemo(
+    () => getDurationOptions(workbench.paramSpecs, workbench.dynamicParams?.model)?.options ?? null,
+    [workbench.paramSpecs, workbench.dynamicParams?.model]
+  );
 
   // Get quality options filtered by model
-  const getQualityOptionsForModel = useMemo(() => {
-    const spec = workbench.paramSpecs.find((p) => p.name === 'quality');
-    if (!spec) return null;
-
-    const metadata = spec.metadata;
-    const perModelOptions = metadata?.per_model_options as Record<string, string[]> | undefined;
-    const modelValue = workbench.dynamicParams?.model;
-
-    if (perModelOptions && typeof modelValue === 'string') {
-      const normalizedModel = modelValue.toLowerCase();
-      const matchEntry = Object.entries(perModelOptions).find(
-        ([key]) => key.toLowerCase() === normalizedModel
-      );
-      if (matchEntry) {
-        return matchEntry[1];
-      }
-    }
-
-    return spec.enum ?? null;
-  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
+  const qualityOptionsForModel = useMemo(
+    () => getQualityOptions(workbench.paramSpecs, workbench.dynamicParams?.model),
+    [workbench.paramSpecs, workbench.dynamicParams?.model]
+  );
 
   // Reset quality when model changes and current quality is invalid
   useEffect(() => {
-    if (!getQualityOptionsForModel) return;
+    if (!qualityOptionsForModel) return;
     const currentQuality = workbench.dynamicParams?.quality;
-    if (currentQuality && !getQualityOptionsForModel.includes(currentQuality)) {
-      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
-    } else if (!currentQuality && getQualityOptionsForModel.length > 0) {
-      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
+    if (currentQuality && !qualityOptionsForModel.includes(currentQuality)) {
+      workbench.handleParamChange('quality', qualityOptionsForModel[0]);
+    } else if (!currentQuality && qualityOptionsForModel.length > 0) {
+      workbench.handleParamChange('quality', qualityOptionsForModel[0]);
     }
-  }, [getQualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
+  }, [qualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
   const showTargetButton = canTarget;
   const showOperationRow = showOperationType || showTargetButton || showPresets;
@@ -453,9 +296,8 @@ export function GenerationSettingsPanel({
             );
           }
 
-          const COMMON_ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3'];
-          const options = param.name === 'quality' && getQualityOptionsForModel
-            ? getQualityOptionsForModel
+          const options = param.name === 'quality' && qualityOptionsForModel
+            ? qualityOptionsForModel
             : param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
 
           if (param.type === 'number' && !options) {
@@ -476,12 +318,11 @@ export function GenerationSettingsPanel({
           if (!options) return null;
 
           // Visual params that should show as button grids with icons
-          const VISUAL_PARAMS = ['quality', 'motion_mode', 'camera_movement'];
-          const isVisualParam = VISUAL_PARAMS.includes(param.name);
+          const showAsVisualGrid = isVisualParam(param.name);
           const currentValue = workbench.dynamicParams[param.name] ?? param.default ?? options[0];
 
           // Show as button grid for visual params
-          if (isVisualParam && options.length <= 8) {
+          if (showAsVisualGrid && options.length <= 8) {
             return (
               <div key={param.name} className="flex flex-wrap gap-1">
                 {options.map((opt: string) => {
@@ -524,7 +365,7 @@ export function GenerationSettingsPanel({
             >
               {options.map((opt: string) => (
                 <option key={opt} value={opt}>
-                  {param.name === 'aspect_ratio' ? (ASPECT_RATIO_LABELS[opt] ?? opt) : opt}
+                  {param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt}
                 </option>
               ))}
             </select>

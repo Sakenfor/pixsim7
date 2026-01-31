@@ -31,6 +31,9 @@ export { QuickGenPanelHost, QUICKGEN_PANEL_IDS, QUICKGEN_PRESETS } from './compo
 export type { QuickGenPanelHostProps, QuickGenPanelHostRef } from './components/QuickGenPanelHost';
 export { QuickGenWidget } from './components/QuickGenWidget';
 export type { QuickGenWidgetProps } from './components/QuickGenWidget';
+export { ContentModerationWarning } from './components/ContentModerationWarning';
+export type { ContentModerationWarningProps } from './components/ContentModerationWarning';
+export { NotificationTicker } from './components/NotificationTicker';
 
 // Hooks
 export { useGenerationDevController } from './hooks/useGenerationDevController';

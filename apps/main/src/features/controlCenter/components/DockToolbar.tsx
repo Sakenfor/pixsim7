@@ -5,13 +5,15 @@
  * Includes quick navigation shortcuts, position controls, and notifications.
  */
 
-import { useMemo, useState, useRef, useEffect } from 'react';
-import clsx from 'clsx';
+/* eslint-disable react-refresh/only-export-components */
+
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import { useMemo, useState, useRef, useEffect } from 'react';
+
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
-import { NotificationTicker } from './NotificationTicker';
-import { ContentModerationWarning } from './ContentModerationWarning';
+import { NotificationTicker, ContentModerationWarning } from '@features/generation';
 
 /** Quick navigation item configuration */
 export interface QuickNavItem {
