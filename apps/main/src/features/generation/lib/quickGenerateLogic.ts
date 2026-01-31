@@ -67,8 +67,12 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   const resolveSingleSourceAssetId = (options: {
     allowVideo?: boolean;
+    allowVideoFallback?: boolean;
   } = {}): number | undefined => {
     const allowVideo = options.allowVideo ?? false;
+    // allowVideoFallback controls whether activeAsset fallback accepts videos
+    // Default to false - only explicit input slots should accept videos
+    const allowVideoFallback = options.allowVideoFallback ?? false;
     let sourceAssetId = dynamicParams.source_asset_id;
     const inputAssetId =
       currentInput && (
@@ -78,32 +82,17 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         ? currentInput.asset.id
         : undefined;
 
-    // DEBUG: Log resolution steps
-    const debugSource: string[] = [];
-    if (dynamicParams.source_asset_id) {
-      debugSource.push(`dynamicParams: ${dynamicParams.source_asset_id}`);
-    }
     if (inputAssetId) {
-      debugSource.push(`currentInput: ${inputAssetId} (${currentInput?.asset?.mediaType})`);
-    }
-    if (activeAsset) {
-      debugSource.push(`activeAsset: ${activeAsset.id} (${activeAsset.type})`);
-    }
-
-    if (inputAssetId) {
+      // Prefer currentInput over dynamicParams
       sourceAssetId = inputAssetId;
-      console.log(`[DEBUG resolveSingleSourceAssetId] Using currentInput: ${sourceAssetId}`, { sources: debugSource });
     } else if (!sourceAssetId && activeAsset) {
       const isImage = activeAsset.type === 'image';
       const isVideo = activeAsset.type === 'video';
-      if (isImage || (allowVideo && isVideo)) {
+      // Only allow video fallback if explicitly enabled (e.g., for video_extend)
+      // For image_to_video, activeAsset fallback should only accept images
+      if (isImage || (allowVideoFallback && isVideo)) {
         sourceAssetId = activeAsset.id;
-        console.log(`[DEBUG resolveSingleSourceAssetId] Fallback to activeAsset: ${sourceAssetId}`, { sources: debugSource });
       }
-    } else if (sourceAssetId) {
-      console.log(`[DEBUG resolveSingleSourceAssetId] Using dynamicParams: ${sourceAssetId}`, { sources: debugSource });
-    } else {
-      console.log(`[DEBUG resolveSingleSourceAssetId] No source found`, { sources: debugSource });
     }
 
     return sourceAssetId;
@@ -193,7 +182,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     let resolvedSourceIds = paramsSourceIds ?? inputSourceIds;
 
     if (!resolvedSourceIds && !explicitCompositionAssets) {
-      const fallbackId = resolveSingleSourceAssetId({ allowVideo: true });
+      // allowVideo: true - input slot can have video
+      // allowVideoFallback: false - don't fallback to a video from gallery
+      const fallbackId = resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: false });
       if (fallbackId) {
         resolvedSourceIds = [fallbackId];
       }
@@ -212,7 +203,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_video') {
-    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
+    // allowVideo: true - input slot can have video (for frame extraction)
+    // allowVideoFallback: false - don't fallback to a video from gallery selection
+    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: false });
 
     if (sourceAssetId && !trimmedPrompt) {
       return {
@@ -221,13 +214,15 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (!dynamicParams.source_asset_id && sourceAssetId) {
+    // Always use resolved sourceAssetId - currentInput takes precedence over stale dynamicParams
+    if (sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }
 
   if (operationType === 'video_extend') {
-    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true });
+    // allowVideo: true, allowVideoFallback: true - video_extend needs a video source
+    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
 
     if (!sourceAssetId) {
       return {
@@ -236,7 +231,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       };
     }
 
-    if (!dynamicParams.source_asset_id && sourceAssetId) {
+    // Always use resolved sourceAssetId - currentInput takes precedence over stale dynamicParams
+    if (sourceAssetId) {
       inferredSourceAssetId = sourceAssetId;
     }
   }

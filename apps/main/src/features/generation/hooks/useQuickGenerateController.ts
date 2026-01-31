@@ -114,20 +114,6 @@ export function useQuickGenerateController() {
         ? inputState.getCurrentInput(operationType)
         : null;
 
-      // DEBUG: Log input state for tracing i2v issues
-      console.log('[DEBUG generate] operationType:', operationType);
-      console.log('[DEBUG generate] currentInput:', currentInput ? {
-        id: currentInput.id,
-        assetId: currentInput.asset?.id,
-        mediaType: currentInput.asset?.mediaType,
-      } : null);
-      console.log('[DEBUG generate] currentInputs count:', currentInputs.length);
-      console.log('[DEBUG generate] activeAsset:', bindings.lastSelectedAsset ? {
-        id: bindings.lastSelectedAsset.id,
-        type: bindings.lastSelectedAsset.type,
-      } : null);
-      console.log('[DEBUG generate] dynamicParams.source_asset_id:', modifiedDynamicParams.source_asset_id);
-
       // NOTE: We no longer set source_asset_id from inputs here.
       // That inference happens in buildGenerationRequest via currentInput context.
       // Controller only handles async operations (frame extraction).
@@ -172,16 +158,6 @@ export function useQuickGenerateController() {
         transitionDurations: bindings.transitionDurations,
         activeAsset: bindings.lastSelectedAsset,
         currentInput,
-      });
-
-      // DEBUG: Log build result
-      console.log('[DEBUG generate] buildResult:', {
-        error: buildResult.error,
-        hasParams: !!buildResult.params,
-        source_asset_id: buildResult.params?.source_asset_id,
-        source_asset_ids: buildResult.params?.source_asset_ids,
-        image_url: buildResult.params?.image_url,
-        composition_assets: buildResult.params?.composition_assets?.length,
       });
 
       if (buildResult.error || !buildResult.params) {

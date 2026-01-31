@@ -57,6 +57,9 @@ const CANONICAL_CONFIG_KEYS = new Set([
   'prompts',
   'composition_assets',
   'pacing',
+  // These should NOT go into style.pixverse - they're handled at the top level
+  'operation_type',
+  'operationType',
 ]);
 
 function buildGenerationConfig(

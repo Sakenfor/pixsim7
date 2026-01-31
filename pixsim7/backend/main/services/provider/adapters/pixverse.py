@@ -479,7 +479,7 @@ class PixverseProvider(
                 return f"img_id:{value}" if allow_img_id else None
             return value
 
-        logger.info(
+        logger.debug(
             "prepare_execution_params_called",
             has_source_asset_id="source_asset_id" in mapped_params,
             has_source_asset_ids="source_asset_ids" in mapped_params,
@@ -499,7 +499,10 @@ class PixverseProvider(
 
         # Look up the asset to get provider_uploads
         async with get_async_session() as session:
-            allow_img_id = operation_type == OperationType.IMAGE_TO_VIDEO
+            # img_id:XXX format only works with OpenAPI, not WebAPI
+            # Since we're currently using WebAPI exclusively, always require actual URLs
+            # TODO: When OpenAPI toggle is added, check the API mode here
+            allow_img_id = False
 
             async def resolve_asset_ref(asset_id: int | str) -> tuple[str | None, Asset | None]:
                 query = select(Asset).where(Asset.id == asset_id)
@@ -591,22 +594,9 @@ class PixverseProvider(
                 provider_ref, asset = await resolve_asset_ref(source_asset_id)
                 resolved_ref = _resolve_pixverse_ref(provider_ref, allow_img_id=allow_img_id)
 
-                # DEBUG: Log asset resolution for tracing i2v issues
-                logger.info(
-                    "debug_source_asset_resolution",
-                    source_asset_id=source_asset_id,
-                    asset_id=asset.id if asset else None,
-                    asset_provider_id=asset.provider_id if asset else None,
-                    asset_media_type=asset.media_type if asset else None,
-                    provider_ref=provider_ref[:100] if provider_ref else None,
-                    resolved_ref=resolved_ref[:100] if resolved_ref else None,
-                    has_provider_uploads=bool(asset.provider_uploads) if asset else False,
-                    provider_uploads_keys=list(asset.provider_uploads.keys()) if asset and asset.provider_uploads else [],
-                )
-
                 if resolved_ref:
                     # Substitute the URL in params
-                    logger.info(
+                    logger.debug(
                         "substituting_pixverse_url",
                         asset_id=source_asset_id,
                         original_url=result_params.get("image_url", "")[:50] if result_params.get("image_url") else None,
@@ -626,10 +616,7 @@ class PixverseProvider(
                     elif operation_type == OperationType.VIDEO_EXTEND:
                         result_params["video_url"] = resolved_ref
                 else:
-                    raise ProviderError(
-                        f"Pixverse image operations require a Pixverse-hosted source image. "
-                        f"Failed to resolve source_asset_id: {source_asset_id}"
-                    )
+                    # Log details before raising to aid debugging
                     if asset:
                         logger.error(
                             "no_pixverse_url_for_asset",
@@ -638,25 +625,16 @@ class PixverseProvider(
                             has_provider_uploads=bool(asset.provider_uploads),
                             provider_uploads_keys=list(asset.provider_uploads.keys()) if asset.provider_uploads else [],
                             remote_url=asset.remote_url[:50] if asset.remote_url else None,
-                            msg="Asset must be uploaded to Pixverse first for image-to-image operations",
+                            msg="Asset must be uploaded to Pixverse first for image operations",
                         )
+                    raise ProviderError(
+                        f"Pixverse image operations require a Pixverse-hosted source image. "
+                        f"Failed to resolve source_asset_id: {source_asset_id}"
+                    )
 
         # Remove source_asset_id from params (not needed by SDK)
         result_params.pop("source_asset_id", None)
         result_params.pop("source_asset_ids", None)
-
-        # DEBUG: Log final prepared params for tracing i2v issues
-        logger.info(
-            "debug_prepare_execution_params_final",
-            operation_type=operation_type.value,
-            has_image_url="image_url" in result_params,
-            image_url=result_params.get("image_url", "")[:100] if result_params.get("image_url") else None,
-            has_image_urls="image_urls" in result_params,
-            image_urls_count=len(result_params.get("image_urls", [])) if result_params.get("image_urls") else 0,
-            has_video_url="video_url" in result_params,
-            model=result_params.get("model"),
-            quality=result_params.get("quality"),
-        )
 
         return result_params
 

@@ -246,13 +246,36 @@ export function createGenerationSettingsStore(
       {
         name: storageKey,
         storage: createJSONStorage(() => storage),
-        partialize: (state) => ({
-          paramsPerOperation: state.paramsPerOperation,
-          paramsPerModel: state.paramsPerModel,
-          activeOperationType: state.activeOperationType,
-          showSettings: state.showSettings,
-          // Note: params is derived from paramsPerOperation, _hasHydrated is not persisted
-        }),
+        partialize: (state) => {
+          // Filter out transient params that should be derived from inputs, not persisted
+          const TRANSIENT_PARAMS = [
+            'source_asset_id',
+            'source_asset_ids',
+            'image_url',
+            'image_urls',
+            'video_url',
+            'composition_assets',
+          ];
+
+          const filteredParamsPerOperation: typeof state.paramsPerOperation = {};
+          for (const [opType, params] of Object.entries(state.paramsPerOperation)) {
+            if (params) {
+              const filtered = { ...params };
+              for (const key of TRANSIENT_PARAMS) {
+                delete filtered[key];
+              }
+              filteredParamsPerOperation[opType as keyof typeof filteredParamsPerOperation] = filtered;
+            }
+          }
+
+          return {
+            paramsPerOperation: filteredParamsPerOperation,
+            paramsPerModel: state.paramsPerModel,
+            activeOperationType: state.activeOperationType,
+            showSettings: state.showSettings,
+            // Note: params is derived from paramsPerOperation, _hasHydrated is not persisted
+          };
+        },
         version: 1,
         onRehydrateStorage: () => (state) => {
           // After rehydration, set params from paramsPerOperation for active operation
