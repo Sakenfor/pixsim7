@@ -23,6 +23,7 @@ import {
   type RegionElement,
   type PolygonElement,
 } from '@/components/interactive-surface';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { ViewerSettings } from '../types';
 
@@ -297,12 +298,16 @@ export function RegionAnnotationOverlay({
   // Render
   // ============================================================================
 
+  // Use authenticated fetching for backend URLs
+  const rawMediaUrl = asset.fullUrl || asset.url;
+  const { src: authenticatedUrl, loading: mediaLoading } = useAuthenticatedMedia(rawMediaUrl);
+
   const media = useMemo(
     () => ({
       type: asset.type as 'image' | 'video',
-      url: asset.fullUrl || asset.url,
+      url: authenticatedUrl || '',
     }),
-    [asset]
+    [asset.type, authenticatedUrl]
   );
 
   const cursor =
@@ -311,6 +316,15 @@ export function RegionAnnotationOverlay({
       : drawingMode === 'rect'
         ? 'crosshair'
         : 'crosshair';
+
+  // Show loading state while fetching authenticated media
+  if (mediaLoading || !authenticatedUrl) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-neutral-900/50">
+        <div className="animate-spin w-8 h-8 border-2 border-neutral-300 border-t-neutral-600 rounded-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full">

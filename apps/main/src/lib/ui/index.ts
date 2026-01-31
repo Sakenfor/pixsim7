@@ -28,3 +28,8 @@ export * from './display';
 // Prompt Companion Slot - Extension slot for prompt input surfaces
 // ============================================================================
 export * from './promptCompanionSlot';
+
+// ============================================================================
+// Form Components - Reusable form inputs
+// ============================================================================
+export * from './forms';

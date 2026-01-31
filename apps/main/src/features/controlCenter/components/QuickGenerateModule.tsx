@@ -6,6 +6,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 
 import { getDockviewPanels, useDockviewId } from '@lib/dockview';
 
+import { CompactAssetCard } from '@features/assets/components/shared';
 import {
   CAP_GENERATION_CONTEXT,
   CAP_GENERATION_WIDGET,
@@ -38,7 +39,6 @@ import type { PanelId } from '@features/workspace';
 import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
-import { CompactAssetCard } from './CompactAssetCard';
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 import { type QuickGenPanelContext } from './QuickGeneratePanels';
 

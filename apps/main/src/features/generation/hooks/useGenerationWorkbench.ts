@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useCallback, useRef } from 'react';
 
-import type { ParamSpec } from '@features/controlCenter/components/DynamicParamForm';
+import type { ParamSpec } from '@lib/generation-ui';
+
 import { useProviders } from '@features/providers';
 import { useProviderSpecs } from '@features/providers';
 import { useProviderIdForModel } from '@features/providers';

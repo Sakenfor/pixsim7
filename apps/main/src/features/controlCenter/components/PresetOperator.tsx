@@ -1,8 +1,12 @@
-import { useState, useEffect, useMemo } from 'react';
 import clsx from 'clsx';
 import { X, Plus } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+
+import { DynamicParamForm, type ParamSpec } from '@lib/generation-ui';
+
 import { useProviderSpecs } from '@features/providers';
-import { DynamicParamForm, type ParamSpec } from './DynamicParamForm';
+
+
 import { AssetCard } from './preset-operator/AssetCard';
 import { Timeline } from './preset-operator/Timeline';
 

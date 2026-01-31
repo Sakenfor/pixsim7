@@ -42,3 +42,9 @@ export {
   GallerySurfaceShell,
   type GallerySurfaceShellProps,
 } from './GallerySurfaceShell';
+
+export {
+  CompactAssetCard,
+  type CompactAssetCardProps,
+  type ThumbnailGridItem,
+} from './CompactAssetCard';

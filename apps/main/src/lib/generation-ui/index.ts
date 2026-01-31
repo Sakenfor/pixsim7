@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { GenerationSettingsBar, GenerationStatusDisplay } from '@lib/generation-ui';
+ * import { GenerationSettingsBar, DynamicParamForm } from '@lib/generation-ui';
  * ```
  */
 
@@ -15,6 +15,9 @@ export { GenerationSettingsBar } from './components/GenerationSettingsBar';
 export type { GenerationSettingsBarProps } from './components/GenerationSettingsBar';
 
 export { GenerationStatusDisplay } from './components/GenerationStatusDisplay';
+
+export { DynamicParamForm } from './components/DynamicParamForm';
+export type { DynamicParamFormProps } from './components/DynamicParamForm';
 
 // Types
 export type { ParamSpec } from './types';

@@ -1,15 +1,30 @@
-import { ThemedIcon } from '@lib/icons';
+/**
+ * CompactAssetCard
+ *
+ * A smaller, simplified version of MediaCard for displaying assets in compact spaces.
+ * Reuses shared hooks for thumbnail loading and video hover scrubbing.
+ * Supports frame locking for video assets used in image_to_video/transition workflows.
+ *
+ * Features:
+ * - Thumbnail/preview display with authenticated URL handling
+ * - Video hover scrubbing
+ * - Frame locking for video assets
+ * - Navigation controls for asset queues
+ * - Grid popup for quick asset selection
+ * - Context menu integration
+ */
+
 import { useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
+import { resolveAssetUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
 import { useAssetAutoContextMenu } from '@lib/dockview';
-
-import type { AssetModel } from '@features/assets';
+import { ThemedIcon } from '@lib/icons';
 
 import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 
-
+import type { AssetModel } from '../../types';
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -44,12 +59,6 @@ export interface CompactAssetCardProps {
   onSelectIndex?: (index: number) => void; // Jump to specific index (0-based)
 }
 
-/**
- * CompactAssetCard - A smaller, simplified version of MediaCard
- * for use in QuickGenerateModule to show selected/queued assets.
- * Reuses shared hooks for thumbnail loading and video hover scrubbing.
- * Supports frame locking for video assets used in image_to_video/transition.
- */
 export function CompactAssetCard({
   asset,
   onRemove,
@@ -108,11 +117,15 @@ export function CompactAssetCard({
     }
   }, [showQueueGrid, queueItems]);
 
-  // Use thumbnailUrl from AssetModel
-  const thumbUrl = asset.thumbnailUrl;
+  // Resolve URLs - handle both AssetModel and ViewerAsset types
+  // AssetModel has: thumbnailUrl, previewUrl, remoteUrl, storedKey
+  // ViewerAsset has: url, fullUrl (from media viewer)
+  const viewerAsset = asset as unknown as { url?: string; fullUrl?: string };
+  const resolvedThumbUrl = resolveThumbnailUrl(asset) || viewerAsset.url;
+  const resolvedMainUrl = resolveAssetUrl(asset) || viewerAsset.fullUrl || viewerAsset.url;
 
-  // Shared hooks from MediaCard
-  const thumbSrc = useMediaThumbnail(thumbUrl, asset.previewUrl, asset.remoteUrl);
+  // Shared hooks from MediaCard (hook handles URL decoding internally)
+  const thumbSrc = useMediaThumbnail(resolvedThumbUrl, asset.previewUrl, resolvedMainUrl);
   const hover = useHoverScrubVideo(videoRef);
 
   const isVideo = asset.mediaType === 'video';
@@ -173,6 +186,7 @@ export function CompactAssetCard({
               preload="metadata"
               muted
               playsInline
+              crossOrigin={thumbSrc.startsWith('http') ? 'anonymous' : undefined}
             />
           ) : (
             <img

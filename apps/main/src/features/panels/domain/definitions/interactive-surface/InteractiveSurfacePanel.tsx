@@ -12,17 +12,20 @@
  */
 
 import { useEffect, useMemo, useCallback, useRef } from 'react';
-import {
-  InteractiveImageSurface,
-  useInteractionLayer,
-  type InteractiveImageSurfaceHandle,
-} from '@/components/interactive-surface';
+
 import type { ViewerAsset } from '@features/assets';
 import {
   CAP_ASSET_SELECTION,
   useCapability,
   type AssetSelection,
 } from '@features/contextHub';
+
+import {
+  InteractiveImageSurface,
+  useInteractionLayer,
+  type InteractiveImageSurfaceHandle,
+} from '@/components/interactive-surface';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 // ============================================================================
 // Types
@@ -336,6 +339,10 @@ export function InteractiveSurfacePanel({
         ? 'cell'
         : 'grab';
 
+  // Use authenticated fetching for backend URLs
+  const rawMediaUrl = asset?.fullUrl || asset?.url;
+  const { src: authenticatedUrl, loading: mediaLoading } = useAuthenticatedMedia(rawMediaUrl);
+
   // No asset - show placeholder
   if (!asset) {
     return (
@@ -353,10 +360,19 @@ export function InteractiveSurfacePanel({
     );
   }
 
-  // Build media object
+  // Show loading state while fetching authenticated media
+  if (mediaLoading || !authenticatedUrl) {
+    return (
+      <div className="h-full flex items-center justify-center bg-neutral-900">
+        <div className="animate-spin w-8 h-8 border-2 border-neutral-300 border-t-neutral-600 rounded-full" />
+      </div>
+    );
+  }
+
+  // Build media object with authenticated URL
   const media = {
     type: asset.type as 'image' | 'video',
-    url: asset.fullUrl || asset.url,
+    url: authenticatedUrl,
   };
 
   return (

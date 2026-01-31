@@ -15,6 +15,7 @@ import { useDockviewId } from '@lib/dockview';
 import { PromptCompanionHost } from '@lib/ui';
 
 import type { AssetModel } from '@features/assets';
+import { CompactAssetCard } from '@features/assets/components/shared';
 import {
   CAP_PROMPT_BOX,
   CAP_GENERATION_WIDGET,
@@ -48,7 +49,6 @@ import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
-import { CompactAssetCard } from './CompactAssetCard';
 
 // Panel IDs
 export type QuickGenPanelId =
