@@ -2,6 +2,10 @@
  * NPC Interactions Module
  */
 
+// Registry and plugin system
+export * from './registry';
+export * from './registryUtils';
+
 export * from './menuBuilder';
 export * from './hotspot';
 export * from './templates';

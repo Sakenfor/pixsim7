@@ -14,6 +14,9 @@ import type {
   PlayerSlot,
 } from '@lib/registries';
 
+// Re-export WorldTimeDisplay from shared package
+export type { WorldTimeDisplay } from '@pixsim7/game.engine';
+
 /**
  * Runtime state snapshot - reactive state for React components
  */
@@ -63,13 +66,7 @@ export interface GameRuntimeOptions {
   initialFlags?: Partial<SessionFlags>;
 }
 
-/**
- * World time displayed as day/hour for UI (1-indexed days)
- */
-export interface WorldTimeDisplay {
-  day: number;
-  hour: number;
-}
+// WorldTimeDisplay is now exported from @pixsim7/game.engine (re-exported above)
 
 // ===================
 // Actor Runtime Types

@@ -118,8 +118,8 @@ export type {
 
 // ===== Interaction Registry =====
 // Manages interaction plugins
-// Source: frontend/src/lib/game/interactions
-import { interactionRegistry, InteractionRegistry } from './game/interactions/types';
+// Source: @pixsim7/game.engine (extracted from frontend/src/lib/game/interactions)
+import { interactionRegistry, InteractionRegistry } from '@pixsim7/game.engine';
 export { interactionRegistry, InteractionRegistry };
 
 export type {
@@ -132,7 +132,7 @@ export type {
   SessionHelpers,
   FormField,
   FormFieldType,
-} from './game/interactions/types';
+} from '@pixsim7/game.engine';
 
 // ===== Node Type Registries =====
 // Manages scene + arc graph node types

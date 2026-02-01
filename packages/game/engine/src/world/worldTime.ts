@@ -34,6 +34,17 @@ export interface WorldTimeComponents {
   second: number;
 }
 
+/**
+ * Simple world time display for UI (1-indexed days)
+ * Used by Game2D and other UI components that show day/hour
+ */
+export interface WorldTimeDisplay {
+  /** Day number (1-indexed for display) */
+  day: number;
+  /** Hour of day (0-23 by default) */
+  hour: number;
+}
+
 export interface WorldTimeComponentsWithPeriod extends WorldTimeComponents {
   /** Current period definition (if matched) */
   period?: TimePeriodDefinition;
@@ -337,4 +348,37 @@ export function isRestDay(worldTime: number, config?: WorldTimeConfig): boolean 
 export function getDayFlags(worldTime: number, config?: WorldTimeConfig): string[] {
   const components = parseWorldTimeWithPeriod(worldTime, config);
   return components.day?.specialFlags ?? [];
+}
+
+// ===== Display Conversion Helpers =====
+// These convert between WorldTimeDisplay (UI) and world_time seconds (engine)
+
+/**
+ * Convert WorldTimeDisplay (1-indexed days) to world_time seconds
+ * @param display - World time display with 1-indexed day
+ * @param config - Optional world time config for custom time systems
+ * @returns World time in seconds
+ */
+export function worldTimeDisplayToSeconds(
+  display: WorldTimeDisplay,
+  config?: WorldTimeConfig
+): number {
+  return composeWorldTime(
+    { dayOfWeek: display.day - 1, hour: display.hour, minute: 0, second: 0 },
+    config
+  );
+}
+
+/**
+ * Convert world_time seconds to WorldTimeDisplay (1-indexed days)
+ * @param seconds - World time in seconds
+ * @param config - Optional world time config for custom time systems
+ * @returns World time display with 1-indexed day
+ */
+export function secondsToWorldTimeDisplay(
+  seconds: number,
+  config?: WorldTimeConfig
+): WorldTimeDisplay {
+  const { dayOfWeek, hour } = parseWorldTime(seconds, config);
+  return { day: dayOfWeek + 1, hour };
 }

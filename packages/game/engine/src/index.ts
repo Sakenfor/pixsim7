@@ -205,6 +205,8 @@ export {
   getNextOccurrence,
   worldTimeDiff,
   formatDuration,
+  worldTimeDisplayToSeconds,
+  secondsToWorldTimeDisplay,
   SECONDS_PER_MINUTE,
   SECONDS_PER_HOUR,
   SECONDS_PER_DAY,
@@ -213,7 +215,17 @@ export {
   DAY_NAMES_SHORT,
 } from './world/worldTime';
 
-export type { WorldTimeComponents } from './world/worldTime';
+export type { WorldTimeComponents, WorldTimeDisplay } from './world/worldTime';
+
+// Turn-based mode helpers
+export {
+  isTurnBasedMode,
+  getTurnDelta,
+  getCurrentTurnNumber,
+  createTurnAdvanceFlags,
+} from './world/turnHelpers';
+
+export type { TurnHistoryEntry } from './world/turnHelpers';
 
 export {
   compareNpcPresence,
@@ -486,6 +498,17 @@ export {
   isWritableSource,
 } from './session/statAdapters';
 
+// ===== Session Storage =====
+export {
+  loadWorldSession,
+  saveWorldSession,
+  clearWorldSession,
+  createTurnBasedSessionFlags,
+  createRealTimeSessionFlags,
+} from './session/storage';
+
+export type { WorldSessionState } from './session/storage';
+
 export type {
   StatSource,
   SessionStatAdapter,
@@ -544,9 +567,12 @@ export * from './interactions/suggestions';
 export * from './interactions/moodIntegration';
 export * from './interactions/chains';
 export * from './interactions/chainHelpers';
+export * from './interactions/registry';
+export * from './interactions/registryUtils';
 export * from './world/worldUiConfig';
 export * from './world/generationConfig';
 export * from './world/manifest';
 export * from './world/gameProfile';
+export * from './world/turnHelpers';
 export * from './narrative/ecsHelpers';
 export * from './interactions/cooldownUtils';
