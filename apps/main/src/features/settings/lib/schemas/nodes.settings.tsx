@@ -1,10 +1,10 @@
 /**
- * Widget Settings Schema (Auto-Generated)
+ * Node Settings Schema (Auto-Generated)
  *
- * Auto-generates settings tabs from widgets that have settingsSchema defined.
+ * Auto-generates settings tabs from node types that have settingsSchema defined.
  */
 
-import { createWidgetSettingsRegistration } from '@lib/widgets';
+import { createNodeSettingsRegistration } from '@lib/nodeSettings';
 
 import { settingsSchemaRegistry } from '../core';
 
@@ -13,11 +13,11 @@ import { settingsSchemaRegistry } from '../core';
 // =============================================================================
 
 /**
- * Register widget settings from all widgets that have settingsSchema defined.
+ * Register node settings from all node types that have settingsSchema defined.
  * Called once during app initialization.
  */
-export function registerWidgetSettings(): () => void {
-  const registration = createWidgetSettingsRegistration();
+export function registerNodeSettings(): () => void {
+  const registration = createNodeSettingsRegistration();
   if (!registration || registration.tabs.length === 0) {
     return () => {};
   }
@@ -28,11 +28,11 @@ export function registerWidgetSettings(): () => void {
   const [firstTab, ...remainingTabs] = tabs;
 
   const unregisterFirst = settingsSchemaRegistry.register({
-    categoryId: 'widgets',
+    categoryId: 'nodes',
     category: {
-      label: 'Widgets',
-      icon: '🧩',
-      order: 25, // After UI, before Library
+      label: 'Nodes',
+      icon: '🔷',
+      order: 26, // After Widgets (25), before Library (35)
     },
     tab: firstTab,
     useStore,
@@ -41,7 +41,7 @@ export function registerWidgetSettings(): () => void {
 
   for (const tab of remainingTabs) {
     const unregister = settingsSchemaRegistry.register({
-      categoryId: 'widgets',
+      categoryId: 'nodes',
       tab,
       useStore,
     });
@@ -53,4 +53,8 @@ export function registerWidgetSettings(): () => void {
   };
 }
 
-export { getWidgetsWithSettings } from '@lib/widgets';
+export {
+  getNodeTypesWithSettings,
+  getNodeTypeSettings,
+  useNodeSettingsStore,
+} from '@lib/nodeSettings';

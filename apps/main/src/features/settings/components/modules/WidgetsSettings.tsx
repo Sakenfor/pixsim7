@@ -7,7 +7,7 @@
 
 import { useMemo } from 'react';
 
-import { widgetRegistry } from '@lib/widgets';
+import { getWidgetsWithSettings } from '@lib/widgets';
 
 import { settingsRegistry, type SettingsSubSection } from '../../lib/core/registry';
 import { registerWidgetSettings } from '../../lib/schemas/widgets.settings';
@@ -33,7 +33,7 @@ function createWidgetSettingsComponent(widgetId: string) {
  * Get all widgets with settings schemas and generate sub-sections.
  */
 function getWidgetSubSections(): SettingsSubSection[] {
-  const widgetsWithSettings = widgetRegistry.getAll().filter(w => w.settingsSchema);
+  const widgetsWithSettings = getWidgetsWithSettings();
 
   return widgetsWithSettings.map(widget => ({
     id: widget.id,
@@ -46,7 +46,7 @@ function getWidgetSubSections(): SettingsSubSection[] {
 /** Default component - shows first widget's settings or empty state */
 export function WidgetsSettings() {
   const widgetsWithSettings = useMemo(
-    () => widgetRegistry.getAll().filter(w => w.settingsSchema),
+    () => getWidgetsWithSettings(),
     []
   );
 

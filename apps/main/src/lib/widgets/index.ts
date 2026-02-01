@@ -149,6 +149,12 @@ export {
   type WidgetSettings,
 } from './overlayWidgetSettingsStore';
 
+// Settings schema registration
+export {
+  createWidgetSettingsRegistration,
+  getWidgetsWithSettings,
+} from './settingsRegistration';
+
 // Data binding (re-exported for convenience)
 export {
   useWidgetData,
