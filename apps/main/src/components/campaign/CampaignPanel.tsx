@@ -10,6 +10,7 @@
  */
 
 import React, { useState } from 'react';
+import { ConfirmModal } from '@pixsim7/shared.ui';
 import { useCampaignStore } from '@domain/campaign';
 import { validateCampaign } from '@domain/campaign';
 import type { Campaign, CampaignType } from '@domain/campaign';
@@ -55,6 +56,7 @@ export const CampaignPanel: React.FC<CampaignPanelProps> = ({
   const [newCampaignTitle, setNewCampaignTitle] = useState('');
   const [newCampaignType, setNewCampaignType] = useState<CampaignType>('main_story');
   const [newArcGraphId, setNewArcGraphId] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const activeCampaignId = selectedCampaignId ?? currentCampaignId;
   const activeCampaign = activeCampaignId ? campaigns[activeCampaignId] : null;
@@ -74,15 +76,19 @@ export const CampaignPanel: React.FC<CampaignPanelProps> = ({
   };
 
   const handleDeleteCampaign = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this campaign?')) {
-      deleteCampaign(id);
-      if (activeCampaignId === id) {
-        setCurrentCampaign(null);
-        if (onCampaignSelect) {
-          onCampaignSelect(null);
-        }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDeleteCampaign = () => {
+    if (!deleteConfirmId) return;
+    deleteCampaign(deleteConfirmId);
+    if (activeCampaignId === deleteConfirmId) {
+      setCurrentCampaign(null);
+      if (onCampaignSelect) {
+        onCampaignSelect(null);
       }
     }
+    setDeleteConfirmId(null);
   };
 
   const handleSelectCampaign = (id: string) => {
@@ -472,6 +478,17 @@ export const CampaignPanel: React.FC<CampaignPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirmId}
+        title="Delete Campaign"
+        message="Are you sure you want to delete this campaign?"
+        confirmText="Delete"
+        onConfirm={confirmDeleteCampaign}
+        onCancel={() => setDeleteConfirmId(null)}
+        variant="danger"
+      />
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { type AutomationExecution, type AutomationStatus } from '../types';
 import { automationService } from '../lib/core';
-import { Button, Panel } from '@pixsim7/shared.ui';
+import { Button, Panel, ConfirmModal } from '@pixsim7/shared.ui';
 import { ExecutionCard } from './ExecutionCard';
 
 export function ExecutionList() {
@@ -11,6 +11,7 @@ export function ExecutionList() {
   const [filterStatus, setFilterStatus] = useState<AutomationStatus | 'ALL'>('ALL');
   const [selectedExecution, setSelectedExecution] = useState<AutomationExecution | null>(null);
   const [clearing, setClearing] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState<{ status?: AutomationStatus; message: string } | null>(null);
 
   const executionsRef = useRef<AutomationExecution[]>([]);
   const loadingRef = useRef(false);
@@ -83,21 +84,27 @@ export function ExecutionList() {
     setSelectedExecution(null);
   };
 
-  const handleClearExecutions = async (status?: AutomationStatus) => {
+  const handleClearExecutions = (status?: AutomationStatus) => {
     const statusText = status || 'completed and failed';
-    const confirmMessage = `Are you sure you want to clear all ${statusText} executions? This cannot be undone.`;
+    setClearConfirm({
+      status,
+      message: `Are you sure you want to clear all ${statusText} executions? This cannot be undone.`,
+    });
+  };
 
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
+  const confirmClearExecutions = async () => {
+    if (!clearConfirm) return;
+
+    const status = clearConfirm.status;
+    setClearConfirm(null);
 
     try {
       setClearing(true);
       const result = await automationService.clearExecutions(status);
-      alert(`Successfully cleared ${result.deleted} executions (${result.filter})`);
+      // Could use toast here instead of alert
+      console.log(`Successfully cleared ${result.deleted} executions (${result.filter})`);
       await loadExecutions(); // Reload the list
     } catch (err) {
-      alert(`Failed to clear executions: ${err instanceof Error ? err.message : 'Unknown error'}`);
       console.error('Error clearing executions:', err);
     } finally {
       setClearing(false);
@@ -344,6 +351,17 @@ export function ExecutionList() {
           </Panel>
         </div>
       )}
+
+      {/* Clear executions confirmation */}
+      <ConfirmModal
+        isOpen={!!clearConfirm}
+        title="Clear Executions"
+        message={clearConfirm?.message || ''}
+        confirmText="Clear"
+        onConfirm={confirmClearExecutions}
+        onCancel={() => setClearConfirm(null)}
+        variant="danger"
+      />
     </div>
   );
 }

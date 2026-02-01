@@ -7,7 +7,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 
 import { mediaCardPresets } from '@lib/ui/overlay';
 
-import { useAssetsController, useAssetViewer, AssetDetailModal } from '@features/assets';
+import { useAssetsController, useAssetViewer, AssetDetailModal, DeleteAssetModal, useDeleteModalStore } from '@features/assets';
 import {
   CAP_ASSET_SELECTION,
   useProvideCapability,
@@ -43,6 +43,10 @@ export function AssetsRoute() {
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [sourcesRegistered, setSourcesRegistered] = useState(false);
+
+  // Delete modal state (shared store for cross-component access)
+  const deleteModalAsset = useDeleteModalStore((s) => s.asset);
+  const closeDeleteModal = useDeleteModalStore((s) => s.closeDeleteModal);
 
   // Register all sources once
   useEffect(() => {
@@ -423,6 +427,15 @@ export function AssetsRoute() {
 
       {/* Floating asset detail window - uses shared store */}
       <AssetDetailModal />
+
+      {/* Delete confirmation modal */}
+      {deleteModalAsset && (
+        <DeleteAssetModal
+          asset={deleteModalAsset}
+          onConfirm={controller.confirmDeleteAsset}
+          onCancel={closeDeleteModal}
+        />
+      )}
     </div>
   );
 }

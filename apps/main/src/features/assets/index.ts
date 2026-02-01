@@ -13,6 +13,7 @@ export { DebugGallerySurface } from './components/DebugGallerySurface';
 export { DefaultGallerySurface } from './components/DefaultGallerySurface';
 export { ReviewGallerySurface } from './components/ReviewGallerySurface';
 export { AssetDetailModal } from './components/AssetDetailModal';
+export { DeleteAssetModal } from './components/DeleteAssetModal';
 
 // ============================================================================
 // Components - Asset Sources & Panels
@@ -91,6 +92,8 @@ export type { SelectedAsset } from './stores/assetSelectionStore';
 export { useAssetDetailStore } from './stores/assetDetailStore';
 
 export { useAssetSettingsStore } from './stores/assetSettingsStore';
+
+export { useDeleteModalStore } from './stores/deleteModalStore';
 
 export {
   useAssetViewerStore,

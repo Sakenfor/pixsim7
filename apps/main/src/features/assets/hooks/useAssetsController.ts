@@ -15,7 +15,7 @@ import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { createAssetActions } from '../lib/assetCardActions';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
-import { useAssetSettingsStore } from '../stores/assetSettingsStore';
+import { useDeleteModalStore } from '../stores/deleteModalStore';
 
 import { useAsset } from './useAsset';
 import { useAssets, type AssetModel } from './useAssets';
@@ -124,12 +124,24 @@ export function useAssetsController() {
     setViewerSrc(null);
   }, [closeViewerInternal, viewerSrc]);
 
-  // Handle asset deletion
-  const handleDeleteAsset = useCallback(async (asset: AssetModel) => {
-    const confirmed = window.confirm(`Delete ${asset.mediaType} asset "${asset.id}"? This cannot be undone.`);
-    if (!confirmed) return;
+  // Delete modal state (shared store)
+  const deleteModalAsset = useDeleteModalStore((s) => s.asset);
+  const openDeleteModal = useDeleteModalStore((s) => s.openDeleteModal);
+  const closeDeleteModal = useDeleteModalStore((s) => s.closeDeleteModal);
+
+  // Handle asset deletion - opens modal
+  const handleDeleteAsset = useCallback((asset: AssetModel) => {
+    openDeleteModal(asset);
+  }, [openDeleteModal]);
+
+  // Confirm deletion from modal
+  const confirmDeleteAsset = useCallback(async (deleteFromProvider: boolean) => {
+    const asset = deleteModalAsset;
+    if (!asset) return;
+
+    closeDeleteModal();
+
     try {
-      const deleteFromProvider = useAssetSettingsStore.getState().deleteFromProvider;
       await deleteAsset(asset.id, { delete_from_provider: deleteFromProvider });
       // Remove from selection if selected
       if (isSelected(asset.id)) {
@@ -145,7 +157,12 @@ export function useAssetsController() {
       console.error('Failed to delete asset:', err);
       alert(extractErrorMessage(err, 'Failed to delete asset'));
     }
-  }, [viewerAsset, removeAsset, isSelected, toggleAssetSelection, closeViewer]);
+  }, [deleteModalAsset, closeDeleteModal, viewerAsset, removeAsset, isSelected, toggleAssetSelection, closeViewer]);
+
+  // Cancel deletion
+  const cancelDeleteAsset = useCallback(() => {
+    closeDeleteModal();
+  }, [closeDeleteModal]);
 
   // Handle asset archiving
   const handleArchiveAsset = useCallback(async (asset: AssetModel) => {
@@ -320,5 +337,10 @@ export function useAssetsController() {
     // Per-asset actions
     getAssetActions,
     reuploadAsset,
+
+    // Delete modal
+    deleteModalAsset,
+    confirmDeleteAsset,
+    cancelDeleteAsset,
   };
 }

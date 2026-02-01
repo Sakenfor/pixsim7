@@ -1,4 +1,4 @@
-import { Button, FormField, Input, useToast } from '@pixsim7/shared.ui';
+import { Button, FormField, Input, useToast, ConfirmModal } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect } from 'react';
 
 import { pixsimClient } from '@lib/api/client';
@@ -43,6 +43,13 @@ export function ProviderSettingsPanel() {
   // Active provider tab (for provider-specific content)
   const [activeTab, setActiveTab] = useState<ProviderTab>('accounts');
   const toast = useToast();
+
+  // Deduplication confirmation
+  const [dedupeConfirm, setDedupeConfirm] = useState<{
+    providerId: string;
+    duplicateCount: number;
+    emailList: string;
+  } | null>(null);
 
   const handleSaveAccount = async (accountId: number, data: AccountUpdate) => {
     try {
@@ -525,33 +532,18 @@ export function ProviderSettingsPanel() {
                           return;
                         }
 
-                        // Show accounts to be deleted
-                        const emailList = accounts.map((a: { email: string }) => a.email).join('\n- ');
-
-                        const confirmed = window.confirm(
-                          `Found ${duplicate_count} duplicate account(s) to remove:\n\n- ${emailList}\n\n` +
-                          `The most recently used account for each email will be kept.\n\n` +
-                          `Continue with deduplication?`
-                        );
-
-                        if (!confirmed) return;
-
-                        // Run deduplication (POST = actually delete)
-                        const { deleted } = await pixsimClient.post<{ deleted: number }>(
-                          `/accounts/deduplicate?provider_id=${activeProvider}`
-                        );
-
-                        toast?.({
-                          title: 'Deduplication complete',
-                          description: `Removed ${deleted} duplicate account(s)`,
-                          variant: 'success',
+                        // Show confirmation modal
+                        const emailList = accounts.map((a: { email: string }) => a.email).join(', ');
+                        setDedupeConfirm({
+                          providerId: activeProvider,
+                          duplicateCount: duplicate_count,
+                          emailList,
                         });
-                        setRefreshKey(prev => prev + 1);
                       } catch (error) {
-                        console.error('Deduplication failed:', error);
+                        console.error('Deduplication check failed:', error);
                         toast?.({
-                          title: 'Deduplication failed',
-                          description: 'Failed to remove duplicate accounts',
+                          title: 'Check failed',
+                          description: 'Failed to check for duplicate accounts',
                           variant: 'error',
                         });
                       }
@@ -695,6 +687,42 @@ export function ProviderSettingsPanel() {
           </div>
         ) : null}
       </div>
+
+      {/* Deduplication confirmation modal */}
+      <ConfirmModal
+        isOpen={!!dedupeConfirm}
+        title="Remove Duplicate Accounts"
+        message={
+          dedupeConfirm
+            ? `Found ${dedupeConfirm.duplicateCount} duplicate account(s) to remove: ${dedupeConfirm.emailList}. The most recently used account for each email will be kept.`
+            : ''
+        }
+        confirmText="Remove Duplicates"
+        onConfirm={async () => {
+          if (!dedupeConfirm) return;
+          try {
+            const { deleted } = await pixsimClient.post<{ deleted: number }>(
+              `/accounts/deduplicate?provider_id=${dedupeConfirm.providerId}`
+            );
+            toast?.({
+              title: 'Deduplication complete',
+              description: `Removed ${deleted} duplicate account(s)`,
+              variant: 'success',
+            });
+            setRefreshKey(prev => prev + 1);
+          } catch (error) {
+            console.error('Deduplication failed:', error);
+            toast?.({
+              title: 'Deduplication failed',
+              description: 'Failed to remove duplicate accounts',
+              variant: 'error',
+            });
+          }
+          setDedupeConfirm(null);
+        }}
+        onCancel={() => setDedupeConfirm(null)}
+        variant="danger"
+      />
     </div>
   );
 }

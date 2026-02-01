@@ -10,6 +10,7 @@
  */
 
 import React, { useState } from 'react';
+import { ConfirmModal } from '@pixsim7/shared.ui';
 import { useSceneCollectionStore } from '@domain/sceneCollection';
 import { validateSceneCollection } from '@domain/sceneCollection';
 import type { SceneCollection, SceneCollectionType } from '@domain/sceneCollection';
@@ -45,6 +46,7 @@ export const SceneCollectionPanel: React.FC<SceneCollectionPanelProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newCollectionTitle, setNewCollectionTitle] = useState('');
   const [newCollectionType, setNewCollectionType] = useState<SceneCollectionType>('chapter');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const activeCollectionId = selectedCollectionId ?? currentCollectionId;
   const activeCollection = activeCollectionId ? collections[activeCollectionId] : null;
@@ -60,15 +62,19 @@ export const SceneCollectionPanel: React.FC<SceneCollectionPanelProps> = ({
   };
 
   const handleDeleteCollection = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this collection?')) {
-      deleteCollection(id);
-      if (activeCollectionId === id) {
-        setCurrentCollection(null);
-        if (onCollectionSelect) {
-          onCollectionSelect(null);
-        }
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDeleteCollection = () => {
+    if (!deleteConfirmId) return;
+    deleteCollection(deleteConfirmId);
+    if (activeCollectionId === deleteConfirmId) {
+      setCurrentCollection(null);
+      if (onCollectionSelect) {
+        onCollectionSelect(null);
       }
     }
+    setDeleteConfirmId(null);
   };
 
   const handleSelectCollection = (id: string) => {
@@ -361,6 +367,17 @@ export const SceneCollectionPanel: React.FC<SceneCollectionPanelProps> = ({
           </div>
         )}
       </div>
+
+      {/* Delete confirmation modal */}
+      <ConfirmModal
+        isOpen={!!deleteConfirmId}
+        title="Delete Collection"
+        message="Are you sure you want to delete this collection?"
+        confirmText="Delete"
+        onConfirm={confirmDeleteCollection}
+        onCancel={() => setDeleteConfirmId(null)}
+        variant="danger"
+      />
     </div>
   );
 };
