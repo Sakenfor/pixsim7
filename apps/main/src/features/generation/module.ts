@@ -1,8 +1,8 @@
 import { registerState } from '@lib/capabilities';
 
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-
 import type { Module } from '@app/modules/types';
+
+import { getGenerationSessionStore } from './stores/generationScopeStores';
 
 /**
  * Register generation state capabilities.
@@ -13,7 +13,7 @@ function registerGenerationState() {
     id: 'generation.active',
     name: 'Generation Active',
     getValue: () => {
-      return useControlCenterStore.getState().generating;
+      return getGenerationSessionStore('global').getState().generating;
     },
     readonly: true,
   });

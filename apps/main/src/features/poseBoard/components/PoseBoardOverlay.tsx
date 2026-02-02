@@ -5,9 +5,11 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-import { usePoseBoardStore } from '../stores/poseBoardStore';
+
+import { useGenerationScopeStores } from '@features/generation/hooks/useGenerationScope';
+
 import { uploadPoseSnapshot } from '../lib/poseSnapshot';
+import { usePoseBoardStore } from '../stores/poseBoardStore';
 
 const CANVAS_WIDTH = 960;
 const CANVAS_HEIGHT = 540;
@@ -15,7 +17,8 @@ const CANVAS_HEIGHT = 540;
 export function PoseBoardOverlay() {
   const surfaceMode = usePoseBoardStore((s) => s.surfaceMode);
   const setSurfaceMode = usePoseBoardStore((s) => s.setSurfaceMode);
-  const providerId = useControlCenterStore((s) => s.providerId);
+  const { useSessionStore } = useGenerationScopeStores();
+  const providerId = useSessionStore((s) => s.providerId);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isSaving, setIsSaving] = useState(false);

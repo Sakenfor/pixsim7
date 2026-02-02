@@ -1,4 +1,3 @@
-import { useProviderSpecs } from '@features/providers';
 import clsx from 'clsx';
 import { Settings2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -6,8 +5,8 @@ import { useMemo, useState } from 'react';
 import { useAutoContextMenu } from '@lib/dockview';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
-
-import { ccSelectors } from '@/stores/selectors';
+import { useGenerationScopeStores } from '@features/generation/hooks/useGenerationScope';
+import { useProviderSpecs } from '@features/providers';
 
 
 import { PresetOperator, type TimelineAsset } from './PresetOperator';
@@ -225,14 +224,16 @@ function PresetCard({
 }
 
 export function PresetsModule() {
-  // Use stable selectors to reduce re-renders
-  const providerId = useControlCenterStore(ccSelectors.providerId);
-  const operationType = useControlCenterStore(ccSelectors.operationType);
-  const presetId = useControlCenterStore(ccSelectors.presetId);
-  const presetParams = useControlCenterStore(ccSelectors.presetParams);
+  // Get generation session state from scoped stores
+  const { useSessionStore } = useGenerationScopeStores();
+  const providerId = useSessionStore(s => s.providerId);
+  const operationType = useSessionStore(s => s.operationType);
+  const presetId = useSessionStore(s => s.presetId);
+  const presetParams = useSessionStore(s => s.presetParams);
+  const setPreset = useSessionStore(s => s.setPreset);
+  const setPresetParams = useSessionStore(s => s.setPresetParams);
 
-  const setPreset = useControlCenterStore(s => s.setPreset);
-  const setPresetParams = useControlCenterStore(s => s.setPresetParams);
+  // CC-specific actions (not part of generation session)
   const setAssets = useControlCenterStore(s => s.setAssets);
   const setActiveModule = useControlCenterStore(s => s.setActiveModule);
 

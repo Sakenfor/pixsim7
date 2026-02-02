@@ -11,31 +11,6 @@ import type { ControlCenterState } from '@features/controlCenter/stores/controlC
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const ccSelectors = {
-  /** Basic operation configuration (operation type, provider, preset) */
-  operationBasics: (s: ControlCenterState) => ({
-    operationType: s.operationType,
-    providerId: s.providerId,
-    presetId: s.presetId,
-  }),
-
-  /** Selected preset parameters */
-  presetParams: (s: ControlCenterState) => s.presetParams,
-
-  /** Whether asset generation is in progress */
-  generating: (s: ControlCenterState) => s.generating,
-
-  /** Current operation type */
-  operationType: (s: ControlCenterState) => s.operationType,
-
-  /** Selected provider ID */
-  providerId: (s: ControlCenterState) => s.providerId,
-
-  /** Current prompt draft */
-  prompt: (s: ControlCenterState) => s.prompt,
-
-  /** Selected preset ID */
-  presetId: (s: ControlCenterState) => s.presetId,
-
   /** Dock open/pinned state */
   dockState: (s: ControlCenterState) => ({
     open: s.open,
@@ -45,6 +20,13 @@ export const ccSelectors = {
 
   /** Active module in control center */
   activeModule: (s: ControlCenterState) => s.activeModule,
+
+  /** Dock position and layout */
+  dockLayout: (s: ControlCenterState) => ({
+    dockPosition: s.dockPosition,
+    layoutBehavior: s.layoutBehavior,
+    conformToOtherPanels: s.conformToOtherPanels,
+  }),
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

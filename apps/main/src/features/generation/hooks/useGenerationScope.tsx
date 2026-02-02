@@ -1,8 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useMemo } from "react";
 
-import { useControlCenterStore } from "@features/controlCenter/stores/controlCenterStore";
-
 import { useGenerationInputStore } from "../stores/generationInputStore";
 import type { GenerationInputStoreHook } from "../stores/generationInputStore";
 import {
@@ -25,7 +23,7 @@ export interface GenerationScopeStores {
 const GLOBAL_SCOPE: GenerationScopeStores = {
   id: "global",
   label: "Global",
-  useSessionStore: useControlCenterStore as unknown as GenerationSessionStoreHook,
+  useSessionStore: getGenerationSessionStore("global"),
   useSettingsStore: useGenerationSettingsStore as unknown as GenerationSettingsStoreHook,
   useInputStore: useGenerationInputStore as unknown as GenerationInputStoreHook,
 };

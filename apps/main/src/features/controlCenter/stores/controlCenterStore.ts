@@ -1,9 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 
-import type { GenerationSessionFields, GenerationSessionActions } from '@features/generation/stores/generationSessionStore';
-import { DEFAULT_SESSION_FIELDS } from '@features/generation/stores/generationSessionStore';
-
 import { createBackendStorage } from '../lib/backendStorage';
 import { debugFlags } from '../lib/debugFlags';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
@@ -34,34 +31,28 @@ export type TimelineAsset = {
 };
 
 /**
- * ControlCenterState extends GenerationSessionFields to share the core generation
- * session state with GenerationSessionStore. This enables unified access via
- * useGenerationScopeStores() without unsafe type casts.
+ * ControlCenterState contains UI-specific state for the Control Center dock.
+ * Generation session state is now managed separately via useGenerationScopeStores().
  */
-export interface ControlCenterState extends GenerationSessionFields {
-  // UI state specific to ControlCenter
-  dockPosition: DockPosition; // where the dock is positioned
-  layoutBehavior: LayoutBehavior; // 'overlay' (float over content) or 'push' (resize content)
-  conformToOtherPanels: boolean; // if true, adjusts layout when other panels (like Media Viewer) are open
-  open: boolean;            // whether dock is expanded
-  pinned: boolean;          // if true, stays open
-  height: number;           // height/width in px when expanded (used for vertical/horizontal sizing)
-  floatingPosition: { x: number; y: number }; // position when floating
-  floatingSize: { width: number; height: number }; // size when floating
+export interface ControlCenterState {
+  dockPosition: DockPosition;
+  layoutBehavior: LayoutBehavior;
+  conformToOtherPanels: boolean;
+  open: boolean;
+  pinned: boolean;
+  height: number;
+  floatingPosition: { x: number; y: number };
+  floatingSize: { width: number; height: number };
   activeModule: ControlModule;
-  enabledModules: Record<string, boolean>; // module preferences
-  assets: TimelineAsset[];  // assets from operator popup
-  panelLayoutResetTrigger: number; // timestamp to trigger panel layout resets in modules
-  // Note: operationType, prompt, providerId, presetId, presetParams, generating
-  // are inherited from GenerationSessionFields
+  enabledModules: Record<string, boolean>;
+  assets: TimelineAsset[];
+  panelLayoutResetTrigger: number;
 }
 
 /**
- * ControlCenterActions extends GenerationSessionActions to share the core generation
- * session actions. Additional UI-specific actions are defined here.
+ * ControlCenterActions contains UI-specific actions for the Control Center dock.
  */
-export interface ControlCenterActions extends GenerationSessionActions {
-  // UI actions specific to ControlCenter
+export interface ControlCenterActions {
   setDockPosition: (position: DockPosition) => void;
   setLayoutBehavior: (behavior: LayoutBehavior) => void;
   setConformToOtherPanels: (conform: boolean) => void;
@@ -75,8 +66,7 @@ export interface ControlCenterActions extends GenerationSessionActions {
   setModuleEnabled: (moduleId: string, enabled: boolean) => void;
   setAssets: (assets: TimelineAsset[]) => void;
   triggerPanelLayoutReset: () => void;
-  // Note: setOperationType, setPrompt, setProvider, setPreset, setPresetParams,
-  // setGenerating, reset are inherited from GenerationSessionActions
+  reset: () => void;
 }
 
 const STORAGE_KEY = 'control_center_v1';
@@ -86,9 +76,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
     (set, get) => {
       debugFlags.log('stores', '[ControlCenterStore] Creating store with initial state');
       return {
-        // Spread shared generation session defaults
-        ...DEFAULT_SESSION_FIELDS,
-        // UI-specific defaults
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
         conformToOtherPanels: false,
@@ -114,19 +101,13 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           const currentPosition = get().dockPosition;
           const wasFloating = currentPosition === 'floating';
 
-          // Adjust default size based on position (increased defaults)
           const isVertical = position === 'left' || position === 'right';
-          const newHeight = isVertical ? 450 : 300; // Increased from 320/180
+          const newHeight = isVertical ? 450 : 300;
 
-          // When switching positions, keep panel open for better UX
-          const updates: any = { dockPosition: position, height: newHeight };
+          const updates: Partial<ControlCenterState> = { dockPosition: position, height: newHeight };
 
-          // Keep panel open when:
-          // 1. Switching to floating mode
-          // 2. Switching from floating to docked (transitioning back)
           if (position === 'floating' || wasFloating) {
             updates.open = true;
-            // When switching from floating to docked, also pin it so it stays visible
             if (wasFloating && position !== 'floating') {
               updates.pinned = true;
             }
@@ -146,8 +127,8 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         setHeight: (px) => {
           const pos = get().dockPosition;
           const isVertical = pos === 'left' || pos === 'right';
-          const min = isVertical ? 300 : 200; // Increased minimums
-          const max = isVertical ? 700 : 500; // Increased maximums
+          const min = isVertical ? 300 : 200;
+          const max = isVertical ? 700 : 500;
           const next = Math.max(min, Math.min(max, px));
           if (get().height === next) return;
           set({ height: next });
@@ -163,57 +144,9 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
             enabledModules: { ...s.enabledModules, [moduleId]: enabled }
           }));
         },
-        setOperationType: (op) => {
-          const state = get();
-          if (state.operationType === op) return;
-
-          // Save current prompt to promptPerOperation before switching
-          const updatedPromptPerOp = {
-            ...state.promptPerOperation,
-            [state.operationType]: state.prompt,
-          };
-
-          // Load prompt for the new operation (or empty if none saved)
-          const newPrompt = updatedPromptPerOp[op] ?? "";
-
-          set({
-            operationType: op,
-            promptPerOperation: updatedPromptPerOp,
-            prompt: newPrompt,
-          });
-        },
-        setPrompt: (value) => {
-          const state = get();
-          if (state.prompt === value) return;
-
-          // Also update promptPerOperation for current operation
-          set({
-            prompt: value,
-            promptPerOperation: {
-              ...state.promptPerOperation,
-              [state.operationType]: value,
-            },
-          });
-        },
-        setProvider: (id) => {
-          if (get().providerId === id) return;
-          set({ providerId: id });
-        },
-        setPreset: (id) => {
-          if (get().presetId === id) return;
-          set({ presetId: id });
-        },
-        setPresetParams: (params) => set({ presetParams: params }),
         setAssets: (assets) => set({ assets }),
-        setGenerating: (v) => {
-          if (get().generating === v) return;
-          set({ generating: v });
-        },
         triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
         reset: () => set({
-          // Spread shared generation session defaults
-          ...DEFAULT_SESSION_FIELDS,
-          // UI-specific defaults
           dockPosition: 'bottom',
           layoutBehavior: 'overlay',
           conformToOtherPanels: false,
@@ -243,15 +176,9 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         floatingSize: s.floatingSize,
         activeModule: s.activeModule,
         enabledModules: s.enabledModules,
-        operationType: s.operationType,
-        prompt: s.prompt,
-        promptPerOperation: s.promptPerOperation,
-        providerId: s.providerId,
-        presetId: s.presetId,
-        presetParams: s.presetParams,
         assets: s.assets,
       }),
-      version: 9,
+      version: 11,
       migrate: (persistedState: any, version: number) => {
         const migrated = { ...persistedState };
 
@@ -259,7 +186,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         if (version < 5) {
           migrated.floatingPosition = migrated.floatingPosition || { x: window.innerWidth / 2 - 300, y: window.innerHeight / 2 - 250 };
           migrated.floatingSize = migrated.floatingSize || { width: 600, height: 500 };
-          // Ensure floating mode is always visible on load
           if (migrated.dockPosition === 'floating') {
             migrated.open = true;
           }
@@ -268,13 +194,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         // Migrate from version 5 to 6: add enabledModules and increase defaults
         if (version < 6) {
           migrated.enabledModules = migrated.enabledModules || {};
-          // Increase default heights
           if (migrated.height === 180) {
             migrated.height = 300;
           } else if (migrated.height === 320) {
             migrated.height = 450;
           }
-          // Increase floating size
           if (migrated.floatingSize?.width === 600) {
             migrated.floatingSize.width = 700;
           }
@@ -293,13 +217,15 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           migrated.conformToOtherPanels = migrated.conformToOtherPanels ?? false;
         }
 
-        // Migrate from version 8 to 9: add promptPerOperation
-        if (version < 9) {
-          migrated.promptPerOperation = migrated.promptPerOperation || {};
-          // Initialize current operation's prompt in promptPerOperation
-          if (migrated.prompt && migrated.operationType) {
-            migrated.promptPerOperation[migrated.operationType] = migrated.prompt;
-          }
+        // Migrate from version 10 to 11: remove generation fields (moved to separate store)
+        if (version < 11) {
+          delete migrated.operationType;
+          delete migrated.prompt;
+          delete migrated.promptPerOperation;
+          delete migrated.providerId;
+          delete migrated.presetId;
+          delete migrated.presetParams;
+          delete migrated.generating;
         }
 
         return migrated;
@@ -320,12 +246,10 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
                 dockPosition: state.dockPosition,
                 open: state.open,
                 pinned: state.pinned,
-                prompt: state.prompt?.substring(0, 50) + (state.prompt?.length > 50 ? '...' : ''),
                 floatingPosition: state.floatingPosition,
                 floatingSize: state.floatingSize,
               });
 
-              // After rehydration, ensure floating mode is visible
               if (state.dockPosition === 'floating' && !state.open) {
                 debugFlags.log('rehydration', '[ControlCenterStore] Setting floating mode to open');
                 state.setOpen(true);
