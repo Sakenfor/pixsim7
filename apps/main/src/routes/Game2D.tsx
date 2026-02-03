@@ -54,7 +54,7 @@ import type { WorldToolContext } from '@features/worldTools';
 import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
 
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
-import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
@@ -186,16 +186,18 @@ export function Game2D() {
     [backgroundAsset],
   );
   const backgroundCandidate = backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
-  const { src: backgroundSrc } = useAuthenticatedMedia(backgroundCandidate);
-  const resolvedBackgroundSrc = backgroundSrc || backgroundCandidate;
+  const { mediaSrc: resolvedBackgroundSrc } = useResolvedAssetMedia({
+    mediaUrl: backgroundCandidate,
+  });
 
   const npcPortraitUrls = useMemo(
     () => (npcPortraitAsset ? getAssetDisplayUrls(npcPortraitAsset) : null),
     [npcPortraitAsset],
   );
   const npcPortraitCandidate = npcPortraitUrls?.previewUrl || npcPortraitUrls?.mainUrl;
-  const { src: npcPortraitSrc } = useAuthenticatedMedia(npcPortraitCandidate);
-  const resolvedNpcPortraitSrc = npcPortraitSrc || npcPortraitCandidate;
+  const { mediaSrc: resolvedNpcPortraitSrc } = useResolvedAssetMedia({
+    mediaUrl: npcPortraitCandidate,
+  });
 
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
