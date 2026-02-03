@@ -3,15 +3,16 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
-import { extractFrame, fromAssetResponse } from '@features/assets';
-import { generateAsset } from '@features/controlCenter/lib/api';
+import { extractFrame, fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
+import { generateAsset } from '@features/generation/lib/api';
 import { useQuickGenerateBindings } from '@features/prompts';
 
 import { getFallbackOperation } from '@/types/operations';
 
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
+import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 
 
@@ -184,6 +185,21 @@ export function useQuickGenerateController() {
         presetParams,
       });
 
+      // Record assets used for this generation in history
+      const assetsToRecord = currentInputs
+        .filter((item: any) => item?.asset)
+        .map((item: any) => {
+          const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
+          return {
+            id: item.asset.id,
+            thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
+            mediaType: item.asset.mediaType,
+          };
+        });
+      if (assetsToRecord.length > 0) {
+        useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
+      }
+
       // Keep prompt for easy re-generation with tweaks
       const genId = result.job_id;
       setGenerationId(genId);
@@ -304,6 +320,21 @@ export function useQuickGenerateController() {
         !!buildResult.params.source_asset_id ||
         (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
       const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
+
+      // Record assets used for this burst in history (once, before the loop)
+      const assetsToRecord = currentInputs
+        .filter((item: any) => item?.asset)
+        .map((item: any) => {
+          const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
+          return {
+            id: item.asset.id,
+            thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
+            mediaType: item.asset.mediaType,
+          };
+        });
+      if (assetsToRecord.length > 0) {
+        useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
+      }
 
       // Submit N generations
       for (let i = 0; i < count; i++) {

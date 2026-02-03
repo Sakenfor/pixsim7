@@ -10,7 +10,7 @@ import {
   type GenerationWidgetContext,
   useCapability,
 } from '@features/contextHub';
-import { generateAsset } from '@features/controlCenter/lib/api';
+import { generateAsset } from '@features/generation/lib/api';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 
 import type { OperationType } from '@/types/operations';

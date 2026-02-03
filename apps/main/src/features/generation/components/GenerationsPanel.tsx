@@ -5,14 +5,17 @@
  * Shows status, allows filtering, and provides retry/open actions.
  */
 import { useMemo, useState, useCallback } from 'react';
-import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
-import { useRecentGenerations } from '../hooks/useRecentGenerations';
-import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
+
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
-import { fromGenerationResponse, type GenerationModel } from '../models';
 import { Icons, ThemedIcon } from '@lib/icons';
+
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
-import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
+import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
+
+import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
+import { useRecentGenerations } from '../hooks/useRecentGenerations';
+import { fromGenerationResponse, type GenerationModel } from '../models';
+import { useGenerationsStore, isGenerationActive } from '../stores/generationsStore';
 
 type StatusFilter = 'all' | 'active' | 'failed' | 'completed';
 type ProviderFilter = 'all' | string;
@@ -135,27 +138,27 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
 
   // Load a generation's settings into Quick Generate for editing and retry
   const handleLoadToQuickGen = useCallback((generation: GenerationModel) => {
-    const store = useControlCenterStore.getState();
+    const sessionStore = getGenerationSessionStore('global').getState();
 
     // Set operation type
     if (generation.operationType) {
-      store.setOperationType(generation.operationType as any);
+      sessionStore.setOperationType(generation.operationType as any);
     }
 
     // Set provider
     if (generation.providerId) {
-      store.setProvider(generation.providerId);
+      sessionStore.setProvider(generation.providerId);
     }
 
     // Set prompt
     if (generation.finalPrompt) {
-      store.setPrompt(generation.finalPrompt);
+      sessionStore.setPrompt(generation.finalPrompt);
     }
 
     // Set params from rawParams or canonicalParams
     const params = generation.canonicalParams || generation.rawParams;
     if (params) {
-      store.setPresetParams(params);
+      sessionStore.setPresetParams(params);
     }
   }, []);
 
