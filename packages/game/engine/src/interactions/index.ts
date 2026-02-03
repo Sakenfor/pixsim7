@@ -6,6 +6,9 @@
 export * from './registry';
 export * from './registryUtils';
 
+// Built-in plugins
+export * from './plugins';
+
 export * from './menuBuilder';
 export * from './hotspot';
 export * from './templates';

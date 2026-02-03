@@ -509,6 +509,9 @@ export {
 
 export type { WorldSessionState } from './session/storage';
 
+// ===== Session Adapter =====
+export { createSessionHelpers } from './session/sessionAdapter';
+
 export type {
   StatSource,
   SessionStatAdapter,
