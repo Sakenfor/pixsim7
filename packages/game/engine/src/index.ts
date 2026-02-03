@@ -579,3 +579,6 @@ export * from './world/gameProfile';
 export * from './world/turnHelpers';
 export * from './narrative/ecsHelpers';
 export * from './interactions/cooldownUtils';
+export * from './interactions/configSchema';
+export * from './interactions/socialMechanics';
+export * from './interactions/plugins';

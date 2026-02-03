@@ -11,8 +11,14 @@
  * - Consent checks for seduction (respects NPC boundaries)
  * - Integrates with session state and relationship system
  */
+import {
+  type NpcRelationshipState,
+  advanceIntimacyLevel,
+  calculatePersuadeChance as calculatePersuadeChanceCore,
+  calculateSeduceChance as calculateSeduceChanceCore,
+} from '@pixsim7/game.engine';
+
 import { canAttemptSeduction, type IntimacyGatingConfig } from '@features/intimacy';
-import type { NpcRelationshipState } from '@pixsim7/game.engine';
 
 import type {
   InteractionPlugin,
@@ -66,80 +72,23 @@ export interface PersuadeConfig extends BaseInteractionConfig {
   onSeduceFailFlags?: string[];
 }
 
-/**
- * Intimacy level progression ladder
- */
-const INTIMACY_LEVELS = [
-  'stranger',
-  'acquaintance',
-  'friend',
-  'close_friend',
-  'light_flirt',
-  'flirting',
-  'romantic_interest',
-  'intimate',
-  'lovers',
-  'deep_bond',
-];
-
-/**
- * Get next intimacy level
- */
-function advanceIntimacyLevel(currentLevel: string | null | undefined): string {
-  if (!currentLevel) {
-    return 'light_flirt'; // Start flirting
-  }
-
-  const currentIndex = INTIMACY_LEVELS.indexOf(currentLevel);
-  if (currentIndex === -1 || currentIndex >= INTIMACY_LEVELS.length - 1) {
-    return currentLevel; // Already at max or unknown level
-  }
-
-  return INTIMACY_LEVELS[currentIndex + 1];
-}
-
-/**
- * Calculate success chance for persuasion
- */
+// Local wrapper functions to maintain original call signature
 function calculatePersuadeChance(
   affinity: number,
   charm: number,
   difficulty: number,
   affinityBonus: number
 ): number {
-  // Base chance from charm (0-100 -> 0-0.5)
-  const charmComponent = (charm / 100) * 0.5;
-
-  // Affinity bonus (0-100 -> 0 to affinityBonus)
-  const affinityComponent = (affinity / 100) * affinityBonus;
-
-  // Combine and apply difficulty
-  const baseChance = charmComponent + affinityComponent;
-  const adjustedChance = baseChance * (1 - difficulty * 0.5);
-
-  return Math.max(0.1, Math.min(0.9, adjustedChance)); // Clamp between 10% and 90%
+  return calculatePersuadeChanceCore({ affinity, charm, difficulty, affinityBonus });
 }
 
-/**
- * Calculate success chance for seduction
- */
 function calculateSeduceChance(
   chemistry: number,
   charm: number,
   difficulty: number,
   chemistryBonus: number
 ): number {
-  // Base chance from charm (0-100 -> 0-0.4)
-  const charmComponent = (charm / 100) * 0.4;
-
-  // Chemistry bonus (0-100 -> 0 to chemistryBonus)
-  const chemistryComponent = (chemistry / 100) * chemistryBonus;
-
-  // Combine and apply difficulty
-  const baseChance = charmComponent + chemistryComponent;
-  const adjustedChance = baseChance * (1 - difficulty * 0.6); // Seduction is harder
-
-  return Math.max(0.05, Math.min(0.85, adjustedChance)); // Clamp between 5% and 85%
+  return calculateSeduceChanceCore({ chemistry, charm, difficulty, chemistryBonus });
 }
 
 /**
