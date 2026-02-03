@@ -5,7 +5,7 @@
  */
 
 export { arcGraphModule, graphModule } from '@features/graph/routes';
-export { npcPortraitsModule } from '@features/npcs/routes';
+// npcPortraitsModule removed - now auto-discovered via features/npcs/module.ts
 export { game2DModule, simulationModule } from '@features/simulation/routes';
 export { gizmoLabModule } from '@features/gizmos/routes';
 export { interactionStudioModule, interactionDemoModule } from '@features/interactions/routes';
@@ -20,6 +20,7 @@ export {
   actionBlockGraphModule,
   blockFitModule,
   widgetBuilderModule,
+  mediaHarnessModule,
 } from '@features/devtools/routes';
 export { npcBrainLabModule } from '@features/brainTools/routes';
 export { pluginManagerModule, pluginWorkspaceModule } from '@features/plugins/routes';

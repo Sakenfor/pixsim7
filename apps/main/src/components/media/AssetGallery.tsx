@@ -55,6 +55,8 @@ const CARD_SIZE_PRESETS: Record<Exclude<GalleryCardSizePreset, 'custom'>, number
   large: 360,
 };
 
+const DEFAULT_RESOLVE_PREVIEW_URL = (_asset: unknown, url: string | undefined) => url;
+
 /**
  * Props for the AssetGallery component.
  *
@@ -77,6 +79,12 @@ export interface AssetGalleryProps<T> {
    * Return undefined if the preview hasn't been loaded yet.
    */
   getPreviewUrl: (asset: T) => string | undefined;
+
+  /**
+   * Optional resolver to post-process preview URLs (e.g., auth-aware local previews).
+   * Called inside GalleryItem so it may use hooks.
+   */
+  resolvePreviewUrl?: (asset: T, previewUrl: string | undefined) => string | undefined;
 
   /**
    * Async function to load the preview for an asset.
@@ -134,7 +142,7 @@ export interface AssetGalleryProps<T> {
   /**
    * Callback when an asset is opened/clicked.
    */
-  onOpen?: (asset: T) => void;
+  onOpen?: (asset: T, resolvedPreviewUrl?: string) => void;
 
   /**
    * Callback when upload is requested for an asset.
@@ -266,7 +274,9 @@ function uploadStateToProviderStatus(
  * Internal component for a single gallery item with lazy loading.
  */
 function GalleryItem({
+  asset,
   previewUrl,
+  resolvePreviewUrl,
   loadPreview,
   mediaType,
   numericId,
@@ -285,7 +295,9 @@ function GalleryItem({
   actions,
   overlayPresetId,
 }: {
+  asset: unknown;
   previewUrl: string | undefined;
+  resolvePreviewUrl: (asset: unknown, previewUrl: string | undefined) => string | undefined;
   loadPreview: () => Promise<void>;
   mediaType: 'video' | 'image' | 'audio' | '3d_model';
   numericId: number;
@@ -296,7 +308,7 @@ function GalleryItem({
   height?: number;
   uploadState?: AssetUploadState;
   uploadProgress?: number;
-  onOpen?: () => void;
+  onOpen?: (resolvedPreviewUrl?: string) => void;
   onUpload?: () => Promise<void>;
   hashStatus?: 'unique' | 'duplicate' | 'hashing';
   lazyLoadRootMargin: string;
@@ -304,6 +316,7 @@ function GalleryItem({
   actions?: MediaCardActions;
   overlayPresetId?: string;
 }) {
+  const resolvedPreviewUrl = resolvePreviewUrl(asset, previewUrl);
   const ref = useLazyPreview(!!previewUrl, loadPreview, {
     rootMargin: lazyLoadRootMargin,
   });
@@ -320,14 +333,14 @@ function GalleryItem({
         mediaType={mediaType}
         providerId="local"
         providerAssetId={String(numericId)}
-        thumbUrl={previewUrl || ''}
-        remoteUrl={previewUrl || ''}
+        thumbUrl={resolvedPreviewUrl || ''}
+        remoteUrl={resolvedPreviewUrl || ''}
         width={width}
         height={height}
         tags={tagObjects}
         description={description}
         createdAt={createdAt}
-        onOpen={onOpen ? () => onOpen() : undefined}
+        onOpen={onOpen ? () => onOpen(resolvedPreviewUrl) : undefined}
         providerStatus={providerStatus}
         hashStatus={hashStatus}
         uploadState={uploadState}
@@ -352,6 +365,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     assets,
     getAssetKey,
     getPreviewUrl,
+    resolvePreviewUrl = DEFAULT_RESOLVE_PREVIEW_URL,
     loadPreview,
     getMediaType = () => 'image' as const,
     getNumericId,
@@ -433,7 +447,9 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       return (
         <GalleryItem
           key={key}
+          asset={asset}
           previewUrl={previewUrl}
+          resolvePreviewUrl={resolvePreviewUrl}
           loadPreview={() => loadPreview(asset)}
           mediaType={mediaType}
           numericId={numericId}
@@ -445,7 +461,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           uploadState={uploadState}
           uploadProgress={uploadProgress}
           hashStatus={hashStatus}
-          onOpen={onOpen ? () => onOpen(asset) : undefined}
+          onOpen={onOpen ? (resolvedPreviewUrl) => onOpen(asset, resolvedPreviewUrl) : undefined}
           onUpload={onUpload ? () => onUpload(asset) : undefined}
           lazyLoadRootMargin={lazyLoadRootMargin}
           badgeConfig={badgeConfig}
@@ -458,6 +474,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     displayAssets,
     getAssetKey,
     getPreviewUrl,
+    resolvePreviewUrl,
     getMediaType,
     getNumericId,
     getDescription,

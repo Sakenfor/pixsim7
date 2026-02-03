@@ -9,7 +9,9 @@
 import type { AssetResponse } from '@pixsim7/shared.api.client/domains';
 import type { MediaType } from '@pixsim7/shared.types';
 
-import { resolveAssetUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
+import { BACKEND_BASE } from '@lib/api/client';
+import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
+import { ensureBackendAbsolute } from '@lib/media/backendUrl';
 
 import type { SelectedAsset } from '../stores/assetSelectionStore';
 import type { ViewerAsset } from '../stores/assetViewerStore';
@@ -70,6 +72,37 @@ export interface AssetModel {
   parentAssetId?: number | null;
   /** What changed in this version (e.g., "Fixed hand anatomy") */
   versionMessage?: string | null;
+}
+
+export function getAssetDisplayUrls(asset: AssetModel): {
+  mainUrl: string | undefined;
+  thumbnailUrl: string | undefined;
+  previewUrl: string | undefined;
+} {
+  // Respect prefer_local_over_provider via resolveAssetUrl, but fall back to fileUrl
+  // when no preferred URL is available (or when backend already computed a usable URL).
+  let mainUrl = resolveAssetUrl(asset);
+  if (!mainUrl || mainUrl.startsWith('file://')) {
+    if (asset.fileUrl && !asset.fileUrl.startsWith('file://')) {
+      mainUrl = asset.fileUrl;
+    }
+  }
+
+  let thumbnailUrl = resolveThumbnailUrl(asset);
+  if (!thumbnailUrl || thumbnailUrl.startsWith('file://')) {
+    thumbnailUrl = asset.previewUrl || mainUrl;
+  }
+
+  let previewUrl = resolvePreviewUrl(asset);
+  if (!previewUrl || previewUrl.startsWith('file://')) {
+    previewUrl = thumbnailUrl || mainUrl;
+  }
+
+  return {
+    mainUrl: mainUrl ?? undefined,
+    thumbnailUrl: thumbnailUrl ?? undefined,
+    previewUrl: previewUrl ?? undefined,
+  };
 }
 
 /**
@@ -146,16 +179,16 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
   const viewerType: 'image' | 'video' =
     asset.mediaType === 'video' ? 'video' : 'image';
 
-  // Use URL resolver to handle file:// URLs and prefer local storage
-  const resolvedMainUrl = resolveAssetUrl(asset);
-  const resolvedThumbUrl = resolveThumbnailUrl(asset);
+  const { mainUrl, thumbnailUrl } = getAssetDisplayUrls(asset);
+  const safeMainUrl = ensureBackendAbsolute(mainUrl, BACKEND_BASE);
+  const safeThumbUrl = ensureBackendAbsolute(thumbnailUrl, BACKEND_BASE);
 
   return {
     id: asset.id,
     name: asset.description || `Asset ${asset.id}`,
     type: viewerType,
-    url: resolvedThumbUrl || resolvedMainUrl || '',
-    fullUrl: resolvedMainUrl || undefined,
+    url: safeThumbUrl || safeMainUrl || '',
+    fullUrl: safeMainUrl || undefined,
     source: 'gallery',
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     metadata: {
@@ -188,14 +221,14 @@ export function toSelectedAsset(
   asset: AssetModel,
   source: 'gallery' | 'cube' | 'panel' = 'gallery'
 ): SelectedAsset {
-  // Use URL resolver to handle file:// URLs
-  const resolvedUrl = resolveAssetUrl(asset) || resolveThumbnailUrl(asset);
+  const { mainUrl, thumbnailUrl } = getAssetDisplayUrls(asset);
+  const url = ensureBackendAbsolute(mainUrl || thumbnailUrl, BACKEND_BASE);
   return {
     id: asset.id,
     key: `asset-${asset.id}`,
     name: asset.description || asset.providerAssetId || `Asset ${asset.id}`,
     type: asset.mediaType === 'video' ? 'video' : 'image',
-    url: resolvedUrl || '',
+    url: url || '',
     source,
   };
 }

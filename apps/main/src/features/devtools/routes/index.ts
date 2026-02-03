@@ -6,6 +6,9 @@ import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
 
 import type { Module } from '@app/modules/types';
 
+import { MediaHarnessPage } from '../components/MediaHarnessPage';
+
+
 // === App Map Actions ===
 
 const openAppMapAction: ActionDefinition = {
@@ -208,5 +211,25 @@ export const widgetBuilderModule: Module = {
     featureId: 'widget-builder',
     hidden: true,
     component: DevtoolsRedirect,
+  },
+};
+
+export const mediaHarnessModule: Module = {
+  id: 'media-harness',
+  name: 'Media Resolver Harness',
+  page: {
+    route: '/dev/media-harness',
+    icon: 'video',
+    iconColor: 'text-emerald-500',
+    description: 'Debug asset URL resolution, auth media, and video scrubbing',
+    category: 'development',
+    featureId: 'media-harness',
+    hidden: true,
+    component: MediaHarnessPage,
+    devTool: {
+      category: 'debug',
+      tags: ['media', 'assets', 'thumbnails', 'scrub', 'auth'],
+      safeForNonDev: false,
+    },
   },
 };

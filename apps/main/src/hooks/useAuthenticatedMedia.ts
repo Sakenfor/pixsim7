@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
+import { resolveBackendUrl } from '@lib/media/backendUrl';
 
 import { BACKEND_BASE } from '../lib/api/client';
 
@@ -30,11 +31,23 @@ export interface UseAuthenticatedMediaResult {
  * @param url - The media URL to load
  * @returns Object with src, loading, and error states
  */
-export function useAuthenticatedMedia(url: string | undefined): UseAuthenticatedMediaResult {
+export interface UseAuthenticatedMediaOptions {
+  /**
+   * When true, only fetch while active (e.g., hover scrub).
+   * Default: true.
+   */
+  active?: boolean;
+}
+
+export function useAuthenticatedMedia(
+  url: string | undefined,
+  options: UseAuthenticatedMediaOptions = {},
+): UseAuthenticatedMediaResult {
   const [src, setSrc] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
+  const isActive = options.active ?? true;
 
   useEffect(() => {
     let cancelled = false;
@@ -45,33 +58,32 @@ export function useAuthenticatedMedia(url: string | undefined): UseAuthenticated
       objectUrlRef.current = null;
     }
 
-    if (!url) {
+    if (!url || !isActive) {
       setSrc(undefined);
       setLoading(false);
       setError(false);
       return;
     }
 
-    // Blob URLs - use directly
-    if (url.startsWith('blob:')) {
+    // Blob/data/file URLs - use directly
+    if (url.startsWith('blob:') || url.startsWith('data:') || url.startsWith('file://')) {
       setSrc(url);
       setLoading(false);
       setError(false);
       return;
     }
+
+    const { fullUrl, isBackend } = resolveBackendUrl(url, BACKEND_BASE);
 
     // External URLs - use directly (no auth needed)
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      setSrc(url);
+    if (!isBackend) {
+      setSrc(fullUrl);
       setLoading(false);
       setError(false);
       return;
     }
 
-    // Backend-relative path - needs authentication
-    const fullUrl = url.startsWith('/')
-      ? `${BACKEND_BASE}${url}`
-      : `${BACKEND_BASE}/${url}`;
+    // Backend path - needs authentication
 
     const token = authService.getStoredToken();
 
@@ -134,7 +146,7 @@ export function useAuthenticatedMedia(url: string | undefined): UseAuthenticated
         objectUrlRef.current = null;
       }
     };
-  }, [url]);
+  }, [url, isActive]);
 
   return { src, loading, error };
 }

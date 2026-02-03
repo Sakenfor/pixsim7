@@ -1,4 +1,6 @@
 import { useState, useMemo } from 'react';
+
+import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 type TreeNode = {
@@ -120,7 +122,7 @@ function buildTree(
 type TreeNodeViewProps = {
   node: TreeNode;
   level: number;
-  onFileClick?: (asset: LocalAsset) => void;
+  onFileClick?: (asset: LocalAsset, previewUrl?: string) => void;
   onPreview?: (asset: LocalAsset) => void;
   previews: Record<string, string>;
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;
@@ -145,6 +147,7 @@ function TreeNodeView({
   onFolderSelect
 }: TreeNodeViewProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
+  const resolvedPreview = useLocalAssetPreview(node.asset, previews);
 
   if (node.type === 'folder') {
     const hasChildren = node.children && node.children.length > 0;
@@ -223,13 +226,13 @@ function TreeNodeView({
       {/* Preview thumbnail or icon */}
       <div
         className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer"
-        onClick={() => onFileClick?.(asset)}
+        onClick={() => onFileClick?.(asset, resolvedPreview)}
       >
-        {previewUrl ? (
+        {resolvedPreview ? (
           asset.kind === 'image' ? (
-            <img src={previewUrl} className="w-full h-full object-cover" alt={asset.name} />
+            <img src={resolvedPreview} className="w-full h-full object-cover" alt={asset.name} />
           ) : asset.kind === 'video' ? (
-            <video src={previewUrl} className="w-full h-full object-cover" muted />
+            <video src={resolvedPreview} className="w-full h-full object-cover" muted />
           ) : null
         ) : (
           <div className="text-xs">
@@ -239,7 +242,7 @@ function TreeNodeView({
       </div>
 
       {/* File info */}
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onFileClick?.(asset)}>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onFileClick?.(asset, resolvedPreview)}>
         <div className="text-sm truncate hover:text-blue-600 transition-colors" title={asset.name}>
           {asset.name}
         </div>
@@ -285,7 +288,7 @@ function TreeNodeView({
 type TreeFolderViewProps = {
   assets: LocalAsset[];
   folderNames: Record<string, string>; // folderId -> folder name
-  onFileClick?: (asset: LocalAsset) => void;
+  onFileClick?: (asset: LocalAsset, previewUrl?: string) => void;
   onPreview?: (asset: LocalAsset) => void;
   previews: Record<string, string>;
   uploadStatus: Record<string, 'idle' | 'uploading' | 'success' | 'error'>;

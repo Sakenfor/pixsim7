@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button, Panel, Badge, Input, Select } from '@pixsim7/shared.ui';
-import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+
+
 import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@lib/api/game';
-import { interactionRegistry } from '@lib/registries';
 import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
 import {
   getCombinedPresets,
@@ -11,9 +11,13 @@ import {
   applyPresetToSlot,
   getRecommendedPresets,
   type PresetWithScope,
-  type PlaylistWithScope,
   type SuggestionContext,
 } from '@lib/game/interactions/presets';
+import { interactionRegistry } from '@lib/registries';
+
+import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
+
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 interface NpcSlotEditorProps {
   location: GameLocationDetail;
@@ -29,6 +33,13 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const backgroundUrls = useMemo(
+    () => (backgroundAsset ? getAssetDisplayUrls(backgroundAsset) : null),
+    [backgroundAsset]
+  );
+  const backgroundCandidate = backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
+  const { src: backgroundSrc } = useAuthenticatedMedia(backgroundCandidate);
+  const resolvedBackgroundSrc = backgroundSrc || backgroundCandidate;
 
   // Load presets from world and global storage
   const presets = useMemo(() => {
@@ -157,7 +168,7 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
             <div className="flex items-center justify-center h-96 bg-neutral-100 dark:bg-neutral-800 rounded">
               <span className="text-sm text-neutral-500">Loading background...</span>
             </div>
-          ) : backgroundAsset && backgroundAsset.fileUrl ? (
+          ) : backgroundAsset && resolvedBackgroundSrc ? (
             <div
               ref={containerRef}
               className="relative w-full aspect-video bg-black/80 rounded overflow-hidden cursor-crosshair"
@@ -165,13 +176,13 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
             >
               {backgroundAsset.mediaType === 'image' ? (
                 <img
-                  src={backgroundAsset.fileUrl}
+                  src={resolvedBackgroundSrc}
                   alt="location background"
                   className="w-full h-full object-cover"
                 />
               ) : (
                 <video
-                  src={backgroundAsset.fileUrl}
+                  src={resolvedBackgroundSrc}
                   className="w-full h-full object-cover"
                   muted
                   loop

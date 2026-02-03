@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
-import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
+
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import type { ExpansionComponentProps } from '@features/cubes';
+
+import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
+import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 /**
@@ -18,11 +21,68 @@ function hashKeyToId(key: string): number {
   return Math.abs(hash);
 }
 
+function GalleryCubeThumbnail({
+  asset,
+  previews,
+  selected,
+  onSelect,
+}: {
+  asset: LocalAsset;
+  previews: Record<string, string>;
+  selected: boolean;
+  onSelect: (asset: LocalAsset, previewUrl: string) => void;
+}) {
+  const resolvedPreview = useLocalAssetPreview(asset, previews);
+
+  return (
+    <button
+      onClick={() => resolvedPreview && onSelect(asset, resolvedPreview)}
+      disabled={!resolvedPreview}
+      className={`aspect-square bg-neutral-800 rounded overflow-hidden border transition-all relative
+        ${selected
+          ? 'border-cyan-400 ring-2 ring-cyan-400/50'
+          : 'border-white/10 hover:border-cyan-400/50'
+        }
+        ${resolvedPreview ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-50'}
+      `}
+      title={`${asset.name}${selected ? ' (Selected)' : ''}`}
+    >
+      {resolvedPreview ? (
+        <>
+          {asset.kind === 'video' ? (
+            <video
+              src={resolvedPreview}
+              className="w-full h-full object-cover"
+              muted
+            />
+          ) : (
+            <img
+              src={resolvedPreview}
+              alt={asset.name}
+              className="w-full h-full object-cover"
+            />
+          )}
+          {selected && (
+            <div className="absolute top-1 right-1 bg-cyan-400 text-neutral-900 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold">
+              {'\u2713'}
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-2xl text-white/30">
+          {asset.kind === 'video' ? '\u{1F3A5}' : '\u{1F5BC}'}
+        </div>
+      )}
+    </button>
+  );
+}
+
 /**
  * Gallery preview expansion for cube
  * Shows grid of recent assets
  */
 export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
+  void cubeId;
   const { assets, previews } = useLocalFoldersController();
   const { selectAsset, isSelected } = useAssetSelectionStore();
 
@@ -63,53 +123,15 @@ export function GalleryCubeExpansion({ cubeId }: ExpansionComponentProps) {
       {/* Asset grid */}
       {recentAssets.length > 0 ? (
         <div className="grid grid-cols-3 gap-1">
-          {recentAssets.map((asset) => {
-            const previewUrl = previews[asset.key];
-            const selected = isSelected(hashKeyToId(asset.key));
-
-            return (
-              <button
-                key={asset.key}
-                onClick={() => previewUrl && handleAssetClick(asset, previewUrl)}
-                disabled={!previewUrl}
-                className={`aspect-square bg-neutral-800 rounded overflow-hidden border transition-all relative
-                  ${selected
-                    ? 'border-cyan-400 ring-2 ring-cyan-400/50'
-                    : 'border-white/10 hover:border-cyan-400/50'
-                  }
-                  ${previewUrl ? 'cursor-pointer hover:scale-105' : 'cursor-not-allowed opacity-50'}
-                `}
-                title={`${asset.name}${selected ? ' (Selected)' : ''}`}
-              >
-                {previewUrl ? (
-                  <>
-                    {asset.kind === 'video' ? (
-                      <video
-                        src={previewUrl}
-                        className="w-full h-full object-cover"
-                        muted
-                      />
-                    ) : (
-                      <img
-                        src={previewUrl}
-                        alt={asset.name}
-                        className="w-full h-full object-cover"
-                      />
-                    )}
-                    {selected && (
-                      <div className="absolute top-1 right-1 bg-cyan-400 text-neutral-900 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold">
-                        ✓
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-2xl text-white/30">
-                    {asset.kind === 'video' ? '🎥' : '🖼️'}
-                  </div>
-                )}
-              </button>
-            );
-          })}
+          {recentAssets.map((asset) => (
+            <GalleryCubeThumbnail
+              key={asset.key}
+              asset={asset}
+              previews={previews}
+              selected={isSelected(hashKeyToId(asset.key))}
+              onSelect={handleAssetClick}
+            />
+          ))}
         </div>
       ) : (
         <div className="py-6 text-center text-white/40 text-sm">

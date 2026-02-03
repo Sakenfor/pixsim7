@@ -34,12 +34,28 @@ import {
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 
-import type { AssetModel } from '@features/assets';
-import { useContextHubSettingsStore } from '@features/contextHub';
+import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
+import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 
-import { useMediaThumbnailFull } from '@/hooks/useMediaThumbnail';
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+import { BACKEND_BASE } from '@/lib/api/client';
+import { isBackendUrl } from '@/lib/media/backendUrl';
 
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
+
+/** Resolve the video source URL - prefer main URL over thumbnail for videos */
+function resolveVideoSrc(
+  mediaType: 'video' | 'image' | 'audio' | '3d_model',
+  mainUrl: string | undefined,
+  thumbUrl: string | undefined
+): string | undefined {
+  return mediaType === 'video' ? (mainUrl || thumbUrl) : undefined;
+}
+
+/** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
+function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
+  return url?.startsWith('http') ? 'anonymous' : undefined;
+}
 
 
 
@@ -56,6 +72,7 @@ export interface MediaCardActions {
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onQuickAdd?: (id: number) => void;
+  onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   onImageToImage?: (id: number) => void;
   onImageToVideo?: (id: number) => void;
   onVideoExtend?: (id: number) => void;
@@ -113,6 +130,8 @@ export interface MediaCardProps {
   generationStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
   generationId?: number;
   generationError?: string;
+  /** ID of the generation that created this asset (for regenerate) */
+  sourceGenerationId?: number;
 
   /**
    * Optional overlay configuration to customize or replace default widgets.
@@ -168,20 +187,57 @@ export function MediaCard(props: MediaCardProps) {
   const enableMediaCardContextMenu = useContextHubSettingsStore(
     (state) => state.enableMediaCardContextMenu,
   );
+
+  // Provide asset capability for context menu actions
+  const assetForCapability = useMemo(() => contextMenuAsset ?? {
+    id,
+    mediaType,
+    providerId,
+    providerAssetId,
+    thumbnailUrl: thumbUrl,
+    previewUrl,
+    remoteUrl,
+    width,
+    height,
+    durationSec,
+    description,
+    createdAt,
+    providerStatus,
+  } as Partial<AssetModel>, [contextMenuAsset, id, mediaType, providerId, providerAssetId, thumbUrl, previewUrl, remoteUrl, width, height, durationSec, description, createdAt, providerStatus]);
+
+  const assetProvider = useMemo(() => ({
+    id: 'media-card',
+    getValue: () => assetForCapability,
+    isAvailable: () => !!assetForCapability?.id,
+    exposeToContextMenu: true,
+  }), [assetForCapability]);
+  useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
   const {
-    src: thumbSrc,
-    failed: thumbFailed,
-    retry: retryThumb,
-  } = useMediaThumbnailFull(thumbUrl, previewUrl, mediaType === 'video' ? undefined : remoteUrl);
+    thumbSrc,
+    thumbFailed,
+    thumbRetry: retryThumb,
+  } = useResolvedAssetMedia({
+    thumbUrl,
+    previewUrl,
+    remoteUrl: mediaType === 'video' ? undefined : remoteUrl,
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
 
   // For videos, prefer the actual video URL for metadata/ratio accuracy.
   // Use thumbnail as poster when available.
+  // Uses shared helper for consistency with CompactAssetCard.
+  const rawVideoSrc = resolveVideoSrc(mediaType, remoteUrl, thumbSrc) ?? thumbSrc;
+  const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
+  const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
+    mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,
+    mediaActive: mediaType === 'video',
+  });
   const videoSrc = mediaType === 'video'
-    ? (remoteUrl || thumbSrc)
-    : thumbSrc;
+    ? (isBackendVideoSrc ? resolvedVideoSrc : rawVideoSrc)
+    : undefined;
+  const usePosterImage = mediaType === 'video' && !!thumbSrc && isBackendVideoSrc;
 
   useEffect(() => {
     if (mediaType !== 'video' || !thumbSrc) {
@@ -378,9 +434,22 @@ export function MediaCard(props: MediaCardProps) {
     return result;
   }, [props, customWidgets, customOverlayConfig, overlayPresetId]);
 
+  const contextMenuVideoUrl = useMemo(() => {
+    if (!contextMenuAsset || mediaType !== 'video') return undefined;
+    const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(contextMenuAsset);
+    return mainUrl || previewUrl || thumbnailUrl;
+  }, [contextMenuAsset, mediaType]);
+
   // Prepare data for overlay widgets
   // This object is passed to ALL widget render functions
   // Widgets can use function-based configs to reactively access this data
+  // Prefer the resolved video source (respects local-vs-remote settings).
+  // Only fall back to the raw contextMenuAsset remoteUrl if we still don't have a source.
+  const overlayVideoSrc =
+    mediaType === 'video'
+      ? videoSrc || contextMenuVideoUrl
+      : undefined;
+
   const overlayData: MediaCardOverlayData = {
     id,
     mediaType,
@@ -394,9 +463,8 @@ export function MediaCard(props: MediaCardProps) {
     uploadProgress: props.uploadProgress || 0,
     // Video state (for VideoScrubWidget, ProgressWidget)
     remoteUrl: props.remoteUrl || '',
-    // For video scrub, use original CDN URL from asset (no auth needed)
-    // contextMenuAsset.remoteUrl is the original CDN URL before resolution to local path
-    videoSrc: contextMenuAsset?.remoteUrl?.startsWith('http') ? contextMenuAsset.remoteUrl : undefined,
+    // For video scrub, prefer original CDN URL from asset (no auth needed), fallback to actual videoSrc
+    videoSrc: overlayVideoSrc,
     durationSec: props.durationSec,
     // Actions (for MenuWidget callbacks)
     actions: props.actions,
@@ -404,6 +472,8 @@ export function MediaCard(props: MediaCardProps) {
     generationStatus: props.generationStatus,
     generationId: props.generationId,
     generationError: props.generationError,
+    // Source generation (for regenerate button)
+    sourceGenerationId: props.sourceGenerationId,
   };
 
   return (
@@ -429,24 +499,34 @@ export function MediaCard(props: MediaCardProps) {
         >
           {videoSrc || thumbSrc ? (
             mediaType === 'video' ? (
-              <video
-                ref={videoRef}
-                src={videoSrc}
-                poster={thumbSrc}
-                className="h-full w-full object-cover"
-                preload="metadata"
-                muted
-                playsInline
-                onLoadedMetadata={(e) => {
-                  const el = e.currentTarget;
-                  const w = el.videoWidth;
-                  const h = el.videoHeight;
-                  if (w > 0 && h > 0) {
-                    const next = w / h;
-                    setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
-                  }
-                }}
-              />
+              usePosterImage && thumbSrc ? (
+                <img
+                  src={thumbSrc}
+                  alt={`Media ${id}`}
+                  className="w-full h-auto object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  poster={thumbSrc}
+                  className="h-full w-full object-cover"
+                  preload="metadata"
+                  muted
+                  playsInline
+                  crossOrigin={getCrossOrigin(videoSrc)}
+                  onLoadedMetadata={(e) => {
+                    const el = e.currentTarget;
+                    const w = el.videoWidth;
+                    const h = el.videoHeight;
+                    if (w > 0 && h > 0) {
+                      const next = w / h;
+                      setIntrinsicVideoAspectRatio((prev) => (prev && Math.abs(prev - next) < 0.0001 ? prev : next));
+                    }
+                  }}
+                />
+              )
             ) : (
               <img
                 src={thumbSrc}

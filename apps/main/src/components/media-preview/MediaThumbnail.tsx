@@ -1,5 +1,11 @@
-import { useState } from 'react';
 import { Modal } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+
+import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
+
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+
 import { MediaPreview } from './MediaPreview';
 
 export interface MediaThumbnailProps {
@@ -7,6 +13,8 @@ export interface MediaThumbnailProps {
   assetId: number;
   /** Media type */
   type: 'video' | 'image' | 'audio';
+  /** Optional asset model (when available, avoids URL guessing) */
+  asset?: AssetModel;
   /** Optional thumbnail URL (if not provided, will try to generate) */
   thumbnailUrl?: string;
   /** Optional duration in seconds (for video/audio) */
@@ -26,6 +34,7 @@ export interface MediaThumbnailProps {
 export function MediaThumbnail({
   assetId,
   type,
+  asset,
   thumbnailUrl,
   duration,
   className = '',
@@ -33,6 +42,16 @@ export function MediaThumbnail({
 }: MediaThumbnailProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const resolvedFromAsset = asset ? getAssetDisplayUrls(asset) : undefined;
+  const thumbCandidate = resolvedFromAsset?.thumbnailUrl ?? thumbnailUrl;
+  const previewCandidate = resolvedFromAsset?.previewUrl;
+  const mainCandidate = resolvedFromAsset?.mainUrl;
+  const { thumbSrc } = useResolvedAssetMedia({
+    thumbUrl: thumbCandidate,
+    previewUrl: previewCandidate,
+    remoteUrl: mainCandidate,
+  });
+  const resolvedThumbnail = thumbSrc;
 
   /**
    * Format duration from seconds to MM:SS format
@@ -68,16 +87,16 @@ export function MediaThumbnail({
         title="Click to preview"
       >
         {/* Thumbnail image or fallback */}
-        {type === 'video' && thumbnailUrl && !imageError ? (
+        {type === 'video' && resolvedThumbnail && !imageError ? (
           <img
-            src={thumbnailUrl}
+            src={resolvedThumbnail}
             alt="Video thumbnail"
             className="w-full h-20 object-cover"
             onError={() => setImageError(true)}
           />
-        ) : type === 'image' && thumbnailUrl && !imageError ? (
+        ) : type === 'image' && resolvedThumbnail && !imageError ? (
           <img
-            src={thumbnailUrl}
+            src={resolvedThumbnail}
             alt="Image thumbnail"
             className="w-full h-20 object-cover"
             onError={() => setImageError(true)}

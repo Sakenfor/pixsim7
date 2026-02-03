@@ -1,5 +1,10 @@
 import { useEffect, useState, useRef } from 'react';
+
 import { getAsset } from '@lib/api/assets';
+
+import { fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
+
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 export interface MediaPreviewProps {
   /** Asset ID for fetching media */
@@ -21,6 +26,8 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const { mediaSrc, mediaLoading } = useResolvedAssetMedia({ mediaUrl: mediaUrl ?? undefined });
+  const resolvedSrc = mediaSrc ?? undefined;
 
   // Fetch asset URL from API
   useEffect(() => {
@@ -34,8 +41,9 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
         // Fetch asset using typed API wrapper
         const asset = await getAsset(assetId);
 
-        // Use remote URL if available, fallback to file_url, or use file endpoint
-        const assetUrl = asset.remote_url || asset.file_url || `/api/v1/assets/${assetId}/file`;
+        const assetModel = fromAssetResponse(asset);
+        const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(assetModel);
+        const assetUrl = mainUrl || previewUrl || thumbnailUrl || `/api/v1/assets/${assetId}/file`;
         setMediaUrl(assetUrl);
         setLoading(false);
       } catch (err) {
@@ -49,7 +57,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
   }, [assetId, url]);
 
   // Loading state
-  if (loading) {
+  if (loading || mediaLoading) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
@@ -73,7 +81,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
   }
 
   // No media URL available
-  if (!mediaUrl) {
+  if (!resolvedSrc) {
     return (
       <div className="flex items-center justify-center p-8">
         <p className="text-neutral-600 dark:text-neutral-400">No media URL available</p>
@@ -88,7 +96,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
         <div className="aspect-video w-full bg-black">
           <video
             ref={videoRef}
-            src={mediaUrl}
+            src={resolvedSrc}
             controls
             autoPlay
             className="w-full h-full"
@@ -106,7 +114,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
             <span className="text-6xl mb-4">🎵</span>
             <audio
               ref={audioRef}
-              src={mediaUrl}
+              src={resolvedSrc}
               controls
               autoPlay
               className="w-full max-w-md"
@@ -122,7 +130,7 @@ export function MediaPreview({ assetId, type, url }: MediaPreviewProps) {
       return (
         <div className="flex items-center justify-center p-4 bg-neutral-50 dark:bg-neutral-900">
           <img
-            src={mediaUrl}
+            src={resolvedSrc}
             alt="Preview"
             className="max-w-full max-h-[70vh] object-contain rounded"
             onError={() => setError('Failed to load image')}

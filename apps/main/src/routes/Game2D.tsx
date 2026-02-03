@@ -38,10 +38,11 @@ import { useSearchParams } from 'react-router-dom';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 import type { Scene, SessionFlags } from '@lib/registries';
 
-import { getAsset, fromAssetResponse, type AssetModel } from '@features/assets';
+
+import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 import {
   RegionalHudLayout,
-  HudLayoutEditor,
+  HudEditor,
   HudCustomizationButton,
   HudProfileSwitcherButton,
   HudRenderer,
@@ -53,6 +54,7 @@ import type { WorldToolContext } from '@features/worldTools';
 import { getEffectiveViewMode } from '@features/worldTools/lib/playerHudPreferences';
 
 import { UserPreferencesPanel } from '@/components/game/panels/UserPreferencesPanel';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import { SimpleDialogue } from '../components/game/DialogueUI';
 import { GameNotifications, type GameNotification } from '../components/game/GameNotification';
@@ -179,6 +181,21 @@ export function Game2D() {
   const [npcPortraitAsset, setNpcPortraitAsset] = useState<AssetModel | null>(null);
   const [npcPortraitAssetId, setNpcPortraitAssetId] = useState<number | null>(null);
   const [worlds, setWorlds] = useState<GameWorldSummary[]>([]);
+  const backgroundUrls = useMemo(
+    () => (backgroundAsset ? getAssetDisplayUrls(backgroundAsset) : null),
+    [backgroundAsset],
+  );
+  const backgroundCandidate = backgroundUrls?.previewUrl || backgroundUrls?.mainUrl;
+  const { src: backgroundSrc } = useAuthenticatedMedia(backgroundCandidate);
+  const resolvedBackgroundSrc = backgroundSrc || backgroundCandidate;
+
+  const npcPortraitUrls = useMemo(
+    () => (npcPortraitAsset ? getAssetDisplayUrls(npcPortraitAsset) : null),
+    [npcPortraitAsset],
+  );
+  const npcPortraitCandidate = npcPortraitUrls?.previewUrl || npcPortraitUrls?.mainUrl;
+  const { src: npcPortraitSrc } = useAuthenticatedMedia(npcPortraitCandidate);
+  const resolvedNpcPortraitSrc = npcPortraitSrc || npcPortraitCandidate;
 
   // Actor presence via unified hook (NPCs, players, agents at location)
   const { npcPresenceDTOs: locationNpcs } = useActorPresence({
@@ -889,17 +906,17 @@ export function Game2D() {
                 )}
               </div>
               {/* Background + clickable overlays */}
-              {backgroundAsset && backgroundAsset.fileUrl && (
+              {backgroundAsset && resolvedBackgroundSrc && (
                 <div className="relative w-full max-w-xl aspect-video bg-black/80 rounded overflow-hidden">
               {backgroundAsset.mediaType === 'image' ? (
                 <img
-                  src={backgroundAsset.fileUrl ?? undefined}
+                  src={resolvedBackgroundSrc || undefined}
                   alt="location background"
                   className="w-full h-full object-cover"
                 />
               ) : (
                 <video
-                  src={backgroundAsset.fileUrl ?? undefined}
+                  src={resolvedBackgroundSrc || undefined}
                   className="w-full h-full object-cover"
                   muted
                   loop
@@ -1022,17 +1039,17 @@ export function Game2D() {
       {isSceneOpen && currentScene && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70">
           <div className="absolute top-4 right-4 flex items-center gap-2">
-            {activeNpcId && npcPortraitAsset && npcPortraitAsset.fileUrl && (
+            {activeNpcId && npcPortraitAsset && resolvedNpcPortraitSrc && (
               <Panel className="flex items-center gap-2 py-1 px-2 bg-black/80 border border-neutral-700">
                 {npcPortraitAsset.mediaType === 'image' ? (
                   <img
-                    src={npcPortraitAsset.fileUrl}
+                    src={resolvedNpcPortraitSrc}
                     alt="NPC portrait"
                     className="w-12 h-12 object-cover rounded"
                   />
                 ) : (
                   <video
-                    src={npcPortraitAsset.fileUrl}
+                    src={resolvedNpcPortraitSrc}
                     className="w-12 h-12 object-cover rounded"
                     muted
                     loop
@@ -1112,7 +1129,7 @@ export function Game2D() {
       {showHudEditor && worldDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="w-full max-w-4xl max-h-[90vh] overflow-auto">
-            <HudLayoutEditor
+            <HudEditor
               worldDetail={worldDetail}
               onSave={(updatedWorld) => {
                 setWorldDetail(updatedWorld);

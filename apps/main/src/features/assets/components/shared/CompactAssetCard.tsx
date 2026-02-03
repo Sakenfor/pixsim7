@@ -2,33 +2,41 @@
  * CompactAssetCard
  *
  * A smaller, simplified version of MediaCard for displaying assets in compact spaces.
- * Reuses shared hooks for thumbnail loading and video hover scrubbing.
+ * Uses the shared VideoScrubWidgetRenderer for consistent video scrubbing with MediaCard.
  * Supports frame locking for video assets used in image_to_video/transition workflows.
  *
  * Features:
  * - Thumbnail/preview display with authenticated URL handling
- * - Video hover scrubbing
+ * - Video hover scrubbing (via shared VideoScrubWidgetRenderer)
  * - Frame locking for video assets
  * - Navigation controls for asset queues
  * - Grid popup for quick asset selection
  * - Context menu integration
  */
 
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
-import { resolveAssetUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
 import { useAssetAutoContextMenu } from '@lib/dockview';
 import { ThemedIcon } from '@lib/icons';
+import { VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 
-import { useHoverScrubVideo } from '@/hooks/useHoverScrubVideo';
-import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
+import { getAssetDisplayUrls } from '@features/assets/models/asset';
+import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
+
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+
 
 import type { AssetModel } from '../../types';
 
 export interface ThumbnailGridItem {
   id: string | number;
   thumbnailUrl: string;
+}
+
+function QueueThumbnail({ url, alt }: { url: string; alt: string }) {
+  const { mediaSrc } = useResolvedAssetMedia({ mediaUrl: url });
+  return <img src={mediaSrc || url} alt={alt} className="w-full h-full object-cover" />;
 }
 
 interface PopupPosition {
@@ -57,6 +65,10 @@ export interface CompactAssetCardProps {
   // Queue grid popup
   queueItems?: ThumbnailGridItem[]; // Items for grid popup (id, thumbnailUrl)
   onSelectIndex?: (index: number) => void; // Jump to specific index (0-based)
+  // Video scrubbing options (passed to VideoScrubWidgetRenderer)
+  enableHoverPreview?: boolean;
+  showPlayOverlay?: boolean;
+  clickToPlay?: boolean;
 }
 
 export function CompactAssetCard({
@@ -76,11 +88,25 @@ export function CompactAssetCard({
   queueItems,
   onSelectIndex,
 }: CompactAssetCardProps) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [showQueueGrid, setShowQueueGrid] = useState(false);
   const [popupPosition, setPopupPosition] = useState<PopupPosition | null>(null);
+
+  // Resolve URLs for the asset
+  const { thumbnailUrl: resolvedThumbUrl, previewUrl: resolvedPreviewUrl, mainUrl: resolvedMainUrl } =
+    getAssetDisplayUrls(asset);
+  const { thumbSrc } = useResolvedAssetMedia({
+    thumbUrl: resolvedThumbUrl,
+    previewUrl: resolvedPreviewUrl,
+    remoteUrl: resolvedMainUrl,
+  });
+
+  const isVideo = asset.mediaType === 'video';
+
+  // For video scrubbing, prefer the resolved main URL (respects local-vs-remote settings)
+  const videoSrc = isVideo ? resolvedMainUrl : undefined;
+  const hasLockedFrame = lockedTimestamp !== undefined;
 
   // Toggle grid and calculate position with edge detection
   const handleToggleGrid = useCallback((e: React.MouseEvent) => {
@@ -117,33 +143,18 @@ export function CompactAssetCard({
     }
   }, [showQueueGrid, queueItems]);
 
-  // Resolve URLs - handle both AssetModel and ViewerAsset types
-  // AssetModel has: thumbnailUrl, previewUrl, remoteUrl, storedKey
-  // ViewerAsset has: url, fullUrl (from media viewer)
-  const viewerAsset = asset as unknown as { url?: string; fullUrl?: string };
-  const resolvedThumbUrl = resolveThumbnailUrl(asset) || viewerAsset.url;
-  const resolvedMainUrl = resolveAssetUrl(asset) || viewerAsset.fullUrl || viewerAsset.url;
-
-  // Shared hooks from MediaCard (hook handles URL decoding internally)
-  const thumbSrc = useMediaThumbnail(resolvedThumbUrl, asset.previewUrl, resolvedMainUrl);
-  const hover = useHoverScrubVideo(videoRef);
-
-  const isVideo = asset.mediaType === 'video';
-  const hasLockedFrame = lockedTimestamp !== undefined;
-
-  // Handle frame lock/unlock
-  const handleToggleLock = () => {
-    if (!videoRef.current || !onLockTimestamp) return;
+  // Handle frame lock/unlock via dot click
+  const handleDotClick = useCallback((timestamp: number) => {
+    if (!onLockTimestamp) return;
 
     if (hasLockedFrame) {
       // Unlock
       onLockTimestamp(undefined);
     } else {
-      // Lock current frame
-      const currentTime = videoRef.current.currentTime;
-      onLockTimestamp(currentTime);
+      // Lock at the clicked timestamp
+      onLockTimestamp(timestamp);
     }
-  };
+  }, [hasLockedFrame, onLockTimestamp]);
 
   const isLocalOnly =
     asset.providerStatus === 'local_only' ||
@@ -151,6 +162,15 @@ export function CompactAssetCard({
   const statusColor = isLocalOnly
     ? 'border-amber-300 dark:border-amber-700'
     : 'border-green-300 dark:border-green-700';
+
+  // Provide asset capability for context menu actions
+  const assetProvider = useMemo(() => ({
+    id: 'asset-card',
+    getValue: () => asset,
+    isAvailable: () => !!asset,
+    exposeToContextMenu: true,
+  }), [asset]);
+  useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
 
   // Context menu: automatic registration with type-specific preset
   const contextMenuProps = useAssetAutoContextMenu(asset);
@@ -169,76 +189,45 @@ export function CompactAssetCard({
       )}
 
       <div
-        ref={hover.containerRef}
         className={`relative bg-neutral-100 dark:bg-neutral-800 ${
-          fillHeight ? 'h-full' : (asset.mediaType === 'video' ? 'aspect-video' : 'aspect-square')
+          fillHeight ? 'h-full' : (isVideo ? 'aspect-video' : 'aspect-square')
         }`}
-        onMouseEnter={asset.mediaType === 'video' ? hover.onMouseEnter : undefined}
-        onMouseLeave={asset.mediaType === 'video' ? hover.onMouseLeave : undefined}
-        onMouseMove={asset.mediaType === 'video' ? hover.onMouseMove : undefined}
       >
+        {/* Base thumbnail/poster image */}
         {thumbSrc && (
-          asset.mediaType === 'video' ? (
-            <video
-              ref={videoRef}
-              src={thumbSrc}
-              className="w-full h-full object-cover"
-              preload="metadata"
-              muted
-              playsInline
-              crossOrigin={thumbSrc.startsWith('http') ? 'anonymous' : undefined}
+          <img
+            src={thumbSrc}
+            alt={asset.description || `Asset ${asset.id}`}
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
+          />
+        )}
+
+        {/* Video scrub overlay - uses shared VideoScrubWidgetRenderer */}
+        {isVideo && videoSrc && (
+          <div className="absolute inset-0 z-[1]">
+            <VideoScrubWidgetRenderer
+              url={videoSrc}
+              configDuration={asset.durationSec ?? undefined}
+              isHovering={isHovered}
+              showTimeline={true}
+              showTimestamp={false}
+              timelinePosition="bottom"
+              onDotClick={onLockTimestamp ? handleDotClick : undefined}
+              dotTooltip={hasLockedFrame ? `Unlock frame (${lockedTimestamp?.toFixed(1)}s)` : 'Lock current frame'}
+              dotActive={hasLockedFrame}
+              lockedTimestamp={lockedTimestamp}
             />
-          ) : (
-            <img
-              src={thumbSrc}
-              alt={asset.description || `Asset ${asset.id}`}
-              className="w-full h-full object-cover"
-              loading="lazy"
-            />
-          )
+          </div>
         )}
 
         {/* Status indicator */}
         {isLocalOnly && (
-          <div className="absolute right-1.5 top-1.5">
+          <div className="absolute right-1.5 top-1.5 z-10">
             <div className="w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center" title="Local only - not synced to provider">
               <ThemedIcon name="alertTriangle" size={12} variant="default" className="text-white" />
             </div>
           </div>
-        )}
-
-        {/* Video hover scrub progress bar */}
-        {asset.mediaType === 'video' && hover.hasStartedPlaying && !hasLockedFrame && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
-            <div className="h-full bg-white/80 transition-all" style={{ width: `${Math.round(hover.progress * 100)}%` }} />
-          </div>
-        )}
-
-        {/* Locked frame indicator */}
-        {hasLockedFrame && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500/30">
-            <div
-              className="h-full bg-blue-500"
-              style={{
-                width: `${Math.round((lockedTimestamp / (videoRef.current?.duration || 1)) * 100)}%`
-              }}
-            />
-          </div>
-        )}
-
-        {/* Frame lock/unlock button (for videos) */}
-        {isVideo && isHovered && onLockTimestamp && (
-          <button
-            onClick={handleToggleLock}
-            className={`absolute left-1.5 bottom-1.5 w-6 h-6 rounded-full flex items-center justify-center transition-colors z-10 ${
-              hasLockedFrame
-                ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-neutral-700/80 hover:bg-neutral-600'
-            }`}
-            title={hasLockedFrame ? `Frame locked at ${lockedTimestamp?.toFixed(1)}s` : 'Lock current frame'}
-          >
-            <ThemedIcon name={hasLockedFrame ? 'lock' : 'unlock'} size={12} variant="default" className="text-white" />
-          </button>
         )}
 
         {/* Remove button - top right, tiny */}
@@ -326,11 +315,7 @@ export function CompactAssetCard({
                       : 'hover:ring-1 hover:ring-white/50'
                   }`}
                 >
-                  <img
-                    src={item.thumbnailUrl}
-                    alt={`Asset ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                  />
+                  <QueueThumbnail url={item.thumbnailUrl} alt={`Asset ${idx + 1}`} />
                   <span className="absolute bottom-0 right-0 bg-black/80 text-white text-[11px] px-1.5 py-0.5 rounded-tl font-medium">
                     {idx + 1}
                   </span>

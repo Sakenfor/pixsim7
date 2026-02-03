@@ -9,10 +9,12 @@
 
 import { formatTime } from '@pixsim7/shared.media.core';
 import { clampUnit, getProgressPercent, getTimeFromPercent } from '@pixsim7/shared.player.core';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 import type { DataBinding } from '@lib/editing-core';
 import { resolveDataBinding } from '@lib/editing-core';
+
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
 import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
@@ -81,50 +83,74 @@ export interface VideoScrubWidgetConfig {
   showExtractButton?: boolean;
 }
 
-interface VideoScrubWidgetRendererProps {
+export interface VideoScrubWidgetRendererProps {
   url: string | undefined;
   configDuration: number | undefined;
   isHovering: boolean;
-  showTimeline: boolean;
-  showTimestamp: boolean;
-  showExtractButton: boolean;
-  timelinePosition: 'bottom' | 'top';
-  throttle: number;
-  muted: boolean;
-  videoProps: React.VideoHTMLAttributes<HTMLVideoElement>;
-  className: string;
-  onScrub?: (timestamp: number, data: any) => void;
-  onClick?: (data: any) => void;
-  onExtractFrame?: (timestamp: number, data: any) => void;
-  onExtractLastFrame?: (data: any) => void;
-  data: any;
+  showTimeline?: boolean;
+  showTimestamp?: boolean;
+  showExtractButton?: boolean;
+  timelinePosition?: 'bottom' | 'top';
+  throttle?: number;
+  muted?: boolean;
+  videoProps?: React.VideoHTMLAttributes<HTMLVideoElement>;
+  className?: string;
+  onScrub?: (timestamp: number, data?: any) => void;
+  onClick?: (data?: any) => void;
+  /** Called when dot is clicked - for frame extraction or frame locking */
+  onDotClick?: (timestamp: number, data?: any) => void;
+  /** @deprecated Use onDotClick instead */
+  onExtractFrame?: (timestamp: number, data?: any) => void;
+  onExtractLastFrame?: (data?: any) => void;
+  /** Locked timestamp to show as secondary indicator (for frame locking workflows) */
+  lockedTimestamp?: number;
+  /** Whether the dot action is currently active (e.g., frame is locked) */
+  dotActive?: boolean;
+  /** Tooltip for the dot */
+  dotTooltip?: string;
+  data?: any;
 }
 
 const DRAG_THRESHOLD = 5; // pixels before considered a drag
+const STEP_COARSE = 0.5; // seconds per arrow key press
+const STEP_FRAME = 1 / 30; // ~1 frame at 30fps (Ctrl+arrow)
+const MARK_HIT_THRESHOLD = 8; // pixels - how close click must be to mark to count as "on mark"
+const DOUBLE_CLICK_TIME = 300; // ms - max time between clicks for double-click
 
-function VideoScrubWidgetRenderer({
+export function VideoScrubWidgetRenderer({
   url,
   configDuration,
   isHovering,
-  showTimeline,
-  showTimestamp,
-  showExtractButton,
-  timelinePosition,
-  throttle,
-  muted,
-  videoProps,
-  className,
+  showTimeline = true,
+  showTimestamp = true,
+  showExtractButton = false,
+  timelinePosition = 'bottom',
+  throttle = 50,
+  muted = true,
+  videoProps = {},
+  className = '',
   onScrub,
   onClick,
+  onDotClick,
   onExtractFrame,
   onExtractLastFrame,
+  lockedTimestamp,
+  dotActive = false,
+  dotTooltip,
   data,
 }: VideoScrubWidgetRendererProps) {
+  const { src: authenticatedSrc } = useAuthenticatedMedia(url, { active: isHovering });
+  const resolvedUrl = authenticatedSrc || url;
+  // Support both onDotClick and legacy onExtractFrame
+  const handleDotAction = onDotClick ?? onExtractFrame;
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState<number | null>(null);
-  const [hoverX, setHoverX] = useState(0);
   const [hoverPercent, setHoverPercent] = useState(0);
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const [videoError, setVideoError] = useState(false);
+  const [cacheBustToken, setCacheBustToken] = useState<number | null>(null);
+  const retryCountRef = useRef(0);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -134,17 +160,42 @@ function VideoScrubWidgetRenderer({
   const [isDragging, setIsDragging] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [loopRange, setLoopRange] = useState<{ start: number; end: number } | null>(null);
+  const [marks, setMarks] = useState<number[]>([]); // User-placed marks on timeline
   const dragStartTimeRef = useRef<number | null>(null);
   const dragStartXRef = useRef<number | null>(null);
   const isPotentialDragRef = useRef(false);
+  const dotControlsRef = useRef<HTMLDivElement>(null);
+  const lastClickTimeRef = useRef<number>(0);
+  const lastClickMarkRef = useRef<number | null>(null);
+  const canExtract = showExtractButton && !!handleDotAction;
+  const canExtractLast = showExtractButton && !!onExtractLastFrame;
+  const dotTitle = dotTooltip ?? (
+    canExtract ? 'Extract frame at current time' : 'Click to add mark here'
+  );
+
+  const buildCacheBustedUrl = useCallback((value: string, token: number | null) => {
+    if (!token) return value;
+    if (!value.startsWith('http')) return value;
+    const separator = value.includes('?') ? '&' : '?';
+    return `${value}${separator}cb=${token}`;
+  }, []);
+
+  const effectiveUrl = useMemo(
+    () => (resolvedUrl ? buildCacheBustedUrl(resolvedUrl, cacheBustToken) : resolvedUrl),
+    [resolvedUrl, cacheBustToken, buildCacheBustedUrl],
+  );
 
   // Force video to load when hovering starts
   useEffect(() => {
-    if (isHovering && videoRef.current && url) {
-      videoRef.current.src = url;
+    if (isHovering && videoRef.current && effectiveUrl) {
+      setVideoError(false);
+      setIsVideoLoaded(false);
+      retryCountRef.current = 0;
+      setCacheBustToken(null);
+      videoRef.current.src = effectiveUrl;
       videoRef.current.load();
     }
-  }, [isHovering, url]);
+  }, [isHovering, effectiveUrl]);
 
   // Use provided duration or detected duration
   const videoDuration = duration || configDuration || 0;
@@ -154,6 +205,7 @@ function VideoScrubWidgetRenderer({
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setIsVideoLoaded(true);
+      retryCountRef.current = 0;
     }
   }, []);
 
@@ -164,9 +216,46 @@ function VideoScrubWidgetRenderer({
     }
   }, [isPlaying]);
 
-  // Handle video load error (silent - video scrub just won't work for this video)
+  // Handle video load error
   const handleError = useCallback(() => {
-    // Video failed to load - scrub won't work for this video (e.g., local-only assets)
+    if (!isHovering || !videoRef.current || !resolvedUrl) {
+      setVideoError(true);
+      return;
+    }
+
+    const MAX_RETRIES = 4;
+    const RETRY_DELAY_MS = 2000;
+
+    if (retryCountRef.current >= MAX_RETRIES) {
+      setVideoError(true);
+      return;
+    }
+
+    retryCountRef.current += 1;
+    const nextToken = resolvedUrl.startsWith('http') ? Date.now() : null;
+    if (nextToken) {
+      setCacheBustToken(nextToken);
+    }
+
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+
+    retryTimeoutRef.current = setTimeout(() => {
+      if (!videoRef.current) return;
+      const retryUrl = nextToken ? buildCacheBustedUrl(resolvedUrl, nextToken) : resolvedUrl;
+      videoRef.current.src = retryUrl;
+      videoRef.current.load();
+    }, RETRY_DELAY_MS);
+  }, [isHovering, resolvedUrl, buildCacheBustedUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    };
   }, []);
 
   // Start playing video (loop from current position)
@@ -186,16 +275,37 @@ function VideoScrubWidgetRenderer({
     }
   }, [isPlaying]);
 
-  // Extract frame at current timestamp
-  const handleExtractFrame = useCallback(async () => {
-    if (!onExtractFrame || isExtracting) return;
-    setIsExtracting(true);
-    try {
-      await onExtractFrame(currentTime, data);
-    } finally {
-      setIsExtracting(false);
-    }
-  }, [onExtractFrame, currentTime, data, isExtracting]);
+  // Find mark near a given time (within threshold)
+  const findNearbyMark = useCallback(
+    (time: number, thresholdPixels: number = MARK_HIT_THRESHOLD): number | null => {
+      if (!containerRef.current || videoDuration === 0 || marks.length === 0) return null;
+      const containerWidth = containerRef.current.getBoundingClientRect().width;
+      const thresholdTime = (thresholdPixels / containerWidth) * videoDuration;
+
+      for (const mark of marks) {
+        if (Math.abs(mark - time) <= thresholdTime) {
+          return mark;
+        }
+      }
+      return null;
+    },
+    [marks, videoDuration]
+  );
+
+  // Add a mark at the given time
+  const addMark = useCallback((time: number) => {
+    setMarks((prev) => {
+      // Check if mark already exists nearby
+      const exists = prev.some((m) => Math.abs(m - time) < 0.1);
+      if (exists) return prev;
+      return [...prev, time].sort((a, b) => a - b);
+    });
+  }, []);
+
+  // Remove a mark
+  const removeMark = useCallback((time: number) => {
+    setMarks((prev) => prev.filter((m) => m !== time));
+  }, []);
 
   // Extract last frame of video
   const handleExtractLastFrame = useCallback(async () => {
@@ -207,6 +317,16 @@ function VideoScrubWidgetRenderer({
       setIsExtracting(false);
     }
   }, [onExtractLastFrame, data, isExtracting]);
+
+  const handleDotActionClick = useCallback(async () => {
+    if (!handleDotAction || isExtracting) return;
+    setIsExtracting(true);
+    try {
+      await handleDotAction(currentTime, data);
+    } finally {
+      setIsExtracting(false);
+    }
+  }, [handleDotAction, currentTime, data, isExtracting]);
 
   // Helper to get time from mouse X position
   const getTimeFromX = useCallback(
@@ -233,7 +353,7 @@ function VideoScrubWidgetRenderer({
     [videoDuration, getTimeFromX]
   );
 
-  // Handle mouse up - finalize loop range or trigger click
+  // Handle mouse up - finalize loop range, add marks, or handle double-click
   const handleMouseUp = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       const wasPotentialDrag = isPotentialDragRef.current;
@@ -245,9 +365,57 @@ function VideoScrubWidgetRenderer({
       // If not actually dragging, this was a simple click
       if (!isDragging || dragStartTimeRef.current === null) {
         dragStartTimeRef.current = null;
-        // Trigger onClick callback for simple clicks
-        if (wasPotentialDrag && onClick) {
-          onClick(data);
+
+        if (wasPotentialDrag && containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          const y = event.clientY - rect.top;
+          const isNearTimeline = y > rect.height - CONTROL_ZONE_HEIGHT;
+
+          if (isNearTimeline) {
+            // Click near timeline - handle mark interactions
+            const clickTime = getTimeFromX(event.clientX);
+            const nearbyMark = findNearbyMark(clickTime);
+            const now = Date.now();
+
+            if (nearbyMark !== null) {
+              // Clicked on a mark - check for double-click
+              if (
+                lastClickMarkRef.current === nearbyMark &&
+                now - lastClickTimeRef.current < DOUBLE_CLICK_TIME
+              ) {
+                // Double-click on same mark - extract frame
+                if (handleDotAction && !isExtracting) {
+                  setIsExtracting(true);
+                  Promise.resolve(handleDotAction(nearbyMark, data)).finally(() => {
+                    setIsExtracting(false);
+                  });
+                }
+                lastClickTimeRef.current = 0;
+                lastClickMarkRef.current = null;
+              } else {
+                // First click on a mark - record for potential double-click
+                lastClickTimeRef.current = now;
+                lastClickMarkRef.current = nearbyMark;
+                // Also seek to the mark
+                if (videoRef.current && isVideoLoaded) {
+                  videoRef.current.currentTime = nearbyMark;
+                  setCurrentTime(nearbyMark);
+                }
+              }
+            } else {
+              // Clicked on empty space near timeline - add a mark at current scrub position
+              addMark(currentTime);
+              lastClickTimeRef.current = 0;
+              lastClickMarkRef.current = null;
+            }
+          } else {
+            // Click away from timeline - trigger onClick callback (e.g., open viewer)
+            if (onClick) {
+              onClick(data);
+            }
+            lastClickTimeRef.current = 0;
+            lastClickMarkRef.current = null;
+          }
         }
         return;
       }
@@ -275,7 +443,7 @@ function VideoScrubWidgetRenderer({
       setIsDragging(false);
       dragStartTimeRef.current = null;
     },
-    [isDragging, getTimeFromX, isVideoLoaded, onClick, data]
+    [isDragging, getTimeFromX, isVideoLoaded, findNearbyMark, addMark, currentTime, handleDotAction, data, isExtracting]
   );
 
   // Height from bottom where auto-play is disabled (timeline + controls area)
@@ -292,11 +460,17 @@ function VideoScrubWidgetRenderer({
       const percentage = Math.max(0, Math.min(1, x / rect.width));
       const targetTime = percentage * videoDuration;
 
-      setHoverX(x);
-      setHoverPercent(percentage * 100);
-
       // Check if cursor is in the control zone (bottom area with timeline/controls)
       const isInControlZone = y > rect.height - CONTROL_ZONE_HEIGHT;
+
+      // Check if cursor is hovering over the dot controls area
+      // This is a zone above the timeline where first/last buttons appear
+      const inDotZone = dotControlsRef.current?.contains(event.target as Node) ?? false;
+
+      // If in dot zone, don't update scrub position - keep dot stationary so user can click buttons
+      if (!inDotZone) {
+        setHoverPercent(percentage * 100);
+      }
 
       // Check if we should start dragging (potential drag + exceeded threshold)
       if (isPotentialDragRef.current && dragStartXRef.current !== null && !isDragging) {
@@ -328,6 +502,11 @@ function VideoScrubWidgetRenderer({
       // Pause if currently playing (user started moving again)
       if (isPlaying) {
         pauseVideo();
+      }
+
+      // Skip scrub updates when in dot zone
+      if (inDotZone) {
+        return;
       }
 
       // Throttle video seeking for performance
@@ -395,6 +574,103 @@ function VideoScrubWidgetRenderer({
     }
   }, [isDragging]);
 
+  // Handle right-click to remove marks
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const clickTime = getTimeFromX(event.clientX);
+      const nearbyMark = findNearbyMark(clickTime);
+      if (nearbyMark !== null) {
+        event.preventDefault();
+        removeMark(nearbyMark);
+      }
+    },
+    [getTimeFromX, findNearbyMark, removeMark]
+  );
+
+  // Jump to specific time helper
+  const seekTo = useCallback((time: number) => {
+    if (!videoRef.current || videoDuration === 0 || !isVideoLoaded) return;
+
+    // Pause if playing
+    if (isPlaying) {
+      videoRef.current.pause();
+      setIsPlaying(false);
+    }
+
+    const clampedTime = Math.max(0, Math.min(videoDuration, time));
+    videoRef.current.currentTime = clampedTime;
+    setCurrentTime(clampedTime);
+    setHoverPercent((clampedTime / videoDuration) * 100);
+
+    if (onScrub) {
+      onScrub(clampedTime, data);
+    }
+  }, [videoDuration, isVideoLoaded, isPlaying, onScrub, data]);
+
+  // Go to previous mark, or first frame if no marks before current position
+  const goToPrevious = useCallback(() => {
+    if (marks.length === 0) {
+      seekTo(0);
+      return;
+    }
+    // Find the previous mark (before current time, with small tolerance)
+    const prevMarks = marks.filter((m) => m < currentTime - 0.05);
+    if (prevMarks.length > 0) {
+      seekTo(prevMarks[prevMarks.length - 1]); // Last mark before current
+    } else {
+      seekTo(0); // No more marks, go to start
+    }
+  }, [seekTo, marks, currentTime]);
+
+  // Go to next mark, or last frame if no marks after current position
+  const goToNext = useCallback(() => {
+    if (marks.length === 0) {
+      seekTo(videoDuration - STEP_FRAME);
+      return;
+    }
+    // Find the next mark (after current time, with small tolerance)
+    const nextMarks = marks.filter((m) => m > currentTime + 0.05);
+    if (nextMarks.length > 0) {
+      seekTo(nextMarks[0]); // First mark after current
+    } else {
+      seekTo(videoDuration - STEP_FRAME); // No more marks, go to end
+    }
+  }, [seekTo, marks, currentTime, videoDuration]);
+
+  // Keyboard shortcuts (Home/End for prev/next mark, arrows for stepping)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !isHovering || !isVideoLoaded) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'Home':
+          event.preventDefault();
+          goToPrevious();
+          break;
+        case 'End':
+          event.preventDefault();
+          goToNext();
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          // Ctrl = fine step (frame), normal = coarse step
+          seekTo(currentTime - (event.ctrlKey ? STEP_FRAME : STEP_COARSE));
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          seekTo(currentTime + (event.ctrlKey ? STEP_FRAME : STEP_COARSE));
+          break;
+      }
+    };
+
+    // Make container focusable and focus it
+    container.tabIndex = -1;
+    container.focus();
+    container.addEventListener('keydown', handleKeyDown);
+    return () => container.removeEventListener('keydown', handleKeyDown);
+  }, [isHovering, isVideoLoaded, goToPrevious, goToNext, seekTo, currentTime]);
+
   // Reset video when hover ends
   useEffect(() => {
     if (!isHovering) {
@@ -414,7 +690,12 @@ function VideoScrubWidgetRenderer({
       setCurrentTime(0);
       setLoopRange(null);
       setIsDragging(false);
+      setIsVideoLoaded(false);
+      setVideoError(false);
+      setMarks([]); // Clear marks when leaving
       dragStartTimeRef.current = null;
+      lastClickTimeRef.current = 0;
+      lastClickMarkRef.current = null;
     }
   }, [isHovering, isVideoLoaded]);
 
@@ -456,16 +737,17 @@ function VideoScrubWidgetRenderer({
       onMouseUp={handleMouseUp}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
+      onContextMenu={handleContextMenu}
       className={`relative w-full h-full cursor-pointer ${className}`}
     >
       {/* Video element for scrubbing - shown when hovering */}
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
       <video
         ref={videoRef}
-        src={url}
+        src={effectiveUrl}
         preload="metadata"
         muted={muted}
-        crossOrigin={url?.startsWith('http') ? 'anonymous' : undefined}
+        crossOrigin={effectiveUrl?.startsWith('http') ? 'anonymous' : undefined}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onError={handleError}
@@ -481,7 +763,7 @@ function VideoScrubWidgetRenderer({
           className={`
             absolute left-0 right-0 ${
               timelinePosition === 'bottom' ? 'bottom-2' : 'top-2'
-            } px-2
+            }
           `}
         >
           {/* Timeline background - clickable to clear range */}
@@ -522,109 +804,119 @@ function VideoScrubWidgetRenderer({
               />
             )}
 
-            {/* Interactive scrub dot - centered on timeline */}
-            {showExtractButton && onExtractFrame ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleExtractFrame();
-                }}
-                onAuxClick={(e) => {
-                  if (e.button === 1 && onExtractLastFrame) {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    handleExtractLastFrame();
-                  }
-                }}
-                onMouseDown={(e) => {
-                  e.stopPropagation();
-                  if (e.button === 1) e.preventDefault();
-                }}
-                disabled={isExtracting}
-                className={`
-                  absolute top-1/2 p-0 m-0 border-0 outline-none
-                  ${isExtracting ? 'bg-blue-400' : 'bg-white hover:bg-blue-400 hover:scale-150'}
-                `}
+            {/* Locked timestamp indicator (for frame locking workflows) */}
+            {lockedTimestamp !== undefined && videoDuration > 0 && (
+              <div
+                className="absolute h-full w-0.5 bg-blue-500"
+                style={{ left: `${(lockedTimestamp / videoDuration) * 100}%` }}
+              />
+            )}
+
+            {/* User-placed marks */}
+            {marks.map((mark, idx) => (
+              <div
+                key={idx}
+                className="absolute top-1/2 bg-orange-400 hover:bg-orange-300 cursor-pointer"
                 style={{
-                  left: `${displayPercentage}%`,
+                  left: `${(mark / videoDuration) * 100}%`,
                   transform: 'translate(-50%, -50%)',
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  boxShadow: '0 0 2px rgba(0,0,0,0.3)',
-                  transition: 'transform 100ms, background-color 100ms',
+                  boxShadow: '0 0 3px rgba(0,0,0,0.5)',
                 }}
-                title={`Click to capture frame${onExtractLastFrame ? ' (middle-click for last frame)' : ''}`}
+                title={`Mark at ${formatTime(mark)} (double-click to capture, right-click to remove)`}
               />
-            ) : (
-              <div
-                className="absolute top-1/2 bg-white"
-                style={{
-                  left: `${displayPercentage}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: '5px',
-                  height: '5px',
-                  borderRadius: '50%',
-                  boxShadow: '0 0 2px rgba(0,0,0,0.3)',
-                }}
-              />
-            )}
-          </div>
-        </div>
-      )}
+            ))}
 
-      {/* Timestamp tooltip (follows cursor) */}
-      {showTimestamp && isHovering && videoDuration > 0 && (
-        <div
-          className="absolute pointer-events-none"
-          style={{
-            left: `${hoverX}px`,
-            top: timelinePosition === 'bottom' ? 'auto' : '0.5rem',
-            bottom: timelinePosition === 'bottom' ? '2.5rem' : 'auto',
-            transform: 'translateX(-50%)',
-          }}
-        >
-          <div className="px-2 py-1 bg-black/80 text-white text-xs rounded backdrop-blur-sm whitespace-nowrap">
-            {formatTime(currentTime)}
-            {videoDuration > 0 && ` / ${formatTime(videoDuration)}`}
-          </div>
-        </div>
-      )}
-
-      {/* Play/pause control - bottom right (simplified, no capture here) */}
-      {showExtractButton && isHovering && videoDuration > 0 && (
-        <div className="absolute bottom-2 right-2">
-          <div className="flex items-center gap-1 px-1.5 py-1 bg-black/80 rounded backdrop-blur-sm">
+            {/* Interactive scrub dot - click adds mark */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (isPlaying) {
-                  pauseVideo();
-                } else {
-                  startPlaying();
+                if (canExtract) {
+                  void handleDotActionClick();
+                  return;
                 }
+                addMark(currentTime);
               }}
-              onMouseDown={(e) => e.stopPropagation()}
-              className="p-0.5 rounded hover:bg-white/20 transition-colors text-white"
-              title={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? (
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="4" width="4" height="16" />
-                  <rect x="14" y="4" width="4" height="16" />
-                </svg>
-              ) : (
-                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-              )}
-            </button>
+              onMouseDown={(e) => {
+                e.stopPropagation();
+              }}
+              disabled={canExtract && isExtracting}
+              className={`
+                absolute top-1/2 p-0 m-0 border-0 outline-none
+                ${dotActive
+                  ? 'bg-blue-500 hover:bg-blue-400 scale-110'
+                  : isExtracting
+                    ? 'bg-blue-400'
+                    : 'bg-white hover:bg-orange-400 hover:scale-125'
+                }
+              `}
+              style={{
+                left: `${displayPercentage}%`,
+                transform: 'translate(-50%, -50%)',
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                boxShadow: '0 0 3px rgba(0,0,0,0.4)',
+                transition: 'transform 100ms, background-color 100ms',
+              }}
+              title={dotTitle}
+            />
           </div>
         </div>
       )}
 
-      {/* Loading indicator */}
-      {isHovering && !isVideoLoaded && (
+      {/* Dot controls - first/last frame buttons that follow the dot */}
+      {showTimeline && isHovering && videoDuration > 0 && (
+        <div
+          ref={dotControlsRef}
+          className="absolute flex items-center gap-1"
+          style={{
+            left: `${displayPercentage}%`,
+            top: timelinePosition === 'bottom' ? 'auto' : '0.5rem',
+            bottom: timelinePosition === 'bottom' ? '1.75rem' : 'auto',
+            transform: 'translateX(-50%)',
+          }}
+        >
+          <button
+            onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/70 hover:text-white rounded transition-colors text-[10px] font-bold"
+            title={marks.length > 0 ? "Go to previous mark (Home)" : "Go to start (Home)"}
+          >
+            |◀
+          </button>
+          {showTimestamp && (
+            <div className="px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded whitespace-nowrap">
+              {formatTime(currentTime)}
+            </div>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); goToNext(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/70 hover:text-white rounded transition-colors text-[10px] font-bold"
+            title={marks.length > 0 ? "Go to next mark (End)" : "Go to end (End)"}
+          >
+            ▶|
+          </button>
+          {canExtractLast && (
+            <button
+              onClick={(e) => { e.stopPropagation(); void handleExtractLastFrame(); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              disabled={isExtracting}
+              className="px-1.5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 disabled:bg-black/40 text-white/70 hover:text-white rounded transition-colors text-[9px] font-semibold"
+              title="Extract last frame"
+            >
+              Last
+            </button>
+          )}
+
+        </div>
+      )}
+
+      {/* Loading indicator - hide if video failed to load */}
+      {isHovering && !isVideoLoaded && !videoError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
           <div className="px-3 py-1.5 bg-black/80 text-white text-xs rounded backdrop-blur-sm">
             Loading video...

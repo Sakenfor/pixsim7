@@ -2,7 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import { BACKEND_BASE } from '@lib/api/client';
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { getGeneration, createGeneration } from '@lib/api/generations';
 import { authService } from '@lib/auth';
+import { resolveBackendUrl } from '@lib/media/backendUrl';
 
 import { useMediaGenerationActions } from '@features/generation';
 import { useWorkspaceStore } from '@features/workspace';
@@ -13,12 +15,15 @@ import { useViewer } from '@/hooks/useViewer';
 
 import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { createAssetActions } from '../lib/assetCardActions';
+import { assetEvents } from '../lib/assetEvents';
+import { getAssetDisplayUrls } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
 import { useDeleteModalStore } from '../stores/deleteModalStore';
 
 import { useAsset } from './useAsset';
 import { useAssets, type AssetModel } from './useAssets';
+
 
 const SESSION_KEY = 'assets_filters';
 
@@ -97,13 +102,14 @@ export function useAssetsController() {
 
   // Handle asset selection for picker mode
   const handleSelectAsset = useCallback((asset: AssetModel) => {
+    const { mainUrl, thumbnailUrl } = getAssetDisplayUrls(asset);
     selectAsset({
       id: String(asset.id),
       mediaType: asset.mediaType,
       providerId: asset.providerId,
       providerAssetId: asset.providerAssetId,
-      remoteUrl: asset.remoteUrl,
-      thumbnailUrl: asset.thumbnailUrl,
+      remoteUrl: mainUrl,
+      thumbnailUrl,
     });
     // Close floating gallery panel
     closeFloatingPanel('gallery');
@@ -143,6 +149,10 @@ export function useAssetsController() {
 
     try {
       await deleteAsset(asset.id, { delete_from_provider: deleteFromProvider });
+
+      // Emit delete event so all gallery instances update
+      assetEvents.emitAssetDeleted(asset.id);
+
       // Remove from selection if selected
       if (isSelected(asset.id)) {
         toggleAssetSelection(String(asset.id));
@@ -151,13 +161,11 @@ export function useAssetsController() {
       if (viewerAsset?.id === asset.id) {
         await closeViewer();
       }
-      // Remove asset from list without resetting scroll position
-      removeAsset(asset.id);
     } catch (err) {
       console.error('Failed to delete asset:', err);
       alert(extractErrorMessage(err, 'Failed to delete asset'));
     }
-  }, [deleteModalAsset, closeDeleteModal, viewerAsset, removeAsset, isSelected, toggleAssetSelection, closeViewer]);
+  }, [deleteModalAsset, closeDeleteModal, viewerAsset, isSelected, toggleAssetSelection, closeViewer]);
 
   // Cancel deletion
   const cancelDeleteAsset = useCallback(() => {
@@ -194,6 +202,29 @@ export function useAssetsController() {
     [reset],
   );
 
+  // Handle regenerate - re-run the generation that created an asset
+  const handleRegenerateAsset = useCallback(async (generationId: number) => {
+    try {
+      // Fetch the original generation
+      const original = await getGeneration(generationId);
+
+      // Create a new generation with the same parameters
+      await createGeneration({
+        operation_type: original.operation_type,
+        provider_id: original.provider_id,
+        params: original.params,
+        prompt: original.prompt,
+        source_asset_ids: original.source_asset_ids,
+      });
+
+      // Refresh to show the new generation
+      reset();
+    } catch (err) {
+      console.error('Failed to regenerate:', err);
+      alert(extractErrorMessage(err, 'Failed to regenerate'));
+    }
+  }, [reset]);
+
   // Load viewer media source (supports backend-relative URLs with auth)
   useEffect(() => {
     let cancelled = false;
@@ -207,22 +238,26 @@ export function useAssetsController() {
         return;
       }
 
-      const candidate = viewerAsset.remoteUrl || viewerAsset.thumbnailUrl;
+      const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(viewerAsset);
+      const candidate = mainUrl || previewUrl || thumbnailUrl;
       if (!candidate) {
         setViewerSrc(null);
         return;
       }
 
-      // Absolute URL or blob URL: use directly
-      if (candidate.startsWith('http://') || candidate.startsWith('https://') || candidate.startsWith('blob:')) {
+      // Blob/data/file URLs: use directly
+      if (candidate.startsWith('blob:') || candidate.startsWith('data:') || candidate.startsWith('file://')) {
         setViewerSrc(candidate);
         return;
       }
 
-      // Backend-relative path: fetch with Authorization and create blob URL
-      const fullUrl = candidate.startsWith('/')
-        ? `${BACKEND_BASE}${candidate}`
-        : `${BACKEND_BASE}/${candidate}`;
+      const { fullUrl, isBackend } = resolveBackendUrl(candidate, BACKEND_BASE);
+
+      // External URL: use directly
+      if (!isBackend) {
+        setViewerSrc(fullUrl);
+        return;
+      }
 
       const token = authService.getStoredToken();
       if (!token) {
@@ -272,6 +307,7 @@ export function useAssetsController() {
     onAddToTransition: queueAddToTransition,
     onAddToGenerate: queueAutoGenerate,
     onQuickAdd: quickGenerate,
+    onRegenerateAsset: handleRegenerateAsset,
     onArchive: handleArchiveAsset,
     onDelete: handleDeleteAsset,
   }), [
@@ -281,6 +317,7 @@ export function useAssetsController() {
     queueAddToTransition,
     queueAutoGenerate,
     quickGenerate,
+    handleRegenerateAsset,
     handleArchiveAsset,
     handleDeleteAsset,
   ]);

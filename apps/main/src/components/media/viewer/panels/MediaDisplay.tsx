@@ -4,11 +4,15 @@
  * Renders the actual media (image or video) with zoom and fit mode applied.
  */
 
-import { useRef, type RefObject } from 'react';
+import { useMemo, useRef, type RefObject } from 'react';
 
 import { useAutoContextMenu } from '@lib/dockview';
 
+
 import type { ViewerAsset } from '@features/assets';
+import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
+
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import type { ViewerSettings } from '../types';
 
@@ -29,6 +33,17 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
   const resolvedVideoRef = videoRef ?? fallbackVideoRef;
   const resolvedImageRef = imageRef ?? fallbackImageRef;
   const mediaUrl = asset.fullUrl || asset.url;
+  const { mediaSrc } = useResolvedAssetMedia({ mediaUrl });
+  const resolvedMediaUrl = mediaSrc;
+
+  // Provide asset capability for context menu actions
+  const assetProvider = useMemo(() => ({
+    id: 'viewer-asset',
+    getValue: () => asset,
+    isAvailable: () => !!asset,
+    exposeToContextMenu: true,
+  }), [asset]);
+  useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
 
   // Auto-register context menu for the displayed asset
   const contextMenuProps = useAutoContextMenu('viewer-asset', asset, {
@@ -63,7 +78,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
       {asset.type === 'video' ? (
         <video
           ref={resolvedVideoRef}
-          src={mediaUrl}
+          src={resolvedMediaUrl}
           className={`${getFitClass()} rounded-lg`}
           style={{ transform: `scale(${zoom / 100})` }}
           controls
@@ -73,7 +88,7 @@ export function MediaDisplay({ asset, settings, fitMode, zoom, videoRef, imageRe
       ) : (
         <img
           ref={resolvedImageRef}
-          src={mediaUrl}
+          src={resolvedMediaUrl}
           alt={asset.name}
           className={`${getFitClass()} rounded-lg`}
           style={{ transform: `scale(${zoom / 100})` }}

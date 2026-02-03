@@ -6,15 +6,17 @@
  * Split from mediaCardWidgets.tsx for better separation of concerns.
  */
 
-import { ButtonGroup, type ButtonGroupItem } from '@pixsim7/shared.ui';
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
+import { getAsset } from '@lib/api/assets';
+import { getGeneration } from '@lib/api/generations';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
 import { createBadgeWidget } from '@lib/ui/overlay';
 
-import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
+import { getAssetDisplayUrls, fromAssetResponse, type AssetModel } from '@features/assets';
 import {
   CAP_GENERATION_WIDGET,
   useCapability,
@@ -24,19 +26,174 @@ import {
   getStatusConfig,
   getStatusBadgeClasses,
   getGenerationInputStore,
+  getGenerationSessionStore,
+  getGenerationSettingsStore,
   type InputItem,
 } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
-import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
+import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import { OPERATION_METADATA, type OperationType, type MediaType } from '@/types/operations';
+
 
 import type { MediaCardProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 const EMPTY_INPUTS: InputItem[] = [];
+const INPUT_PARAM_KEYS = new Set([
+  'prompt',
+  'prompts',
+  'negative_prompt',
+  'negativePrompt',
+  'image_url',
+  'image_urls',
+  'imageUrl',
+  'imageUrls',
+  'video_url',
+  'videoUrl',
+  'original_video_id',
+  'originalVideoId',
+  'source_asset_id',
+  'source_asset_ids',
+  'sourceAssetId',
+  'sourceAssetIds',
+  'composition_assets',
+  'compositionAssets',
+  'preset_id',
+  'presetId',
+  'operation_type',
+  'operationType',
+]);
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => toNumber(entry))
+    .filter((entry): entry is number => entry !== null);
+}
+
+function stripInputParams(params: Record<string, unknown>): Record<string, unknown> {
+  const filtered: Record<string, unknown> = {};
+  Object.entries(params).forEach(([key, value]) => {
+    if (!INPUT_PARAM_KEYS.has(key)) {
+      filtered[key] = value;
+    }
+  });
+  return filtered;
+}
+
+function pickString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+  return '';
+}
+
+function extractGenerationPrompt(
+  generation: Record<string, unknown>,
+  params: Record<string, unknown>,
+): string {
+  const promptConfig = (generation as any).prompt_config ?? (generation as any).promptConfig ?? {};
+  const generationConfig =
+    (params as any).generation_config ??
+    (params as any).generationConfig ??
+    {};
+
+  return pickString(
+    (generation as any).final_prompt,
+    (generation as any).finalPrompt,
+    (generation as any).prompt,
+    (promptConfig as any).inlinePrompt,
+    (generationConfig as any).prompt,
+    (params as any).prompt,
+  );
+}
+
+function extractGenerationAssetIds(
+  generation: Record<string, unknown>,
+  params: Record<string, unknown>,
+): number[] {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  const push = (id: number | null) => {
+    if (id === null || seen.has(id)) return;
+    seen.add(id);
+    ids.push(id);
+  };
+
+  [
+    ...toNumberArray((generation as any).source_asset_ids),
+    ...toNumberArray((generation as any).sourceAssetIds),
+  ].forEach((id) => push(id));
+
+  const directId =
+    toNumber((generation as any).source_asset_id) ??
+    toNumber((generation as any).sourceAssetId) ??
+    null;
+  push(directId);
+
+  [
+    ...toNumberArray((params as any).source_asset_ids),
+    ...toNumberArray((params as any).sourceAssetIds),
+  ].forEach((id) => push(id));
+
+  const paramSourceId =
+    toNumber((params as any).source_asset_id) ??
+    toNumber((params as any).sourceAssetId) ??
+    toNumber((params as any).original_video_id) ??
+    toNumber((params as any).originalVideoId) ??
+    null;
+  push(paramSourceId);
+
+  const compositionAssets =
+    (params as any).composition_assets ??
+    (params as any).compositionAssets;
+  if (Array.isArray(compositionAssets)) {
+    compositionAssets.forEach((entry) => {
+      if (typeof entry === 'number' || typeof entry === 'string') {
+        push(toNumber(entry));
+        return;
+      }
+      if (entry && typeof entry === 'object') {
+        const assetId =
+          toNumber((entry as any).asset_id) ??
+          toNumber((entry as any).assetId) ??
+          toNumber((entry as any).id) ??
+          null;
+        push(assetId);
+      }
+    });
+  }
+
+  const inputs = (generation as any).inputs;
+  if (Array.isArray(inputs)) {
+    inputs.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const assetId =
+        toNumber((entry as any).asset_id) ??
+        toNumber((entry as any).assetId) ??
+        toNumber((entry as any).id) ??
+        toNumber((entry as any).asset?.id) ??
+        null;
+      push(assetId);
+    });
+  }
+
+  return ids;
+}
 
 type GenerationButtonGroupContentProps = {
   data: MediaCardOverlayData;
@@ -59,7 +216,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
 
   // Get scoped stores (follows same scoping as the widget capability)
-  const { useSessionStore, useSettingsStore, useInputStore } = useGenerationScopeStores();
+  const { useSessionStore, useSettingsStore, useInputStore, id: scopedScopeId } = useGenerationScopeStores();
   const scopedOperationType = useSessionStore((s) => s.operationType);
   const scopedAddInput = useInputStore((s) => s.addInput);
   const scopedAddInputs = useInputStore((s) => s.addInputs);
@@ -91,6 +248,90 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     activeModel,
   );
   const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
+
+  const [isLoadingSource, setIsLoadingSource] = useState(false);
+
+  const handleLoadToQuickGen = useCallback(async () => {
+    if (!data.sourceGenerationId || isLoadingSource) return;
+
+    setIsLoadingSource(true);
+
+    try {
+      const generation = await getGeneration(data.sourceGenerationId);
+      const genRecord = generation as unknown as Record<string, unknown>;
+      const params =
+        (genRecord as any).params ??
+        (genRecord as any).canonical_params ??
+        (genRecord as any).raw_params ??
+        (genRecord as any).canonicalParams ??
+        (genRecord as any).rawParams ??
+        {};
+
+      const candidateOperation =
+        (genRecord as any).operation_type ??
+        (genRecord as any).operationType ??
+        (genRecord as any).generation_type ??
+        (genRecord as any).generationType;
+      const resolvedOperationType =
+        candidateOperation && candidateOperation in OPERATION_METADATA
+          ? (candidateOperation as OperationType)
+          : operationType;
+
+      const providerId =
+        (genRecord as any).provider_id ??
+        (genRecord as any).providerId ??
+        undefined;
+
+      const prompt = extractGenerationPrompt(genRecord, params as Record<string, unknown>);
+
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const sessionStore = getGenerationSessionStore(scopeId).getState();
+      const settingsStore = getGenerationSettingsStore(scopeId).getState();
+      const inputStore = getGenerationInputStore(scopeId).getState();
+
+      if (resolvedOperationType) {
+        sessionStore.setOperationType(resolvedOperationType);
+        widgetContext?.setOperationType?.(resolvedOperationType);
+      }
+
+      if (providerId) {
+        sessionStore.setProvider(providerId);
+      }
+
+      sessionStore.setPreset(undefined);
+      sessionStore.setPresetParams({});
+      sessionStore.setPrompt(prompt);
+
+      if (params && typeof params === 'object') {
+        settingsStore.setDynamicParams(stripInputParams(params as Record<string, unknown>));
+      }
+
+      inputStore.clearInputs(resolvedOperationType);
+
+      const assetIds = extractGenerationAssetIds(genRecord, params as Record<string, unknown>);
+      if (assetIds.length > 0) {
+        const results = await Promise.allSettled(assetIds.map((assetId) => getAsset(assetId)));
+        const assets = results
+          .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
+          .filter((asset): asset is AssetModel => !!asset);
+
+        if (assets.length > 0) {
+          inputStore.addInputs({ assets, operationType: resolvedOperationType });
+        }
+      }
+
+      widgetContext?.setOpen(true);
+    } catch (error) {
+      console.error('Failed to load generation into Quick Generate:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: 'Failed to load generation settings.',
+        duration: 4000,
+      });
+    } finally {
+      setIsLoadingSource(false);
+    }
+  }, [data.sourceGenerationId, isLoadingSource, operationType, scopedScopeId, widgetContext]);
 
   // Reconstruct asset for slot picker
   const inputAsset: AssetModel = {
@@ -220,6 +461,26 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       icon: <Icon name="rotateCcw" size={14} />,
       onClick: () => actions.onRegenerateAsset?.(sourceGenerationId),
       title: 'Regenerate (run same generation again)',
+      expandContent: (
+        <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
+          <button
+            onClick={handleLoadToQuickGen}
+            className="w-36 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2"
+            title="Load this generation into Quick Generate"
+            disabled={isLoadingSource}
+            type="button"
+          >
+            {isLoadingSource ? (
+              <Icon name="loader" size={12} className="animate-spin" />
+            ) : (
+              <Icon name="edit" size={12} />
+            )}
+            <span>Load to Quick Gen</span>
+          </button>
+        </div>
+      ),
+      expandDelay: 150,
+      collapseDelay: 150,
     });
   }
 
@@ -416,7 +677,12 @@ function SlotPickerContent({
 
 function SlotThumbnail({ asset, alt }: { asset: AssetModel; alt: string }) {
   const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
-  const src = useMediaThumbnail(thumbnailUrl, previewUrl, mainUrl);
+  const { thumbSrc } = useResolvedAssetMedia({
+    thumbUrl: thumbnailUrl,
+    previewUrl,
+    remoteUrl: mainUrl,
+  });
+  const src = thumbSrc;
 
   if (!src) {
     return (

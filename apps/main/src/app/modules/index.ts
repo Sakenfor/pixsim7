@@ -9,10 +9,10 @@ import { gameSessionModule } from './core/gameSessionModule';
 import { pluginBootstrapModule } from './core/pluginBootstrapModule';
 
 // Page modules (navigation metadata only)
+// Note: npcs module now auto-discovered via features/npcs/module.ts
 import {
   arcGraphModule,
   graphModule as graphPageModule,
-  npcPortraitsModule,
   game2DModule,
   gizmoLabModule,
   interactionStudioModule,
@@ -34,6 +34,7 @@ import {
   actionBlockGraphModule,
   blockFitModule,
   widgetBuilderModule,
+  mediaHarnessModule,
   routineGraphPageModule,
 } from './pages';
 import { moduleRegistry } from './registry';
@@ -53,9 +54,9 @@ export function registerModules() {
   registerDiscoveredFeatureModules();
 
   // Page-only modules (no initialization logic, just navigation metadata)
+  // Note: npcs module now auto-discovered via features/npcs/module.ts
   moduleRegistry.register(arcGraphModule);
   moduleRegistry.register(graphPageModule);
-  moduleRegistry.register(npcPortraitsModule);
   moduleRegistry.register(game2DModule);
   moduleRegistry.register(gizmoLabModule);
   moduleRegistry.register(interactionStudioModule);
@@ -77,6 +78,7 @@ export function registerModules() {
   moduleRegistry.register(actionBlockGraphModule);
   moduleRegistry.register(blockFitModule);
   moduleRegistry.register(widgetBuilderModule);
+  moduleRegistry.register(mediaHarnessModule);
   moduleRegistry.register(routineGraphPageModule);
 }
 
