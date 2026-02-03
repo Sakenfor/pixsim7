@@ -131,41 +131,63 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
         const hasBlocks = panels.includes(QUICKGEN_PANEL_IDS.blocks);
 
-        // First panel
+        const addPanelIfMissing = (
+          panelId: string,
+          options?: Omit<Parameters<DockviewApi['addPanel']>[0], 'id' | 'component' | 'title'>
+        ) => {
+          if (api.getPanel(panelId)) return;
+          api.addPanel({
+            id: panelId,
+            component: panelId,
+            title: getPanelTitle(panelId),
+            ...options,
+          });
+        };
+
+        const promptPanel = api.getPanel(QUICKGEN_PANEL_IDS.prompt);
+
+        // First panel (asset or prompt)
         const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
-        api.addPanel({
-          id: firstPanel,
-          component: firstPanel,
-          title: getPanelTitle(firstPanel),
-        });
+        if (firstPanel === QUICKGEN_PANEL_IDS.asset && !api.getPanel(firstPanel)) {
+          addPanelIfMissing(
+            firstPanel,
+            promptPanel
+              ? { position: { direction: 'left', referencePanel: QUICKGEN_PANEL_IDS.prompt } }
+              : undefined
+          );
+        } else {
+          addPanelIfMissing(firstPanel);
+        }
 
         // Prompt (if not first)
         if (hasAsset && panels.includes(QUICKGEN_PANEL_IDS.prompt)) {
-          api.addPanel({
-            id: QUICKGEN_PANEL_IDS.prompt,
-            component: QUICKGEN_PANEL_IDS.prompt,
-            title: getPanelTitle(QUICKGEN_PANEL_IDS.prompt),
-            position: { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.asset },
+          addPanelIfMissing(QUICKGEN_PANEL_IDS.prompt, {
+            position: api.getPanel(QUICKGEN_PANEL_IDS.asset)
+              ? { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.asset }
+              : undefined,
           });
         }
 
         // Settings
         if (panels.includes(QUICKGEN_PANEL_IDS.settings)) {
-          api.addPanel({
-            id: QUICKGEN_PANEL_IDS.settings,
-            component: QUICKGEN_PANEL_IDS.settings,
-            title: getPanelTitle(QUICKGEN_PANEL_IDS.settings),
-            position: { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt },
+          const settingsRefPanel = api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+            ? QUICKGEN_PANEL_IDS.prompt
+            : api.getPanel(QUICKGEN_PANEL_IDS.asset)
+              ? QUICKGEN_PANEL_IDS.asset
+              : undefined;
+          addPanelIfMissing(QUICKGEN_PANEL_IDS.settings, {
+            position: settingsRefPanel
+              ? { direction: 'right', referencePanel: settingsRefPanel }
+              : undefined,
           });
         }
 
         // Blocks below prompt
         if (hasBlocks) {
-          api.addPanel({
-            id: QUICKGEN_PANEL_IDS.blocks,
-            component: QUICKGEN_PANEL_IDS.blocks,
-            title: getPanelTitle(QUICKGEN_PANEL_IDS.blocks),
-            position: { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt },
+          addPanelIfMissing(QUICKGEN_PANEL_IDS.blocks, {
+            position: api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+              ? { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt }
+              : undefined,
           });
         }
       },
