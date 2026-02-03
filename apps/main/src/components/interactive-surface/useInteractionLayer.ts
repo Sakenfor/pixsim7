@@ -6,7 +6,7 @@
  * creating regions, and managing undo/redo history.
  */
 
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
 import { generateUUID } from '@lib/utils/uuid';
 
@@ -701,11 +701,9 @@ export function useInteractionLayer(
   // Notify on state change
   // ============================================================================
 
-  const prevStateRef = useRef(state);
-  if (state !== prevStateRef.current) {
-    prevStateRef.current = state;
+  useEffect(() => {
     onStateChange?.(state);
-  }
+  }, [state, onStateChange]);
 
   // ============================================================================
   // Return

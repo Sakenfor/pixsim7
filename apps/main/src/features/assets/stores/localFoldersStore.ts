@@ -1,11 +1,23 @@
 /* Local Folders store using File System Access API (Chromium).
  * Persists directory handles in IndexedDB so each user can add their own folders.
+ * Also syncs folder metadata to backend for recovery if IndexedDB is cleared.
  */
 import { create } from 'zustand';
+
+import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreferences';
 
 import { useAuthStore } from '@/stores/authStore';
 
 import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
+
+// --- Backend sync types ---
+type SyncedFolderMeta = {
+  id: string;
+  name: string;
+  addedAt: number;
+};
+
+const BACKEND_PREF_KEY = 'localFolders';
 
 type DirHandle = FileSystemDirectoryHandle;
 type FileHandle = FileSystemFileHandle;
@@ -48,6 +60,8 @@ type LocalFoldersState = {
   loading: boolean; // Prevents concurrent loadPersisted calls
   scanning: ScanningState;  // Progress indicator for folder scanning
   error?: string;
+  /** Folder names that exist in backend but are missing locally (IndexedDB was cleared) */
+  missingFolderNames: string[];
   addFolder: () => Promise<void>;
   removeFolder: (id: string) => Promise<void>;
   refreshFolder: (id: string, silent?: boolean) => Promise<void>;
@@ -62,6 +76,8 @@ type LocalFoldersState = {
     status: 'success' | 'error',
     note?: string
   ) => Promise<void>;
+  /** Clear the missing folders warning */
+  dismissMissingFolders: () => void;
 };
 
 // --- minimal IndexedDB helpers ---
@@ -72,6 +88,60 @@ const STORAGE_KEY_PREFIX = 'ps7_local_folders';
 function getUserNamespace(): string {
   const userId = useAuthStore.getState().user?.id;
   return userId ? `user_${userId}` : 'anonymous';
+}
+
+function getAnonymousNamespace(): string {
+  return 'anonymous';
+}
+
+/**
+ * Check if there are folders stored under the anonymous namespace
+ * that should be migrated to the user's namespace.
+ */
+async function migrateAnonymousFolders(userId: string): Promise<FolderEntry[]> {
+  const anonymousKey = `${STORAGE_KEY_PREFIX}_folders_${getAnonymousNamespace()}`;
+  const userKey = `${STORAGE_KEY_PREFIX}_folders_user_${userId}`;
+
+  try {
+    const anonymousFolders = await idbGet<FolderEntry[]>(anonymousKey);
+    if (!anonymousFolders || anonymousFolders.length === 0) {
+      return [];
+    }
+
+    // Get existing user folders
+    const userFolders = await idbGet<FolderEntry[]>(userKey) || [];
+    const existingIds = new Set(userFolders.map(f => f.id));
+
+    // Find folders to migrate (not already in user's list)
+    const toMigrate = anonymousFolders.filter(f => !existingIds.has(f.id));
+
+    if (toMigrate.length > 0) {
+      // Merge and save to user namespace
+      const merged = [...userFolders, ...toMigrate];
+      await idbSet(userKey, merged);
+
+      // Also migrate assets for each folder
+      for (const folder of toMigrate) {
+        const anonAssetsKey = `${STORAGE_KEY_PREFIX}_assets_${getAnonymousNamespace()}_${folder.id}`;
+        const userAssetsKey = `${STORAGE_KEY_PREFIX}_assets_user_${userId}_${folder.id}`;
+        const assets = await idbGet<AssetMeta[]>(anonAssetsKey);
+        if (assets && assets.length > 0) {
+          await idbSet(userAssetsKey, assets);
+        }
+      }
+
+      // Clear anonymous folders after successful migration
+      await idbSet(anonymousKey, []);
+
+      console.info(`[LocalFolders] Migrated ${toMigrate.length} folders from anonymous to user namespace`);
+      return toMigrate;
+    }
+
+    return [];
+  } catch (e) {
+    console.warn('[LocalFolders] Failed to migrate anonymous folders:', e);
+    return [];
+  }
 }
 
 function getFoldersKey(): string {
@@ -91,14 +161,91 @@ function getUploadsKey(): string {
   return `${STORAGE_KEY_PREFIX}_uploads_${getUserNamespace()}`;
 }
 
-async function requestStoragePersistence(): Promise<void> {
+async function requestStoragePersistence(): Promise<boolean> {
   try {
     if (navigator.storage?.persist) {
-      await navigator.storage.persist();
+      // Check if already persisted
+      const alreadyPersisted = await navigator.storage.persisted?.();
+      if (alreadyPersisted) {
+        return true;
+      }
+
+      const granted = await navigator.storage.persist();
+      if (!granted) {
+        console.warn('[LocalFolders] Storage persistence not granted - folders may be lost under storage pressure');
+      }
+      return granted;
     }
-  } catch {
-    // Ignore persistence request failures (best-effort).
+    return false;
+  } catch (e) {
+    console.warn('[LocalFolders] Failed to request storage persistence:', e);
+    return false;
   }
+}
+
+/**
+ * Check if storage is persisted
+ */
+export async function isStoragePersisted(): Promise<boolean> {
+  try {
+    return await navigator.storage?.persisted?.() ?? false;
+  } catch {
+    return false;
+  }
+}
+
+// --- Backend sync functions ---
+
+/**
+ * Sync folder metadata to backend user preferences.
+ * This allows recovery of folder names if IndexedDB is cleared.
+ */
+async function syncFoldersToBackend(folders: FolderEntry[]): Promise<void> {
+  const userId = useAuthStore.getState().user?.id;
+  if (!userId) return;
+
+  try {
+    const syncedFolders: SyncedFolderMeta[] = folders.map(f => ({
+      id: f.id,
+      name: f.name,
+      addedAt: Date.now(),
+    }));
+    await updatePreferenceKey(BACKEND_PREF_KEY, syncedFolders);
+    console.debug('[LocalFolders] Synced to backend:', syncedFolders.length, 'folders');
+  } catch (e) {
+    console.warn('[LocalFolders] Failed to sync to backend:', e);
+  }
+}
+
+/**
+ * Get folder metadata from backend.
+ * Returns folder names that were previously added but may be missing from IndexedDB.
+ */
+async function getFoldersFromBackend(): Promise<SyncedFolderMeta[]> {
+  const userId = useAuthStore.getState().user?.id;
+  if (!userId) return [];
+
+  try {
+    const prefs = await getUserPreferences();
+    const synced = prefs?.preferences?.[BACKEND_PREF_KEY] as SyncedFolderMeta[] | undefined;
+    return synced ?? [];
+  } catch (e) {
+    console.warn('[LocalFolders] Failed to get folders from backend:', e);
+    return [];
+  }
+}
+
+/**
+ * Get list of folder names that exist in backend but are missing locally.
+ */
+export async function getMissingFolderNames(): Promise<string[]> {
+  const backendFolders = await getFoldersFromBackend();
+  const localFolders = useLocalFolders.getState().folders;
+  const localIds = new Set(localFolders.map(f => f.id));
+
+  return backendFolders
+    .filter(f => !localIds.has(f.id))
+    .map(f => f.name);
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -421,6 +568,42 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
   }
 }
 
+/**
+ * Debug helper - call from browser console: window.__debugLocalFolders()
+ * Shows all IndexedDB entries for local folders across all namespaces.
+ */
+async function debugLocalFolders(): Promise<void> {
+  try {
+    const db = await openDB();
+    const tx = db.transaction('kv', 'readonly');
+    const store = tx.objectStore('kv');
+
+    const allKeys = await new Promise<string[]>((resolve, reject) => {
+      const req = store.getAllKeys();
+      req.onsuccess = () => resolve(req.result as string[]);
+      req.onerror = () => reject(req.error);
+    });
+
+    const folderKeys = allKeys.filter(k => k.includes('_folders_'));
+    console.group('[LocalFolders Debug] IndexedDB Contents');
+    console.info('Current namespace:', getUserNamespace());
+    console.info('Current userId:', useAuthStore.getState().user?.id ?? 'none');
+
+    for (const key of folderKeys) {
+      const value = await idbGet<FolderEntry[]>(key);
+      console.info(`${key}:`, value?.map(f => ({ id: f.id, name: f.name })) ?? 'empty');
+    }
+    console.groupEnd();
+  } catch (e) {
+    console.error('[LocalFolders Debug] Error:', e);
+  }
+}
+
+// Expose to window for debugging
+if (typeof window !== 'undefined') {
+  (window as any).__debugLocalFolders = debugLocalFolders;
+}
+
 export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   supported: isFSASupported(),
   folders: [],
@@ -429,6 +612,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   loading: false,
   scanning: null,
   error: undefined,
+  missingFolderNames: [], // Folders in backend but missing locally (IndexedDB cleared)
 
   loadPersisted: async () => {
     if (!isFSASupported()) return;
@@ -437,8 +621,29 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     if (get().loading) return;
     try {
       set({ loading: true, error: undefined });
-      void requestStoragePersistence();
-      const stored = await idbGet<FolderEntry[]>(getFoldersKey());
+      // Best-effort persistence request - don't block on result
+      requestStoragePersistence().catch(() => {});
+
+      // Migrate any folders from anonymous namespace to user namespace
+      const userId = useAuthStore.getState().user?.id;
+      if (userId) {
+        await migrateAnonymousFolders(userId);
+      }
+
+      const foldersKey = getFoldersKey();
+      const namespace = getUserNamespace();
+      console.info('[LocalFolders] loadPersisted called:', {
+        key: foldersKey,
+        namespace,
+        userId: useAuthStore.getState().user?.id ?? 'none',
+        isAnonymous: namespace === 'anonymous',
+      });
+      const stored = await idbGet<FolderEntry[]>(foldersKey);
+      console.info('[LocalFolders] Loaded from IndexedDB:', {
+        count: stored?.length ?? 0,
+        folders: stored?.map(f => ({ id: f.id, name: f.name })) ?? [],
+      });
+
       if (stored && stored.length) {
         // Request permission again if needed
         // IMPORTANT: Keep all folders even if permission fails - prevents data loss
@@ -501,6 +706,18 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
           }
         }
       }
+      // Check for folders in backend that are missing locally
+      const backendFolders = await getFoldersFromBackend();
+      const localIds = new Set(get().folders.map(f => f.id));
+      const missing = backendFolders
+        .filter(f => !localIds.has(f.id))
+        .map(f => f.name);
+
+      if (missing.length > 0) {
+        console.warn('[LocalFolders] Folders missing locally but exist in backend:', missing);
+        set({ missingFolderNames: missing });
+      }
+
       set({ loading: false });
     } catch (e: unknown) {
       set({ loading: false, error: e instanceof Error ? e.message : 'Failed to load persisted folders' });
@@ -512,15 +729,30 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       set({ error: 'Your browser does not support local folder access. Use Chrome/Edge.' });
       return;
     }
+    // Warn if adding folder without being logged in - data will be in anonymous namespace
+    const userId = useAuthStore.getState().user?.id;
+    if (!userId) {
+      console.warn('[LocalFolders] Adding folder without logged-in user - will be stored in anonymous namespace');
+    }
     set({ adding: true, error: undefined });
     try {
-      void requestStoragePersistence();
+      const persistenceGranted = await requestStoragePersistence();
       const dir: DirHandle = await (window as any).showDirectoryPicker();
-      const id = `${dir.name}-${Date.now()}-${getUserNamespace()}`;
+      const namespace = getUserNamespace();
+      const id = `${dir.name}-${Date.now()}-${namespace}`;
       const entry: FolderEntry = { id, name: dir.name, handle: dir };
       const folders = [...get().folders, entry];
       set({ folders });
-      await idbSet(getFoldersKey(), folders);
+      const foldersKey = getFoldersKey();
+      console.info('[LocalFolders] Adding folder:', {
+        name: dir.name,
+        id,
+        namespace,
+        key: foldersKey,
+        totalFolders: folders.length,
+        storagePersisted: persistenceGranted,
+      });
+      await idbSet(foldersKey, folders);
 
       // Use chunked scanner with progress reporting
       set({ scanning: { folderId: id, scanned: 0, found: 0, currentPath: '' } });
@@ -530,6 +762,9 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
 
       set(s => ({ assets: { ...s.assets, ...Object.fromEntries(items.map(a => [a.key, a])) } }));
       await cacheAssets(id, items);
+
+      // Sync folder list to backend for recovery
+      void syncFoldersToBackend(folders);
     } catch (e: any) {
       if (e?.name !== 'AbortError') set({ error: e?.message || 'Failed to add folder' });
     } finally {
@@ -550,6 +785,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     } catch (e) {
       console.warn('Failed to remove cached assets', e);
     }
+    // Sync updated folder list to backend
+    void syncFoldersToBackend(remain);
   },
 
   refreshFolder: async (id: string, silent = false) => {
@@ -658,6 +895,10 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const folderId = asset.folderId;
     const folderAssets = Object.values(get().assets).filter(a => a.folderId === folderId);
     await cacheAssets(folderId, folderAssets);
+  },
+
+  dismissMissingFolders: () => {
+    set({ missingFolderNames: [] });
   },
 }));
 

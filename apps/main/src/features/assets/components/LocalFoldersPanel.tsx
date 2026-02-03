@@ -8,6 +8,7 @@ import { useProviders } from '@features/providers';
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
 
 import { useAssetViewer } from '../hooks/useAssetViewer';
+import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 import { TreeFolderView } from './TreeFolderView';
@@ -147,8 +148,8 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     [shaDuplicates, controller.uploadStatus, controller.hashingProgress]
   );
   const handleOpen = useCallback(
-    async (asset: LocalAsset) => {
-      const previewUrl = controller.previews[asset.key];
+    async (asset: LocalAsset, resolvedPreviewUrl?: string) => {
+      const previewUrl = resolvedPreviewUrl || controller.previews[asset.key];
       // Get full-res file blob URL for the media viewer
       let fullUrl: string | undefined;
       try {
@@ -209,6 +210,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
         assets={displayAssets}
         getAssetKey={getAssetKey}
         getPreviewUrl={getPreviewUrl}
+        resolvePreviewUrl={useLocalAssetPreview}
         loadPreview={controller.loadPreview}
         getMediaType={getMediaType}
         getDescription={getDescription}
@@ -300,28 +302,71 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
             </select>
           </div>
 
+          {/* Missing folders warning */}
+          {controller.missingFolderNames.length > 0 && (
+            <div className="px-3 py-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs">
+              <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 mb-1">
+                <Icons.alertTriangle size={14} />
+                <span className="font-medium">Some folders need to be re-added</span>
+              </div>
+              <p className="text-amber-600 dark:text-amber-400 text-[10px] mb-2">
+                Browser storage was cleared. Click a missing folder below to restore it.
+              </p>
+              <button
+                className="text-[10px] text-amber-500 hover:text-amber-700 dark:hover:text-amber-200 underline"
+                onClick={controller.dismissMissingFolders}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           {/* Folder selection + list */}
-          {controller.folders.length > 0 && (
+          {(controller.folders.length > 0 || controller.missingFolderNames.length > 0) && (
             <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden bg-white dark:bg-neutral-900">
               <div className="text-[11px] font-medium p-2 text-neutral-500 dark:text-neutral-400 px-3 flex items-center gap-2 border-b border-neutral-200 dark:border-neutral-700">
                 <Icons.folderTree size={12} />
                 <span>All Local Folders</span>
               </div>
               <div className="max-h-[400px] overflow-y-auto">
-                <TreeFolderView
-                  assets={controller.assets}
-                  folderNames={folderNames}
-                  folderOrder={controller.folders.map(f => f.id)}
-                  onFileClick={controller.openViewer}
-                  onPreview={controller.loadPreview}
-                  previews={controller.previews}
-                  uploadStatus={controller.uploadStatus}
-                  onUpload={controller.uploadOne}
-                  providerId={controller.providerId}
-                  compactMode={true}
-                  selectedFolderPath={controller.selectedFolderPath || undefined}
-                  onFolderSelect={controller.setSelectedFolderPath}
-                />
+                {/* Missing folder placeholders */}
+                {controller.missingFolderNames.map((name) => (
+                  <button
+                    key={`missing:${name}`}
+                    className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-amber-50 dark:hover:bg-amber-900/20 border-b border-neutral-100 dark:border-neutral-800 last:border-b-0 group"
+                    onClick={() => controller.restoreMissingFolder(name)}
+                    title={`Click to re-add "${name}" folder`}
+                  >
+                    <div className="relative flex-shrink-0">
+                      <Icons.folder size={14} className="text-amber-500/50" />
+                      <Icons.plus size={8} className="absolute -bottom-0.5 -right-0.5 text-amber-600 bg-white dark:bg-neutral-900 rounded-full" />
+                    </div>
+                    <span className="text-xs text-amber-600 dark:text-amber-400 truncate flex-1">
+                      {name}
+                    </span>
+                    <span className="text-[10px] text-amber-500 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                      Click to restore
+                    </span>
+                  </button>
+                ))}
+
+                {/* Real folders tree */}
+                {controller.folders.length > 0 && (
+                  <TreeFolderView
+                    assets={controller.assets}
+                    folderNames={folderNames}
+                    folderOrder={controller.folders.map(f => f.id)}
+                    onFileClick={handleOpen}
+                    onPreview={controller.loadPreview}
+                    previews={controller.previews}
+                    uploadStatus={controller.uploadStatus}
+                    onUpload={controller.uploadOne}
+                    providerId={controller.providerId}
+                    compactMode={true}
+                    selectedFolderPath={controller.selectedFolderPath || undefined}
+                    onFolderSelect={controller.setSelectedFolderPath}
+                  />
+                )}
               </div>
             </div>
           )}

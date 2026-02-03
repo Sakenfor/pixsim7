@@ -40,6 +40,13 @@ export type ViewMode = 'grid' | 'tree' | 'list';
  * - FeatureFlagsCapability: supported
  * - ScanningCapability: adding, scanning
  */
+/** Folder entry with optional missing state */
+export type FolderWithMissing = {
+  id: string;
+  name: string;
+  isMissing: boolean;
+};
+
 export interface LocalFoldersController extends FolderSourceController<LocalAsset> {
   // Override source to use the legacy SourceInfo type for backward compatibility
   // The controller also provides the new SourceIdentity-compatible structure
@@ -50,4 +57,14 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
 
   // Background SHA hashing progress (null when idle)
   hashingProgress: { total: number; done: number } | null;
+
+  // Missing folders (exist in backend but IndexedDB was cleared)
+  /** Combined list of real folders + missing folder placeholders */
+  foldersWithMissing: FolderWithMissing[];
+  /** Names of folders that are missing locally but exist in backend */
+  missingFolderNames: string[];
+  /** Trigger folder picker to restore a missing folder */
+  restoreMissingFolder: (folderName: string) => Promise<void>;
+  /** Dismiss the missing folders warning */
+  dismissMissingFolders: () => void;
 }

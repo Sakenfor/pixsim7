@@ -25,6 +25,12 @@ import {
   type LocalAsset,
 } from '../stores/localFoldersStore';
 
+/** Placeholder folder that needs to be re-added */
+export type MissingFolder = {
+  name: string;
+  isMissing: true;
+};
+
 /**
  * Source identity for local folders
  * Satisfies both SourceIdentity (new) and SourceInfo (legacy) interfaces
@@ -60,6 +66,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     getUploadRecordByHash,
     setUploadRecordByHash,
     updateAssetUploadStatus,
+    missingFolderNames,
+    dismissMissingFolders,
   } = useLocalFolders();
   const userId = useAuthStore((state) => state.user?.id);
 
@@ -107,6 +115,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   useEffect(() => {
     // Don't load until we have a userId - prevents loading from wrong namespace
     // and then overwriting with empty state
+    console.info('[LocalFoldersController] Load effect:', { userId: userId ?? 'none' });
     if (!userId) return;
     loadPersisted();
   }, [loadPersisted, userId]);
@@ -569,10 +578,34 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Get unique key for an asset
   const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
 
+  // Restore a missing folder - opens folder picker with guidance
+  // The user needs to navigate to the same folder to restore it
+  const restoreMissingFolder = useCallback(async (folderName: string) => {
+    // Show guidance about which folder to select
+    console.info(`[LocalFolders] Please select the "${folderName}" folder to restore it`);
+    // Just call addFolder - the user needs to navigate to the correct folder
+    await addFolder();
+  }, [addFolder]);
+
+  // Combined list of real folders + missing folder placeholders
+  const foldersWithMissing = useMemo(() => {
+    const real = rawFolders.map(f => ({ id: f.id, name: f.name, isMissing: false as const }));
+    const missing = missingFolderNames.map(name => ({
+      id: `missing:${name}`,
+      name,
+      isMissing: true as const,
+    }));
+    return [...real, ...missing];
+  }, [rawFolders, missingFolderNames]);
+
   // Return controller interface
   return {
     source: LOCAL_SOURCE,
     folders: rawFolders.map(f => ({ id: f.id, name: f.name })),
+    foldersWithMissing,
+    missingFolderNames,
+    restoreMissingFolder,
+    dismissMissingFolders,
     assets: assetList,
     filteredAssets,
     getAssetKey,
