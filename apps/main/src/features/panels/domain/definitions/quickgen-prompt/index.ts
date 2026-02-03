@@ -1,6 +1,7 @@
+import { PromptPanel as QuickGenPromptPanel } from '@features/generation/components/QuickGeneratePanels';
+import { QUICKGEN_PROMPT_COMPONENT_ID } from '@features/generation/lib/quickGenerateComponentSettings';
+
 import { definePanel } from '../../../lib/definePanel';
-import { PromptPanel as QuickGenPromptPanel } from '@features/controlCenter/components/QuickGeneratePanels';
-import { QUICKGEN_PROMPT_COMPONENT_ID } from '@features/controlCenter/lib/quickGenerateComponentSettings';
 
 export default definePanel({
   id: 'quickgen-prompt',

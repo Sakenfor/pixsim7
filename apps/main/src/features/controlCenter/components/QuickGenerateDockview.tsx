@@ -17,8 +17,7 @@ import {
   QUICKGEN_PRESETS,
   type QuickGenPanelHostRef,
 } from '@features/generation';
-
-import type { QuickGenPanelContext } from './QuickGeneratePanels';
+import type { QuickGenPanelContext } from '@features/generation/components/QuickGeneratePanels';
 
 export interface QuickGenerateDockviewProps {
   /** Shared context passed to all panel components */

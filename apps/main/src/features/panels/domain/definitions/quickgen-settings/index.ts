@@ -1,6 +1,7 @@
+import { SettingsPanel as QuickGenSettingsPanel } from '@features/generation/components/QuickGeneratePanels';
+import { QUICKGEN_SETTINGS_COMPONENT_ID } from '@features/generation/lib/quickGenerateComponentSettings';
+
 import { definePanel } from '../../../lib/definePanel';
-import { SettingsPanel as QuickGenSettingsPanel } from '@features/controlCenter/components/QuickGeneratePanels';
-import { QUICKGEN_SETTINGS_COMPONENT_ID } from '@features/controlCenter/lib/quickGenerateComponentSettings';
 
 export default definePanel({
   id: 'quickgen-settings',

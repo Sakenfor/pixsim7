@@ -7,6 +7,6 @@
  *
  * This folder contains:
  * - api.ts: Generation API wrappers
- * - quickGenerateComponentSettings.ts: Component settings for quick generate
- * - registerQuickGenerateComponentSettings.ts: Registration helper
+ *
+ * Quick generate component settings have been moved to @features/generation/lib/
  */

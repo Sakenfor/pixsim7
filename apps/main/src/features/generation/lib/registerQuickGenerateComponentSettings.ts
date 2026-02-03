@@ -1,10 +1,13 @@
+
 import { componentRegistry } from "@features/componentSettings";
 
 import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_SETTINGS_COMPONENT_ID,
+  QUICKGEN_ASSET_COMPONENT_ID,
   QUICKGEN_PROMPT_DEFAULTS,
   QUICKGEN_SETTINGS_DEFAULTS,
+  QUICKGEN_ASSET_DEFAULTS,
 } from "./quickGenerateComponentSettings";
 
 let registered = false;
@@ -90,6 +93,43 @@ export function registerQuickGenerateComponentSettings() {
               description: "Save and load prompt + inputs + settings as named sets",
               type: "toggle",
               defaultValue: QUICKGEN_SETTINGS_DEFAULTS.showInputSets,
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+  componentRegistry.register({
+    id: QUICKGEN_ASSET_COMPONENT_ID,
+    title: "QuickGen Asset",
+    description: "Asset input preview behavior.",
+    defaultSettings: QUICKGEN_ASSET_DEFAULTS,
+    settingsForm: {
+      groups: [
+        {
+          id: "asset-preview",
+          title: "Preview",
+          fields: [
+            {
+              id: "enableHoverPreview",
+              label: "Hover preview",
+              description: "Scrub video previews on hover.",
+              type: "toggle",
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.enableHoverPreview,
+            },
+            {
+              id: "showPlayOverlay",
+              label: "Show play overlay",
+              type: "toggle",
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.showPlayOverlay,
+            },
+            {
+              id: "clickToPlay",
+              label: "Click to play",
+              description: "Toggle play/pause on click.",
+              type: "toggle",
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.clickToPlay,
             },
           ],
         },

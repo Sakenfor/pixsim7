@@ -1,5 +1,6 @@
+import { BlocksPanel as QuickGenBlocksPanel } from '@features/generation/components/QuickGeneratePanels';
+
 import { definePanel } from '../../../lib/definePanel';
-import { BlocksPanel as QuickGenBlocksPanel } from '@features/controlCenter/components/QuickGeneratePanels';
 
 export default definePanel({
   id: 'quickgen-blocks',

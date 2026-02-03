@@ -24,6 +24,7 @@ import {
   GenerationScopeProvider,
   resolveDisplayAssets,
 } from '@features/generation';
+import { type QuickGenPanelContext } from '@features/generation/components/QuickGeneratePanels';
 import {
   ScopeModeSelect,
   getInstanceId,
@@ -40,7 +41,6 @@ import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
-import { type QuickGenPanelContext } from './QuickGeneratePanels';
 
 
 /** Operation type categories for layout and behavior */

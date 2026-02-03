@@ -1,5 +1,6 @@
+import { AssetPanel as QuickGenAssetPanel } from '@features/generation/components/QuickGeneratePanels';
+
 import { definePanel } from '../../../lib/definePanel';
-import { AssetPanel as QuickGenAssetPanel } from '@features/controlCenter/components/QuickGeneratePanels';
 
 export default definePanel({
   id: 'quickgen-asset',

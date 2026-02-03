@@ -1,5 +1,6 @@
-export const QUICKGEN_PROMPT_COMPONENT_ID = 'quickgen-prompt';
 export const QUICKGEN_SETTINGS_COMPONENT_ID = 'quickgen-settings';
+export const QUICKGEN_ASSET_COMPONENT_ID = 'quickgen-asset';
+export const QUICKGEN_PROMPT_COMPONENT_ID = 'quickgen-prompt';
 
 export interface QuickGenPromptSettings {
   showCounter: boolean;
@@ -25,4 +26,16 @@ export const QUICKGEN_SETTINGS_DEFAULTS: QuickGenSettingsPanelSettings = {
   showOperationType: true,
   showProvider: true,
   showInputSets: true,
+};
+
+export interface QuickGenAssetSettings {
+  enableHoverPreview: boolean;
+  showPlayOverlay: boolean;
+  clickToPlay: boolean;
+}
+
+export const QUICKGEN_ASSET_DEFAULTS: QuickGenAssetSettings = {
+  enableHoverPreview: true,
+  showPlayOverlay: true,
+  clickToPlay: false,
 };

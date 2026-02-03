@@ -1,16 +1,16 @@
 
-import { registerProviderPlugins } from '@features/providers/lib/plugins';
 import { registerBuiltInMiniGames } from '@pixsim7/game.components';
 
 import { registerDevTools } from '@lib/dev/devtools/registerDevTools';
 
 import { registerBrainTools } from '@features/brainTools/lib/registerBrainTools';
-import { registerQuickGenerateComponentSettings } from '@features/controlCenter/lib/registerQuickGenerateComponentSettings';
 import { registerGallerySurfaces } from '@features/gallery/lib/core/registerGallerySurfaces';
 import { registerGalleryTools } from '@features/gallery/lib/core/registerGalleryTools';
 import { registerGenerationScopes } from '@features/generation';
+import { registerQuickGenerateComponentSettings } from '@features/generation/lib/registerQuickGenerateComponentSettings';
 import { registerGizmoSurfaces } from '@features/gizmos';
 import { registerPreviewScopes } from '@features/preview';
+import { registerProviderPlugins } from '@features/providers/lib/plugins';
 import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools';
 
 
