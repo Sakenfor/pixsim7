@@ -155,8 +155,15 @@ export interface MenuActionBase<TContext = MenuActionContextBase> {
   /** Show divider after this item */
   divider?: boolean;
 
-  /** Contexts where this action is available */
-  availableIn: ContextMenuContext[];
+  /** Contexts where this action is available (explicit list) */
+  availableIn?: ContextMenuContext[];
+
+  /**
+   * Capability keys required for this action to appear.
+   * Action is available in any context that provides ALL listed capabilities.
+   * Alternative to availableIn - use one or both.
+   */
+  requiredCapabilities?: string[];
 
   /** Additional visibility condition */
   visible?: (ctx: TContext) => boolean;

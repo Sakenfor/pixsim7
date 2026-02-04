@@ -1,8 +1,9 @@
 /* eslint-disable react-refresh/only-export-components */
 /**
- * Icon Settings Module
+ * Appearance Settings Module (Bridge Pattern)
  *
- * Registers schema-based icon settings and exposes them in the Settings panel.
+ * Icon pack selection and appearance settings.
+ * Uses DynamicSettingsPanel with schema from icon.settings.tsx.
  */
 
 import { settingsRegistry } from '../../lib/core/registry';

@@ -1,12 +1,12 @@
 /**
- * Generation Settings Module
+ * Generation Settings Module (Bridge Pattern)
  *
  * Configure retry behavior and other generation-related defaults.
- * Uses schema-driven settings system with auto-registration.
+ * Uses DynamicSettingsPanel with schema from generation.settings.tsx.
  */
 import { settingsRegistry } from '../../lib/core/registry';
-import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 import { registerGenerationSettings } from '../../lib/schemas/generation.settings';
+import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
 // Auto-register schema-based settings when module loads
 registerGenerationSettings();

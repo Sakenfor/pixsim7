@@ -102,6 +102,7 @@ function getCategoryPriority(category: string | undefined): number {
 
 export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
   private includeCapabilityActions = true;
+  private capabilityFilteringEnabled = true;
   private capabilityActionIds = new Set<string>();
   private capabilityOverrides = new Map<string, ToMenuActionOptions>();
   private capabilitySource: CapabilityActionSource | null = null;
@@ -117,6 +118,20 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
   setIncludeCapabilityActions(enabled: boolean): void {
     this.includeCapabilityActions = enabled;
     this.notifyListeners();
+  }
+
+  /**
+   * Enable/disable capability-based filtering (requiredCapabilities).
+   * When disabled, actions with requiredCapabilities are shown regardless of context.
+   * Useful for debugging or when capability system isn't fully set up.
+   */
+  setCapabilityFilteringEnabled(enabled: boolean): void {
+    this.capabilityFilteringEnabled = enabled;
+    this.notifyListeners();
+  }
+
+  getCapabilityFilteringEnabled(): boolean {
+    return this.capabilityFilteringEnabled;
   }
 
   getActionsForContext(
@@ -147,7 +162,7 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       : [];
 
     return [...registered, ...capabilityActions]
-      .filter(action => action.availableIn.includes(contextType))
+      .filter(action => this.isActionAvailableInContext(action, contextType, ctx))
       .filter(action => !action.visible || action.visible(ctx))
       .sort((a, b) => {
         const priorityA = getCategoryPriority(a.category);
@@ -185,6 +200,53 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
     }
 
     return items;
+  }
+
+  /**
+   * Check if an action is available in the given context.
+   * Supports both availableIn (explicit context list) and requiredCapabilities (capability-based).
+   *
+   * Uses OR logic when both are specified:
+   * - Action appears if context type is in availableIn, OR
+   * - Action appears if all requiredCapabilities are present
+   *
+   * This allows gradual migration from availableIn to requiredCapabilities.
+   */
+  private isActionAvailableInContext(
+    action: MenuActionBase,
+    contextType: ContextMenuContext,
+    ctx: MenuActionContextBase
+  ): boolean {
+    const hasAvailableIn = action.availableIn && action.availableIn.length > 0;
+    const hasRequiredCaps = action.requiredCapabilities && action.requiredCapabilities.length > 0;
+
+    // If neither is specified, action is not available
+    if (!hasAvailableIn && !hasRequiredCaps) {
+      return false;
+    }
+
+    // Check availableIn - if specified and matches, action is available
+    if (hasAvailableIn && action.availableIn!.includes(contextType)) {
+      return true;
+    }
+
+    // Check requiredCapabilities - if specified and all present, action is available
+    // Skip capability check if filtering is disabled (for debugging)
+    if (hasRequiredCaps) {
+      if (!this.capabilityFilteringEnabled) {
+        // When filtering disabled, treat requiredCapabilities as always satisfied
+        return true;
+      }
+      const capabilities = ctx.capabilities ?? {};
+      const hasAllCaps = action.requiredCapabilities!.every(
+        cap => capabilities[cap] !== undefined
+      );
+      if (hasAllCaps) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   private actionToMenuItem(action: MenuActionBase, ctx: MenuActionContextBase): MenuItem {

@@ -1,50 +1,36 @@
 /**
- * Nodes Settings Module
+ * Nodes Settings Module (Bridge Pattern)
  *
  * Settings for graph node behavior (video nodes, choice nodes, generation nodes, etc.).
  * Auto-generates tabs and sub-sections from node types that have settingsSchema defined.
+ * Uses DynamicSettingsPanel with schema from nodes.settings.tsx.
+ *
+ * NOTE: Schema registration is deferred to avoid circular dependency with nodeTypeRegistry.
  */
 
-import { useMemo } from 'react';
+import { useMemo, useEffect, useRef } from 'react';
 
 import { getNodeTypesWithSettings } from '@lib/nodeSettings';
 
-import { settingsRegistry, type SettingsSubSection } from '../../lib/core/registry';
+import { settingsRegistry } from '../../lib/core/registry';
 import { registerNodeSettings } from '../../lib/schemas/nodes.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
-// Auto-register schema-based settings when module loads
-registerNodeSettings();
-
-/**
- * Create a settings component for a specific node type.
- */
-function createNodeSettingsComponent(nodeTypeId: string) {
-  return function NodeSettingsTab() {
-    return (
-      <div className="flex-1 overflow-auto p-4">
-        <DynamicSettingsPanel categoryId="nodes" tabId={nodeTypeId} />
-      </div>
-    );
-  };
-}
-
-/**
- * Get all node types with settings schemas and generate sub-sections.
- */
-function getNodeSubSections(): SettingsSubSection[] {
-  const nodeTypesWithSettings = getNodeTypesWithSettings();
-
-  return nodeTypesWithSettings.map(nodeType => ({
-    id: nodeType.id,
-    label: nodeType.name,
-    icon: nodeType.icon,
-    component: createNodeSettingsComponent(nodeType.id),
-  }));
-}
+// Track if settings have been registered (deferred to avoid circular deps)
+let nodeSettingsRegistered = false;
 
 /** Default component - shows first node type's settings or empty state */
 export function NodesSettings() {
+  // Deferred registration to avoid circular dependency with nodeTypeRegistry
+  const registeredRef = useRef(false);
+  useEffect(() => {
+    if (!nodeSettingsRegistered && !registeredRef.current) {
+      registeredRef.current = true;
+      nodeSettingsRegistered = true;
+      registerNodeSettings();
+    }
+  }, []);
+
   const nodeTypesWithSettings = useMemo(
     () => getNodeTypesWithSettings(),
     []
@@ -67,15 +53,12 @@ export function NodesSettings() {
   );
 }
 
-// Build sub-sections dynamically from registry
-const subSections = getNodeSubSections();
-
-// Register this module with auto-generated sub-sections
+// Register this module (sub-sections built dynamically inside component to avoid circular deps)
 settingsRegistry.register({
   id: 'nodes',
   label: 'Nodes',
   icon: '🔷',
   component: NodesSettings,
   order: 26, // After Widgets (25), before Library (35)
-  subSections: subSections.length > 0 ? subSections : undefined,
+  // Note: subSections not used here - component handles dynamic node type display
 });
