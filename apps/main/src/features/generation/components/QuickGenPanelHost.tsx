@@ -22,6 +22,8 @@ import {
   type PanelHostDockviewRef,
 } from '@features/panels';
 
+type DockviewPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
+
 /** Standard quickgen panel IDs from global registry */
 export const QUICKGEN_PANEL_IDS = {
   asset: 'quickgen-asset',
@@ -62,6 +64,8 @@ export interface QuickGenPanelHostProps {
   context?: unknown;
   /** Custom default layout function. If not provided, uses auto-layout. */
   defaultLayout?: (api: DockviewApi) => void;
+  /** Optional position resolver for missing panels. */
+  resolvePanelPosition?: (panelId: string, api: DockviewApi) => DockviewPanelPosition | undefined;
   /** Callback when dockview is ready */
   onReady?: (api: DockviewApi) => void;
   /** Minimum panels before showing tabs (default: 1) */
@@ -111,6 +115,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
       panelManagerId,
       context,
       defaultLayout: customDefaultLayout,
+      resolvePanelPosition: customResolvePanelPosition,
       onReady,
       minPanelsForTabs = 1,
       enableContextMenu = true,
@@ -194,6 +199,27 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
       [panels, customDefaultLayout]
     );
 
+    const resolvePanelPosition = useCallback(
+      (panelId: string, api: DockviewApi) => {
+        const override = customResolvePanelPosition?.(panelId, api);
+        if (override) return override;
+        if (
+          panelId === QUICKGEN_PANEL_IDS.settings &&
+          api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+        ) {
+          return { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt };
+        }
+        if (
+          panelId === QUICKGEN_PANEL_IDS.blocks &&
+          api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+        ) {
+          return { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt };
+        }
+        return undefined;
+      },
+      [customResolvePanelPosition],
+    );
+
     return (
       <PanelHostDockview
         ref={ref}
@@ -208,21 +234,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         enableContextMenu={enableContextMenu}
         className={className}
         resolvePanelTitle={getPanelTitle}
-        resolvePanelPosition={(panelId, api) => {
-          if (
-            panelId === QUICKGEN_PANEL_IDS.settings &&
-            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
-          ) {
-            return { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt };
-          }
-          if (
-            panelId === QUICKGEN_PANEL_IDS.blocks &&
-            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
-          ) {
-            return { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt };
-          }
-          return undefined;
-        }}
+        resolvePanelPosition={resolvePanelPosition}
       />
     );
   }

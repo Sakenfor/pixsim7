@@ -19,8 +19,8 @@ import { assetEvents, useAssetSettingsStore, fromAssetResponse, getAssetDisplayU
 import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
 
 import { fromGenerationResponse } from '../models';
-import { useGenerationsStore } from '../stores/generationsStore';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
+import { useGenerationsStore } from '../stores/generationsStore';
 
 type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
 

@@ -122,15 +122,22 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
       {
         name: storageKey,
         storage: createJSONStorage(() => localStorage),
-        version: 2,
-        partialize: (state) => ({
-          operationType: state.operationType,
-          prompt: state.prompt,
-          promptPerOperation: state.promptPerOperation,
-          providerId: state.providerId,
-          presetId: state.presetId,
-          presetParams: state.presetParams,
-        }),
+        version: 3,
+        partialize: (state) => {
+          // Exclude seed from presetParams - it should be random each time unless explicitly set
+          const filteredPresetParams = { ...state.presetParams };
+          if ("seed" in filteredPresetParams) {
+            delete filteredPresetParams.seed;
+          }
+          return {
+            operationType: state.operationType,
+            prompt: state.prompt,
+            promptPerOperation: state.promptPerOperation,
+            providerId: state.providerId,
+            presetId: state.presetId,
+            presetParams: filteredPresetParams,
+          };
+        },
         migrate: (persistedState: any, version: number) => {
           const migrated = { ...persistedState };
 
@@ -140,6 +147,14 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
             // Initialize current operation's prompt in promptPerOperation
             if (migrated.prompt && migrated.operationType) {
               migrated.promptPerOperation[migrated.operationType] = migrated.prompt;
+            }
+          }
+
+          // Migrate from version 2 to 3: remove seed from presetParams
+          // Seed should be random each time, not persisted
+          if (version < 3) {
+            if (migrated.presetParams && 'seed' in migrated.presetParams) {
+              delete migrated.presetParams.seed;
             }
           }
 

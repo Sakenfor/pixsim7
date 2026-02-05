@@ -19,6 +19,15 @@ export interface DurationOptionConfig {
   note?: string;
 }
 
+export interface ArrayParamLimitConfig {
+  /** Minimum number of items */
+  min?: number;
+  /** Maximum number of items */
+  max?: number;
+  /** Optional note about the limit */
+  note?: string;
+}
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -52,6 +61,76 @@ function normalizePresetList(values: unknown): number[] {
     }
   }
   return Array.from(unique).sort((a, b) => a - b);
+}
+
+// ============================================================================
+// Array Param Limits
+// ============================================================================
+
+/**
+ * Extract min/max limits for array parameters (e.g., image_urls, composition_assets).
+ *
+ * Supports:
+ * - Base limits from metadata.min_items/max_items or metadata.minItems/maxItems
+ * - Per-model limits from metadata.per_model_max_items or metadata.perModelMaxItems
+ * - Fallback to spec.min/spec.max
+ *
+ * @param paramSpecs - Array of parameter specs from provider
+ * @param paramName - Parameter name to inspect
+ * @param modelValue - Current model value (for per-model filtering)
+ * @returns Array limit config or null if no limits found
+ */
+export function getArrayParamLimits(
+  paramSpecs: ParamSpec[],
+  paramName: string,
+  modelValue: unknown
+): ArrayParamLimitConfig | null {
+  const spec = paramSpecs.find((p) => p.name === paramName);
+  if (!spec) return null;
+
+  const metadata = spec.metadata ?? {};
+  const note: string | undefined = metadata.note;
+
+  let min = coerceNumber(
+    metadata.min_items ?? metadata.minItems ?? metadata.min
+  );
+  let max = coerceNumber(
+    metadata.max_items ?? metadata.maxItems ?? metadata.max
+  );
+
+  const perModelMax =
+    (metadata.per_model_max_items as Record<string, unknown> | undefined) ??
+    (metadata.perModelMaxItems as Record<string, unknown> | undefined);
+
+  if (perModelMax && typeof modelValue === 'string') {
+    const normalizedModel = modelValue.toLowerCase();
+    const matchEntry = Object.entries(perModelMax).find(
+      ([key]) => key.toLowerCase() === normalizedModel
+    );
+    if (matchEntry) {
+      const perModelValue = coerceNumber(matchEntry[1]);
+      if (perModelValue !== null) {
+        max = perModelValue;
+      }
+    }
+  }
+
+  if (min === null && spec.min !== undefined) {
+    min = coerceNumber(spec.min);
+  }
+  if (max === null && spec.max !== undefined) {
+    max = coerceNumber(spec.max);
+  }
+
+  if (min === null && max === null) {
+    return null;
+  }
+
+  return {
+    min: min ?? undefined,
+    max: max ?? undefined,
+    note,
+  };
 }
 
 // ============================================================================

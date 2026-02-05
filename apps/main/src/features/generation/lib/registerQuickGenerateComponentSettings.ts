@@ -133,6 +133,33 @@ export function registerQuickGenerateComponentSettings() {
             },
           ],
         },
+        {
+          id: "asset-layout",
+          title: "Layout",
+          fields: [
+            {
+              id: "displayMode",
+              label: "Multi-input display",
+              type: "select",
+              options: [
+                { value: "strip", label: "Strip" },
+                { value: "grid", label: "Grid" },
+                { value: "carousel", label: "Carousel" },
+              ],
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.displayMode,
+            },
+            {
+              id: "gridColumns",
+              label: "Grid columns",
+              type: "number",
+              min: 2,
+              max: 6,
+              step: 1,
+              defaultValue: QUICKGEN_ASSET_DEFAULTS.gridColumns,
+              showWhen: (values) => values.displayMode === "grid",
+            },
+          ],
+        },
       ],
     },
   });

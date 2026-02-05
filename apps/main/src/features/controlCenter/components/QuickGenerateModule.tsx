@@ -1,12 +1,9 @@
 import { Ref } from '@pixsim7/shared.ref.core';
-import { PromptInput } from '@pixsim7/shared.ui';
-import clsx from 'clsx';
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useMemo, useEffect, useRef, useCallback } from 'react';
 
 import { getDockviewPanels, useDockviewId } from '@lib/dockview';
 
-import { CompactAssetCard } from '@features/assets/components/shared';
 import {
   CAP_GENERATION_CONTEXT,
   CAP_GENERATION_WIDGET,
@@ -14,17 +11,14 @@ import {
   type GenerationContextSummary,
   type GenerationWidgetContext,
 } from '@features/contextHub';
-import { useControlCenterStore, type ControlCenterState } from '@features/controlCenter/stores/controlCenterStore';
+import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
   useGenerationWebSocket,
   useGenerationWorkbench,
   useGenerationScopeStores,
   GenerationWorkbench,
-  GenerationSettingsPanel,
   GenerationScopeProvider,
-  resolveDisplayAssets,
 } from '@features/generation';
-import { type QuickGenPanelContext } from '@features/generation/components/QuickGeneratePanels';
 import {
   ScopeModeSelect,
   getInstanceId,
@@ -38,22 +32,9 @@ import { useQuickGenerateController } from '@features/prompts';
 import type { PanelId } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
-import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
 
-
-/** Operation type categories for layout and behavior */
-const OPERATION_CONFIG = {
-  // Single asset input operations (requires asset)
-  singleAsset: new Set(['video_extend']),
-  // Multi-asset transition operations
-  transition: new Set(['video_transition']),
-  // Text-only operations (no asset input)
-  textOnly: new Set(['fusion']),
-  // Flexible operations (works with or without asset)
-  flexible: new Set(['image_to_video', 'image_to_image']),
-} as const;
 
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
@@ -157,23 +138,12 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     operationType,
     providerId,
     generating,
-    prompt,
     setProvider,
     setOperationType,
-    setPrompt,
     error,
     generationId,
-    lastSelectedAsset,
     operationInputs,
-    operationInputIndex,
-    removeInput,
-    prompts,
-    setPrompts,
-    transitionDurations,
-    setTransitionDurations,
     generate,
-    cycleInputs,
-    setInputIndex,
   } = useQuickGenerateController();
 
   // Use the shared generation workbench hook for settings management
@@ -181,29 +151,13 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
 
   // Get scoped input store for all input operations
   const { useInputStore, id: scopeId } = useGenerationScopeStores();
-  const updateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
   const operationMetadata = OPERATION_METADATA[operationType];
   const isMultiAssetOp = operationMetadata?.multiAssetMode !== 'single';
-
-  // UI state for transition selection (which transition segment is selected)
-  const [selectedTransitionIndex, setSelectedTransitionIndex] = useState<number>(0);
-
-  // Get transition duration options from param specs (falls back to 1-8)
-  const transitionDurationOptions = useMemo(() => {
-    const durationSpec = workbench.paramSpecs.find((p) => p.name === 'duration');
-    const presets = durationSpec?.metadata?.presets;
-    if (Array.isArray(presets) && presets.length > 0) {
-      return presets.filter((v): v is number => typeof v === 'number');
-    }
-    // Fallback: 1-8 seconds for transitions
-    return [1, 2, 3, 4, 5, 6, 7, 8];
-  }, [workbench.paramSpecs]);
+  const supportsInputs = (operationMetadata?.acceptsInput?.length ?? 0) > 0;
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenerateDockviewRef>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
-  const isSingleAssetOp = OPERATION_CONFIG.singleAsset.has(operationType);
-  const isFlexibleOp = OPERATION_CONFIG.flexible.has(operationType);
 
   const generationContextValue = useMemo<GenerationContextSummary>(
     () => {
@@ -277,71 +231,8 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     scope: 'root',
   });
 
-  // Always show asset panel for these operations (to show inputs or allow drag-drop)
-  const showAssetPanelInLayout = isSingleAssetOp || isFlexibleOp;
-
-  const maxChars = resolvePromptLimitForModel(
-    providerId,
-    workbench.dynamicParams?.model as string | undefined,
-    workbench.allParamSpecs
-  );
-  const promptRequiredOps = new Set<ControlCenterState['operationType']>([
-    'text_to_video',
-    'text_to_image',
-    'image_to_image',
-    'image_to_video',
-    'fusion',
-  ]);
-  const requiresPrompt = promptRequiredOps.has(operationType);
-  const canGenerate = requiresPrompt ? prompt.trim().length > 0 : true;
-
-
-  // Resolve display assets using shared utility
-  const displayAssets = resolveDisplayAssets({
-    operationType,
-    inputs: operationInputs,
-    currentIndex: operationInputIndex,
-    lastSelectedAsset,
-  });
-
-  const handleTransitionDurationChange = (segmentIndex: number, seconds: number) => {
-    setTransitionDurations(prev => {
-      const next = [...prev];
-      next[segmentIndex] = seconds;
-      return next;
-    });
-  };
-
-  // Reset selected transition when assets change to avoid out-of-bounds
-  useEffect(() => {
-    const maxIndex = Math.max(0, displayAssets.length - 2);
-    if (selectedTransitionIndex > maxIndex) {
-      setSelectedTransitionIndex(Math.max(0, maxIndex));
-    }
-  }, [displayAssets.length, selectedTransitionIndex]);
-
-  // Filter params based on operation type:
-  // - video_transition: hide duration (we have per-transition duration controls inline)
-  // - image_to_video/video_extend: hide aspect_ratio (inherit from source)
-  const filteredParamSpecs = useMemo(() => {
-    const hideParams = new Set<string>();
-
-    if (operationType === 'video_transition') {
-      hideParams.add('duration');
-    }
-
-    // Operations that inherit aspect ratio from source (don't support custom aspect_ratio)
-    const INHERITS_ASPECT_RATIO = new Set(['image_to_video', 'video_extend']);
-    if (INHERITS_ASPECT_RATIO.has(operationType)) {
-      hideParams.add('aspect_ratio');
-    }
-
-    if (hideParams.size === 0) {
-      return workbench.paramSpecs;
-    }
-
-    return workbench.paramSpecs.filter(p => !hideParams.has(p.name));
-  }, [operationType, workbench.paramSpecs]);
+  // Always show asset panel for operations that accept input (for inputs + drag-drop)
+  const showAssetPanelInLayout = supportsInputs;
 
   // Get quality options filtered by model (for image operations)
   const getQualityOptionsForModel = useMemo(() => {
@@ -379,61 +270,10 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     }
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
 
-  // Render the settings panel (right side) - using shared GenerationSettingsPanel
-  const renderSettingsPanel = useCallback(() => (
-    <GenerationSettingsPanel
-      generating={generating}
-      canGenerate={canGenerate}
-      onGenerate={generate}
-      error={error}
-      targetProviderId={CONTROL_CENTER_WIDGET_ID}
-      showPresets={true}
-    />
-  ), [generating, canGenerate, generate, error]);
-
-  // Wrapper to set current operation input index directly
-  const setOperationInputIndex = useCallback((index: number) => {
-    setInputIndex(operationType, index);
-  }, [operationType, setInputIndex]);
-
-  // Prepare panel context data
-  const panelContext = useMemo<QuickGenPanelContext>(() => ({
-    displayAssets,
-    operationInputs,
-    operationInputIndex,
-    operationType,
-    isFlexibleOperation: isFlexibleOp,
-    removeInput,
-    updateLockedTimestamp,
-    cycleInputs,
-    setOperationInputIndex,
-    prompt,
-    setPrompt,
-    providerId,
-    model: workbench.dynamicParams?.model as string | undefined,
-    paramSpecs: workbench.allParamSpecs,
-    generating,
-    error,
-    targetProviderId: CONTROL_CENTER_WIDGET_ID,
-  }), [
-    displayAssets,
-    operationInputs,
-    operationInputIndex,
-    operationType,
-    isFlexibleOp,
-    removeInput,
-    updateLockedTimestamp,
-    cycleInputs,
-    setOperationInputIndex,
-    prompt,
-    setPrompt,
-    providerId,
-    workbench.dynamicParams?.model,
-    workbench.paramSpecs,
-    generating,
-    error,
-    CONTROL_CENTER_WIDGET_ID,
-  ]);
+  const panelContext = useMemo(
+    () => ({ targetProviderId: CONTROL_CENTER_WIDGET_ID }),
+    [],
+  );
 
   // Listen to global panel layout reset trigger
   const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
@@ -484,180 +324,26 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     </div>
   );
 
-  const renderContent = () => {
-    // Unified multi-asset layout for: video_transition, fusion, or optional ops in multi mode
-    const isMultiAssetLayout = operationType === 'video_transition' ||
-      (operationMetadata?.multiAssetMode === 'optional' && operationInputs.length > 1);
-    const isTransitionMode = operationType === 'video_transition';
-
-    if (isMultiAssetLayout) {
-      const isLastAsset = (idx: number) => idx === displayAssets.length - 1;
-
-      const multiAssetContent = (
-        <div className="flex gap-3 h-full min-h-0">
-          {/* Left: Asset strip */}
-          <div className="flex-shrink-0 flex items-stretch">
-            {displayAssets.length > 0 ? (
-              <div className="flex items-stretch gap-1.5">
-                {operationInputs.map((inputItem, idx) => {
-                  const hasOutgoingTransition = isTransitionMode && !isLastAsset(idx);
-                  const isSelected = isTransitionMode && selectedTransitionIndex === idx;
-
-                  return (
-                    <div
-                      key={idx}
-                      className={clsx(
-                        'group relative flex-shrink-0 rounded-lg overflow-hidden border-2 transition-colors',
-                        isTransitionMode ? 'w-32 cursor-pointer' : 'w-24',
-                        isSelected && hasOutgoingTransition
-                          ? 'border-blue-500'
-                          : isTransitionMode
-                          ? 'border-transparent hover:border-neutral-300 dark:hover:border-neutral-600'
-                          : 'border-transparent hover:border-purple-400'
-                      )}
-                      onClick={() => isTransitionMode && hasOutgoingTransition && setSelectedTransitionIndex(idx)}
-                    >
-                      <CompactAssetCard
-                        asset={inputItem.asset}
-                        showRemoveButton
-                        onRemove={() => removeInput(operationType, inputItem.id)}
-                        lockedTimestamp={inputItem.lockedTimestamp}
-                        onLockTimestamp={(timestamp) => updateLockedTimestamp(operationType, inputItem.id, timestamp)}
-                        hideFooter
-                        fillHeight
-                      />
-                      {/* Index badge for non-transition multi mode */}
-                      {!isTransitionMode && (
-                        <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
-                          {idx + 1}
-                        </div>
-                      )}
-                      {/* Hover overlay for transition controls */}
-                      {hasOutgoingTransition && (
-                        <div className="absolute inset-x-0 bottom-0 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 to-transparent p-1.5 pt-4">
-                          <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] text-white/80">-&gt;{idx + 2}</span>
-                            <select
-                              value={transitionDurations[idx] ?? 5}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                handleTransitionDurationChange(idx, Number(e.target.value));
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              disabled={generating}
-                              className="px-1 py-0.5 text-[10px] rounded bg-white/90 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 disabled:opacity-50"
-                            >
-                              {transitionDurationOptions.map(s => (
-                                <option key={s} value={s}>{s}s</option>
-                              ))}
-                            </select>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedTransitionIndex(idx);
-                              }}
-                              className={clsx(
-                                'px-1.5 py-0.5 rounded text-[10px] transition-colors',
-                                isSelected
-                                  ? 'bg-blue-500 text-white'
-                                  : 'bg-white/90 text-neutral-700 hover:bg-white'
-                              )}
-                            >
-                              Edit
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className={clsx(
-                'text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed',
-                isTransitionMode ? 'border-neutral-300 dark:border-neutral-700' : 'border-purple-300 dark:border-purple-700'
-              )}>
-                Add images from gallery
-              </div>
-            )}
-          </div>
-
-          {/* Center: Prompt area */}
-          <div className="flex-1 flex flex-col min-w-0 min-h-0">
-            {isTransitionMode ? (
-              // Per-transition prompts for video_transition
-              displayAssets.length > 1 ? (
-                <PromptInput
-                  value={prompts[selectedTransitionIndex] || ''}
-                  onChange={(value) => {
-                    const newPrompts = [...prompts];
-                    newPrompts[selectedTransitionIndex] = value;
-                    setPrompts(newPrompts);
-                  }}
-                  maxChars={maxChars}
-                  placeholder="Describe the motion..."
-                  disabled={generating}
-                  variant="compact"
-                  minHeight={60}
-                  showCounter={true}
-                  className="flex-1"
-                />
-              ) : (
-                <div className="flex-1 flex items-center justify-center text-xs text-neutral-500 italic p-3 bg-neutral-50 dark:bg-neutral-900 rounded border border-dashed border-neutral-300 dark:border-neutral-700">
-                  {displayAssets.length === 1 ? 'Add one more image' : 'Add images from gallery'}
-                </div>
-              )
-            ) : (
-              // Single shared prompt for other multi-asset operations
-              <PromptInput
-                value={prompt}
-                onChange={setPrompt}
-                maxChars={maxChars}
-                placeholder={operationType === 'image_to_image' ? 'Describe the transformation...' : 'Describe the generation...'}
-                disabled={generating}
-                variant="compact"
-                minHeight={60}
-                showCounter={true}
-                className="flex-1"
-              />
-            )}
-          </div>
-
-          {/* Right: Settings */}
-          {renderSettingsPanel()}
+  const renderContent = () => (
+    <div className="h-full flex flex-col gap-2">
+      {scopeControl}
+      <div className="flex-1 min-h-0">
+        <div
+          key={`dockview-${operationType}-${showAssetPanelInLayout ? 'with-asset' : 'no-asset'}`}
+          className="h-full relative"
+        >
+          <QuickGenerateDockview
+            ref={dockviewRef}
+            context={panelContext}
+            showAssetPanel={showAssetPanelInLayout}
+            operationType={operationType}
+            onReady={handleDockviewReady}
+            panelManagerId={QUICKGEN_PANEL_MANAGER_ID}
+          />
         </div>
-      );
-
-      return (
-        <div className="h-full flex flex-col gap-2">
-          {scopeControl}
-          <div className="flex-1 min-h-0">{multiAssetContent}</div>
-        </div>
-      );
-    }
-
-    // Use SmartDockview for asset+prompt or prompt+settings layout
-    // Key includes mode to force remount when switching between single/multi modes
-    const dockviewContent = (
-      <div key={`dockview-${operationType}`} className="h-full relative">
-        <QuickGenerateDockview
-          ref={dockviewRef}
-          context={panelContext}
-          showAssetPanel={showAssetPanelInLayout}
-          onReady={handleDockviewReady}
-          panelManagerId={QUICKGEN_PANEL_MANAGER_ID}
-        />
       </div>
-    );
-
-    return (
-      <div className="h-full flex flex-col gap-2">
-        {scopeControl}
-        <div className="flex-1 min-h-0">{dockviewContent}</div>
-      </div>
-    );
-  };
+    </div>
+  );
 
   return (
     <GenerationWorkbench
@@ -665,7 +351,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       // Settings bar props - hidden since we have inline settings panel
       providerId={providerId}
       providers={workbench.providers}
-      paramSpecs={filteredParamSpecs}
+      paramSpecs={workbench.paramSpecs}
       dynamicParams={workbench.dynamicParams}
       onChangeParam={workbench.handleParamChange}
       onChangeProvider={setProvider}
@@ -676,7 +362,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       operationType={operationType}
       // Generation action - hidden since we have inline Go button
       onGenerate={generate}
-      canGenerate={canGenerate}
       // Error & status
       error={error}
       generationId={generationId}

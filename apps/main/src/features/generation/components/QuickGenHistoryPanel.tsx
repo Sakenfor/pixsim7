@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { Icon, ThemedIcon } from '@lib/icons';
+
 import { getAsset, fromAssetResponse, useAsset, getAssetDisplayUrls } from '@features/assets';
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
-import { Icon, ThemedIcon } from '@lib/icons';
 
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import type { OperationType } from '@/types/operations';

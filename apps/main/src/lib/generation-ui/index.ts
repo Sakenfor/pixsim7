@@ -25,11 +25,13 @@ export type { ParamSpec } from './types';
 // Parameter Utilities
 export {
   getDurationOptions,
+  getArrayParamLimits,
   getQualityOptions,
   getAspectRatioLabel,
   ASPECT_RATIO_LABELS,
   COMMON_ASPECT_RATIOS,
   type DurationOptionConfig,
+  type ArrayParamLimitConfig,
 } from './utils/parameterUtils';
 
 // Parameter Icons

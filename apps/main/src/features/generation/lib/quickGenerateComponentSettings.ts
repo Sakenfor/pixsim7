@@ -32,10 +32,14 @@ export interface QuickGenAssetSettings {
   enableHoverPreview: boolean;
   showPlayOverlay: boolean;
   clickToPlay: boolean;
+  displayMode: 'strip' | 'grid' | 'carousel';
+  gridColumns: number;
 }
 
 export const QUICKGEN_ASSET_DEFAULTS: QuickGenAssetSettings = {
   enableHoverPreview: true,
   showPlayOverlay: true,
   clickToPlay: false,
+  displayMode: 'strip',
+  gridColumns: 3,
 };

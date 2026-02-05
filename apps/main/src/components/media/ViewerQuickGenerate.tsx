@@ -13,9 +13,11 @@
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
-import { Icon } from '@lib/icons';
 import { Ref } from '@pixsim7/shared.types';
+import type { DockviewApi } from 'dockview-core';
 import { useState, useEffect, useMemo, useCallback } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import type { ViewerAsset } from '@features/assets';
 import {
@@ -36,7 +38,9 @@ import {
   ViewerAssetInputProvider,
   QuickGenPanelHost,
   QUICKGEN_PRESETS,
+  QUICKGEN_PANEL_IDS,
   useGenerationScopeStores,
+  useGenerationSettingsStore,
 } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 
@@ -134,6 +138,11 @@ function ViewerQuickGenerateChrome({
   const controller = useQuickGenerateController();
   const { setOperationType, setDynamicParams } = controller;
 
+  // Check if auto-switch is enabled (defaults to true)
+  const autoSwitchEnabled = useGenerationSettingsStore(
+    (s) => s.params.autoSwitchOperationType ?? true
+  );
+
   const { useInputStore, id: scopeId } = useGenerationScopeStores();
   const scopedAddInput = useInputStore((s) => s.addInput);
   const scopedAddInputs = useInputStore((s) => s.addInputs);
@@ -182,13 +191,13 @@ function ViewerQuickGenerateChrome({
     scope: 'root',
   });
 
-  // Auto-set operation type based on asset type (when in user mode)
+  // Auto-set operation type based on asset type (when in user mode and enabled)
   useEffect(() => {
-    if (mode === 'user') {
+    if (mode === 'user' && autoSwitchEnabled) {
       const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
       setOperationType(targetOp);
     }
-  }, [asset.type, setOperationType, mode]);
+  }, [asset.type, setOperationType, mode, autoSwitchEnabled]);
 
   // Auto-set dynamic params from viewed asset
   useEffect(() => {
@@ -256,9 +265,63 @@ function ViewerQuickGeneratePanels() {
   const metadata = OPERATION_METADATA[operationType];
   const supportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
   const panels = supportsInputs ? QUICKGEN_PRESETS.full : QUICKGEN_PRESETS.promptSettings;
+  const layoutVersion = operationType === 'video_transition' ? 'v7' : 'v6';
   const storageKey = supportsInputs
-    ? 'viewer-quickgen-layout-v5:with-asset'
-    : 'viewer-quickgen-layout-v5:no-asset';
+    ? `viewer-quickgen-layout-${layoutVersion}:${operationType}:with-asset`
+    : `viewer-quickgen-layout-${layoutVersion}:${operationType}:no-asset`;
+  const defaultLayout = useCallback((api: DockviewApi) => {
+    if (operationType !== 'video_transition') return;
+
+    const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
+    const hasPrompt = panels.includes(QUICKGEN_PANEL_IDS.prompt);
+    const hasSettings = panels.includes(QUICKGEN_PANEL_IDS.settings);
+
+    const getTitle = (panelId: string) => {
+      switch (panelId) {
+        case QUICKGEN_PANEL_IDS.asset:
+          return 'Asset';
+        case QUICKGEN_PANEL_IDS.prompt:
+          return 'Prompt';
+        case QUICKGEN_PANEL_IDS.settings:
+          return 'Settings';
+        default:
+          return panelId;
+      }
+    };
+
+    const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
+    api.addPanel({
+      id: firstPanel,
+      component: firstPanel,
+      title: getTitle(firstPanel),
+    });
+
+    if (hasAsset && hasPrompt) {
+      api.addPanel({
+        id: QUICKGEN_PANEL_IDS.prompt,
+        component: QUICKGEN_PANEL_IDS.prompt,
+        title: getTitle(QUICKGEN_PANEL_IDS.prompt),
+        position: { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.asset },
+      });
+    }
+
+    if (hasSettings) {
+      api.addPanel({
+        id: QUICKGEN_PANEL_IDS.settings,
+        component: QUICKGEN_PANEL_IDS.settings,
+        title: getTitle(QUICKGEN_PANEL_IDS.settings),
+        position: { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt },
+      });
+    }
+  }, [operationType, panels]);
+
+  const resolvePanelPosition = useCallback((panelId: string, api: DockviewApi) => {
+    if (operationType !== 'video_transition') return undefined;
+    if (panelId === QUICKGEN_PANEL_IDS.prompt && api.getPanel(QUICKGEN_PANEL_IDS.asset)) {
+      return { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.asset };
+    }
+    return undefined;
+  }, [operationType]);
 
   return (
     <QuickGenPanelHost
@@ -267,6 +330,8 @@ function ViewerQuickGeneratePanels() {
       storageKey={storageKey}
       panelManagerId="viewerQuickGenerate"
       context={{ targetProviderId: VIEWER_WIDGET_ID }}
+      defaultLayout={operationType === 'video_transition' ? defaultLayout : undefined}
+      resolvePanelPosition={resolvePanelPosition}
       className="h-[360px] min-h-[280px] mt-2"
       minPanelsForTabs={2}
     />

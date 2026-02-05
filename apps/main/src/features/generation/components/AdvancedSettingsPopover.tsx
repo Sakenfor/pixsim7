@@ -162,13 +162,35 @@ export function AdvancedSettingsPopover({
                   {param.description || 'Enable'}
                 </span>
               </label>
-            ) : param.type === 'number' || param.name === 'seed' ? (
+            ) : param.name === 'seed' ? (
+              <div className="flex gap-1">
+                <input
+                  type="number"
+                  value={values[param.name] ?? ''}
+                  onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
+                  disabled={disabled}
+                  placeholder="Random"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                />
+                {values[param.name] != null && (
+                  <button
+                    type="button"
+                    onClick={() => onChange(param.name, undefined)}
+                    disabled={disabled}
+                    className="px-2 py-1.5 text-[10px] rounded-lg bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-600 dark:text-neutral-300 transition-colors"
+                    title="Clear seed (use random)"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ) : param.type === 'number' ? (
               <input
                 type="number"
                 value={values[param.name] ?? ''}
                 onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
                 disabled={disabled}
-                placeholder={param.name === 'seed' ? 'Random' : param.default?.toString() || ''}
+                placeholder={param.default?.toString() || ''}
                 className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
               />
             ) : param.enum ? (

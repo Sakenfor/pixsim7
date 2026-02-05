@@ -39,17 +39,6 @@ export {
   useControlCenterLayout,
 } from './hooks/useControlCenterLayout';
 
-// ============================================================================
-// Lib - API & Utilities
-// ============================================================================
-
-// API wrappers
-export {
-  generateAsset,
-  type GenerateAssetRequest,
-  type GenerateAssetResponse,
-} from './lib/api';
-
 // Note: Control Center panels are registered in the plugin catalog
 // with the 'control-center' tag. Use panelSelectors.getByTag('control-center')
 // to get CC panels. See @features/panels for panel registration.

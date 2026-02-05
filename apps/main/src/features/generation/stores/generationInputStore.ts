@@ -17,6 +17,7 @@ export interface InputItem {
   id: string;
   asset: AssetModel;
   queuedAt: string;
+  slotIndex?: number;
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
 }
 
@@ -33,6 +34,7 @@ export interface AddInputOptions {
 
 export interface GenerationInputsState {
   inputsByOperation: Partial<Record<OperationType, OperationInputs>>;
+  armedSlotByOperation: Partial<Record<OperationType, number>>;
 
   addInput: (options: AddInputOptions) => void;
   addInputs: (options: { assets: AssetModel[]; operationType: OperationType }) => void;
@@ -44,6 +46,7 @@ export interface GenerationInputsState {
   updateLockedTimestamp: (operationType: OperationType, inputId: string, timestamp: number | undefined) => void;
   cycleInputs: (operationType: OperationType, direction?: 'next' | 'prev') => void;
   setInputIndex: (operationType: OperationType, index: number) => void;
+  setArmedSlot: (operationType: OperationType, slotIndex?: number | null) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -59,17 +62,57 @@ function createInputId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createInputItem(asset: AssetModel): InputItem {
+function createInputItem(asset: AssetModel, slotIndex: number): InputItem {
   return {
     id: createInputId(),
     asset,
     queuedAt: new Date().toISOString(),
+    slotIndex,
   };
 }
 
 function normalizeIndex(index: number, length: number): number {
   if (length <= 0) return 1;
   return Math.max(1, Math.min(index, length));
+}
+
+function getSlotIndex(item: InputItem, fallback: number): number {
+  if (typeof item.slotIndex === 'number' && Number.isFinite(item.slotIndex)) {
+    return Math.max(0, Math.floor(item.slotIndex));
+  }
+  return fallback;
+}
+
+function normalizeInputItems(items: InputItem[]): InputItem[] {
+  if (!items || items.length === 0) return [];
+  const used = new Set<number>();
+  let nextIndex = 0;
+
+  const normalized = items.map((item, idx) => {
+    let slotIndex = getSlotIndex(item, idx);
+    if (used.has(slotIndex)) {
+      while (used.has(nextIndex)) {
+        nextIndex += 1;
+      }
+      slotIndex = nextIndex;
+    }
+    used.add(slotIndex);
+    if (item.slotIndex === slotIndex) {
+      return item;
+    }
+    return { ...item, slotIndex };
+  });
+
+  return normalized.sort((a, b) => getSlotIndex(a, 0) - getSlotIndex(b, 0));
+}
+
+function getNextSlotIndex(items: InputItem[]): number {
+  if (!items || items.length === 0) return 0;
+  const maxIndex = items.reduce((max, item, idx) => {
+    const slotIndex = getSlotIndex(item, idx);
+    return Math.max(max, slotIndex);
+  }, -1);
+  return maxIndex + 1;
 }
 
 function getOperationInputs(
@@ -92,6 +135,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
     persist(
       (set, get) => ({
         inputsByOperation: {},
+        armedSlotByOperation: {},
 
         addInput: ({ asset, operationType, slotIndex }) => {
           set((state) => {
@@ -100,7 +144,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                 inputsByOperation: {
                   ...state.inputsByOperation,
                   [operationType]: {
-                    items: [createInputItem(asset)],
+                    items: [createInputItem(asset, 0)],
                     currentIndex: 1,
                   },
                 },
@@ -109,64 +153,46 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
 
             const existing = getOperationInputs(state.inputsByOperation, operationType);
             const shouldAllowDuplicates = allowDuplicates(operationType);
-            const nextItem = createInputItem(asset);
-            let nextItems = [...existing.items];
-            let adjustedSlotIndex = slotIndex;
+            let nextItems = normalizeInputItems([...existing.items]);
+            const preferredSlot = state.armedSlotByOperation?.[operationType];
+            const targetSlotIndex =
+              typeof slotIndex === 'number' && Number.isFinite(slotIndex)
+                ? Math.max(0, Math.floor(slotIndex))
+                : typeof preferredSlot === 'number' && Number.isFinite(preferredSlot)
+                  ? Math.max(0, Math.floor(preferredSlot))
+                  : getNextSlotIndex(nextItems);
+
+            const nextItem = createInputItem(asset, targetSlotIndex);
 
             if (!shouldAllowDuplicates) {
               const existingIndex = nextItems.findIndex((item) => item.asset.id === asset.id);
-              if (slotIndex !== undefined && existingIndex === slotIndex) {
-                return {
-                  inputsByOperation: {
-                    ...state.inputsByOperation,
-                    [operationType]: {
-                      items: nextItems,
-                      currentIndex: normalizeIndex(slotIndex + 1, nextItems.length),
-                    },
-                  },
-                };
-              }
-
               if (existingIndex !== -1) {
                 nextItems = nextItems.filter((item) => item.asset.id !== asset.id);
-                if (slotIndex !== undefined && existingIndex < slotIndex) {
-                  adjustedSlotIndex = slotIndex - 1;
-                }
               }
             }
 
-            if (slotIndex !== undefined) {
-              const targetIndex = adjustedSlotIndex ?? slotIndex;
-              if (targetIndex < nextItems.length) {
-                nextItems[targetIndex] = nextItem;
-              } else {
-                nextItems.push(nextItem);
-              }
-              const nextIndex = normalizeIndex(targetIndex + 1, nextItems.length);
-              return {
-                inputsByOperation: {
-                  ...state.inputsByOperation,
-                  [operationType]: {
-                    items: nextItems,
-                    currentIndex: nextIndex,
-                  },
-                },
-              };
-            }
-
-            if (!shouldAllowDuplicates) {
-              nextItems = nextItems.filter((item) => item.asset.id !== asset.id);
-            }
-
-            nextItems = [...nextItems, nextItem];
+            nextItems = nextItems.filter((item) => getSlotIndex(item, 0) !== targetSlotIndex);
+            nextItems = normalizeInputItems([...nextItems, nextItem]);
+            const nextIndex = normalizeIndex(
+              nextItems.findIndex((item) => item.id === nextItem.id) + 1,
+              nextItems.length
+            );
             return {
               inputsByOperation: {
                 ...state.inputsByOperation,
                 [operationType]: {
                   items: nextItems,
-                  currentIndex: normalizeIndex(nextItems.length, nextItems.length),
+                  currentIndex: nextIndex,
                 },
               },
+              armedSlotByOperation:
+                typeof preferredSlot === 'number' ||
+                (typeof slotIndex === 'number' && Number.isFinite(slotIndex))
+                  ? {
+                      ...state.armedSlotByOperation,
+                      [operationType]: undefined,
+                    }
+                  : state.armedSlotByOperation,
             };
           });
         },
@@ -181,7 +207,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                 inputsByOperation: {
                   ...state.inputsByOperation,
                   [operationType]: {
-                    items: [createInputItem(lastAsset)],
+                    items: [createInputItem(lastAsset, 0)],
                     currentIndex: 1,
                   },
                 },
@@ -190,23 +216,42 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
 
             const existing = getOperationInputs(state.inputsByOperation, operationType);
             const shouldAllowDuplicates = allowDuplicates(operationType);
-            let nextItems = [...existing.items];
+            let nextItems = normalizeInputItems([...existing.items]);
+            let nextSlotIndex = getNextSlotIndex(nextItems);
+            let lastAddedId: string | null = null;
 
             assets.forEach((asset) => {
               if (!shouldAllowDuplicates) {
                 nextItems = nextItems.filter((item) => item.asset.id !== asset.id);
               }
-              nextItems.push(createInputItem(asset));
+              const nextItem = createInputItem(asset, nextSlotIndex);
+              nextSlotIndex += 1;
+              nextItems.push(nextItem);
+              lastAddedId = nextItem.id;
             });
 
+            nextItems = normalizeInputItems(nextItems);
+            const lastIndex = lastAddedId
+              ? nextItems.findIndex((item) => item.id === lastAddedId)
+              : -1;
+            const nextIndex = normalizeIndex(
+              lastIndex >= 0 ? lastIndex + 1 : nextItems.length,
+              nextItems.length
+            );
             return {
               inputsByOperation: {
                 ...state.inputsByOperation,
                 [operationType]: {
                   items: nextItems,
-                  currentIndex: normalizeIndex(nextItems.length, nextItems.length),
+                  currentIndex: nextIndex,
                 },
               },
+              armedSlotByOperation: state.armedSlotByOperation?.[operationType] !== undefined
+                ? {
+                    ...state.armedSlotByOperation,
+                    [operationType]: undefined,
+                  }
+                : state.armedSlotByOperation,
             };
           });
         },
@@ -214,7 +259,9 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         removeInput: (operationType, inputId) => {
           set((state) => {
             const existing = getOperationInputs(state.inputsByOperation, operationType);
-            const nextItems = existing.items.filter((item) => item.id !== inputId);
+            const nextItems = normalizeInputItems(
+              existing.items.filter((item) => item.id !== inputId)
+            );
             return {
               inputsByOperation: {
                 ...state.inputsByOperation,
@@ -230,7 +277,9 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         removeAssetFromOperation: (operationType, assetId) => {
           set((state) => {
             const existing = getOperationInputs(state.inputsByOperation, operationType);
-            const nextItems = existing.items.filter((item) => item.asset.id !== assetId);
+            const nextItems = normalizeInputItems(
+              existing.items.filter((item) => item.asset.id !== assetId)
+            );
             return {
               inputsByOperation: {
                 ...state.inputsByOperation,
@@ -248,7 +297,9 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
             const nextMap: Partial<Record<OperationType, OperationInputs>> = {};
             (Object.keys(state.inputsByOperation) as OperationType[]).forEach((operationType) => {
               const existing = getOperationInputs(state.inputsByOperation, operationType);
-              const nextItems = existing.items.filter((item) => item.asset.id !== assetId);
+              const nextItems = normalizeInputItems(
+                existing.items.filter((item) => item.asset.id !== assetId)
+              );
               nextMap[operationType] = {
                 items: nextItems,
                 currentIndex: normalizeIndex(existing.currentIndex, nextItems.length),
@@ -265,11 +316,15 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
               ...state.inputsByOperation,
               [operationType]: { items: [], currentIndex: 1 },
             },
+            armedSlotByOperation: {
+              ...state.armedSlotByOperation,
+              [operationType]: undefined,
+            },
           }));
         },
 
         clearAllInputs: () => {
-          set(() => ({ inputsByOperation: {} }));
+          set(() => ({ inputsByOperation: {}, armedSlotByOperation: {} }));
         },
 
         updateLockedTimestamp: (operationType, inputId, timestamp) => {
@@ -332,6 +387,21 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           });
         },
 
+        setArmedSlot: (operationType, slotIndex) => {
+          set((state) => {
+            const nextIndex =
+              typeof slotIndex === 'number' && Number.isFinite(slotIndex)
+                ? Math.max(0, Math.floor(slotIndex))
+                : undefined;
+            return {
+              armedSlotByOperation: {
+                ...state.armedSlotByOperation,
+                [operationType]: nextIndex,
+              },
+            };
+          });
+        },
+
         getCurrentInput: (operationType) => {
           const existing = getOperationInputs(get().inputsByOperation, operationType);
           if (existing.items.length === 0) return null;
@@ -363,6 +433,7 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           (Object.keys(inputsByOperation) as OperationType[]).forEach((operationType) => {
             const existing = inputsByOperation[operationType];
             if (!existing) return;
+            existing.items = normalizeInputItems(existing.items ?? []);
             const length = existing.items?.length ?? 0;
             existing.currentIndex = normalizeIndex(existing.currentIndex ?? 1, length);
           });
