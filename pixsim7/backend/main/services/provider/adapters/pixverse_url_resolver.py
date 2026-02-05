@@ -154,8 +154,19 @@ def is_valid_for_api(url: str, api_mode: PixverseApiMode = PixverseApiMode.WEBAP
     if not url or not isinstance(url, str):
         return False
 
-    # Full https:// URLs are always valid
+    # Full https:// URLs are always valid (subject to API mode restrictions)
     if url.startswith(("http://", "https://")):
+        try:
+            parsed = urlparse(url)
+            host = parsed.netloc.lower()
+        except Exception:
+            return False
+
+        if api_mode == PixverseApiMode.WEBAPI:
+            if not host.endswith("pixverse.ai"):
+                return False
+            return True
+
         return True
 
     # WebAPI requires full URLs
@@ -194,6 +205,18 @@ def validate_for_api(
     """
     if is_valid_for_api(url, api_mode):
         return
+
+    if api_mode == PixverseApiMode.WEBAPI and url.startswith(("http://", "https://")):
+        try:
+            parsed = urlparse(url)
+            host = parsed.netloc.lower()
+        except Exception:
+            host = ""
+        if host and not host.endswith("pixverse.ai"):
+            raise ProviderError(
+                f"Invalid {field_name} host '{host}' - "
+                "Pixverse WebAPI requires pixverse.ai URLs."
+            )
 
     if url.startswith("img_id:"):
         raise ProviderError(

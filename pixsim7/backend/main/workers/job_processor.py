@@ -179,6 +179,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
     async for db in get_db():
         try:
+            failed_marked = False
             user_service = UserService(db)
             generation_service = GenerationService(db, user_service)
             account_service = AccountService(db)
@@ -549,6 +550,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Fall through to mark as failed
 
                 await generation_service.mark_failed(generation_id, str(e))
+                failed_marked = True
 
                 # Release account reservation on failure
                 try:
@@ -590,10 +592,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             get_health_tracker().increment_failed()
 
             # Try to mark generation as failed
-            try:
-                await generation_service.mark_failed(generation_id, str(e))
-            except Exception as mark_error:
-                gen_logger.error("mark_failed_error", error=str(mark_error))
+            if not failed_marked:
+                try:
+                    await generation_service.mark_failed(generation_id, str(e))
+                except Exception as mark_error:
+                    gen_logger.error("mark_failed_error", error=str(mark_error))
 
             raise
 

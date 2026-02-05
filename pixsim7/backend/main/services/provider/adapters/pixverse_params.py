@@ -189,20 +189,27 @@ def map_parameters(
 
     elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
         # Image operations use image_urls list
-        if "image_urls" in params and params["image_urls"] is not None:
-            mapped["image_urls"] = [
-                (normalize_url(url) or url) if isinstance(url, str) else url
-                for url in params["image_urls"]
-            ]
-        elif "image_url" in params and params["image_url"] is not None:
-            mapped["image_urls"] = [
-                (
-                    normalize_url(params["image_url"]) or params["image_url"]
-                    if isinstance(params["image_url"], str)
-                    else params["image_url"]
-                )
-            ]
-        else:
+        image_urls = params.get("image_urls")
+        image_url = params.get("image_url")
+        if isinstance(image_urls, (list, tuple)):
+            filtered = [value for value in image_urls if value]
+            if filtered:
+                mapped["image_urls"] = [
+                    (normalize_url(url) or url) if isinstance(url, str) else url
+                    for url in filtered
+                ]
+        if "image_urls" not in mapped and image_url is not None:
+            if isinstance(image_url, str) and not image_url.strip():
+                image_url = None
+            if image_url is not None:
+                mapped["image_urls"] = [
+                    (
+                        normalize_url(image_url) or image_url
+                        if isinstance(image_url, str)
+                        else image_url
+                    )
+                ]
+        if "image_urls" not in mapped:
             refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
             if refs:
                 mapped["image_urls"] = refs
@@ -234,12 +241,15 @@ def map_parameters(
                         mapped["original_video_id"] = provider_params.get("original_video_id")
 
     elif operation_type == OperationType.VIDEO_TRANSITION:
-        if "image_urls" in params and params["image_urls"] is not None:
-            mapped["image_urls"] = [
-                (normalize_url(url) or url) if isinstance(url, str) else url
-                for url in params["image_urls"]
-            ]
-        else:
+        image_urls = params.get("image_urls")
+        if isinstance(image_urls, (list, tuple)):
+            filtered = [value for value in image_urls if value]
+            if filtered:
+                mapped["image_urls"] = [
+                    (normalize_url(url) or url) if isinstance(url, str) else url
+                    for url in filtered
+                ]
+        if "image_urls" not in mapped:
             refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
             if refs:
                 mapped["image_urls"] = refs

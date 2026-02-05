@@ -72,6 +72,54 @@ def _extract_video_options(params: Dict[str, Any]) -> Dict[str, Any]:
     return {k: params[k] for k in VIDEO_OPTION_PARAMS if params.get(k)}
 
 
+def _ensure_required_params(operation_type: OperationType, params: Dict[str, Any]) -> None:
+    """
+    Normalize + validate required params across Pixverse operations.
+
+    Keeps validation centralized so missing inputs fail fast regardless of mode.
+    """
+    if operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.VIDEO_TRANSITION}:
+        if not params.get("image_urls") and params.get("image_url"):
+            params["image_urls"] = [params["image_url"]]
+
+    if operation_type == OperationType.IMAGE_TO_VIDEO:
+        if not params.get("image_url") and params.get("image_urls"):
+            params["image_url"] = params["image_urls"][0]
+
+    if operation_type == OperationType.IMAGE_TO_VIDEO:
+        if not params.get("image_url"):
+            raise ProviderError(
+                "Pixverse IMAGE_TO_VIDEO requires image_url (resolved from composition_assets)."
+            )
+    elif operation_type == OperationType.IMAGE_TO_IMAGE:
+        image_urls = params.get("image_urls")
+        if not isinstance(image_urls, list) or len(image_urls) == 0:
+            raise ProviderError(
+                "Pixverse IMAGE_TO_IMAGE requires image_urls (resolved from composition_assets)."
+            )
+    elif operation_type == OperationType.VIDEO_TRANSITION:
+        image_urls = params.get("image_urls")
+        prompts = params.get("prompts")
+        if not isinstance(image_urls, list) or len(image_urls) < 2:
+            raise ProviderError(
+                "Pixverse VIDEO_TRANSITION requires image_urls with at least 2 entries."
+            )
+        if not isinstance(prompts, list) or len(prompts) == 0:
+            raise ProviderError(
+                "Pixverse VIDEO_TRANSITION requires prompts for each transition segment."
+            )
+    elif operation_type == OperationType.VIDEO_EXTEND:
+        if not params.get("video_url") and not params.get("original_video_id"):
+            raise ProviderError(
+                "Pixverse VIDEO_EXTEND requires video_url or original_video_id."
+            )
+    elif operation_type == OperationType.FUSION:
+        if not params.get("composition_assets"):
+            raise ProviderError(
+                "Pixverse FUSION requires composition_assets."
+            )
+
+
 class PixverseOperationsMixin:
     """Mixin for Pixverse video and image operations"""
 
@@ -120,6 +168,8 @@ class PixverseOperationsMixin:
             # Store context for error handling
             self._current_operation_type = operation_type
             self._current_params = params
+
+            _ensure_required_params(operation_type, params)
 
             # Route to appropriate method using a mapping instead of
             # a long if/elif chain. This keeps routing declarative and
@@ -367,7 +417,7 @@ class PixverseOperationsMixin:
                     kwargs[field] = params[field]
             kwargs.update(_extract_video_options(params))
 
-        # Add required image_url
+        # Add required image_url (validated in _ensure_required_params)
         kwargs["image_url"] = params["image_url"]
 
         # Call pixverse-py (now async with httpx)
@@ -392,7 +442,9 @@ class PixverseOperationsMixin:
             image_urls = [params["image_url"]]
 
         if not image_urls:
-            raise ProviderError("Pixverse IMAGE_TO_IMAGE operation requires at least one image_url")
+            raise ProviderError(
+                "Pixverse IMAGE_TO_IMAGE operation requires at least one image_urls entry (resolved from composition_assets)."
+            )
 
         # Use pixverse-py image operations via client.api._image_ops
         # This requires a JWT (Web API) session.

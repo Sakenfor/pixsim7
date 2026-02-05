@@ -820,6 +820,8 @@ class GenerationCreationService:
                 legacy_values = (
                     gen_config.get("source_asset_ids")
                     or params.get("source_asset_ids")
+                    or gen_config.get("source_asset_id")
+                    or params.get("source_asset_id")
                     or gen_config.get("image_urls")
                     or params.get("image_urls")
                 )
