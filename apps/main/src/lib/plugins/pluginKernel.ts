@@ -16,6 +16,7 @@ import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools'
 
 import { registerFrontendMiniGames } from '@/components/minigames/registry';
 import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
+import { registerIconSetsPlugin } from '@/plugins/ui/icon-sets';
 
 import { bootstrapExamplePlugins } from './bootstrap';
 import { discoverControlCenterRegistrations } from './bootstrapControlCenters';
@@ -69,6 +70,7 @@ async function doInitialize(options: PluginKernelOptions): Promise<void> {
     await registerWorldTools();
     await registerGizmoSurfaces();
     await registerPromptCompanion();
+    await registerIconSetsPlugin();
 
     const [sourceControlCenters, sourceSceneViews, bundleRegistrations] = await Promise.all([
       discoverControlCenterRegistrations(),

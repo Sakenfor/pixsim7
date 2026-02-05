@@ -113,9 +113,8 @@ import {
   MoreVertical,
   Scroll,
   History,
-  type LucideIcon,
 } from 'lucide-react';
-import type { SVGProps } from 'react';
+import type { ComponentType, SVGProps } from 'react';
 
 
 import { BaseRegistry, type Identifiable } from '@lib/core';
@@ -129,6 +128,8 @@ export interface IconProps {
   size?: number | string;
   className?: string;
   strokeWidth?: number;
+  color?: string;
+  weight?: string;
 }
 
 /**
@@ -333,14 +334,30 @@ export const iconVariants = {
 
 export type IconVariant = keyof typeof iconVariants;
 
+export type IconComponent = ComponentType<
+  SVGProps<SVGSVGElement> & {
+    size?: number | string;
+    strokeWidth?: number;
+    weight?: string;
+    color?: string;
+  }
+>;
+
+export type IconSvgProps = SVGProps<SVGSVGElement> & {
+  size?: number | string;
+  strokeWidth?: number;
+  weight?: string;
+  color?: string;
+};
+
 export interface IconSetDefinition extends Identifiable {
   label: string;
   description?: string;
   icon?: string;
-  getIcon?: (name: string) => LucideIcon | undefined;
+  getIcon?: (name: string) => IconComponent | undefined;
   normalizeName?: (name: string) => string;
   defaultVariant?: IconVariant;
-  getProps?: (name: string) => SVGProps<SVGSVGElement>;
+  getProps?: (name: string) => IconSvgProps;
 }
 
 class IconSetRegistry extends BaseRegistry<IconSetDefinition> {
@@ -429,7 +446,7 @@ export function normalizeIconName(name: string): string {
 /**
  * Get an icon component by name
  */
-export function getBaseIcon(name: IconName | string): LucideIcon | undefined {
+export function getBaseIcon(name: IconName | string): IconComponent | undefined {
   if (typeof name === 'string') {
     const normalized = normalizeIconName(name);
     return Icons[normalized as IconName];
@@ -440,7 +457,7 @@ export function getBaseIcon(name: IconName | string): LucideIcon | undefined {
 /**
  * Get an icon component by name (base icon map)
  */
-export function getIcon(name: IconName | string): LucideIcon | undefined {
+export function getIcon(name: IconName | string): IconComponent | undefined {
   return getBaseIcon(name);
 }
 
@@ -492,13 +509,17 @@ export function Icon({
   const shouldUseTheme =
     typeof className !== 'string' || className.trim().length === 0 || className.trim() === 'text-current';
   const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
-  const resolvedClassName = shouldUseTheme ? iconVariants[variant] ?? iconVariants.default : className;
+  const resolvedClassName = shouldUseTheme
+    ? (variant === 'default' ? '' : iconVariants[variant] ?? iconVariants.default)
+    : className;
+
+  const resolvedStrokeWidth = setStrokeWidth ?? (setSvgProps.weight ? undefined : strokeWidth);
 
   return (
     <IconComponent
       size={size}
       className={resolvedClassName}
-      strokeWidth={setStrokeWidth ?? strokeWidth}
+      strokeWidth={resolvedStrokeWidth}
       {...setSvgProps}
       {...props}
     />

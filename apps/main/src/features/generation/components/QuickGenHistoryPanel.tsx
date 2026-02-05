@@ -362,7 +362,9 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
 
         {canAcceptAssets && visibleHistory.length === 0 && (
           <div className="text-xs text-neutral-500 italic text-center py-4">
-            No history yet.
+            {sortedHistory.length > 0 && hideIncompatibleAssets
+              ? 'No compatible assets for this operation.'
+              : 'No history yet.'}
           </div>
         )}
 
@@ -384,6 +386,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                       entry={entry}
                       isCompatible={acceptsInput.includes(entry.mediaType)}
                       isLoading={!!loadingIds[entry.assetId]}
+                      autoPrefetchThumbnails={autoPrefetchHistoryThumbnails}
                       onSelect={() => handleSelectFromHistory(entry)}
                       onTogglePin={() => togglePin(historyOperation, entry.assetId)}
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}
@@ -397,7 +400,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
               <div>
                 <div className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400 mb-1.5">
                   <Icon name="clock" size={10} />
-                  <span>Recent</span>
+                  <span>{historySortMode === 'pinned-first' ? 'Recent' : 'History'}</span>
                 </div>
                 <div
                   className="grid gap-2"
@@ -409,6 +412,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                       entry={entry}
                       isCompatible={acceptsInput.includes(entry.mediaType)}
                       isLoading={!!loadingIds[entry.assetId]}
+                      autoPrefetchThumbnails={autoPrefetchHistoryThumbnails}
                       onSelect={() => handleSelectFromHistory(entry)}
                       onTogglePin={() => togglePin(historyOperation, entry.assetId)}
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}

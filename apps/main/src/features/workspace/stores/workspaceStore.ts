@@ -35,6 +35,7 @@ export type PanelId =
   | "console"
   | "model-inspector"
   | "quickgen-asset"
+  | "quickgen-history"
   | "quickgen-prompt"
   | "quickgen-settings"
   | "quickgen-blocks"

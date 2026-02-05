@@ -79,6 +79,13 @@ export type {
   GenerationPresetState,
   GenerationPresetActions,
 } from './stores/generationPresetStore';
+export { useGenerationHistoryStore } from './stores/generationHistoryStore';
+export type {
+  AssetHistoryEntry,
+  GenerationHistoryState,
+  HistoryMode,
+  HistorySortMode,
+} from './stores/generationHistoryStore';
 // Lib - Generation Core
 export * from './lib/core';
 

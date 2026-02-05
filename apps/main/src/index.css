@@ -324,6 +324,35 @@ button:focus-visible {
   animation: slide-in-from-bottom var(--world-theme-motion-duration) var(--world-theme-motion-easing);
 }
 
+/* Quick-gen: clamp motion on selected compact cards */
+.compact-asset-card--no-motion {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.compact-asset-card--no-motion *,
+.compact-asset-card--no-motion *::before,
+.compact-asset-card--no-motion *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+.quickgen-asset-selected {
+  animation: none !important;
+  transition: none !important;
+  transform: none !important;
+  opacity: 1 !important;
+}
+
+.quickgen-asset-selected *,
+.quickgen-asset-selected *::before,
+.quickgen-asset-selected *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* Respect user's reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .user-reduced-motion * {

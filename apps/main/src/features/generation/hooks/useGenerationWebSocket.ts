@@ -14,12 +14,13 @@ import { pixsimClient, BACKEND_BASE, type GenerationResponse } from '@lib/api';
 import type { AssetResponse } from '@lib/api/assets';
 import { debugFlags } from '@lib/utils';
 
-import { assetEvents, useAssetSettingsStore } from '@features/assets';
+import { assetEvents, useAssetSettingsStore, fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
 
 import { parseWebSocketMessage, type WebSocketMessage } from '@/types/websocket';
 
 import { fromGenerationResponse } from '../models';
 import { useGenerationsStore } from '../stores/generationsStore';
+import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 type WebSocketRecord = WebSocketMessage & Record<string, unknown>;
 
@@ -57,6 +58,49 @@ function computeWebSocketUrl(): string {
   }
 
   return 'ws://localhost:8000/api/v1/ws/generations';
+}
+
+const THUMBNAIL_POLL_DELAYS_MS = [1500, 3000, 6000, 10000, 15000, 25000];
+const pendingThumbnailPolls = new Map<number, ReturnType<typeof setTimeout>>();
+
+function isNonImageUrl(url: string): boolean {
+  const lowered = url.toLowerCase();
+  if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
+  return /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/.test(lowered);
+}
+
+function hasUsableThumbnail(asset: AssetResponse): boolean {
+  if (asset.thumbnail_key || asset.preview_key) return true;
+  const url = asset.thumbnail_url || asset.preview_url;
+  if (!url) return false;
+  return !isNonImageUrl(url);
+}
+
+async function scheduleThumbnailRefresh(assetId: number, attempt = 0): Promise<void> {
+  if (pendingThumbnailPolls.has(assetId) && attempt === 0) return;
+  if (attempt >= THUMBNAIL_POLL_DELAYS_MS.length) {
+    pendingThumbnailPolls.delete(assetId);
+    return;
+  }
+
+  const delay = THUMBNAIL_POLL_DELAYS_MS[attempt];
+  const timeout = setTimeout(async () => {
+    try {
+      const refreshed = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
+      if (hasUsableThumbnail(refreshed)) {
+        assetEvents.emitAssetUpdated(refreshed);
+        pendingThumbnailPolls.delete(assetId);
+        return;
+      }
+    } catch (err) {
+      debugFlags.log('websocket', 'Thumbnail refresh failed:', err);
+    }
+
+    pendingThumbnailPolls.delete(assetId);
+    scheduleThumbnailRefresh(assetId, attempt + 1);
+  }, delay);
+
+  pendingThumbnailPolls.set(assetId, timeout);
 }
 
 const WS_CANDIDATES = Array.from(
@@ -267,9 +311,29 @@ class WebSocketManager {
             debugFlags.log('websocket', 'Job completed! Updating generation status...');
             // Fetch generation data to update status
             // Note: asset:created event will handle adding the asset to gallery
-            apiClient.get<GenerationResponse>(`/generations/${generationId}`).then(async ({ data }) => {
+            pixsimClient.get<GenerationResponse>(`/generations/${generationId}`).then(async (data) => {
               debugFlags.log('websocket', 'Generation data:', data);
               addOrUpdateGeneration(fromGenerationResponse(data));
+
+              // Optionally record output asset in history
+              const historyStore = useGenerationHistoryStore.getState();
+              const outputAssetId = data.asset?.id;
+              if (historyStore.includeOutputsInHistory && outputAssetId && data.operation_type) {
+                try {
+                  const assetData = await pixsimClient.get<AssetResponse>(`/assets/${outputAssetId}`);
+                  const assetModel = fromAssetResponse(assetData);
+                  const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(assetModel);
+                  historyStore.recordUsage(data.operation_type as any, [
+                    {
+                      id: assetModel.id,
+                      thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
+                      mediaType: assetModel.mediaType,
+                    },
+                  ]);
+                } catch (err) {
+                  debugFlags.log('websocket', 'Failed to record output history:', err);
+                }
+              }
 
               // Sync asset to local storage if setting is enabled
               // Note: asset_id is accessed from raw API response before mapping
@@ -344,6 +408,9 @@ class WebSocketManager {
                 if (isReady) {
                   debugFlags.log('websocket', 'Asset ready, emitting asset:created event to gallery');
                   assetEvents.emitAssetCreated(assetData);
+                  if (!hasUsableThumbnail(assetData)) {
+                    scheduleThumbnailRefresh(assetId);
+                  }
                 } else {
                   // Asset not ready yet, retry after another delay
                   debugFlags.log('websocket', 'Asset not ready, retrying in 1s...');
@@ -352,6 +419,9 @@ class WebSocketManager {
                        const retryData = await pixsimClient.get<AssetResponse>(`/assets/${assetId}`);
                       debugFlags.log('websocket', 'Asset data refetched:', retryData);
                       assetEvents.emitAssetCreated(retryData);
+                      if (!hasUsableThumbnail(retryData)) {
+                        scheduleThumbnailRefresh(assetId);
+                      }
                     } catch (retryErr) {
                       console.error('[WebSocket] Failed to refetch asset:', assetId, retryErr);
                     }
