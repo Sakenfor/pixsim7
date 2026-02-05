@@ -14,12 +14,13 @@ Plugin Architecture:
 """
 
 import inspect
-from typing import Protocol, Callable, Any, Optional, Literal, Union, TYPE_CHECKING
+from typing import Protocol, Callable, Any, Optional, Literal, Union
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
-if TYPE_CHECKING:
-    from .frontend_manifest import FrontendPluginManifest
+# Import FrontendPluginManifest at runtime (not TYPE_CHECKING) so Pydantic can resolve
+# the forward reference in PluginManifest.frontend_manifest field
+from .frontend_manifest import FrontendPluginManifest
 
 
 # =============================================================================
@@ -191,7 +192,7 @@ class PluginManifest(BaseModel):
     # Frontend manifest for dynamic interaction/helper/tool registration
     # Can be a FrontendPluginManifest instance or dict (for backwards compatibility)
     # See infrastructure/plugins/frontend_manifest.py for canonical schema
-    frontend_manifest: Optional[Union[dict, "FrontendPluginManifest"]] = None
+    frontend_manifest: Optional[Union[dict, FrontendPluginManifest]] = None
 
     # Plugin-contributed codegen tasks (escape hatch for custom type generation)
     # Prefer using the standard frontend_manifest schema instead

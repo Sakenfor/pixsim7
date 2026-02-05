@@ -41,6 +41,10 @@ from .frontend_manifest import (
     FrontendManifestEntry,
 )
 
+# Rebuild PluginManifest to resolve forward reference to FrontendPluginManifest
+# This is required because types.py uses TYPE_CHECKING import for FrontendPluginManifest
+PluginManifest.model_rebuild()
+
 __all__ = [
     # Core types
     'PluginManifest',

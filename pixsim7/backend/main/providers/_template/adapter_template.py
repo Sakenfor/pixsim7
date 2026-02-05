@@ -377,6 +377,7 @@ class MyProvider(Provider):
         generation: Generation,
         mapped_params: Dict[str, Any],
         resolve_source_fn,
+        account: Optional[ProviderAccount] = None,
     ) -> Dict[str, Any]:
         """
         Resolve file sources to local paths for multipart uploads.

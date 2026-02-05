@@ -15,8 +15,8 @@ import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools'
 
 
 import { registerFrontendMiniGames } from '@/components/minigames/registry';
-import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
 import { registerIconSetsPlugin } from '@/plugins/ui/icon-sets';
+import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
 
 import { bootstrapExamplePlugins } from './bootstrap';
 import { discoverControlCenterRegistrations } from './bootstrapControlCenters';

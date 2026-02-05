@@ -6,7 +6,7 @@ from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
 from pixsim7.backend.main.api.v1.plugins import router
 
 manifest = PluginManifest(
-    id="plugins",
+    id="plugin_catalog",
     name="Plugin Catalog API",
     version="1.0.0",
     description="UI plugin discovery, enabling/disabling, and settings management",

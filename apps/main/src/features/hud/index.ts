@@ -47,9 +47,6 @@ export type { HudLayoutEditorProps } from './components/editor/HudEditor';
 // Panels - Game Integration
 // ============================================================================
 
-// Backward compatibility wrapper - re-exports HudEditor as HudLayoutEditor
-export { HudLayoutEditor } from './panels/HudLayoutEditor';
-
 export {
   HudProfileSwitcher,
   HudProfileSwitcherButton,
