@@ -3,6 +3,8 @@ export { useContextHubState, useContextHubHostId } from "./hooks/contextHubConte
 export type { ContextHubState } from "./hooks/contextHubContext";
 export { useCapability, useProvideCapability, usePanelContext } from "./hooks";
 export {
+  CAP_ASSET,
+  CAP_ASSET_LIST,
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,

@@ -9,6 +9,7 @@ from pixsim7.backend.main.domain.assets.lineage import AssetLineage
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.enums import OperationType
 from pixsim7.backend.main.shared.schemas.entity_ref import EntityRef
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.shared.schemas.image_edit_schemas import (
     MultiImageEditPrompt,
     InputBinding,
@@ -58,15 +59,9 @@ class AssetLineageService:
 
 def _resolve_asset_id(asset_ref) -> Optional[int]:
     """Extract asset ID from various reference formats."""
-    if asset_ref is None:
-        return None
-    if isinstance(asset_ref, int):
-        return asset_ref
     if isinstance(asset_ref, EntityRef):
         return asset_ref.id
-    if hasattr(asset_ref, "id"):
-        return asset_ref.id
-    return None
+    return extract_asset_id(asset_ref)
 
 
 def _extract_edit_summaries_from_instructions(

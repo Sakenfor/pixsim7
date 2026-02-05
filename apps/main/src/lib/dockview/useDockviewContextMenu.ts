@@ -53,6 +53,7 @@ export function useDockviewContextMenu(
   const handleBackgroundContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (!contextMenuActive || !contextMenuRef.current) return;
+      if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       const baseContext = {
         currentDockviewId: dockviewId,

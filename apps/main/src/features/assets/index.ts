@@ -134,6 +134,7 @@ export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
 export {
   fromAssetResponse,
   fromAssetResponses,
+  getAssetDisplayUrls,
   toViewerAsset,
   toViewerAssets,
   toSelectedAsset,

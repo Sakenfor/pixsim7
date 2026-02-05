@@ -11,38 +11,9 @@ from __future__ import annotations
 
 from typing import Optional, Tuple, List, Dict, Any
 import copy
-from urllib.parse import unquote
 
 from pixsim7.backend.main.services.provider.adapters.pixverse_ids import extract_uuid_from_url
-
-
-def _coerce_pixverse_url(value: Any) -> Optional[str]:
-    if not value:
-        return None
-    if isinstance(value, dict):
-        value = (
-            value.get("url")
-            or value.get("image_url")
-            or value.get("path")
-            or value.get("image_path")
-        )
-    if not value:
-        return None
-    if not isinstance(value, str):
-        value = str(value)
-    value = unquote(value.strip())
-    if value.startswith("http://") or value.startswith("https://"):
-        return value
-    if value.startswith("/"):
-        value = value[1:]
-    if value.startswith("pixverse/") or value.startswith("upload/"):
-        return f"https://media.pixverse.ai/{value}"
-    if value.startswith("openapi/") or value.startswith("openapi\\"):
-        normalized = value.replace("\\", "/")
-        return f"https://media.pixverse.ai/{normalized}"
-    if value.startswith("media.pixverse.ai/"):
-        return f"https://{value}"
-    return value
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 
 
 def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str], Optional[str]]:
@@ -110,7 +81,7 @@ def extract_source_image_urls(extra_metadata: Optional[dict]) -> tuple[list[str]
     seen = set()
     unique = []
     for u in image_urls:
-        coerced = _coerce_pixverse_url(u)
+        coerced = normalize_url(u)
         if coerced and coerced not in seen:
             seen.add(coerced)
             unique.append(coerced)
@@ -172,7 +143,7 @@ def build_embedded_from_pixverse_metadata(
                     _ingest(entry)
                 return
             if isinstance(value, dict):
-                url = _coerce_pixverse_url(
+                url = normalize_url(
                     value.get("url")
                     or value.get("image_url")
                     or value.get("path")

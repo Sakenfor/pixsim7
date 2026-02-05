@@ -571,14 +571,19 @@ async def backfill_thumbnails(
     db: DatabaseSession,
     limit: int = Query(50, ge=1, le=200, description="Max assets to process"),
     missing_only: bool = Query(True, description="Only process assets with missing thumbnail files"),
+    include_missing_keys: bool = Query(
+        False,
+        description="Also process assets without thumbnail_key (downloads from remote_url if needed)",
+    ),
 ):
     """
     Regenerate missing thumbnails for assets.
 
     Finds assets where the thumbnail file doesn't exist on disk and regenerates them.
+    Optionally includes assets missing thumbnail_key (downloads from remote_url if needed).
     Useful after storage cleanup or migration.
     """
-    from sqlalchemy import select
+    from sqlalchemy import select, or_
     from pixsim7.backend.main.domain.assets.models import Asset
     from pixsim7.backend.main.services.asset.ingestion import AssetIngestionService
     from pixsim7.backend.main.services.storage import get_storage_service
@@ -588,13 +593,24 @@ async def backfill_thumbnails(
         storage = get_storage_service()
         service = AssetIngestionService(db)
 
-        # Find assets with thumbnail_key set
-        result = await db.execute(
-            select(Asset).where(
-                Asset.user_id == admin.id,
+        # Find assets to inspect
+        base_filters = [Asset.user_id == admin.id]
+        if include_missing_keys:
+            base_filters.append(
+                or_(
+                    Asset.thumbnail_key.isnot(None),
+                    Asset.local_path.isnot(None),
+                    Asset.remote_url.isnot(None),
+                )
+            )
+        else:
+            base_filters.extend([
                 Asset.thumbnail_key.isnot(None),
                 Asset.local_path.isnot(None),
-            ).limit(limit * 2)  # Fetch more since we'll filter
+            ])
+
+        result = await db.execute(
+            select(Asset).where(*base_filters).limit(limit * 3)  # Fetch more since we'll filter
         )
         assets = result.scalars().all()
 
@@ -608,16 +624,17 @@ async def backfill_thumbnails(
             if processed >= limit:
                 break
 
-            # Check if thumbnail file exists
-            if missing_only:
+            # Check if thumbnail file exists (only when we have a key)
+            if missing_only and asset.thumbnail_key:
                 thumb_path = storage.get_path(asset.thumbnail_key)
                 if os.path.exists(thumb_path):
                     continue  # Skip - thumbnail exists
 
             processed += 1
 
-            # Check if source file exists
-            if not asset.local_path or not os.path.exists(asset.local_path):
+            # Check if source file exists (local) or can be downloaded (remote_url)
+            has_local = asset.local_path and os.path.exists(asset.local_path)
+            if not has_local and not asset.remote_url:
                 logger.warning(
                     "thumbnail_backfill_no_source",
                     asset_id=asset.id,
@@ -630,7 +647,7 @@ async def backfill_thumbnails(
                 # Regenerate thumbnail only
                 await service.ingest_asset(
                     asset.id,
-                    force=False,
+                    force=True,
                     store_for_serving=False,
                     extract_metadata=False,
                     generate_thumbnails=True,

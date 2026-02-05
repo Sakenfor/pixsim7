@@ -13,16 +13,13 @@ Used by providers that need local file paths for multipart uploads.
 """
 from typing import Any, Tuple, Optional
 import os
-import re
 import tempfile
 from urllib.parse import urlparse, unquote
 
 import httpx
 
 from pixsim7.backend.main.shared.errors import ProviderError
-
-# Pattern for asset references: "asset_123", "asset:123"
-_ASSET_REF_RE = re.compile(r"^(?:asset[_:])(?P<id>\d+)$")
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 
 
 class FileResolver:
@@ -111,17 +108,10 @@ async def resolve_source_to_local_file(
     if source is None:
         raise ProviderError("Missing required file source for provider upload")
 
-    # Handle dict form
-    if isinstance(source, dict):
-        if "asset_id" in source:
-            source = source["asset_id"]
-        elif "id" in source:
-            source = source["id"]
-
-    # Handle numeric asset id
-    if isinstance(source, int):
+    asset_id = extract_asset_id(source)
+    if asset_id is not None:
         return await _resolve_asset_id_to_local_file(
-            asset_id=source,
+            asset_id=asset_id,
             user_id=user_id,
             default_suffix=default_suffix,
             db_session=db_session,
@@ -133,16 +123,6 @@ async def resolve_source_to_local_file(
     src = source.strip()
     if not src:
         raise ProviderError("Empty source for provider upload")
-
-    # Handle asset ref string ("asset_123", "asset:123")
-    m = _ASSET_REF_RE.match(src)
-    if m:
-        return await _resolve_asset_id_to_local_file(
-            asset_id=int(m.group("id")),
-            user_id=user_id,
-            default_suffix=default_suffix,
-            db_session=db_session,
-        )
 
     # Handle URLs
     parsed = urlparse(src)

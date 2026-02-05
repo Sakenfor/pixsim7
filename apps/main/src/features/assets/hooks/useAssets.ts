@@ -406,6 +406,16 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     return unsubscribe;
   }, [updateAsset]);
 
+  // Subscribe to asset delete events
+  useEffect(() => {
+    const unsubscribe = assetEvents.subscribeToDeletes((assetId) => {
+      const id = typeof assetId === 'string' ? parseInt(assetId, 10) : assetId;
+      removeAsset(id);
+    });
+
+    return unsubscribe;
+  }, [removeAsset]);
+
   // Reset when filters change
   useEffect(() => {
     reset();

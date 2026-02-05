@@ -82,6 +82,7 @@ export function wrapPanelWithContextMenu(
 
     const handleContextMenu = (event: React.MouseEvent) => {
       if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;
+      if (event.ctrlKey || event.metaKey) return;
 
       // Skip if event target is inside a nested SmartDockview (let the nested one handle it)
       const target = event.target as HTMLElement;

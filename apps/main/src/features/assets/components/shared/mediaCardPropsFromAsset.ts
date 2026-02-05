@@ -5,9 +5,9 @@
  * across gallery surface components.
  */
 
-import type { AssetModel } from '../../models/asset';
 import type { MediaCardProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
-import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
+
+import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
 
 /**
  * Core MediaCard props derived from an asset.
@@ -30,6 +30,7 @@ export type AssetMediaCardProps = Pick<
   | 'createdAt'
   | 'status'
   | 'providerStatus'
+  | 'sourceGenerationId'
 >;
 
 /**
@@ -45,18 +46,16 @@ export type AssetMediaCardProps = Pick<
  * ```
  */
 export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps {
-  const resolvedThumb = resolveThumbnailUrl(asset);
-  const resolvedPreview = resolvePreviewUrl(asset);
-  const resolvedMain = resolveAssetUrl(asset);
+  const { mainUrl, thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
 
   return {
     id: asset.id,
     mediaType: asset.mediaType,
     providerId: asset.providerId,
     providerAssetId: asset.providerAssetId,
-    thumbUrl: resolvedThumb ?? asset.thumbnailUrl ?? '',
-    previewUrl: resolvedPreview ?? asset.previewUrl ?? undefined,
-    remoteUrl: resolvedMain ?? asset.remoteUrl ?? '',
+    thumbUrl: thumbnailUrl ?? asset.thumbnailUrl ?? '',
+    previewUrl: previewUrl ?? asset.previewUrl ?? undefined,
+    remoteUrl: mainUrl ?? asset.remoteUrl ?? '',
     width: asset.width ?? undefined,
     height: asset.height ?? undefined,
     durationSec: asset.durationSec ?? undefined,
@@ -65,6 +64,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
     createdAt: asset.createdAt,
     status: asset.syncStatus,
     providerStatus: asset.providerStatus ?? undefined,
+    sourceGenerationId: asset.sourceGenerationId ?? undefined,
   };
 }
 

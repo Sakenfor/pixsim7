@@ -1140,6 +1140,10 @@ class UploadFromUrlRequest(BaseModel):
         default=None,
         description="Optional upload context (validated against schema)",
     )
+    skip_dedup: bool = Field(
+        default=False,
+        description="Skip phash deduplication check (for small region changes)",
+    )
 
 
 @router.post("/upload-from-url", response_model=UploadAssetResponse)
@@ -1275,6 +1279,7 @@ async def upload_asset_from_url(
             asset_service=asset_service,
             provider_id=request.provider_id,
             file_ext=ext,
+            skip_phash_dedup=request.skip_dedup,
         )
 
         sha256 = prep.sha256

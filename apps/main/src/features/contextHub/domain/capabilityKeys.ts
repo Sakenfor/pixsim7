@@ -1,3 +1,5 @@
+export const CAP_ASSET = "asset" as const;
+export const CAP_ASSET_LIST = "assetList" as const;
 export const CAP_ASSET_SELECTION = "assetSelection" as const;
 export const CAP_SCENE_CONTEXT = "sceneContext" as const;
 export const CAP_WORLD_CONTEXT = "worldContext" as const;

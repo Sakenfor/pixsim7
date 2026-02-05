@@ -125,10 +125,12 @@ async def analyze_prompt_with_llm(
 
         logger.info(f"LLM analysis complete: {len(blocks)} blocks, {len(all_tags)} tags")
 
+        sorted_tags = sorted(all_tags)
         return {
             "prompt": text,
             "blocks": blocks,
-            "tags": sorted(all_tags),
+            "tags": sorted_tags,
+            "tags_flat": sorted_tags,  # Consistent with simple parser output
         }
 
     except json.JSONDecodeError as e:

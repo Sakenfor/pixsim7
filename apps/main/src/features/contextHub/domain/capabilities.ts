@@ -7,6 +7,8 @@ import type { OperationType } from "@/types/operations";
 import type { EntityScopedCapability } from "../types";
 
 import {
+  CAP_ASSET,
+  CAP_ASSET_LIST,
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
@@ -24,6 +26,8 @@ import { assetInputContract } from "./contracts/assetInput";
 import { registerCapabilityDescriptor } from "./descriptorRegistry";
 
 export {
+  CAP_ASSET,
+  CAP_ASSET_LIST,
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
@@ -37,6 +41,20 @@ export {
   CAP_GENERATION_SOURCE,
 };
 
+registerCapabilityDescriptor({
+  key: CAP_ASSET,
+  label: "Asset",
+  description: "Single asset available in the current context (e.g., viewer, card).",
+  kind: "data",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_ASSET_LIST,
+  label: "Asset List",
+  description: "List of assets available in the current context.",
+  kind: "data",
+  source: "contextHub",
+});
 registerCapabilityDescriptor({
   key: CAP_ASSET_SELECTION,
   label: "Asset Selection",

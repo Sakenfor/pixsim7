@@ -26,6 +26,7 @@ export function CustomTabComponent(props: IDockviewPanelHeaderProps) {
 
   const handleContextMenu = (e: React.MouseEvent) => {
     if (!contextMenu) return;
+    if (e.ctrlKey || e.metaKey) return;
 
     e.preventDefault();
     e.stopPropagation();

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from urllib.parse import unquote, urlparse, urlunparse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -24,6 +23,8 @@ from pixsim7.backend.main.domain.assets.upload_attribution import (
     normalize_upload_method,
     DEFAULT_UPLOAD_METHOD,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
+from urllib.parse import urlparse
 
 
 def _infer_upload_method_for_new_asset(
@@ -81,55 +82,6 @@ def _infer_upload_method_for_new_asset(
     return DEFAULT_UPLOAD_METHOD
 
 
-def _normalize_remote_url(url: Optional[str]) -> Optional[str]:
-    """
-    Normalize a remote URL for consistent deduplication.
-
-    - Unquotes URL-encoded characters
-    - Strips whitespace
-    - Normalizes relative pixverse paths to full URLs
-    - Removes trailing slashes from path (but not query strings)
-
-    This ensures that the same logical URL matches regardless of encoding
-    differences between direct sync and embedded extraction.
-    """
-    if not url:
-        return None
-
-    # Unquote and strip
-    url = unquote(url.strip())
-
-    # Handle relative pixverse paths (same logic as _coerce_pixverse_url)
-    if not url.startswith(("http://", "https://")):
-        if url.startswith("/"):
-            url = url[1:]
-        if url.startswith(("pixverse/", "upload/")):
-            url = f"https://media.pixverse.ai/{url}"
-        elif url.startswith(("openapi/", "openapi\\")):
-            url = f"https://media.pixverse.ai/{url.replace(chr(92), '/')}"
-        elif url.startswith("media.pixverse.ai/"):
-            url = f"https://{url}"
-
-    # Parse and normalize
-    try:
-        parsed = urlparse(url)
-        # Remove trailing slash from path (but preserve root /)
-        path = parsed.path.rstrip("/") if parsed.path != "/" else parsed.path
-        # Reconstruct with normalized path
-        url = urlunparse((
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            path,
-            parsed.params,
-            parsed.query,
-            "",  # Remove fragment
-        ))
-    except Exception:
-        pass  # Keep original if parsing fails
-
-    return url
-
-
 async def add_asset(
     db: AsyncSession,
     *,
@@ -171,7 +123,7 @@ async def add_asset(
 
     # Normalize remote_url for consistent deduplication
     # This ensures embedded extraction URLs (normalized) match direct sync URLs (raw)
-    remote_url = _normalize_remote_url(remote_url) or remote_url
+    remote_url = normalize_url(remote_url) or remote_url
 
     # Track which dedup strategy matched for conflict detection
     dedup_strategy = None

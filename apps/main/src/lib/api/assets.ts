@@ -11,6 +11,8 @@ import type {
   FilterMetadataQueryOptions,
 } from '@pixsim7/shared.api.client/domains';
 import { getFilenameFromUrl } from '@pixsim7/shared.media.core';
+
+import { fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
 // Only import types used in this file; others are re-exported below
 
 import { pixsimClient } from './client';
@@ -73,7 +75,10 @@ export const getFilterMetadata: (
   assetsApi.getFilterMetadata;
 
 export async function downloadAsset(asset: AssetResponse): Promise<void> {
-  const downloadUrl = asset.remote_url || asset.file_url || `/api/v1/assets/${asset.id}/file`;
+  const assetModel = fromAssetResponse(asset);
+  const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(assetModel);
+  const downloadUrl =
+    mainUrl || previewUrl || thumbnailUrl || `/api/v1/assets/${asset.id}/file`;
 
   const link = document.createElement('a');
   link.href = downloadUrl;

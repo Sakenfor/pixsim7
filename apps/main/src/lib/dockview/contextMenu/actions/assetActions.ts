@@ -13,20 +13,27 @@
  */
 
 import { resolveMediaType } from '@pixsim7/shared.assets.core';
+import { useToastStore } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
-import { toViewerAsset, toSelectedAsset } from '@features/assets';
+import { assetEvents, getAssetDisplayUrls, toViewerAsset, toSelectedAsset } from '@features/assets';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
 import {
+  CAP_ASSET,
   CAP_GENERATION_WIDGET,
   type GenerationWidgetContext,
   type AssetSelection,
   type GenerationContextSummary,
 } from '@features/contextHub';
 import { useGenerationInputStore } from '@features/generation';
+import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
+import { BACKEND_BASE } from '@/lib/api/client';
+import { authService } from '@/lib/auth';
+import { ensureBackendAbsolute } from '@/lib/media/backendUrl';
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
 
@@ -114,7 +121,11 @@ function normalizeAsset(asset: AssetActionInput): AssetModel | null {
 
 function resolveAssets(ctx: { data?: any }): AssetModel[] {
   const selection = ctx.data?.selection;
-  const asset = ctx.data?.asset;
+  const asset =
+    ctx.data?.asset ??
+    ctx.data?.['viewer-asset'] ??
+    ctx.data?.viewerAsset ??
+    (ctx.data?.id ? ctx.data : null);
   if (Array.isArray(selection) && selection.length > 0) {
     if (asset?.id && selection.some((item) => item?.id === asset.id)) {
       return selection
@@ -124,6 +135,79 @@ function resolveAssets(ctx: { data?: any }): AssetModel[] {
   }
   const normalized = asset ? normalizeAsset(asset as AssetActionInput) : null;
   return normalized ? [normalized] : [];
+}
+
+function notify(type: 'success' | 'error' | 'warning' | 'info', message: string) {
+  useToastStore.getState().addToast({
+    type,
+    message,
+    duration: 4000,
+  });
+}
+
+function resolveCopyUrl(asset: AssetModel): string | undefined {
+  const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(asset);
+  const candidate = mainUrl || previewUrl || thumbnailUrl || asset.fileUrl || asset.remoteUrl;
+  if (!candidate) return undefined;
+  return ensureBackendAbsolute(candidate, BACKEND_BASE) ?? candidate;
+}
+
+function getBackendBase(): string {
+  return BACKEND_BASE.replace(/\/$/, '');
+}
+
+async function postWithAuth(path: string): Promise<Response> {
+  const token = authService.getStoredToken();
+  const res = await fetch(`${getBackendBase()}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(text || res.statusText || `HTTP ${res.status}`);
+  }
+  return res;
+}
+
+async function triggerIngestionForAssets(
+  assets: AssetModel[],
+  query: string,
+  label: string,
+): Promise<void> {
+  if (!assets.length) return;
+  const eligible = assets
+    .map((asset) => Number(asset.id))
+    .filter((id) => Number.isFinite(id));
+  if (!eligible.length) {
+    notify('warning', `${label}: no gallery assets available for this action.`);
+    return;
+  }
+  const results = await Promise.allSettled(
+    eligible.map((id) => postWithAuth(`/api/v1/media/ingestion/trigger/${id}${query}`)),
+  );
+  const successCount = results.filter((result) => result.status === 'fulfilled').length;
+  const errorCount = results.length - successCount;
+  if (successCount > 0) {
+    notify('success', `${label}: queued for ${successCount} asset${successCount === 1 ? '' : 's'}.`);
+  }
+  if (errorCount > 0) {
+    notify('error', `${label}: ${errorCount} failed. Check auth or backend logs.`);
+  }
+}
+
+async function backfillThumbnails(limit = 100): Promise<void> {
+  const res = await postWithAuth(
+    `/api/v1/assets_maintenance/backfill-thumbnails?limit=${limit}&include_missing_keys=true`,
+  );
+  const data = await res.json().catch(() => null);
+  if (data?.generated !== undefined) {
+    notify(
+      'success',
+      `Backfill complete: generated ${data.generated} (processed ${data.processed}, errors ${data.errors}).`,
+    );
+  } else {
+    notify('success', 'Thumbnail backfill queued.');
+  }
 }
 
 function resolveOperationType(
@@ -148,7 +232,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
       {
         id: 'asset:send-to-generator:none',
         label: 'No assets available',
-        availableIn: ['asset', 'asset-card'],
+        requiredCapabilities: [CAP_ASSET],
         disabled: () => true,
         execute: () => {},
       },
@@ -166,7 +250,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
     {
       id: 'asset:send-to-generator:auto',
       label: 'Auto (nearest)',
-      availableIn: ['asset', 'asset-card'],
+      requiredCapabilities: [CAP_ASSET],
       divider: providers.length > 0,
       disabled: () => (!activeProvider ? 'No generators available' : false),
       execute: () => {
@@ -183,7 +267,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
     actions.push({
       id: 'asset:send-to-generator:empty',
       label: 'No generators available',
-      availableIn: ['asset', 'asset-card'],
+      requiredCapabilities: [CAP_ASSET],
       disabled: () => true,
       execute: () => {},
     });
@@ -201,7 +285,7 @@ function buildGeneratorMenuActions(ctx: MenuActionContext): MenuAction[] {
     actions.push({
       id: `asset:send-to-generator:${provider.id ?? index}`,
       label,
-      availableIn: ['asset', 'asset-card'],
+      requiredCapabilities: [CAP_ASSET],
       disabled: () => (entry.available ? false : 'Unavailable'),
       execute: () => {
         if (!entry.available) return;
@@ -240,6 +324,7 @@ const openAssetInViewerAction: MenuAction = {
   icon: 'image',
   category: 'asset',
   availableIn: ['asset', 'asset-card'],
+  // Note: No requiredCapabilities - we don't want this in viewer context
   visible: (ctx) => resolveAssets(ctx).length > 0,
   execute: (ctx) => {
     const assets = resolveAssets(ctx);
@@ -255,7 +340,8 @@ const sendToGeneratorAction: MenuAction = {
   label: 'Send to Generator',
   icon: 'sparkles',
   category: 'generation',
-  availableIn: ['asset', 'asset-card'],
+  // Require both asset and generation widget - only show where generators are available
+  requiredCapabilities: [CAP_ASSET, CAP_GENERATION_WIDGET],
   visible: (ctx) => resolveAssets(ctx).length > 0,
   children: (ctx) => buildGeneratorMenuActions(ctx),
   execute: () => {},
@@ -277,7 +363,8 @@ function createGenerationAction(
     label,
     icon,
     category: 'generation',
-    availableIn: ['asset', 'asset-card'],
+    // Require both asset and generation widget - only show where both are available
+    requiredCapabilities: [CAP_ASSET, CAP_GENERATION_WIDGET],
     visible: (ctx) => {
       const assets = resolveAssets(ctx);
       if (!assets.length) return false;
@@ -286,7 +373,6 @@ function createGenerationAction(
       }
       return true;
     },
-    disabled: (ctx) => (resolveGenerationWidget(ctx) ? false : 'No generator available'),
     execute: (ctx) => {
       const assets = resolveAssets(ctx);
       if (!assets.length) return;
@@ -331,7 +417,7 @@ const removeFromQueueAction: MenuAction = {
   icon: 'x-circle',
   iconColor: 'text-orange-500',
   category: 'queue',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
     if (!assets.length) return false;
@@ -357,7 +443,7 @@ const selectAssetAction: MenuAction = {
   label: 'Select Asset',
   icon: 'check-square',
   category: 'selection',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
     if (assets.length !== 1) return false;
@@ -377,7 +463,7 @@ const compareWithSelectedAction: MenuAction = {
   label: 'Compare with Selected',
   icon: 'columns',
   category: 'view',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
     if (assets.length !== 1) return false;
@@ -408,15 +494,15 @@ const copyAssetUrlAction: MenuAction = {
   label: 'Copy URL',
   icon: 'link',
   category: 'clipboard',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
-    return assets.length === 1 && !!(assets[0].remoteUrl || assets[0].fileUrl);
+    return assets.length === 1 && !!resolveCopyUrl(assets[0]);
   },
   execute: async (ctx) => {
     const assets = resolveAssets(ctx);
     if (!assets.length) return;
-    const url = assets[0].remoteUrl || assets[0].fileUrl;
+    const url = resolveCopyUrl(assets[0]);
     if (url) {
       await navigator.clipboard.writeText(url);
     }
@@ -428,7 +514,7 @@ const copyAssetIdAction: MenuAction = {
   label: 'Copy Asset ID',
   icon: 'hash',
   category: 'clipboard',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => resolveAssets(ctx).length === 1,
   execute: async (ctx) => {
     const assets = resolveAssets(ctx);
@@ -446,7 +532,7 @@ const viewAssetDetailsAction: MenuAction = {
   label: 'View Details',
   icon: 'info',
   category: 'info',
-  availableIn: ['asset', 'asset-card'],
+  requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => resolveAssets(ctx).length === 1,
   execute: (ctx) => {
     const assets = resolveAssets(ctx);
@@ -454,6 +540,64 @@ const viewAssetDetailsAction: MenuAction = {
     // Use the asset detail modal via store
     useAssetDetailStore.getState().setDetailAssetId(assets[0].id);
   },
+};
+
+const debugFixAction: MenuAction = {
+  id: 'asset:debug-fix-menu',
+  label: 'Debug / Fix',
+  icon: 'wrench',
+  category: 'debug',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  children: (ctx) => {
+    const assets = resolveAssets(ctx);
+    const count = assets.length;
+    const labelSuffix = count === 1 ? '' : ` (${count} assets)`;
+    return [
+      {
+        id: 'asset:debug:ingest',
+        label: `Start ingestion${labelSuffix}`,
+        icon: 'play',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => triggerIngestionForAssets(assets, '', 'Ingestion'),
+      },
+      {
+        id: 'asset:debug:regen-thumbs',
+        label: `Regenerate thumbnails${labelSuffix}`,
+        icon: 'image',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => triggerIngestionForAssets(assets, '?regenerate_thumbnails=true', 'Thumbnail rebuild'),
+      },
+      {
+        id: 'asset:debug:retry-thumbs',
+        label: 'Retry thumbnail loads (UI)',
+        icon: 'refresh-cw',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => {
+          assetEvents.emitRetryAllThumbnails();
+          notify('info', 'Retrying thumbnail loads in the UI.');
+        },
+      },
+      {
+        id: 'asset:debug:backfill-thumbs',
+        label: 'Backfill thumbnails (bulk)',
+        icon: 'layers',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => backfillThumbnails(),
+      },
+      {
+        id: 'asset:debug:open-library-settings',
+        label: 'Open Library Settings',
+        icon: 'settings',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => {
+          useSettingsUiStore.getState().setActiveTabId('library');
+          useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
+        },
+      },
+    ];
+  },
+  execute: () => {},
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -475,6 +619,8 @@ export const assetActions: MenuAction[] = [
   compareWithSelectedAction,
   // Info
   viewAssetDetailsAction,
+  // Debug & fixes
+  debugFixAction,
   // Clipboard
   copyAssetUrlAction,
   copyAssetIdAction,

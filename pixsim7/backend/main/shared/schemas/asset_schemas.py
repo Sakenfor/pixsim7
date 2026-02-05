@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field, model_validator
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain, OperationType
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    normalize_url as normalize_pixverse_url,
+)
 
 
 # ===== REQUEST SCHEMAS =====
@@ -142,12 +145,19 @@ class AssetResponse(BaseModel):
         2. file_url (fallback)
         """
         asset_id = getattr(self, "id", None)
+        provider_id = getattr(self, "provider_id", None)
         stored_key = getattr(self, "stored_key", None)
         thumbnail_key = getattr(self, "thumbnail_key", None)
         preview_key = getattr(self, "preview_key", None)
         local_path = getattr(self, "local_path", None)
         remote_url = getattr(self, "remote_url", None)
         original_source_url = getattr(self, "original_source_url", None)
+
+        if provider_id == "pixverse" and remote_url:
+            normalized_remote = normalize_pixverse_url(remote_url)
+            if normalized_remote:
+                remote_url = normalized_remote
+                object.__setattr__(self, "remote_url", normalized_remote)
 
         # Helper to check valid HTTP(S) URL
         def is_valid_url(url):

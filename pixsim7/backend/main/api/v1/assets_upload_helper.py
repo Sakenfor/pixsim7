@@ -41,6 +41,7 @@ async def prepare_upload(
     asset_service,
     provider_id: str,
     file_ext: str = ".bin",
+    skip_phash_dedup: bool = False,
 ) -> UploadPrepResult:
     """
     Prepare a file for upload - compute hashes, check for duplicates, store in CAS.
@@ -105,8 +106,8 @@ async def prepare_upload(
                 error=str(e),
             )
 
-    # 4. Check phash near-duplicate (if no sha256 match)
-    if result.phash64 is not None and not result.existing_asset:
+    # 4. Check phash near-duplicate (if no sha256 match and not skipped)
+    if result.phash64 is not None and not result.existing_asset and not skip_phash_dedup:
         try:
             similar = await asset_service.find_similar_asset_by_phash(result.phash64, user_id, max_distance=5)
             if similar:

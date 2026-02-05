@@ -37,6 +37,8 @@ export interface AssetActionHandlers<TAsset extends MinimalAsset = MinimalAsset>
   onAddToGenerate?: (asset: TAsset) => void;
   /** Quick generate - use asset with current scope settings */
   onQuickAdd?: (asset: TAsset) => void | Promise<void>;
+  /** Regenerate - re-run the generation that created this asset */
+  onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   /** Delete asset */
   onDelete?: (asset: TAsset) => void | Promise<void>;
   /** Upload/re-upload asset to provider */
@@ -58,6 +60,7 @@ export interface AssetActions {
   onAddToTransition?: () => void;
   onAddToGenerate?: () => void;
   onQuickAdd?: () => void | Promise<void>;
+  onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   onDelete?: () => void | Promise<void>;
   onReupload?: (providerId: string) => void | Promise<void>;
   [key: string]: any;
@@ -126,8 +129,13 @@ export function createAssetActions<TAsset extends MinimalAsset>(
     actions.onReupload = (providerId: string) => handlers.onReupload!(asset, providerId);
   }
 
+  // Special case: onRegenerateAsset is passed through directly (takes generationId)
+  if (handlers.onRegenerateAsset) {
+    actions.onRegenerateAsset = handlers.onRegenerateAsset;
+  }
+
   // Include any custom handlers not in the standard list
-  const knownKeys = new Set([...STANDARD_HANDLERS, 'onReupload']);
+  const knownKeys = new Set([...STANDARD_HANDLERS, 'onReupload', 'onRegenerateAsset']);
   for (const key in handlers) {
     if (!knownKeys.has(key)) {
       const handler = handlers[key];

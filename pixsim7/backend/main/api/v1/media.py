@@ -166,7 +166,7 @@ async def trigger_ingestion(
         try:
             asset = await service.ingest_asset(
                 asset_id,
-                force=False,  # Don't re-download
+                force=True,  # Allow regeneration even if marked complete
                 store_for_serving=False,  # Don't re-store
                 extract_metadata=extract_metadata,
                 generate_thumbnails=generate_thumbnails,
@@ -342,7 +342,7 @@ async def _try_regenerate_derivative(
                 service = AssetIngestionService(db)
                 await service.ingest_asset(
                     asset.id,
-                    force=False,
+                    force=True,
                     store_for_serving=False,
                     extract_metadata=False,
                     generate_thumbnails=is_thumbnail,

@@ -36,6 +36,7 @@ from pixsim7.backend.main.domain.enums import MediaType, SyncStatus
 from pixsim7.backend.main.services.storage import get_storage_service
 from pixsim7.backend.main.shared.storage_utils import compute_sha256 as shared_compute_sha256
 from pixsim7.backend.main.services.asset.content import ensure_content_blob
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 from pixsim_logging import get_logger
 
 logger = get_logger()
@@ -285,14 +286,19 @@ class AssetIngestionService:
             generate_previews = self.settings.generate_previews
 
         # Idempotent check: skip if already ingested with content-addressed storage (unless forced)
+        # Only skip when all requested steps are already complete.
         is_content_addressed = asset.stored_key and '/content/' in asset.stored_key
         if not force and asset.ingest_status == INGEST_COMPLETED and is_content_addressed:
-            logger.debug(
-                "ingest_skipped_already_complete",
-                asset_id=asset_id,
-                stored_key=asset.stored_key,
-            )
-            return asset
+            needs_metadata = extract_metadata and not asset.metadata_extracted_at
+            needs_thumbnails = generate_thumbnails and not asset.thumbnail_generated_at
+            needs_previews = generate_previews and not asset.preview_generated_at
+            if not (needs_metadata or needs_thumbnails or needs_previews):
+                logger.debug(
+                    "ingest_skipped_already_complete",
+                    asset_id=asset_id,
+                    stored_key=asset.stored_key,
+                )
+                return asset
 
         # Mark as processing
         asset.ingest_status = INGEST_PROCESSING
@@ -465,14 +471,16 @@ class AssetIngestionService:
         if not url:
             raise ValueError(f"Asset {asset.id} has no remote_url")
 
-        # Auto-fix Pixverse relative URLs (e.g., "openapi/..." or "pixverse/...")
+        normalized_url = normalize_url(url)
+        if normalized_url:
+            url = normalized_url
+
         if not url.startswith(("http://", "https://")):
-            if url.startswith(("openapi/", "pixverse/", "upload/")):
-                url = f"https://media.pixverse.ai/{url}"
-                asset.remote_url = url  # Update asset for persistence
-                logger.warning("download_url_fixed", asset_id=asset.id, fixed_url=url[:100])
-            else:
-                raise ValueError(f"Asset {asset.id} has invalid remote_url (missing protocol): {url[:100]}")
+            raise ValueError(f"Asset {asset.id} has invalid remote_url (missing protocol): {url[:100]}")
+
+        if normalized_url and normalized_url != asset.remote_url:
+            asset.remote_url = normalized_url
+            logger.warning("download_url_fixed", asset_id=asset.id, fixed_url=normalized_url[:100])
 
         max_size = self.settings.max_download_size_mb * 1024 * 1024
         storage = get_storage_service()
@@ -673,21 +681,7 @@ class AssetIngestionService:
             from pixsim7.backend.main.shared.video_utils import get_video_metadata
 
             metadata = get_video_metadata(local_path)
-
-            asset.width = metadata.get("width")
-            asset.height = metadata.get("height")
-            asset.duration_sec = metadata.get("duration")
-            asset.fps = metadata.get("fps")
-
-            # Store extended metadata
-            if not asset.media_metadata:
-                asset.media_metadata = {}
-            asset.media_metadata["video_info"] = {
-                "codec": metadata.get("codec"),
-                "bitrate": metadata.get("bitrate"),
-                "format": metadata.get("format"),
-                "rotation": metadata.get("rotation"),
-            }
+            self._apply_video_metadata(asset, metadata)
 
             logger.debug(
                 "video_metadata_extracted",
@@ -759,6 +753,10 @@ class AssetIngestionService:
     async def _generate_video_thumbnail(self, asset: Asset, local_path: str) -> None:
         """Generate thumbnail for video by extracting a frame."""
         import subprocess
+
+        # Ensure rotation metadata is available so thumbnails are oriented correctly.
+        # Also backfill width/height/duration if missing (common when only regen thumbnails).
+        self._ensure_video_rotation(asset, local_path)
 
         # Extract frame at 1 second (or middle if shorter)
         timestamp = min(1.0, (asset.duration_sec or 0) / 2)
@@ -892,6 +890,10 @@ class AssetIngestionService:
         """Generate high-quality poster frame for video."""
         import subprocess
 
+        # Ensure rotation metadata is available so previews are oriented correctly.
+        # Also backfill width/height/duration if missing (common when only regen previews).
+        self._ensure_video_rotation(asset, local_path)
+
         preview_size = self.settings.preview_size
 
         # Skip preview generation for low-quality videos (avoid upscaling)
@@ -1023,6 +1025,63 @@ class AssetIngestionService:
             filters.append("hflip,vflip")
 
         return filters
+
+    def _ensure_video_rotation(self, asset: Asset, local_path: str) -> Optional[int]:
+        """
+        Ensure rotation metadata is available for video thumbnails/previews.
+
+        Falls back to ffprobe if rotation is missing, and backfills width/height/duration
+        when available. Returns the detected rotation (or None).
+        """
+        rotation = None
+        if asset.media_metadata and isinstance(asset.media_metadata, dict):
+            rotation = (asset.media_metadata.get("video_info", {}) or {}).get("rotation")
+
+        if rotation is not None:
+            return rotation
+
+        try:
+            from pixsim7.backend.main.shared.video_utils import get_video_metadata
+
+            metadata = get_video_metadata(local_path)
+            self._apply_video_metadata(asset, metadata, fill_missing_only=True)
+            return metadata.get("rotation")
+        except Exception:
+            return rotation
+
+    def _apply_video_metadata(
+        self,
+        asset: Asset,
+        metadata: Dict[str, Any],
+        *,
+        fill_missing_only: bool = False,
+    ) -> None:
+        """
+        Apply ffprobe metadata to the asset.
+
+        When fill_missing_only is True, only backfill fields that are empty.
+        """
+        def should_update(value):
+            return not fill_missing_only or value in (None, 0, "")
+
+        if should_update(asset.width):
+            asset.width = metadata.get("width")
+        if should_update(asset.height):
+            asset.height = metadata.get("height")
+        if should_update(asset.duration_sec):
+            asset.duration_sec = metadata.get("duration")
+        if should_update(asset.fps):
+            asset.fps = metadata.get("fps")
+
+        if not asset.media_metadata:
+            asset.media_metadata = {}
+        video_info = asset.media_metadata.get("video_info") or {}
+
+        for key in ("codec", "bitrate", "format", "rotation"):
+            if key in metadata and (not fill_missing_only or video_info.get(key) in (None, 0, "")):
+                video_info[key] = metadata.get(key)
+
+        asset.media_metadata["video_info"] = video_info
 
     def _compute_sha256(self, file_path: str) -> str:
         """Compute SHA256 hash of file."""

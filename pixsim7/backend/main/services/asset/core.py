@@ -238,7 +238,7 @@ class AssetCoreService:
             prompt_analysis=prompt_analysis_result,
         )
 
-        # Emit event
+        # Emit event (triggers ingestion via event handler)
         await event_bus.publish(ASSET_CREATED, {
             "asset_id": asset.id,
             "user_id": generation.user_id,
@@ -399,11 +399,18 @@ class AssetCoreService:
         Args:
             asset_id: The asset to tag
             user_id: The user who owns the asset
-            prompt_analysis: Analysis result with "tags" field
+            prompt_analysis: Analysis result with "tags_flat" or "tags" field
         """
         try:
-            # Get analysis tags
-            analysis_tags = prompt_analysis.get("tags", [])
+            # Get analysis tags - prefer tags_flat (flat strings), fallback to extracting from structured tags
+            analysis_tags = prompt_analysis.get("tags_flat", [])
+            if not analysis_tags:
+                # Fallback: try to extract from structured tags
+                raw_tags = prompt_analysis.get("tags", [])
+                if raw_tags and isinstance(raw_tags[0], dict):
+                    analysis_tags = [t.get("tag") for t in raw_tags if t.get("tag")]
+                else:
+                    analysis_tags = raw_tags
             if not analysis_tags:
                 return
 

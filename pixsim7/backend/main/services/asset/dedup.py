@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
 
 from pixsim7.backend.main.domain.assets.models import Asset
-from pixsim7.backend.main.services.asset.asset_factory import _normalize_remote_url
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
 
 
 async def find_existing_by_candidate_ids(
@@ -84,7 +84,7 @@ async def find_existing_by_url(
         return None
 
     # Normalize URL for consistent matching
-    normalized_url = _normalize_remote_url(remote_url) or remote_url
+    normalized_url = normalize_url(remote_url) or remote_url
 
     # Try exact match first
     stmt = select(Asset).where(
