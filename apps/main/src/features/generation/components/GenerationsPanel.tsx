@@ -4,7 +4,7 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, and provides retry/open actions.
  */
-import { DisclosureSection } from '@pixsim7/shared.ui';
+import { DisclosureSection, FoldableJson } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback } from 'react';
 
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
@@ -669,16 +669,16 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
               // If only one exists, show it directly without tabs
               if (hasRaw && !hasCanonical) {
                 return (
-                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
-                    {JSON.stringify(generation.rawParams, null, 2)}
-                  </pre>
+                  <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
+                    <FoldableJson data={generation.rawParams} defaultExpandDepth={1} compact />
+                  </div>
                 );
               }
               if (!hasRaw && hasCanonical) {
                 return (
-                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
-                    {JSON.stringify(generation.canonicalParams, null, 2)}
-                  </pre>
+                  <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
+                    <FoldableJson data={generation.canonicalParams} defaultExpandDepth={1} compact />
+                  </div>
                 );
               }
 
@@ -707,11 +707,13 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                       Raw
                     </button>
                   </div>
-                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
-                    {paramTab === 'canonical'
-                      ? JSON.stringify(generation.canonicalParams, null, 2)
-                      : JSON.stringify(generation.rawParams, null, 2)}
-                  </pre>
+                  <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
+                    <FoldableJson
+                      data={paramTab === 'canonical' ? generation.canonicalParams : generation.rawParams}
+                      defaultExpandDepth={1}
+                      compact
+                    />
+                  </div>
                 </>
               );
             })();

@@ -49,7 +49,7 @@ export {
   type UseDisclosureGroupReturn,
 } from './useDisclosure';
 
-// React components
+// React components - Section-level disclosure (UI panels, accordions)
 export {
   DisclosureSection,
   DisclosureGroup,
@@ -58,3 +58,21 @@ export {
   type DisclosureGroupProps,
   type DisclosureGroupContextValue,
 } from './DisclosureSection';
+
+// React components - Inline text folding (code folding, text regions)
+export {
+  Fold,
+  FoldGroup,
+  FoldGroupContext,
+  GroupedFold,
+  FoldRegions,
+  type FoldProps,
+  type FoldGroupProps,
+  type FoldGroupContextValue,
+  type GroupedFoldProps,
+  type FoldRegion,
+  type FoldRegionsProps,
+} from './Fold';
+
+// React components - JSON/dict viewer with folding
+export { FoldableJson, type FoldableJsonProps } from './FoldableJson';
