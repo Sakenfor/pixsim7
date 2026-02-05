@@ -177,7 +177,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
       {/* Main content area */}
       <div className="flex-1 min-h-0 flex">
         {/* Media/overlay display */}
-        <div className="flex-1 min-w-0 relative">
+        <div className="flex-1 min-w-0 relative flex flex-col">
           {ActiveMain ? (
             <ActiveMain
               asset={asset}

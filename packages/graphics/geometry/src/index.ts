@@ -47,6 +47,12 @@ export type {
   // Collision
   OverlapResult,
   IdentifiedBounds,
+  // Polygon editing
+  NearestVertexResult,
+  PolygonHitResult,
+  // Region serialization
+  SerializedRegion,
+  Region,
 } from './types';
 
 // ============================================================================
@@ -215,3 +221,46 @@ export {
 export type { MediaTransform } from './media';
 
 export { createMediaTransform } from './media';
+
+// ============================================================================
+// Polygon Editing
+// ============================================================================
+
+export {
+  // Vertex finding
+  findNearestVertex,
+  findNearestEdge,
+  // Hit testing
+  polygonHitTest,
+  // Vertex manipulation
+  moveVertex,
+  movePolygon,
+  // Add/remove vertices
+  insertVertexOnEdge,
+  removeVertex,
+  // Threshold calculation
+  calculateVertexThreshold,
+} from './polygonEdit';
+
+// ============================================================================
+// Region Serialization
+// ============================================================================
+
+export {
+  // Validation & normalization
+  validatePolygonPoints,
+  validateRectBounds,
+  normalizePolygonPoints,
+  normalizeRectBounds,
+  // JSON serialization
+  regionToJson,
+  regionFromJson,
+  // Compact string serialization
+  serializeRegion,
+  deserializeRegion,
+  // Convenience functions
+  createPolygonRegion,
+  createRectRegion,
+  pointsToCoordArray,
+  coordArrayToPoints,
+} from './regionSerialize';

@@ -5,6 +5,12 @@
  * Uses InteractiveImageSurface for rendering and handles region creation.
  */
 
+import {
+  findNearestVertex,
+  moveVertex,
+  pointInPolygon,
+  clampNormalized,
+} from '@pixsim7/graphics.geometry';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ViewerAsset } from '@features/assets';
@@ -24,6 +30,7 @@ import {
   type PolygonElement,
 } from '@/components/interactive-surface';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
+
 
 import type { ViewerSettings } from '../types';
 
@@ -53,6 +60,9 @@ const REGION_COLORS = [
   { stroke: '#ec4899', fill: 'rgba(236, 72, 153, 0.15)' },
 ];
 
+/** Threshold for vertex hit detection (normalized, 3% of viewport) */
+const VERTEX_HIT_THRESHOLD = 0.03;
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -73,6 +83,7 @@ export function RegionAnnotationOverlay({
   const selectedRegionId = useRegionStore((s) => s.selectedRegionId);
   const drawingMode = useRegionStore((s) => s.drawingMode);
   const addRegion = useRegionStore((s) => s.addRegion);
+  const updateRegion = useRegionStore((s) => s.updateRegion);
   const selectRegion = useRegionStore((s) => s.selectRegion);
   const getRegion = useRegionStore((s) => s.getRegion);
 
@@ -87,6 +98,12 @@ export function RegionAnnotationOverlay({
   } | null>(null);
   const [polygonPoints, setPolygonPoints] = useState<NormalizedPoint[]>([]);
 
+  // Edit mode state
+  const [editingPolygonId, setEditingPolygonId] = useState<string | null>(null);
+  const [hoveredVertexIndex, setHoveredVertexIndex] = useState(-1);
+  const [draggingVertexIndex, setDraggingVertexIndex] = useState(-1);
+  const [vertexDragStartPoints, setVertexDragStartPoints] = useState<NormalizedPoint[] | null>(null);
+
   // Initialize interaction layer
   const {
     state,
@@ -95,7 +112,6 @@ export function RegionAnnotationOverlay({
     getLayer,
     addElement,
     removeElement,
-    // updateElement - reserved for future region editing
     setMode,
   } = useInteractionLayer({
     initialMode: drawingMode === 'select' ? 'view' : 'region',
@@ -172,9 +188,34 @@ export function RegionAnnotationOverlay({
   // Drawing Handlers
   // ============================================================================
 
+  // Helper to get the editing polygon's points
+  const getEditingPolygonPoints = useCallback((): NormalizedPoint[] | null => {
+    if (!editingPolygonId) return null;
+    const region = regions.find((r) => r.id === editingPolygonId);
+    return region?.points ?? null;
+  }, [editingPolygonId, regions]);
+
   const handlePointerDown = useCallback(
     (event: SurfacePointerEvent) => {
       if (!event.withinBounds) return;
+
+      // Handle edit mode - vertex dragging
+      if (editingPolygonId) {
+        const points = getEditingPolygonPoints();
+        if (points) {
+          const vertexResult = findNearestVertex(event.normalized, points, VERTEX_HIT_THRESHOLD);
+          if (vertexResult.index >= 0) {
+            // Start vertex drag
+            setDraggingVertexIndex(vertexResult.index);
+            setVertexDragStartPoints([...points]);
+            return;
+          }
+        }
+        // Click outside vertices - exit edit mode
+        setEditingPolygonId(null);
+        setHoveredVertexIndex(-1);
+        return;
+      }
 
       if (drawingMode === 'select') {
         // Try to find which region was clicked
@@ -198,11 +239,36 @@ export function RegionAnnotationOverlay({
         setPolygonPoints((prev) => [...prev, event.normalized]);
       }
     },
-    [drawingMode, regions, selectRegion, onRegionSelected]
+    [drawingMode, regions, selectRegion, onRegionSelected, editingPolygonId, getEditingPolygonPoints]
   );
 
   const handlePointerMove = useCallback(
     (event: SurfacePointerEvent) => {
+      // Handle vertex dragging
+      if (editingPolygonId && draggingVertexIndex >= 0 && vertexDragStartPoints) {
+        // Calculate new vertex position, clamped to normalized bounds
+        const newPosition = clampNormalized(event.normalized);
+
+        // Use shared geometry function to update vertex
+        const newPoints = moveVertex(vertexDragStartPoints, draggingVertexIndex, newPosition);
+
+        // Update the region in the store
+        updateRegion(asset.id, editingPolygonId, { points: newPoints });
+        return;
+      }
+
+      // Handle hover state in edit mode
+      if (editingPolygonId && draggingVertexIndex < 0) {
+        const points = getEditingPolygonPoints();
+        if (points) {
+          const vertexResult = findNearestVertex(event.normalized, points, VERTEX_HIT_THRESHOLD);
+          if (vertexResult.index !== hoveredVertexIndex) {
+            setHoveredVertexIndex(vertexResult.index);
+          }
+        }
+        return;
+      }
+
       if (!isDrawing || !drawStart || drawingMode !== 'rect') return;
 
       const x = Math.min(drawStart.x, event.normalized.x);
@@ -212,12 +278,19 @@ export function RegionAnnotationOverlay({
 
       setCurrentRect({ x, y, width, height });
     },
-    [isDrawing, drawStart, drawingMode]
+    [isDrawing, drawStart, drawingMode, editingPolygonId, draggingVertexIndex, vertexDragStartPoints, hoveredVertexIndex, getEditingPolygonPoints, updateRegion, asset.id]
   );
 
   const handlePointerUp = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (_event: SurfacePointerEvent) => {
+      // End vertex dragging
+      if (draggingVertexIndex >= 0) {
+        setDraggingVertexIndex(-1);
+        setVertexDragStartPoints(null);
+        return;
+      }
+
       if (!isDrawing || drawingMode !== 'rect' || !currentRect) {
         setIsDrawing(false);
         return;
@@ -250,13 +323,12 @@ export function RegionAnnotationOverlay({
       setDrawStart(null);
       setCurrentRect(null);
     },
-    [isDrawing, drawingMode, currentRect, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated]
+    [isDrawing, drawingMode, currentRect, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, draggingVertexIndex]
   );
 
   const handleDoubleClick = useCallback(
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    (_event: SurfacePointerEvent) => {
-      // Complete polygon on double-click
+    (event: SurfacePointerEvent) => {
+      // Complete polygon on double-click when drawing
       if (drawingMode === 'polygon' && polygonPoints.length >= 3) {
         const colorIndex = regions.length % REGION_COLORS.length;
         const colors = REGION_COLORS[colorIndex];
@@ -277,9 +349,20 @@ export function RegionAnnotationOverlay({
         if (region) {
           onRegionCreated?.(region);
         }
+        return;
+      }
+
+      // Enter edit mode on double-click on a completed polygon (when in select mode)
+      if (drawingMode === 'select' && !editingPolygonId) {
+        const clickedRegion = findRegionAtPoint(regions, event.normalized);
+        if (clickedRegion && clickedRegion.type === 'polygon' && clickedRegion.points) {
+          setEditingPolygonId(clickedRegion.id);
+          selectRegion(clickedRegion.id);
+          onRegionSelected?.(clickedRegion.id);
+        }
       }
     },
-    [drawingMode, polygonPoints, regions.length, asset.id, addRegion, selectRegion, getRegion, onRegionCreated]
+    [drawingMode, polygonPoints, regions, asset.id, addRegion, selectRegion, getRegion, onRegionCreated, editingPolygonId, onRegionSelected]
   );
 
   // Combine handlers
@@ -312,12 +395,16 @@ export function RegionAnnotationOverlay({
     [asset.type, resolvedMediaSrc]
   );
 
-  const cursor =
-    drawingMode === 'select'
-      ? 'pointer'
-      : drawingMode === 'rect'
-        ? 'crosshair'
-        : 'crosshair';
+  // Determine cursor based on state
+  const cursor = useMemo(() => {
+    if (editingPolygonId) {
+      if (draggingVertexIndex >= 0) return 'grabbing';
+      if (hoveredVertexIndex >= 0) return 'pointer';
+      return 'default';
+    }
+    if (drawingMode === 'select') return 'pointer';
+    return 'crosshair';
+  }, [editingPolygonId, draggingVertexIndex, hoveredVertexIndex, drawingMode]);
 
   // Show loading state while fetching authenticated media
   if (mediaLoading || !resolvedMediaSrc) {
@@ -376,6 +463,42 @@ export function RegionAnnotationOverlay({
             ))}
           </svg>
         )}
+
+        {/* Edit mode vertex handles */}
+        {editingPolygonId && (() => {
+          const editingRegion = regions.find((r) => r.id === editingPolygonId);
+          if (!editingRegion?.points) return null;
+          const colorIndex = regions.indexOf(editingRegion) % REGION_COLORS.length;
+          const accentColor = REGION_COLORS[colorIndex].stroke;
+
+          return (
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {editingRegion.points.map((p, i) => {
+                const isHovered = i === hoveredVertexIndex;
+                const isDragging = i === draggingVertexIndex;
+                // Size: normal=0.6, hovered/dragging=0.9 (in viewBox units)
+                const radius = (isHovered || isDragging) ? 0.9 : 0.6;
+
+                return (
+                  <circle
+                    key={i}
+                    cx={p.x * 100}
+                    cy={p.y * 100}
+                    r={radius}
+                    fill={isDragging ? accentColor : 'white'}
+                    stroke={isDragging ? 'white' : accentColor}
+                    strokeWidth={isDragging ? 0.3 : 0.15}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                );
+              })}
+            </svg>
+          );
+        })()}
       </InteractiveImageSurface>
     </div>
   );
@@ -407,7 +530,7 @@ function findRegionAtPoint(
         return region;
       }
     } else if (region.type === 'polygon' && region.points) {
-      if (isPointInPolygon(point, region.points)) {
+      if (pointInPolygon(point, region.points)) {
         return region;
       }
     }
@@ -416,29 +539,3 @@ function findRegionAtPoint(
   return null;
 }
 
-/**
- * Check if a point is inside a polygon using ray casting
- */
-function isPointInPolygon(
-  point: NormalizedPoint,
-  polygon: NormalizedPoint[]
-): boolean {
-  let inside = false;
-  const n = polygon.length;
-
-  for (let i = 0, j = n - 1; i < n; j = i++) {
-    const xi = polygon[i].x;
-    const yi = polygon[i].y;
-    const xj = polygon[j].x;
-    const yj = polygon[j].y;
-
-    if (
-      yi > point.y !== yj > point.y &&
-      point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi
-    ) {
-      inside = !inside;
-    }
-  }
-
-  return inside;
-}

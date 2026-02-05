@@ -178,3 +178,70 @@ export interface OverlapResult {
 export interface IdentifiedBounds extends Rect {
   id: string;
 }
+
+// ============================================================================
+// Polygon Editing
+// ============================================================================
+
+/**
+ * Result of finding the nearest vertex to a point
+ */
+export interface NearestVertexResult {
+  /** Index of the nearest vertex, -1 if none found within threshold */
+  index: number;
+  /** Distance to the nearest vertex */
+  distance: number;
+  /** The vertex point, or null if none found */
+  point: Point | null;
+}
+
+/**
+ * Comprehensive hit test result for polygon interaction
+ */
+export interface PolygonHitResult {
+  /** Whether the point is inside the polygon */
+  isInside: boolean;
+  /** Index of vertex within threshold, -1 if none */
+  vertexIndex: number;
+  /** Distance to nearest vertex */
+  vertexDistance: number;
+  /** Index of edge within threshold, -1 if none */
+  edgeIndex: number;
+  /** Distance to nearest edge */
+  edgeDistance: number;
+}
+
+// ============================================================================
+// Region Serialization
+// ============================================================================
+
+/**
+ * A serializable region (rect or polygon) in normalized coordinates
+ */
+export interface SerializedRegion {
+  /** Region type */
+  type: 'rect' | 'polygon';
+  /**
+   * Coordinates:
+   * - rect: [x, y, width, height]
+   * - polygon: [[x1, y1], [x2, y2], ...]
+   */
+  coords: number[] | [number, number][];
+  /** Optional label/name for the region */
+  label?: string;
+  /** Optional note/description */
+  note?: string;
+}
+
+/**
+ * Region data with parsed points (for internal use)
+ */
+export interface Region {
+  type: 'rect' | 'polygon';
+  /** For rect: { x, y, width, height } */
+  bounds?: Rect;
+  /** For polygon: array of points */
+  points?: Point[];
+  label?: string;
+  note?: string;
+}
