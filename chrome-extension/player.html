@@ -754,6 +754,134 @@
       font-size: 11px;
     }
 
+    /* Library panel */
+    .library-panel-content {
+      background: var(--bg-alt);
+    }
+
+    .library-header {
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .library-folder-select {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .library-folder-select select {
+      flex: 1;
+      padding: 4px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 11px;
+      min-width: 0;
+    }
+
+    .library-folder-select .btn {
+      padding: 4px 8px;
+      font-size: 12px;
+      min-width: 28px;
+    }
+
+    .library-grid {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 8px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+      align-content: start;
+    }
+
+    .library-empty {
+      grid-column: 1 / -1;
+      padding: 30px 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .library-item {
+      aspect-ratio: 16 / 9;
+      background: var(--bg);
+      border-radius: 4px;
+      overflow: hidden;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.15s, box-shadow 0.15s;
+    }
+
+    .library-item:hover {
+      transform: scale(1.03);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .library-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .library-item-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      color: var(--text-muted);
+    }
+
+    .library-item-name {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 4px 6px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.8));
+      font-size: 9px;
+      color: white;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .library-item-type {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      font-size: 10px;
+      background: rgba(0,0,0,0.6);
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .library-status {
+      padding: 4px 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .library-status:empty {
+      display: none;
+    }
+
+    .library-loading {
+      grid-column: 1 / -1;
+      padding: 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
     /* Dropdowns */
     .history-btn, .region-mode-btn, .player-settings-btn {
       position: relative;
@@ -1041,6 +1169,10 @@
             <span class="view-menu-check" id="viewCheckPlaylist">✓</span>
             <span>Playlist</span>
           </div>
+          <div class="view-menu-option" data-panel="library">
+            <span class="view-menu-check" id="viewCheckLibrary">✓</span>
+            <span>Library</span>
+          </div>
           <div class="view-menu-option" data-panel="controls">
             <span class="view-menu-check" id="viewCheckControls">✓</span>
             <span>Controls</span>
@@ -1151,6 +1283,29 @@
         </div>
       </div>
       <div class="playlist-items" id="playlistItems"></div>
+    </div>
+  </div>
+
+  <!-- Library Panel Template -->
+  <div id="libraryPanel" class="panel-template">
+    <div class="panel-content library-panel-content">
+      <div class="library-header">
+        <div class="library-folder-select">
+          <select id="libraryFolderSelect">
+            <option value="">Select folder...</option>
+          </select>
+          <button class="btn btn-secondary" id="libraryAddFolderBtn" title="Add folder">+</button>
+          <button class="btn btn-secondary" id="libraryRemoveFolderBtn" title="Remove folder">−</button>
+          <button class="btn btn-secondary" id="libraryRefreshBtn" title="Refresh">↻</button>
+        </div>
+      </div>
+      <div class="library-grid" id="libraryGrid">
+        <div class="library-empty">
+          <div style="font-size: 24px; margin-bottom: 8px;">📁</div>
+          <div>Click + to add a folder</div>
+        </div>
+      </div>
+      <div class="library-status" id="libraryStatus"></div>
     </div>
   </div>
 

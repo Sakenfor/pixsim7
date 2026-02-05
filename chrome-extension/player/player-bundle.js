@@ -17,6 +17,7 @@ import './player-ffmpeg.js';
 import './player-region.js';
 import './player-controls.js';
 import './player-playlist.js';
+import './player-library.js';
 import './player-capture.js';
 import './player-image.js';
 import './player-file.js';

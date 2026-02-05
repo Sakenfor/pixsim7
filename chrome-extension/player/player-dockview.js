@@ -23,6 +23,11 @@ import { DockviewComponent } from 'dockview-core';
       title: 'Playlist',
       templateId: 'playlistPanel',
     },
+    library: {
+      id: 'library',
+      title: 'Library',
+      templateId: 'libraryPanel',
+    },
     controls: {
       id: 'controls',
       title: 'Controls',
@@ -302,6 +307,7 @@ import { DockviewComponent } from 'dockview-core';
   function updateViewMenuChecks() {
     const videoCheck = document.getElementById('viewCheckVideo');
     const playlistCheck = document.getElementById('viewCheckPlaylist');
+    const libraryCheck = document.getElementById('viewCheckLibrary');
     const controlsCheck = document.getElementById('viewCheckControls');
 
     if (videoCheck) {
@@ -309,6 +315,9 @@ import { DockviewComponent } from 'dockview-core';
     }
     if (playlistCheck) {
       playlistCheck.classList.toggle('hidden', !isPanelOpen('playlist'));
+    }
+    if (libraryCheck) {
+      libraryCheck.classList.toggle('hidden', !isPanelOpen('library'));
     }
     if (controlsCheck) {
       controlsCheck.classList.toggle('hidden', !isPanelOpen('controls'));
