@@ -87,6 +87,9 @@ export function CompactAssetCard({
   onNavigateNext,
   queueItems,
   onSelectIndex,
+  enableHoverPreview = true,
+  showPlayOverlay = true,
+  clickToPlay = false,
 }: CompactAssetCardProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -103,6 +106,8 @@ export function CompactAssetCard({
   });
 
   const isVideo = asset.mediaType === 'video';
+  const hoverPreviewEnabled = enableHoverPreview && !clickToPlay;
+  const isHovering = hoverPreviewEnabled && isHovered;
 
   // For video scrubbing, prefer the resolved main URL (respects local-vs-remote settings)
   const videoSrc = isVideo ? resolvedMainUrl : undefined;
@@ -204,12 +209,12 @@ export function CompactAssetCard({
         )}
 
         {/* Video scrub overlay - uses shared VideoScrubWidgetRenderer */}
-        {isVideo && videoSrc && (
+        {isVideo && videoSrc && hoverPreviewEnabled && (
           <div className="absolute inset-0 z-[1]">
             <VideoScrubWidgetRenderer
               url={videoSrc}
               configDuration={asset.durationSec ?? undefined}
-              isHovering={isHovered}
+              isHovering={isHovering}
               showTimeline={true}
               showTimestamp={false}
               timelinePosition="bottom"
@@ -218,6 +223,14 @@ export function CompactAssetCard({
               dotActive={hasLockedFrame}
               lockedTimestamp={lockedTimestamp}
             />
+          </div>
+        )}
+
+        {showPlayOverlay && isVideo && !hoverPreviewEnabled && (
+          <div className="absolute inset-0 z-[2] flex items-center justify-center pointer-events-none">
+            <div className="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
+              <ThemedIcon name="play" size={12} variant="default" className="text-white" />
+            </div>
           </div>
         )}
 

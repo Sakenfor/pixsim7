@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { authService } from '@lib/auth';
+import { resolveBackendUrl } from '@lib/media/backendUrl';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { assetEvents, useAssetViewerStore } from '@features/assets';
@@ -103,6 +104,12 @@ export function useMediaThumbnailFull(
   const RETRY_DELAY_MS = 5000; // 5 seconds between retries, total 30 seconds
   const REGEN_RETRY_DELAY_MS = 2000; // Shorter delay for 202 (regeneration in progress)
 
+  const isNonImageMediaUrl = (url: string) => {
+    const lowered = url.toLowerCase();
+    if (lowered.startsWith('data:video') || lowered.startsWith('data:audio')) return true;
+    return /\.(mp4|webm|mov|m4v|mkv|avi|mp3|wav|ogg|m4a|aac|flac)(?:$|[?#])/.test(lowered);
+  };
+
   // Manual retry function
   const retry = useCallback(() => {
     setFailed(false);
@@ -136,25 +143,33 @@ export function useMediaThumbnailFull(
       return;
     }
 
-    // Blob URL - use directly (already in memory)
-    if (selectedUrl.startsWith('blob:')) {
+    if (isNonImageMediaUrl(selectedUrl)) {
+      setThumbSrc(undefined);
+      setLoading(false);
+      return;
+    }
+
+    // Blob/data URL - use directly (already in memory)
+    if (selectedUrl.startsWith('blob:') || selectedUrl.startsWith('data:')) {
       setThumbSrc(selectedUrl);
       setLoading(false);
       return;
     }
 
+    const { fullUrl, isBackend } = resolveBackendUrl(selectedUrl, BACKEND_BASE);
+
     // External http/https URL
-    if (selectedUrl.startsWith('http://') || selectedUrl.startsWith('https://')) {
+    if (!isBackend) {
       if (preventDiskCache) {
         // Fetch and convert to blob URL to prevent Chrome disk cache
         const fetchWithRetry = async () => {
           try {
-            const res = await fetch(selectedUrl, { mode: 'cors' });
+            const res = await fetch(fullUrl, { mode: 'cors' });
             if (!res.ok) {
               // Retry on 404 (CDN propagation delay)
               if (res.status === 404 && retryCountRef.current < MAX_RETRIES) {
                 retryCountRef.current++;
-                console.log(`[useMediaThumbnail] 404 for ${selectedUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
+                console.log(`[useMediaThumbnail] 404 for ${fullUrl}, retrying (${retryCountRef.current}/${MAX_RETRIES})...`);
                 setTimeout(() => {
                   if (!cancelled) fetchWithRetry();
                 }, RETRY_DELAY_MS);
@@ -162,7 +177,7 @@ export function useMediaThumbnailFull(
               }
               // All retries exhausted or non-404 error
               if (!cancelled) {
-                console.warn(`[useMediaThumbnail] Failed to fetch ${selectedUrl} after ${retryCountRef.current} retries`);
+                console.warn(`[useMediaThumbnail] Failed to fetch ${fullUrl} after ${retryCountRef.current} retries`);
                 setThumbSrc(undefined);
                 setFailed(true);
                 setLoading(false);
@@ -181,7 +196,7 @@ export function useMediaThumbnailFull(
           } catch {
             // CORS or network error
             if (!cancelled) {
-              console.warn(`[useMediaThumbnail] Network error for ${selectedUrl}`);
+              console.warn(`[useMediaThumbnail] Network error for ${fullUrl}`);
               setThumbSrc(undefined);
               setFailed(true);
               setLoading(false);
@@ -191,16 +206,13 @@ export function useMediaThumbnailFull(
         fetchWithRetry();
       } else {
         // Use URL directly (Chrome will cache on disk)
-        setThumbSrc(selectedUrl);
+        setThumbSrc(fullUrl);
         setLoading(false);
       }
       return;
     }
 
-    // Backend-relative path - construct full URL
-    const fullUrl = selectedUrl.startsWith('/')
-      ? `${BACKEND_BASE}${selectedUrl}`
-      : `${BACKEND_BASE}/${selectedUrl}`;
+    // Backend path - construct full URL
 
     const token = authService.getStoredToken();
 

@@ -101,7 +101,7 @@ const SAMPLE_MEDIA = {
   providerId: 'pixverse',
   providerAssetId: 'sample-123',
   thumbUrl: 'https://via.placeholder.com/640x360/1a1a1a/ffffff?text=Sample+Video',
-  remoteUrl: '',
+  remoteUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
   width: 640,
   height: 360,
   durationSec: 125,

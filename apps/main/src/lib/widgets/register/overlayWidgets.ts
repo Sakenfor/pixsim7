@@ -539,6 +539,9 @@ export const videoScrubWidget: WidgetDefinition<VideoScrubWidgetSettings> = {
     throttle: 50,
     frameAccurate: false,
     muted: true,
+    // Shared scrub behavior settings (used by both MediaCard and CompactAssetCard)
+    controlZoneHeight: 50,
+    autoPlayDelay: 500,
   },
   settingsSchema: {
     groups: [
@@ -561,6 +564,8 @@ export const videoScrubWidget: WidgetDefinition<VideoScrubWidgetSettings> = {
           { key: 'muted', type: 'toggle', label: 'Mute During Scrub', description: 'Keep video muted while scrubbing.' },
           { key: 'frameAccurate', type: 'toggle', label: 'Frame Accurate Seeking', description: 'Enable precise frame seeking (slower but more accurate).' },
           { key: 'throttle', type: 'number', label: 'Update Throttle (ms)', description: 'Minimum time between scrub updates. Lower = smoother but more CPU.', min: 16, max: 200, step: 10 },
+          { key: 'controlZoneHeight', type: 'number', label: 'Control Zone Height (px)', description: 'Height from bottom where auto-play is disabled for precise scrubbing.', min: 20, max: 100, step: 5 },
+          { key: 'autoPlayDelay', type: 'number', label: 'Auto-Play Delay (ms)', description: 'Time mouse must stay still before video auto-plays.', min: 200, max: 2000, step: 100 },
         ],
       },
     ],
