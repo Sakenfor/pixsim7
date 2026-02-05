@@ -40,6 +40,43 @@ EXPECTED_ERRORS = (
     AccountExhaustedError,
     AccountCooldownError,
 )
+
+# Errors that should NOT trigger ARQ retry - these are permanent failures
+# (validation errors, configuration issues, etc. that won't be fixed by retry)
+NON_RETRYABLE_ERROR_PATTERNS = (
+    "requires at least one",  # Missing required params (image_url, video_url, etc.)
+    "is required for",  # Missing required params
+    "is not valid for",  # Invalid param format
+    "must contain",  # Validation failure
+    "has no resolvable",  # Asset resolution failure
+    "needs to be re-uploaded",  # Asset needs manual intervention
+    "invalid param",  # Provider rejected param as invalid (400 error)
+    "invalid parameter",  # Alternative wording
+)
+
+
+def _is_non_retryable_error(error: Exception) -> bool:
+    """Check if an error should NOT be retried by ARQ."""
+    error_msg = str(error).lower()
+    for pattern in NON_RETRYABLE_ERROR_PATTERNS:
+        if pattern.lower() in error_msg:
+            return True
+    return False
+
+
+def _get_max_tries() -> int:
+    """Get ARQ max_tries setting."""
+    import os
+    return int(os.getenv("ARQ_MAX_TRIES", "3"))
+
+
+def _is_final_try(ctx: dict) -> bool:
+    """Check if this is the final ARQ try (no more retries after this)."""
+    job_try = ctx.get("job_try", 1)
+    max_tries = _get_max_tries()
+    return job_try >= max_tries
+
+
 from pixsim7.backend.main.shared.debug import (
     DebugLogger,
     get_global_debug_logger,
@@ -549,19 +586,45 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         # Fall through to mark as failed
 
-                await generation_service.mark_failed(generation_id, str(e))
-                failed_marked = True
-
                 # Release account reservation on failure
                 try:
                     await account_service.release_account(account.id)
                 except Exception as release_err:
                     gen_logger.warning("account_release_failed", error=str(release_err))
 
+                # Check if this error should NOT be retried
+                is_non_retryable = _is_non_retryable_error(e)
+                is_final = _is_final_try(ctx)
+
+                # Only mark as failed (and emit JOB_FAILED event) on final attempt or non-retryable errors
+                if is_final or is_non_retryable:
+                    await generation_service.mark_failed(generation_id, str(e))
+                    failed_marked = True
+                    gen_logger.info(
+                        "generation_marked_failed",
+                        is_final_try=is_final,
+                        is_non_retryable=is_non_retryable,
+                    )
+                else:
+                    gen_logger.info(
+                        "generation_will_retry",
+                        job_try=ctx.get("job_try", 1),
+                        max_tries=_get_max_tries(),
+                    )
+
                 # Note: Credits not refreshed on failure - provider rejects before billing
 
                 # Track failed generation
                 get_health_tracker().increment_failed()
+
+                # Don't raise for non-retryable errors - prevents ARQ retry
+                if is_non_retryable:
+                    return {
+                        "status": "failed",
+                        "reason": "non_retryable_error",
+                        "generation_id": generation_id,
+                        "error": str(e),
+                    }
 
                 raise
 
@@ -591,12 +654,25 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # Track failed generation
             get_health_tracker().increment_failed()
 
-            # Try to mark generation as failed
-            if not failed_marked:
+            # Check if this error should NOT be retried
+            is_non_retryable = _is_non_retryable_error(e)
+            is_final = _is_final_try(ctx)
+
+            # Try to mark generation as failed - only on final attempt or non-retryable errors
+            if not failed_marked and (is_final or is_non_retryable):
                 try:
                     await generation_service.mark_failed(generation_id, str(e))
                 except Exception as mark_error:
                     gen_logger.error("mark_failed_error", error=str(mark_error))
+
+            # Don't raise for non-retryable errors - prevents ARQ retry
+            if is_non_retryable:
+                return {
+                    "status": "failed",
+                    "reason": "non_retryable_error",
+                    "generation_id": generation_id,
+                    "error": str(e),
+                }
 
             raise
 

@@ -552,6 +552,17 @@ async def sync_single_pixverse_asset(
     )
 
     if existing:
+        # Optimize: if we resolved a numeric ID and existing has UUID, update it
+        if (
+            primary_id
+            and str(primary_id).isdigit()
+            and existing.provider_asset_id
+            and not str(existing.provider_asset_id).isdigit()
+        ):
+            from pixsim7.backend.main.services.provider.adapters.pixverse_ids import cache_resolved_numeric_id
+            await cache_resolved_numeric_id(db, existing.id, primary_id)
+            existing.provider_asset_id = primary_id  # Update local object too
+
         logger.debug(
             "pixverse_single_sync_exists",
             asset_id=asset_id,

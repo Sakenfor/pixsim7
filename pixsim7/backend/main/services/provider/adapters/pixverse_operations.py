@@ -502,20 +502,30 @@ class PixverseOperationsMixin:
             if video_url:
                 video_ref["url"] = video_url
         elif video_url:
-            # Use video URL
+            # Check if this is a Pixverse-hosted URL without video ID
+            # Pixverse extend API requires original_video_id for Pixverse-generated videos
+            is_pixverse_url = "pixverse" in str(video_url).lower()
+            if is_pixverse_url:
+                logger.warning(
+                    "extend_video_missing_original_id_for_pixverse_video",
+                    video_url=str(video_url)[:100],
+                    msg="Extending Pixverse video without original_video_id may fail. "
+                        "The video may not have been generated in this system.",
+                )
+            # Use video URL - SDK will attempt to extract ID or use customer_video_path
             video_ref = video_url
         else:
-            raise ValueError("Either video_url or original_video_id is required for extend operation")
+            raise ProviderError(
+                "VIDEO_EXTEND requires either video_url or original_video_id. "
+                "Make sure the video asset is properly linked."
+            )
 
-        # Build options for extend
+        # Build options for extend (only duration, quality, seed, model are valid)
         options = GenerationOptions(
+            model=params.get("model", "v5"),
             duration=int(params.get("duration", 5)),
             quality=params.get("quality", "360p"),
-            seed=int(params.get("seed", 0)),
-            # Video options
-            multi_shot=params.get("multi_shot"),
-            audio=params.get("audio", True),
-            off_peak=params.get("off_peak", False),
+            seed=params.get("seed"),  # None if not set, SDK will exclude
         )
 
         # Log the extend request details for debugging

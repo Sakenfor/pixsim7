@@ -292,10 +292,21 @@ async def resolve_composition_assets_for_pixverse(
             resolved_urls.append(validated_url)
 
         else:
-            # No asset ref or URL
-            raise ProviderError(
-                f"composition_assets[{i}] has no resolvable asset or URL."
-            )
+            # No asset ref or URL - check if entry has provider_params only
+            # This is valid for VIDEO_EXTEND where only original_video_id is needed
+            provider_params = item.get("provider_params") or {}
+            if provider_params:
+                logger.debug(
+                    "pixverse_asset_item_provider_params_only",
+                    index=i,
+                    provider_params_keys=list(provider_params.keys()),
+                )
+                # Skip - doesn't need URL resolution, provider_params already extracted by map_parameters
+                continue
+            else:
+                raise ProviderError(
+                    f"composition_assets[{i}] has no resolvable asset or URL."
+                )
 
     return resolved_urls
 
@@ -508,6 +519,11 @@ class PixverseProvider(
                         match_mode=match_mode,
                         **{f"matched_{type_label}_id": matched_id},
                     )
+                    # Cache the numeric ID for future direct lookups
+                    # This avoids pagination on subsequent requests
+                    if matched_id and asset_id is not None and match_mode != f"{type_label}_id":
+                        provider_metadata = dict(provider_metadata or {})
+                        provider_metadata["_resolved_numeric_id"] = str(matched_id)
                     break
 
                 offset += limit
@@ -818,6 +834,15 @@ class PixverseProvider(
                 media_type_filter = "image"
             elif operation_type == OperationType.VIDEO_EXTEND:
                 media_type_filter = "video"
+                # Debug logging for VIDEO_EXTEND
+                logger.info(
+                    "pixverse_extend_debug",
+                    composition_assets_count=len(composition_assets),
+                    first_asset_keys=list(composition_assets[0].keys()) if composition_assets else [],
+                    first_asset_preview={k: str(v)[:50] for k, v in (composition_assets[0] if composition_assets else {}).items()},
+                    has_video_url=bool(result_params.get("video_url")),
+                    has_original_video_id=bool(result_params.get("original_video_id")),
+                )
 
             async with get_async_session() as session:
                 resolved_urls = await resolve_composition_assets_for_pixverse(
@@ -839,6 +864,94 @@ class PixverseProvider(
                         result_params["image_url"] = resolved_urls[0]
                 elif operation_type == OperationType.VIDEO_EXTEND:
                     result_params["video_url"] = resolved_urls[0]
+
+                    # Try to get original_video_id from the asset's generation or metadata
+                    # This is needed for extending Pixverse-generated videos
+                    if not result_params.get("original_video_id") and composition_assets:
+                        first_asset = composition_assets[0] if composition_assets else {}
+                        asset_id = extract_asset_id(first_asset.get("asset"))
+                        if asset_id:
+                            try:
+                                from pixsim7.backend.main.domain import Generation, Asset
+                                from pixsim7.backend.main.domain.providers import ProviderSubmission
+                                from sqlalchemy import select
+
+                                async with get_async_session() as session:
+                                    # First, try to get video ID from asset's provider_uploads or provider_asset_id
+                                    asset_result = await session.execute(
+                                        select(Asset.provider_id, Asset.provider_asset_id, Asset.provider_uploads)
+                                        .where(Asset.id == asset_id)
+                                    )
+                                    asset_row = asset_result.one_or_none()
+
+                                    video_id_from_asset = None
+                                    if asset_row:
+                                        provider_id, provider_asset_id, provider_uploads = asset_row
+
+                                        # Check provider_uploads["pixverse"] for video ID
+                                        if provider_uploads and isinstance(provider_uploads, dict):
+                                            pix_upload = provider_uploads.get("pixverse")
+                                            if pix_upload and isinstance(pix_upload, str):
+                                                # Could be numeric ID or UUID
+                                                if pix_upload.isdigit():
+                                                    video_id_from_asset = pix_upload
+
+                                        # Check provider_asset_id if asset was generated by Pixverse
+                                        if not video_id_from_asset and provider_id == "pixverse" and provider_asset_id:
+                                            if str(provider_asset_id).isdigit():
+                                                video_id_from_asset = str(provider_asset_id)
+
+                                    if video_id_from_asset:
+                                        result_params["original_video_id"] = video_id_from_asset
+                                        logger.info(
+                                            "pixverse_extend_found_original_video_id_from_asset",
+                                            asset_id=asset_id,
+                                            original_video_id=video_id_from_asset,
+                                        )
+                                    else:
+                                        # Fallback: Find the generation that created this asset
+                                        gen_result = await session.execute(
+                                            select(Generation.id)
+                                            .where(Generation.asset_id == asset_id)
+                                            .where(Generation.provider_id == "pixverse")
+                                            .limit(1)
+                                        )
+                                        generation_id = gen_result.scalar_one_or_none()
+
+                                        if generation_id:
+                                            # Get the provider_job_id from submission
+                                            sub_result = await session.execute(
+                                                select(ProviderSubmission.provider_job_id)
+                                                .where(ProviderSubmission.generation_id == generation_id)
+                                                .where(ProviderSubmission.status == "success")
+                                                .order_by(ProviderSubmission.id.desc())
+                                                .limit(1)
+                                            )
+                                            provider_job_id = sub_result.scalar_one_or_none()
+
+                                            if provider_job_id:
+                                                result_params["original_video_id"] = provider_job_id
+                                                logger.info(
+                                                    "pixverse_extend_found_original_video_id",
+                                                    asset_id=asset_id,
+                                                    generation_id=generation_id,
+                                                    original_video_id=provider_job_id,
+                                                )
+
+                                    # Log warning if we couldn't find original_video_id
+                                    if not result_params.get("original_video_id"):
+                                        logger.warning(
+                                            "pixverse_extend_no_original_video_id",
+                                            asset_id=asset_id,
+                                            provider_id=asset_row[0] if asset_row else None,
+                                            msg="Video extend may fail - no Pixverse video ID found for asset",
+                                        )
+                            except Exception as e:
+                                logger.warning(
+                                    "pixverse_extend_original_video_id_lookup_failed",
+                                    asset_id=asset_id,
+                                    error=str(e),
+                                )
                 elif operation_type == OperationType.TEXT_TO_IMAGE:
                     result_params["image_urls"] = resolved_urls
 
@@ -850,7 +963,9 @@ class PixverseProvider(
                 operation_type=operation_type.value,
                 api_mode=api_mode.value,
                 resolved_count=len(resolved_urls),
+                resolved_urls_sample=[str(u)[:80] for u in resolved_urls[:3]] if resolved_urls else [],
                 image_url=str(result_params.get("image_url"))[:80] if result_params.get("image_url") else None,
+                video_url=str(result_params.get("video_url"))[:80] if result_params.get("video_url") else None,
             )
 
         # === Handle legacy fields (already-resolved URLs) ===
@@ -876,6 +991,15 @@ class PixverseProvider(
         # Remove legacy fields that shouldn't reach SDK
         result_params.pop("source_asset_id", None)
         result_params.pop("source_asset_ids", None)
+
+        # Debug: log params before sanitization
+        if operation_type == OperationType.VIDEO_EXTEND:
+            logger.info(
+                "pixverse_extend_before_sanitize",
+                video_url=str(result_params.get("video_url"))[:100] if result_params.get("video_url") else None,
+                original_video_id=result_params.get("original_video_id"),
+                result_params_keys=list(result_params.keys()),
+            )
 
         return _sanitize_url_params(result_params, api_mode)
 

@@ -75,6 +75,11 @@ def get_preferred_provider_asset_id(
         >>> get_preferred_provider_asset_id(metadata, "image", fallback_id="uuid-123")
         "380309046358503"
     """
+    # First check for resolved numeric ID from pagination lookup
+    resolved_id = payload.get("_resolved_numeric_id")
+    if resolved_id and str(resolved_id).isdigit():
+        return str(resolved_id)
+
     if media_type == "image":
         for key in ("image_id", "pixverse_image_id"):
             value = payload.get(key)
@@ -87,6 +92,60 @@ def get_preferred_provider_asset_id(
                 return str(value)
 
     return fallback_id if fallback_id else None
+
+
+async def cache_resolved_numeric_id(
+    db_session,
+    asset_id: int,
+    resolved_id: str,
+) -> bool:
+    """
+    Update an asset's provider_asset_id with the resolved numeric ID.
+
+    This is an optimization that avoids future pagination lookups when the
+    asset was originally synced with a UUID but we've now resolved the
+    numeric ID via list pagination.
+
+    Args:
+        db_session: AsyncSession for database operations
+        asset_id: Local asset ID
+        resolved_id: Resolved numeric Pixverse ID
+
+    Returns:
+        True if updated, False if skipped (already numeric or same value)
+    """
+    from pixsim7.backend.main.domain.assets.models import Asset
+    from sqlalchemy import select, update
+
+    # Only update if the resolved ID is numeric and different
+    if not resolved_id or not str(resolved_id).isdigit():
+        return False
+
+    result = await db_session.execute(
+        select(Asset.provider_asset_id).where(Asset.id == asset_id)
+    )
+    current_id = result.scalar_one_or_none()
+
+    # Skip if current ID is already numeric or same as resolved
+    if current_id and (str(current_id).isdigit() or str(current_id) == str(resolved_id)):
+        return False
+
+    # Update the asset with the numeric ID
+    await db_session.execute(
+        update(Asset)
+        .where(Asset.id == asset_id)
+        .values(provider_asset_id=str(resolved_id))
+    )
+    await db_session.commit()
+
+    from pixsim_logging import get_logger
+    get_logger().info(
+        "pixverse_cached_numeric_id",
+        asset_id=asset_id,
+        old_id=current_id,
+        new_id=resolved_id,
+    )
+    return True
 
 
 def collect_candidate_ids(
