@@ -13473,11 +13473,6 @@ export interface components {
          * @description Single asset in a composition.
          */
         readonly CompositionAsset: {
-            /**
-             * Media Type
-             * @description Media type for this asset (image or video).
-             */
-            readonly media_type?: string | null;
             /** @description Asset reference (EntityRef, asset:id string, or raw id) */
             readonly asset?: (components["schemas"]["EntityRef"] | null) | null;
             /** Camera Framing Id */
@@ -13510,6 +13505,11 @@ export interface components {
             readonly layer?: number | null;
             /** @description Reference to a location concept from ontology. Accepts 'location:id' string or ConceptRef object. */
             readonly location_id?: components["schemas"]["ConceptRef"] | string | null;
+            /**
+             * Media Type
+             * @description Media type for this asset (image or video).
+             */
+            readonly media_type?: string | null;
             /** @description Reference to a pose concept from ontology. Accepts 'pose:id' string or ConceptRef object. */
             readonly pose_id?: components["schemas"]["ConceptRef"] | string | null;
             /**
@@ -15940,13 +15940,13 @@ export interface components {
          *     - image_url: Source image URL for image_to_video operations
          *     - video_url: Source video URL for video_extend operations
          *     - image_urls: Image URLs for video_transition operations
-         *     - source_asset_id(s): Asset references for provider URL resolution
+         *     - composition_assets: Canonical input list for provider URL resolution
          *     - prompts: Transition prompts for video_transition operations
          */
         readonly GenerationNodeConfigSchema: {
             /**
              * Composition Assets
-             * @description Structured composition assets (role/layer/intent) for multi-image operations.
+             * @description Structured composition assets (role/layer/intent) for all media-input operations.
              */
             readonly composition_assets?: readonly components["schemas"]["CompositionAsset"][] | null;
             readonly constraints: components["schemas"]["ConstraintSetSchema"];
@@ -15962,13 +15962,13 @@ export interface components {
             /**
              * Image Url
              * @deprecated
-             * @description DEPRECATED: Use source_asset_id instead. Direct image URL (legacy pattern).
+             * @description DEPRECATED: Use composition_assets instead. Direct image URL (legacy pattern).
              */
             readonly image_url?: string | null;
             /**
              * Image Urls
              * @deprecated
-             * @description DEPRECATED: Use source_asset_ids instead. List of image URLs (legacy pattern).
+             * @description DEPRECATED: Use composition_assets instead. List of image URLs (legacy pattern).
              */
             readonly image_urls?: readonly string[] | null;
             /** Operationoverride */
@@ -15991,12 +15991,14 @@ export interface components {
             readonly semanticType?: string | null;
             /**
              * Sourceassetid
-             * @description Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL.
+             * @deprecated
+             * @description DEPRECATED: Use composition_assets. Asset ID for single-asset operations.
              */
             readonly sourceAssetId?: number | null;
             /**
              * Sourceassetids
-             * @description Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL.
+             * @deprecated
+             * @description DEPRECATED: Use composition_assets. Asset IDs for multi-asset operations.
              */
             readonly sourceAssetIds?: readonly number[] | null;
             /** Strategy */
@@ -16012,7 +16014,7 @@ export interface components {
             /**
              * Video Url
              * @deprecated
-             * @description DEPRECATED: Use source_asset_id instead. Direct video URL (legacy pattern).
+             * @description DEPRECATED: Use composition_assets instead. Direct video URL (legacy pattern).
              */
             readonly video_url?: string | null;
         } & {
