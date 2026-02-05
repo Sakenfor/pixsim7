@@ -4,6 +4,7 @@
  * Dedicated panel for tracking and managing generation jobs.
  * Shows status, allows filtering, and provides retry/open actions.
  */
+import { DisclosureSection } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback } from 'react';
 
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
@@ -294,12 +295,15 @@ interface GenerationItemProps {
   onLoadToQuickGen: (generation: GenerationModel) => void;
 }
 
+type ParamTab = 'raw' | 'canonical';
+
 function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [paramTab, setParamTab] = useState<ParamTab>('canonical');
   const statusDisplay = getGenerationStatusDisplay(generation.status);
   const isActive = isGenerationActive(generation.status);
   const isTerminal = generation.status === 'completed' || generation.status === 'failed' || generation.status === 'cancelled';
@@ -537,16 +541,18 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             </div>
           )}
 
-          {/* Full prompt */}
+          {/* Full prompt - collapsible for long prompts */}
           {generation.finalPrompt && (
-            <div>
-              <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Prompt
-              </div>
+            <DisclosureSection
+              label={`Prompt (${generation.finalPrompt.length} chars)`}
+              defaultOpen={generation.finalPrompt.length < 200}
+              size="sm"
+              iconStyle="chevron"
+            >
               <div className="text-xs text-neutral-600 dark:text-neutral-400 whitespace-pre-wrap">
                 {generation.finalPrompt}
               </div>
-            </div>
+            </DisclosureSection>
           )}
 
           {/* Error message (full) - only show for failed status */}
@@ -653,29 +659,76 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             ) : null;
           })()}
 
-          {/* Raw Parameters (for debugging) */}
-          {generation.rawParams && Object.keys(generation.rawParams).length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Raw Parameters
-              </div>
-              <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-40">
-                {JSON.stringify(generation.rawParams, null, 2)}
-              </pre>
-            </div>
-          )}
+          {/* Parameters with tabs - collapsible */}
+          {(() => {
+            const hasRaw = generation.rawParams && Object.keys(generation.rawParams).length > 0;
+            const hasCanonical = generation.canonicalParams && Object.keys(generation.canonicalParams).length > 0;
+            if (!hasRaw && !hasCanonical) return null;
 
-          {/* Canonical Parameters */}
-          {generation.canonicalParams && Object.keys(generation.canonicalParams).length > 0 && (
-            <div>
-              <div className="text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                Canonical Parameters
-              </div>
-              <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-40">
-                {JSON.stringify(generation.canonicalParams, null, 2)}
-              </pre>
-            </div>
-          )}
+            const paramContent = (() => {
+              // If only one exists, show it directly without tabs
+              if (hasRaw && !hasCanonical) {
+                return (
+                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
+                    {JSON.stringify(generation.rawParams, null, 2)}
+                  </pre>
+                );
+              }
+              if (!hasRaw && hasCanonical) {
+                return (
+                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
+                    {JSON.stringify(generation.canonicalParams, null, 2)}
+                  </pre>
+                );
+              }
+
+              // Both exist - show tabbed interface
+              return (
+                <>
+                  <div className="flex gap-0.5 bg-neutral-200 dark:bg-neutral-800 p-0.5 rounded w-fit mb-1">
+                    <button
+                      onClick={() => setParamTab('canonical')}
+                      className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                        paramTab === 'canonical'
+                          ? 'bg-white dark:bg-neutral-700 shadow-sm text-neutral-900 dark:text-neutral-100'
+                          : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                      }`}
+                    >
+                      Canonical
+                    </button>
+                    <button
+                      onClick={() => setParamTab('raw')}
+                      className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                        paramTab === 'raw'
+                          ? 'bg-white dark:bg-neutral-700 shadow-sm text-neutral-900 dark:text-neutral-100'
+                          : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                      }`}
+                    >
+                      Raw
+                    </button>
+                  </div>
+                  <pre className="text-xs text-neutral-600 dark:text-neutral-400 bg-neutral-100 dark:bg-neutral-900 p-2 rounded overflow-x-auto max-h-48 overflow-y-auto">
+                    {paramTab === 'canonical'
+                      ? JSON.stringify(generation.canonicalParams, null, 2)
+                      : JSON.stringify(generation.rawParams, null, 2)}
+                  </pre>
+                </>
+              );
+            })();
+
+            const paramLabel = hasRaw && hasCanonical ? 'Parameters' : hasRaw ? 'Raw Parameters' : 'Canonical Parameters';
+
+            return (
+              <DisclosureSection
+                label={paramLabel}
+                defaultOpen={false}
+                size="sm"
+                iconStyle="chevron"
+              >
+                {paramContent}
+              </DisclosureSection>
+            );
+          })()}
         </div>
       )}
     </div>

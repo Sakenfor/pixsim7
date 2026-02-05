@@ -1,4 +1,5 @@
 export * from './Badge'
+export * from './disclosure'
 export * from './Button'
 export * from './ButtonGroup'
 export * from './Dropdown'
