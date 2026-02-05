@@ -94,6 +94,7 @@ import './PluginsSettings';
 import './AnalyzersSettings';
 import './WidgetPresetsSettings';
 import './ProfilesSettings';
+import './BackupSettings';
 import './DebugSettings';
 
 // Schema registration utilities (not settings modules themselves)

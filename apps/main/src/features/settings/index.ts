@@ -42,6 +42,27 @@ export { createPanelSchemaSettingsSection } from './components/shared/panelSchem
 
 export * from './lib/core';
 
+// ============================================================================
+// Lib - Backup Utilities
+// ============================================================================
+
+export {
+  exportSettings,
+  exportSettingsToJson,
+  importSettings,
+  importSettingsFromJson,
+  downloadSettingsBackup,
+  uploadSettingsBackup,
+  validateSettingsImport,
+  SETTINGS_KEYS,
+  EXPORT_VERSION,
+  EXPORT_TYPE,
+  type SettingsExport,
+  type ImportResult,
+  type ImportValidationResult,
+  type SettingsKey,
+} from './lib/backup';
+
 // Re-export key registries for convenience
 export { settingsRegistry } from './lib/core/registry';
 export { settingsSchemaRegistry } from './lib/core/settingsSchemaRegistry';
