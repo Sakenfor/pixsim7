@@ -4,7 +4,12 @@
  * This module initializes dockview and moves existing DOM elements into panels.
  * Elements are moved (not cloned) so existing event listeners stay attached.
  */
-import { DockviewComponent } from 'dockview-core';
+import {
+  DockviewComponent,
+  saveLayout as coreSaveLayout,
+  loadLayout as coreLoadLayout,
+  clearLayout,
+} from '@pixsim7/shared.dockview.core';
 
 (function() {
   'use strict';
@@ -161,38 +166,22 @@ import { DockviewComponent } from 'dockview-core';
   // ===== Layout Persistence =====
   function saveLayout() {
     if (!dockview) return;
-
-    try {
-      const layout = dockview.toJSON();
-      localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
-    } catch (e) {
-      console.warn('Failed to save dockview layout:', e);
-    }
+    coreSaveLayout(dockview, LAYOUT_STORAGE_KEY);
   }
 
   function loadLayout() {
     if (!dockview) return false;
 
-    try {
-      const stored = localStorage.getItem(LAYOUT_STORAGE_KEY);
-      if (!stored) return false;
-
-      const layout = JSON.parse(stored);
-      isLayoutLoading = true;
-      dockview.fromJSON(layout);
-      isLayoutLoading = false;
-      return true;
-    } catch (e) {
-      console.warn('Failed to load dockview layout:', e);
-      isLayoutLoading = false;
-      return false;
-    }
+    isLayoutLoading = true;
+    const result = coreLoadLayout(dockview, LAYOUT_STORAGE_KEY);
+    isLayoutLoading = false;
+    return result;
   }
 
   function resetLayout() {
     if (!dockview) return;
 
-    localStorage.removeItem(LAYOUT_STORAGE_KEY);
+    clearLayout(LAYOUT_STORAGE_KEY);
 
     // Clear existing panels
     const panels = [...dockview.panels];

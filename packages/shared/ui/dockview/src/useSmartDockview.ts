@@ -9,8 +9,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import type { DockviewApi } from "dockview-core";
-
-import { getDockviewGroups } from "./panelAdd";
+import { getGroups as getDockviewGroups } from "@pixsim7/shared.dockview.core";
 export interface UseSmartDockviewOptions {
   /** Storage key for persisting layout (optional) */
   storageKey?: string;

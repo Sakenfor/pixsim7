@@ -6,27 +6,16 @@
  */
 
 import type { BasePanelDefinition } from "@pixsim7/shared.ui.panels";
+import type {
+  PanelPosition,
+  PanelSizeConstraints,
+} from "@pixsim7/shared.dockview.core";
 
 // Re-export for convenience
 export type { BasePanelDefinition, PanelRegistryLike } from "@pixsim7/shared.ui.panels";
 
-/**
- * Position hint for default panel layout
- */
-export interface PanelPosition {
-  direction: "left" | "right" | "above" | "below" | "within";
-  referencePanel?: string;
-}
-
-/**
- * Size constraints for a panel
- */
-export interface PanelSizeConstraints {
-  minWidth?: number;
-  maxWidth?: number;
-  minHeight?: number;
-  maxHeight?: number;
-}
+// Re-export from core for backward compatibility
+export type { PanelPosition, PanelSizeConstraints };
 
 /**
  * Definition for a local/feature-scoped panel.

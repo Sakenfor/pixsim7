@@ -1,45 +1,101 @@
 /**
- * Dock Zone Registry (shared, app-agnostic)
+ * Dock Zone Registry (Framework-Agnostic)
  *
  * Defines dock zone metadata (preset scopes, panel scopes, storage keys).
  */
 
-import type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.panels';
-import { BaseRegistry } from '@pixsim7/shared.ui.panels';
+import type { DockZoneDefinition, PresetScope } from './types';
 
-export type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.panels';
-
-class DockZoneRegistry extends BaseRegistry<DockZoneDefinition> {
+/**
+ * Simple registry for dock zones
+ */
+class DockZoneRegistry {
+  private items = new Map<string, DockZoneDefinition>();
   private dockviewIdIndex = new Map<string, string>();
+  private listeners = new Set<() => void>();
 
-  override register(item: DockZoneDefinition): boolean {
-    const registered = super.register(item);
+  register(item: DockZoneDefinition): boolean {
+    if (this.items.has(item.id)) {
+      return false;
+    }
+    this.items.set(item.id, item);
     this.dockviewIdIndex.set(item.dockviewId, item.id);
-    return registered;
+    this.notifyListeners();
+    return true;
   }
 
-  override unregister(id: string): boolean {
-    const item = this.get(id);
+  forceRegister(item: DockZoneDefinition): void {
+    this.items.set(item.id, item);
+    this.dockviewIdIndex.set(item.dockviewId, item.id);
+    this.notifyListeners();
+  }
+
+  unregister(id: string): boolean {
+    const item = this.items.get(id);
     if (item) {
       this.dockviewIdIndex.delete(item.dockviewId);
+      this.items.delete(id);
+      this.notifyListeners();
+      return true;
     }
-    return super.unregister(id);
+    return false;
+  }
+
+  get(id: string): DockZoneDefinition | undefined {
+    return this.items.get(id);
   }
 
   getByDockviewId(dockviewId: string): DockZoneDefinition | undefined {
     const zoneId = this.dockviewIdIndex.get(dockviewId);
-    return zoneId ? this.get(zoneId) : undefined;
+    return zoneId ? this.items.get(zoneId) : undefined;
+  }
+
+  getAll(): DockZoneDefinition[] {
+    return Array.from(this.items.values());
+  }
+
+  getIds(): string[] {
+    return Array.from(this.items.keys());
+  }
+
+  has(id: string): boolean {
+    return this.items.has(id);
+  }
+
+  get size(): number {
+    return this.items.size;
+  }
+
+  clear(): void {
+    this.items.clear();
+    this.dockviewIdIndex.clear();
+    this.notifyListeners();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notifyListeners(): void {
+    this.listeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (e) {
+        console.error('[DockZoneRegistry] Error in listener:', e);
+      }
+    });
   }
 }
 
 export const dockZoneRegistry = new DockZoneRegistry();
 
-export function registerDockZone(definition: DockZoneDefinition): void {
-  dockZoneRegistry.register(definition);
+export function registerDockZone(definition: DockZoneDefinition): boolean {
+  return dockZoneRegistry.register(definition);
 }
 
-export function unregisterDockZone(id: string): void {
-  dockZoneRegistry.unregister(id);
+export function unregisterDockZone(id: string): boolean {
+  return dockZoneRegistry.unregister(id);
 }
 
 export function getDockZone(id: string): DockZoneDefinition | undefined {
@@ -76,7 +132,20 @@ export function resolvePresetScope(
   return fallback ?? defaultPresetScope;
 }
 
-// Default Dock Zone Definitions (Lazy Registration)
+// Panel ID Helpers
+
+export function getDockZonePanelIds(dockviewId: string | undefined): string[] {
+  const zone = getDockZoneByDockviewId(dockviewId);
+  if (!zone) return [];
+
+  if (zone.allowedPanels && zone.allowedPanels.length > 0) {
+    return zone.allowedPanels;
+  }
+
+  return [];
+}
+
+// Default Dock Zone Definitions
 
 export const DEFAULT_DOCK_ZONES: DockZoneDefinition[] = [
   {
@@ -115,7 +184,7 @@ export function registerDefaultDockZones(override = false): void {
 
   for (const zone of DEFAULT_DOCK_ZONES) {
     if (override || !dockZoneRegistry.has(zone.id)) {
-      registerDockZone(zone);
+      dockZoneRegistry.forceRegister(zone);
     }
   }
 
@@ -124,19 +193,4 @@ export function registerDefaultDockZones(override = false): void {
 
 export function areDefaultZonesRegistered(): boolean {
   return defaultsRegistered;
-}
-
-// Panel ID Helpers
-
-export function getDockZonePanelIds(
-  dockviewId: string | undefined,
-): string[] {
-  const zone = getDockZoneByDockviewId(dockviewId);
-  if (!zone) return [];
-
-  if (zone.allowedPanels && zone.allowedPanels.length > 0) {
-    return zone.allowedPanels;
-  }
-
-  return [];
 }
