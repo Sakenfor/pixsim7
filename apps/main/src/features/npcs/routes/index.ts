@@ -1,16 +1,3 @@
-import { lazy } from 'react';
-
-import type { Module } from '@app/modules/types';
-
-export const npcPortraitsModule: Module = {
-  id: 'npc-portraits',
-  name: 'NPC Portraits',
-  page: {
-    route: '/npc-portraits',
-    icon: 'user',
-    description: 'Configure NPC expressions mapped to assets',
-    category: 'game',
-    featureId: 'game',
-    component: lazy(() => import('./NpcPortraits').then(m => ({ default: m.NpcPortraits }))),
-  },
-};
+// Routes are now defined in module.ts
+// This file kept for import path compatibility
+export { npcsModule } from '../module';
