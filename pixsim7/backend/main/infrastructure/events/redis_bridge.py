@@ -109,9 +109,16 @@ class RedisEventBridge:
             "event_id": event.event_id,
             "origin": self._origin,
         }
+        data_summary = _summarize_event_data(event.event_type, event.data)
         logger.info(
             "[EventBridge] Publishing event to Redis",
-            extra={"role": self.role, "channel": self.CHANNEL, "event_type": event.event_type, "event_id": event.event_id},
+            extra={
+                "role": self.role,
+                "channel": self.CHANNEL,
+                "event_type": event.event_type,
+                "event_id": event.event_id,
+                "event_data_summary": data_summary,
+            },
         )
         await self._publisher.publish(self.CHANNEL, json.dumps(payload))
 
@@ -139,7 +146,17 @@ class RedisEventBridge:
 
                 logger.info(
                     "[EventBridge] Received event from Redis",
-                    extra={"role": self.role, "channel": self.CHANNEL, "event_type": data.get("event_type"), "event_id": data.get("event_id"), "origin": data.get("origin")},
+                    extra={
+                        "role": self.role,
+                        "channel": self.CHANNEL,
+                        "event_type": data.get("event_type"),
+                        "event_id": data.get("event_id"),
+                        "origin": data.get("origin"),
+                        "event_data_summary": _summarize_event_data(
+                            data.get("event_type") or "",
+                            data.get("data") or {},
+                        ),
+                    },
                 )
                 await event_bus.publish(
                     data.get("event_type"),
@@ -158,6 +175,41 @@ class RedisEventBridge:
 
 
 _bridge: Optional[RedisEventBridge] = None
+
+
+def _summarize_event_data(event_type: str, data: dict) -> dict:
+    """
+    Return a compact summary of event payloads for logging.
+
+    Avoids dumping full payloads into logs while still surfacing
+    key debugging fields.
+    """
+    if not isinstance(data, dict):
+        return {}
+    if event_type == "provider:failed":
+        summary = {
+            "job_id": data.get("job_id"),
+            "submission_id": data.get("submission_id"),
+            "error": str(data.get("error"))[:200] if data.get("error") else None,
+        }
+        if data.get("provider_id"):
+            summary["provider_id"] = data.get("provider_id")
+        if data.get("operation_type"):
+            summary["operation_type"] = data.get("operation_type")
+        if data.get("error_type"):
+            summary["error_type"] = data.get("error_type")
+        if data.get("execute_params_summary"):
+            summary["execute_params_summary"] = data.get("execute_params_summary")
+        if data.get("payload_summary"):
+            summary["payload_summary"] = data.get("payload_summary")
+        return summary
+    if event_type == "job:failed":
+        return {
+            "job_id": data.get("job_id"),
+            "generation_id": data.get("generation_id"),
+            "error": str(data.get("error"))[:200] if data.get("error") else None,
+        }
+    return {}
 
 
 async def start_event_bus_bridge(role: str = "process") -> RedisEventBridge | None:

@@ -506,13 +506,13 @@ async def retry_generation(
                 f"Maximum retry attempts ({settings.auto_retry_max_attempts}) exceeded"
             )
 
-        # Increment retry_count via service helper
-        generation = await generation_service.increment_retry(generation_id)
-
-        # Reset lifecycle fields for a fresh attempt
+        # Increment retry_count and reset lifecycle fields in one operation
+        # (avoids double-commit from separate increment_retry call)
+        generation.retry_count += 1
         generation.status = GenerationStatus.PENDING
         generation.started_at = None
         generation.completed_at = None
+        generation.error_message = None  # Clear previous error
         generation.updated_at = datetime.utcnow()
 
         await db.commit()

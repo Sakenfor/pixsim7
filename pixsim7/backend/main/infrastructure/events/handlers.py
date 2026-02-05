@@ -21,17 +21,22 @@ logger = configure_logging("events")
 
 # ===== AUTO-DISCOVER EVENT HANDLERS =====
 
-def discover_event_handlers(handlers_dir: str = "pixsim7/backend/main/event_handlers") -> list[str]:
+def discover_event_handlers(handlers_dir: str = None) -> list[str]:
     """
     Discover event handler plugins by scanning event_handlers directory
 
     Args:
-        handlers_dir: Path to event handlers directory
+        handlers_dir: Path to event handlers directory (auto-detected if None)
 
     Returns:
         List of discovered handler IDs
     """
     discovered = []
+
+    # Auto-detect handlers directory relative to this file
+    if handlers_dir is None:
+        this_dir = os.path.dirname(os.path.abspath(__file__))
+        handlers_dir = os.path.join(os.path.dirname(os.path.dirname(this_dir)), "event_handlers")
 
     if not os.path.exists(handlers_dir):
         logger.warning(f"Event handlers directory not found: {handlers_dir}")
@@ -61,20 +66,20 @@ def discover_event_handlers(handlers_dir: str = "pixsim7/backend/main/event_hand
     return discovered
 
 
-def load_event_handler_plugin(handler_name: str, handlers_dir: str = "pixsim7/backend/main/event_handlers") -> bool:
+def load_event_handler_plugin(handler_name: str, handlers_dir: str = None) -> bool:
     """
     Load and register an event handler plugin
 
     Args:
         handler_name: Handler directory name
-        handlers_dir: Path to handlers directory
+        handlers_dir: Path to handlers directory (unused, kept for compatibility)
 
     Returns:
         True if loaded successfully, False otherwise
     """
     try:
-        # Build module path
-        module_path = f"{handlers_dir.replace('/', '.')}.{handler_name}.manifest"
+        # Build module path - use known package structure
+        module_path = f"pixsim7.backend.main.event_handlers.{handler_name}.manifest"
 
         # Import manifest module
         module = importlib.import_module(module_path)
@@ -116,12 +121,12 @@ def load_event_handler_plugin(handler_name: str, handlers_dir: str = "pixsim7/ba
         return False
 
 
-def register_handlers_from_plugins(handlers_dir: str = "pixsim7/backend/main/event_handlers") -> int:
+def register_handlers_from_plugins(handlers_dir: str = None) -> int:
     """
     Auto-discover and register all event handler plugins
 
     Args:
-        handlers_dir: Path to event handlers directory
+        handlers_dir: Path to event handlers directory (auto-detected if None)
 
     Returns:
         Number of handlers registered
@@ -130,7 +135,7 @@ def register_handlers_from_plugins(handlers_dir: str = "pixsim7/backend/main/eve
 
     registered_count = 0
     for handler_name in discovered:
-        if load_event_handler_plugin(handler_name, handlers_dir):
+        if load_event_handler_plugin(handler_name):
             registered_count += 1
 
     logger.info(f"✅ Registered {registered_count} event handler plugins")

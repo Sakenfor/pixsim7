@@ -89,10 +89,9 @@ async def handle_event(event: Event) -> None:
                 )
                 return
 
-            # Increment retry_count on the same generation
-            generation = await generation_service.increment_retry(generation_id)
-
-            # Reset lifecycle fields for a fresh attempt
+            # Increment retry_count and reset lifecycle fields in one operation
+            # (avoids double-commit from separate increment_retry call)
+            generation.retry_count += 1
             generation.status = GenerationStatus.PENDING
             generation.started_at = None
             generation.completed_at = None

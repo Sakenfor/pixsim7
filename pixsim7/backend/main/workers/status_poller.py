@@ -306,11 +306,13 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     from pixsim7.backend.main.infrastructure.redis import get_arq_pool
                                     from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
-                                    # Increment retry_count and reset lifecycle
-                                    generation = await generation_service.increment_retry(generation.id)
+                                    # Increment retry_count and reset lifecycle in one operation
+                                    # (avoids double-commit from separate increment_retry call)
+                                    generation.retry_count += 1
                                     generation.status = GenStatus.PENDING
                                     generation.started_at = None
                                     generation.completed_at = None
+                                    generation.updated_at = datetime.utcnow()
 
                                     await db.commit()
                                     await db.refresh(generation)
