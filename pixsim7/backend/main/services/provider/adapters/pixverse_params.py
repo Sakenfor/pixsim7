@@ -2,6 +2,11 @@
 Pixverse parameter mapping utilities.
 
 Extracted from pixverse.py to reduce main adapter size.
+
+NOTE: This module does NOT resolve asset refs to URLs. It passes through
+composition_assets for prepare_execution_params() to resolve. This ensures
+a single resolution path and avoids leaking raw asset refs like "asset:123"
+into URL fields.
 """
 from typing import Any, Dict
 from pixsim7.backend.main.domain import OperationType
@@ -17,7 +22,6 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     estimate_video_credit_change,
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
-from pixsim7.backend.main.shared.composition_assets import composition_assets_to_refs
 
 
 # Operation type sets for Pixverse
@@ -112,9 +116,16 @@ def map_parameters(
     Returns:
         Pixverse-specific parameters
     """
-    # Derive model sets from SDK when available
-    video_models = set(getattr(VideoModel, "ALL", [])) if VideoModel else {"v3.5", "v4", "v5", "v5.5"}
-    image_models = set(getattr(ImageModel, "ALL", [])) if ImageModel else {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0", "seedream-4.5"}
+    # Derive model sets from SDK when available (ALL now returns specs, convert to IDs)
+    if VideoModel is not None:
+        video_models = set(VideoModel.ids()) if hasattr(VideoModel, "ids") else {str(m) for m in getattr(VideoModel, "ALL", [])}
+    else:
+        video_models = {"v3.5", "v4", "v5", "v5.5"}
+
+    if ImageModel is not None:
+        image_models = set(ImageModel.ids()) if hasattr(ImageModel, "ids") else {str(m) for m in getattr(ImageModel, "ALL", [])}
+    else:
+        image_models = {"qwen-image", "gemini-3.0", "gemini-2.5-flash", "seedream-4.0", "seedream-4.5"}
 
     is_video_op = operation_type in VIDEO_OPERATIONS
     is_image_op = operation_type in IMAGE_OPERATIONS
@@ -174,62 +185,52 @@ def map_parameters(
                 mapped[field] = value
 
     # === Operation-specific parameters ===
+    # NOTE: For operations that need asset resolution, we pass through
+    # composition_assets for prepare_execution_params() to resolve.
+    # We only set image_url/image_urls here if they're already valid URLs.
+
+    def _is_valid_url(v: Any) -> bool:
+        return isinstance(v, str) and v.startswith(("http://", "https://"))
+
     if operation_type == OperationType.IMAGE_TO_VIDEO:
-        image_source = params.get("image_url")
-        if not image_source:
-            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
-            if refs:
-                image_source = refs[0]
-        if image_source is not None:
-            mapped["image_url"] = (
-                normalize_url(image_source) or image_source
-                if isinstance(image_source, str)
-                else image_source
-            )
+        # If image_url is provided and looks like a URL, use it
+        image_url = params.get("image_url")
+        if image_url and _is_valid_url(image_url):
+            mapped["image_url"] = normalize_url(image_url) or image_url
+        # Pass through composition_assets for resolution
+        if params.get("composition_assets"):
+            mapped["composition_assets"] = params["composition_assets"]
 
     elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
         # Image operations use image_urls list
+        # Only set image_urls if they're already valid URLs
         image_urls = params.get("image_urls")
         image_url = params.get("image_url")
+
         if isinstance(image_urls, (list, tuple)):
-            filtered = [value for value in image_urls if value]
-            if filtered:
-                mapped["image_urls"] = [
-                    (normalize_url(url) or url) if isinstance(url, str) else url
-                    for url in filtered
-                ]
-        if "image_urls" not in mapped and image_url is not None:
-            if isinstance(image_url, str) and not image_url.strip():
-                image_url = None
-            if image_url is not None:
-                mapped["image_urls"] = [
-                    (
-                        normalize_url(image_url) or image_url
-                        if isinstance(image_url, str)
-                        else image_url
-                    )
-                ]
-        if "image_urls" not in mapped:
-            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
-            if refs:
-                mapped["image_urls"] = refs
+            # Filter to only valid URLs - asset refs will be resolved from composition_assets
+            url_only = [normalize_url(u) or u for u in image_urls if _is_valid_url(u)]
+            if url_only:
+                mapped["image_urls"] = url_only
+
+        if "image_urls" not in mapped and image_url and _is_valid_url(image_url):
+            mapped["image_urls"] = [normalize_url(image_url) or image_url]
+
+        # Pass through composition_assets for resolution
+        if params.get("composition_assets"):
+            mapped["composition_assets"] = params["composition_assets"]
 
     elif operation_type == OperationType.VIDEO_EXTEND:
-        video_source = params.get("video_url")
-        if not video_source:
-            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="video")
-            if refs:
-                video_source = refs[0]
-        if video_source is not None:
-            mapped["video_url"] = (
-                normalize_url(video_source) or video_source
-                if isinstance(video_source, str)
-                else video_source
-            )
+        # If video_url is a valid URL, use it
+        video_url = params.get("video_url")
+        if video_url and _is_valid_url(video_url):
+            mapped["video_url"] = normalize_url(video_url) or video_url
 
+        # Pass through original_video_id if provided
         if "original_video_id" in params and params["original_video_id"] is not None:
             mapped["original_video_id"] = params["original_video_id"]
         else:
+            # Check composition_assets for original_video_id in provider_params
             composition_assets = params.get("composition_assets") or []
             if composition_assets:
                 first = composition_assets[0]
@@ -240,19 +241,22 @@ def map_parameters(
                     if provider_params.get("original_video_id") is not None:
                         mapped["original_video_id"] = provider_params.get("original_video_id")
 
+        # Pass through composition_assets for resolution
+        if params.get("composition_assets"):
+            mapped["composition_assets"] = params["composition_assets"]
+
     elif operation_type == OperationType.VIDEO_TRANSITION:
+        # Only set image_urls if they're already valid URLs
         image_urls = params.get("image_urls")
         if isinstance(image_urls, (list, tuple)):
-            filtered = [value for value in image_urls if value]
-            if filtered:
-                mapped["image_urls"] = [
-                    (normalize_url(url) or url) if isinstance(url, str) else url
-                    for url in filtered
-                ]
-        if "image_urls" not in mapped:
-            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
-            if refs:
-                mapped["image_urls"] = refs
+            url_only = [normalize_url(u) or u for u in image_urls if _is_valid_url(u)]
+            if url_only:
+                mapped["image_urls"] = url_only
+
+        # Pass through composition_assets for resolution
+        if params.get("composition_assets"):
+            mapped["composition_assets"] = params["composition_assets"]
+
         if "prompts" in params and params["prompts"] is not None:
             mapped["prompts"] = params["prompts"]
         durations = params.get("durations")

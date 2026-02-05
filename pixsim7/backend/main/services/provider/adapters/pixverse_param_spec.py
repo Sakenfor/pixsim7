@@ -34,44 +34,47 @@ def build_operation_parameter_spec() -> dict:
     video_model_enum: list[str]
     default_video_model: str
     if VideoModel is not None and getattr(VideoModel, "ALL", None):
-        video_model_enum = list(VideoModel.ALL)
-        default_video_model = getattr(VideoModel, "DEFAULT", video_model_enum[0])
+        # ALL is now List[VideoModelSpec], use .ids() or iterate .id
+        video_model_enum = (
+            VideoModel.ids() if hasattr(VideoModel, "ids")
+            else [str(m) for m in VideoModel.ALL]
+        )
+        default = getattr(VideoModel, "DEFAULT", None)
+        default_video_model = str(default) if default else video_model_enum[0]
     else:
-        # Fallback to previous behavior
         video_model_enum = ["v5"]
         default_video_model = "v5"
 
-    # Image models and qualities
+    # Image models and qualities (iterate specs directly)
     image_model_enum: list[str] = []
     image_quality_enum: list[str] = []
     image_aspect_enum: list[str] = []
-    if ImageModel is not None:
-        image_model_enum = list(getattr(ImageModel, "ALL", []))
-        # Union of all known qualities across models
-        qualities = getattr(ImageModel, "QUALITIES", None)
-        if isinstance(qualities, dict):
-            for qs in qualities.values():
-                for q in qs:
-                    if q not in image_quality_enum:
-                        image_quality_enum.append(q)
-        # Union of all aspect ratios across models (ASPECT_RATIOS is now a dict)
-        aspect_ratios = getattr(ImageModel, "ASPECT_RATIOS", None)
-        if isinstance(aspect_ratios, dict):
-            for ars in aspect_ratios.values():
-                for ar in ars:
+    image_quality_per_model: dict[str, list[str]] = {}
+    image_aspect_per_model: dict[str, list[str]] = {}
+
+    if ImageModel is not None and getattr(ImageModel, "ALL", None):
+        # ALL is now List[ImageModelSpec]
+        for spec in ImageModel.ALL:
+            model_id = str(spec)
+            image_model_enum.append(model_id)
+
+            # Collect qualities
+            if hasattr(spec, "qualities"):
+                image_quality_per_model[model_id] = [q.lower() for q in spec.qualities]
+                for q in spec.qualities:
+                    q_lower = q.lower()
+                    if q_lower not in image_quality_enum:
+                        image_quality_enum.append(q_lower)
+
+            # Collect aspect ratios
+            if hasattr(spec, "aspect_ratios"):
+                image_aspect_per_model[model_id] = list(spec.aspect_ratios)
+                for ar in spec.aspect_ratios:
                     if ar not in image_aspect_enum:
                         image_aspect_enum.append(ar)
-        elif isinstance(aspect_ratios, list):
-            image_aspect_enum = list(aspect_ratios)
-        else:
-            image_aspect_enum = ["16:9", "9:16", "1:1"]
 
-    # Per-model aspect ratio options (from SDK) - must be defined before aspect_ratio spec
-    image_aspect_per_model = {}
-    if ImageModel is not None:
-        sdk_aspects = getattr(ImageModel, "ASPECT_RATIOS", {})
-        if isinstance(sdk_aspects, dict):
-            image_aspect_per_model = sdk_aspects
+    if not image_aspect_enum:
+        image_aspect_enum = ["16:9", "9:16", "1:1"]
 
     # Video quality presets – derive from pricing tables when possible
     video_quality_enum: list[str] = []
