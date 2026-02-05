@@ -287,6 +287,107 @@ import {
     elements.volumeBtn.addEventListener('click', toggleMute);
   }
 
+  // ===== Zoom Controls =====
+  const ZOOM_MIN = 0.5;
+  const ZOOM_MAX = 5.0;
+  const ZOOM_STEP = 0.25;
+
+  function setZoom(level, centerX = null, centerY = null) {
+    const oldZoom = state.zoomLevel;
+    state.zoomLevel = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, level));
+
+    // Update zoom indicator
+    if (elements.zoomIndicator) {
+      elements.zoomIndicator.textContent = Math.round(state.zoomLevel * 100) + '%';
+    }
+
+    // Toggle zoomed class
+    if (state.zoomLevel !== 1.0) {
+      elements.videoContainer.classList.add('zoomed');
+    } else {
+      elements.videoContainer.classList.remove('zoomed');
+      state.zoomPanX = 0;
+      state.zoomPanY = 0;
+    }
+
+    applyZoomTransform();
+  }
+
+  function applyZoomTransform() {
+    const video = elements.video;
+    const imageDisplay = document.getElementById('imageDisplay');
+    const target = state.isImageMode ? imageDisplay : video;
+
+    if (target) {
+      target.style.transform = `scale(${state.zoomLevel}) translate(${state.zoomPanX}px, ${state.zoomPanY}px)`;
+      target.style.transformOrigin = 'center center';
+    }
+  }
+
+  function zoomIn() {
+    setZoom(state.zoomLevel + ZOOM_STEP);
+  }
+
+  function zoomOut() {
+    setZoom(state.zoomLevel - ZOOM_STEP);
+  }
+
+  function zoomReset() {
+    state.zoomPanX = 0;
+    state.zoomPanY = 0;
+    setZoom(1.0);
+  }
+
+  // Pan handling with mouse drag
+  function startPan(e) {
+    if (state.zoomLevel <= 1.0) return;
+    if (e.button !== 0) return; // Left click only
+
+    state.isPanning = true;
+    state.panStart = { x: e.clientX, y: e.clientY, panX: state.zoomPanX, panY: state.zoomPanY };
+    elements.videoContainer.classList.add('panning');
+    e.preventDefault();
+  }
+
+  function doPan(e) {
+    if (!state.isPanning || !state.panStart) return;
+
+    const dx = (e.clientX - state.panStart.x) / state.zoomLevel;
+    const dy = (e.clientY - state.panStart.y) / state.zoomLevel;
+
+    state.zoomPanX = state.panStart.panX + dx;
+    state.zoomPanY = state.panStart.panY + dy;
+
+    applyZoomTransform();
+  }
+
+  function endPan() {
+    if (!state.isPanning) return;
+    state.isPanning = false;
+    state.panStart = null;
+    elements.videoContainer.classList.remove('panning');
+  }
+
+  // Mouse wheel zoom
+  function handleWheelZoom(e) {
+    if (!e.ctrlKey) return; // Only zoom with Ctrl+wheel
+    e.preventDefault();
+
+    const delta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    setZoom(state.zoomLevel + delta);
+  }
+
+  // Set up pan and wheel handlers
+  elements.videoContainer.addEventListener('mousedown', (e) => {
+    if (state.zoomLevel > 1.0 && !state.regionMode) {
+      startPan(e);
+    }
+  });
+
+  document.addEventListener('mousemove', doPan);
+  document.addEventListener('mouseup', endPan);
+  elements.videoContainer.addEventListener('wheel', handleWheelZoom, { passive: false });
+
   // ===== Hotkey System =====
   const DEFAULT_HOTKEYS = {
     playPause: { code: 'Space', ctrl: false, shift: false, alt: false, label: 'Play/Pause' },
@@ -300,6 +401,9 @@ import {
     volumeUp: { code: 'ArrowUp', ctrl: false, shift: false, alt: false, label: 'Volume Up' },
     volumeDown: { code: 'ArrowDown', ctrl: false, shift: false, alt: false, label: 'Volume Down' },
     togglePlaylist: { code: 'KeyB', ctrl: false, shift: false, alt: false, label: 'Toggle Playlist' },
+    zoomIn: { code: 'Equal', ctrl: false, shift: false, alt: false, label: 'Zoom In' },
+    zoomOut: { code: 'Minus', ctrl: false, shift: false, alt: false, label: 'Zoom Out' },
+    zoomReset: { code: 'Digit0', ctrl: false, shift: false, alt: false, label: 'Zoom Reset' },
   };
 
   const HOTKEY_STORAGE_KEY = 'pxs7_player_hotkeys';
@@ -490,6 +594,15 @@ import {
     } else if (matchesHotkey(e, hotkeys.togglePlaylist)) {
       e.preventDefault();
       window.PXS7Player.playlist?.toggleSidebar();
+    } else if (matchesHotkey(e, hotkeys.zoomIn)) {
+      e.preventDefault();
+      zoomIn();
+    } else if (matchesHotkey(e, hotkeys.zoomOut)) {
+      e.preventDefault();
+      zoomOut();
+    } else if (matchesHotkey(e, hotkeys.zoomReset)) {
+      e.preventDefault();
+      zoomReset();
     }
   });
 
@@ -500,5 +613,9 @@ import {
     getSkipAmount,
     setVolume,
     toggleMute,
+    zoomIn,
+    zoomOut,
+    zoomReset,
+    setZoom,
   };
 })();

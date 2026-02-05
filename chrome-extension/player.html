@@ -375,6 +375,44 @@
       object-fit: contain;
     }
 
+    /* Zoom support */
+    .video-container.zoomed {
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    .video-container.zoomed.panning {
+      cursor: grabbing;
+    }
+
+    .video-container .zoom-content {
+      transform-origin: center center;
+      transition: transform 0.1s ease-out;
+    }
+
+    .video-container.panning .zoom-content {
+      transition: none;
+    }
+
+    .zoom-indicator {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+      z-index: 20;
+    }
+
+    .video-container.zoomed .zoom-indicator {
+      opacity: 1;
+    }
+
     /* Controls panel */
     .controls-panel-content {
       background: var(--bg-alt);
@@ -795,6 +833,7 @@
       padding: 8px;
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      grid-auto-rows: min-content;
       gap: 8px;
       align-content: start;
     }
@@ -820,6 +859,90 @@
     .library-item:hover {
       transform: scale(1.03);
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .library-item.folder {
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+    }
+
+    .library-item.folder:hover {
+      border-color: var(--accent);
+    }
+
+    .library-breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 4px 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+
+    .library-breadcrumb:empty {
+      display: none;
+    }
+
+    .library-breadcrumb-item {
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      white-space: nowrap;
+      max-width: 100px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .library-breadcrumb-item:hover {
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .library-breadcrumb-sep {
+      color: var(--text-muted);
+      opacity: 0.5;
+    }
+
+    .library-item .pin-badge {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      font-size: 10px;
+      background: rgba(233, 69, 96, 0.9);
+      padding: 1px 4px;
+      border-radius: 2px;
+      opacity: 0.9;
+    }
+
+    .library-context-menu {
+      position: fixed;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 0;
+      min-width: 140px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .library-context-menu-item {
+      padding: 6px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .library-context-menu-item:hover {
+      background: var(--bg);
+    }
+
+    .library-context-menu-item.danger {
+      color: #e94560;
     }
 
     .library-item img {
@@ -1269,6 +1392,7 @@
           <div class="convert-detail" id="convertDetail"></div>
           <button class="btn btn-secondary" id="convertCancel" style="margin-top: 12px;">Cancel</button>
         </div>
+        <div class="zoom-indicator" id="zoomIndicator">100%</div>
       </div>
     </div>
   </div>
@@ -1299,6 +1423,7 @@
           <button class="btn btn-secondary" id="libraryRefreshBtn" title="Refresh">↻</button>
         </div>
       </div>
+      <div class="library-breadcrumb" id="libraryBreadcrumb"></div>
       <div class="library-grid" id="libraryGrid">
         <div class="library-empty">
           <div style="font-size: 24px; margin-bottom: 8px;">📁</div>

@@ -80,6 +80,7 @@ import {
     playerSettingsPopup: document.getElementById('playerSettingsPopup'),
     containVideoCheck: document.getElementById('containVideoCheck'),
     skipDedupCheck: document.getElementById('skipDedupCheck'),
+    zoomIndicator: document.getElementById('zoomIndicator'),
     // Playlist panel (inside dockview)
     playlistItems: document.getElementById('playlistItems'),
     playlistClearBtn: document.getElementById('playlistClearBtn'),
@@ -124,6 +125,12 @@ import {
     recordingHotkey: null, // Currently recording hotkey action
     // Player settings
     containVideo: false,
+    // Zoom
+    zoomLevel: 1.0,
+    zoomPanX: 0,
+    zoomPanY: 0,
+    isPanning: false,
+    panStart: null,
     // Upload settings
     skipDedup: false,
     // Playlist

@@ -13,6 +13,8 @@
   const FOLDERS_DB_NAME = 'pxs7_library_folders';
   const FOLDERS_STORE_NAME = 'folders';
   const THUMBS_STORE_NAME = 'thumbnails';
+  const PINS_STORE_NAME = 'pins';
+  const PINNED_FOLDER_ID = '__pinned__';
 
   const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts', '.mts'];
   const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.avif'];
@@ -20,16 +22,19 @@
 
   let foldersDb = null;
   let folders = []; // { id, name, handle }
+  let pinnedItems = []; // { id, name, handle, type: 'folder'|'file', sourceFolderId, isVideo, isImage, thumbnail }
   let currentFolderId = null;
-  let currentFiles = []; // { name, handle, isVideo, isImage, thumbnail }
+  let currentPath = []; // Stack of { name, handle } for subdirectory navigation
+  let currentFiles = []; // { name, handle, isVideo, isImage, isFolder, thumbnail, pinned, pinId }
   let isScanning = false;
+  let contextMenu = null;
 
   // ===== IndexedDB for Folders =====
   async function openFoldersDb() {
     if (foldersDb) return foldersDb;
 
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(FOLDERS_DB_NAME, 1);
+      const request = indexedDB.open(FOLDERS_DB_NAME, 2);
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         foldersDb = request.result;
@@ -42,6 +47,9 @@
         }
         if (!db.objectStoreNames.contains(THUMBS_STORE_NAME)) {
           db.createObjectStore(THUMBS_STORE_NAME, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(PINS_STORE_NAME)) {
+          db.createObjectStore(PINS_STORE_NAME, { keyPath: 'id' });
         }
       };
     });
@@ -126,6 +134,114 @@
     }
   }
 
+  // ===== Pinned Items =====
+  async function loadPinnedItems() {
+    try {
+      const db = await openFoldersDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PINS_STORE_NAME, 'readonly');
+        const store = tx.objectStore(PINS_STORE_NAME);
+        const request = store.getAll();
+        request.onsuccess = () => {
+          pinnedItems = request.result || [];
+          resolve(pinnedItems);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (e) {
+      console.warn('Failed to load pinned items:', e);
+      return [];
+    }
+  }
+
+  async function savePinnedItem(item) {
+    try {
+      const db = await openFoldersDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PINS_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(PINS_STORE_NAME);
+        store.put(item);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) {
+      console.warn('Failed to save pinned item:', e);
+    }
+  }
+
+  async function deletePinnedItem(pinId) {
+    try {
+      const db = await openFoldersDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PINS_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(PINS_STORE_NAME);
+        store.delete(pinId);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) {
+      console.warn('Failed to delete pinned item:', e);
+    }
+  }
+
+  function generatePinId() {
+    return 'pin_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+  }
+
+  async function pinItem(file) {
+    const pinId = generatePinId();
+    const pinnedItem = {
+      id: pinId,
+      name: file.name,
+      handle: file.handle,
+      type: file.isFolder ? 'folder' : 'file',
+      sourceFolderId: currentFolderId,
+      sourcePath: [...currentPath],
+      isVideo: file.isVideo || false,
+      isImage: file.isImage || false,
+      thumbnail: file.thumbnail || null,
+    };
+
+    pinnedItems.push(pinnedItem);
+    await savePinnedItem(pinnedItem);
+    showToast(`Pinned: ${file.name}`, true);
+
+    // Update current view to show pin badge
+    if (currentFolderId !== PINNED_FOLDER_ID) {
+      file.pinned = true;
+      file.pinId = pinId;
+      renderGrid();
+    }
+    updateFolderSelect();
+  }
+
+  async function unpinItem(pinId) {
+    const item = pinnedItems.find(p => p.id === pinId);
+    if (!item) return;
+
+    await deletePinnedItem(pinId);
+    pinnedItems = pinnedItems.filter(p => p.id !== pinId);
+    showToast(`Unpinned: ${item.name}`, true);
+
+    if (currentFolderId === PINNED_FOLDER_ID) {
+      // Refresh pinned view
+      await showPinnedFolder();
+    } else {
+      // Update current view to remove pin badge
+      const file = currentFiles.find(f => f.pinId === pinId);
+      if (file) {
+        file.pinned = false;
+        file.pinId = null;
+        renderGrid();
+      }
+    }
+    updateFolderSelect();
+  }
+
+  function isItemPinned(name, handle) {
+    return pinnedItems.find(p => p.name === name && p.sourceFolderId === currentFolderId);
+  }
+
   // ===== File System Operations =====
   function generateFolderId() {
     return Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
@@ -174,8 +290,18 @@
   async function selectFolder(folderId) {
     if (!folderId) {
       currentFolderId = null;
+      currentPath = [];
       currentFiles = [];
+      updateBreadcrumb();
       renderGrid();
+      return;
+    }
+
+    // Handle pinned folder
+    if (folderId === PINNED_FOLDER_ID) {
+      currentFolderId = PINNED_FOLDER_ID;
+      currentPath = [];
+      await showPinnedFolder();
       return;
     }
 
@@ -183,6 +309,7 @@
     if (!folder) return;
 
     currentFolderId = folderId;
+    currentPath = []; // Reset path when selecting a new root folder
 
     // Check/request permission
     try {
@@ -202,7 +329,115 @@
     await scanFolder(folder);
   }
 
-  async function scanFolder(folder) {
+  async function showPinnedFolder() {
+    const grid = document.getElementById('libraryGrid');
+    const status = document.getElementById('libraryStatus');
+
+    currentFiles = [];
+    updateBreadcrumb();
+
+    if (pinnedItems.length === 0) {
+      grid.innerHTML = '<div class="library-empty">No pinned items<br><span style="font-size:9px;opacity:0.7">Right-click items to pin them</span></div>';
+      status.textContent = '';
+      return;
+    }
+
+    // Convert pinned items to currentFiles format
+    const pinFolders = [];
+    const pinFiles = [];
+
+    for (const pin of pinnedItems) {
+      const item = {
+        name: pin.name,
+        handle: pin.handle,
+        isFolder: pin.type === 'folder',
+        isVideo: pin.isVideo,
+        isImage: pin.isImage,
+        thumbnail: pin.thumbnail,
+        pinned: true,
+        pinId: pin.id,
+        sourceFolderId: pin.sourceFolderId,
+        sourcePath: pin.sourcePath,
+      };
+
+      if (pin.type === 'folder') {
+        pinFolders.push(item);
+      } else {
+        pinFiles.push(item);
+      }
+    }
+
+    pinFolders.sort((a, b) => a.name.localeCompare(b.name));
+    pinFiles.sort((a, b) => a.name.localeCompare(b.name));
+    currentFiles = [...pinFolders, ...pinFiles];
+
+    const folderCount = pinFolders.length;
+    const fileCount = pinFiles.length;
+    const parts = [];
+    if (folderCount > 0) parts.push(`${folderCount} folder${folderCount !== 1 ? 's' : ''}`);
+    if (fileCount > 0) parts.push(`${fileCount} file${fileCount !== 1 ? 's' : ''}`);
+    status.textContent = parts.join(', ') || 'Empty';
+
+    renderGrid();
+  }
+
+  async function navigateToSubfolder(folderItem) {
+    if (!currentFolderId) return;
+    const folder = folders.find(f => f.id === currentFolderId);
+    if (!folder) return;
+
+    currentPath.push({ name: folderItem.name, handle: folderItem.handle });
+    await scanFolder(folder, folderItem.handle);
+  }
+
+  async function navigateToBreadcrumb(index) {
+    if (!currentFolderId) return;
+    const folder = folders.find(f => f.id === currentFolderId);
+    if (!folder) return;
+
+    if (index < 0) {
+      // Navigate to root
+      currentPath = [];
+      await scanFolder(folder);
+    } else {
+      // Navigate to specific path level
+      currentPath = currentPath.slice(0, index + 1);
+      const targetHandle = currentPath[currentPath.length - 1].handle;
+      await scanFolder(folder, targetHandle);
+    }
+  }
+
+  function updateBreadcrumb() {
+    const breadcrumb = document.getElementById('libraryBreadcrumb');
+    if (!breadcrumb) return;
+
+    if (currentPath.length === 0) {
+      breadcrumb.innerHTML = '';
+      return;
+    }
+
+    const folder = folders.find(f => f.id === currentFolderId);
+    const rootName = folder?.name || 'Root';
+
+    let html = `<span class="library-breadcrumb-item" data-index="-1" title="${escapeHtml(rootName)}">${escapeHtml(rootName)}</span>`;
+
+    currentPath.forEach((p, i) => {
+      html += `<span class="library-breadcrumb-sep">›</span>`;
+      html += `<span class="library-breadcrumb-item" data-index="${i}" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>`;
+    });
+
+    breadcrumb.innerHTML = html;
+
+    // Add click handlers
+    breadcrumb.querySelectorAll('.library-breadcrumb-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const index = parseInt(item.dataset.index, 10);
+        navigateToBreadcrumb(index);
+      });
+    });
+  }
+
+  async function scanFolder(folder, dirHandle = null) {
     if (isScanning) return;
     isScanning = true;
 
@@ -213,30 +448,66 @@
     status.textContent = 'Scanning...';
 
     currentFiles = [];
+    const handleToScan = dirHandle || folder.handle;
 
     try {
-      for await (const entry of folder.handle.values()) {
-        if (entry.kind !== 'file') continue;
+      const subfolders = [];
+      const files = [];
 
-        const name = entry.name.toLowerCase();
-        const isVideo = VIDEO_EXTENSIONS.some(ext => name.endsWith(ext));
-        const isImage = IMAGE_EXTENSIONS.some(ext => name.endsWith(ext));
-
-        if (isVideo || isImage) {
-          currentFiles.push({
+      for await (const entry of handleToScan.values()) {
+        if (entry.kind === 'directory') {
+          subfolders.push({
             name: entry.name,
             handle: entry,
-            isVideo,
-            isImage,
+            isFolder: true,
+            isVideo: false,
+            isImage: false,
             thumbnail: null,
           });
+        } else if (entry.kind === 'file') {
+          const name = entry.name.toLowerCase();
+          const isVideo = VIDEO_EXTENSIONS.some(ext => name.endsWith(ext));
+          const isImage = IMAGE_EXTENSIONS.some(ext => name.endsWith(ext));
+
+          if (isVideo || isImage) {
+            files.push({
+              name: entry.name,
+              handle: entry,
+              isFolder: false,
+              isVideo,
+              isImage,
+              thumbnail: null,
+            });
+          }
         }
       }
 
-      // Sort by name
-      currentFiles.sort((a, b) => a.name.localeCompare(b.name));
+      // Sort folders and files separately, then combine (folders first)
+      subfolders.sort((a, b) => a.name.localeCompare(b.name));
+      files.sort((a, b) => a.name.localeCompare(b.name));
+      currentFiles = [...subfolders, ...files];
 
-      status.textContent = `${currentFiles.length} files`;
+      // Mark pinned items
+      for (const file of currentFiles) {
+        const pin = pinnedItems.find(p =>
+          p.name === file.name &&
+          p.sourceFolderId === currentFolderId &&
+          p.sourcePath?.length === currentPath.length
+        );
+        if (pin) {
+          file.pinned = true;
+          file.pinId = pin.id;
+        }
+      }
+
+      const folderCount = subfolders.length;
+      const fileCount = files.length;
+      const parts = [];
+      if (folderCount > 0) parts.push(`${folderCount} folder${folderCount !== 1 ? 's' : ''}`);
+      if (fileCount > 0) parts.push(`${fileCount} file${fileCount !== 1 ? 's' : ''}`);
+      status.textContent = parts.join(', ') || 'Empty';
+
+      updateBreadcrumb();
       renderGrid();
 
       // Generate thumbnails in background
@@ -253,6 +524,7 @@
   async function generateThumbnails(folderId) {
     for (const file of currentFiles) {
       if (currentFolderId !== folderId) break; // Folder changed, stop
+      if (file.isFolder) continue; // Skip folders
 
       const cacheKey = `${folderId}:${file.name}`;
 
@@ -363,7 +635,12 @@
     const select = document.getElementById('libraryFolderSelect');
     if (!select) return;
 
+    const pinnedOption = pinnedItems.length > 0
+      ? `<option value="${PINNED_FOLDER_ID}">📌 Pinned (${pinnedItems.length})</option>`
+      : `<option value="${PINNED_FOLDER_ID}">📌 Pinned</option>`;
+
     select.innerHTML = '<option value="">Select folder...</option>' +
+      pinnedOption +
       folders.map(f => `<option value="${f.id}">${escapeHtml(f.name)}</option>`).join('');
 
     if (currentFolderId) {
@@ -376,7 +653,9 @@
     if (!grid) return;
 
     if (currentFiles.length === 0) {
-      if (currentFolderId) {
+      if (currentFolderId === PINNED_FOLDER_ID) {
+        grid.innerHTML = '<div class="library-empty">No pinned items<br><span style="font-size:9px;opacity:0.7">Right-click items to pin them</span></div>';
+      } else if (currentFolderId) {
         grid.innerHTML = '<div class="library-empty">No media files found</div>';
       } else {
         grid.innerHTML = `
@@ -390,13 +669,26 @@
     }
 
     grid.innerHTML = currentFiles.map(file => {
+      const pinBadge = file.pinned ? '<div class="pin-badge">📌</div>' : '';
+
+      if (file.isFolder) {
+        return `
+          <div class="library-item folder" data-name="${escapeHtml(file.name)}" data-type="folder" title="${escapeHtml(file.name)}">
+            ${pinBadge}
+            <div class="library-item-placeholder">📁</div>
+            <div class="library-item-name">${escapeHtml(file.name)}</div>
+          </div>
+        `;
+      }
+
       const icon = file.isVideo ? '🎬' : '🖼';
       const thumbContent = file.thumbnail
         ? `<img src="${file.thumbnail}" alt="">`
         : `<div class="library-item-placeholder">${icon}</div>`;
 
       return `
-        <div class="library-item" data-name="${escapeHtml(file.name)}" title="${escapeHtml(file.name)}">
+        <div class="library-item" data-name="${escapeHtml(file.name)}" data-type="file" title="${escapeHtml(file.name)}">
+          ${pinBadge}
           ${thumbContent}
           <div class="library-item-type">${icon}</div>
           <div class="library-item-name">${escapeHtml(file.name)}</div>
@@ -406,8 +698,64 @@
 
     // Add click handlers
     grid.querySelectorAll('.library-item').forEach(item => {
-      item.addEventListener('click', () => playFile(item.dataset.name));
+      item.addEventListener('click', () => {
+        const name = item.dataset.name;
+        const type = item.dataset.type;
+        if (type === 'folder') {
+          const folderItem = currentFiles.find(f => f.name === name && f.isFolder);
+          if (folderItem) {
+            if (currentFolderId === PINNED_FOLDER_ID) {
+              // Navigate into pinned folder - need to set up context
+              navigateIntoPinnedFolder(folderItem);
+            } else {
+              navigateToSubfolder(folderItem);
+            }
+          }
+        } else {
+          playFile(name);
+        }
+      });
+
+      // Right-click for context menu
+      item.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        const name = item.dataset.name;
+        const file = currentFiles.find(f => f.name === name);
+        if (file) showContextMenu(e.clientX, e.clientY, file);
+      });
     });
+  }
+
+  async function navigateIntoPinnedFolder(folderItem) {
+    // For pinned folders, we need to navigate into them using their source context
+    const sourceFolder = folders.find(f => f.id === folderItem.sourceFolderId);
+    if (!sourceFolder) {
+      showToast('Source folder no longer available', false);
+      return;
+    }
+
+    // Check permission
+    try {
+      const permission = await sourceFolder.handle.queryPermission({ mode: 'read' });
+      if (permission !== 'granted') {
+        const result = await sourceFolder.handle.requestPermission({ mode: 'read' });
+        if (result !== 'granted') {
+          showToast('Permission denied for folder', false);
+          return;
+        }
+      }
+    } catch (e) {
+      showToast('Folder no longer accessible', false);
+      return;
+    }
+
+    // Switch to source folder and navigate to the pinned folder
+    currentFolderId = folderItem.sourceFolderId;
+    currentPath = folderItem.sourcePath ? [...folderItem.sourcePath] : [];
+    currentPath.push({ name: folderItem.name, handle: folderItem.handle });
+
+    document.getElementById('libraryFolderSelect').value = currentFolderId;
+    await scanFolder(sourceFolder, folderItem.handle);
   }
 
   async function playFile(fileName) {
@@ -421,9 +769,13 @@
       // Store handle for playlist persistence
       state.pendingFileHandle = file.handle;
 
+      // Build folder path for capture context
+      const folderPath = buildCurrentFolderPath();
+
       if (file.isImage) {
-        window.PXS7Player.image?.loadImage(url, file.name);
+        window.PXS7Player.image?.loadImage(url, file.name, folderPath);
       } else {
+        state.currentVideoSourceFolder = folderPath;
         window.PXS7Player.file?.handleVideoFile?.(fileData) ||
           window.PXS7Player.loadVideo?.(url, file.name);
       }
@@ -432,10 +784,96 @@
     }
   }
 
+  function buildCurrentFolderPath() {
+    if (currentFolderId === PINNED_FOLDER_ID) {
+      return 'Pinned';
+    }
+
+    const rootFolder = folders.find(f => f.id === currentFolderId);
+    if (!rootFolder) return null;
+
+    const parts = [rootFolder.name];
+    for (const p of currentPath) {
+      parts.push(p.name);
+    }
+    return parts.join('/');
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // ===== Context Menu =====
+  function showContextMenu(x, y, file) {
+    hideContextMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'library-context-menu';
+
+    const isPinned = file.pinned;
+    const inPinnedView = currentFolderId === PINNED_FOLDER_ID;
+
+    if (isPinned) {
+      const unpinEl = document.createElement('div');
+      unpinEl.className = 'library-context-menu-item';
+      unpinEl.innerHTML = '<span>📌</span><span>Unpin</span>';
+      unpinEl.addEventListener('click', () => {
+        hideContextMenu();
+        unpinItem(file.pinId);
+      });
+      menu.appendChild(unpinEl);
+    } else if (!inPinnedView) {
+      const pinEl = document.createElement('div');
+      pinEl.className = 'library-context-menu-item';
+      pinEl.innerHTML = '<span>📌</span><span>Pin</span>';
+      pinEl.addEventListener('click', () => {
+        hideContextMenu();
+        pinItem(file);
+      });
+      menu.appendChild(pinEl);
+    }
+
+    if (!file.isFolder) {
+      const playItem = document.createElement('div');
+      playItem.className = 'library-context-menu-item';
+      playItem.innerHTML = '<span>▶</span><span>Play</span>';
+      playItem.addEventListener('click', () => {
+        hideContextMenu();
+        playFile(file.name);
+      });
+      menu.appendChild(playItem);
+    }
+
+    // Position menu
+    document.body.appendChild(menu);
+
+    // Adjust position if menu goes off screen
+    const rect = menu.getBoundingClientRect();
+    if (x + rect.width > window.innerWidth) {
+      x = window.innerWidth - rect.width - 8;
+    }
+    if (y + rect.height > window.innerHeight) {
+      y = window.innerHeight - rect.height - 8;
+    }
+
+    menu.style.left = x + 'px';
+    menu.style.top = y + 'px';
+
+    contextMenu = menu;
+
+    // Close on click outside
+    setTimeout(() => {
+      document.addEventListener('click', hideContextMenu, { once: true });
+    }, 0);
+  }
+
+  function hideContextMenu() {
+    if (contextMenu) {
+      contextMenu.remove();
+      contextMenu = null;
+    }
   }
 
   // ===== Event Handlers =====
@@ -448,9 +886,16 @@
     if (addBtn) addBtn.addEventListener('click', addFolder);
     if (removeBtn) removeBtn.addEventListener('click', removeCurrentFolder);
     if (refreshBtn) refreshBtn.addEventListener('click', () => {
-      if (currentFolderId) {
+      if (currentFolderId === PINNED_FOLDER_ID) {
+        showPinnedFolder();
+      } else if (currentFolderId) {
         const folder = folders.find(f => f.id === currentFolderId);
-        if (folder) scanFolder(folder);
+        if (folder) {
+          const currentHandle = currentPath.length > 0
+            ? currentPath[currentPath.length - 1].handle
+            : null;
+          scanFolder(folder, currentHandle);
+        }
       }
     });
     if (select) select.addEventListener('change', (e) => selectFolder(e.target.value));
@@ -459,7 +904,9 @@
   // ===== Initialize =====
   async function init() {
     await loadFolders();
+    await loadPinnedItems();
     updateFolderSelect();
+    updateBreadcrumb();
     renderGrid();
     setupEventHandlers();
   }
@@ -477,9 +924,16 @@
     removeCurrentFolder,
     selectFolder,
     refresh: () => {
-      if (currentFolderId) {
+      if (currentFolderId === PINNED_FOLDER_ID) {
+        showPinnedFolder();
+      } else if (currentFolderId) {
         const folder = folders.find(f => f.id === currentFolderId);
-        if (folder) scanFolder(folder);
+        if (folder) {
+          const currentHandle = currentPath.length > 0
+            ? currentPath[currentPath.length - 1].handle
+            : null;
+          scanFolder(folder, currentHandle);
+        }
       }
     },
   };

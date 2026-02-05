@@ -5,7 +5,7 @@
   'use strict';
 
   const { elements, state, utils } = window.PXS7Player;
-  const { showToast, setRemoteVideoContext } = utils;
+  const { showToast, setRemoteVideoContext, setLocalVideoContext } = utils;
 
   function isLikelyImageUrl(url) {
     if (!url) return false;
@@ -31,7 +31,7 @@
     });
   }
 
-  function loadImage(src, name = 'Image') {
+  function loadImage(src, name = 'Image', sourceFolder = null) {
     showToast('Loading image...', true);
 
     // Reset image mode state
@@ -59,8 +59,12 @@
       imgDisplay.src = src;
       imgDisplay.style.display = 'block';
 
-      // Set context
-      setRemoteVideoContext(src, name);
+      // Set context - use local context if folder provided, otherwise remote
+      if (sourceFolder) {
+        setLocalVideoContext(name, sourceFolder);
+      } else {
+        setRemoteVideoContext(src, name);
+      }
 
       // Update UI state
       state.videoLoaded = true;
