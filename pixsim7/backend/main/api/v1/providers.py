@@ -417,15 +417,16 @@ def _infer_pixverse_kind(model: str | None) -> Optional[str]:
     """Infer Pixverse model kind when the frontend doesn't specify it."""
     if not model:
         return None
-    if VideoModel is not None and hasattr(VideoModel, "is_video_model"):
+    # Use .get() to check if model exists in each category
+    if VideoModel is not None and hasattr(VideoModel, "get"):
         try:
-            if VideoModel.is_video_model(model):  # type: ignore[attr-defined]
+            if VideoModel.get(model) is not None:
                 return "video"
         except Exception:
             pass
-    if ImageModel is not None and hasattr(ImageModel, "is_image_model"):
+    if ImageModel is not None and hasattr(ImageModel, "get"):
         try:
-            if ImageModel.is_image_model(model):  # type: ignore[attr-defined]
+            if ImageModel.get(model) is not None:
                 return "image"
         except Exception:
             pass

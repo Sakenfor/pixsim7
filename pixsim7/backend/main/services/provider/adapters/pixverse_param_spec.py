@@ -45,6 +45,13 @@ def build_operation_parameter_spec() -> dict:
         video_model_enum = ["v5"]
         default_video_model = "v5"
 
+    # Video extend models (derived from SDK capability)
+    video_extend_model_enum = (
+        [str(m) for m in VideoModel.supporting("video_extend")]
+        if VideoModel is not None
+        else ["v5", "v5.5"]
+    )
+
     # Image models and qualities (iterate specs directly)
     image_model_enum: list[str] = []
     image_quality_enum: list[str] = []
@@ -87,10 +94,8 @@ def build_operation_parameter_spec() -> dict:
         video_quality_enum = ["360p", "540p", "720p", "1080p"]
 
     # ==== Common field specs ====
-    # Per-model prompt limits (some models support longer prompts)
-    prompt_per_model_max_length = {
-        "seedream-4.5": 4096,
-    }
+    # Per-model prompt limits (currently all image models use the default 5000)
+    prompt_per_model_max_length: dict[str, int] = {}
     base_prompt = {
         "name": "prompt", "type": "string", "required": True, "default": None,
         "enum": None, "description": "Primary text prompt", "group": "core",
@@ -148,6 +153,13 @@ def build_operation_parameter_spec() -> dict:
         "default": default_video_model,
         "enum": video_model_enum,
         "description": "Pixverse video model version",
+        "group": "core",
+    }
+    model_extend = {
+        "name": "model", "type": "enum", "required": False,
+        "default": "v5",
+        "enum": video_extend_model_enum,
+        "description": "Pixverse video model (extend-capable)",
         "group": "core",
     }
     motion_mode = {
@@ -425,20 +437,10 @@ def build_operation_parameter_spec() -> dict:
             )
         },
         "video_extend": {
-            "parameters": [base_prompt, composition_assets_video, original_video_id]
-            + _fields_for(
-                "video_extend",
-                [
-                    "model",
-                    "quality",
-                    "duration",
-                    "aspect_ratio",
-                    "seed",
-                    "multi_shot",
-                    "audio",
-                    "off_peak",
-                ],
-            )
+            "parameters": [
+                base_prompt, composition_assets_video, original_video_id,
+                model_extend, quality, duration, seed, multi_shot, audio, off_peak,
+            ]
         },
         # video_transition: aspect ratio is determined by source images
         "video_transition": {
