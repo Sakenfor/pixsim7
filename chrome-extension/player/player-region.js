@@ -16,6 +16,8 @@
     distance,
     simplifyPath,
     createMediaTransform,
+    findNearestVertex,
+    moveVertex,
   } = window.PXS7Geometry;
 
   // Polygon state
@@ -24,6 +26,12 @@
   state.isDrawingPolygon = false; // actively adding points
   state.isDraggingPolygon = false; // dragging finished polygon
   state.polygonDragStart = null;  // {x, y, points: [...]} for dragging
+
+  // Vertex dragging state
+  state.isDraggingVertex = false;
+  state.activeVertexIndex = -1;
+  state.hoveredVertexIndex = -1;
+  state.vertexDragStart = null;   // {x, y, originalPoints: [...]} for vertex dragging
 
   // Region type registry - extensible system for different selection types
   const regionTypes = {
@@ -308,13 +316,59 @@
           if (state.polygonPoints.length >= 3 && !state.isDrawingPolygon) {
             e.preventDefault();
             e.stopPropagation();
-            state.isDraggingPolygon = true;
+
             const pos = screenToVideoCoords(e.clientX, e.clientY);
-            state.polygonDragStart = {
-              x: pos.x,
-              y: pos.y,
-              points: state.polygonPoints.map(pt => ({ ...pt }))
-            };
+            const dims = getMediaDimensions();
+            const threshold = Math.min(dims.width, dims.height) * 0.02; // 2% of smaller dimension
+
+            // Check if clicking on a vertex
+            const vertexResult = findNearestVertex(pos, state.polygonPoints, threshold);
+
+            if (vertexResult.index >= 0) {
+              // Start vertex drag
+              state.isDraggingVertex = true;
+              state.activeVertexIndex = vertexResult.index;
+              state.vertexDragStart = {
+                x: pos.x,
+                y: pos.y,
+                originalPoints: state.polygonPoints.map(pt => ({ ...pt }))
+              };
+            } else {
+              // Start polygon drag
+              state.isDraggingPolygon = true;
+              state.polygonDragStart = {
+                x: pos.x,
+                y: pos.y,
+                points: state.polygonPoints.map(pt => ({ ...pt }))
+              };
+            }
+          }
+        });
+
+        // Add mousemove handler for hover state
+        canvas.addEventListener('mousemove', (e) => {
+          if (state.polygonPoints.length >= 3 && !state.isDrawingPolygon && !state.isDraggingVertex && !state.isDraggingPolygon) {
+            const pos = screenToVideoCoords(e.clientX, e.clientY);
+            const dims = getMediaDimensions();
+            const threshold = Math.min(dims.width, dims.height) * 0.02;
+
+            const vertexResult = findNearestVertex(pos, state.polygonPoints, threshold);
+            const newHoveredIndex = vertexResult.index;
+
+            if (newHoveredIndex !== state.hoveredVertexIndex) {
+              state.hoveredVertexIndex = newHoveredIndex;
+              renderPolygonOverlay();
+            }
+          }
+        });
+
+        // Reset hover when leaving canvas
+        canvas.addEventListener('mouseleave', () => {
+          if (state.hoveredVertexIndex !== -1) {
+            state.hoveredVertexIndex = -1;
+            if (state.polygonPoints.length >= 3 && !state.isDrawingPolygon) {
+              renderPolygonOverlay();
+            }
           }
         });
       }
@@ -448,7 +502,10 @@
     canvas.height = renderHeight;
     canvas.style.pointerEvents = 'auto';
     canvas.style.cursor = 'move';
-    canvas.classList.remove('hidden');
+    // Only show if polygon is the selected region type
+    if (state.selectedRegionType === 'polygon') {
+      canvas.classList.remove('hidden');
+    }
 
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, renderWidth, renderHeight);
@@ -475,15 +532,48 @@
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Draw vertex handles
-    for (const point of points) {
+    // Draw vertex handles with hover/active states
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
+      const isHovered = i === state.hoveredVertexIndex;
+      const isActive = i === state.activeVertexIndex;
+
       ctx.beginPath();
-      ctx.arc(point.x * scaleX, point.y * scaleY, 4, 0, Math.PI * 2);
-      ctx.fillStyle = '#ffffff';
-      ctx.fill();
-      ctx.strokeStyle = 'var(--accent, #e94560)';
-      ctx.lineWidth = 1;
-      ctx.stroke();
+      // Size: normal=4px, hovered/active=6px
+      const radius = (isHovered || isActive) ? 6 : 4;
+      ctx.arc(point.x * scaleX, point.y * scaleY, radius, 0, Math.PI * 2);
+
+      if (isActive) {
+        // Active: accent fill, white stroke
+        ctx.fillStyle = 'var(--accent, #e94560)';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (isHovered) {
+        // Hovered: white fill, accent stroke, larger
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = 'var(--accent, #e94560)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        // Normal: white fill, accent stroke
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.strokeStyle = 'var(--accent, #e94560)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+
+    // Update cursor based on state
+    if (state.isDraggingVertex) {
+      canvas.style.cursor = 'grabbing';
+    } else if (state.hoveredVertexIndex >= 0) {
+      canvas.style.cursor = 'pointer';
+    } else {
+      canvas.style.cursor = 'move';
     }
   }
 
@@ -693,6 +783,23 @@
       updateRegionBox();
     }
 
+    // Vertex dragging
+    if (state.isDraggingVertex && state.vertexDragStart && state.activeVertexIndex >= 0) {
+      const dims = getMediaDimensions();
+      const current = screenToVideoCoords(e.clientX, e.clientY);
+      const bounds = { x: 0, y: 0, width: dims.width, height: dims.height };
+
+      // Update the single vertex position using shared geometry function
+      state.polygonPoints = moveVertex(
+        state.vertexDragStart.originalPoints,
+        state.activeVertexIndex,
+        current,
+        bounds
+      );
+      updatePolygonOverlay();
+      return;
+    }
+
     // Polygon dragging
     if (state.isDraggingPolygon && state.polygonDragStart && state.polygonPoints.length >= 3) {
       const dims = getMediaDimensions();
@@ -735,6 +842,17 @@
       if (state.selectedRegion) {
         elements.regionInfo.textContent = `${Math.round(state.selectedRegion.width)}×${Math.round(state.selectedRegion.height)}`;
         if (state.blurAmount > 0) updateBlurPreview();
+      }
+    }
+
+    // Stop vertex dragging
+    if (state.isDraggingVertex) {
+      state.isDraggingVertex = false;
+      state.activeVertexIndex = -1;
+      state.vertexDragStart = null;
+      // Re-render to update cursor and vertex styles
+      if (state.polygonPoints.length >= 3) {
+        renderPolygonOverlay();
       }
     }
 
@@ -793,10 +911,9 @@
     if (option) {
       e.stopPropagation();
       const mode = option.dataset.mode;
-      state.selectedRegionType = mode;
-      updateRegionModeButton();
-      elements.regionModeDropdown.classList.add('hidden');
-      // Activate the selected mode
+      // Use setRegionType to properly update visibility
+      setRegionType(mode);
+      // Activate the selected mode (start drawing)
       toggleRegionMode();
     }
   });
@@ -819,13 +936,16 @@
   });
 
   window.addEventListener('resize', () => {
-    if (state.selectedRegion) {
-      updateRegionBox();
-      if (state.blurAmount > 0) updateBlurPreview();
-    }
-    // Also update polygon overlay
-    if (state.polygonPoints.length >= 3) {
-      updatePolygonOverlay();
+    // Only update the currently active region type to avoid showing both
+    if (state.selectedRegionType === 'rect') {
+      if (state.selectedRegion) {
+        updateRegionBox();
+        if (state.blurAmount > 0) updateBlurPreview();
+      }
+    } else if (state.selectedRegionType === 'polygon') {
+      if (state.polygonPoints.length >= 3) {
+        updatePolygonOverlay();
+      }
     }
   });
 

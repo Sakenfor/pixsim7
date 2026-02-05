@@ -41,6 +41,7 @@ from pixsim7.backend.main.services.provider.base import (
     JobNotFoundError,
     RateLimitError,
 )
+from pixsim7.backend.main.shared.composition_assets import composition_assets_to_refs
 from pixsim7.backend.main.shared.jwt_helpers import JWTExtractor
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
@@ -189,8 +190,13 @@ class SoraProvider(Provider):
         # Operation-specific parameters
         if operation_type == OperationType.IMAGE_TO_VIDEO:
             # Image input
-            if "image_url" in params:
-                mapped["image_url"] = params["image_url"]
+            image_source = params.get("image_url")
+            if not image_source:
+                refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
+                if refs:
+                    image_source = refs[0]
+            if image_source is not None:
+                mapped["image_url"] = image_source
             elif "image_media_id" in params:
                 mapped["image_media_id"] = params["image_media_id"]
 
@@ -204,11 +210,11 @@ class SoraProvider(Provider):
         duration = {"name": "duration", "type": "number", "required": False, "default": 5.0, "enum": None, "description": "Duration in seconds", "group": "render", "min": 1, "max": 30}
         model = {"name": "model", "type": "enum", "required": False, "default": "turbo", "enum": ["turbo", "standard"], "description": "Sora model variant", "group": "core"}
         n_variants = {"name": "n_variants", "type": "integer", "required": False, "default": 2, "enum": None, "description": "Number of variants to generate", "group": "render", "min": 1, "max": 8}
-        image_url = {"name": "image_url", "type": "string", "required": False, "default": None, "enum": None, "description": "Source image URL (if image-to-video)", "group": "source"}
+        composition_assets = {"name": "composition_assets", "type": "array", "required": False, "default": None, "enum": None, "description": "Source composition assets (image-to-video)", "group": "source"}
         image_media_id = {"name": "image_media_id", "type": "string", "required": False, "default": None, "enum": None, "description": "Uploaded image media ID", "group": "source"}
         spec = {
             "text_to_video": {"parameters": [prompt, width, height, duration, model, n_variants]},
-            "image_to_video": {"parameters": [prompt, width, height, duration, model, n_variants, image_url, image_media_id]},
+            "image_to_video": {"parameters": [prompt, width, height, duration, model, n_variants, composition_assets, image_media_id]},
         }
         return spec
 

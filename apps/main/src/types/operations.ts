@@ -49,7 +49,7 @@ export interface TextToVideoParams extends QualityParams, AspectParams, MotionPa
 export interface ImageToVideoParams extends QualityParams, AspectParams, MotionParams, DurationParams {
   kind: 'image_to_video';
   prompt?: string;
-  image_url: string;
+  composition_assets: CompositionAsset[];
   negative_prompt?: string;
   seed?: number;
 }
@@ -67,14 +67,14 @@ export interface ImageToImageParams extends QualityParams, AspectParams {
 export interface VideoExtendParams extends QualityParams, DurationParams {
   kind: 'video_extend';
   prompt?: string;
-  video_url?: string;
+  composition_assets: CompositionAsset[];
   original_video_id?: string;
   seed?: number;
 }
 
 export interface VideoTransitionParams extends QualityParams, AspectParams, DurationParams {
   kind: 'video_transition';
-  image_urls: string[];
+  composition_assets: CompositionAsset[];
   prompts: string[];
   transition_style?: string;
 }
@@ -411,8 +411,8 @@ export function validateOperationParams(params: Partial<OperationParams>): strin
       break;
 
     case 'image_to_video':
-      if (!params.image_url || typeof params.image_url !== 'string') {
-        errors.push('image_to_video requires image_url (string)');
+      if (!Array.isArray(params.composition_assets) || params.composition_assets.length === 0) {
+        errors.push('image_to_video requires non-empty composition_assets array');
       }
       break;
 
@@ -429,24 +429,24 @@ export function validateOperationParams(params: Partial<OperationParams>): strin
       break;
 
     case 'video_extend':
-      if (!params.video_url && !params.original_video_id) {
-        errors.push('video_extend requires either video_url or original_video_id');
+      if (!Array.isArray(params.composition_assets) || params.composition_assets.length === 0) {
+        errors.push('video_extend requires non-empty composition_assets array');
       }
       break;
 
     case 'video_transition':
-      if (!Array.isArray(params.image_urls) || params.image_urls.length === 0) {
-        errors.push('video_transition requires non-empty image_urls array');
+      if (!Array.isArray(params.composition_assets) || params.composition_assets.length < 2) {
+        errors.push('video_transition requires composition_assets with at least 2 entries');
       }
       if (!Array.isArray(params.prompts) || params.prompts.length === 0) {
         errors.push('video_transition requires non-empty prompts array');
       }
       if (
-        Array.isArray(params.image_urls) &&
+        Array.isArray(params.composition_assets) &&
         Array.isArray(params.prompts) &&
-        params.image_urls.length !== params.prompts.length
+        params.prompts.length !== params.composition_assets.length - 1
       ) {
-        errors.push('video_transition: image_urls and prompts arrays must have equal length');
+        errors.push('video_transition: prompts length must be composition_assets.length - 1');
       }
       break;
 

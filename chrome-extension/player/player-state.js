@@ -79,6 +79,10 @@ import {
     playerSettingsBtn: document.getElementById('playerSettingsBtn'),
     playerSettingsPopup: document.getElementById('playerSettingsPopup'),
     containVideoCheck: document.getElementById('containVideoCheck'),
+    skipDedupCheck: document.getElementById('skipDedupCheck'),
+    // Playlist panel (inside dockview)
+    playlistItems: document.getElementById('playlistItems'),
+    playlistClearBtn: document.getElementById('playlistClearBtn'),
   };
 
   // ===== Shared State =====
@@ -120,6 +124,16 @@ import {
     recordingHotkey: null, // Currently recording hotkey action
     // Player settings
     containVideo: false,
+    // Upload settings
+    skipDedup: false,
+    // Playlist
+    playlist: [],
+    playlistEnabled: true,
+    playlistVisible: true,
+    currentPlaylistItemId: null,
+    PLAYLIST_MAX_ITEMS: 100,
+    THUMBNAIL_WIDTH: 120,
+    THUMBNAIL_HEIGHT: 68,
   };
 
   // ===== Utility Functions =====

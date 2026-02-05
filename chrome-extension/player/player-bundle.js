@@ -11,10 +11,12 @@ import './geometry-init.js';
 
 // Import player modules in dependency order
 import './player-state.js';
+import './player-dockview.js';  // Initialize dockview layout
 import './player-history.js';
 import './player-ffmpeg.js';
 import './player-region.js';
 import './player-controls.js';
+import './player-playlist.js';
 import './player-capture.js';
 import './player-image.js';
 import './player-file.js';

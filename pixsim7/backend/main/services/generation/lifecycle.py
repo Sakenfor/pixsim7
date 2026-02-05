@@ -66,7 +66,15 @@ class GenerationLifecycleService:
         Raises:
             ResourceNotFoundError: Generation not found
         """
-        generation = await self._get_generation(generation_id)
+        generation = await self._get_generation_for_update(generation_id)
+
+        if generation.status == status:
+            if error_message and error_message != generation.error_message:
+                generation.error_message = error_message
+                generation.updated_at = datetime.utcnow()
+                await self.db.commit()
+                await self.db.refresh(generation)
+            return generation
 
         # Update status
         generation.status = status
@@ -275,6 +283,18 @@ class GenerationLifecycleService:
         """Get generation by ID or raise ResourceNotFoundError"""
         from pixsim7.backend.main.services.generation.helpers import get_generation_or_404
         return await get_generation_or_404(self.db, generation_id)
+
+    async def _get_generation_for_update(self, generation_id: int) -> Generation:
+        """Get generation by ID with a row lock for status transitions."""
+        result = await self.db.execute(
+            select(Generation)
+            .where(Generation.id == generation_id)
+            .with_for_update()
+        )
+        generation = result.scalar_one_or_none()
+        if not generation:
+            raise ResourceNotFoundError(f"Generation {generation_id} not found")
+        return generation
 
     async def _increment_prompt_metrics(self, prompt_version_id) -> None:
         """Increment prompt version usage metrics"""

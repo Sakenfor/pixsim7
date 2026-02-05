@@ -102,7 +102,7 @@ class GenerationNodeConfigSchema(BaseModel):
     - image_url: Source image URL for image_to_video operations
     - video_url: Source video URL for video_extend operations
     - image_urls: Image URLs for video_transition operations
-    - source_asset_id(s): Asset references for provider URL resolution
+    - composition_assets: Canonical input list for provider URL resolution
     - prompts: Transition prompts for video_transition operations
     """
     model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True, extra="allow")
@@ -157,42 +157,44 @@ class GenerationNodeConfigSchema(BaseModel):
     # Control Center fields - passed through for canonicalization
     prompt: Optional[str] = None
 
-    # Asset input fields - NEW pattern (preferred)
-    # Frontend passes asset IDs, backend resolves to provider-specific URLs
+    # Asset input fields - LEGACY (deprecated)
+    # Use composition_assets as the canonical input list instead.
     source_asset_id: Optional[int] = Field(
         None,
         alias="sourceAssetId",
-        description="Asset ID for single-asset operations (image_to_video, image_to_image, video_extend). Backend resolves to provider-specific URL."
+        deprecated=True,
+        description="DEPRECATED: Use composition_assets. Asset ID for single-asset operations."
     )
     source_asset_ids: Optional[List[int]] = Field(
         None,
         alias="sourceAssetIds",
-        description="Asset IDs for multi-asset operations (video_transition). Backend resolves each to provider-specific URL."
+        deprecated=True,
+        description="DEPRECATED: Use composition_assets. Asset IDs for multi-asset operations."
     )
 
-    # Canonical multi-image composition input (preferred for fusion + image edit)
+    # Canonical composition input (preferred for all media-input operations)
     composition_assets: Optional[List[CompositionAsset]] = Field(
         None,
-        description="Structured composition assets (role/layer/intent) for multi-image operations.",
+        description="Structured composition assets (role/layer/intent) for all media-input operations.",
     )
 
     # Legacy asset URL fields - DEPRECATED
     # These are kept for backwards compatibility but will be removed in a future release.
-    # New code should use source_asset_id/source_asset_ids instead.
+    # New code should use composition_assets instead.
     image_url: Optional[str] = Field(
         None,
         deprecated=True,
-        description="DEPRECATED: Use source_asset_id instead. Direct image URL (legacy pattern)."
+        description="DEPRECATED: Use composition_assets instead. Direct image URL (legacy pattern)."
     )
     video_url: Optional[str] = Field(
         None,
         deprecated=True,
-        description="DEPRECATED: Use source_asset_id instead. Direct video URL (legacy pattern)."
+        description="DEPRECATED: Use composition_assets instead. Direct video URL (legacy pattern)."
     )
     image_urls: Optional[List[str]] = Field(
         None,
         deprecated=True,
-        description="DEPRECATED: Use source_asset_ids instead. List of image URLs (legacy pattern)."
+        description="DEPRECATED: Use composition_assets instead. List of image URLs (legacy pattern)."
     )
 
     # Multi-prompt field for video_transition

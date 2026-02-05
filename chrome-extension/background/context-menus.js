@@ -69,6 +69,18 @@ async function setupContextMenus() {
         title: '🔍 Extract & Quick Generate Video',
         contexts: ['page', 'link']
       });
+
+      // Tab capture menu - capture visible tab and open in player for annotation
+      chrome.contextMenus.create({
+        id: 'pixsim7-capture-separator',
+        type: 'separator',
+        contexts: ['page', 'frame']
+      });
+      chrome.contextMenus.create({
+        id: 'pixsim7-capture-tab',
+        title: '📸 Capture Tab to Player',
+        contexts: ['page', 'frame']
+      });
     });
   } catch (e) {
     console.warn('Context menu setup failed:', e);
@@ -139,6 +151,43 @@ function initContextMenuListeners() {
               target: { tabId: tab.id },
               func: showQuickGenerateDialog,
               args: [imageUrl, providerId]
+            });
+          }
+        }
+        return;
+      }
+
+      // Handle tab capture to player
+      if (info.menuItemId === 'pixsim7-capture-tab') {
+        try {
+          // Capture the visible tab as PNG
+          const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+
+          // Get page title for naming
+          const pageTitle = tab.title || 'Screenshot';
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const name = `${pageTitle} - ${timestamp}`;
+
+          // Open player with the captured image
+          const playerUrl = chrome.runtime.getURL('player.html') +
+            '?capture=' + encodeURIComponent(dataUrl) +
+            '&name=' + encodeURIComponent(name) +
+            '&source=' + encodeURIComponent(tab.url || '');
+
+          chrome.windows.create({
+            url: playerUrl,
+            type: 'popup',
+            width: 1000,
+            height: 750,
+          });
+        } catch (e) {
+          console.error('Tab capture failed:', e);
+          // Show error to user
+          if (chrome.scripting) {
+            await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: (msg) => alert(msg),
+              args: [`Failed to capture tab: ${e.message}`],
             });
           }
         }

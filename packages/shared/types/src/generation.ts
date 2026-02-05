@@ -24,7 +24,7 @@ export type GenerationSemanticType =
   | (string & {})
 
 // ============================================================================
-// Image Composition (Multi-Image Roles)
+// Composition (Multi-Asset Roles)
 // ============================================================================
 
 // Re-export from generated file (single source of truth is YAML)
@@ -32,6 +32,8 @@ export type { ImageCompositionRole } from './composition-roles.generated';
 import type { ImageCompositionRole } from './composition-roles.generated';
 
 export interface CompositionAsset {
+  /** Media type for this asset (image or video) */
+  media_type?: 'image' | 'video' | string
   /** Asset reference (asset:id string or numeric id) */
   asset?: AssetRef | number
   /** External or provider URL */

@@ -267,6 +267,21 @@ class MyProvider(Provider):
         }
 ```
 
+### Asset Reference Parsing
+
+Use the shared helper to avoid drift in accepted formats:
+
+```python
+from pixsim7.backend.main.shared.asset_refs import extract_asset_ref, extract_asset_id
+
+# Accepts: asset:123, asset_123, {"type": "asset", "id": 123}, EntityRef(...)
+asset_ref = extract_asset_ref(value)
+asset_id = extract_asset_id(value)
+```
+
+If you need to interpret URLs that embed `asset_id=...` or `/assets/{id}/`,
+use `extract_asset_ref(value, allow_url_asset_id=True)` rather than ad-hoc parsing.
+
 ## Credit Types
 
 Define credit types in your manifest:

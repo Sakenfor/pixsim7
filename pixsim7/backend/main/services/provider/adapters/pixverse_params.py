@@ -4,8 +4,6 @@ Pixverse parameter mapping utilities.
 Extracted from pixverse.py to reduce main adapter size.
 """
 from typing import Any, Dict
-from urllib.parse import unquote
-
 from pixsim7.backend.main.domain import OperationType
 
 # Import pixverse-py SDK models (optional)
@@ -18,6 +16,8 @@ from pixsim7.backend.main.services.generation.pixverse_pricing import (
     get_image_credit_change,
     estimate_video_credit_change,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import normalize_url
+from pixsim7.backend.main.shared.composition_assets import composition_assets_to_refs
 
 
 # Operation type sets for Pixverse
@@ -50,13 +50,6 @@ def normalize_quality(quality: str) -> str:
     Passes through already-correct formats unchanged.
     """
     return _QUALITY_NORMALIZATION.get(quality.lower(), quality)
-
-
-def decode_pixverse_url(value: Any) -> Any:
-    """Best-effort decode of Pixverse media URLs."""
-    if isinstance(value, str):
-        return unquote(value)
-    return value
 
 
 def normalize_transition_durations(
@@ -180,41 +173,76 @@ def map_parameters(
             if value is not None:
                 mapped[field] = value
 
-    # Pass through source_asset_id for provider_uploads resolution
-    if "source_asset_id" in params and params["source_asset_id"] is not None:
-        mapped["source_asset_id"] = params["source_asset_id"]
-
     # === Operation-specific parameters ===
     if operation_type == OperationType.IMAGE_TO_VIDEO:
-        if "image_url" in params and params["image_url"] is not None:
-            mapped["image_url"] = decode_pixverse_url(params["image_url"])
+        image_source = params.get("image_url")
+        if not image_source:
+            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
+            if refs:
+                image_source = refs[0]
+        if image_source is not None:
+            mapped["image_url"] = (
+                normalize_url(image_source) or image_source
+                if isinstance(image_source, str)
+                else image_source
+            )
 
     elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.TEXT_TO_IMAGE}:
         # Image operations use image_urls list
         if "image_urls" in params and params["image_urls"] is not None:
             mapped["image_urls"] = [
-                decode_pixverse_url(url) if isinstance(url, str) else url
+                (normalize_url(url) or url) if isinstance(url, str) else url
                 for url in params["image_urls"]
             ]
         elif "image_url" in params and params["image_url"] is not None:
             mapped["image_urls"] = [
-                decode_pixverse_url(params["image_url"])
-                if isinstance(params["image_url"], str)
-                else params["image_url"]
+                (
+                    normalize_url(params["image_url"]) or params["image_url"]
+                    if isinstance(params["image_url"], str)
+                    else params["image_url"]
+                )
             ]
+        else:
+            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
+            if refs:
+                mapped["image_urls"] = refs
 
     elif operation_type == OperationType.VIDEO_EXTEND:
-        if "video_url" in params and params["video_url"] is not None:
-            mapped["video_url"] = decode_pixverse_url(params["video_url"])
+        video_source = params.get("video_url")
+        if not video_source:
+            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="video")
+            if refs:
+                video_source = refs[0]
+        if video_source is not None:
+            mapped["video_url"] = (
+                normalize_url(video_source) or video_source
+                if isinstance(video_source, str)
+                else video_source
+            )
+
         if "original_video_id" in params and params["original_video_id"] is not None:
             mapped["original_video_id"] = params["original_video_id"]
+        else:
+            composition_assets = params.get("composition_assets") or []
+            if composition_assets:
+                first = composition_assets[0]
+                if hasattr(first, "model_dump"):
+                    first = first.model_dump()
+                if isinstance(first, dict):
+                    provider_params = first.get("provider_params") or {}
+                    if provider_params.get("original_video_id") is not None:
+                        mapped["original_video_id"] = provider_params.get("original_video_id")
 
     elif operation_type == OperationType.VIDEO_TRANSITION:
         if "image_urls" in params and params["image_urls"] is not None:
             mapped["image_urls"] = [
-                decode_pixverse_url(url) if isinstance(url, str) else url
+                (normalize_url(url) or url) if isinstance(url, str) else url
                 for url in params["image_urls"]
             ]
+        else:
+            refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
+            if refs:
+                mapped["image_urls"] = refs
         if "prompts" in params and params["prompts"] is not None:
             mapped["prompts"] = params["prompts"]
         durations = params.get("durations")

@@ -171,9 +171,7 @@ export function useQuickGenerateController() {
 
       // For flexible operations: switch to text-based operation if no image provided
       const hasAssetInput =
-        (Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0) ||
-        !!buildResult.params.source_asset_id ||
-        (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
+        Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
       const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
 
       const result = await generateAsset({
@@ -316,9 +314,7 @@ export function useQuickGenerateController() {
 
       const finalPrompt = buildResult.finalPrompt;
       const hasAssetInput =
-        (Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0) ||
-        !!buildResult.params.source_asset_id ||
-        (Array.isArray(buildResult.params.source_asset_ids) && buildResult.params.source_asset_ids.length > 0);
+        Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
       const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
 
       // Record assets used for this burst in history (once, before the loop)

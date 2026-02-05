@@ -8,6 +8,12 @@
   const { elements, state, utils } = window.PXS7Player;
   const { showToast, resetInteractionState, getMediaSource, getMediaDimensions } = utils;
 
+  // Region serialization from shared package
+  const { pointsToCoordArray, normalizePolygonPoints } = window.PXS7Geometry;
+
+  // Upload lock to prevent duplicate rapid uploads
+  let isUploading = false;
+
   // Check if we have a polygon region
   function hasPolygonRegion() {
     return state.polygonPoints && state.polygonPoints.length >= 3;
@@ -77,12 +83,19 @@
   }
 
   async function captureAndUpload() {
+    // Prevent duplicate rapid uploads
+    if (isUploading) {
+      console.log('[Capture] Upload already in progress, ignoring');
+      return;
+    }
+
     const dims = getMediaDimensions();
     if (!state.videoLoaded || dims.width === 0) {
       showToast('No media loaded', false);
       return;
     }
 
+    isUploading = true;
     try {
       // Pause video if not in image mode
       if (!state.isImageMode) {
@@ -146,6 +159,8 @@
       } else {
         showToast('Capture failed: ' + e.message, false);
       }
+    } finally {
+      isUploading = false;
     }
   }
 
@@ -158,6 +173,30 @@
         has_region: !!(state.selectedRegion && state.selectedRegion.width > 0),
         is_polygon: hasPolygonRegion(),
       };
+
+      // Include polygon points if available (normalized to video dimensions)
+      if (hasPolygonRegion()) {
+        const dims = getMediaDimensions();
+        // Normalize points to 0-1 range
+        const normalizedPoints = state.polygonPoints.map(p => ({
+          x: p.x / dims.width,
+          y: p.y / dims.height,
+        }));
+        // Use compact coordinate array format [[x,y], [x,y], ...]
+        uploadContext.polygon_points = pointsToCoordArray(normalizePolygonPoints(normalizedPoints));
+      }
+
+      // Include rect bounds if available (normalized to video dimensions)
+      if (state.selectedRegion && state.selectedRegion.width > 0) {
+        const dims = getMediaDimensions();
+        uploadContext.region_bounds = {
+          x: state.selectedRegion.x / dims.width,
+          y: state.selectedRegion.y / dims.height,
+          width: state.selectedRegion.width / dims.width,
+          height: state.selectedRegion.height / dims.height,
+        };
+      }
+
       if (state.currentVideoName && state.currentVideoName !== 'Video' &&
           state.currentVideoName !== 'Source Video' && state.currentVideoName !== 'Source') {
         uploadContext.source_filename = state.currentVideoName;
@@ -172,6 +211,9 @@
         uploadContext.source_folder = state.currentVideoSourceFolder;
       }
 
+      console.log('[Capture] Sending upload request...', { ensureAsset, contextKeys: Object.keys(uploadContext) });
+      const startTime = Date.now();
+
       const response = await chrome.runtime.sendMessage({
         action: 'uploadMediaFromUrl',
         mediaUrl: dataUrl,
@@ -179,15 +221,25 @@
         ensureAsset: ensureAsset,
         uploadMethod: 'video_capture',
         uploadContext,
+        skipDedup: state.skipDedup,
       });
 
+      const elapsed = Date.now() - startTime;
+      console.log(`[Capture] Response received in ${elapsed}ms:`, response);
+
       if (response && response.success) {
+        // Check if this was a deduplicated upload (reused existing asset)
+        const note = response.data?.note || '';
+        const wasDeduplicated = note.includes('phash') || note.includes('Reused') || elapsed < 200;
+
         if (response.providerSucceeded === false) {
           if (ensureAsset) {
             showToast('Saved to assets (Pixverse upload failed)', true);
           } else {
             showToast('Pixverse upload failed', false);
           }
+        } else if (wasDeduplicated) {
+          showToast('Already exists (reused)', true);
         } else {
           showToast('Uploaded to Pixverse!', true);
         }
@@ -203,12 +255,19 @@
   }
 
   async function saveToAssetsOnly() {
+    // Prevent duplicate rapid uploads
+    if (isUploading) {
+      console.log('[Capture] Upload already in progress, ignoring');
+      return;
+    }
+
     const dims = getMediaDimensions();
     if (!state.videoLoaded || dims.width === 0) {
       showToast('No media loaded', false);
       return;
     }
 
+    isUploading = true;
     try {
       // Pause video if not in image mode
       if (!state.isImageMode) {
@@ -260,6 +319,8 @@
       console.error('Save error:', e);
       resetInteractionState();
       showToast('Save failed: ' + e.message, false);
+    } finally {
+      isUploading = false;
     }
   }
 

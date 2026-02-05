@@ -76,6 +76,20 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
+function parseAssetRefId(value: unknown): number | null {
+  if (typeof value === 'string' && value.trim() !== '') {
+    const trimmed = value.trim();
+    const match = /^asset[:_](\d+)$/.exec(trimmed);
+    if (match) {
+      return toNumber(match[1]);
+    }
+  }
+  if (value && typeof value === 'object') {
+    return toNumber((value as any).id);
+  }
+  return null;
+}
+
 function toNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -171,6 +185,7 @@ function extractGenerationAssetIds(
         const assetId =
           toNumber((entry as any).asset_id) ??
           toNumber((entry as any).assetId) ??
+          parseAssetRefId((entry as any).asset) ??
           toNumber((entry as any).id) ??
           null;
         push(assetId);
@@ -617,6 +632,21 @@ function SlotPickerContent({
     [inputScopeId],
   );
   const inputs = inputStore((s) => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
+  const inputBySlot = useMemo(() => {
+    const map = new Map<number, InputItem>();
+    inputs.forEach((item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      map.set(slot, item);
+    });
+    return map;
+  }, [inputs]);
+
+  const maxSlotIndex = useMemo(() => {
+    return inputs.reduce((max, item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      return Math.max(max, slot);
+    }, -1);
+  }, [inputs]);
 
   // Check if there's an active generation widget context (via capability)
   const { value: widgetContext } = useCapability<GenerationWidgetContext>(CAP_GENERATION_WIDGET);
@@ -627,13 +657,14 @@ function SlotPickerContent({
   const maxAllowed = maxSlotsProp ?? 7;
   // Show full slot range when max is known, otherwise show filled + 1 empty (min 3)
   const minVisibleSlots = maxSlotsProp ?? 3;
-  const visibleSlots = Math.min(Math.max(inputs.length + 1, minVisibleSlots), maxAllowed);
+  const baseSlots = Math.max(maxSlotIndex + 1, inputBySlot.size);
+  const visibleSlots = Math.min(Math.max(baseSlots + 1, minVisibleSlots), maxAllowed);
   const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
     <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
       {slots.map((slotIndex, idx) => {
-        const inputItem = inputs[slotIndex];
+        const inputItem = inputBySlot.get(slotIndex);
         const isFilled = !!inputItem;
         const isFirst = idx === 0;
         const isLast = idx === slots.length - 1;

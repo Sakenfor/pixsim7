@@ -5,11 +5,36 @@
  * Run: pnpm build (one-time) or pnpm dev (watch mode)
  */
 import * as esbuild from 'esbuild';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isWatch = process.argv.includes('--watch');
+
+// Copy dockview CSS to dist
+function copyDockviewCSS() {
+  const srcPath = path.resolve(__dirname, 'node_modules/dockview-core/dist/styles/dockview.css');
+  const destPath = path.resolve(__dirname, 'dist/dockview.css');
+
+  // Try local node_modules first, then root
+  let cssPath = srcPath;
+  if (!fs.existsSync(cssPath)) {
+    cssPath = path.resolve(__dirname, '../node_modules/dockview-core/dist/styles/dockview.css');
+  }
+  if (!fs.existsSync(cssPath)) {
+    // Try apps/main as fallback (pnpm hoisting)
+    cssPath = path.resolve(__dirname, '../apps/main/node_modules/dockview-core/dist/styles/dockview.css');
+  }
+
+  if (fs.existsSync(cssPath)) {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.copyFileSync(cssPath, destPath);
+    console.log('Copied dockview.css to dist/');
+  } else {
+    console.warn('Warning: dockview.css not found');
+  }
+}
 
 // Player bundle - combines all player scripts with geometry imports
 const playerConfig = {
@@ -36,6 +61,9 @@ async function build() {
   console.log('Building extension...');
 
   try {
+    // Copy dockview CSS
+    copyDockviewCSS();
+
     if (isWatch) {
       // Watch mode
       const ctx = await esbuild.context(playerConfig);

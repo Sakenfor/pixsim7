@@ -554,7 +554,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'uploadMediaFromUrl' || message.action === 'uploadImageFromUrl') {
       (async () => {
         try {
-          const { imageUrl, mediaUrl, providerId, ensureAsset, uploadMethod, uploadContext } = message;
+          const { imageUrl, mediaUrl, providerId, ensureAsset, uploadMethod, uploadContext, skipDedup } = message;
           const url = mediaUrl || imageUrl; // Support both param names
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
@@ -585,6 +585,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               // Include source tracking for extension uploads
               source_url: sourceUrl,
               source_site: sourceSite,
+              // Skip phash dedup if requested (for small region changes)
+              skip_dedup: skipDedup || false,
             }),
           });
           if (!resp.ok) {

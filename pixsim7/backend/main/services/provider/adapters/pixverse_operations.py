@@ -23,6 +23,10 @@ from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
     log_provider_timeout,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
+    normalize_url as _normalize_pixverse_url,
+)
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.shared.operation_mapping import get_image_operations
 
 logger = get_logger()
@@ -171,12 +175,17 @@ class PixverseOperationsMixin:
                 if planned_duration is not None:
                     metadata["planned_duration_sec"] = int(planned_duration)
 
+            raw_video_url = getattr(video, 'url', None)
+            raw_thumbnail_url = getattr(video, 'thumbnail_url', None)
+            video_url = _normalize_pixverse_url(raw_video_url) if raw_video_url else None
+            thumbnail_url = _normalize_pixverse_url(raw_thumbnail_url) if raw_thumbnail_url else None
+
             return GenerationResult(
                 provider_job_id=video.id,
                 provider_video_id=video.id,
                 status=status,
-                video_url=getattr(video, 'url', None),
-                thumbnail_url=getattr(video, 'thumbnail_url', None),
+                video_url=video_url,
+                thumbnail_url=thumbnail_url,
                 estimated_completion=estimated_completion,
                 metadata=metadata,
             )
@@ -190,6 +199,26 @@ class PixverseOperationsMixin:
                 retry_on_session_error=True,
             )
         except Exception as e:
+            def _summarize_params(raw: Dict[str, Any]) -> Dict[str, Any]:
+                image_urls = raw.get("image_urls")
+                summary: Dict[str, Any] = {
+                    "keys": list(raw.keys()),
+                    "model": raw.get("model"),
+                    "quality": raw.get("quality"),
+                    "aspect_ratio": raw.get("aspect_ratio"),
+                    "seed": raw.get("seed"),
+                    "duration": raw.get("duration"),
+                    "image_url": str(raw.get("image_url"))[:120] if raw.get("image_url") else None,
+                    "video_url": str(raw.get("video_url"))[:120] if raw.get("video_url") else None,
+                }
+                if isinstance(image_urls, list):
+                    summary["image_urls_count"] = len(image_urls)
+                    summary["image_urls_sample"] = [
+                        str(value)[:80] if value is not None else None
+                        for value in image_urls[:3]
+                    ]
+                return summary
+
             # Log the error (session manager already handles cache eviction)
             log_provider_error(
                 provider_id="pixverse",
@@ -199,6 +228,7 @@ class PixverseOperationsMixin:
                 email=account.email,
                 error=str(e),
                 error_type=e.__class__.__name__,
+                extra=_summarize_params(params),
             )
             logger.error(
                 "provider:error",
@@ -207,6 +237,7 @@ class PixverseOperationsMixin:
                 operation_type=operation_type.value,
                 error=str(e),
                 error_type=e.__class__.__name__,
+                params_summary=_summarize_params(params),
                 exc_info=True
             )
             self._handle_error(e)
@@ -353,22 +384,12 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Generate image-to-image (Pixverse image API)."""
-        # Normalize image URLs to list
+        # prepare_execution_params should resolve asset refs to Pixverse URLs.
         image_urls: List[str] = []
-        if "image_urls" in params and isinstance(params["image_urls"], list):
+        if isinstance(params.get("image_urls"), list):
             image_urls = params["image_urls"]
-        elif "image_url" in params and isinstance(params["image_url"], str):
+        elif isinstance(params.get("image_url"), str):
             image_urls = [params["image_url"]]
-        elif "composition_assets" in params and isinstance(params["composition_assets"], list):
-            for item in params["composition_assets"]:
-                if hasattr(item, "model_dump"):
-                    item = item.model_dump()
-                if isinstance(item, dict):
-                    url = item.get("url")
-                    if url:
-                        image_urls.append(url)
-                elif isinstance(item, str):
-                    image_urls.append(item)
 
         if not image_urls:
             raise ProviderError("Pixverse IMAGE_TO_IMAGE operation requires at least one image_url")
@@ -533,32 +554,6 @@ class PixverseOperationsMixin:
         prompt = params.get("prompt", "")
         image_entries: List[Dict[str, Any]] = []
 
-        def _extract_asset_id(value: Any) -> Optional[int]:
-            if value is None:
-                return None
-            if hasattr(value, "id"):
-                try:
-                    return int(value.id)
-                except (TypeError, ValueError):
-                    return None
-            if isinstance(value, dict):
-                if value.get("type") == "asset" and value.get("id") is not None:
-                    try:
-                        return int(value["id"])
-                    except (TypeError, ValueError):
-                        return None
-            if isinstance(value, str):
-                if value.startswith("asset:"):
-                    try:
-                        return int(value.split(":", 1)[1])
-                    except (TypeError, ValueError):
-                        return None
-                if value.isdigit():
-                    return int(value)
-            if isinstance(value, int):
-                return value
-            return None
-
         async with get_async_session() as session:
             for idx, composition_asset in enumerate(composition_assets, start=1):
                 asset_value = None
@@ -588,7 +583,7 @@ class PixverseOperationsMixin:
                 else:
                     asset_value = composition_asset
 
-                asset_id = _extract_asset_id(asset_value)
+                asset_id = extract_asset_id(asset_value)
                 if not asset_id:
                     raise ValueError(f"Could not extract asset_id from composition_asset: {composition_asset}")
 
@@ -627,9 +622,20 @@ class PixverseOperationsMixin:
                 img_id = None
 
                 if asset.provider_uploads and "pixverse" in asset.provider_uploads:
-                    img_id = asset.provider_uploads["pixverse"]
-                elif asset.provider_id == "pixverse" and asset.provider_asset_id:
-                    img_id = asset.provider_asset_id
+                    candidate = asset.provider_uploads["pixverse"]
+                    if isinstance(candidate, str):
+                        if candidate.startswith(("http://", "https://", "file://")):
+                            candidate = None
+                        elif candidate.startswith("img_id:"):
+                            candidate = candidate.split(":", 1)[1]
+                        elif not candidate.isdigit() and "/" in candidate:
+                            candidate = None
+                    img_id = candidate
+                if not img_id and asset.provider_id == "pixverse" and asset.provider_asset_id:
+                    candidate = asset.provider_asset_id
+                    if isinstance(candidate, str) and candidate.startswith("img_id:"):
+                        candidate = candidate.split(":", 1)[1]
+                    img_id = candidate
 
                 if not img_id:
                     raise ValueError(
@@ -776,7 +782,10 @@ class PixverseOperationsMixin:
                     # Pixverse returns image_status as int: 1=completed, 0=processing, -1=failed
                     # Newer codes (e.g. 7, 8) represent flagged/rejected content.
                     raw_status = get_field(result, "image_status", "status", default=0)
-                    image_url = get_field(result, "image_url", "url")
+                    image_url_raw = get_field(result, "image_url", "url")
+                    image_url = (
+                        _normalize_pixverse_url(image_url_raw) if image_url_raw else None
+                    )
                     # Map numeric status to enum
                     # Status codes: 1=completed, 5,10=processing, 7=filtered, 8,9=failed
                     # Note: testing if 10 is early processing state (seen immediately after submit)
@@ -812,8 +821,10 @@ class PixverseOperationsMixin:
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=get_field(video, "url"),
-                        thumbnail_url=get_field(video, "first_frame", "thumbnail_url"),
+                        video_url=_normalize_pixverse_url(get_field(video, "url")),
+                        thumbnail_url=_normalize_pixverse_url(
+                            get_field(video, "first_frame", "thumbnail_url")
+                        ),
                         width=get_field(video, "output_width", "width"),
                         height=get_field(video, "output_height", "height"),
                         duration_sec=get_field(video, "video_duration", "duration"),

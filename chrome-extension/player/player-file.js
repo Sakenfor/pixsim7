@@ -44,6 +44,8 @@
       window.PXS7Player.history?.updateHistoryMarkers();
       const isBlob = src.startsWith('blob:');
       window.PXS7Player.history?.addToVideoHistory(name, isBlob ? null : src, isBlob);
+      // Add to playlist
+      window.PXS7Player.playlist?.addToPlaylist(name, src, isBlob, false, elements.video);
       state.currentFps = 30;
       elements.fpsInput.value = state.currentFps;
     };
@@ -135,6 +137,8 @@
       window.PXS7Player.region?.clearRegion();
       window.PXS7Player.history?.updateHistoryMarkers();
       window.PXS7Player.history?.addToVideoHistory(name, null, true);
+      // Add to playlist (local file)
+      window.PXS7Player.playlist?.addToPlaylist(name, null, true, false, elements.video);
       state.currentFps = 30;
       elements.fpsInput.value = state.currentFps;
     };

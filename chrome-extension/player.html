@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PixSim7 Video Player</title>
+  <link rel="stylesheet" href="dist/dockview.css">
   <style>
     :root {
       --bg: #1a1a2e;
@@ -41,6 +42,7 @@
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
+      flex-shrink: 0;
     }
 
     .header h1 {
@@ -85,14 +87,48 @@
     }
     .btn-secondary:hover { background: var(--border); }
 
-    .main {
+    /* Dockview container */
+    #dockviewContainer {
       flex: 1;
+      min-height: 0;
+    }
+
+    /* Dockview dark theme overrides */
+    .dockview-theme-dark {
+      --dv-activegroup-visiblepanel-tab-background-color: var(--bg-alt);
+      --dv-activegroup-hiddenpanel-tab-background-color: var(--bg);
+      --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg);
+      --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg);
+      --dv-tab-divider-color: var(--border);
+      --dv-activegroup-visiblepanel-tab-color: var(--text);
+      --dv-activegroup-hiddenpanel-tab-color: var(--text-muted);
+      --dv-inactivegroup-visiblepanel-tab-color: var(--text-muted);
+      --dv-inactivegroup-hiddenpanel-tab-color: var(--text-muted);
+      --dv-background-color: var(--bg);
+      --dv-paneview-header-border-color: var(--border);
+      --dv-separator-border: var(--border);
+      --dv-icon-hover-background-color: var(--border);
+    }
+
+    /* Panel content styles */
+    .panel-content {
+      width: 100%;
+      height: 100%;
       display: flex;
       flex-direction: column;
-      padding: 8px;
-      gap: 8px;
       overflow: hidden;
-      min-height: 0;
+    }
+
+    /* Video panel */
+    .video-panel-content {
+      background: #000;
+      position: relative;
+    }
+
+    .video-panel-content video {
+      max-width: 100%;
+      max-height: 100%;
+      user-select: none;
     }
 
     .video-container {
@@ -101,16 +137,9 @@
       align-items: center;
       justify-content: center;
       background: #000;
-      border-radius: 6px;
       overflow: auto;
       position: relative;
       min-height: 0;
-    }
-
-    .video-container video {
-      max-width: 100%;
-      max-height: 100%;
-      user-select: none;
     }
 
     .video-container.has-region {
@@ -201,42 +230,6 @@
       color: var(--text-muted);
     }
 
-    .controls {
-      background: var(--bg-alt);
-      border-radius: 6px;
-      padding: 8px 10px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      user-select: none;
-    }
-
-    .controls-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-
-    .seek-bar {
-      flex: 1;
-      height: 16px;
-      background: var(--border);
-      border-radius: 4px;
-      cursor: pointer;
-      position: relative;
-      user-select: none;
-      overflow: hidden;
-    }
-
-    .seek-bar-fill {
-      height: 100%;
-      background: var(--accent);
-      border-radius: 4px;
-      width: 0%;
-      transition: width 0.1s;
-    }
-
     /* Region selection overlay */
     .region-overlay {
       position: absolute;
@@ -248,7 +241,6 @@
 
     .region-overlay.hidden { display: none; }
 
-    /* Prevent text cursor anywhere when region is visible */
     .video-container:has(.region-box:not(.hidden)) {
       cursor: default;
     }
@@ -362,7 +354,6 @@
       font-family: monospace;
     }
 
-    /* Blur preview canvas */
     .blur-preview {
       position: absolute;
       top: 0;
@@ -371,121 +362,56 @@
       z-index: 5;
     }
 
-    /* Settings panel */
-    .settings-panel {
-      position: absolute;
-      bottom: 100%;
-      right: 0;
-      margin-bottom: 8px;
+    /* Contain video mode */
+    .video-container.contain-video {
+      overflow: hidden;
+    }
+
+    .video-container.contain-video video {
+      max-width: none;
+      max-height: none;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    /* Controls panel */
+    .controls-panel-content {
       background: var(--bg-alt);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 12px;
-      min-width: 240px;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      padding: 8px 10px;
     }
 
-    .settings-panel.hidden { display: none; }
-
-    .settings-section {
-      margin-bottom: 12px;
-    }
-
-    .settings-section:last-child { margin-bottom: 0; }
-
-    .settings-title {
-      font-size: 10px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .setting-row {
+    .controls-row {
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
       margin-bottom: 6px;
     }
 
-    .setting-row:last-child { margin-bottom: 0; }
-
-    .setting-label {
-      font-size: 11px;
-      color: var(--text);
-      min-width: 70px;
+    .controls-row:last-child {
+      margin-bottom: 0;
     }
 
-    .setting-slider {
+    .seek-bar {
       flex: 1;
-      height: 4px;
-      -webkit-appearance: none;
-      appearance: none;
+      height: 16px;
       background: var(--border);
-      border-radius: 2px;
+      border-radius: 4px;
       cursor: pointer;
+      position: relative;
+      user-select: none;
+      overflow: hidden;
     }
 
-    .setting-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 12px;
-      height: 12px;
+    .seek-bar-fill {
+      height: 100%;
       background: var(--accent);
-      border-radius: 50%;
-      cursor: pointer;
+      border-radius: 4px;
+      width: 0%;
+      transition: width 0.1s;
     }
 
-    .setting-value {
-      font-size: 11px;
-      font-family: monospace;
-      color: var(--text-muted);
-      min-width: 40px;
-      text-align: right;
-    }
-
-    /* Hotkey settings */
-    .hotkey-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
-      font-size: 10px;
-    }
-
-    .hotkey-label {
-      flex: 1;
-      color: var(--text-muted);
-      min-width: 80px;
-    }
-
-    .hotkey-btn {
-      padding: 3px 8px;
-      border-radius: 3px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 10px;
-      font-family: monospace;
-      cursor: pointer;
-      min-width: 60px;
-      text-align: center;
-      transition: all 0.15s;
-    }
-
-    .hotkey-btn:hover { border-color: var(--accent); }
-    .hotkey-btn.recording {
-      border-color: var(--accent);
-      background: rgba(233, 69, 96, 0.2);
-      animation: pulse 1s infinite;
-    }
-
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.7; }
-    }
-
-    /* History markers on seek bar */
     .seek-marker {
       position: absolute;
       top: 0;
@@ -499,161 +425,6 @@
     .seek-marker.current {
       background: var(--accent);
       width: 3px;
-    }
-
-    .settings-btn {
-      position: relative;
-    }
-
-    /* Video history dropdown */
-    .history-btn {
-      position: relative;
-    }
-
-    .history-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      margin-top: 4px;
-      background: var(--bg-alt);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      min-width: 200px;
-      max-width: 300px;
-      max-height: 250px;
-      overflow-y: auto;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-
-    .history-dropdown.hidden { display: none; }
-
-    .history-item {
-      padding: 8px 12px;
-      font-size: 11px;
-      cursor: pointer;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .history-item:last-child { border-bottom: none; }
-    .history-item:hover { background: var(--border); }
-
-    .history-item-icon {
-      opacity: 0.6;
-      flex-shrink: 0;
-    }
-
-    .history-item-name {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    .history-item-type {
-      font-size: 9px;
-      color: var(--text-muted);
-      padding: 1px 4px;
-      background: var(--bg);
-      border-radius: 3px;
-      flex-shrink: 0;
-    }
-
-    .history-empty {
-      padding: 12px;
-      text-align: center;
-      color: var(--text-muted);
-      font-size: 11px;
-    }
-
-    /* Region mode dropdown */
-    .region-mode-btn {
-      position: relative;
-    }
-
-    .region-mode-btn .btn {
-      display: flex;
-      align-items: center;
-      gap: 2px;
-    }
-
-    .region-mode-btn .dropdown-arrow {
-      font-size: 8px;
-      opacity: 0.7;
-    }
-
-    .region-mode-btn .btn.active {
-      background: var(--accent);
-      color: white;
-    }
-
-    .region-mode-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      margin-top: 4px;
-      background: var(--bg-alt);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      min-width: 120px;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      overflow: hidden;
-    }
-
-    .region-mode-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 10px;
-      font-size: 11px;
-      cursor: pointer;
-      border-bottom: 1px solid var(--border);
-    }
-
-    .region-mode-option:last-child {
-      border-bottom: none;
-    }
-
-    .region-mode-option:hover {
-      background: var(--border);
-    }
-
-    .region-mode-option.selected {
-      background: rgba(233, 69, 96, 0.2);
-    }
-
-    .region-mode-option .hotkey-hint {
-      margin-left: auto;
-      opacity: 0.5;
-      font-size: 10px;
-    }
-
-    /* Compact mode for small windows */
-    @media (max-height: 400px) {
-      .header { padding: 4px 8px; }
-      .header h1 { font-size: 11px; }
-      .main { padding: 4px; gap: 4px; }
-      .controls { padding: 4px 6px; gap: 4px; }
-      .controls-row { gap: 4px; }
-      .playback-btn { width: 24px; height: 24px; font-size: 10px; }
-      .seek-bar { height: 12px; }
-      .btn { padding: 3px 6px; font-size: 10px; }
-    }
-
-    @media (max-width: 500px) {
-      .header { flex-wrap: wrap; }
-      .url-input-container { order: 3; width: 100%; min-width: unset; margin-top: 4px; }
-      .frame-controls { display: none; }
-    }
-
-    @media (max-width: 400px) {
-      .header h1 { display: none; }
-      .time-display { font-size: 10px; min-width: 70px; }
-      .speed-select { display: none; }
     }
 
     .time-display {
@@ -724,6 +495,484 @@
       gap: 16px;
     }
 
+    .setting-slider {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--border);
+      border-radius: 2px;
+      cursor: pointer;
+    }
+
+    .setting-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .setting-value {
+      font-size: 11px;
+      font-family: monospace;
+      color: var(--text-muted);
+      min-width: 40px;
+      text-align: right;
+    }
+
+    /* Settings panel - uses fixed positioning to escape dockview stacking context */
+    .settings-panel {
+      position: fixed;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      min-width: 240px;
+      z-index: 9999;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .settings-panel.hidden { display: none; }
+
+    .settings-section {
+      margin-bottom: 12px;
+    }
+
+    .settings-section:last-child { margin-bottom: 0; }
+
+    .settings-title {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .setting-row:last-child { margin-bottom: 0; }
+
+    .setting-label {
+      font-size: 11px;
+      color: var(--text);
+      min-width: 70px;
+    }
+
+    .settings-btn {
+      position: relative;
+    }
+
+    /* Hotkey settings */
+    .hotkey-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+
+    .hotkey-label {
+      flex: 1;
+      color: var(--text-muted);
+      min-width: 80px;
+    }
+
+    .hotkey-btn {
+      padding: 3px 8px;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 10px;
+      font-family: monospace;
+      cursor: pointer;
+      min-width: 60px;
+      text-align: center;
+      transition: all 0.15s;
+    }
+
+    .hotkey-btn:hover { border-color: var(--accent); }
+    .hotkey-btn.recording {
+      border-color: var(--accent);
+      background: rgba(233, 69, 96, 0.2);
+      animation: pulse 1s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    /* Playlist panel */
+    .playlist-panel-content {
+      background: var(--bg-alt);
+    }
+
+    .playlist-header {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .playlist-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .playlist-header-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .playlist-header-actions button {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 11px;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+
+    .playlist-header-actions button:hover {
+      background: var(--border);
+      color: var(--text);
+    }
+
+    .playlist-items {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .playlist-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .playlist-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+
+    .playlist-item.active {
+      background: rgba(233, 69, 96, 0.15);
+      border-left: 3px solid var(--accent);
+      padding-left: 5px;
+    }
+
+    .playlist-item-thumb {
+      width: 48px;
+      height: 27px;
+      background: var(--bg);
+      border-radius: 3px;
+      flex-shrink: 0;
+      object-fit: cover;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .playlist-item-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 3px;
+    }
+
+    .playlist-item-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .playlist-item-name {
+      font-size: 10px;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .playlist-item-meta {
+      font-size: 9px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .playlist-item-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      background: rgba(0,0,0,0.6);
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 2px 4px;
+      font-size: 9px;
+      border-radius: 2px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .playlist-item:hover .playlist-item-remove {
+      opacity: 1;
+    }
+
+    .playlist-item-remove:hover {
+      background: var(--accent);
+      color: white;
+    }
+
+    .playlist-empty {
+      padding: 20px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    /* Dropdowns */
+    .history-btn, .region-mode-btn, .player-settings-btn {
+      position: relative;
+    }
+
+    .history-dropdown, .region-mode-dropdown, .player-settings-popup {
+      position: absolute;
+      top: 100%;
+      margin-top: 4px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      z-index: 50;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .history-dropdown {
+      left: 0;
+      min-width: 200px;
+      max-width: 300px;
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .history-dropdown.hidden { display: none; }
+
+    .history-item {
+      padding: 8px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .history-item:last-child { border-bottom: none; }
+    .history-item:hover { background: var(--border); }
+
+    .history-item-icon {
+      opacity: 0.6;
+      flex-shrink: 0;
+    }
+
+    .history-item-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .history-item-type {
+      font-size: 9px;
+      color: var(--text-muted);
+      padding: 1px 4px;
+      background: var(--bg);
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .history-empty {
+      padding: 12px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .region-mode-dropdown {
+      left: 0;
+      min-width: 120px;
+      overflow: hidden;
+    }
+
+    .region-mode-dropdown.hidden { display: none; }
+
+    .region-mode-btn .btn {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .region-mode-btn .dropdown-arrow {
+      font-size: 8px;
+      opacity: 0.7;
+    }
+
+    .region-mode-btn .btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .region-mode-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .region-mode-option:last-child {
+      border-bottom: none;
+    }
+
+    .region-mode-option:hover {
+      background: var(--border);
+    }
+
+    .region-mode-option.selected {
+      background: rgba(233, 69, 96, 0.2);
+    }
+
+    .region-mode-option .hotkey-hint {
+      margin-left: auto;
+      opacity: 0.5;
+      font-size: 10px;
+    }
+
+    .player-settings-popup {
+      right: 0;
+      padding: 10px 12px;
+      min-width: 180px;
+    }
+
+    .player-settings-popup.hidden { display: none; }
+
+    .player-settings-popup .settings-title {
+      margin-bottom: 10px;
+    }
+
+    .player-settings-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      cursor: pointer;
+      padding: 4px 0;
+    }
+
+    .player-settings-option input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    /* View menu dropdown */
+    .view-menu-btn {
+      position: relative;
+    }
+
+    .view-menu-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 4px;
+      background: var(--bg-alt);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      z-index: 50;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      min-width: 140px;
+      overflow: hidden;
+    }
+
+    .view-menu-dropdown.hidden { display: none; }
+
+    .view-menu-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .view-menu-option:last-child {
+      border-bottom: none;
+    }
+
+    .view-menu-option:hover {
+      background: var(--border);
+    }
+
+    .view-menu-check {
+      width: 14px;
+      color: var(--accent);
+      font-size: 10px;
+    }
+
+    .view-menu-check.hidden {
+      visibility: hidden;
+    }
+
+    .view-menu-separator {
+      height: 1px;
+      background: var(--border);
+      margin: 4px 0;
+    }
+
+    /* URL input */
+    .url-input-container {
+      display: flex;
+      gap: 8px;
+    }
+
+    .url-input {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+    }
+
+    .url-input::placeholder { color: var(--text-muted); }
+
+    /* Toast */
     .toast {
       position: fixed;
       bottom: 20px;
@@ -745,82 +994,64 @@
     .toast.success { border-color: #4ade80; }
     .toast.error { border-color: #f87171; }
 
-    .url-input-container {
-      display: flex;
-      gap: 8px;
+    /* Panel templates - hidden until cloned by dockview */
+    .panel-template {
+      display: none !important;
     }
 
-    .url-input {
-      flex: 1;
-      padding: 8px 12px;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
-      font-size: 13px;
+    /* Responsive */
+    @media (max-height: 400px) {
+      .header { padding: 4px 8px; }
+      .header h1 { font-size: 11px; }
+      .playback-btn { width: 24px; height: 24px; font-size: 10px; }
+      .seek-bar { height: 12px; }
+      .btn { padding: 3px 6px; font-size: 10px; }
     }
 
-    .url-input::placeholder { color: var(--text-muted); }
-
-    /* Player settings popup (in header) */
-    .player-settings-btn {
-      position: relative;
+    @media (max-width: 500px) {
+      .header { flex-wrap: wrap; }
+      .url-input-container { order: 3; width: 100%; min-width: unset; margin-top: 4px; }
+      .frame-controls { display: none; }
     }
 
-    .player-settings-popup {
-      position: absolute;
-      top: 100%;
-      right: 0;
-      margin-top: 4px;
-      background: var(--bg-alt);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px 12px;
-      min-width: 180px;
-      z-index: 50;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-
-    .player-settings-popup .settings-title {
-      margin-bottom: 10px;
-    }
-
-    .player-settings-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      cursor: pointer;
-      padding: 4px 0;
-    }
-
-    .player-settings-option input[type="checkbox"] {
-      cursor: pointer;
-      accent-color: var(--accent);
-    }
-
-    /* Contain video mode - force video to fit within container bounds */
-    .video-container.contain-video {
-      overflow: hidden;
-    }
-
-    .video-container.contain-video video {
-      max-width: none;
-      max-height: none;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
+    @media (max-width: 400px) {
+      .header h1 { display: none; }
+      .time-display { font-size: 10px; min-width: 70px; }
+      .speed-select { display: none; }
     }
   </style>
 </head>
 <body>
+  <!-- Header (outside dockview) -->
   <div class="header">
-    <h1>🎬 Video Player</h1>
+    <h1>Video Player</h1>
     <div class="url-input-container" style="flex: 1; min-width: 150px;">
       <input type="text" class="url-input" id="urlInput" placeholder="Paste URL..." style="font-size: 11px; padding: 5px 8px;">
       <button class="btn btn-secondary" id="loadUrlBtn">Load</button>
     </div>
     <div class="header-actions">
+      <div class="view-menu-btn">
+        <button class="btn btn-secondary" id="viewMenuBtn" title="View panels">☰</button>
+        <div class="view-menu-dropdown hidden" id="viewMenuDropdown">
+          <div class="view-menu-option" data-panel="video">
+            <span class="view-menu-check" id="viewCheckVideo">✓</span>
+            <span>Video</span>
+          </div>
+          <div class="view-menu-option" data-panel="playlist">
+            <span class="view-menu-check" id="viewCheckPlaylist">✓</span>
+            <span>Playlist</span>
+          </div>
+          <div class="view-menu-option" data-panel="controls">
+            <span class="view-menu-check" id="viewCheckControls">✓</span>
+            <span>Controls</span>
+          </div>
+          <div class="view-menu-separator"></div>
+          <div class="view-menu-option" data-action="reset">
+            <span class="view-menu-check" style="visibility:hidden">✓</span>
+            <span>Reset Layout</span>
+          </div>
+        </div>
+      </div>
       <div class="history-btn">
         <button class="btn btn-secondary" id="historyBtn" title="Recent videos">🕒</button>
         <div class="history-dropdown hidden" id="historyDropdown"></div>
@@ -852,6 +1083,14 @@
             <input type="checkbox" id="containVideoCheck">
             <span>Contain video in window</span>
           </label>
+          <label class="player-settings-option">
+            <input type="checkbox" id="skipDedupCheck">
+            <span>Skip similar image check</span>
+          </label>
+          <label class="player-settings-option">
+            <input type="checkbox" id="resetLayoutCheck">
+            <span>Reset panel layout</span>
+          </label>
         </div>
       </div>
       <button class="btn btn-secondary" id="saveAssetBtn" disabled title="Save to assets only (S)">💾</button>
@@ -859,41 +1098,65 @@
     </div>
   </div>
 
-  <div class="main">
-    <div class="video-container" id="videoContainer">
-      <video id="video" crossorigin="anonymous"></video>
-      <div class="region-overlay hidden" id="regionOverlay"></div>
-      <canvas class="blur-preview hidden" id="blurPreview"></canvas>
-      <div class="region-box hidden" id="regionBox">
-        <div class="region-handle nw" data-handle="nw"></div>
-        <div class="region-handle ne" data-handle="ne"></div>
-        <div class="region-handle sw" data-handle="sw"></div>
-        <div class="region-handle se" data-handle="se"></div>
-        <button class="region-clear" id="regionClear" title="Clear region">✕</button>
-        <div class="region-info" id="regionInfo"></div>
-        <div class="blur-controls hidden" id="blurControls">
-          <span class="blur-label">Blur:</span>
-          <input type="range" class="blur-slider" id="blurSlider" min="0" max="30" value="0">
-          <span class="blur-value" id="blurValue">0px</span>
+  <!-- Dockview container -->
+  <div id="dockviewContainer"></div>
+
+  <!-- Panel templates (cloned by dockview) -->
+
+  <!-- Video Panel Template -->
+  <div id="videoPanel" class="panel-template">
+    <div class="panel-content video-panel-content">
+      <div class="video-container" id="videoContainer">
+        <video id="video" crossorigin="anonymous"></video>
+        <div class="region-overlay hidden" id="regionOverlay"></div>
+        <canvas class="blur-preview hidden" id="blurPreview"></canvas>
+        <div class="region-box hidden" id="regionBox">
+          <div class="region-handle nw" data-handle="nw"></div>
+          <div class="region-handle ne" data-handle="ne"></div>
+          <div class="region-handle sw" data-handle="sw"></div>
+          <div class="region-handle se" data-handle="se"></div>
+          <button class="region-clear" id="regionClear" title="Clear region">✕</button>
+          <div class="region-info" id="regionInfo"></div>
+          <div class="blur-controls hidden" id="blurControls">
+            <span class="blur-label">Blur:</span>
+            <input type="range" class="blur-slider" id="blurSlider" min="0" max="30" value="0">
+            <span class="blur-value" id="blurValue">0px</span>
+          </div>
         </div>
-      </div>
-      <div class="drop-zone" id="dropZone">
-        <div class="drop-zone-icon" style="font-size: 36px;">🎥</div>
-        <div class="drop-zone-text" style="font-size: 12px;">Drop video or click to open</div>
-        <div class="drop-zone-hint" style="font-size: 10px;">Supports AVI, MKV, MP4, WebM (auto-converts)</div>
-      </div>
-      <div class="convert-overlay hidden" id="convertOverlay">
-        <div class="convert-spinner"></div>
-        <div class="convert-text" id="convertText">Loading FFmpeg...</div>
-        <div class="convert-progress">
-          <div class="convert-progress-bar" id="convertProgressBar"></div>
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-zone-icon" style="font-size: 36px;">🎥</div>
+          <div class="drop-zone-text" style="font-size: 12px;">Drop video or click to open</div>
+          <div class="drop-zone-hint" style="font-size: 10px;">Supports AVI, MKV, MP4, WebM (auto-converts)</div>
         </div>
-        <div class="convert-detail" id="convertDetail"></div>
-        <button class="btn btn-secondary" id="convertCancel" style="margin-top: 12px;">Cancel</button>
+        <div class="convert-overlay hidden" id="convertOverlay">
+          <div class="convert-spinner"></div>
+          <div class="convert-text" id="convertText">Loading FFmpeg...</div>
+          <div class="convert-progress">
+            <div class="convert-progress-bar" id="convertProgressBar"></div>
+          </div>
+          <div class="convert-detail" id="convertDetail"></div>
+          <button class="btn btn-secondary" id="convertCancel" style="margin-top: 12px;">Cancel</button>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div class="controls">
+  <!-- Playlist Panel Template -->
+  <div id="playlistPanel" class="panel-template">
+    <div class="panel-content playlist-panel-content">
+      <div class="playlist-header">
+        <span class="playlist-title">Playlist</span>
+        <div class="playlist-header-actions">
+          <button id="playlistClearBtn" title="Clear all">🗑</button>
+        </div>
+      </div>
+      <div class="playlist-items" id="playlistItems"></div>
+    </div>
+  </div>
+
+  <!-- Controls Panel Template -->
+  <div id="controlsPanel" class="panel-template">
+    <div class="panel-content controls-panel-content">
       <div class="controls-row">
         <div class="seek-bar" id="seekBar">
           <div class="seek-bar-fill" id="seekFill"></div>
@@ -919,7 +1182,7 @@
 
         <div class="volume-controls" style="display: flex; align-items: center; gap: 4px;">
           <button class="playback-btn" id="volumeBtn" title="Mute/Unmute (M)" style="font-size: 12px;">🔊</button>
-          <input type="range" class="setting-slider" id="volumeSlider" min="0" max="100" value="100" title="Volume (Up/Down arrows)" style="width: 60px;">
+          <input type="range" class="setting-slider" id="volumeSlider" min="0" max="100" value="100" title="Volume" style="width: 60px;">
           <span class="setting-value" id="volumeValue" style="min-width: 30px; font-size: 10px;">100%</span>
         </div>
 
@@ -964,9 +1227,7 @@
                   <span>Hotkeys</span>
                   <button class="btn btn-secondary" id="resetHotkeys" style="padding: 2px 6px; font-size: 9px;">Reset</button>
                 </div>
-                <div class="hotkey-list" id="hotkeyList" style="max-height: 150px; overflow-y: auto;">
-                  <!-- Hotkey rows will be generated dynamically -->
-                </div>
+                <div class="hotkey-list" id="hotkeyList" style="max-height: 150px; overflow-y: auto;"></div>
               </div>
             </div>
           </div>
@@ -977,11 +1238,13 @@
     </div>
   </div>
 
+  <!-- Toast notification -->
   <div class="toast" id="toast"></div>
 
-  <input type="file" id="fileInput" accept="video/*,.avi,.mkv,.wmv,.flv,.mpeg,.mpg,.m4v,.3gp,.ts,.mts,.m2ts" style="display: none;">
+  <!-- Hidden file input -->
+  <input type="file" id="fileInput" accept="video/*,.avi,.mkv,.wmv,.flv,.mpeg,.mpg,.m4v,.3gp,.ts,.mts,.m2ts,image/*" style="display: none;">
 
-  <!-- Bundled player scripts (built by: pnpm --filter @pixsim7/chrome-extension build) -->
+  <!-- Bundled player scripts -->
   <script src="dist/player.bundle.js"></script>
 </body>
 </html>

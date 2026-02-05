@@ -159,26 +159,9 @@ def build_operation_parameter_spec() -> dict:
         "name": "template_id", "type": "string", "required": False, "default": None,
         "enum": None, "description": "Pixverse template reference", "group": "advanced"
     }
-    image_url = {
-        "name": "image_url", "type": "string", "required": True, "default": None,
-        "enum": None, "description": "Source image URL for image-to-video", "group": "source"
-    }
-    video_url = {
-        "name": "video_url", "type": "string", "required": True, "default": None,
-        "enum": None, "description": "Original video URL for extension", "group": "source"
-    }
     original_video_id = {
         "name": "original_video_id", "type": "string", "required": False, "default": None,
         "enum": None, "description": "Original provider video id", "group": "source"
-    }
-    image_urls = {
-        "name": "image_urls", "type": "array", "required": True, "default": None,
-        "enum": None, "description": "Images for transition sequence", "group": "source",
-        "metadata": {
-            "min_items": 2,
-            "max_items": 7,
-            "note": "Pixverse transitions support 2-7 images.",
-        },
     }
     prompts = {
         "name": "prompts", "type": "array", "required": True, "default": None,
@@ -197,6 +180,13 @@ def build_operation_parameter_spec() -> dict:
                 "seedream-4.5": 7,
             },
             "note": "Max images for multi-image composition.",
+        },
+    }
+    composition_assets_video = {
+        **composition_assets_base,
+        "metadata": {
+            "max_items": 1,
+            "note": "Single video input (extend).",
         },
     }
     composition_assets_fusion = {
@@ -412,7 +402,7 @@ def build_operation_parameter_spec() -> dict:
         },
         # Image-to-video: aspect ratio can override source image framing
         "image_to_video": {
-            "parameters": [base_prompt, image_url]
+            "parameters": [base_prompt, composition_assets_image]
             + _fields_for(
                 "image_to_video",
                 [
@@ -432,7 +422,7 @@ def build_operation_parameter_spec() -> dict:
             )
         },
         "video_extend": {
-            "parameters": [base_prompt, video_url, original_video_id]
+            "parameters": [base_prompt, composition_assets_video, original_video_id]
             + _fields_for(
                 "video_extend",
                 [
@@ -448,7 +438,11 @@ def build_operation_parameter_spec() -> dict:
             )
         },
         # video_transition: aspect ratio is determined by source images
-        "video_transition": {"parameters": [image_urls, prompts, model, quality, transition_duration]},
-        "fusion": {"parameters": [base_prompt, composition_assets_fusion, model, quality, duration, aspect_ratio, seed]},
+        "video_transition": {
+            "parameters": [composition_assets_image, prompts, model, quality, transition_duration]
+        },
+        "fusion": {
+            "parameters": [base_prompt, composition_assets_fusion, model, quality, duration, aspect_ratio, seed]
+        },
     }
     return spec

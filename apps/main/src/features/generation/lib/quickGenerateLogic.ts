@@ -105,19 +105,40 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   };
 
   const resolveCompositionAssetsFromInputs = (
-    inputs: InputItem[] | undefined
-  ): Array<{ asset: string; layer: number; role: string }> | undefined => {
+    inputs: InputItem[] | undefined,
+    options: { mediaType?: 'image' | 'video' } = {},
+  ): Array<{ asset: string; layer: number; role: string; media_type?: string }> | undefined => {
     if (!inputs || inputs.length === 0) return undefined;
+    const overrideMediaType = options.mediaType;
     return inputs.map((item, index) => {
       const tags = getTagStrings(item.asset);
       const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
       const defaultRole = index === 0 ? 'environment' : 'main_character';
+      const mediaType = overrideMediaType ?? item.asset.mediaType ?? 'image';
       return {
         asset: `asset:${item.asset.id}`,
         layer: index,
         role: inferredRole ?? defaultRole,
+        media_type: mediaType,
       };
     });
+  };
+
+  const buildCompositionAssetsFromIds = (
+    ids: number[],
+    options: {
+      role: string;
+      mediaType?: 'image' | 'video';
+      includeLayer?: boolean;
+    }
+  ): Array<{ asset: string; role: string; layer?: number; media_type?: string }> => {
+    const { role, mediaType, includeLayer = true } = options;
+    return ids.map((id, index) => ({
+      asset: `asset:${id}`,
+      role,
+      ...(includeLayer ? { layer: index } : {}),
+      ...(mediaType ? { media_type: mediaType } : {}),
+    }));
   };
 
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
@@ -203,11 +224,17 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_video') {
+    const explicitCompositionAssets =
+      Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
+        ? dynamicParams.composition_assets
+        : undefined;
     // allowVideo: true - input slot can have video (for frame extraction)
     // allowVideoFallback: false - don't fallback to a video from gallery selection
-    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: false });
+    const sourceAssetId = explicitCompositionAssets
+      ? undefined
+      : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: false });
 
-    if (sourceAssetId && !trimmedPrompt) {
+    if ((explicitCompositionAssets || sourceAssetId) && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
@@ -221,10 +248,16 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'video_extend') {
+    const explicitCompositionAssets =
+      Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
+        ? dynamicParams.composition_assets
+        : undefined;
     // allowVideo: true, allowVideoFallback: true - video_extend needs a video source
-    const sourceAssetId = resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
+    const sourceAssetId = explicitCompositionAssets
+      ? undefined
+      : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
 
-    if (!sourceAssetId) {
+    if (!sourceAssetId && !explicitCompositionAssets) {
       return {
         error: 'No video selected. Click "Video Extend" on a gallery video to extend it.',
         finalPrompt: trimmedPrompt,
@@ -239,10 +272,14 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   let transitionDurations: number[] | undefined;
   if (operationType === 'video_transition') {
+    const explicitCompositionAssets =
+      Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
+        ? dynamicParams.composition_assets
+        : undefined;
     const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
       ? dynamicParams.source_asset_ids
       : operationInputs.map((item) => item.asset.id);
-    const assetCount = transitionSourceIds.length;
+    const assetCount = explicitCompositionAssets?.length ?? transitionSourceIds.length;
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
     if (!assetCount) {
@@ -281,7 +318,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       );
     }
 
-    if (!dynamicParams.source_asset_ids && transitionSourceIds.length) {
+    if (!explicitCompositionAssets && !dynamicParams.source_asset_ids && transitionSourceIds.length) {
       inferredSourceAssetIds = transitionSourceIds;
     }
   }
@@ -301,7 +338,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs);
+    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
@@ -316,16 +353,15 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           asset: `asset:${id}`,
           layer: index,
           role: index === 0 ? 'environment' : 'main_character',
+          media_type: 'image',
         }));
       }
     }
 
-    delete params.source_asset_id;
-    delete params.source_asset_ids;
   }
 
   if (operationType === 'fusion') {
-    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs);
+    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
@@ -340,20 +376,59 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           asset: `asset:${id}`,
           layer: index,
           role: index === 0 ? 'environment' : 'main_character',
+          media_type: 'image',
         }));
       }
     }
-
-    delete params.source_asset_id;
-    delete params.source_asset_ids;
   }
 
   if (operationType === 'video_transition') {
+    if (!params.composition_assets) {
+      const sourceIds = Array.isArray(params.source_asset_ids)
+        ? params.source_asset_ids
+        : [];
+      if (sourceIds.length > 0) {
+        params.composition_assets = buildCompositionAssetsFromIds(sourceIds, {
+          role: 'transition_input',
+          mediaType: 'image',
+          includeLayer: true,
+        });
+      }
+    }
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
     if (transitionDurations && transitionDurations.length) {
       params.durations = transitionDurations;
     }
   }
+
+  if (operationType === 'image_to_video') {
+    if (!params.composition_assets && params.source_asset_id) {
+      params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
+        role: 'source_image',
+        mediaType: 'image',
+        includeLayer: false,
+      });
+    }
+  }
+
+  if (operationType === 'video_extend') {
+    if (!params.composition_assets && params.source_asset_id) {
+      params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
+        role: 'source_video',
+        mediaType: 'video',
+        includeLayer: false,
+      });
+    }
+  }
+
+  if (params.composition_assets) {
+    delete params.image_url;
+    delete params.image_urls;
+    delete params.video_url;
+  }
+
+  delete params.source_asset_id;
+  delete params.source_asset_ids;
 
   const normalizedParams = normalizeProviderParams(params);
 

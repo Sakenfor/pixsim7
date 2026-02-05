@@ -76,6 +76,9 @@
       // Add to history
       window.PXS7Player.history?.addToVideoHistory(name, src, false);
 
+      // Add to playlist
+      window.PXS7Player.playlist?.addToPlaylist(name, src, false, true, img);
+
       // Set FPS to 1 for images (not really applicable)
       state.currentFps = 1;
       elements.fpsInput.value = 1;

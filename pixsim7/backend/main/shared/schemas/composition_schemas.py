@@ -1,7 +1,7 @@
 """
-Shared image composition schemas.
+Shared composition schemas.
 
-These schemas define the canonical multi-image composition format used across
+These schemas define the canonical multi-asset composition format used across
 fusion, image editing, and prompt blocks.
 """
 from typing import Any, Dict, List, Optional
@@ -17,7 +17,12 @@ from pixsim7.backend.main.domain.ontology import (
 
 
 class CompositionAsset(BaseModel):
-    """Single asset in an image composition."""
+    """Single asset in a composition."""
+    media_type: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("media_type", "mediaType", "media"),
+        description="Media type for this asset (image or video).",
+    )
     asset: Optional[AssetRef] = Field(
         default=None,
         validation_alias=AliasChoices("asset", "asset_id", "assetId", "asset_ref"),
@@ -82,6 +87,18 @@ class CompositionAsset(BaseModel):
         if v is None:
             return None
         return normalize_composition_role(str(v))
+
+    @field_validator("media_type", mode="before")
+    @classmethod
+    def normalize_media_type(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        value = str(v).strip().lower()
+        if value in {"image", "img", "images"}:
+            return "image"
+        if value in {"video", "vid", "videos"}:
+            return "video"
+        raise ValueError("media_type must be 'image' or 'video'")
 
     @computed_field
     @property

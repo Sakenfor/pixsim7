@@ -77,19 +77,19 @@ OPERATION_REGISTRY: Dict[OperationType, OperationSpec] = {
   OperationType.IMAGE_TO_VIDEO: OperationSpec(
     operation_type=OperationType.IMAGE_TO_VIDEO,
     output_media="video",
-    required_inputs=["image_url"],
+    required_inputs=["composition_assets"],
     generation_type_aliases=["image_to_video"],  # Canonical
   ),
   OperationType.VIDEO_EXTEND: OperationSpec(
     operation_type=OperationType.VIDEO_EXTEND,
     output_media="video",
-    required_inputs=["video_url|original_video_id"],  # Either one
+    required_inputs=["composition_assets"],
     generation_type_aliases=["video_extend"],  # Canonical
   ),
   OperationType.VIDEO_TRANSITION: OperationSpec(
     operation_type=OperationType.VIDEO_TRANSITION,
     output_media="video",
-    required_inputs=["image_urls", "prompts"],
+    required_inputs=["composition_assets", "prompts"],
     generation_type_aliases=["video_transition"],  # Canonical
   ),
   OperationType.FUSION: OperationSpec(
@@ -199,13 +199,27 @@ def resolve_operation_type_dynamic(config: Any) -> OperationType:
         return data[key]
     return None
 
+  composition_assets = _get_first("composition_assets", "compositionAssets")
   image_urls = _get_first("image_urls", "imageUrls")
   video_url = _get_first("video_url", "videoUrl")
   original_video_id = _get_first("original_video_id", "originalVideoId")
   image_url = _get_first("image_url", "imageUrl")
   source_asset_id = _get_first("source_asset_id", "sourceAssetId")
   source_asset_ids = _get_first("source_asset_ids", "sourceAssetIds")
-  composition_assets = _get_first("composition_assets", "compositionAssets")
+
+  prompts = data.get("prompts")
+
+  if isinstance(composition_assets, list) and len(composition_assets) > 0:
+    if isinstance(prompts, list) and len(prompts) == len(composition_assets) - 1:
+      return OperationType.VIDEO_TRANSITION
+    for item in composition_assets:
+      if hasattr(item, "model_dump"):
+        item = item.model_dump()
+      if isinstance(item, dict):
+        media_type = str(item.get("media_type") or "").lower()
+        if media_type == "video":
+          return OperationType.VIDEO_EXTEND
+    return OperationType.IMAGE_TO_IMAGE
 
   if isinstance(image_urls, list) and len(image_urls) >= 2:
     return OperationType.VIDEO_TRANSITION
@@ -213,8 +227,6 @@ def resolve_operation_type_dynamic(config: Any) -> OperationType:
     return OperationType.VIDEO_EXTEND
   if image_url or source_asset_id or (isinstance(source_asset_ids, list) and len(source_asset_ids) > 0):
     return OperationType.IMAGE_TO_VIDEO
-  if composition_assets:
-    return OperationType.IMAGE_TO_IMAGE
 
   # Default to text_to_video for semantic/intent-driven generation
   return OperationType.TEXT_TO_VIDEO

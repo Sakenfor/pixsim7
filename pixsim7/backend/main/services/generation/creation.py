@@ -35,6 +35,8 @@ from pixsim7.backend.main.services.generation.cache import GenerationCacheServic
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 from pixsim7.backend.main.shared.debug import DebugLogger
 from pixsim7.backend.main.shared.schemas.entity_ref import EntityRef
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id, extract_asset_ref
+from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 from pixsim7.backend.main.domain import relation_types
 
 logger = logging.getLogger(__name__)
@@ -211,45 +213,6 @@ ROLE_TO_RELATION_TYPE = {
 }
 
 
-def _extract_asset_id(value: Any) -> Optional[int]:
-    """Extract integer asset id from EntityRef, asset:id string, or raw id."""
-    if value is None:
-        return None
-    if hasattr(value, "id"):
-        try:
-            return int(value.id)
-        except (TypeError, ValueError):
-            return None
-    if isinstance(value, dict):
-        if value.get("type") == "asset" and value.get("id") is not None:
-            try:
-                return int(value["id"])
-            except (TypeError, ValueError):
-                return None
-    if isinstance(value, str):
-        if value.startswith("asset:"):
-            try:
-                return int(value.split(":", 1)[1])
-            except (TypeError, ValueError):
-                return None
-        if value.isdigit():
-            return int(value)
-    if isinstance(value, int):
-        return value
-    return None
-
-
-def _extract_asset_ref(value: Any) -> Optional[str]:
-    """Extract asset ref string or URL from common formats."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        if value.startswith("asset:") or value.startswith("http://") or value.startswith("https://"):
-            return value
-    asset_id = _extract_asset_id(value)
-    if asset_id is not None:
-        return f"asset:{asset_id}"
-    return None
 
 
 def get_relation_type_for_role(role: str) -> str:
@@ -301,7 +264,7 @@ def _extract_composition_metadata(
             continue
 
         entry: Dict[str, Any] = {
-            "asset": _extract_asset_ref(asset_value) or asset_value,
+            "asset": extract_asset_ref(asset_value) or asset_value,
             "sequence_order": i,
         }
 
@@ -809,7 +772,8 @@ class GenerationCreationService:
                 for field in [
                     "model", "quality", "off_peak", "audio", "multi_shot",
                     "aspect_ratio", "seed", "camera_movement", "negative_prompt",
-                    "motion_mode", "style", "template_id"
+                    "motion_mode", "style", "template_id",
+                    "api_method", "pixverse_api_mode", "use_openapi"
                 ]:
                     if field in provider_style:
                         canonical[field] = provider_style[field]
@@ -821,50 +785,56 @@ class GenerationCreationService:
 
         # Extract operation-specific fields from generation_config
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            image_url = gen_config.get("image_url") or params.get("image_url")
-            if image_url:
-                canonical["image_url"] = image_url
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
-            if source_asset_id:
-                canonical["source_asset_id"] = source_asset_id
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets:
+                composition_assets = coerce_composition_assets(
+                    composition_assets,
+                    default_media_type="image",
+                    default_role="source_image",
+                )
+            else:
+                legacy_value = (
+                    gen_config.get("source_asset_id")
+                    or params.get("source_asset_id")
+                    or gen_config.get("image_url")
+                    or params.get("image_url")
+                )
+                composition_assets = coerce_composition_assets(
+                    legacy_value,
+                    default_media_type="image",
+                    default_role="source_image",
+                )
+            if composition_assets:
+                canonical["composition_assets"] = composition_assets
 
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             # Canonical composition assets for multi-image edits
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
             if composition_assets:
+                composition_assets = coerce_composition_assets(
+                    composition_assets,
+                    default_media_type="image",
+                    default_role="composition_reference",
+                )
+            else:
+                legacy_values = (
+                    gen_config.get("source_asset_ids")
+                    or params.get("source_asset_ids")
+                    or gen_config.get("image_urls")
+                    or params.get("image_urls")
+                )
+                composition_assets = coerce_composition_assets(
+                    legacy_values,
+                    default_media_type="image",
+                    default_role="composition_reference",
+                )
+            if composition_assets:
                 canonical["composition_assets"] = composition_assets
 
                 # Extract trimmed metadata for structured lineage building
-                # This preserves influence_type/region without storing the full composition_assets
                 composition_metadata = _extract_composition_metadata(composition_assets)
                 if composition_metadata:
                     canonical["composition_metadata"] = composition_metadata
-
-                # If all assets are explicit IDs, also expose source_asset_ids for provider resolution
-                asset_ids: List[int] = []
-                asset_refs: List[str] = []
-                all_refs_present = True
-                for item in composition_assets:
-                    if hasattr(item, "model_dump"):
-                        item = item.model_dump()
-                    asset_value = None
-                    if isinstance(item, dict):
-                        asset_value = item.get("asset") or item.get("asset_id") or item.get("assetId")
-                    else:
-                        asset_value = item
-                    asset_id = _extract_asset_id(asset_value)
-                    if asset_id is not None:
-                        asset_ids.append(asset_id)
-                    asset_ref = _extract_asset_ref(asset_value)
-                    if asset_ref:
-                        asset_refs.append(asset_ref)
-                    else:
-                        all_refs_present = False
-
-                if asset_ids and len(asset_ids) == len(composition_assets):
-                    canonical["source_asset_ids"] = asset_ids
-                if all_refs_present and asset_refs and len(asset_refs) == len(composition_assets):
-                    canonical["image_urls"] = asset_refs
 
             # Optional: inpainting-style image edits may provide an explicit mask.
             # Provider adapters can opt into using these fields without changing
@@ -885,30 +855,79 @@ class GenerationCreationService:
                 canonical["file_extension"] = file_extension
 
         elif operation_type == OperationType.VIDEO_EXTEND:
-            video_url = gen_config.get("video_url") or params.get("video_url")
-            if video_url:
-                canonical["video_url"] = video_url
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets:
+                composition_assets = coerce_composition_assets(
+                    composition_assets,
+                    default_media_type="video",
+                    default_role="source_video",
+                )
+            else:
+                legacy_value = (
+                    gen_config.get("source_asset_id")
+                    or params.get("source_asset_id")
+                    or gen_config.get("video_url")
+                    or params.get("video_url")
+                )
+                composition_assets = coerce_composition_assets(
+                    legacy_value,
+                    default_media_type="video",
+                    default_role="source_video",
+                )
+
             original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
             if original_video_id:
-                canonical["original_video_id"] = original_video_id
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
-            if source_asset_id:
-                canonical["source_asset_id"] = source_asset_id
+                if composition_assets:
+                    entry = dict(composition_assets[0])
+                    provider_params = dict(entry.get("provider_params") or {})
+                    provider_params.setdefault("original_video_id", original_video_id)
+                    entry["provider_params"] = provider_params
+                    composition_assets[0] = entry
+                else:
+                    composition_assets = [{
+                        "media_type": "video",
+                        "role": "source_video",
+                        "provider_params": {"original_video_id": original_video_id},
+                    }]
+
+            if composition_assets:
+                canonical["composition_assets"] = composition_assets
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
-            image_urls = gen_config.get("image_urls") or params.get("image_urls")
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if composition_assets:
+                composition_assets = coerce_composition_assets(
+                    composition_assets,
+                    default_media_type="image",
+                    default_role="transition_input",
+                )
+            else:
+                legacy_values = (
+                    gen_config.get("source_asset_ids")
+                    or params.get("source_asset_ids")
+                    or gen_config.get("image_urls")
+                    or params.get("image_urls")
+                )
+                composition_assets = coerce_composition_assets(
+                    legacy_values,
+                    default_media_type="image",
+                    default_role="transition_input",
+                )
+            if composition_assets:
+                canonical["composition_assets"] = composition_assets
+
             prompts = gen_config.get("prompts") or params.get("prompts")
-            if image_urls:
-                canonical["image_urls"] = image_urls
             if prompts:
                 canonical["prompts"] = prompts
-            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
-            if source_asset_ids:
-                canonical["source_asset_ids"] = source_asset_ids
 
         elif operation_type == OperationType.FUSION:
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
             if composition_assets:
+                composition_assets = coerce_composition_assets(
+                    composition_assets,
+                    default_media_type="image",
+                    default_role="composition_reference",
+                )
                 canonical["composition_assets"] = composition_assets
 
                 # Extract trimmed metadata for structured lineage building
@@ -941,14 +960,16 @@ class GenerationCreationService:
         """
         Log warning/error for legacy URL params usage.
 
-        This helps track migration progress from URL-based to ID-based asset references.
-        The pattern is: frontend should pass asset IDs, backend resolves to provider URLs.
+        This helps track migration progress from legacy URL/ID params to
+        composition_assets as the canonical input list.
 
         Legacy params (deprecated):
-        - image_url, video_url, image_urls, original_video_id
+        - image_url, video_url, image_urls
+        - source_asset_id, source_asset_ids
+        - original_video_id
 
         New params (preferred):
-        - source_asset_id, source_asset_ids
+        - composition_assets
 
         Logging levels:
         - WARNING: When legacy params are present alongside asset IDs (drift)
@@ -956,37 +977,59 @@ class GenerationCreationService:
         """
         # Define legacy keys per operation type
         legacy_keys_by_op = {
-            OperationType.IMAGE_TO_VIDEO: ["image_url"],
-            OperationType.IMAGE_TO_IMAGE: ["image_url", "image_urls"],
-            OperationType.VIDEO_EXTEND: ["video_url", "original_video_id"],
-            OperationType.VIDEO_TRANSITION: ["image_urls"],
+            OperationType.IMAGE_TO_VIDEO: ["image_url", "source_asset_id"],
+            OperationType.IMAGE_TO_IMAGE: ["image_url", "image_urls", "source_asset_ids"],
+            OperationType.VIDEO_EXTEND: ["video_url", "original_video_id", "source_asset_id"],
+            OperationType.VIDEO_TRANSITION: ["image_urls", "source_asset_ids"],
         }
 
         legacy_keys = legacy_keys_by_op.get(operation_type, [])
         if not legacy_keys:
             return
 
-        # Check if we have asset IDs
-        has_asset_id = bool(canonical.get("source_asset_id"))
-        has_asset_ids = bool(canonical.get("source_asset_ids"))
+        # Check if we have composition assets
+        has_composition_assets = bool(canonical.get("composition_assets"))
 
         # Check for legacy params
         found_legacy = [key for key in legacy_keys if canonical.get(key)]
         if not found_legacy:
             return
 
-        if has_asset_id or has_asset_ids:
+        def _is_asset_ref_value(value: Any) -> bool:
+            if value is None:
+                return False
+            if isinstance(value, list):
+                return bool(value) and all(extract_asset_id(v) is not None for v in value)
+            return extract_asset_id(value) is not None
+
+        def _is_url_value(value: Any) -> bool:
+            if value is None:
+                return False
+            if isinstance(value, list):
+                return any(_is_url_value(v) for v in value)
+            if isinstance(value, str):
+                return value.startswith(("http://", "https://", "file://", "upload/"))
+            return False
+
+        if found_legacy:
+            legacy_values = [canonical.get(key) for key in found_legacy]
+            if all(_is_asset_ref_value(value) for value in legacy_values) and not any(
+                _is_url_value(value) for value in legacy_values
+            ):
+                # These are asset refs, not legacy URL params.
+                return
+
+        if has_composition_assets:
             # Log warning - both legacy and new params present (drift)
             logger.warning(
-                "legacy_asset_params_with_asset_id",
+                "legacy_asset_params_with_composition_assets",
                 extra={
                     "operation_type": operation_type.value,
                     "legacy_params_found": found_legacy,
-                    "has_source_asset_id": has_asset_id,
-                    "has_source_asset_ids": has_asset_ids,
+                    "has_composition_assets": has_composition_assets,
                     "detail": (
-                        "Received both legacy URL params and source_asset_id(s). "
-                        "Backend will prefer source_asset_id(s). "
+                        "Received both legacy input params and composition_assets. "
+                        "Backend will prefer composition_assets. "
                         "Consider updating frontend to remove legacy params."
                     ),
                 }
@@ -999,9 +1042,9 @@ class GenerationCreationService:
                     "operation_type": operation_type.value,
                     "legacy_params_found": found_legacy,
                     "detail": (
-                        "DEPRECATED: Using legacy URL params without source_asset_id(s). "
+                        "DEPRECATED: Using legacy input params without composition_assets. "
                         "This pattern is deprecated and will stop working in a future release. "
-                        "Please migrate to source_asset_id/source_asset_ids."
+                        "Please migrate to composition_assets."
                     ),
                 }
             )
@@ -1019,8 +1062,9 @@ class GenerationCreationService:
         references for lineage tracking, deduplication, and reproducibility.
 
         Input sources (in priority order):
-        1. Asset refs from generation_config (image_url, video_url, image_urls, etc.)
-        2. Scene context metadata (from_scene, to_scene)
+        1. composition_assets (canonical input list)
+        2. Legacy fields (image_url, video_url, image_urls, etc.)
+        3. Scene context metadata (from_scene, to_scene)
 
         Asset refs can be:
         - EntityRef format: {"type": "asset", "id": 123} or "asset:123"
@@ -1056,83 +1100,87 @@ class GenerationCreationService:
         # ==========================
 
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            # Single image input
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
-            image_url = gen_config.get("image_url") or params.get("image_url")
-            if source_asset_id:
-                asset_input = self._parse_asset_input(
-                    value=source_asset_id,
-                    role="source_image",
-                    sequence_order=0,
-                    gen_config=gen_config,
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if not composition_assets:
+                composition_assets = (
+                    gen_config.get("source_asset_id")
+                    or params.get("source_asset_id")
+                    or gen_config.get("image_url")
+                    or params.get("image_url")
                 )
-                if asset_input:
-                    inputs.append(asset_input)
-            elif image_url:
-                asset_input = self._parse_asset_input(
-                    value=image_url,
-                    role="source_image",
-                    sequence_order=0,
-                    gen_config=gen_config,
-                )
-                if asset_input:
-                    inputs.append(asset_input)
+            composition_assets = coerce_composition_assets(
+                composition_assets,
+                default_media_type="image",
+                default_role="source_image",
+            )
+            if composition_assets:
+                inputs.extend(self._extract_composition_inputs(
+                    composition_assets, gen_config,
+                    validate_vocab=validate_vocabs,
+                ))
 
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
-            if composition_assets and isinstance(composition_assets, list):
+            composition_assets = coerce_composition_assets(
+                composition_assets,
+                default_media_type="image",
+                default_role="composition_reference",
+            )
+            if composition_assets:
                 inputs.extend(self._extract_composition_inputs(
                     composition_assets, gen_config,
                     validate_vocab=validate_vocabs,
                 ))
 
         elif operation_type == OperationType.VIDEO_EXTEND:
-            # Video input
-            video_url = gen_config.get("video_url") or params.get("video_url")
-            original_video_id = gen_config.get("original_video_id") or params.get("original_video_id")
-            source_asset_id = gen_config.get("source_asset_id") or params.get("source_asset_id")
-
-            # Prefer original_video_id (direct asset reference)
-            video_ref = original_video_id or source_asset_id or video_url
-            if video_ref:
-                asset_input = self._parse_asset_input(
-                    value=video_ref,
-                    role="source_video",
-                    sequence_order=0,
-                    gen_config=gen_config,
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if not composition_assets:
+                composition_assets = (
+                    gen_config.get("source_asset_id")
+                    or params.get("source_asset_id")
+                    or gen_config.get("video_url")
+                    or params.get("video_url")
                 )
-                if asset_input:
-                    inputs.append(asset_input)
+            composition_assets = coerce_composition_assets(
+                composition_assets,
+                default_media_type="video",
+                default_role="source_video",
+            )
+            if composition_assets:
+                inputs.extend(self._extract_composition_inputs(
+                    composition_assets, gen_config,
+                    validate_vocab=validate_vocabs,
+                ))
 
         elif operation_type == OperationType.VIDEO_TRANSITION:
-            # Multiple image inputs for transition
-            image_urls = gen_config.get("image_urls") or params.get("image_urls")
-            source_asset_ids = gen_config.get("source_asset_ids") or params.get("source_asset_ids")
-            if source_asset_ids and isinstance(source_asset_ids, list):
-                for i, url in enumerate(source_asset_ids):
-                    asset_input = self._parse_asset_input(
-                        value=url,
-                        role="transition_input",
-                        sequence_order=i,
-                        gen_config=gen_config,
-                    )
-                    if asset_input:
-                        inputs.append(asset_input)
-            elif image_urls and isinstance(image_urls, list):
-                for i, url in enumerate(image_urls):
-                    asset_input = self._parse_asset_input(
-                        value=url,
-                        role="transition_input",
-                        sequence_order=i,
-                        gen_config=gen_config,
-                    )
-                    if asset_input:
-                        inputs.append(asset_input)
+            composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+            if not composition_assets:
+                composition_assets = (
+                    gen_config.get("source_asset_ids")
+                    or params.get("source_asset_ids")
+                    or gen_config.get("image_urls")
+                    or params.get("image_urls")
+                )
+            composition_assets = coerce_composition_assets(
+                composition_assets,
+                default_media_type="image",
+                default_role="transition_input",
+            )
+            if composition_assets:
+                inputs.extend(self._extract_composition_inputs(
+                    composition_assets, gen_config,
+                    validate_vocab=validate_vocabs,
+                ))
 
         elif operation_type == OperationType.FUSION:
             # Composition assets with specific roles
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
-            if composition_assets and isinstance(composition_assets, list):
+            composition_assets = coerce_composition_assets(
+                composition_assets,
+                default_media_type="image",
+                default_role="composition_reference",
+            )
+            if composition_assets:
                 inputs.extend(self._extract_composition_inputs(
                     composition_assets, gen_config,
                     validate_vocab=validate_vocabs,
@@ -1240,42 +1288,16 @@ class GenerationCreationService:
             Input dict with role, asset ref, sequence_order, and optional time/frame
             Returns None if value cannot be parsed to an asset ref
         """
-        import re
-
         asset_ref = None
         url_value = None
 
         if value is None:
             return None
 
-        # Try to parse as EntityRef
         try:
-            if isinstance(value, dict) and value.get("type") == "asset":
-                asset_ref = f"asset:{value['id']}"
-            elif isinstance(value, str):
-                if value.startswith("asset:"):
-                    asset_ref = value
-                elif "://" in value:
-                    # It's a URL - try to extract asset ID from path
-                    url_value = value
-                    # Pattern: /assets/{id}/ or /asset/{id}/ or asset_id={id}
-                    match = re.search(r'/assets?/(\d+)(?:/|$|\?)', value)
-                    if match:
-                        asset_ref = f"asset:{match.group(1)}"
-                    else:
-                        # Try query param
-                        match = re.search(r'[?&]asset_id=(\d+)', value)
-                        if match:
-                            asset_ref = f"asset:{match.group(1)}"
-                else:
-                    # Try parsing as integer string
-                    try:
-                        asset_id = int(value)
-                        asset_ref = f"asset:{asset_id}"
-                    except ValueError:
-                        pass
-            elif isinstance(value, int):
-                asset_ref = f"asset:{value}"
+            if isinstance(value, str) and "://" in value:
+                url_value = value
+            asset_ref = extract_asset_ref(value, allow_url_asset_id=True)
         except Exception:
             pass
 
@@ -1454,11 +1476,12 @@ class GenerationCreationService:
                     f"{operation_type.value} operation requires a non-empty 'prompt'"
                 )
 
-        # IMAGE_TO_VIDEO requires image_url or source_asset_id
+        # IMAGE_TO_VIDEO requires composition_assets
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            if not has_field("image_url") and not has_field("source_asset_id"):
+            composition_assets = get_field("composition_assets")
+            if not composition_assets or not isinstance(composition_assets, list) or len(composition_assets) == 0:
                 raise InvalidOperationError(
-                    "IMAGE_TO_VIDEO operation requires 'image_url' or 'source_asset_id' field in generation config"
+                    "IMAGE_TO_VIDEO operation requires 'composition_assets' list with at least 1 entry"
                 )
 
         # IMAGE_TO_IMAGE requires composition_assets
@@ -1473,26 +1496,22 @@ class GenerationCreationService:
                     "IMAGE_TO_IMAGE 'composition_assets' must be a non-empty list"
                 )
 
-        # VIDEO_EXTEND requires video_url or original_video_id
+        # VIDEO_EXTEND requires composition_assets
         elif operation_type == OperationType.VIDEO_EXTEND:
-            if not has_field("video_url") and not has_field("original_video_id") and not has_field("source_asset_id"):
+            composition_assets = get_field("composition_assets")
+            if not composition_assets or not isinstance(composition_assets, list) or len(composition_assets) == 0:
                 raise InvalidOperationError(
-                    "VIDEO_EXTEND operation requires 'video_url', 'original_video_id', or 'source_asset_id'"
+                    "VIDEO_EXTEND operation requires 'composition_assets' list with at least 1 entry"
                 )
 
-        # VIDEO_TRANSITION requires image_urls and prompts with correct counts
+        # VIDEO_TRANSITION requires composition_assets and prompts with correct counts
         elif operation_type == OperationType.VIDEO_TRANSITION:
-            image_urls = get_field("image_urls")
-            source_asset_ids = get_field("source_asset_ids")
+            composition_assets = get_field("composition_assets")
             prompts = get_field("prompts")
 
-            if (
-                (image_urls and (not isinstance(image_urls, list) or len(image_urls) < 2))
-                or (source_asset_ids and (not isinstance(source_asset_ids, list) or len(source_asset_ids) < 2))
-                or (not image_urls and not source_asset_ids)
-            ):
+            if not composition_assets or not isinstance(composition_assets, list) or len(composition_assets) < 2:
                 raise InvalidOperationError(
-                    "VIDEO_TRANSITION operation requires 'image_urls' or 'source_asset_ids' list with at least 2 images"
+                    "VIDEO_TRANSITION operation requires 'composition_assets' list with at least 2 images"
                 )
 
             if not prompts or not isinstance(prompts, list):
@@ -1500,11 +1519,11 @@ class GenerationCreationService:
                     "VIDEO_TRANSITION operation requires 'prompts' list"
                 )
 
-            expected_prompts = (len(source_asset_ids) if source_asset_ids else len(image_urls)) - 1
+            expected_prompts = len(composition_assets) - 1
             if len(prompts) != expected_prompts:
                 raise InvalidOperationError(
                     f"VIDEO_TRANSITION requires exactly {expected_prompts} prompt(s) "
-                    f"for {len(source_asset_ids) if source_asset_ids else len(image_urls)} images, but got {len(prompts)}"
+                    f"for {len(composition_assets)} images, but got {len(prompts)}"
                 )
 
         elif operation_type == OperationType.FUSION:

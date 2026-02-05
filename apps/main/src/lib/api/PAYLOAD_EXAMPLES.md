@@ -155,10 +155,10 @@ The `original_video_id` would be obtained from a previous generation job.
 ## Video Transition
 
 **User Input:**
-- Image URLs: ["https://example.com/img1.jpg", "https://example.com/img2.jpg", "https://example.com/img3.jpg"]
-- Prompts: ["Scene 1: Beach sunset", "Scene 2: Ocean waves", "Scene 3: Night sky"]
+- Composition Assets: ["asset:123", "asset:456", "asset:789"]
+- Prompts: ["Beach sunset -> Ocean waves", "Ocean waves -> Night sky"]
 - Provider: pixverse
-- Preset: "720p • 16:9"
+- Preset: "720p - 16:9"
 
 **Payload:**
 ```json
@@ -166,15 +166,14 @@ The `original_video_id` would be obtained from a previous generation job.
   "operation_type": "video_transition",
   "provider_id": "pixverse",
   "params": {
-    "image_urls": [
-      "https://example.com/img1.jpg",
-      "https://example.com/img2.jpg",
-      "https://example.com/img3.jpg"
+    "composition_assets": [
+      { "asset": "asset:123", "role": "transition_input", "media_type": "image" },
+      { "asset": "asset:456", "role": "transition_input", "media_type": "image" },
+      { "asset": "asset:789", "role": "transition_input", "media_type": "image" }
     ],
     "prompts": [
-      "Scene 1: Beach sunset",
-      "Scene 2: Ocean waves",
-      "Scene 3: Night sky"
+      "Beach sunset -> Ocean waves",
+      "Ocean waves -> Night sky"
     ],
     "preset_id": "preset_4",
     "quality": "720p",
@@ -184,9 +183,9 @@ The `original_video_id` would be obtained from a previous generation job.
 ```
 
 **Notes:**
-- `image_urls` and `prompts` arrays must have equal length (validation enforced)
-- Minimum 2 items per array for a transition
-- Each prompt describes the transition from the corresponding image
+- `prompts` must be exactly `composition_assets.length - 1`
+- Minimum 2 assets per transition
+- Each prompt describes the transition between adjacent assets
 
 ---
 

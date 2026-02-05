@@ -67,7 +67,7 @@ describe('buildGenerationRequest', () => {
     expect(result.params).toMatchObject({
       prompt: 'Add neon rim light',
       composition_assets: [
-        { asset: 'asset:42', layer: 0, role: 'environment' },
+        { asset: 'asset:42', layer: 0, role: 'environment', media_type: 'image' },
       ],
     });
   });
@@ -87,8 +87,8 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
       composition_assets: [
-        { asset: 'asset:10', layer: 0, role: 'environment' },
-        { asset: 'asset:11', layer: 1, role: 'main_character' },
+        { asset: 'asset:10', layer: 0, role: 'environment', media_type: 'image' },
+        { asset: 'asset:11', layer: 1, role: 'main_character', media_type: 'image' },
       ],
     });
   });
@@ -108,9 +108,9 @@ describe('buildGenerationRequest', () => {
     const result = buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params?.composition_assets).toEqual([
-      { asset: 'asset:1', layer: 0, role: 'environment' },
-      { asset: 'asset:2', layer: 1, role: 'main_character' },
-      { asset: 'asset:3', layer: 2, role: 'main_character' },
+      { asset: 'asset:1', layer: 0, role: 'environment', media_type: 'image' },
+      { asset: 'asset:2', layer: 1, role: 'main_character', media_type: 'image' },
+      { asset: 'asset:3', layer: 2, role: 'main_character', media_type: 'image' },
     ]);
   });
 
@@ -156,9 +156,9 @@ describe('buildGenerationRequest', () => {
     // bg -> environment
     // npc:alex -> main_character (namespace "npc" maps to main_character)
     expect(result.params?.composition_assets).toEqual([
-      { asset: 'asset:1', layer: 0, role: 'main_character' },
-      { asset: 'asset:2', layer: 1, role: 'environment' },
-      { asset: 'asset:3', layer: 2, role: 'main_character' },
+      { asset: 'asset:1', layer: 0, role: 'main_character', media_type: 'image' },
+      { asset: 'asset:2', layer: 1, role: 'environment', media_type: 'image' },
+      { asset: 'asset:3', layer: 2, role: 'main_character', media_type: 'image' },
     ]);
   });
 
@@ -193,8 +193,8 @@ describe('buildGenerationRequest', () => {
     expect(result.error).toBeUndefined();
     // First gets default environment, second gets default main_character
     expect(result.params?.composition_assets).toEqual([
-      { asset: 'asset:1', layer: 0, role: 'environment' },
-      { asset: 'asset:2', layer: 1, role: 'main_character' },
+      { asset: 'asset:1', layer: 0, role: 'environment', media_type: 'image' },
+      { asset: 'asset:2', layer: 1, role: 'main_character', media_type: 'image' },
     ]);
   });
 
@@ -255,7 +255,11 @@ describe('buildGenerationRequest', () => {
     const result = buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
     expect(result.params).toMatchObject({
-      source_asset_ids: [1, 2, 3],
+      composition_assets: [
+        { asset: 'asset:1', role: 'transition_input', layer: 0, media_type: 'image' },
+        { asset: 'asset:2', role: 'transition_input', layer: 1, media_type: 'image' },
+        { asset: 'asset:3', role: 'transition_input', layer: 2, media_type: 'image' },
+      ],
       prompts: ['fade', 'sparkle'],
     });
   });
@@ -269,7 +273,9 @@ describe('buildGenerationRequest', () => {
 
     const result = buildGenerationRequest(context);
     expect(result.error).toBeUndefined();
-    expect(result.params?.source_asset_id).toBe(7);
+    expect(result.params?.composition_assets).toMatchObject([
+      { asset: 'asset:7', role: 'source_image', media_type: 'image' },
+    ]);
     expect(result.params).not.toHaveProperty('image_url');
   });
 });

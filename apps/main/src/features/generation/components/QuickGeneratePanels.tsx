@@ -9,14 +9,12 @@ import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
 import { PromptInput } from '@pixsim7/shared.ui';
 import type { IDockviewPanelProps } from 'dockview-core';
-import { Pin, X, Clock, Play } from 'lucide-react';
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 
 
 import { useDockviewId } from '@lib/dockview';
-import { getDurationOptions } from '@lib/generation-ui';
-import { ThemedIcon } from '@lib/icons';
+import { getArrayParamLimits, getDurationOptions, type ParamSpec } from '@lib/generation-ui';
+import { ThemedIcon, Icon } from '@lib/icons';
 import { PromptCompanionHost } from '@lib/ui';
 
 
@@ -52,13 +50,13 @@ import {
 } from '@features/generation/lib/quickGenerateComponentSettings';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
+import { useWorkspaceStore } from '@features/workspace';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
-import { useGenerationHistoryStore, type AssetHistoryEntry } from '../stores/generationHistoryStore';
+import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 
 // Panel IDs
@@ -72,7 +70,7 @@ export type QuickGenPanelId =
 export interface QuickGenPanelContext {
   // Asset panel
   displayAssets: AssetModel[];
-  operationInputs: { id: string; asset: AssetModel; lockedTimestamp?: number }[];
+  operationInputs: InputItem[];
   operationInputIndex: number;
   operationType: OperationType;
   isFlexibleOperation: boolean;
@@ -90,7 +88,7 @@ export interface QuickGenPanelContext {
   setPrompt: (value: string) => void;
   providerId?: string;
   model?: string;
-  paramSpecs?: Array<{ name: string; max_length?: number; metadata?: Record<string, unknown> }>;
+  paramSpecs?: ParamSpec[];
   generating: boolean;
   error?: string | null;
 
@@ -109,325 +107,6 @@ export interface QuickGenPanelProps extends IDockviewPanelProps {
 
 const FLEXIBLE_OPERATIONS = new Set<OperationType>(['image_to_video', 'image_to_image']);
 const EMPTY_INPUTS: InputItem[] = [];
-
-// --- History Popup Components ---
-
-function HistoryThumbnail({ url, alt }: { url: string; alt: string }) {
-  const { mediaSrc } = useResolvedAssetMedia({ mediaUrl: url });
-  const resolvedSrc = mediaSrc || url;
-  return <img src={resolvedSrc} alt={alt} className="w-full h-full object-cover" />;
-}
-
-interface HistoryPopupPosition {
-  x: number;
-  y: number;
-  showAbove: boolean;
-}
-
-interface HistoryPopupProps {
-  history: AssetHistoryEntry[];
-  position: HistoryPopupPosition;
-  onClose: () => void;
-  onSelectAsset: (entry: AssetHistoryEntry) => void;
-  onTogglePin: (assetId: number) => void;
-  onRemove: (assetId: number) => void;
-  isPinned: boolean;
-  onTogglePinned: () => void;
-  pinnedPosition: { x: number; y: number };
-  pinnedSize: { width: number; height: number };
-  onPinnedPositionChange: (pos: { x: number; y: number }) => void;
-  onPinnedSizeChange: (size: { width: number; height: number }) => void;
-}
-
-function HistoryPopup({
-  history,
-  position,
-  onClose,
-  onSelectAsset,
-  onTogglePin,
-  onRemove,
-  isPinned,
-  onTogglePinned,
-  pinnedPosition,
-  pinnedSize,
-  onPinnedPositionChange,
-  onPinnedSizeChange,
-}: HistoryPopupProps) {
-  void onPinnedSizeChange;
-  const pinnedEntries = history.filter((e) => e.pinned);
-  const recent = history.filter((e) => !e.pinned);
-
-  // Grid layout: 4 columns max
-  const cols = Math.min(4, Math.max(2, history.length));
-  const popupWidth = cols * 72 + (cols - 1) * 6 + 20; // thumbnails + gaps + padding
-
-  // Drag state for pinned mode
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (!isPinned) return;
-    e.preventDefault();
-    setIsDragging(true);
-    setDragOffset({
-      x: e.clientX - pinnedPosition.x,
-      y: e.clientY - pinnedPosition.y,
-    });
-  }, [isPinned, pinnedPosition]);
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      onPinnedPositionChange({
-        x: e.clientX - dragOffset.x,
-        y: e.clientY - dragOffset.y,
-      });
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, dragOffset, onPinnedPositionChange]);
-
-  // Header with pin toggle and close
-  const header = (
-    <div className="flex items-center justify-between mb-2 px-1 select-none">
-      {/* Drag handle area - takes up available space */}
-      <div
-        className="flex-1 cursor-move py-1 -my-1"
-        onMouseDown={handleDragStart}
-      >
-        <span className="text-xs font-medium text-neutral-300">Asset History</span>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePinned();
-          }}
-          className={`w-5 h-5 rounded flex items-center justify-center transition-colors cursor-pointer ${
-            isPinned
-              ? 'bg-purple-600 hover:bg-purple-700'
-              : 'bg-neutral-700 hover:bg-neutral-600'
-          }`}
-          title={isPinned ? 'Unpin panel' : 'Pin panel (keep open)'}
-        >
-          <Pin size={10} className="text-white" />
-        </button>
-        <button
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onClose();
-          }}
-          className="w-5 h-5 rounded bg-neutral-700 hover:bg-neutral-600 flex items-center justify-center cursor-pointer"
-          title="Close"
-        >
-          <X size={10} className="text-neutral-300" />
-        </button>
-      </div>
-    </div>
-  );
-
-  // Content section
-  const content = (
-    <div className="overflow-y-auto flex-1" style={{ maxHeight: isPinned ? 'calc(100% - 28px)' : '350px' }}>
-      {/* Pinned section */}
-      {pinnedEntries.length > 0 && (
-        <>
-          <div className="flex items-center gap-1 text-[10px] text-neutral-400 mb-1.5 px-1">
-            <Pin size={10} />
-            <span>Pinned</span>
-          </div>
-          <div
-            className="grid gap-1.5 mb-2"
-            style={{ gridTemplateColumns: `repeat(${cols}, 64px)` }}
-          >
-            {pinnedEntries.map((entry) => (
-              <HistoryItem
-                key={entry.assetId}
-                entry={entry}
-                onSelect={() => onSelectAsset(entry)}
-                onTogglePin={() => onTogglePin(entry.assetId)}
-                onRemove={() => onRemove(entry.assetId)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Recent section */}
-      {recent.length > 0 && (
-        <>
-          <div className="flex items-center gap-1 text-[10px] text-neutral-400 mb-1.5 px-1">
-            <Clock size={10} />
-            <span>Recent</span>
-          </div>
-          <div
-            className="grid gap-1.5"
-            style={{ gridTemplateColumns: `repeat(${cols}, 64px)` }}
-          >
-            {recent.map((entry) => (
-              <HistoryItem
-                key={entry.assetId}
-                entry={entry}
-                onSelect={() => onSelectAsset(entry)}
-                onTogglePin={() => onTogglePin(entry.assetId)}
-                onRemove={() => onRemove(entry.assetId)}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Empty state */}
-      {history.length === 0 && (
-        <div className="text-xs text-neutral-500 italic py-4 text-center">
-          No history yet
-        </div>
-      )}
-    </div>
-  );
-
-  // Pinned mode: floating draggable panel
-  if (isPinned) {
-    return createPortal(
-      <div
-        className="fixed bg-neutral-900 rounded-lg shadow-2xl border border-purple-500/50"
-        style={{
-          zIndex: 99999,
-          left: pinnedPosition.x,
-          top: pinnedPosition.y,
-          width: pinnedSize.width,
-          height: pinnedSize.height,
-        }}
-      >
-        <div className="p-2 h-full flex flex-col">
-          {header}
-          {content}
-        </div>
-      </div>,
-      document.body
-    );
-  }
-
-  // Non-pinned mode: popup with backdrop
-  return createPortal(
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0"
-        style={{ zIndex: 99998 }}
-        onClick={onClose}
-      />
-      {/* Popup */}
-      <div
-        className="fixed bg-neutral-900 rounded-lg shadow-2xl border border-neutral-600 p-2 flex flex-col"
-        style={{
-          zIndex: 99999,
-          width: popupWidth,
-          left: position.x,
-          top: position.showAbove ? undefined : position.y,
-          bottom: position.showAbove ? window.innerHeight - position.y : undefined,
-          transform: 'translateX(-50%)',
-          maxHeight: '400px',
-        }}
-      >
-        {header}
-        {content}
-      </div>
-    </>,
-    document.body
-  );
-}
-
-interface HistoryItemProps {
-  entry: AssetHistoryEntry;
-  onSelect: () => void;
-  onTogglePin: () => void;
-  onRemove: () => void;
-}
-
-function HistoryItem({ entry, onSelect, onTogglePin, onRemove }: HistoryItemProps) {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <div
-      className="relative w-16 h-16 rounded-md overflow-hidden cursor-pointer group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onClick={onSelect}
-    >
-      {/* Thumbnail */}
-      <HistoryThumbnail url={entry.thumbnailUrl} alt={`Asset ${entry.assetId}`} />
-
-      {/* Pinned indicator (always visible when pinned) */}
-      {entry.pinned && !isHovered && (
-        <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-purple-600 flex items-center justify-center">
-          <Pin size={8} className="text-white" />
-        </div>
-      )}
-
-      {/* Video indicator */}
-      {entry.mediaType === 'video' && (
-        <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center">
-          <Play size={8} className="text-white" />
-        </div>
-      )}
-
-      {/* Hover overlay with actions */}
-      {isHovered && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center gap-1">
-          {/* Pin/unpin button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onTogglePin();
-            }}
-            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-              entry.pinned
-                ? 'bg-purple-600 hover:bg-purple-700'
-                : 'bg-neutral-700 hover:bg-neutral-600'
-            }`}
-            title={entry.pinned ? 'Unpin' : 'Pin'}
-          >
-            <Pin size={10} className="text-white" />
-          </button>
-
-          {/* Remove button */}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            className="w-6 h-6 rounded-full bg-red-600/80 hover:bg-red-600 flex items-center justify-center transition-colors"
-            title="Remove from history"
-          >
-            <X size={10} className="text-white" />
-          </button>
-        </div>
-      )}
-
-      {/* Use count badge */}
-      {entry.useCount > 1 && !isHovered && (
-        <div className="absolute bottom-0.5 left-0.5 bg-black/80 text-white text-[9px] px-1 rounded font-medium">
-          {entry.useCount}x
-        </div>
-      )}
-    </div>
-  );
-}
-
-// --- End History Popup Components ---
 
 /**
  * Asset Panel - Shows selected/queued assets
@@ -450,67 +129,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // History state
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
-  const [showHistoryPopup, setShowHistoryPopup] = useState(false);
-  const [historyPopupPosition, setHistoryPopupPosition] = useState<HistoryPopupPosition | null>(null);
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+  const updateFloatingPanelContext = useWorkspaceStore((s) => s.updateFloatingPanelContext);
+  const isHistoryPanelOpen = useWorkspaceStore((s) =>
+    s.floatingPanels.some((panel) => panel.id === 'quickgen-history'),
+  );
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const settingsPopoverRef = useRef<HTMLDivElement>(null);
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
-
-  // Pinned panel state with localStorage persistence
-  const [isHistoryPinned, setIsHistoryPinned] = useState(() => {
-    try {
-      return localStorage.getItem('quickgen-history-pinned') === 'true';
-    } catch {
-      return false;
-    }
-  });
-  const [pinnedPosition, setPinnedPosition] = useState(() => {
-    try {
-      const stored = localStorage.getItem('quickgen-history-position');
-      return stored ? JSON.parse(stored) : { x: 100, y: 100 };
-    } catch {
-      return { x: 100, y: 100 };
-    }
-  });
-  const [pinnedSize, setPinnedSize] = useState(() => {
-    try {
-      const stored = localStorage.getItem('quickgen-history-size');
-      return stored ? JSON.parse(stored) : { width: 320, height: 280 };
-    } catch {
-      return { width: 320, height: 280 };
-    }
-  });
-
-  // Persist pinned state changes
-  const handleTogglePinned = useCallback(() => {
-    setIsHistoryPinned(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem('quickgen-history-pinned', String(next));
-      } catch {
-        // Ignore storage errors (private mode, quota exceeded, etc.)
-      }
-      return next;
-    });
-  }, []);
-
-  const handlePinnedPositionChange = useCallback((pos: { x: number; y: number }) => {
-    setPinnedPosition(pos);
-    try {
-      localStorage.setItem('quickgen-history-position', JSON.stringify(pos));
-    } catch {
-      // Ignore storage errors (private mode, quota exceeded, etc.)
-    }
-  }, []);
-
-  const handlePinnedSizeChange = useCallback((size: { width: number; height: number }) => {
-    setPinnedSize(size);
-    try {
-      localStorage.setItem('quickgen-history-size', JSON.stringify(size));
-    } catch {
-      // Ignore storage errors (private mode, quota exceeded, etc.)
-    }
-  }, []);
 
   const {
     removeInput: ctxRemoveInput,
@@ -519,31 +146,53 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const operationType = ctx?.operationType ?? controller.operationType;
   const isFlexibleOperation = ctx?.isFlexibleOperation ?? FLEXIBLE_OPERATIONS.has(operationType);
+  const operationMeta = OPERATION_METADATA[operationType];
   const removeInput = ctxRemoveInput ?? controller.removeInput;
+  const workbench = useGenerationWorkbench({ operationType });
+  const model = ctx?.model ?? (workbench.dynamicParams?.model as string | undefined);
+  const paramSpecs = (ctx?.paramSpecs ?? workbench.allParamSpecs) as ParamSpec[];
   const storeUpdateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
   const updateLockedTimestamp = ctxUpdateLockedTimestamp ?? storeUpdateLockedTimestamp;
   const storeInputs = useInputStore(s => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
   const storeInputIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
   const storeSetInputIndex = useInputStore(s => s.setInputIndex);
   const storeCycleInputs = useInputStore(s => s.cycleInputs);
-  const storeAddInput = useInputStore(s => s.addInput);
+  const armedSlotIndex = useInputStore(s => s.armedSlotByOperation?.[operationType]);
+  const setArmedSlot = useInputStore(s => s.setArmedSlot);
 
   // History store subscriptions
-  // History store subscriptions - use shallow compare for stable reference
-  const historyByOperation = useGenerationHistoryStore(s => s.historyByOperation);
-  const historyEntries = historyByOperation[operationType];
-  const togglePin = useGenerationHistoryStore(s => s.togglePin);
-  const removeFromHistory = useGenerationHistoryStore(s => s.removeFromHistory);
+  const historyMode = useGenerationHistoryStore((s) => s.historyMode);
+  const historySortMode = useGenerationHistoryStore((s) => s.historySortMode);
+  const hideIncompatibleAssets = useGenerationHistoryStore((s) => s.hideIncompatibleAssets);
+  const historyByOperation = useGenerationHistoryStore((s) => s.historyByOperation);
+  const historyKey = historyMode === 'global' ? '_global' : operationType;
+  const historyEntries = historyByOperation[historyKey] ?? [];
 
   // Sort history: pinned first (by useCount), then unpinned (by lastUsedAt)
   const sortedHistory = useMemo(() => {
     if (!historyEntries || historyEntries.length === 0) return [];
+    if (historySortMode === 'recent-first') {
+      return [...historyEntries].sort(
+        (a, b) => new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime()
+      );
+    }
     const pinned = historyEntries.filter((e) => e.pinned);
     const unpinned = historyEntries.filter((e) => !e.pinned);
     pinned.sort((a, b) => b.useCount - a.useCount);
     unpinned.sort((a, b) => new Date(b.lastUsedAt).getTime() - new Date(a.lastUsedAt).getTime());
     return [...pinned, ...unpinned];
-  }, [historyEntries]);
+  }, [historyEntries, historySortMode]);
+
+  const compatibleHistory = useMemo(() => {
+    const acceptsInput = operationMeta?.acceptsInput ?? [];
+    if (!hideIncompatibleAssets) {
+      return sortedHistory;
+    }
+    if (acceptsInput.length === 0) {
+      return [];
+    }
+    return sortedHistory.filter((entry) => acceptsInput.includes(entry.mediaType));
+  }, [sortedHistory, hideIncompatibleAssets, operationMeta?.acceptsInput]);
 
   const resolvedAssetSettings = useResolveComponentSettings<typeof QUICKGEN_ASSET_DEFAULTS>(
     QUICKGEN_ASSET_COMPONENT_ID,
@@ -611,7 +260,21 @@ export function AssetPanel(props: QuickGenPanelProps) {
     allowAnySelected,
   ]);
 
-  const operationMeta = OPERATION_METADATA[operationType];
+  const multiAssetParamName = useMemo(() => {
+    if (operationType === 'video_transition') return 'composition_assets';
+    if (operationType === 'image_to_image' || operationType === 'fusion') return 'composition_assets';
+    return null;
+  }, [operationType]);
+
+  const multiAssetLimits = useMemo(() => {
+    if (!multiAssetParamName || !paramSpecs?.length) return null;
+    return getArrayParamLimits(paramSpecs, multiAssetParamName, model);
+  }, [multiAssetParamName, paramSpecs, model]);
+
+  const maxAssetItems =
+    typeof multiAssetLimits?.max === 'number' && Number.isFinite(multiAssetLimits.max)
+      ? Math.max(1, Math.floor(multiAssetLimits.max))
+      : null;
 
   useProvideCapability<AssetInputContext>(
     CAP_ASSET_INPUT,
@@ -635,7 +298,9 @@ export function AssetPanel(props: QuickGenPanelProps) {
         const isMultiAsset =
           operationMeta?.multiAssetMode === 'required' ||
           (supportsMulti && (displayAssets?.length ?? 0) > 1);
-        const maxCount = isMultiAsset ? Math.max(refs.length, 1) : 1;
+        const maxCount = isMultiAsset
+          ? (maxAssetItems ?? Math.max(refs.length, 1))
+          : 1;
         const types = resolveMediaTypes(displayAssets ?? []).filter(
           (type): type is "image" | "video" => type === "image" || type === "video",
         );
@@ -671,6 +336,63 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const operationInputIndex = ctx?.operationInputIndex ?? storeInputIndex;
   const cycleInputs = ctx?.cycleInputs ?? storeCycleInputs;
   const setOperationInputIndex = ctx?.setOperationInputIndex ?? ((idx: number) => storeSetInputIndex(operationType, idx));
+  const isOverLimit = maxAssetItems !== null && operationInputs.length > maxAssetItems;
+  const overLimitCount = isOverLimit && maxAssetItems !== null
+    ? Math.max(0, operationInputs.length - maxAssetItems)
+    : 0;
+
+  const orderedInputs = useMemo(() => {
+    if (!operationInputs.length) return [];
+    return [...operationInputs].sort((a, b) => {
+      const aSlot = typeof a.slotIndex === 'number' ? a.slotIndex : 0;
+      const bSlot = typeof b.slotIndex === 'number' ? b.slotIndex : 0;
+      return aSlot - bSlot;
+    });
+  }, [operationInputs]);
+
+  const inputIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    orderedInputs.forEach((item, idx) => {
+      map.set(item.id, idx);
+    });
+    return map;
+  }, [orderedInputs]);
+
+  const maxSlotIndex = useMemo(() => {
+    return orderedInputs.reduce((max, item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      return Math.max(max, slot);
+    }, -1);
+  }, [orderedInputs]);
+
+  const slotItems = useMemo(() => {
+    if (maxSlotIndex < 0) return [] as Array<InputItem | null>;
+    const slots: Array<InputItem | null> = Array.from(
+      { length: maxSlotIndex + 1 },
+      () => null
+    );
+    orderedInputs.forEach((item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      if (slot >= 0 && slot < slots.length) {
+        slots[slot] = item;
+      }
+    });
+    return slots;
+  }, [orderedInputs, maxSlotIndex]);
+
+  const clampedSlotIndices = useMemo(() => {
+    if (maxAssetItems === null) return new Set<number>();
+    let count = 0;
+    const clamped = new Set<number>();
+    slotItems.forEach((item, idx) => {
+      if (!item) return;
+      count += 1;
+      if (count > maxAssetItems) {
+        clamped.add(idx);
+      }
+    });
+    return clamped;
+  }, [slotItems, maxAssetItems]);
 
   // Stable callback for wheel handler
   const handleWheelRef = useRef<(e: WheelEvent) => void>();
@@ -702,37 +424,60 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = operationMeta?.multiAssetMode === 'required' || displayAssets.length > 1;
+  const currentInputIdx = Math.max(0, Math.min(operationInputIndex - 1, orderedInputs.length - 1));
+  const currentInput = orderedInputs[currentInputIdx];
+  const currentInputId = currentInput?.id;
 
-  // History popup toggle handler
-  const handleToggleHistory = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (showHistoryPopup) {
-      setShowHistoryPopup(false);
-      setHistoryPopupPosition(null);
-    } else {
+  // History panel toggle handler
+  const handleToggleHistory = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (isHistoryPanelOpen) {
+        closeFloatingPanel('quickgen-history');
+        return;
+      }
+
+      const panelWidth = 360;
+      const panelHeight = 320;
+      let x: number | undefined;
+      let y: number | undefined;
+
       if (historyTriggerRef.current) {
         const rect = historyTriggerRef.current.getBoundingClientRect();
-        const popupWidth = 320;
-        const popupHeight = 300;
+        const minX = 8;
+        const maxX = window.innerWidth - panelWidth - 8;
+        x = Math.max(minX, Math.min(maxX, rect.left + rect.width / 2 - panelWidth / 2));
 
-        // Calculate x position (centered on trigger, clamped to screen edges)
-        let x = rect.left + rect.width / 2;
-        const minX = popupWidth / 2 + 8;
-        const maxX = window.innerWidth - popupWidth / 2 - 8;
-        x = Math.max(minX, Math.min(maxX, x));
-
-        // Check if there's room below, otherwise show above
-        const spaceAbove = rect.top;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const showAbove = spaceBelow < popupHeight + 8 && spaceAbove > spaceBelow;
-
-        const y = showAbove ? rect.top - 8 : rect.bottom + 8;
-
-        setHistoryPopupPosition({ x, y, showAbove });
+        const showAbove =
+          rect.top > window.innerHeight - rect.bottom && rect.top > panelHeight + 8;
+        const desiredY = showAbove ? rect.top - panelHeight - 8 : rect.bottom + 8;
+        const minY = 8;
+        const maxY = window.innerHeight - panelHeight - 8;
+        y = Math.max(minY, Math.min(maxY, desiredY));
       }
-      setShowHistoryPopup(true);
-    }
-  }, [showHistoryPopup]);
+
+      openFloatingPanel('quickgen-history', {
+        x,
+        y,
+        width: panelWidth,
+        height: panelHeight,
+        context: scopeInstanceId
+          ? { operationType, generationScopeId: scopeInstanceId }
+          : { operationType },
+      });
+    },
+    [isHistoryPanelOpen, closeFloatingPanel, openFloatingPanel, operationType, scopeInstanceId],
+  );
+
+  useEffect(() => {
+    if (!isHistoryPanelOpen) return;
+    updateFloatingPanelContext(
+      'quickgen-history',
+      scopeInstanceId
+        ? { operationType, generationScopeId: scopeInstanceId }
+        : { operationType },
+    );
+  }, [isHistoryPanelOpen, operationType, scopeInstanceId, updateFloatingPanelContext]);
 
   useEffect(() => {
     if (!showSettingsPopover) return;
@@ -762,43 +507,25 @@ export function AssetPanel(props: QuickGenPanelProps) {
     };
   }, [showSettingsPopover]);
 
-  // Handle selecting an asset from history
-  const handleSelectFromHistory = useCallback((entry: AssetHistoryEntry) => {
-    // Create a minimal asset model from the history entry
-    const assetFromHistory = {
-      id: entry.assetId,
-      thumbnailUrl: entry.thumbnailUrl,
-      mediaType: entry.mediaType,
-    } as any; // Cast to any since we only have partial asset data
-
-    storeAddInput({ asset: assetFromHistory, operationType });
-
-    // Only close if not pinned
-    if (!isHistoryPinned) {
-      setShowHistoryPopup(false);
-      setHistoryPopupPosition(null);
-    }
-  }, [storeAddInput, operationType, isHistoryPinned]);
-
   // History button component (inline in header bar)
-  const hasHistory = sortedHistory.length > 0;
-  const hasPinnedAssets = sortedHistory.some(e => e.pinned);
+  const hasHistory = compatibleHistory.length > 0;
+  const hasPinnedAssets = compatibleHistory.some(e => e.pinned);
   const historyButton = (
     <button
       ref={historyTriggerRef}
       onClick={handleToggleHistory}
       className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
-        isHistoryPinned
+        isHistoryPanelOpen
           ? 'bg-purple-600 hover:bg-purple-700 text-white'
           : hasHistory
           ? 'bg-neutral-700 hover:bg-neutral-600 text-white'
           : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400'
       }`}
-      title={isHistoryPinned ? 'History panel (pinned)' : hasHistory ? `History (${sortedHistory.length})` : 'No history yet'}
+      title={isHistoryPanelOpen ? 'History panel (open)' : hasHistory ? `History (${sortedHistory.length})` : 'No history yet'}
     >
-      <ThemedIcon name={isHistoryPinned ? 'pin' : 'clock'} size={10} variant="default" />
+      <Icon name="clock" size={10} />
       <span>{hasHistory ? sortedHistory.length : 0}</span>
-      {hasPinnedAssets && !isHistoryPinned && (
+      {hasPinnedAssets && !isHistoryPanelOpen && (
         <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
       )}
     </button>
@@ -872,41 +599,35 @@ export function AssetPanel(props: QuickGenPanelProps) {
     </div>
   );
 
+  const limitLabel = maxAssetItems && operationMeta?.multiAssetMode !== 'single' ? (
+    <div
+      className={`text-[10px] font-medium ${
+        isOverLimit ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400'
+      }`}
+      title={
+        isOverLimit
+          ? `Only the first ${maxAssetItems} assets will be used (remove ${overLimitCount}).`
+          : `Max ${maxAssetItems} assets for this model.`
+      }
+    >
+      Max {maxAssetItems} assets
+    </div>
+  ) : null;
+
   // Header bar with history button
   const headerBar = (
-    <div className="relative flex items-center justify-end gap-1 px-2 py-1 shrink-0">
+    <div className="relative flex items-center justify-between gap-1 px-2 py-1 shrink-0">
+      {limitLabel ?? <div />}
       {historyButton}
       {settingsButton}
       {settingsPopover}
     </div>
   );
 
-  // History popup component (reused)
-  const historyPopup = showHistoryPopup && historyPopupPosition && (
-    <HistoryPopup
-      history={sortedHistory}
-      position={historyPopupPosition}
-      onClose={() => {
-        setShowHistoryPopup(false);
-        setHistoryPopupPosition(null);
-      }}
-      onSelectAsset={handleSelectFromHistory}
-      onTogglePin={(assetId) => togglePin(operationType, assetId)}
-      onRemove={(assetId) => removeFromHistory(operationType, assetId)}
-      isPinned={isHistoryPinned}
-      onTogglePinned={handleTogglePinned}
-      pinnedPosition={pinnedPosition}
-      pinnedSize={pinnedSize}
-      onPinnedPositionChange={handlePinnedPositionChange}
-      onPinnedSizeChange={handlePinnedSizeChange}
-    />
-  );
-
   if (!hasAsset) {
     return (
       <div className="h-full flex flex-col">
         {headerBar}
-        {historyPopup}
         <div className="flex-1 flex items-center justify-center p-3">
           <div className="text-xs text-neutral-500 italic text-center">
             {operationType === 'video_extend' ? 'Select video' :
@@ -918,7 +639,6 @@ export function AssetPanel(props: QuickGenPanelProps) {
     );
   }
 
-  const selectedInputIndex = Math.max(0, Math.min(operationInputIndex - 1, operationInputs.length - 1));
   const isGridMode = resolvedDisplayMode === 'grid';
 
   // Multi-asset display (strip/grid). Carousel uses the single-asset path below.
@@ -926,7 +646,6 @@ export function AssetPanel(props: QuickGenPanelProps) {
     return (
       <div className="h-full w-full flex flex-col">
         {headerBar}
-        {historyPopup}
         <div
           ref={containerRef}
           className={`flex-1 p-2 pt-0 ${isGridMode ? 'overflow-auto' : 'overflow-x-auto'}`}
@@ -935,25 +654,81 @@ export function AssetPanel(props: QuickGenPanelProps) {
             className={isGridMode ? 'grid gap-1.5' : 'flex gap-1.5 h-full'}
             style={isGridMode ? { gridTemplateColumns: `repeat(${resolvedGridColumns}, minmax(0, 1fr))` } : undefined}
           >
-            {operationInputs.map((inputItem, idx) => {
-              const isSelected = idx === selectedInputIndex;
+            {slotItems.map((inputItem, idx) => {
+              const isSelected = !!inputItem && inputItem.id === currentInputId;
+              const isClamped = clampedSlotIndices.has(idx);
               const wrapperClasses = isGridMode
                 ? 'relative aspect-square'
                 : 'relative flex-shrink-0 h-full aspect-square';
 
+              if (!inputItem) {
+                const isArmed = armedSlotIndex === idx;
+                return (
+                  <div
+                    key={`empty-${idx}`}
+                    className={`${wrapperClasses} ${isClamped ? 'opacity-40' : ''} border border-dashed ${
+                      isArmed ? 'border-blue-500 ring-2 ring-blue-500/60' : 'border-neutral-300 dark:border-neutral-700'
+                    } rounded-md flex items-center justify-center`}
+                    onClick={() => {
+                      if (isClamped) return;
+                      setArmedSlot(operationType, isArmed ? undefined : idx);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        if (isClamped) return;
+                        setArmedSlot(operationType, isArmed ? undefined : idx);
+                      }
+                    }}
+                    aria-disabled={isClamped}
+                  >
+                    <div className="text-[10px] text-neutral-400">
+                      {isArmed ? 'Next input' : 'Empty slot'}
+                    </div>
+                    <div className="absolute top-1 left-1 bg-neutral-700 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                      {idx + 1}
+                    </div>
+                    {isClamped && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/40 text-white text-[10px] font-semibold z-10 pointer-events-none">
+                        Exceeds limit
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
               return (
                 <div
                   key={inputItem.id ?? idx}
-                  className={wrapperClasses}
-                  onClick={() => setOperationInputIndex?.(idx + 1)}
+                  className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isClamped ? 'opacity-50' : ''}`}
+                  onClick={() => {
+                    if (isClamped) return;
+                    if (armedSlotIndex !== undefined) {
+                      setArmedSlot(operationType, undefined);
+                    }
+                    const selectedIndex = inputIndexById.get(inputItem.id);
+                    if (selectedIndex !== undefined) {
+                      setOperationInputIndex?.(selectedIndex + 1);
+                    }
+                  }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
-                      setOperationInputIndex?.(idx + 1);
+                      if (isClamped) return;
+                      if (armedSlotIndex !== undefined) {
+                        setArmedSlot(operationType, undefined);
+                      }
+                      const selectedIndex = inputIndexById.get(inputItem.id);
+                      if (selectedIndex !== undefined) {
+                        setOperationInputIndex?.(selectedIndex + 1);
+                      }
                     }
                   }}
+                  aria-disabled={isClamped}
                 >
                   <CompactAssetCard
                     asset={inputItem.asset}
@@ -966,11 +741,17 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     enableHoverPreview={enableHoverPreview}
                     showPlayOverlay={showPlayOverlay}
                     clickToPlay={clickToPlay}
-                    className={isSelected ? 'ring-2 ring-blue-500' : ''}
+                    disableMotion={isSelected}
+                    className={`${isSelected ? 'ring-2 ring-blue-500' : ''} ${isClamped ? 'grayscale' : ''}`}
                   />
                   <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
                     {idx + 1}
                   </div>
+                  {isClamped && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/50 text-white text-[10px] font-semibold z-10 pointer-events-none">
+                      Exceeds limit
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -982,12 +763,13 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // Single-asset display: existing behavior
   // Get the current queue item based on index
-  const currentInputIdx = Math.max(0, Math.min(operationInputIndex - 1, operationInputs.length - 1));
-  const currentInput = operationInputs[currentInputIdx];
-  const currentInputId = currentInput?.id;
+  const currentSlotIndex = currentInput
+    ? (typeof currentInput.slotIndex === 'number' ? currentInput.slotIndex : currentInputIdx)
+    : null;
+  const isCurrentClamped = currentSlotIndex !== null && clampedSlotIndices.has(currentSlotIndex);
 
   // Build queue items for grid popup - use index as part of key to ensure uniqueness
-  const queueItems = operationInputs.flatMap((item, idx) => {
+  const queueItems = orderedInputs.flatMap((item, idx) => {
     if (!item?.asset) return [];
     const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
     const thumbUrl = thumbnailUrl ?? previewUrl ?? mainUrl ?? '';
@@ -998,39 +780,47 @@ export function AssetPanel(props: QuickGenPanelProps) {
   });
 
   const currentAsset = currentInput?.asset ?? displayAssets[0];
+  const singleHoverPreview = enableHoverPreview;
 
   return (
     <div className="h-full w-full flex flex-col">
       {headerBar}
-      {historyPopup}
       <div ref={containerRef} className="flex-1 p-2 pt-0">
-        <CompactAssetCard
-          asset={currentAsset}
-          showRemoveButton={operationInputs.length > 0}
-          onRemove={() => {
-            if (currentInputId) {
-              removeInput?.(operationType, currentInputId);
+        <div className={`relative h-full ${isCurrentClamped ? 'opacity-50' : ''}`}>
+          <CompactAssetCard
+            asset={currentAsset}
+          showRemoveButton={orderedInputs.length > 0}
+            onRemove={() => {
+              if (currentInputId) {
+                removeInput?.(operationType, currentInputId);
+              }
+            }}
+            lockedTimestamp={currentInput?.lockedTimestamp}
+            onLockTimestamp={
+              currentInputId
+                ? (timestamp) =>
+                    updateLockedTimestamp?.(operationType, currentInputId, timestamp)
+                : undefined
             }
-          }}
-          lockedTimestamp={currentInput?.lockedTimestamp}
-          onLockTimestamp={
-            currentInputId
-              ? (timestamp) =>
-                  updateLockedTimestamp?.(operationType, currentInputId, timestamp)
-              : undefined
-          }
-          hideFooter
-          fillHeight
-          currentIndex={operationInputIndex}
-          totalCount={operationInputs.length}
-          onNavigatePrev={() => cycleInputs?.(operationType, 'prev')}
-          onNavigateNext={() => cycleInputs?.(operationType, 'next')}
-          queueItems={queueItems}
-          onSelectIndex={(idx) => setOperationInputIndex?.(idx + 1)} // Convert 0-based to 1-based
-          enableHoverPreview={enableHoverPreview}
-          showPlayOverlay={showPlayOverlay}
-          clickToPlay={clickToPlay}
-        />
+            hideFooter
+            fillHeight
+            currentIndex={operationInputIndex}
+          totalCount={orderedInputs.length}
+            onNavigatePrev={() => cycleInputs?.(operationType, 'prev')}
+            onNavigateNext={() => cycleInputs?.(operationType, 'next')}
+            queueItems={queueItems}
+            onSelectIndex={(idx) => setOperationInputIndex?.(idx + 1)} // Convert 0-based to 1-based
+            enableHoverPreview={singleHoverPreview}
+            showPlayOverlay={showPlayOverlay}
+            clickToPlay={clickToPlay}
+            className={isCurrentClamped ? 'grayscale' : ''}
+          />
+          {isCurrentClamped && (
+            <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/50 text-white text-[10px] font-semibold z-10 pointer-events-none">
+              Exceeds limit
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

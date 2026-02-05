@@ -100,7 +100,25 @@ import {
   // ===== Settings Panel =====
   elements.settingsBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    const isHidden = elements.settingsPanel.classList.contains('hidden');
     elements.settingsPanel.classList.toggle('hidden');
+
+    // Position the panel above the button (fixed positioning)
+    if (isHidden) {
+      const btnRect = elements.settingsBtn.getBoundingClientRect();
+      const panelRect = elements.settingsPanel.getBoundingClientRect();
+
+      // Position above the button, aligned to right edge
+      let top = btnRect.top - panelRect.height - 8;
+      let left = btnRect.right - panelRect.width;
+
+      // Keep within viewport
+      if (top < 8) top = btnRect.bottom + 8;
+      if (left < 8) left = 8;
+
+      elements.settingsPanel.style.top = top + 'px';
+      elements.settingsPanel.style.left = left + 'px';
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -122,6 +140,7 @@ import {
       if (stored) {
         const settings = JSON.parse(stored);
         state.containVideo = settings.containVideo || false;
+        state.skipDedup = settings.skipDedup || false;
         // Load volume settings
         if (typeof settings.volume === 'number') {
           state.volume = settings.volume;
@@ -132,6 +151,7 @@ import {
       }
     } catch (e) {
       state.containVideo = false;
+      state.skipDedup = false;
     }
     applyPlayerSettings();
   }
@@ -140,6 +160,7 @@ import {
     try {
       localStorage.setItem(PLAYER_SETTINGS_STORAGE_KEY, JSON.stringify({
         containVideo: state.containVideo,
+        skipDedup: state.skipDedup,
         volume: state.volume,
         isMuted: state.isMuted,
       }));
@@ -157,6 +178,9 @@ import {
     }
     if (elements.containVideoCheck) {
       elements.containVideoCheck.checked = state.containVideo;
+    }
+    if (elements.skipDedupCheck) {
+      elements.skipDedupCheck.checked = state.skipDedup;
     }
     // Apply volume settings
     elements.video.volume = state.volume;
@@ -182,6 +206,13 @@ import {
       state.containVideo = elements.containVideoCheck.checked;
       savePlayerSettings();
       applyPlayerSettings();
+    });
+  }
+
+  if (elements.skipDedupCheck) {
+    elements.skipDedupCheck.addEventListener('change', () => {
+      state.skipDedup = elements.skipDedupCheck.checked;
+      savePlayerSettings();
     });
   }
 
@@ -268,6 +299,7 @@ import {
     mute: { code: 'KeyM', ctrl: false, shift: false, alt: false, label: 'Mute' },
     volumeUp: { code: 'ArrowUp', ctrl: false, shift: false, alt: false, label: 'Volume Up' },
     volumeDown: { code: 'ArrowDown', ctrl: false, shift: false, alt: false, label: 'Volume Down' },
+    togglePlaylist: { code: 'KeyB', ctrl: false, shift: false, alt: false, label: 'Toggle Playlist' },
   };
 
   const HOTKEY_STORAGE_KEY = 'pxs7_player_hotkeys';
@@ -455,6 +487,9 @@ import {
     } else if (matchesHotkey(e, hotkeys.volumeDown)) {
       e.preventDefault();
       setVolume(state.volume - 0.05);
+    } else if (matchesHotkey(e, hotkeys.togglePlaylist)) {
+      e.preventDefault();
+      window.PXS7Player.playlist?.toggleSidebar();
     }
   });
 

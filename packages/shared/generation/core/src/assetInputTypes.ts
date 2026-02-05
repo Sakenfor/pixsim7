@@ -11,8 +11,8 @@
  * - Decouples frontend from provider URL formats
  *
  * USAGE:
- * - Use compositionAssets for multi-image operations (image_to_image, fusion)
- * - Use sourceAssetId/sourceAssetIds for single-asset and transition operations
+ * - Use compositionAssets for all operations that accept media inputs
+ * - sourceAssetId/sourceAssetIds are legacy and will be removed
  */
 import type { CompositionAsset } from '@pixsim7/shared.types';
 
@@ -23,11 +23,19 @@ import type { CompositionAsset } from '@pixsim7/shared.types';
  *
  * @example
  * // Single asset (image_to_video, video_extend)
- * const input: AssetInput = { sourceAssetId: 123 };
+ * const input: AssetInput = {
+ *   compositionAssets: [{ asset: 123, media_type: 'image', role: 'source_image' }],
+ * };
  *
  * @example
  * // Multiple assets (video_transition)
- * const input: AssetInput = { sourceAssetIds: [123, 456, 789] };
+ * const input: AssetInput = {
+ *   compositionAssets: [
+ *     { asset: 123, media_type: 'image', role: 'transition_input' },
+ *     { asset: 456, media_type: 'image', role: 'transition_input' },
+ *     { asset: 789, media_type: 'image', role: 'transition_input' },
+ *   ],
+ * };
  *
  * @example
  * // Multi-image composition (image_to_image, fusion)
@@ -41,20 +49,19 @@ import type { CompositionAsset } from '@pixsim7/shared.types';
  */
 export interface AssetInput {
   /**
-   * Asset ID for single-asset operations.
-   * Used by: image_to_video, video_extend
+   * Asset ID for single-asset operations (legacy).
+   * Prefer compositionAssets.
    */
   sourceAssetId?: number;
 
   /**
-   * Asset IDs for multi-asset operations.
-   * Used by: video_transition
+   * Asset IDs for multi-asset operations (legacy).
+   * Prefer compositionAssets.
    */
   sourceAssetIds?: number[];
 
   /**
-   * Role-aware composition assets for multi-image operations.
-   * Used by: image_to_image, fusion
+   * Role-aware composition assets for all media-input operations.
    */
   compositionAssets?: CompositionAsset[];
 
@@ -70,9 +77,9 @@ export interface AssetInput {
  */
 export function hasAssetIdParams(params: Record<string, any>): boolean {
   return (
+    (Array.isArray(params.composition_assets) && params.composition_assets.length > 0) ||
     params.source_asset_id !== undefined ||
-    (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0) ||
-    (Array.isArray(params.composition_assets) && params.composition_assets.length > 0)
+    (Array.isArray(params.source_asset_ids) && params.source_asset_ids.length > 0)
   );
 }
 
