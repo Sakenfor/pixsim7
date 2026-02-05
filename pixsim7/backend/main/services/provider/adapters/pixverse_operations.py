@@ -442,6 +442,14 @@ class PixverseOperationsMixin:
             image_urls = [params["image_url"]]
 
         if not image_urls:
+            # Debug logging to help diagnose missing image_urls
+            logger.error(
+                "pixverse_i2i_missing_image_urls",
+                params_keys=list(params.keys()),
+                has_composition_assets=bool(params.get("composition_assets")),
+                image_urls_value=params.get("image_urls"),
+                image_url_value=str(params.get("image_url"))[:100] if params.get("image_url") else None,
+            )
             raise ProviderError(
                 "Pixverse IMAGE_TO_IMAGE operation requires at least one image_urls entry (resolved from composition_assets)."
             )

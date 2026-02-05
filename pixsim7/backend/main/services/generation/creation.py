@@ -810,6 +810,23 @@ class GenerationCreationService:
         elif operation_type == OperationType.IMAGE_TO_IMAGE:
             # Canonical composition assets for multi-image edits
             composition_assets = gen_config.get("composition_assets") or params.get("composition_assets")
+
+            # Debug logging for IMAGE_TO_IMAGE canonicalization
+            logger.info(
+                "canonicalize_i2i_debug",
+                extra={
+                    "has_composition_assets": bool(composition_assets),
+                    "composition_assets_count": len(composition_assets) if composition_assets else 0,
+                    "gen_config_keys": list(gen_config.keys()) if gen_config else [],
+                    "params_keys": list(params.keys()),
+                    "gen_config_composition_assets": bool(gen_config.get("composition_assets") if gen_config else False),
+                    "params_composition_assets": bool(params.get("composition_assets")),
+                    "gen_config_source_asset_id": gen_config.get("source_asset_id") if gen_config else None,
+                    "gen_config_source_asset_ids": gen_config.get("source_asset_ids") if gen_config else None,
+                    "params_source_asset_id": params.get("source_asset_id"),
+                }
+            )
+
             if composition_assets:
                 composition_assets = coerce_composition_assets(
                     composition_assets,

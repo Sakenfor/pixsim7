@@ -105,6 +105,201 @@ from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver impor
     get_api_mode_for_account,
 )
 
+
+# ============================================================================
+# Composition Asset Resolution Helper
+# ============================================================================
+
+
+async def resolve_composition_assets_for_pixverse(
+    composition_assets: list,
+    *,
+    db_session: AsyncSession,
+    api_mode: PixverseApiMode,
+    media_type_filter: str | None = None,
+    provider: Optional["PixverseProvider"] = None,
+    account: Optional[ProviderAccount] = None,
+) -> list[str]:
+    """
+    Resolve composition_assets to Pixverse-ready URLs.
+
+    This is the single canonical path for converting asset refs to provider URLs.
+    Uses AssetSyncService.get_asset_for_provider() which handles:
+    - Looking up asset.provider_uploads["pixverse"]
+    - Uploading to Pixverse if not already uploaded
+    - Caching the result
+
+    For WebAPI mode, if the provider_ref is a UUID (not a URL), we attempt to
+    resolve it to a URL via the Pixverse API metadata lookup.
+
+    Args:
+        composition_assets: List of composition asset dicts
+        db_session: Database session for asset lookups
+        api_mode: Pixverse API mode (WebAPI requires full URLs)
+        media_type_filter: Optional filter ("image" or "video")
+        provider: Optional PixverseProvider instance for UUID resolution
+        account: Optional ProviderAccount for UUID resolution
+
+    Returns:
+        List of resolved URLs ready for Pixverse API
+
+    Raises:
+        ProviderError: If any asset cannot be resolved
+    """
+    from pixsim7.backend.main.services.asset.sync import AssetSyncService
+    from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+    from pixsim7.backend.main.services.provider.adapters.pixverse_ids import looks_like_pixverse_uuid
+
+    # Normalize input
+    assets = coerce_composition_assets(composition_assets)
+    if not assets:
+        return []
+
+    sync_service = AssetSyncService(db_session)
+    resolved_urls: list[str] = []
+
+    for i, item in enumerate(assets):
+        # Filter by media type if specified
+        item_media_type = item.get("media_type")
+        if media_type_filter and item_media_type and item_media_type != media_type_filter:
+            logger.debug(
+                "pixverse_asset_skipped_media_type",
+                index=i,
+                item_media_type=item_media_type,
+                filter=media_type_filter,
+            )
+            continue
+
+        # Get asset ref or URL
+        asset_value = item.get("asset")
+        url_value = item.get("url")
+
+        # Try to extract asset ID
+        asset_id = extract_asset_id(asset_value)
+
+        logger.debug(
+            "pixverse_resolve_asset_item",
+            index=i,
+            asset_value=str(asset_value)[:50] if asset_value else None,
+            url_value=str(url_value)[:50] if url_value else None,
+            extracted_asset_id=asset_id,
+            item_keys=list(item.keys()),
+        )
+
+        if asset_id is not None:
+            # Resolve via AssetSyncService (uploads if needed)
+            try:
+                provider_ref = await sync_service.get_asset_for_provider(
+                    asset_id=asset_id,
+                    target_provider_id="pixverse",
+                )
+            except Exception as e:
+                raise ProviderError(
+                    f"Failed to resolve composition_assets[{i}] (asset:{asset_id}): {e}"
+                )
+
+            # Also load the asset to get remote_url as fallback
+            asset_remote_url = None
+            try:
+                from pixsim7.backend.main.domain import Asset
+                from sqlalchemy import select
+                result = await db_session.execute(
+                    select(Asset.remote_url).where(Asset.id == asset_id)
+                )
+                asset_remote_url = result.scalar_one_or_none()
+            except Exception:
+                pass  # Non-critical, we'll try without it
+
+            # Validate the resolved ref is valid for the API mode
+            validated_ref = _resolve_reference(provider_ref, api_mode)
+
+            logger.info(
+                "pixverse_asset_resolution_step1",
+                asset_id=asset_id,
+                provider_ref=str(provider_ref)[:60] if provider_ref else None,
+                api_mode=api_mode.value,
+                validated_ref_ok=bool(validated_ref),
+            )
+
+            # If validation failed and we're in WebAPI mode, try to resolve UUID to URL
+            if not validated_ref and api_mode == PixverseApiMode.WEBAPI:
+                is_uuid = looks_like_pixverse_uuid(str(provider_ref)) if provider_ref else False
+                logger.info(
+                    "pixverse_uuid_resolution_attempt",
+                    asset_id=asset_id,
+                    provider_ref=str(provider_ref)[:60] if provider_ref else None,
+                    is_uuid=is_uuid,
+                    has_provider=bool(provider),
+                    has_account=bool(account),
+                    has_remote_url=bool(asset_remote_url),
+                )
+
+                if provider and account and provider_ref:
+                    # Check if it looks like a UUID - need to resolve via Pixverse API
+                    if is_uuid:
+                        media_type = item_media_type or media_type_filter or "image"
+                        try:
+                            resolved_url = await provider._resolve_webapi_url_from_id(
+                                account,
+                                value=provider_ref,
+                                media_type=media_type,
+                                asset_id=asset_id,
+                                remote_url=asset_remote_url,  # Pass remote_url for fallback
+                            )
+                            if resolved_url:
+                                validated_ref = resolved_url
+                                logger.info(
+                                    "pixverse_uuid_resolved_to_url",
+                                    asset_id=asset_id,
+                                    uuid=str(provider_ref)[:36],
+                                    resolved_url=resolved_url[:80],
+                                )
+                        except Exception as e:
+                            logger.warning(
+                                "pixverse_uuid_resolution_failed",
+                                asset_id=asset_id,
+                                uuid=str(provider_ref)[:36],
+                                error=str(e),
+                            )
+
+                # Fallback: If UUID resolution failed but we have a valid remote_url, try using it directly
+                if not validated_ref and asset_remote_url:
+                    fallback_ref = _resolve_reference(asset_remote_url, api_mode)
+                    if fallback_ref:
+                        validated_ref = fallback_ref
+                        logger.info(
+                            "pixverse_using_remote_url_fallback",
+                            asset_id=asset_id,
+                            remote_url=asset_remote_url[:80],
+                        )
+
+            if not validated_ref:
+                raise ProviderError(
+                    f"composition_assets[{i}] resolved to '{provider_ref}' which is not valid "
+                    f"for Pixverse {api_mode.value} mode. Asset may need to be re-uploaded."
+                )
+
+            resolved_urls.append(validated_ref)
+
+        elif url_value and isinstance(url_value, str):
+            # Direct URL provided - validate it
+            validated_url = _resolve_reference(url_value, api_mode)
+            if not validated_url:
+                raise ProviderError(
+                    f"composition_assets[{i}] URL '{url_value[:50]}...' is not valid "
+                    f"for Pixverse {api_mode.value} mode."
+                )
+            resolved_urls.append(validated_url)
+
+        else:
+            # No asset ref or URL
+            raise ProviderError(
+                f"composition_assets[{i}] has no resolvable asset or URL."
+            )
+
+    return resolved_urls
+
+
 class PixverseProvider(
     PixverseSessionMixin,
     PixverseAuthMixin,
@@ -453,6 +648,14 @@ class PixverseProvider(
         Uses Pixverse metadata lookups to convert IDs/UUIDs/URLs to media URLs
         when the WebAPI requires https:// URLs.
         """
+        logger.info(
+            "pixverse_resolve_webapi_url_start",
+            value=str(value)[:60] if value else None,
+            media_type=media_type,
+            asset_id=asset_id,
+            account_id=account.id if account else None,
+        )
+
         if not value:
             return None
 
@@ -469,6 +672,7 @@ class PixverseProvider(
             )
 
         if not candidate:
+            logger.info("pixverse_resolve_webapi_url_no_candidate")
             return None
 
         raw = str(candidate)
@@ -481,8 +685,26 @@ class PixverseProvider(
             extracted_uuid = extract_uuid_from_url(raw)
             raw = extracted_uuid or raw
 
-        if not raw.isdigit() and not looks_like_pixverse_uuid(raw) and not remote_url:
+        is_digit = raw.isdigit()
+        is_uuid = looks_like_pixverse_uuid(raw)
+
+        if not is_digit and not is_uuid and not remote_url:
+            logger.info(
+                "pixverse_resolve_webapi_url_skip",
+                raw=raw[:60],
+                is_digit=is_digit,
+                is_uuid=is_uuid,
+                has_remote_url=bool(remote_url),
+            )
             return None
+
+        logger.info(
+            "pixverse_resolve_webapi_url_fetching",
+            raw=raw[:60],
+            media_type=media_type,
+            is_digit=is_digit,
+            is_uuid=is_uuid,
+        )
 
         try:
             if media_type == "video":
@@ -512,9 +734,23 @@ class PixverseProvider(
             return None
 
         if not metadata:
+            logger.info(
+                "pixverse_resolve_webapi_url_no_metadata",
+                raw=raw[:60],
+                media_type=media_type,
+            )
             return None
 
-        return _extract_media_url(metadata, media_type)
+        result_url = _extract_media_url(metadata, media_type)
+        logger.info(
+            "pixverse_resolve_webapi_url_result",
+            raw=raw[:60],
+            media_type=media_type,
+            has_metadata=bool(metadata),
+            metadata_keys=list(metadata.keys()) if metadata else [],
+            result_url=result_url[:80] if result_url else None,
+        )
+        return result_url
 
     async def prepare_execution_params(
         self,
@@ -524,27 +760,132 @@ class PixverseProvider(
         account: Optional[ProviderAccount] = None,
     ) -> Dict[str, Any]:
         """
-        Resolve provider-specific URLs from asset references.
+        Resolve composition_assets to Pixverse-ready URLs.
 
-        For operations like IMAGE_TO_IMAGE, the SDK requires Pixverse-hosted URLs.
-        This method checks for source_asset_id in params and looks up provider_uploads.
+        This is the single resolution point for asset refs → provider URLs.
+        Uses resolve_composition_assets_for_pixverse() for clean, unified resolution.
         """
-        from pixsim7.backend.main.domain.assets.models import Asset
-        from pixsim7.backend.main.services.asset.sync import AssetSyncService
-        from sqlalchemy import select
         from pixsim7.backend.main.infrastructure.database.session import get_async_session
 
         result_params = dict(mapped_params)
         operation_type = generation.operation_type
 
-        # Determine API mode (WebAPI vs OpenAPI)
+        # === Determine API mode ===
         api_mode = get_api_mode_for_account(account) if account is not None else PixverseApiMode.WEBAPI
 
-        # Allow generation params to override API mode (e.g., quickgen toggle)
-        api_override = None
+        # Allow generation params to override API mode
+        api_override = self._extract_api_mode_override(generation)
+        if api_override is not None:
+            api_mode = api_override
+
+        # Some operations require WebAPI (JWT) - image operations need full URLs
+        requires_webapi = operation_type in {
+            OperationType.TEXT_TO_IMAGE,
+            OperationType.IMAGE_TO_IMAGE,
+            OperationType.VIDEO_TRANSITION,
+        }
+        if requires_webapi:
+            if api_override == PixverseApiMode.OPENAPI:
+                raise ProviderError(
+                    "Pixverse image/transition operations require WebAPI (JWT). "
+                    "OpenAPI is not supported for these operations."
+                )
+            api_mode = PixverseApiMode.WEBAPI
+
+        # === Resolve composition_assets if present ===
+        composition_assets = result_params.get("composition_assets")
+
+        # Debug logging for IMAGE_TO_IMAGE resolution path
+        if operation_type == OperationType.IMAGE_TO_IMAGE:
+            logger.info(
+                "pixverse_i2i_debug",
+                has_composition_assets=bool(composition_assets),
+                composition_assets_count=len(composition_assets) if composition_assets else 0,
+                result_params_keys=list(result_params.keys()),
+                has_image_urls=bool(result_params.get("image_urls")),
+                has_image_url=bool(result_params.get("image_url")),
+            )
+
+        if composition_assets:
+            # Determine media type filter based on operation
+            media_type_filter = None
+            if operation_type in {
+                OperationType.IMAGE_TO_VIDEO,
+                OperationType.IMAGE_TO_IMAGE,
+                OperationType.VIDEO_TRANSITION,
+                OperationType.TEXT_TO_IMAGE,
+            }:
+                media_type_filter = "image"
+            elif operation_type == OperationType.VIDEO_EXTEND:
+                media_type_filter = "video"
+
+            async with get_async_session() as session:
+                resolved_urls = await resolve_composition_assets_for_pixverse(
+                    composition_assets,
+                    db_session=session,
+                    api_mode=api_mode,
+                    media_type_filter=media_type_filter,
+                    provider=self,
+                    account=account,
+                )
+
+            # Map resolved URLs to operation-specific fields
+            if resolved_urls:
+                if operation_type == OperationType.IMAGE_TO_VIDEO:
+                    result_params["image_url"] = resolved_urls[0]
+                elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.VIDEO_TRANSITION}:
+                    result_params["image_urls"] = resolved_urls
+                    if len(resolved_urls) == 1:
+                        result_params["image_url"] = resolved_urls[0]
+                elif operation_type == OperationType.VIDEO_EXTEND:
+                    result_params["video_url"] = resolved_urls[0]
+                elif operation_type == OperationType.TEXT_TO_IMAGE:
+                    result_params["image_urls"] = resolved_urls
+
+            # Remove composition_assets from final params (SDK doesn't use it)
+            result_params.pop("composition_assets", None)
+
+            logger.info(
+                "pixverse_composition_assets_resolved",
+                operation_type=operation_type.value,
+                api_mode=api_mode.value,
+                resolved_count=len(resolved_urls),
+                image_url=str(result_params.get("image_url"))[:80] if result_params.get("image_url") else None,
+            )
+
+        # === Handle legacy fields (already-resolved URLs) ===
+        # These should already be valid URLs from map_parameters
+        # Just validate they're proper format for the API mode
+        if result_params.get("image_url") and not composition_assets:
+            validated = _resolve_reference(result_params["image_url"], api_mode)
+            if validated:
+                result_params["image_url"] = validated
+
+        if isinstance(result_params.get("image_urls"), list) and not composition_assets:
+            validated_urls = []
+            for url in result_params["image_urls"]:
+                validated = _resolve_reference(url, api_mode)
+                validated_urls.append(validated or url)
+            result_params["image_urls"] = validated_urls
+
+        if result_params.get("video_url") and not composition_assets:
+            validated = _resolve_reference(result_params["video_url"], api_mode)
+            if validated:
+                result_params["video_url"] = validated
+
+        # Remove legacy fields that shouldn't reach SDK
+        result_params.pop("source_asset_id", None)
+        result_params.pop("source_asset_ids", None)
+
+        return _sanitize_url_params(result_params, api_mode)
+
+    def _extract_api_mode_override(self, generation) -> Optional[PixverseApiMode]:
+        """Extract API mode override from generation params."""
         try:
             raw_params = getattr(generation, "raw_params", None) or {}
             canonical_params = getattr(generation, "canonical_params", None) or {}
+
+            # Check style.pixverse for override
             style_override = None
             gen_cfg = raw_params.get("generation_config")
             if isinstance(gen_cfg, dict):
@@ -557,6 +898,7 @@ class PixverseProvider(
                             or provider_style.get("pixverse_api_mode")
                             or provider_style.get("use_openapi")
                         )
+
             api_override = (
                 raw_params.get("api_method")
                 or raw_params.get("pixverse_api_mode")
@@ -566,564 +908,23 @@ class PixverseProvider(
                 or canonical_params.get("pixverse_api_mode")
                 or canonical_params.get("use_openapi")
             )
-        except Exception:
-            api_override = None
 
-        override_mode: PixverseApiMode | None = None
-        if api_override is not None:
+            if api_override is None:
+                return None
+
             if isinstance(api_override, str):
                 normalized = api_override.strip().lower()
                 if normalized in {"openapi", "open-api", "open_api", "open"}:
-                    override_mode = PixverseApiMode.OPENAPI
+                    return PixverseApiMode.OPENAPI
                 elif normalized in {"webapi", "web-api", "web_api", "web"}:
-                    override_mode = PixverseApiMode.WEBAPI
+                    return PixverseApiMode.WEBAPI
             elif isinstance(api_override, (int, bool)):
-                override_mode = PixverseApiMode.OPENAPI if bool(api_override) else PixverseApiMode.WEBAPI
+                return PixverseApiMode.OPENAPI if bool(api_override) else PixverseApiMode.WEBAPI
 
-            if override_mode is not None:
-                api_mode = override_mode
-
-        # Some Pixverse operations require the WebAPI (JWT) regardless of OpenAPI availability.
-        # The image WebAPI expects Pixverse-hosted URLs (not img_id).
-        requires_webapi = operation_type in {
-            OperationType.TEXT_TO_IMAGE,
-            OperationType.IMAGE_TO_IMAGE,
-            OperationType.VIDEO_TRANSITION,
-        }
-        if requires_webapi:
-            if override_mode == PixverseApiMode.OPENAPI:
-                raise ProviderError(
-                    "Pixverse image/transition operations require WebAPI (JWT). "
-                    "OpenAPI is not supported for these operations."
-                )
-            api_mode = PixverseApiMode.WEBAPI
-
-        async def _resolve_webapi_param(value: Any, *, media_type: str) -> Optional[str]:
-            if api_mode != PixverseApiMode.WEBAPI or account is None:
-                return None
-            return await self._resolve_webapi_url_from_id(
-                account,
-                value=value,
-                media_type=media_type,
-            )
-
-        async def _normalize_mixed_image_urls(
-            image_urls: list[Any],
-            *,
-            context: str,
-        ) -> list[Any]:
-            if not image_urls or not isinstance(image_urls, list):
-                return image_urls
-
-            normalized_inputs: list[Any] = []
-            has_url = False
-            has_non_url = False
-            url_count = 0
-            non_url_count = 0
-
-            for value in image_urls:
-                if not value:
-                    normalized_inputs.append(value)
-                    continue
-
-                normalized = _normalize_url(value)
-                if isinstance(normalized, str) and normalized.startswith(("http://", "https://")):
-                    has_url = True
-                    url_count += 1
-                    normalized_inputs.append(normalized)
-                    continue
-
-                raw_value = value if isinstance(value, str) else str(value)
-                if raw_value.startswith(("http://", "https://")):
-                    has_url = True
-                    url_count += 1
-                else:
-                    has_non_url = True
-                    non_url_count += 1
-                normalized_inputs.append(raw_value)
-
-            if not (has_url and has_non_url):
-                return normalized_inputs
-
-            sample_values = [
-                str(value)[:80] if value is not None else None
-                for value in normalized_inputs[:3]
-            ]
-            logger.warning(
-                "pixverse_mixed_image_urls_detected",
-                context=context,
-                api_mode=api_mode.value,
-                total=len(normalized_inputs),
-                url_count=url_count,
-                non_url_count=non_url_count,
-                sample_values=sample_values,
-            )
-
-            if account is None:
-                logger.error(
-                    "pixverse_mixed_image_urls_no_account",
-                    context=context,
-                    api_mode=api_mode.value,
-                    total=len(normalized_inputs),
-                )
-                raise ProviderError(
-                    "Pixverse image_urls contained mixed URL and ID references, "
-                    "but no provider account was available to resolve IDs."
-                )
-
-            resolved_urls: list[str] = []
-            for value in normalized_inputs:
-                if isinstance(value, str) and value.startswith(("http://", "https://")):
-                    resolved_urls.append(value)
-                    continue
-
-                resolved = await self._resolve_webapi_url_from_id(
-                    account,
-                    value=value,
-                    media_type="image",
-                )
-                if not resolved:
-                    logger.error(
-                        "pixverse_mixed_image_urls_unresolved",
-                        context=context,
-                        api_mode=api_mode.value,
-                        value=str(value)[:50] if value is not None else None,
-                        total=len(normalized_inputs),
-                        url_count=url_count,
-                        non_url_count=non_url_count,
-                    )
-                    raise ProviderError(
-                        "Pixverse image_urls contained mixed URL and ID references, "
-                        "and at least one ID could not be resolved to a URL."
-                    )
-                resolved_urls.append(resolved)
-
-            logger.info(
-                "pixverse_mixed_image_urls_normalized",
-                context=context,
-                api_mode=api_mode.value,
-                total=len(resolved_urls),
-                url_count=url_count,
-                non_url_count=non_url_count,
-            )
-            return resolved_urls
-
-        logger.debug(
-            "prepare_execution_params_called",
-            has_source_asset_id="source_asset_id" in mapped_params,
-            has_source_asset_ids="source_asset_ids" in mapped_params,
-            source_asset_id=mapped_params.get("source_asset_id"),
-            image_url=mapped_params.get("image_url", "")[:50] if mapped_params.get("image_url") else None,
-            operation_type=generation.operation_type.value if generation.operation_type else None,
-            api_mode=api_mode.value,
-            api_override=str(api_override)[:32] if api_override is not None else None,
-        )
-
-        image_urls = result_params.get("image_urls")
-        image_urls_asset_ids: list[Optional[int]] = []
-        has_asset_refs_in_image_urls = False
-        if isinstance(image_urls, list):
-            for entry in image_urls:
-                asset_id = extract_asset_id(entry, allow_numeric_string=False)
-                image_urls_asset_ids.append(asset_id)
-                if asset_id is not None:
-                    has_asset_refs_in_image_urls = True
-            if has_asset_refs_in_image_urls:
-                sample_values = [
-                    str(value)[:80] if value is not None else None
-                    for value in image_urls[:3]
-                ]
-                logger.warning(
-                    "pixverse_image_urls_asset_refs_detected",
-                    context="image_urls",
-                    api_mode=api_mode.value,
-                    total=len(image_urls),
-                    asset_ref_count=sum(1 for v in image_urls_asset_ids if v is not None),
-                    sample_values=sample_values,
-                )
-
-        image_url_asset_id = extract_asset_id(
-            result_params.get("image_url"),
-            allow_numeric_string=False,
-        )
-
-        resolution_source: str | None = None
-
-        # Check for explicit source_asset_id(s) from frontend
-        canonical = generation.canonical_params or {}
-        source_asset_ids = mapped_params.get("source_asset_ids") or canonical.get("source_asset_ids")
-        source_asset_id = mapped_params.get("source_asset_id") or canonical.get("source_asset_id")
-
-        if not source_asset_id and not source_asset_ids and not has_asset_refs_in_image_urls and image_url_asset_id is None:
-            # No explicit asset ID(s) - resolve any legacy URL-like params
-            if api_mode == PixverseApiMode.WEBAPI and account is not None:
-                if result_params.get("image_url"):
-                    resolved = _resolve_reference(result_params.get("image_url"), api_mode)
-                    if not resolved:
-                        resolved = await _resolve_webapi_param(result_params.get("image_url"), media_type="image")
-                    if resolved:
-                        result_params["image_url"] = resolved
-
-                if isinstance(result_params.get("image_urls"), list):
-                    resolved_urls: list[str] = []
-                    for value in result_params.get("image_urls") or []:
-                        resolved = _resolve_reference(value, api_mode)
-                        if not resolved:
-                            resolved = await _resolve_webapi_param(value, media_type="image")
-                        resolved_urls.append(resolved or value)
-                    result_params["image_urls"] = await _normalize_mixed_image_urls(
-                        resolved_urls,
-                        context="legacy_image_urls",
-                    )
-
-                if result_params.get("video_url"):
-                    resolved = _resolve_reference(result_params.get("video_url"), api_mode)
-                    if not resolved:
-                        resolved = await _resolve_webapi_param(result_params.get("video_url"), media_type="video")
-                    if resolved:
-                        result_params["video_url"] = resolved
-
-            return _sanitize_url_params(result_params, api_mode)
-
-        # Look up the asset to get provider_uploads
-        async with get_async_session() as session:
-            async def resolve_asset_ref(asset_id: int | str) -> tuple[str | None, Asset | None]:
-                query = select(Asset).where(Asset.id == asset_id)
-                result = await session.execute(query)
-                asset = result.scalar_one_or_none()
-
-                if not asset:
-                    logger.warning(
-                        "source_asset_not_found",
-                        source_asset_id=asset_id,
-                    )
-                    return None, None
-
-                provider_ref: Any = None
-
-                if asset.provider_id == self.provider_id and asset.remote_url:
-                    resolved_remote_ref = _resolve_reference(asset.remote_url, api_mode)
-                    if resolved_remote_ref:
-                        provider_ref = resolved_remote_ref
-                        logger.debug(
-                            "using_pixverse_remote_url",
-                            asset_id=asset_id,
-                            url=str(provider_ref)[:50] if provider_ref else None,
-                        )
-
-                if not provider_ref and asset.provider_uploads and self.provider_id in asset.provider_uploads:
-                    provider_ref = asset.provider_uploads[self.provider_id]
-                    resolved_upload_ref = _resolve_reference(provider_ref, api_mode)
-                    if not resolved_upload_ref and api_mode == PixverseApiMode.WEBAPI and account is not None:
-                        media_kind = (
-                            asset.media_type.value
-                            if hasattr(asset.media_type, "value")
-                            else str(asset.media_type)
-                        )
-                        resolved_upload_ref = await self._resolve_webapi_url_from_id(
-                            account,
-                            value=provider_ref,
-                            media_type=media_kind,
-                            remote_url=asset.remote_url,
-                            asset_id=asset.id,
-                        )
-                    if resolved_upload_ref:
-                        provider_ref = resolved_upload_ref
-                        if not asset.remote_url or not _resolve_reference(asset.remote_url, api_mode):
-                            try:
-                                asset.remote_url = resolved_upload_ref
-                                await session.commit()
-                            except Exception:
-                                await session.rollback()
-                        logger.debug(
-                            "using_provider_uploads_url",
-                            asset_id=asset_id,
-                            url=str(provider_ref)[:50] if provider_ref else None,
-                        )
-                    else:
-                        provider_ref = None
-
-                if (
-                    not provider_ref
-                    and api_mode == PixverseApiMode.WEBAPI
-                    and account is not None
-                    and asset.provider_id == self.provider_id
-                    and asset.provider_asset_id
-                ):
-                    media_kind = (
-                        asset.media_type.value
-                        if hasattr(asset.media_type, "value")
-                        else str(asset.media_type)
-                    )
-                    resolved_from_id = await self._resolve_webapi_url_from_id(
-                        account,
-                        value=asset.provider_asset_id,
-                        media_type=media_kind,
-                        remote_url=asset.remote_url,
-                        asset_id=asset.id,
-                    )
-                    if resolved_from_id:
-                        provider_ref = resolved_from_id
-                        if not asset.remote_url or not _resolve_reference(asset.remote_url, api_mode):
-                            try:
-                                asset.remote_url = resolved_from_id
-                                await session.commit()
-                            except Exception:
-                                await session.rollback()
-                        logger.debug(
-                            "resolved_pixverse_asset_id_url",
-                            asset_id=asset_id,
-                            url=str(provider_ref)[:50] if provider_ref else None,
-                        )
-
-                if not provider_ref:
-                    sync_service = AssetSyncService(session)
-                    try:
-                        provider_ref = await sync_service.get_asset_for_provider(
-                            asset_id=int(asset_id),
-                            target_provider_id=self.provider_id,
-                        )
-                        logger.info(
-                            "provider_upload_completed",
-                            asset_id=asset_id,
-                            provider_id=self.provider_id,
-                            provider_ref=str(provider_ref)[:50] if provider_ref else None,
-                        )
-                    except Exception as exc:
-                        logger.error(
-                            "provider_upload_failed",
-                            asset_id=asset_id,
-                            provider_id=self.provider_id,
-                            error=str(exc),
-                        )
-
-                return provider_ref, asset
-
-            async def _resolve_asset_image_url(
-                asset_id: int,
-                *,
-                context: str,
-                error_event: str,
-                error_message: str,
-                index: Optional[int] = None,
-                allow_failure: bool = False,
-            ) -> Optional[str]:
-                provider_ref, asset = await resolve_asset_ref(asset_id)
-                if asset and asset.provider_id == self.provider_id and asset.remote_url:
-                    resolved_remote_ref = _resolve_reference(asset.remote_url, api_mode)
-                    if resolved_remote_ref:
-                        return resolved_remote_ref
-                resolved_ref = _resolve_reference(provider_ref, api_mode)
-                if not resolved_ref:
-                    resolved_ref = await _resolve_webapi_param(provider_ref, media_type="image")
-                if resolved_ref:
-                    return resolved_ref
-                if allow_failure:
-                    return None
-                logger.error(
-                    error_event,
-                    context=context,
-                    asset_id=asset_id,
-                    provider_ref=str(provider_ref)[:50] if provider_ref else None,
-                    api_mode=api_mode.value,
-                    index=index,
-                )
-                raise ProviderError(error_message)
-
-            async def _resolve_image_urls_list(
-                values: list[Any],
-                *,
-                context: str,
-                asset_ids: Optional[list[Optional[int]]] = None,
-                fallback_values: Optional[list[Any]] = None,
-                allow_asset_fallback: bool = False,
-                allow_numeric_string: bool = True,
-            ) -> list[Any]:
-                resolved_urls: list[Any] = []
-                for idx, value in enumerate(values):
-                    asset_id = None
-                    if asset_ids is not None and idx < len(asset_ids):
-                        asset_id = asset_ids[idx]
-                    if asset_id is None:
-                        asset_id = extract_asset_id(
-                            value,
-                            allow_numeric_string=allow_numeric_string,
-                        )
-                    if asset_id is not None:
-                        resolved_ref = await _resolve_asset_image_url(
-                            asset_id,
-                            context=context,
-                            error_event="pixverse_image_urls_asset_unresolved",
-                            error_message=(
-                                "Pixverse image_urls contained an asset reference that could not be resolved to a URL."
-                            ),
-                            index=idx,
-                            allow_failure=allow_asset_fallback,
-                        )
-                        if resolved_ref:
-                            resolved_urls.append(resolved_ref)
-                            continue
-
-                        if allow_asset_fallback and fallback_values and idx < len(fallback_values):
-                            fallback = fallback_values[idx]
-                            if fallback:
-                                resolved_fallback = _resolve_reference(fallback, api_mode)
-                                if not resolved_fallback:
-                                    resolved_fallback = await _resolve_webapi_param(
-                                        fallback, media_type="image"
-                                    )
-                                resolved_urls.append(resolved_fallback or fallback)
-                            continue
-
-                        continue
-
-                    resolved = _resolve_reference(value, api_mode)
-                    if not resolved:
-                        resolved = await _resolve_webapi_param(value, media_type="image")
-                    resolved_urls.append(resolved or value)
-
-                return await _normalize_mixed_image_urls(
-                    resolved_urls,
-                    context=context,
-                )
-
-            if image_url_asset_id is not None and not source_asset_id and not source_asset_ids:
-                resolved_ref = await _resolve_asset_image_url(
-                    image_url_asset_id,
-                    context="image_url",
-                    error_event="pixverse_image_url_asset_unresolved",
-                    error_message=(
-                        "Pixverse image_url contained an asset reference that could not be resolved to a URL."
-                    ),
-                )
-                if resolved_ref:
-                    result_params["image_url"] = resolved_ref
-                    resolution_source = "image_url_asset_ref"
-
-            if source_asset_ids and isinstance(source_asset_ids, (list, tuple)):
-                resolved_urls: list[str] = []
-                for asset_id in source_asset_ids:
-                    resolved_asset_id = extract_asset_id(asset_id)
-                    if resolved_asset_id is None:
-                        raise ProviderError(
-                            f"Pixverse image operations require numeric source_asset_ids. "
-                            f"Invalid entry: {asset_id}"
-                        )
-                    resolved_ref = await _resolve_asset_image_url(
-                        resolved_asset_id,
-                        context="source_asset_ids",
-                        error_event="pixverse_image_urls_asset_unresolved",
-                        error_message=(
-                            f"Pixverse image operations require a Pixverse-hosted source image. "
-                            f"Failed to resolve source_asset_ids: {source_asset_ids}"
-                        ),
-                    )
-                    if resolved_ref:
-                        resolved_urls.append(resolved_ref)
-
-                if not resolved_urls:
-                    raise ProviderError(
-                        f"Pixverse image operations require a Pixverse-hosted source image. "
-                        f"Failed to resolve source_asset_ids: {source_asset_ids}"
-                    )
-
-                result_params["image_urls"] = await _normalize_mixed_image_urls(
-                    resolved_urls,
-                    context="source_asset_ids",
-                )
-
-                if len(resolved_urls) == 1:
-                    result_params["image_url"] = resolved_urls[0]
-                resolution_source = "source_asset_ids"
-
-            elif has_asset_refs_in_image_urls and isinstance(image_urls, list):
-                result_params["image_urls"] = await _resolve_image_urls_list(
-                    image_urls,
-                    context="image_urls_asset_refs",
-                    asset_ids=image_urls_asset_ids,
-                    allow_numeric_string=False,
-                )
-                if result_params.get("image_urls"):
-                    result_params["image_url"] = result_params["image_urls"][0]
-                resolution_source = "image_urls_asset_refs"
-
-            if source_asset_id and not source_asset_ids:
-                provider_ref, asset = await resolve_asset_ref(source_asset_id)
-                resolved_ref = _resolve_reference(provider_ref, api_mode)
-                if not resolved_ref:
-                    media_kind = "video" if operation_type == OperationType.VIDEO_EXTEND else "image"
-                    resolved_ref = await _resolve_webapi_param(provider_ref, media_type=media_kind)
-
-                if resolved_ref:
-                    # Substitute the URL in params
-                    logger.debug(
-                        "substituting_pixverse_url",
-                        asset_id=source_asset_id,
-                        original_url=result_params.get("image_url", "")[:50] if result_params.get("image_url") else None,
-                        pixverse_url=resolved_ref[:50] if resolved_ref else None,
-                    )
-                    if "image_url" in result_params:
-                        result_params["image_url"] = resolved_ref
-                    elif operation_type == OperationType.IMAGE_TO_VIDEO:
-                        result_params["image_url"] = resolved_ref
-                    if "image_urls" in result_params and isinstance(result_params["image_urls"], list):
-                        if len(result_params["image_urls"]) == 1:
-                            result_params["image_urls"] = [resolved_ref]
-                    elif operation_type in {OperationType.IMAGE_TO_IMAGE, OperationType.VIDEO_TRANSITION}:
-                        result_params["image_urls"] = [resolved_ref]
-                    if "video_url" in result_params:
-                        result_params["video_url"] = resolved_ref
-                    elif operation_type == OperationType.VIDEO_EXTEND:
-                        result_params["video_url"] = resolved_ref
-                    resolution_source = "source_asset_id"
-                else:
-                    # Log details before raising to aid debugging
-                    if asset:
-                        logger.error(
-                            "no_pixverse_url_for_asset",
-                            asset_id=source_asset_id,
-                            provider_id=asset.provider_id,
-                            has_provider_uploads=bool(asset.provider_uploads),
-                            provider_uploads_keys=list(asset.provider_uploads.keys()) if asset.provider_uploads else [],
-                            remote_url=asset.remote_url[:50] if asset.remote_url else None,
-                            msg="Asset must be uploaded to Pixverse first for image operations",
-                        )
-                    raise ProviderError(
-                        f"Pixverse image operations require a Pixverse-hosted source image. "
-                        f"Failed to resolve source_asset_id: {source_asset_id}"
-                    )
-
-        # Final debug summary of resolved params for troubleshooting
-        try:
-            image_urls = result_params.get("image_urls")
-            image_urls_sample = None
-            image_urls_count = None
-            if isinstance(image_urls, list):
-                image_urls_count = len(image_urls)
-                image_urls_sample = [
-                    str(value)[:80] if value is not None else None
-                    for value in image_urls[:3]
-                ]
-            logger.info(
-                "pixverse_prepare_execution_params_resolved",
-                operation_type=operation_type.value if operation_type else None,
-                api_mode=api_mode.value,
-                image_url=str(result_params.get("image_url"))[:120] if result_params.get("image_url") else None,
-                image_urls_count=image_urls_count,
-                image_urls_sample=image_urls_sample,
-                video_url=str(result_params.get("video_url"))[:120] if result_params.get("video_url") else None,
-                source_asset_id=source_asset_id,
-                source_asset_ids_count=len(source_asset_ids) if isinstance(source_asset_ids, (list, tuple)) else None,
-                resolution_source=resolution_source,
-            )
         except Exception:
             pass
 
-        # Remove source_asset_id from params (not needed by SDK)
-        result_params.pop("source_asset_id", None)
-        result_params.pop("source_asset_ids", None)
-
-        return _sanitize_url_params(result_params, api_mode)
+        return None
 
     def get_operation_parameter_spec(self) -> dict:
         """
