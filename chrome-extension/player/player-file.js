@@ -45,7 +45,7 @@
       const isBlob = src.startsWith('blob:');
       window.PXS7Player.history?.addToVideoHistory(name, isBlob ? null : src, isBlob);
       // Add to playlist
-      window.PXS7Player.playlist?.addToPlaylist(name, src, isBlob, false, elements.video);
+      window.PXS7Player.playlist?.addToPlaylist(name, src, isBlob, false, elements.video, state.pendingFileHandle);
       state.currentFps = 30;
       elements.fpsInput.value = state.currentFps;
     };
@@ -138,7 +138,7 @@
       window.PXS7Player.history?.updateHistoryMarkers();
       window.PXS7Player.history?.addToVideoHistory(name, null, true);
       // Add to playlist (local file)
-      window.PXS7Player.playlist?.addToPlaylist(name, null, true, false, elements.video);
+      window.PXS7Player.playlist?.addToPlaylist(name, null, true, false, elements.video, state.pendingFileHandle);
       state.currentFps = 30;
       elements.fpsInput.value = state.currentFps;
     };
@@ -187,9 +187,56 @@
     }
   }
 
+  // ===== File System Access API support =====
+  // Use showOpenFilePicker when available to get file handles for persistence
+  async function openFileWithPicker() {
+    if (!('showOpenFilePicker' in window)) {
+      // Fall back to traditional file input
+      elements.fileInput.click();
+      return;
+    }
+
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        types: [
+          {
+            description: 'Video files',
+            accept: {
+              'video/*': ['.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.m4v'],
+            },
+          },
+          {
+            description: 'Image files',
+            accept: {
+              'image/*': ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'],
+            },
+          },
+        ],
+        multiple: false,
+      });
+
+      const file = await handle.getFile();
+      handleVideoFileWithHandle(file, handle);
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.warn('File picker error:', e);
+        // Fall back to traditional input
+        elements.fileInput.click();
+      }
+    }
+  }
+
+  function handleVideoFileWithHandle(file, handle) {
+    // Store handle for later use via playlist
+    // Don't clear it here - onloadedmetadata fires asynchronously after handleVideoFile returns
+    // The handle will be used when addToPlaylist is called, then overwritten by next file open
+    state.pendingFileHandle = handle;
+    handleVideoFile(file);
+  }
+
   // ===== Event handlers =====
-  elements.openFileBtn.addEventListener('click', () => elements.fileInput.click());
-  elements.dropZone.addEventListener('click', () => elements.fileInput.click());
+  elements.openFileBtn.addEventListener('click', openFileWithPicker);
+  elements.dropZone.addEventListener('click', openFileWithPicker);
 
   elements.fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];

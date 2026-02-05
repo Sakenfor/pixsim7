@@ -134,6 +134,8 @@ import {
     PLAYLIST_MAX_ITEMS: 100,
     THUMBNAIL_WIDTH: 120,
     THUMBNAIL_HEIGHT: 68,
+    // File handle for pending file (used to pass handle to playlist)
+    pendingFileHandle: null,
   };
 
   // ===== Utility Functions =====
