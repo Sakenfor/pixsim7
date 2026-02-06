@@ -30,6 +30,12 @@ export type {
 // Re-export PanelPosition and PanelSizeConstraints from types for backward compatibility
 export type { PanelPosition, PanelSizeConstraints } from './types';
 
+// Drag-to-dock utilities
+export { useDragToDock } from './useDragToDock';
+export type { UseDragToDockOptions, UseDragToDockReturn, DropZone } from './useDragToDock';
+export { DropZoneOverlay } from './DropZoneOverlay';
+export type { DropZoneOverlayProps } from './DropZoneOverlay';
+
 // ===== Re-exports from Core (Framework-Agnostic) =====
 // These are re-exported for backward compatibility with existing imports
 

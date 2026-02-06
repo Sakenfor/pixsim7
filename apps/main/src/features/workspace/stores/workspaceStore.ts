@@ -2,7 +2,7 @@ import type { DockviewApi } from "dockview-core";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { addDockviewPanel, focusPanel } from "@lib/dockview";
+import { addDockviewPanel, focusPanel, getDockviewApi } from "@lib/dockview";
 
 
 import { createBackendStorage } from "../../../lib/backendStorage";
@@ -154,6 +154,13 @@ export interface WorkspaceActions {
     context: Record<string, any>,
   ) => void;
   getFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => FloatingPanelState | undefined;
+  dockFloatingPanel: (
+    panelId: PanelId | `dev-tool:${string}`,
+    position: {
+      direction: "left" | "right" | "above" | "below" | "within";
+      referencePanel?: string;
+    }
+  ) => void;
 }
 
 /**
@@ -479,6 +486,35 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       getFloatingPanel: (panelId) => {
         return get().floatingPanels.find((p) => p.id === panelId);
+      },
+
+      dockFloatingPanel: (panelId, position) => {
+        const floatingPanel = get().floatingPanels.find((p) => p.id === panelId);
+        if (!floatingPanel) return;
+
+        // Remove from floating panels
+        set({
+          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
+        });
+
+        // Get workspace dockview API
+        const api = getDockviewApi("workspace");
+        if (!api) {
+          console.warn("[dockFloatingPanel] Workspace dockview not available");
+          return;
+        }
+
+        // Resolve the actual panel ID (strip dev-tool: prefix if present)
+        const actualPanelId = panelId.startsWith("dev-tool:")
+          ? panelId.slice("dev-tool:".length)
+          : panelId;
+
+        // Add panel to dockview at the specified position
+        addDockviewPanel(api, actualPanelId, {
+          allowMultiple: false,
+          position,
+          params: floatingPanel.context,
+        });
       },
     }),
     {

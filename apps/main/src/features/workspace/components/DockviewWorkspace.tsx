@@ -1,5 +1,5 @@
-import type { DockviewReadyEvent } from "dockview-core";
-import { useRef, useEffect, useMemo } from "react";
+import type { DockviewReadyEvent, DockviewApi } from "dockview-core";
+import { useRef, useEffect, useMemo, useCallback } from "react";
 
 
 import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
@@ -23,6 +23,17 @@ function WorkspaceWatermark() {
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
+  const floatingPanelIds = useWorkspaceStore((s) =>
+    new Set(s.floatingPanels.map((p) => p.id))
+  );
+
+  // Wrap createDefaultLayout to pass floating panel IDs
+  const defaultLayoutWithFloatingCheck = useCallback(
+    (api: DockviewApi) => {
+      createDefaultLayout(api, [], floatingPanelIds);
+    },
+    [floatingPanelIds]
+  );
 
   // Initialize panels on mount
   useEffect(() => {
@@ -73,7 +84,7 @@ export function DockviewWorkspace() {
       <SmartDockview
         scope="workspace"
         storageKey="dockview:workspace:v4"
-        defaultLayout={createDefaultLayout}
+        defaultLayout={defaultLayoutWithFloatingCheck}
         onReady={handleReady}
         enableContextMenu
         theme="dockview-theme-dark"

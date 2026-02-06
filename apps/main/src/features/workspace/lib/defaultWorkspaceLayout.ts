@@ -15,13 +15,15 @@ function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
 
 export function createDefaultLayout(
   api: DockviewReadyEvent["api"],
-  panelDefs: PanelDefinition[] = []
+  panelDefs: PanelDefinition[] = [],
+  floatingPanelIds?: Set<string>
 ) {
   const addPanel = (
     id: string,
     position?: { direction: "left" | "right" | "below" | "above"; referencePanel?: string }
   ) => {
     if (!panelSelectors.get(id)) return;
+    if (floatingPanelIds?.has(id)) return; // Skip panels that are currently floating
     api.addPanel({
       id,
       component: id,
