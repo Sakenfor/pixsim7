@@ -53,6 +53,12 @@ export {
   type PanelStateOptions,
 } from './hooks/usePanelState';
 
+export {
+  usePanelGroups,
+  usePanelGroup,
+  usePanelGroupsByCategory,
+} from './hooks/usePanelGroups';
+
 // Panel Registry System
 export {
   PanelRegistry,
@@ -67,6 +73,16 @@ export {
   type PanelSettingsTab,
   type PanelSettingsFormSchema,
 } from "./lib/panelRegistry";
+
+// Panel Group System
+export {
+  definePanelGroup,
+  panelGroupRegistry,
+  type PanelGroupDefinition,
+  type PanelGroupPreset,
+  type DefinePanelGroupOptions,
+  type PanelGroupHostProps,
+} from "./lib";
 
 
 export {

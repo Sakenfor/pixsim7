@@ -12,6 +12,9 @@
  * - CC's multi-asset/transition layout (that bypasses dockview)
  * - Capability providers (composed externally)
  * - Scope selection UI (handled by parent widget)
+ *
+ * Uses the quickgen panel group definition for configuration.
+ * @see {@link @features/panels/domain/groups/quickgen}
  */
 
 import type { DockviewApi } from 'dockview-core';
@@ -22,36 +25,19 @@ import {
   type PanelHostDockviewRef,
 } from '@features/panels';
 
+// Import from panel group definition
+import quickgenGroup, {
+  QUICKGEN_PANEL_IDS,
+  QUICKGEN_PRESETS,
+  type QuickGenSlot,
+  type QuickGenPreset,
+} from '@features/panels/domain/groups/quickgen';
+
 type DockviewPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
 
-/** Standard quickgen panel IDs from global registry */
-export const QUICKGEN_PANEL_IDS = {
-  asset: 'quickgen-asset',
-  prompt: 'quickgen-prompt',
-  settings: 'quickgen-settings',
-  blocks: 'quickgen-blocks',
-} as const;
-
-/** Common panel configurations */
-export const QUICKGEN_PRESETS = {
-  /** Prompt + Settings (no asset panel) - for viewer, text-to-* ops */
-  promptSettings: [QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings] as const,
-  /** Asset + Prompt + Settings - for CC single-asset mode */
-  full: [QUICKGEN_PANEL_IDS.asset, QUICKGEN_PANEL_IDS.prompt, QUICKGEN_PANEL_IDS.settings] as const,
-  /** Full with blocks panel */
-  fullWithBlocks: [
-    QUICKGEN_PANEL_IDS.asset,
-    QUICKGEN_PANEL_IDS.prompt,
-    QUICKGEN_PANEL_IDS.settings,
-    QUICKGEN_PANEL_IDS.blocks,
-  ] as const,
-  /** Prompt + Settings + Blocks (no asset) */
-  promptSettingsBlocks: [
-    QUICKGEN_PANEL_IDS.prompt,
-    QUICKGEN_PANEL_IDS.settings,
-    QUICKGEN_PANEL_IDS.blocks,
-  ] as const,
-} as const;
+// Re-export for backward compatibility
+export { QUICKGEN_PANEL_IDS, QUICKGEN_PRESETS };
+export type { QuickGenSlot, QuickGenPreset };
 
 export interface QuickGenPanelHostProps {
   /** Panel IDs to include. Use QUICKGEN_PRESETS or custom array. */
@@ -136,16 +122,15 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
         const hasBlocks = panels.includes(QUICKGEN_PANEL_IDS.blocks);
 
-        const addPanelIfMissing = (
-          panelId: string,
-          options?: Omit<Parameters<DockviewApi['addPanel']>[0], 'id' | 'component' | 'title'>
-        ) => {
+        type AddPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
+
+        const addPanelIfMissing = (panelId: string, position?: AddPanelPosition) => {
           if (api.getPanel(panelId)) return;
           api.addPanel({
             id: panelId,
             component: panelId,
             title: getPanelTitle(panelId),
-            ...options,
+            position,
           });
         };
 
@@ -156,9 +141,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         if (firstPanel === QUICKGEN_PANEL_IDS.asset && !api.getPanel(firstPanel)) {
           addPanelIfMissing(
             firstPanel,
-            promptPanel
-              ? { position: { direction: 'left', referencePanel: QUICKGEN_PANEL_IDS.prompt } }
-              : undefined
+            promptPanel ? { direction: 'left', referencePanel: QUICKGEN_PANEL_IDS.prompt } : undefined
           );
         } else {
           addPanelIfMissing(firstPanel);
@@ -166,11 +149,12 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
 
         // Prompt (if not first)
         if (hasAsset && panels.includes(QUICKGEN_PANEL_IDS.prompt)) {
-          addPanelIfMissing(QUICKGEN_PANEL_IDS.prompt, {
-            position: api.getPanel(QUICKGEN_PANEL_IDS.asset)
+          addPanelIfMissing(
+            QUICKGEN_PANEL_IDS.prompt,
+            api.getPanel(QUICKGEN_PANEL_IDS.asset)
               ? { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.asset }
-              : undefined,
-          });
+              : undefined
+          );
         }
 
         // Settings
@@ -180,20 +164,20 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
             : api.getPanel(QUICKGEN_PANEL_IDS.asset)
               ? QUICKGEN_PANEL_IDS.asset
               : undefined;
-          addPanelIfMissing(QUICKGEN_PANEL_IDS.settings, {
-            position: settingsRefPanel
-              ? { direction: 'right', referencePanel: settingsRefPanel }
-              : undefined,
-          });
+          addPanelIfMissing(
+            QUICKGEN_PANEL_IDS.settings,
+            settingsRefPanel ? { direction: 'right', referencePanel: settingsRefPanel } : undefined
+          );
         }
 
         // Blocks below prompt
         if (hasBlocks) {
-          addPanelIfMissing(QUICKGEN_PANEL_IDS.blocks, {
-            position: api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+          addPanelIfMissing(
+            QUICKGEN_PANEL_IDS.blocks,
+            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
               ? { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt }
-              : undefined,
-          });
+              : undefined
+          );
         }
       },
       [panels, customDefaultLayout]
@@ -242,18 +226,13 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
 
 QuickGenPanelHost.displayName = 'QuickGenPanelHost';
 
-/** Get display title for a panel ID */
+/** Get display title for a panel ID using group definition */
 function getPanelTitle(panelId: string): string {
-  switch (panelId) {
-    case QUICKGEN_PANEL_IDS.asset:
-      return 'Asset';
-    case QUICKGEN_PANEL_IDS.prompt:
-      return 'Prompt';
-    case QUICKGEN_PANEL_IDS.settings:
-      return 'Settings';
-    case QUICKGEN_PANEL_IDS.blocks:
-      return 'Blocks';
-    default:
-      return panelId;
+  // Find slot name for this panel ID
+  for (const [slotName, id] of Object.entries(QUICKGEN_PANEL_IDS)) {
+    if (id === panelId) {
+      return quickgenGroup.resolveTitle(slotName as QuickGenSlot);
+    }
   }
+  return panelId;
 }

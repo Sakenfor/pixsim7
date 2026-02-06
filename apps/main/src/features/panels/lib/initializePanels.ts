@@ -9,6 +9,7 @@ import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors
 
 import { autoRegisterPanels } from "./autoDiscovery";
 import { registerDefaultDockWidgets } from "./dockWidgetRegistry";
+import { panelGroupRegistry } from "./panelGroupRegistry";
 
 /** Track initialization state */
 let initialized = false;
@@ -45,6 +46,9 @@ async function doInitializePanels(): Promise<void> {
       );
     }
 
+    // Register panel groups
+    await registerPanelGroups();
+
     initialized = true;
   } catch (error) {
     // Reset promise so retry is possible
@@ -59,4 +63,20 @@ async function doInitializePanels(): Promise<void> {
  */
 export function arePanelsInitialized(): boolean {
   return initialized;
+}
+
+/**
+ * Register all panel groups.
+ * Currently uses explicit imports; can be extended with auto-discovery.
+ */
+async function registerPanelGroups(): Promise<void> {
+  // Import panel group definitions
+  const quickgenGroup = await import("../domain/groups/quickgen");
+
+  // Register each group
+  panelGroupRegistry.register(quickgenGroup.default);
+
+  console.log(
+    `[initializePanels] Registered ${panelGroupRegistry.getAll().length} panel groups`
+  );
 }
