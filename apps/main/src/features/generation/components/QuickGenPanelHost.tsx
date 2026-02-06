@@ -20,6 +20,8 @@
 import type { DockviewApi } from 'dockview-core';
 import { useCallback, forwardRef } from 'react';
 
+import { createSafeApi } from '@lib/dockview';
+
 import {
   PanelHostDockview,
   type PanelHostDockviewRef,
@@ -118,43 +120,42 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
           return;
         }
 
+        // Use safe API to avoid "panel already exists" errors
+        const safe = createSafeApi(api);
+
         // Auto-layout: add panels in order with sensible positions
         const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
         const hasBlocks = panels.includes(QUICKGEN_PANEL_IDS.blocks);
-
-        type AddPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
-
-        const addPanelIfMissing = (panelId: string, position?: AddPanelPosition) => {
-          if (api.getPanel(panelId)) return;
-          api.addPanel({
-            id: panelId,
-            component: panelId,
-            title: getPanelTitle(panelId),
-            position,
-          });
-        };
 
         const promptPanel = api.getPanel(QUICKGEN_PANEL_IDS.prompt);
 
         // First panel (asset or prompt)
         const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
         if (firstPanel === QUICKGEN_PANEL_IDS.asset && !api.getPanel(firstPanel)) {
-          addPanelIfMissing(
-            firstPanel,
-            promptPanel ? { direction: 'left', referencePanel: QUICKGEN_PANEL_IDS.prompt } : undefined
-          );
+          safe.addPanel({
+            id: firstPanel,
+            component: firstPanel,
+            title: getPanelTitle(firstPanel),
+            position: promptPanel ? { direction: 'left', referencePanel: QUICKGEN_PANEL_IDS.prompt } : undefined,
+          });
         } else {
-          addPanelIfMissing(firstPanel);
+          safe.addPanel({
+            id: firstPanel,
+            component: firstPanel,
+            title: getPanelTitle(firstPanel),
+          });
         }
 
         // Prompt (if not first)
         if (hasAsset && panels.includes(QUICKGEN_PANEL_IDS.prompt)) {
-          addPanelIfMissing(
-            QUICKGEN_PANEL_IDS.prompt,
-            api.getPanel(QUICKGEN_PANEL_IDS.asset)
+          safe.addPanel({
+            id: QUICKGEN_PANEL_IDS.prompt,
+            component: QUICKGEN_PANEL_IDS.prompt,
+            title: getPanelTitle(QUICKGEN_PANEL_IDS.prompt),
+            position: api.getPanel(QUICKGEN_PANEL_IDS.asset)
               ? { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.asset }
-              : undefined
-          );
+              : undefined,
+          });
         }
 
         // Settings
@@ -164,20 +165,24 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
             : api.getPanel(QUICKGEN_PANEL_IDS.asset)
               ? QUICKGEN_PANEL_IDS.asset
               : undefined;
-          addPanelIfMissing(
-            QUICKGEN_PANEL_IDS.settings,
-            settingsRefPanel ? { direction: 'right', referencePanel: settingsRefPanel } : undefined
-          );
+          safe.addPanel({
+            id: QUICKGEN_PANEL_IDS.settings,
+            component: QUICKGEN_PANEL_IDS.settings,
+            title: getPanelTitle(QUICKGEN_PANEL_IDS.settings),
+            position: settingsRefPanel ? { direction: 'right', referencePanel: settingsRefPanel } : undefined,
+          });
         }
 
         // Blocks below prompt
         if (hasBlocks) {
-          addPanelIfMissing(
-            QUICKGEN_PANEL_IDS.blocks,
-            api.getPanel(QUICKGEN_PANEL_IDS.prompt)
+          safe.addPanel({
+            id: QUICKGEN_PANEL_IDS.blocks,
+            component: QUICKGEN_PANEL_IDS.blocks,
+            title: getPanelTitle(QUICKGEN_PANEL_IDS.blocks),
+            position: api.getPanel(QUICKGEN_PANEL_IDS.prompt)
               ? { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.prompt }
-              : undefined
-          );
+              : undefined,
+          });
         }
       },
       [panels, customDefaultLayout]

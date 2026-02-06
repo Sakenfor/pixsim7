@@ -31,6 +31,7 @@ export {
   isPanelOpen,
   resolvePanelDefinitionId,
 } from './panelAdd';
+export { createSafeApi, type SafeDockviewApi } from './safeDockviewApi';
 export { createDockviewHost } from './host';
 export type { DockviewHost } from './host';
 export {

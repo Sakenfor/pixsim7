@@ -17,6 +17,7 @@ import { Ref } from '@pixsim7/shared.types';
 import type { DockviewApi } from 'dockview-core';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
+import { createSafeApi } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 
 import type { ViewerAsset } from '@features/assets';
@@ -272,6 +273,7 @@ function ViewerQuickGeneratePanels() {
   const defaultLayout = useCallback((api: DockviewApi) => {
     if (operationType !== 'video_transition') return;
 
+    const safe = createSafeApi(api);
     const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
     const hasPrompt = panels.includes(QUICKGEN_PANEL_IDS.prompt);
     const hasSettings = panels.includes(QUICKGEN_PANEL_IDS.settings);
@@ -290,14 +292,10 @@ function ViewerQuickGeneratePanels() {
     };
 
     const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
-    api.addPanel({
-      id: firstPanel,
-      component: firstPanel,
-      title: getTitle(firstPanel),
-    });
+    safe.addPanel({ id: firstPanel, component: firstPanel, title: getTitle(firstPanel) });
 
     if (hasAsset && hasPrompt) {
-      api.addPanel({
+      safe.addPanel({
         id: QUICKGEN_PANEL_IDS.prompt,
         component: QUICKGEN_PANEL_IDS.prompt,
         title: getTitle(QUICKGEN_PANEL_IDS.prompt),
@@ -306,7 +304,7 @@ function ViewerQuickGeneratePanels() {
     }
 
     if (hasSettings) {
-      api.addPanel({
+      safe.addPanel({
         id: QUICKGEN_PANEL_IDS.settings,
         component: QUICKGEN_PANEL_IDS.settings,
         title: getTitle(QUICKGEN_PANEL_IDS.settings),
@@ -329,7 +327,7 @@ function ViewerQuickGeneratePanels() {
       panels={panels}
       storageKey={storageKey}
       panelManagerId="viewerQuickGenerate"
-      context={{ targetProviderId: VIEWER_WIDGET_ID }}
+      context={{ targetProviderId: VIEWER_WIDGET_ID, sourceLabel: 'Viewer' }}
       defaultLayout={operationType === 'video_transition' ? defaultLayout : undefined}
       resolvePanelPosition={resolvePanelPosition}
       className="h-[360px] min-h-[280px] mt-2"
@@ -388,10 +386,8 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     }
   }, [asset.id, asset.sourceGenerationId, mode]);
 
-  // Determine scope based on mode:
-  // - asset mode: use isolated viewer scope (populated with asset's generation data)
-  // - user mode: use global scope (shared with Control Center)
-  const scopeId = mode === 'asset' ? VIEWER_SCOPE_ID : 'global';
+  // Always use isolated viewer scope - mode only affects initial values, not scope
+  const scopeId = VIEWER_SCOPE_ID;
 
   const shouldHide = controlCenterOpen && !alwaysExpanded;
 
