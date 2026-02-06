@@ -12,6 +12,7 @@ import { useState, useCallback } from 'react';
 
 import type { PromptCompanionContext } from '@lib/ui';
 import { usePromptCompanionEvents } from '@lib/ui';
+import type { PromptBlockCandidate, PromptTag } from '@pixsim7/shared.types/prompt';
 
 import { useApi } from '@/hooks/useApi';
 
@@ -26,21 +27,15 @@ import { VariantSuggestionsDrawer } from './VariantSuggestionsDrawer';
 
 interface PromptAnalysis {
   prompt: string;
-  segments: Array<{
-    role: string;
-    text: string;
-    start_pos?: number;
-    end_pos?: number;
-    category?: string;
-    metadata?: Record<string, unknown>;
-  }>;
-  tags: string[];
+  candidates: PromptBlockCandidate[];
+  tags: PromptTag[];
 }
 
 interface CategoryDiscoveryResponse {
   prompt_text: string;
-  parser_roles: Array<{ role: string; text: string }>;
+  candidates: PromptBlockCandidate[];
   existing_ontology_ids: string[];
+  suggestions?: Record<string, unknown>;
   suggested_ontology_ids: Array<{
     id: string;
     label: string;
@@ -54,12 +49,7 @@ interface CategoryDiscoveryResponse {
     parser_hints: Record<string, string[]>;
     notes?: string;
   }>;
-  suggested_action_blocks: Array<{
-    block_id: string;
-    prompt: string;
-    tags: Record<string, unknown>;
-    notes?: string;
-  }>;
+  suggested_candidates: PromptBlockCandidate[];
 }
 
 // ============================================================================
@@ -111,7 +101,7 @@ export function PromptCompanionPanel(context: PromptCompanionContext) {
       );
       setBlockAnalysis(result);
       setShowBlockBreakdown(true);
-      dispatch({ type: 'analyze-complete', prompt: promptValue, segments: result.segments });
+      dispatch({ type: 'analyze-complete', prompt: promptValue, candidates: result.candidates });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to analyze prompt';
       setError(message);
@@ -334,7 +324,7 @@ export function PromptCompanionPanel(context: PromptCompanionContext) {
       <BlockBuilderModal
         open={showBlockBuilder}
         onClose={() => setShowBlockBuilder(false)}
-        segments={blockAnalysis?.segments || []}
+        candidates={blockAnalysis?.candidates || []}
         onInsertBlock={handleInsertBlock}
       />
     </>

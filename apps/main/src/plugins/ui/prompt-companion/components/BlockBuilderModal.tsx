@@ -1,8 +1,8 @@
 /**
  * Block Builder Modal
  *
- * Simple block builder using analyzed prompt segments.
- * Allows selecting and combining segments to create new prompt blocks.
+ * Simple block builder using analyzed prompt candidates.
+ * Allows selecting and combining candidates to create new prompt blocks.
  */
 
 import { Button, Modal } from '@pixsim7/shared.ui';
@@ -10,39 +10,21 @@ import clsx from 'clsx';
 import { useState, useMemo } from 'react';
 
 import { Icon } from '@lib/icons';
+import { PROMPT_ROLE_PRIORITY } from '@pixsim7/shared.types';
+import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
+import type { PromptBlockCandidate } from '@features/prompts';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface PromptBlockInput {
-  role: string;
-  text: string;
-  start_pos?: number;
-  end_pos?: number;
-  category?: string;
-  metadata?: Record<string, unknown>;
-}
-
 interface BlockBuilderModalProps {
   open: boolean;
   onClose: () => void;
-  segments: PromptBlockInput[];
+  candidates: PromptBlockCandidate[];
   onInsertBlock: (block: string) => void;
 }
-
-// ============================================================================
-// Role Badge Colors
-// ============================================================================
-
-const roleBadgeColors: Record<string, string> = {
-  character: 'bg-blue-500',
-  action: 'bg-green-500',
-  setting: 'bg-purple-500',
-  mood: 'bg-yellow-500',
-  romance: 'bg-pink-500',
-  other: 'bg-neutral-500',
-};
 
 // ============================================================================
 // Component
@@ -51,45 +33,46 @@ const roleBadgeColors: Record<string, string> = {
 export function BlockBuilderModal({
   open,
   onClose,
-  segments,
+  candidates,
   onInsertBlock,
 }: BlockBuilderModalProps) {
   const [selectedIndices, setSelectedIndices] = useState<Set<number>>(new Set());
   const [customText, setCustomText] = useState('');
   const [combineMode, setCombineMode] = useState<'sentence' | 'inline'>('sentence');
+  const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  // Group segments by role
-  const groupedSegments = useMemo(() => {
-    const groups: Record<string, { segment: PromptBlockInput; index: number }[]> = {};
-    segments.forEach((segment, index) => {
-      const role = segment.role || 'other';
+  // Group candidates by role
+  const groupedCandidates = useMemo(() => {
+    const groups: Record<string, { candidate: PromptBlockCandidate; index: number }[]> = {};
+    candidates.forEach((candidate, index) => {
+      const role = candidate.role || 'other';
       if (!groups[role]) {
         groups[role] = [];
       }
-      groups[role].push({ segment, index });
+      groups[role].push({ candidate, index });
     });
     return groups;
-  }, [segments]);
+  }, [candidates]);
 
   // Build the combined block from selections
   const combinedBlock = useMemo(() => {
     if (selectedIndices.size === 0) return customText;
 
-    const selectedSegments = Array.from(selectedIndices)
+    const selectedCandidates = Array.from(selectedIndices)
       .sort((a, b) => a - b)
-      .map((idx) => segments[idx]?.text)
+      .map((idx) => candidates[idx]?.text)
       .filter(Boolean);
 
-    if (selectedSegments.length === 0) return customText;
+    if (selectedCandidates.length === 0) return customText;
 
     const separator = combineMode === 'sentence' ? '. ' : ', ';
-    const combined = selectedSegments.join(separator);
+    const combined = selectedCandidates.join(separator);
 
     return customText ? `${combined}${separator}${customText}` : combined;
-  }, [selectedIndices, segments, customText, combineMode]);
+  }, [selectedIndices, candidates, customText, combineMode]);
 
-  // Toggle segment selection
-  const toggleSegment = (index: number) => {
+  // Toggle candidate selection
+  const toggleCandidate = (index: number) => {
     setSelectedIndices((prev) => {
       const next = new Set(prev);
       if (next.has(index)) {
@@ -101,9 +84,9 @@ export function BlockBuilderModal({
     });
   };
 
-  // Select all segments of a role
+  // Select all candidates of a role
   const selectAllOfRole = (role: string) => {
-    const roleIndices = groupedSegments[role]?.map((item) => item.index) || [];
+    const roleIndices = groupedCandidates[role]?.map((item) => item.index) || [];
     setSelectedIndices((prev) => {
       const next = new Set(prev);
       roleIndices.forEach((idx) => next.add(idx));
@@ -128,23 +111,28 @@ export function BlockBuilderModal({
 
   if (!open) return null;
 
-  const hasSegments = segments.length > 0;
+  const hasCandidates = candidates.length > 0;
   const hasSelection = selectedIndices.size > 0 || customText.trim().length > 0;
-  const roleOrder = ['character', 'action', 'setting', 'mood', 'romance', 'other'];
+  const roleOrder = [
+    ...PROMPT_ROLE_PRIORITY,
+    ...Object.keys(groupedCandidates).filter(
+      (role) => !PROMPT_ROLE_PRIORITY.includes(role as (typeof PROMPT_ROLE_PRIORITY)[number])
+    ),
+  ];
 
   return (
     <Modal isOpen={open} onClose={onClose} title="Block Builder">
       <div className="space-y-4">
         {/* Instructions */}
         <p className="text-sm text-neutral-600 dark:text-neutral-400">
-          Select segments from your analyzed prompt to build a new block. You can also add custom
+          Select candidates from your analyzed prompt to build a new block. You can also add custom
           text.
         </p>
 
-        {!hasSegments ? (
+        {!hasCandidates ? (
           <div className="text-center py-8 text-neutral-500">
             <Icon name="alertCircle" className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p>No segments available. Analyze a prompt first.</p>
+            <p>No candidates available. Analyze a prompt first.</p>
           </div>
         ) : (
           <>
@@ -183,20 +171,20 @@ export function BlockBuilderModal({
               )}
             </div>
 
-            {/* Segment Selection */}
+            {/* Candidate Selection */}
             <div className="space-y-3 max-h-64 overflow-y-auto pr-2">
               {roleOrder
-                .filter((role) => groupedSegments[role])
+                .filter((role) => groupedCandidates[role])
                 .map((role) => (
                   <div key={role}>
                     <div className="flex items-center gap-2 mb-1">
                       <span
                         className={clsx(
                           'w-2 h-2 rounded-full',
-                          roleBadgeColors[role] || roleBadgeColors.other
+                          getPromptRoleBadgeClass(role, promptRoleColors)
                         )}
                       />
-                      <span className="text-xs font-medium capitalize">{role}</span>
+                      <span className="text-xs font-medium capitalize">{getPromptRoleLabel(role)}</span>
                       <button
                         onClick={() => selectAllOfRole(role)}
                         className="text-xs text-blue-500 hover:text-blue-600"
@@ -205,23 +193,23 @@ export function BlockBuilderModal({
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-1.5 ml-4">
-                      {groupedSegments[role].map(({ segment, index }) => {
+                      {groupedCandidates[role].map(({ candidate, index }) => {
                         const isSelected = selectedIndices.has(index);
                         return (
                           <button
                             key={index}
-                            onClick={() => toggleSegment(index)}
+                            onClick={() => toggleCandidate(index)}
                             className={clsx(
                               'px-2 py-1 text-xs rounded-lg border transition-colors max-w-[200px] truncate',
                               isSelected
                                 ? 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200'
                                 : 'bg-neutral-50 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-700'
                             )}
-                            title={segment.text}
+                            title={candidate.text}
                           >
                             {isSelected && <Icon name="check" className="h-3 w-3 inline mr-1" />}
-                            {segment.text.slice(0, 40)}
-                            {segment.text.length > 40 && '...'}
+                            {candidate.text.slice(0, 40)}
+                            {candidate.text.length > 40 && '...'}
                           </button>
                         );
                       })}
@@ -252,7 +240,7 @@ export function BlockBuilderModal({
                 </label>
                 <div className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 text-sm max-h-32 overflow-y-auto">
                   {combinedBlock || (
-                    <span className="text-neutral-400 italic">Select segments to preview...</span>
+                    <span className="text-neutral-400 italic">Select candidates to preview...</span>
                   )}
                 </div>
               </div>

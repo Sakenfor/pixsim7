@@ -1,51 +1,45 @@
 /**
- * PromptSegmentsViewer Component
+ * PromptCandidatesViewer Component
  *
- * Reusable UI for displaying prompt text and parsed segments.
+ * Reusable UI for displaying prompt text and parsed candidates.
  * Pure presentational component - no data fetching.
  */
 
 import { useState } from 'react';
 import { Panel } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
-import type { PromptSegment, PromptSegmentRole } from '../types';
+import type { PromptBlockCandidate } from '../types';
+import { getPromptRoleBadgeClass, getPromptRoleLabel, getPromptRolePanelClass } from '@/lib/promptRoleUi';
+import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 
 // Re-export for convenience
-export type { PromptSegment, PromptSegmentRole } from '../types';
+export type { PromptBlockCandidate } from '../types';
 
-export interface PromptSegmentsViewerProps {
+export interface PromptCandidatesViewerProps {
   prompt: string;
-  segments: PromptSegment[];
+  candidates: PromptBlockCandidate[];
   collapsible?: boolean;   // default false
   initialOpen?: boolean;   // default true
 }
 
-// Role colors for visual distinction
-const roleColors: Record<PromptSegmentRole, string> = {
-  character: 'bg-blue-100 dark:bg-blue-900 border-blue-300 dark:border-blue-700',
-  action: 'bg-green-100 dark:bg-green-900 border-green-300 dark:border-green-700',
-  setting: 'bg-purple-100 dark:bg-purple-900 border-purple-300 dark:border-purple-700',
-  mood: 'bg-yellow-100 dark:bg-yellow-900 border-yellow-300 dark:border-yellow-700',
-  romance: 'bg-pink-100 dark:bg-pink-900 border-pink-300 dark:border-pink-700',
-  other: 'bg-gray-100 dark:bg-gray-900 border-gray-300 dark:border-gray-700',
-};
-
-export function PromptSegmentsViewer({
+export function PromptCandidatesViewer({
   prompt,
-  segments,
+  candidates,
   collapsible = false,
   initialOpen = true,
-}: PromptSegmentsViewerProps) {
+}: PromptCandidatesViewerProps) {
   const [isOpen, setIsOpen] = useState(initialOpen);
+  const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  // Group segments by role
-  const groupedSegments = segments.reduce((acc, segment) => {
-    if (!acc[segment.role]) {
-      acc[segment.role] = [];
+  // Group candidates by role
+  const groupedCandidates = candidates.reduce((acc, candidate) => {
+    const roleKey = candidate.role ?? 'other';
+    if (!acc[roleKey]) {
+      acc[roleKey] = [];
     }
-    acc[segment.role].push(segment);
+    acc[roleKey].push(candidate);
     return acc;
-  }, {} as Partial<Record<PromptSegmentRole, PromptSegment[]>>);
+  }, {} as Record<string, PromptBlockCandidate[]>);
 
   // If collapsible, render with header
   if (collapsible) {
@@ -69,7 +63,11 @@ export function PromptSegmentsViewer({
         {/* Collapsible Content */}
         {isOpen && (
           <div className="p-4 space-y-4">
-            <PromptSegmentsContent prompt={prompt} groupedSegments={groupedSegments} />
+            <PromptCandidatesContent
+              prompt={prompt}
+              groupedCandidates={groupedCandidates}
+              promptRoleColors={promptRoleColors}
+            />
           </div>
         )}
       </div>
@@ -79,18 +77,23 @@ export function PromptSegmentsViewer({
   // Non-collapsible render
   return (
     <div className="grid grid-cols-2 gap-6">
-      <PromptSegmentsContent prompt={prompt} groupedSegments={groupedSegments} />
+      <PromptCandidatesContent
+        prompt={prompt}
+        groupedCandidates={groupedCandidates}
+        promptRoleColors={promptRoleColors}
+      />
     </div>
   );
 }
 
-interface PromptSegmentsContentProps {
+interface PromptCandidatesContentProps {
   prompt: string;
-  groupedSegments: Partial<Record<PromptSegmentRole, PromptSegment[]>>;
+  groupedCandidates: Record<string, PromptBlockCandidate[]>;
+  promptRoleColors: Record<string, string>;
 }
 
-function PromptSegmentsContent({ prompt, groupedSegments }: PromptSegmentsContentProps) {
-  const totalSegments = Object.values(groupedSegments).reduce((sum, arr) => sum + arr.length, 0);
+function PromptCandidatesContent({ prompt, groupedCandidates, promptRoleColors }: PromptCandidatesContentProps) {
+  const totalCandidates = Object.values(groupedCandidates).reduce((sum, arr) => sum + arr.length, 0);
 
   return (
     <>
@@ -104,23 +107,23 @@ function PromptSegmentsContent({ prompt, groupedSegments }: PromptSegmentsConten
         />
       </Panel>
 
-      {/* Right: Parsed Segments */}
+      {/* Right: Parsed Candidates */}
       <Panel className="p-6">
         <h2 className="text-lg font-semibold mb-4">
-          Parsed Segments ({totalSegments})
+          Parsed Candidates ({totalCandidates})
         </h2>
         <div className="space-y-4 overflow-y-auto h-96">
-          {(Object.entries(groupedSegments) as [PromptSegmentRole, PromptSegment[]][]).map(([role, segs]) => (
+          {(Object.entries(groupedCandidates) as [string, PromptBlockCandidate[]][]).map(([role, segs]) => (
             <div key={role}>
               <h3 className="text-sm font-semibold capitalize mb-2 flex items-center gap-2">
-                <span className={`inline-block w-3 h-3 rounded-full ${roleColors[role]}`} />
-                {role} ({segs.length})
+                <span className={`inline-block w-3 h-3 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
+                {getPromptRoleLabel(role)} ({segs.length})
               </h3>
               <div className="space-y-2 ml-5">
                 {segs.map((segment, idx) => (
                   <div
                     key={idx}
-                    className={`p-3 border rounded ${roleColors[role]}`}
+                    className={`p-3 border rounded ${getPromptRolePanelClass(role, promptRoleColors)}`}
                   >
                     <div className="font-medium text-sm">{segment.text}</div>
                   </div>
@@ -129,9 +132,9 @@ function PromptSegmentsContent({ prompt, groupedSegments }: PromptSegmentsConten
             </div>
           ))}
 
-          {totalSegments === 0 && (
+          {totalCandidates === 0 && (
             <div className="text-center text-neutral-500 dark:text-neutral-400 py-8">
-              No segments parsed
+              No candidates parsed
             </div>
           )}
         </div>

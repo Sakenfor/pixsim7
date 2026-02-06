@@ -11,7 +11,8 @@ import { useState, useEffect } from 'react';
 import { PromptCompanionHost } from '@lib/ui';
 
 import { PromptBlockGraphSurface } from '@features/graph';
-import { PromptSegmentsViewer, type PromptSegment } from '@features/prompts';
+import { PromptCandidatesViewer, type PromptBlockCandidate } from '@features/prompts';
+import type { PromptTag } from '@pixsim7/shared.types/prompt';
 
 import { useApi } from '../hooks/useApi';
 import { Icon } from '../lib/icons';
@@ -25,8 +26,8 @@ import { DevPromptImporter } from './DevPromptImporter';
 
 interface PromptAnalysis {
   prompt: string;
-  segments: PromptSegment[];
-  tags: string[];
+  candidates: PromptBlockCandidate[];
+  tags: PromptTag[];
 }
 
 interface DevPromptFamilySummary {
@@ -55,8 +56,8 @@ interface DevPromptVersionDetail {
   provider_hints: Record<string, any>;
   prompt_analysis?: {
     prompt: string;
-    segments: PromptSegment[];
-    tags: string[];
+    candidates: PromptBlockCandidate[];
+    tags: PromptTag[];
   };
 }
 
@@ -334,10 +335,10 @@ function AnalyzeTab({ onSendToImport, onSendToCategories }: AnalyzeTabProps) {
                 <div className="flex flex-wrap gap-2">
                   {analysis.tags.map((tag) => (
                     <span
-                      key={tag}
+                      key={tag.tag}
                       className="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs"
                     >
-                      {tag}
+                      {tag.tag}
                     </span>
                   ))}
                 </div>
@@ -345,7 +346,7 @@ function AnalyzeTab({ onSendToImport, onSendToCategories }: AnalyzeTabProps) {
             )}
 
             {/* Blocks */}
-            <PromptSegmentsViewer prompt={analysis.prompt} segments={analysis.segments} />
+            <PromptCandidatesViewer prompt={analysis.prompt} candidates={analysis.candidates} />
           </>
         ) : (
           <Panel className="p-12 text-center">
@@ -426,7 +427,7 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
   const [versionError, setVersionError] = useState<string | null>(null);
 
   // View mode for version detail
-  const [versionViewMode, setVersionViewMode] = useState<'segments' | 'graph'>('segments');
+  const [versionViewMode, setVersionViewMode] = useState<'candidates' | 'graph'>('candidates');
 
   // Test Fit state
   const [testFitAssetId, setTestFitAssetId] = useState('');
@@ -698,14 +699,14 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
             {/* View Mode Toggle */}
             <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-800 pb-2">
               <button
-                onClick={() => setVersionViewMode('segments')}
+                onClick={() => setVersionViewMode('candidates')}
                 className={`px-3 py-1.5 text-sm font-medium rounded transition-colors ${
-                  versionViewMode === 'segments'
+                  versionViewMode === 'candidates'
                     ? 'bg-blue-500 text-white'
                     : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
                 }`}
               >
-                Segments View
+                Candidates View
               </button>
               <button
                 onClick={() => setVersionViewMode('graph')}
@@ -721,10 +722,10 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
 
             {versionViewMode === 'graph' ? (
               /* Graph View */
-              selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.segments ? (
+              selectedVersion.prompt_analysis && selectedVersion.prompt_analysis.candidates ? (
                 <Panel className="p-0 h-[700px]">
                   <PromptBlockGraphSurface
-                    segments={selectedVersion.prompt_analysis.segments}
+                    candidates={selectedVersion.prompt_analysis.candidates}
                     versionId={selectedVersion.version.id}
                     promptTitle={selectedFamily?.title || 'Prompt'}
                     includeRoleGroups={false}
@@ -829,19 +830,19 @@ function LibraryTab({ onSendToTimeline }: LibraryTabProps) {
                     <div className="flex flex-wrap gap-2">
                       {selectedVersion.prompt_analysis.tags.map((tag) => (
                         <span
-                          key={tag}
+                          key={tag.tag}
                           className="inline-block bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded text-xs"
                         >
-                          {tag}
+                          {tag.tag}
                         </span>
                       ))}
                     </div>
                   </Panel>
                 )}
 
-                <PromptSegmentsViewer
+                <PromptCandidatesViewer
                   prompt={selectedVersion.prompt_analysis.prompt}
-                  segments={selectedVersion.prompt_analysis.segments}
+                  candidates={selectedVersion.prompt_analysis.candidates}
                 />
               </>
             )}
@@ -1175,7 +1176,7 @@ interface CategoriesTabProps {
 
 interface CategoryDiscoveryResponse {
   prompt_text: string;
-  parser_roles: Array<{ role: string; text: string }>;
+  candidates: PromptBlockCandidate[];
   existing_ontology_ids: string[];
   suggestions: any;
   suggested_ontology_ids: Array<{
@@ -1191,12 +1192,7 @@ interface CategoryDiscoveryResponse {
     parser_hints: Record<string, string[]>;
     notes?: string;
   }>;
-  suggested_action_blocks: Array<{
-    block_id: string;
-    prompt: string;
-    tags: Record<string, any>;
-    notes?: string;
-  }>;
+  suggested_candidates: PromptBlockCandidate[];
 }
 
 function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps) {
@@ -1297,12 +1293,7 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
     }
   };
 
-  const handleApplyBlock = async (block: {
-    block_id: string;
-    prompt: string;
-    tags: Record<string, any>;
-    notes?: string;
-  }) => {
+  const handleApplyBlock = async (block: PromptBlockCandidate) => {
     setApplyingBlock(block.block_id);
     setToast(null);
 
@@ -1316,8 +1307,11 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
         '/dev/prompt-categories/apply-block',
         {
           block_id: block.block_id,
-          prompt: block.prompt,
-          tags: block.tags,
+          text: block.text,
+          role: block.role,
+          category: block.category,
+          ontology_ids: block.ontology_ids ?? [],
+          tags: block.tags ?? {},
           package_name: 'ai_suggested',
           source_prompt: promptText.slice(0, 200), // First 200 chars
           notes: block.notes,
@@ -1447,19 +1441,19 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
 
         {discovery ? (
           <>
-            {/* Parser Summary */}
+            {/* Candidate Summary */}
             <Panel className="p-6">
               <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
-                Parser Summary
+                Candidate Summary
               </h3>
               <div className="space-y-2">
-                {discovery.parser_roles.map((block, idx) => (
+                {discovery.candidates.map((candidate, idx) => (
                   <div key={idx} className="text-sm">
                     <span className="inline-block bg-neutral-200 dark:bg-neutral-700 px-2 py-1 rounded text-xs font-mono mr-2">
-                      {block.role}
+                      {candidate.role ?? 'other'}
                     </span>
                     <span className="text-neutral-700 dark:text-neutral-300">
-                      {block.text}
+                      {candidate.text}
                     </span>
                   </div>
                 ))}
@@ -1579,14 +1573,14 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
               </Panel>
             )}
 
-            {/* Suggested ActionBlocks */}
-            {discovery.suggested_action_blocks.length > 0 && (
+            {/* Suggested Candidates */}
+            {discovery.suggested_candidates.length > 0 && (
               <Panel className="p-6">
                 <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 mb-3">
-                  Suggested ActionBlocks ({discovery.suggested_action_blocks.length})
+                  Suggested Candidates ({discovery.suggested_candidates.length})
                 </h3>
                 <div className="space-y-3">
-                  {discovery.suggested_action_blocks.map((block) => (
+                  {discovery.suggested_candidates.map((block) => (
                     <div
                       key={block.block_id}
                       className="p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded"
@@ -1605,7 +1599,7 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
                         </Button>
                       </div>
                       <div className="text-sm text-amber-800 dark:text-amber-200 mt-2 font-mono">
-                        {block.prompt}
+                        {block.text}
                       </div>
                       {block.notes && (
                         <div className="text-xs text-amber-700 dark:text-amber-300 mt-2">
@@ -1617,7 +1611,7 @@ function CategoriesTab({ initialPromptText, onClearInitial }: CategoriesTabProps
                           Tags:
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {Object.entries(block.tags).map(([key, value]) => (
+                          {Object.entries(block.tags ?? {}).map(([key, value]) => (
                             <span
                               key={key}
                               className="inline-block bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded text-xs"

@@ -1,11 +1,11 @@
 /**
  * Block Breakdown Drawer
  *
- * Displays analyzed prompt segments in a slide-out drawer.
- * Now includes inline prompt highlighting for visual segment mapping.
+ * Displays analyzed prompt candidates in a slide-out drawer.
+ * Now includes inline prompt highlighting for visual candidate mapping.
  *
  * Naming:
- * - PromptSegment = transient parsed output from API (used here)
+ * - PromptBlockCandidate = transient parsed output from API (used here)
  * - PromptBlock = stored entity in database (NOT used here)
  */
 
@@ -16,26 +16,21 @@ import { useMemo, useState } from 'react';
 
 import {
   PromptInlineViewer,
-  type PromptSegmentDisplay,
+  type PromptCandidateDisplay,
 } from '@features/prompts';
+import { PROMPT_ROLE_PRIORITY } from '@pixsim7/shared.types';
+import type { PromptBlockCandidate, PromptTag } from '@pixsim7/shared.types/prompt';
+import { getPromptRoleBadgeClass, getPromptRoleLabel, getPromptRolePanelClass } from '@/lib/promptRoleUi';
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface PromptSegmentData {
-  role: string;
-  text: string;
-  start_pos?: number;
-  end_pos?: number;
-  category?: string;
-  metadata?: Record<string, unknown>;
-}
-
 interface PromptAnalysis {
   prompt: string;
-  segments: PromptSegmentData[];
-  tags: string[];
+  candidates: PromptBlockCandidate[];
+  tags: PromptTag[];
 }
 
 interface BlockBreakdownDrawerProps {
@@ -44,28 +39,6 @@ interface BlockBreakdownDrawerProps {
   analysis: PromptAnalysis | null;
   onInsertBlock: (block: string) => void;
 }
-
-// ============================================================================
-// Role Colors
-// ============================================================================
-
-const roleColors: Record<string, string> = {
-  character: 'bg-blue-100 dark:bg-blue-900/40 border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-200',
-  action: 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-700 text-green-800 dark:text-green-200',
-  setting: 'bg-purple-100 dark:bg-purple-900/40 border-purple-300 dark:border-purple-700 text-purple-800 dark:text-purple-200',
-  mood: 'bg-yellow-100 dark:bg-yellow-900/40 border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200',
-  romance: 'bg-pink-100 dark:bg-pink-900/40 border-pink-300 dark:border-pink-700 text-pink-800 dark:text-pink-200',
-  other: 'bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300',
-};
-
-const roleBadgeColors: Record<string, string> = {
-  character: 'bg-blue-500',
-  action: 'bg-green-500',
-  setting: 'bg-purple-500',
-  mood: 'bg-yellow-500',
-  romance: 'bg-pink-500',
-  other: 'bg-neutral-500',
-};
 
 // ============================================================================
 // Component
@@ -80,43 +53,41 @@ export function BlockBreakdownDrawer({
   onInsertBlock,
 }: BlockBreakdownDrawerProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('inline');
+  const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  // Group segments by role
-  const groupedSegments = useMemo(() => {
-    if (!analysis?.segments) return {};
+  // Group candidates by role
+  const groupedCandidates = useMemo(() => {
+    if (!analysis?.candidates) return {};
 
-    return analysis.segments.reduce((acc, seg) => {
-      const role = seg.role || 'other';
+    return analysis.candidates.reduce((acc, candidate) => {
+      const role = candidate.role || 'other';
       if (!acc[role]) {
         acc[role] = [];
       }
-      acc[role].push(seg);
+      acc[role].push(candidate);
       return acc;
-    }, {} as Record<string, PromptSegmentData[]>);
-  }, [analysis?.segments]);
+    }, {} as Record<string, PromptBlockCandidate[]>);
+  }, [analysis?.candidates]);
 
-  // Convert to PromptSegmentDisplay format for inline viewer
-  const viewerSegments: PromptSegmentDisplay[] = useMemo(() => {
-    if (!analysis?.segments) return [];
-    return analysis.segments.map((seg) => ({
-      role: seg.role as PromptSegmentDisplay['role'],
-      text: seg.text,
-      start_pos: seg.start_pos,
-      end_pos: seg.end_pos,
-      category: seg.category,
-      metadata: seg.metadata,
-    }));
-  }, [analysis?.segments]);
+  // Prepare candidates for inline viewer
+  const viewerCandidates: PromptCandidateDisplay[] = useMemo(() => {
+    if (!analysis?.candidates) return [];
+    return analysis.candidates as PromptCandidateDisplay[];
+  }, [analysis?.candidates]);
 
   // Check if we have valid position data for inline view
-  const hasPositionData = viewerSegments.some(
+  const hasPositionData = viewerCandidates.some(
     (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
   );
 
-  const roleOrder = ['character', 'action', 'setting', 'mood', 'romance', 'other'];
-  const sortedRoles = Object.keys(groupedSegments).sort(
-    (a, b) => roleOrder.indexOf(a) - roleOrder.indexOf(b)
-  );
+  const roleOrder = PROMPT_ROLE_PRIORITY;
+  const sortedRoles = Object.keys(groupedCandidates).sort((a, b) => {
+    const aIdx = roleOrder.indexOf(a as (typeof roleOrder)[number]);
+    const bIdx = roleOrder.indexOf(b as (typeof roleOrder)[number]);
+    const normalizedA = aIdx === -1 ? Number.MAX_SAFE_INTEGER : aIdx;
+    const normalizedB = bIdx === -1 ? Number.MAX_SAFE_INTEGER : bIdx;
+    return normalizedA - normalizedB;
+  });
 
   if (!open) return null;
 
@@ -200,12 +171,12 @@ export function BlockBreakdownDrawer({
                     Auto-Generated Tags
                   </h3>
                   <div className="flex flex-wrap gap-1.5">
-                    {analysis.tags.map((tag) => (
+                  {analysis.tags.map((tag) => (
                       <span
-                        key={tag}
+                        key={tag.tag}
                         className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-200 rounded text-xs"
                       >
-                        {tag}
+                        {tag.tag}
                       </span>
                     ))}
                   </div>
@@ -218,9 +189,9 @@ export function BlockBreakdownDrawer({
                   <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
                     <PromptInlineViewer
                       prompt={analysis.prompt}
-                      segments={viewerSegments}
+                      candidates={viewerCandidates}
                       showLegend
-                      onSegmentClick={(segment) => onInsertBlock(segment.text)}
+                      onCandidateClick={(candidate) => onInsertBlock(candidate.text)}
                     />
                   </div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 italic">
@@ -233,8 +204,8 @@ export function BlockBreakdownDrawer({
               {(viewMode === 'grouped' || !hasPositionData) && (
                 <>
                   {sortedRoles.map((role) => {
-                    const roleSegments = groupedSegments[role];
-                    if (!roleSegments || roleSegments.length === 0) return null;
+                    const roleCandidates = groupedCandidates[role];
+                    if (!roleCandidates || roleCandidates.length === 0) return null;
 
                     return (
                       <div key={role} className="space-y-2">
@@ -242,26 +213,26 @@ export function BlockBreakdownDrawer({
                           <span
                             className={clsx(
                               'w-2.5 h-2.5 rounded-full',
-                              roleBadgeColors[role] || roleBadgeColors.other
+                              getPromptRoleBadgeClass(role, promptRoleColors)
                             )}
                           />
-                          {role} ({roleSegments.length})
+                          {getPromptRoleLabel(role)} ({roleCandidates.length})
                         </h3>
 
                         <div className="space-y-2 ml-4">
-                          {roleSegments.map((segment, idx) => (
+                          {roleCandidates.map((candidate, idx) => (
                             <div
                               key={idx}
                               className={clsx(
                                 'p-3 rounded-lg border',
-                                roleColors[role] || roleColors.other
+                                getPromptRolePanelClass(role, promptRoleColors)
                               )}
                             >
-                              <div className="text-sm font-medium">{segment.text}</div>
+                              <div className="text-sm font-medium">{candidate.text}</div>
 
                               {/* Insert as block button */}
                               <button
-                                onClick={() => onInsertBlock(segment.text)}
+                                onClick={() => onInsertBlock(candidate.text)}
                                 className="mt-2 text-xs opacity-60 hover:opacity-100 flex items-center gap-1"
                               >
                                 <Icon name="add" className="h-3 w-3" />
@@ -280,8 +251,8 @@ export function BlockBreakdownDrawer({
               <div className="mt-6 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg text-sm">
                 <div className="font-medium mb-1">Summary</div>
                 <div className="text-neutral-600 dark:text-neutral-400">
-                  {analysis.segments.length} segments across{' '}
-                  {Object.keys(groupedSegments).length} categories
+                  {analysis.candidates.length} candidates across{' '}
+                  {Object.keys(groupedCandidates).length} categories
                 </div>
               </div>
             </>

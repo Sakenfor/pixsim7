@@ -1,7 +1,7 @@
 /**
  * Prompt Types
  *
- * Canonical type definitions for parsed prompt segments.
+ * Canonical type definitions for parsed prompt candidates.
  * Mirrors backend `domain/prompt/enums.py` types.
  */
 
@@ -9,58 +9,40 @@
 // Prompt Segment Roles
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { PROMPT_ROLES, type PromptRoleId } from './prompt-roles.generated';
+
 /**
- * Coarse role classification for prompt segments.
+ * Coarse role classification for prompt candidates.
  * Matches backend `PromptSegmentRole` enum in `domain/prompt/enums.py`.
  */
-export const PROMPT_SEGMENT_ROLES = [
-  'character',
-  'action',
-  'setting',
-  'mood',
-  'romance',
-  'other',
-] as const;
+export const PROMPT_SEGMENT_ROLES = PROMPT_ROLES;
 
-export type PromptSegmentRole = typeof PROMPT_SEGMENT_ROLES[number];
+export type PromptSegmentRole = PromptRoleId;
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Prompt Segment (Full Backend Shape)
-// ─────────────────────────────────────────────────────────────────────────────
+// Prompt Block Candidate (Normalized)
+// -----------------------------------------------------------------------------
 
 /**
- * A single segment parsed from a prompt.
- * Mirrors backend `PromptSegment` in `services/prompt_parser/simple.py`.
- *
- * Contains full position information for text highlighting and metadata
- * for ontology-based classification hints.
+ * Normalized prompt block candidate.
+ * Unifies parser candidates, LLM analysis blocks, and AI suggestions.
  */
-export interface PromptSegment {
-  role: PromptSegmentRole;
+export interface PromptBlockCandidate {
   text: string;
-  start_pos: number;
-  end_pos: number;
-  sentence_index: number;
-  metadata?: Record<string, unknown>;
-  /** Confidence score for the role classification (0-1) */
+  role?: PromptSegmentRole | (string & {});
+  category?: string;
+  ontology_ids?: string[];
+  tags?: Record<string, unknown>;
+  source_type?: string;
+  block_id?: string;
   confidence?: number;
-  /** Keywords that matched during classification */
+  sentence_index?: number;
+  start_pos?: number;
+  end_pos?: number;
   matched_keywords?: string[];
-  /** Scores for all considered roles */
   role_scores?: Record<string, number>;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Prompt Parse Result
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Complete result of parsing a prompt into segments.
- * Mirrors backend `PromptParseResult` in `services/prompt_parser/simple.py`.
- */
-export interface PromptParseResult {
-  text: string;
-  segments: PromptSegment[];
+  metadata?: Record<string, unknown>;
+  notes?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -72,13 +54,13 @@ export type PromptTagSource = 'role' | 'keyword' | 'ontology';
 
 /**
  * A structured tag with segment linking.
- * Tags are derived from segments and link back to their source segments.
+ * Tags are derived from candidates and link back to their source candidates.
  */
 export interface PromptTag {
   /** The tag string, e.g., "has:character", "tone:soft" */
   tag: string;
-  /** Indices into the segments array that contributed to this tag */
-  segments: number[];
+  /** Indices into the candidates array that contributed to this tag */
+  candidates: number[];
   /** How the tag was derived */
   source: PromptTagSource;
   /** Confidence score (optional, typically for role-based tags) */
@@ -96,9 +78,9 @@ export interface PromptTag {
 export interface PromptAnalysisResult {
   /** Original prompt text */
   prompt: string;
-  /** Parsed segments with roles, positions, and metadata */
-  segments: PromptSegment[];
-  /** Structured tags with segment linking */
+  /** Parsed candidates with roles, positions, and metadata */
+  candidates: PromptBlockCandidate[];
+  /** Structured tags with candidate linking */
   tags: PromptTag[];
   /** Flat list of tag strings for backward compatibility */
   tags_flat: string[];

@@ -2,99 +2,49 @@
  * PromptInlineViewer Component
  *
  * Displays prompt text with inline span-based highlighting by role/category.
- * Uses position data from prompt analysis to create colored text segments.
+ * Uses position data from prompt analysis to create colored text candidates.
  *
  * Features:
  * - Color-coded spans by role (character, action, setting, mood, etc.)
- * - Hover tooltips showing segment metadata (role, category)
+ * - Hover tooltips showing candidate metadata (role, category)
  * - Fallback to plain text if no position data available
  *
  * Naming:
- * - PromptSegment = transient parsed output from API (not stored in DB)
+ * - PromptBlockCandidate = transient parsed output from API (not stored in DB)
  * - PromptBlock = stored entity in database (different from this)
  */
 
 import { useMemo, useState, useCallback } from 'react';
-import type { PromptSegmentRole } from '../types';
+import type { PromptBlockCandidate } from '../types';
+import { getPromptRoleBadgeClass, getPromptRoleInlineClasses, getPromptRoleLabel } from '@/lib/promptRoleUi';
+import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * A parsed prompt segment for UI display.
+ * A parsed prompt candidate for UI display.
  * This is transient data from the analyzer, NOT a stored PromptBlock entity.
  */
-export interface PromptSegmentDisplay {
-  role: PromptSegmentRole;
-  text: string;
-  start_pos?: number;
-  end_pos?: number;
-  category?: string;
-  metadata?: Record<string, unknown>;
-}
-
-/** @deprecated Use PromptSegmentDisplay instead */
-export type PromptBlock = PromptSegmentDisplay;
+export type PromptCandidateDisplay = PromptBlockCandidate;
 
 export interface PromptInlineViewerProps {
   /** Original prompt text */
   prompt: string;
-  /** Parsed segments with position data */
-  segments: PromptSegmentDisplay[];
+  /** Parsed candidates with position data */
+  candidates: PromptCandidateDisplay[];
   /** Show role legend below text */
   showLegend?: boolean;
   /** Custom class for the container */
   className?: string;
-  /** Click handler for segment spans */
-  onSegmentClick?: (segment: PromptSegmentDisplay) => void;
+  /** Click handler for candidate spans */
+  onCandidateClick?: (candidate: PromptCandidateDisplay) => void;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Role Styling
 // ─────────────────────────────────────────────────────────────────────────────
-
-const roleStyles: Record<PromptSegmentRole, { bg: string; hover: string; label: string }> = {
-  character: {
-    bg: 'bg-blue-100/60 dark:bg-blue-900/40',
-    hover: 'hover:bg-blue-200/80 dark:hover:bg-blue-800/60',
-    label: 'Character',
-  },
-  action: {
-    bg: 'bg-green-100/60 dark:bg-green-900/40',
-    hover: 'hover:bg-green-200/80 dark:hover:bg-green-800/60',
-    label: 'Action',
-  },
-  setting: {
-    bg: 'bg-purple-100/60 dark:bg-purple-900/40',
-    hover: 'hover:bg-purple-200/80 dark:hover:bg-purple-800/60',
-    label: 'Setting',
-  },
-  mood: {
-    bg: 'bg-yellow-100/60 dark:bg-yellow-900/40',
-    hover: 'hover:bg-yellow-200/80 dark:hover:bg-yellow-800/60',
-    label: 'Mood',
-  },
-  romance: {
-    bg: 'bg-pink-100/60 dark:bg-pink-900/40',
-    hover: 'hover:bg-pink-200/80 dark:hover:bg-pink-800/60',
-    label: 'Romance',
-  },
-  other: {
-    bg: 'bg-neutral-100/60 dark:bg-neutral-800/40',
-    hover: 'hover:bg-neutral-200/80 dark:hover:bg-neutral-700/60',
-    label: 'Other',
-  },
-};
-
-const roleDotColors: Record<PromptSegmentRole, string> = {
-  character: 'bg-blue-500',
-  action: 'bg-green-500',
-  setting: 'bg-purple-500',
-  mood: 'bg-yellow-500',
-  romance: 'bg-pink-500',
-  other: 'bg-neutral-500',
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -104,16 +54,16 @@ interface TextSpan {
   text: string;
   start: number;
   end: number;
-  segment?: PromptSegmentDisplay;
+  candidate?: PromptCandidateDisplay;
 }
 
 /**
- * Build text spans from segments with position data.
+ * Build text spans from candidates with position data.
  * Fills gaps with unstyled spans for complete coverage.
  */
-function buildSpans(prompt: string, segments: PromptSegmentDisplay[]): TextSpan[] {
-  // Filter to segments with valid positions
-  const positioned = segments.filter(
+function buildSpans(prompt: string, candidates: PromptCandidateDisplay[]): TextSpan[] {
+  // Filter to candidates with valid positions
+  const positioned = candidates.filter(
     (s) => typeof s.start_pos === 'number' && typeof s.end_pos === 'number'
   );
 
@@ -141,12 +91,12 @@ function buildSpans(prompt: string, segments: PromptSegmentDisplay[]): TextSpan[
       });
     }
 
-    // Add segment span
+    // Add candidate span
     spans.push({
       text: prompt.slice(start, end),
       start,
       end,
-      segment: seg,
+      candidate: seg,
     });
 
     cursor = end;
@@ -170,33 +120,36 @@ function buildSpans(prompt: string, segments: PromptSegmentDisplay[]): TextSpan[
 
 export function PromptInlineViewer({
   prompt,
-  segments,
+  candidates,
   showLegend = false,
   className = '',
-  onSegmentClick,
+  onCandidateClick,
 }: PromptInlineViewerProps) {
-  const [hoveredSegment, setHoveredSegment] = useState<PromptSegmentDisplay | null>(null);
+  const [hoveredCandidate, setHoveredCandidate] = useState<PromptCandidateDisplay | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
 
-  const spans = useMemo(() => buildSpans(prompt, segments), [prompt, segments]);
+  const spans = useMemo(() => buildSpans(prompt, candidates), [prompt, candidates]);
 
-  // Get unique roles present in segments
+  // Get unique roles present in candidates
   const presentRoles = useMemo(() => {
-    const roles = new Set<PromptSegmentRole>();
-    for (const seg of segments) {
-      roles.add(seg.role);
+    const roles = new Set<string>();
+    for (const candidate of candidates) {
+      if (candidate.role) {
+        roles.add(candidate.role);
+      }
     }
     return Array.from(roles);
-  }, [segments]);
+  }, [candidates]);
 
-  const handleMouseEnter = useCallback((e: React.MouseEvent, segment: PromptSegmentDisplay) => {
+  const handleMouseEnter = useCallback((e: React.MouseEvent, candidate: PromptCandidateDisplay) => {
     const rect = (e.target as HTMLElement).getBoundingClientRect();
-    setHoveredSegment(segment);
+    setHoveredCandidate(candidate);
     setTooltipPos({ x: rect.left, y: rect.bottom + 4 });
   }, []);
 
   const handleMouseLeave = useCallback(() => {
-    setHoveredSegment(null);
+    setHoveredCandidate(null);
     setTooltipPos(null);
   }, []);
 
@@ -205,12 +158,12 @@ export function PromptInlineViewer({
       {/* Prompt text with inline highlights */}
       <div className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
         {spans.map((span, idx) => {
-          if (!span.segment) {
+          if (!span.candidate) {
             // Gap text - no styling
             return <span key={idx}>{span.text}</span>;
           }
 
-          const style = roleStyles[span.segment.role] || roleStyles.other;
+          const style = getPromptRoleInlineClasses(span.candidate.role, promptRoleColors);
 
           return (
             <span
@@ -219,9 +172,9 @@ export function PromptInlineViewer({
                 inline rounded-sm px-0.5 py-px cursor-pointer transition-colors
                 ${style.bg} ${style.hover}
               `}
-              onMouseEnter={(e) => handleMouseEnter(e, span.segment!)}
+              onMouseEnter={(e) => handleMouseEnter(e, span.candidate!)}
               onMouseLeave={handleMouseLeave}
-              onClick={() => onSegmentClick?.(span.segment!)}
+              onClick={() => onCandidateClick?.(span.candidate!)}
             >
               {span.text}
             </span>
@@ -230,19 +183,19 @@ export function PromptInlineViewer({
       </div>
 
       {/* Tooltip */}
-      {hoveredSegment && tooltipPos && (
+      {hoveredCandidate && tooltipPos && (
         <div
           className="fixed z-50 px-2 py-1 text-xs bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 rounded shadow-lg pointer-events-none"
           style={{ left: tooltipPos.x, top: tooltipPos.y }}
         >
           <div className="flex items-center gap-2">
             <span
-              className={`w-2 h-2 rounded-full ${roleDotColors[hoveredSegment.role]}`}
+              className={`w-2 h-2 rounded-full ${getPromptRoleBadgeClass(hoveredCandidate.role, promptRoleColors)}`}
             />
-            <span className="font-medium capitalize">{hoveredSegment.role}</span>
-            {hoveredSegment.category && (
+            <span className="font-medium">{getPromptRoleLabel(hoveredCandidate.role)}</span>
+            {hoveredCandidate.category && (
               <span className="text-neutral-400 dark:text-neutral-500">
-                / {hoveredSegment.category}
+                / {hoveredCandidate.category}
               </span>
             )}
           </div>
@@ -255,9 +208,9 @@ export function PromptInlineViewer({
           <div className="flex flex-wrap gap-3 text-xs">
             {presentRoles.map((role) => (
               <div key={role} className="flex items-center gap-1.5">
-                <span className={`w-2.5 h-2.5 rounded-full ${roleDotColors[role]}`} />
+                <span className={`w-2.5 h-2.5 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
                 <span className="text-neutral-600 dark:text-neutral-400">
-                  {roleStyles[role]?.label || role}
+                  {getPromptRoleLabel(role)}
                 </span>
               </div>
             ))}
@@ -269,62 +222,63 @@ export function PromptInlineViewer({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Segment List Fallback (when positions unavailable)
+// Candidate List Fallback (when positions unavailable)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface PromptSegmentListProps {
-  segments: PromptSegmentDisplay[];
-  onSegmentClick?: (segment: PromptSegmentDisplay) => void;
+export interface PromptCandidateListProps {
+  candidates: PromptCandidateDisplay[];
+  onCandidateClick?: (candidate: PromptCandidateDisplay) => void;
 }
-
-/** @deprecated Use PromptSegmentListProps instead */
-export type PromptBlockListProps = PromptSegmentListProps;
 
 /**
  * Fallback display when position data is unavailable.
- * Shows segments as a grouped list below the prompt.
+ * Shows candidates as a grouped list below the prompt.
  */
-export function PromptBlockList({ segments, onSegmentClick }: PromptSegmentListProps) {
+export function PromptCandidateList({ candidates, onCandidateClick }: PromptCandidateListProps) {
   // Group by role
   const grouped = useMemo(() => {
-    const groups: Partial<Record<PromptSegmentRole, PromptSegmentDisplay[]>> = {};
-    for (const seg of segments) {
-      if (!groups[seg.role]) {
-        groups[seg.role] = [];
+    const groups: Record<string, PromptCandidateDisplay[]> = {};
+    for (const candidate of candidates) {
+      const roleKey = candidate.role ?? 'other';
+      if (!groups[roleKey]) {
+        groups[roleKey] = [];
       }
-      groups[seg.role]!.push(seg);
+      groups[roleKey].push(candidate);
     }
     return groups;
-  }, [segments]);
+  }, [candidates]);
 
   return (
     <div className="space-y-3">
-      {(Object.entries(grouped) as [PromptSegmentRole, PromptSegmentDisplay[]][]).map(
-        ([role, roleSegments]) => (
-          <div key={role}>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className={`w-2.5 h-2.5 rounded-full ${roleDotColors[role]}`} />
+      {(Object.entries(grouped) as [string, PromptCandidateDisplay[]][]).map(
+        ([role, roleCandidates]) => {
+          const inlineClasses = getPromptRoleInlineClasses(role, promptRoleColors);
+          return (
+            <div key={role}>
+              <div className="flex items-center gap-2 mb-1.5">
+              <span className={`w-2.5 h-2.5 rounded-full ${getPromptRoleBadgeClass(role, promptRoleColors)}`} />
               <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400 capitalize">
-                {roleStyles[role]?.label || role}
+                {getPromptRoleLabel(role)}
               </span>
             </div>
             <div className="space-y-1 ml-4">
-              {roleSegments.map((seg, idx) => (
+              {roleCandidates.map((candidate, idx) => (
                 <button
                   key={idx}
-                  onClick={() => onSegmentClick?.(seg)}
+                  onClick={() => onCandidateClick?.(candidate)}
                   className={`
                     w-full text-left px-2 py-1 text-sm rounded
-                    ${roleStyles[role].bg} ${roleStyles[role].hover}
+                    ${inlineClasses.bg} ${inlineClasses.hover}
                     transition-colors cursor-pointer
                   `}
                 >
-                  <span className="line-clamp-2">{seg.text}</span>
-                </button>
-              ))}
+                    <span className="line-clamp-2">{candidate.text}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )
+          );
+        }
       )}
     </div>
   );

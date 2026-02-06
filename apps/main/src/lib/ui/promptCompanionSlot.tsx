@@ -751,7 +751,7 @@ export function GlobalPromptCompanionInjector() {
  */
 export type PromptCompanionEvent =
   | { type: 'analyze-request'; prompt: string }
-  | { type: 'analyze-complete'; prompt: string; segments: unknown[] }
+  | { type: 'analyze-complete'; prompt: string; candidates: unknown[] }
   | { type: 'suggest-variants'; prompt: string; variants: string[] }
   | { type: 'insert-block'; block: string; position?: 'start' | 'end' | 'cursor' }
   | { type: 'replace-prompt'; newPrompt: string }

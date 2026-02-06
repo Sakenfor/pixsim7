@@ -7,6 +7,7 @@
 import clsx from 'clsx';
 import { Button } from '@pixsim7/shared.ui';
 import { Icon } from '@lib/icons';
+import type { PromptBlockCandidate } from '@features/prompts';
 
 // ============================================================================
 // Types
@@ -14,8 +15,9 @@ import { Icon } from '@lib/icons';
 
 interface CategoryDiscoveryResponse {
   prompt_text: string;
-  parser_roles: Array<{ role: string; text: string }>;
+  candidates: PromptBlockCandidate[];
   existing_ontology_ids: string[];
+  suggestions?: Record<string, unknown>;
   suggested_ontology_ids: Array<{
     id: string;
     label: string;
@@ -29,12 +31,7 @@ interface CategoryDiscoveryResponse {
     parser_hints: Record<string, string[]>;
     notes?: string;
   }>;
-  suggested_action_blocks: Array<{
-    block_id: string;
-    prompt: string;
-    tags: Record<string, unknown>;
-    notes?: string;
-  }>;
+  suggested_candidates: PromptBlockCandidate[];
 }
 
 interface PackHintsDrawerProps {
@@ -59,7 +56,7 @@ export function PackHintsDrawer({
   const hasData = packHints !== null;
   const hasOntology = (packHints?.suggested_ontology_ids?.length ?? 0) > 0;
   const hasPacks = (packHints?.suggested_packs?.length ?? 0) > 0;
-  const hasBlocks = (packHints?.suggested_action_blocks?.length ?? 0) > 0;
+  const hasCandidates = (packHints?.suggested_candidates?.length ?? 0) > 0;
   const hasExisting = (packHints?.existing_ontology_ids?.length ?? 0) > 0;
 
   return (
@@ -212,45 +209,49 @@ export function PackHintsDrawer({
                 </section>
               )}
 
-              {/* Suggested Action Blocks */}
-              {hasBlocks && (
+              {/* Suggested Candidates */}
+              {hasCandidates && (
                 <section className="space-y-2">
                   <h3 className="text-sm font-semibold text-neutral-600 dark:text-neutral-400">
-                    Suggested Action Blocks ({packHints!.suggested_action_blocks.length})
+                    Suggested Candidates ({packHints!.suggested_candidates.length})
                   </h3>
-                  {packHints!.suggested_action_blocks.map((block) => (
+                  {packHints!.suggested_candidates.map((candidate, idx) => (
                     <div
-                      key={block.block_id}
+                      key={candidate.block_id ?? `${candidate.text}-${idx}`}
                       className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg"
                     >
-                      <code className="text-xs font-mono text-amber-800 dark:text-amber-200">
-                        {block.block_id}
-                      </code>
+                      {candidate.block_id && (
+                        <code className="text-xs font-mono text-amber-800 dark:text-amber-200">
+                          {candidate.block_id}
+                        </code>
+                      )}
                       <div className="text-sm text-amber-900 dark:text-amber-100 mt-1 font-mono">
-                        {block.prompt}
+                        {candidate.text}
                       </div>
-                      {block.notes && (
+                      {candidate.notes && (
                         <div className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                          {block.notes}
+                          {candidate.notes}
                         </div>
                       )}
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {Object.entries(block.tags).map(([key, value]) => (
-                          <span
-                            key={key}
-                            className="px-1.5 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 rounded text-xs"
-                          >
-                            {key}: {JSON.stringify(value)}
-                          </span>
-                        ))}
-                      </div>
+                      {candidate.tags && Object.keys(candidate.tags).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {Object.entries(candidate.tags).map(([key, value]) => (
+                            <span
+                              key={key}
+                              className="px-1.5 py-0.5 bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 rounded text-xs"
+                            >
+                              {key}: {JSON.stringify(value)}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </section>
               )}
 
               {/* No suggestions */}
-              {!hasOntology && !hasPacks && !hasBlocks && (
+              {!hasOntology && !hasPacks && !hasCandidates && (
                 <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">
                   No suggestions found for this prompt.
                 </div>
