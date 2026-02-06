@@ -22,6 +22,13 @@ from pixsim7.backend.main.shared.errors import (
     InvalidOperationError,
 )
 
+# Provider URL domains - if remote_url matches, asset is already on that provider
+PROVIDER_URL_DOMAINS: Dict[str, tuple] = {
+    "pixverse": ("media.pixverse.ai", "cdn.pixverse.ai"),
+    # Add other providers as needed:
+    # "sora": ("videos.openai.com",),
+}
+
 
 class AssetSyncService:
     """
@@ -322,6 +329,22 @@ class AssetSyncService:
 
         # Update last accessed time for LRU cache
         asset.last_accessed_at = datetime.utcnow()
+
+        # Check if remote_url is already on the target provider (avoids re-upload)
+        if target_provider_id in PROVIDER_URL_DOMAINS and asset.remote_url:
+            domains = PROVIDER_URL_DOMAINS[target_provider_id]
+            if any(domain in asset.remote_url for domain in domains):
+                from pixsim_logging import get_logger
+                get_logger().debug(
+                    "using_existing_provider_url",
+                    asset_id=asset.id,
+                    provider=target_provider_id,
+                    remote_url=asset.remote_url[:100],
+                )
+                # Cache it for future use
+                asset.provider_uploads[target_provider_id] = asset.remote_url
+                await self.db.commit()
+                return asset.remote_url
 
         # Check if already uploaded to this provider
         if target_provider_id in asset.provider_uploads:
