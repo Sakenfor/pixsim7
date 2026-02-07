@@ -101,13 +101,51 @@ SQLModel.metadata.naming_convention = naming_convention
 # This is the single-place fix: every datetime from the DB gets tzinfo=UTC,
 # so Pydantic serializes them with "+00:00" and JS interprets them correctly.
 
-@event.listens_for(SQLModel, "load", propagate=True)
-def _stamp_utc_on_load(target, context):
-    """Mark naive datetime attributes as UTC when loaded from DB."""
+def _stamp_utc(target):
+    """Mark naive datetime attributes as UTC after loading from DB."""
     for key in target.__class__.model_fields:
         val = target.__dict__.get(key)
         if isinstance(val, datetime) and val.tzinfo is None:
             target.__dict__[key] = val.replace(tzinfo=timezone.utc)
+
+
+@event.listens_for(SQLModel, "load", propagate=True)
+def _stamp_utc_on_load(target, context):
+    _stamp_utc(target)
+
+
+@event.listens_for(SQLModel, "refresh", propagate=True)
+def _stamp_utc_on_refresh(target, context, attrs):
+    _stamp_utc(target)
+
+
+@event.listens_for(SQLModel, "refresh_flush", propagate=True)
+def _stamp_utc_on_refresh_flush(target, flush_context, attrs):
+    _stamp_utc(target)
+
+
+def _naive_datetimes(params):
+    """Strip tzinfo from every datetime in a parameter tuple.
+
+    asyncpg is strict: it rejects tz-aware datetimes for TIMESTAMP columns.
+    For TIMESTAMPTZ columns asyncpg accepts naive datetimes and assumes UTC,
+    so stripping is safe for both column types.
+    """
+    return tuple(
+        p.replace(tzinfo=None) if isinstance(p, datetime) and p.tzinfo is not None else p
+        for p in params
+    )
+
+
+@event.listens_for(async_engine.sync_engine, "before_cursor_execute", retval=True)
+def _strip_tz_from_params(conn, cursor, statement, parameters, context, executemany):
+    """Ensure all datetime query parameters are naive (UTC) for asyncpg."""
+    if parameters:
+        if executemany:
+            parameters = [_naive_datetimes(p) for p in parameters]
+        else:
+            parameters = _naive_datetimes(parameters)
+    return statement, parameters
 
 
 # ===== DEPENDENCY INJECTION =====

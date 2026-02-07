@@ -7,9 +7,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 from sqlmodel import Field, SQLModel, JSON, Column
-from sqlalchemy import Index, Text
-
-from pixsim7.backend.main.shared.datetime_utils import utcnow
+from sqlalchemy import DateTime, Index, Text, text
 
 
 class LogEntry(SQLModel, table=True):
@@ -24,7 +22,10 @@ class LogEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
 
     # Core fields (always present)
-    timestamp: datetime = Field(index=True, description="UTC timestamp of log event")
+    timestamp: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, index=True),
+        description="UTC timestamp of log event",
+    )
     level: str = Field(index=True, max_length=20, description="Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)")
     service: str = Field(index=True, max_length=150, description="Service name (api, worker, frontend, etc.)")
     env: str = Field(default="dev", max_length=20, description="Environment (dev, staging, prod)")
@@ -55,7 +56,10 @@ class LogEntry(SQLModel, table=True):
     extra: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Additional structured context")
 
     # Metadata
-    created_at: datetime = Field(default_factory=utcnow, description="When log was ingested")
+    created_at: datetime = Field(
+        sa_column=Column(DateTime(timezone=True), nullable=False, server_default=text("now()")),
+        description="When log was ingested",
+    )
 
     __table_args__ = (
         # Composite indexes for common query patterns
