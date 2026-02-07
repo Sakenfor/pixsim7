@@ -55,6 +55,9 @@ class AssetService:
     async def list_assets(self, *args, **kwargs):
         return await self._core.list_assets(*args, **kwargs)
 
+    async def list_asset_groups(self, *args, **kwargs):
+        return await self._core.list_asset_groups(*args, **kwargs)
+
     async def delete_asset(self, *args, **kwargs):
         return await self._core.delete_asset(*args, **kwargs)
 

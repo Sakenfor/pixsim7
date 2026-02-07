@@ -9,6 +9,16 @@
 import type { AssetResponse } from '@pixsim7/shared.api.client/domains';
 import type { MediaType } from '@pixsim7/shared.types';
 
+/**
+ * Ensure an ISO timestamp is interpreted as UTC.
+ * Backend stores UTC but older records may omit the 'Z' suffix.
+ */
+function ensureUtcTimestamp(ts: string): string {
+  if (!ts) return ts;
+  if (ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts)) return ts;
+  return ts + 'Z';
+}
+
 import { BACKEND_BASE } from '@lib/api/client';
 import { resolveAssetUrl, resolvePreviewUrl, resolveThumbnailUrl } from '@lib/assetUrlResolver';
 import { ensureBackendAbsolute } from '@lib/media/backendUrl';
@@ -115,7 +125,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
   };
   return {
     id: response.id,
-    createdAt: response.created_at,
+    createdAt: ensureUtcTimestamp(response.created_at),
     description: response.description,
     durationSec: response.duration_sec,
     fileSizeBytes: response.file_size_bytes,

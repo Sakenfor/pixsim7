@@ -1,22 +1,43 @@
 import { Button } from '@pixsim7/shared.ui';
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-import { enrichAsset, extractFrame, uploadAssetToProvider } from '@lib/api/assets';
+import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
+import type { AssetGroupListResponse, AssetGroupRequest, AssetGroupMeta } from '@lib/api/assets';
+import { extractErrorMessage } from '@lib/api/errorHandling';
 import { ThemedIcon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { GalleryToolsPanel } from '@features/gallery';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
+import {
+  usePanelConfigStore,
+  type GalleryGroupBy,
+  type GalleryGroupMode,
+  type GalleryGroupView,
+  type GalleryGroupScope,
+  type GalleryPanelSettings,
+  type GalleryGroupBySelection,
+} from '@features/panels';
 import { useProviders } from '@features/providers';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
+import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
+import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 
+import type { AssetFilters, AssetModel } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
+import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, GROUP_BY_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
+import { normalizeGroupScopeSelection } from '../lib/groupScope';
+import { buildAssetSearchRequest } from '../lib/searchParams';
+import { fromAssetResponses, getAssetDisplayUrls } from '../models/asset';
 
 import { DynamicFilters } from './DynamicFilters';
 import { mediaCardPropsFromAsset } from './shared';
+
+
 
 
 
@@ -26,10 +47,205 @@ interface RemoteGallerySourceProps {
   overlayPresetId?: string;
 }
 
+const parsePageParam = (search: string) => {
+  const params = new URLSearchParams(search);
+  const raw = params.get('page');
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const parseGroupPageParam = (search: string) => {
+  const params = new URLSearchParams(search);
+  const raw = params.get('group_page');
+  const parsed = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+};
+
+const DEFAULT_GROUP_BY_STACK: GalleryGroupBy[] = [];
+const DEFAULT_GROUP_VIEW: GalleryGroupView = 'inline';
+const DEFAULT_GROUP_SCOPE: GalleryGroupScope = [];
+
+const GROUP_VIEW_VALUES: GalleryGroupView[] = ['inline', 'folders', 'panel'];
+
+const parseGroupParams = (
+  search: string,
+  defaults: {
+    groupView: GalleryGroupView;
+    groupBy: GalleryGroupBySelection;
+    groupScope: GalleryGroupScope;
+  },
+) => {
+  const params = new URLSearchParams(search);
+  const rawGroupByValues = params.getAll('group_by');
+  const groupByValues = rawGroupByValues.length > 0 ? rawGroupByValues : params.get('group_by');
+  const normalizedGroupBy = normalizeGroupBySelection(groupByValues);
+  const groupBy = normalizedGroupBy.length > 0 ? normalizedGroupBy : normalizeGroupBySelection(defaults.groupBy);
+  const rawGroupView = params.get('group_view') as GalleryGroupView | null;
+  const groupView =
+    rawGroupView && GROUP_VIEW_VALUES.includes(rawGroupView) ? rawGroupView : defaults.groupView;
+  const rawGroupScopeValues = params.getAll('group_scope');
+  const groupScopeValues = rawGroupScopeValues.length > 0 ? rawGroupScopeValues : params.get('group_scope');
+  const normalizedGroupScope = normalizeGroupScopeSelection(groupScopeValues);
+  const groupScope = normalizedGroupScope.length > 0 ? normalizedGroupScope : defaults.groupScope;
+  const rawGroupPathValues = params.getAll('group_path');
+  const rawGroupPath = rawGroupPathValues.length > 0 ? rawGroupPathValues : params.get('group_path');
+  const pathEntries = (Array.isArray(rawGroupPath) ? rawGroupPath : rawGroupPath ? [rawGroupPath] : [])
+    .map((entry) => {
+      const [rawBy, rawKey] = entry.split(':', 2);
+      if (!rawBy || !rawKey) return null;
+      if (!GROUP_BY_VALUES.includes(rawBy as GalleryGroupBy)) return null;
+      return { groupBy: rawBy as GalleryGroupBy, groupKey: rawKey };
+    })
+    .filter((entry): entry is { groupBy: GalleryGroupBy; groupKey: string } => !!entry);
+  const groupKeyFallback = params.get('group_key');
+  if (groupKeyFallback && groupBy.length > 0 && pathEntries.length === 0) {
+    pathEntries.push({ groupBy: groupBy[0], groupKey: groupKeyFallback });
+  }
+  const groupPath: { groupBy: GalleryGroupBy; groupKey: string }[] = [];
+  if (groupBy.length > 0 && pathEntries.length > 0) {
+    for (const entryBy of groupBy) {
+      const match = pathEntries.find((entry) => entry.groupBy === entryBy);
+      if (!match) break;
+      groupPath.push(match);
+    }
+  }
+  const groupPage = parseGroupPageParam(search);
+  return {
+    groupBy,
+    groupView,
+    groupScope,
+    groupPath,
+    groupPage,
+  };
+};
+
+type AssetGroup = {
+  key: string;
+  label: string;
+  previewAssets: AssetModel[];
+  count: number;
+  latestTimestamp: number;
+  meta?: AssetGroupMeta | null;
+};
+
+type GroupPathEntry = {
+  groupBy: GalleryGroupBy;
+  groupKey: string;
+};
+
+const formatGroupLabel = (
+  groupBy: GalleryGroupBy,
+  key: string,
+  meta?: AssetGroupMeta | null,
+) => {
+  if (key === 'other') return 'Other';
+  if (key === 'ungrouped') return 'Ungrouped';
+  if (meta && meta.kind === 'prompt' && meta.prompt_text) {
+    const text = meta.prompt_text.trim();
+    if (text.length <= 80) return text;
+    return `${text.slice(0, 77)}...`;
+  }
+  if (meta && meta.kind === 'source' && meta.description) {
+    return meta.description;
+  }
+  if (groupBy === 'source') return `Source #${key}`;
+  if (groupBy === 'generation') return `Generation #${key}`;
+  if (groupBy === 'prompt') return `Prompt ${key}`;
+  return key;
+};
+
+const GROUP_PREVIEW_LIMIT = 4;
+const GROUP_PAGE_SIZE = 50;
+
+const areScopesEqual = (left: string[], right: string[]) => {
+  if (left.length !== right.length) return false;
+  const leftSet = new Set(left);
+  for (const entry of right) {
+    if (!leftSet.has(entry)) return false;
+  }
+  return true;
+};
+
+const areGroupByStacksEqual = (left: GalleryGroupBy[], right: GalleryGroupBy[]) => {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+};
+
+const selectGroupPreviewAssets = (assets: AssetModel[]) => {
+  return assets
+    .filter((asset) => {
+      const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
+      if (thumbnailUrl || previewUrl) return true;
+      if (asset.mediaType === 'image') return !!mainUrl;
+      if (asset.mediaType === 'video') return !!(mainUrl || asset.remoteUrl || asset.fileUrl);
+      return false;
+    })
+    .slice(0, GROUP_PREVIEW_LIMIT);
+};
+
 export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: RemoteGallerySourceProps) {
-  const controller = useAssetsController();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
+  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
+  const gallerySettings = (panelConfig?.settings || {}) as GalleryPanelSettings;
+  const defaultGroupView = (gallerySettings.groupView ?? DEFAULT_GROUP_VIEW) as GalleryGroupView;
+  const defaultGroupBy = normalizeGroupBySelection(
+    (gallerySettings.groupBy ?? DEFAULT_GROUP_BY_STACK) as GalleryGroupBySelection,
+  );
+  const groupMode = (gallerySettings.groupMode ?? 'single') as GalleryGroupMode;
+  const defaultGroupScope = normalizeGroupScopeSelection(
+    (gallerySettings.groupScope ?? DEFAULT_GROUP_SCOPE) as GalleryGroupScope,
+  );
+  const groupParams = useMemo(
+    () =>
+      parseGroupParams(location.search, {
+        groupView: defaultGroupView,
+        groupBy: defaultGroupBy,
+        groupScope: defaultGroupScope,
+      }),
+    [location.search, defaultGroupView, defaultGroupBy, defaultGroupScope],
+  );
+  const { groupBy: groupByStack, groupView, groupScope, groupPath, groupPage } = groupParams;
+  const normalizedGroupScope = useMemo(
+    () => normalizeGroupScopeSelection(groupScope),
+    [groupScope],
+  );
+  const groupPathPayload = useMemo(
+    () =>
+      groupPath.map((entry) => ({
+        group_by: entry.groupBy,
+        group_key: entry.groupKey,
+      })),
+    [groupPath],
+  );
+  const hasGrouping = groupByStack.length > 0;
+  const isLeafGroup = hasGrouping && groupPath.length === groupByStack.length;
+  const currentGroupBy = hasGrouping && groupPath.length < groupByStack.length
+    ? groupByStack[groupPath.length]
+    : null;
+  const groupFilter = useMemo(() => {
+    if (!hasGrouping || normalizedGroupScope.length === 0) return undefined;
+    return { upload_method: normalizedGroupScope };
+  }, [hasGrouping, normalizedGroupScope]);
+  const groupSearchOverrides = useMemo(() => {
+    if (!isLeafGroup) return undefined;
+    return {
+      group_path: groupPathPayload,
+      group_filter: groupFilter,
+    };
+  }, [groupFilter, groupPathPayload, isLeafGroup]);
+  const initialPageRef = useRef(parsePageParam(location.search));
+  const controller = useAssetsController({
+    initialPage: initialPageRef.current,
+    preservePageOnFilterChange: true,
+    requestOverrides: groupSearchOverrides,
+  });
   const { providers } = useProviders();
   const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
+  const [groupData, setGroupData] = useState<AssetGroupListResponse | null>(null);
+  const [groupLoading, setGroupLoading] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
 
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
@@ -41,6 +257,434 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     const preset = getMediaCardPreset(overlayPresetId);
     return preset?.configuration;
   }, [overlayPresetId]);
+
+  const pageFromUrl = useMemo(() => parsePageParam(location.search), [location.search]);
+  const groupRequest = useMemo<AssetGroupRequest | null>(() => {
+    if (!hasGrouping || isLeafGroup || !currentGroupBy) return null;
+    const groupOffset = (groupPage - 1) * GROUP_PAGE_SIZE;
+    const base = buildAssetSearchRequest(controller.filters, {
+      limit: GROUP_PAGE_SIZE,
+      offset: groupOffset,
+    });
+    return {
+      ...base,
+      group_by: currentGroupBy,
+      group_path: groupPathPayload,
+      group_filter: groupFilter,
+      preview_limit: GROUP_PREVIEW_LIMIT,
+    };
+  }, [
+    controller.filters,
+    currentGroupBy,
+    groupPage,
+    groupFilter,
+    groupPathPayload,
+    hasGrouping,
+    isLeafGroup,
+  ]);
+  const groupRequestKey = useMemo(
+    () => (groupRequest ? JSON.stringify(groupRequest) : null),
+    [groupRequest],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!groupRequest) {
+      setGroupData(null);
+      setGroupError(null);
+      setGroupLoading(false);
+      return () => undefined;
+    }
+
+    setGroupLoading(true);
+    setGroupError(null);
+
+    listAssetGroups(groupRequest)
+      .then((result) => {
+        if (cancelled) return;
+        setGroupData(result);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setGroupError(extractErrorMessage(err, 'Failed to load asset groups'));
+        setGroupData(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setGroupLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [groupRequestKey]);
+
+  useEffect(() => {
+    const storedGroupBy = normalizeGroupBySelection(
+      (gallerySettings.groupBy ?? DEFAULT_GROUP_BY_STACK) as GalleryGroupBySelection,
+    );
+    const storedScope = normalizeGroupScopeSelection(
+      (gallerySettings.groupScope ?? DEFAULT_GROUP_SCOPE) as GalleryGroupScope,
+    );
+    if (
+      areGroupByStacksEqual(storedGroupBy, groupByStack) &&
+      gallerySettings.groupView === groupView &&
+      areScopesEqual(storedScope, normalizedGroupScope)
+    ) {
+      return;
+    }
+    updatePanelSettings('gallery', {
+      groupBy: groupByStack,
+      groupView,
+      groupScope: normalizedGroupScope,
+    });
+  }, [
+    gallerySettings.groupBy,
+    gallerySettings.groupView,
+    gallerySettings.groupScope,
+    groupByStack,
+    groupView,
+    normalizedGroupScope,
+    updatePanelSettings,
+  ]);
+
+  const syncGroupInUrl = useCallback(
+    (
+      next: {
+        groupBy?: GalleryGroupBySelection | null;
+        groupView?: GalleryGroupView | null;
+        groupScope?: GalleryGroupScope | null;
+        groupPath?: GroupPathEntry[] | null;
+        groupPage?: number | null;
+      },
+      replace = true,
+    ) => {
+      const params = new URLSearchParams(window.location.search);
+
+      const nextGroupByStack = normalizeGroupBySelection(next.groupBy);
+      params.delete('group_by');
+      if (nextGroupByStack.length > 0) {
+        nextGroupByStack.forEach((value) => {
+          params.append('group_by', value);
+        });
+      }
+
+      if (
+        next.groupView === null ||
+        next.groupView === undefined ||
+        nextGroupByStack.length === 0
+      ) {
+        params.delete('group_view');
+      } else {
+        params.set('group_view', next.groupView);
+      }
+
+      const nextScopeValues = normalizeGroupScopeSelection(next.groupScope);
+      if (nextScopeValues.length === 0 || nextGroupByStack.length === 0) {
+        params.delete('group_scope');
+      } else {
+        params.delete('group_scope');
+        nextScopeValues.forEach((value) => {
+          params.append('group_scope', value);
+        });
+      }
+
+      params.delete('group_key');
+      params.delete('group_path');
+      if (nextGroupByStack.length > 0 && next.groupPath && next.groupPath.length > 0) {
+        const orderedPath: GroupPathEntry[] = [];
+        for (const entryBy of nextGroupByStack) {
+          const match = next.groupPath.find((entry) => entry.groupBy === entryBy);
+          if (!match) break;
+          orderedPath.push(match);
+        }
+        orderedPath.forEach((entry) => {
+          params.append('group_path', `${entry.groupBy}:${entry.groupKey}`);
+        });
+      }
+
+      if (nextGroupByStack.length === 0) {
+        params.delete('group_page');
+      } else if (next.groupPage !== undefined) {
+        const desired = next.groupPage && next.groupPage > 1 ? String(next.groupPage) : null;
+        if (desired === null) {
+          params.delete('group_page');
+        } else {
+          params.set('group_page', desired);
+        }
+      }
+
+      const nextSearch = params.toString();
+      navigate(
+        {
+          pathname: window.location.pathname,
+          search: nextSearch ? `?${nextSearch}` : '',
+        },
+        { replace },
+      );
+    },
+    [navigate],
+  );
+
+  const setGroupByStack = useCallback(
+    (nextGroupBy: GalleryGroupBy[]) => {
+      const nextGroupView = groupView ?? DEFAULT_GROUP_VIEW;
+      const nextGroupScope = normalizeGroupScopeSelection(groupScope.length ? groupScope : DEFAULT_GROUP_SCOPE);
+      updatePanelSettings('gallery', {
+        groupBy: nextGroupBy,
+        groupView: nextGroupView,
+        groupScope: nextGroupScope,
+      });
+      syncGroupInUrl(
+        {
+          groupBy: nextGroupBy,
+          groupView: nextGroupView,
+          groupScope: nextGroupScope,
+          groupPath: [],
+          groupPage: 1,
+        },
+        true,
+      );
+    },
+    [groupView, groupScope, syncGroupInUrl, updatePanelSettings],
+  );
+
+  const handleGroupViewChange = useCallback(
+    (nextGroupView: GalleryGroupView) => {
+      const nextGroupScope = normalizeGroupScopeSelection(groupScope.length ? groupScope : DEFAULT_GROUP_SCOPE);
+      updatePanelSettings('gallery', {
+        groupBy: groupByStack,
+        groupView: nextGroupView,
+        groupScope: nextGroupScope,
+      });
+      syncGroupInUrl(
+        {
+          groupBy: groupByStack,
+          groupView: nextGroupView,
+          groupScope: nextGroupScope,
+          groupPath,
+        },
+        true,
+      );
+    },
+    [groupByStack, groupPath, groupScope, syncGroupInUrl, updatePanelSettings],
+  );
+
+  const handleGroupModeChange = useCallback(
+    (nextMode: GalleryGroupMode) => {
+      if (nextMode === groupMode) return;
+      let nextGroupBy = groupByStack;
+      if (nextMode === 'single' && nextGroupBy.length > 1) {
+        nextGroupBy = nextGroupBy.slice(0, 1);
+      }
+      updatePanelSettings('gallery', {
+        groupMode: nextMode,
+        groupBy: nextGroupBy.length > 0 ? nextGroupBy : 'none',
+      });
+      syncGroupInUrl(
+        {
+          groupBy: nextGroupBy,
+          groupView,
+          groupScope,
+          groupPath: [],
+          groupPage: 1,
+        },
+        true,
+      );
+    },
+    [groupByStack, groupMode, groupPath, groupScope, groupView, syncGroupInUrl, updatePanelSettings],
+  );
+
+  const toggleGroupBy = useCallback(
+    (value: GalleryGroupBy) => {
+      if (value === 'none') {
+        setGroupByStack([]);
+        return;
+      }
+      if (groupMode === 'single') {
+        setGroupByStack([value]);
+        return;
+      }
+      const next = [...groupByStack];
+      const index = next.indexOf(value);
+      if (index >= 0) {
+        next.splice(index, 1);
+      } else {
+        next.push(value);
+      }
+      setGroupByStack(next);
+    },
+    [groupByStack, groupMode, setGroupByStack],
+  );
+
+  useEffect(() => {
+    if (groupMode === 'single' && groupByStack.length > 1) {
+      setGroupByStack(groupByStack.slice(0, 1));
+    }
+  }, [groupByStack, groupMode, setGroupByStack]);
+
+  const setFilters = useCallback((next: Partial<AssetFilters>) => {
+    controller.setFilters(next);
+  }, [controller.setFilters]);
+
+  const groups = useMemo<AssetGroup[]>(() => {
+    if (!groupData) return [];
+    const labelGroupBy = currentGroupBy ?? groupByStack[0] ?? 'source';
+    return groupData.groups
+      .map((group) => ({
+        key: group.key,
+        label: formatGroupLabel(labelGroupBy, group.key, group.meta),
+        count: group.count,
+        previewAssets: fromAssetResponses(group.preview_assets || []),
+        latestTimestamp: Date.parse(group.latest_created_at) || 0,
+        meta: group.meta,
+      }))
+      .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+  }, [groupData, currentGroupBy, groupByStack]);
+  const groupTotalPages = useMemo(() => {
+    if (!groupData) return 1;
+    const limit = Math.max(1, groupData.limit || GROUP_PAGE_SIZE);
+    return Math.max(1, Math.ceil(groupData.total / limit));
+  }, [groupData]);
+  const groupHasMore = useMemo(() => {
+    if (!groupData) return false;
+    return groupData.offset + groupData.groups.length < groupData.total;
+  }, [groupData]);
+  const activeGroupEntry = useMemo<GroupPathEntry | null>(
+    () => (groupPath.length > 0 ? groupPath[groupPath.length - 1] : null),
+    [groupPath],
+  );
+  const activeGroupLabel = useMemo(() => {
+    if (!activeGroupEntry) return null;
+    return formatGroupLabel(activeGroupEntry.groupBy, activeGroupEntry.groupKey);
+  }, [activeGroupEntry]);
+  const groupBreadcrumb = useMemo(() => {
+    if (groupPath.length === 0) return null;
+    return groupPath
+      .map((entry) => formatGroupLabel(entry.groupBy, entry.groupKey))
+      .join(' / ');
+  }, [groupPath]);
+  const showGroupOverview = hasGrouping && groupPath.length < groupByStack.length;
+  const showGroupFolders = showGroupOverview && groupView === 'folders';
+  const visibleAssets = useMemo(() => {
+    if (showGroupOverview) return [];
+    return controller.assets;
+  }, [controller.assets, showGroupOverview]);
+
+  const openGroup = useCallback(
+    (key: string) => {
+      if (!currentGroupBy) return;
+      const nextPath = [...groupPath, { groupBy: currentGroupBy, groupKey: key }];
+      syncGroupInUrl(
+        {
+          groupBy: groupByStack,
+          groupView,
+          groupScope,
+          groupPath: nextPath,
+          groupPage: 1,
+        },
+        false,
+      );
+    },
+    [currentGroupBy, groupByStack, groupPath, groupView, groupScope, syncGroupInUrl],
+  );
+
+  const clearGroup = useCallback(() => {
+    if (groupPath.length === 0) return;
+    const nextPath = groupPath.slice(0, -1);
+    syncGroupInUrl(
+      {
+        groupBy: groupByStack,
+        groupView,
+        groupScope,
+        groupPath: nextPath,
+        groupPage: 1,
+      },
+      true,
+    );
+  }, [groupByStack, groupPath, groupView, groupScope, syncGroupInUrl]);
+
+  const syncPageInUrl = useCallback((page: number, replace = true) => {
+    const params = new URLSearchParams(window.location.search);
+    const current = params.get('page');
+    const desired = page > 1 ? String(page) : null;
+
+    if (desired === null) {
+      if (current === null) return;
+      params.delete('page');
+    } else {
+      if (current === desired) return;
+      params.set('page', desired);
+    }
+
+    const nextSearch = params.toString();
+    navigate(
+      {
+        pathname: window.location.pathname,
+        search: nextSearch ? `?${nextSearch}` : '',
+      },
+      { replace },
+    );
+  }, [navigate]);
+
+  const syncGroupPageInUrl = useCallback(
+    (page: number, replace = true) => {
+      const params = new URLSearchParams(window.location.search);
+      const current = params.get('group_page');
+      const desired = page > 1 ? String(page) : null;
+
+      if (desired === null) {
+        if (current === null) return;
+        params.delete('group_page');
+      } else {
+        if (current === desired) return;
+        params.set('group_page', desired);
+      }
+
+      const nextSearch = params.toString();
+      navigate(
+        {
+          pathname: window.location.pathname,
+          search: nextSearch ? `?${nextSearch}` : '',
+        },
+        { replace },
+      );
+    },
+    [navigate],
+  );
+
+  useEffect(() => {
+    if (!groupData) return;
+    if (groupPage > groupTotalPages && groupTotalPages > 0) {
+      syncGroupPageInUrl(groupTotalPages, true);
+    }
+  }, [groupData, groupPage, groupTotalPages, syncGroupPageInUrl]);
+
+  const goToPage = useCallback((page: number, replace = false) => {
+    if (page < 1) return;
+    syncPageInUrl(page, replace);
+    controller.goToPage(page);
+  }, [controller.goToPage, syncPageInUrl]);
+
+  const goToGroupPage = useCallback(
+    (page: number, replace = false) => {
+      if (page < 1) return;
+      syncGroupPageInUrl(page, replace);
+    },
+    [syncGroupPageInUrl],
+  );
+
+  const resetAssets = useCallback(() => {
+    controller.reset(pageFromUrl);
+  }, [controller.reset, pageFromUrl]);
+
+  useEffect(() => {
+    if (controller.loading) return;
+    if (pageFromUrl !== controller.currentPage) {
+      controller.goToPage(pageFromUrl);
+    }
+  }, [controller.currentPage, controller.goToPage, controller.loading, pageFromUrl]);
 
   // Convert selected IDs to GalleryAsset objects
   const selectedAssets: GalleryAsset[] = useMemo(() => {
@@ -54,18 +698,18 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       selectedAssets,
       filters: controller.filters,
       refresh: () => {
-        controller.reset();
+        resetAssets();
       },
-      updateFilters: controller.setFilters,
+      updateFilters: setFilters,
       isSelectionMode: controller.isSelectionMode,
     }),
     [
       controller.assets,
       selectedAssets,
       controller.filters,
-      controller.setFilters,
+      setFilters,
       controller.isSelectionMode,
-      controller.reset,
+      resetAssets,
     ]
   );
 
@@ -86,7 +730,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
   };
 
   // Render cards
-  const cardItems = controller.assets.map((a) => {
+  const cardItems = visibleAssets.map((a) => {
     const isSelected = controller.selectedAssetIds.has(String(a.id));
 
     if (controller.isSelectionMode) {
@@ -133,7 +777,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       >
         {(() => {
           const baseActions = controller.getAssetActions(a);
-          const filterProviderId = controller.filters.provider_id || undefined;
+          const filterProviderId = Array.isArray(controller.filters.provider_id)
+            ? controller.filters.provider_id.length === 1
+              ? controller.filters.provider_id[0]
+              : undefined
+            : controller.filters.provider_id || undefined;
 
           const actions = {
             ...baseActions,
@@ -170,7 +818,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 });
                 const targetProvider = a.providerId || 'pixverse';
                 await uploadAssetToProvider(frameAsset.id, targetProvider);
-                controller.reset();
+                resetAssets();
               } catch (err: any) {
                 const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
                 alert(`Failed to extract/upload last frame: ${detail}`);
@@ -184,7 +832,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                   video_asset_id: a.id,
                   timestamp,
                 });
-                controller.reset();
+                resetAssets();
               } catch (err: any) {
                 const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
                 alert(`Failed to extract frame: ${detail}`);
@@ -198,7 +846,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                   video_asset_id: a.id,
                   last_frame: true,
                 });
-                controller.reset();
+                resetAssets();
               } catch (err: any) {
                 const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
                 alert(`Failed to extract last frame: ${detail}`);
@@ -208,7 +856,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               try {
                 const result = await enrichAsset(a.id);
                 if (result.enriched) {
-                  controller.reset();
+                  resetAssets();
                 } else {
                   alert(result.message || 'No metadata to refresh');
                 }
@@ -249,58 +897,158 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 placeholder="Search tags, description..."
                 className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={controller.filters.q}
-                onChange={(e) => controller.setFilters({ q: e.target.value })}
+                onChange={(e) => setFilters({ q: e.target.value })}
               />
             </div>
 
             {/* Page-based pagination controls */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => controller.goToPage(controller.currentPage - 1)}
-                disabled={controller.loading || controller.currentPage <= 1}
-                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                title="Previous page"
-              >
-                ‹
-              </button>
-              <button
-                onClick={() => {
-                  const targetPage = prompt(`Go to page (1-${controller.totalPages}+):`, String(controller.currentPage));
-                  if (targetPage) {
-                    const page = parseInt(targetPage, 10);
-                    if (!isNaN(page) && page >= 1) {
-                      controller.goToPage(page);
+            
+            
+            
+            {showGroupOverview ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => goToGroupPage(groupPage - 1)}
+                  disabled={groupLoading || groupPage <= 1}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Previous group page"
+                >
+                  &lsaquo;
+                </button>
+                <button
+                  onClick={() => {
+                    const targetPage = prompt(`Go to group page (1-${groupTotalPages}):`, String(groupPage));
+                    if (targetPage) {
+                      const page = parseInt(targetPage, 10);
+                      if (!isNaN(page) && page >= 1) {
+                        goToGroupPage(page);
+                      }
                     }
-                  }
-                }}
-                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
-                title="Click to jump to page"
+                  }}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
+                  title="Click to jump to group page"
+                >
+                  {groupLoading ? '...' : `${groupPage}/${groupTotalPages}`}
+                </button>
+                <button
+                  onClick={() => goToGroupPage(groupPage + 1)}
+                  disabled={groupLoading || !groupHasMore}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Next group page"
+                >
+                  &rsaquo;
+                </button>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                  {groupData ? `${groupData.groups.length} groups` : '0 groups'}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => goToPage(controller.currentPage - 1)}
+                  disabled={controller.loading || controller.currentPage <= 1}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Previous page"
+                >
+                  &lsaquo;
+                </button>
+                <button
+                  onClick={() => {
+                    const targetPage = prompt(`Go to page (1-${controller.totalPages}+):`, String(controller.currentPage));
+                    if (targetPage) {
+                      const page = parseInt(targetPage, 10);
+                      if (!isNaN(page) && page >= 1) {
+                        goToPage(page);
+                      }
+                    }
+                  }}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
+                  title="Click to jump to page"
+                >
+                  {controller.loading ? '...' : `${controller.currentPage}/${controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}`}
+                </button>
+                <button
+                  onClick={() => goToPage(controller.currentPage + 1)}
+                  disabled={controller.loading || !controller.hasMore}
+                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title="Next page"
+                >
+                  &rsaquo;
+                </button>
+                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                  {controller.assets.length} items
+                </span>
+              </div>
+            )}
+
+            {/* Grouping */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">Group</span>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleGroupBy('none')}
+                  className={`px-2 py-1 text-xs rounded border transition-colors ${
+                    groupByStack.length === 0
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
+                  }`}
+                >
+                  None
+                </button>
+                {GROUP_BY_UI_VALUES.map((value) => {
+                  const index = groupByStack.indexOf(value);
+                  const selected = index >= 0;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => toggleGroupBy(value)}
+                      className={`px-2 py-1 text-xs rounded border transition-colors inline-flex items-center gap-1 ${
+                        selected
+                          ? 'bg-blue-600 border-blue-600 text-white'
+                          : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
+                      }`}
+                    >
+                      <span>{GROUP_BY_LABELS[value]}</span>
+                      {groupMode === 'multi' && selected && (
+                        <span className="text-[10px] px-1 rounded-full bg-white/20">
+                          {index + 1}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-1 ml-1">
+                {(['single', 'multi'] as GalleryGroupMode[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => handleGroupModeChange(mode)}
+                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                      groupMode === mode
+                        ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
+                        : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-blue-400'
+                    }`}
+                  >
+                    {mode === 'single' ? 'Single' : 'Multi'}
+                  </button>
+                ))}
+              </div>
+              <select
+                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={groupView}
+                onChange={(e) => handleGroupViewChange(e.target.value as GalleryGroupView)}
+                disabled={!hasGrouping}
               >
-                {controller.loading ? '...' : `${controller.currentPage}/${controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}`}
-              </button>
-              <button
-                onClick={() => controller.goToPage(controller.currentPage + 1)}
-                disabled={controller.loading || !controller.hasMore}
-                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                title="Next page"
-              >
-                ›
-              </button>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
-                {controller.assets.length} items
-              </span>
+                <option value="inline">List</option>
+                <option value="folders">Folders</option>
+                <option value="panel" disabled>
+                  Panel (soon)
+                </option>
+              </select>
             </div>
-
-            {/* Divider */}
-            <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
-
-            {/* Dynamic filters from backend registry */}
-            <DynamicFilters
-              filters={controller.filters}
-              onFiltersChange={(f) => controller.setFilters(f)}
-              exclude={['q']}
-              showCounts
-            />
 
             {/* Divider */}
             <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
@@ -309,12 +1057,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             <select
               className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={controller.filters.sort}
-              onChange={(e) => controller.setFilters({ sort: e.target.value as any })}
+              onChange={(e) => setFilters({ sort: e.target.value as any })}
             >
               <option value="new">Newest First</option>
               <option value="old">Oldest First</option>
-              <option value="alpha">A–Z</option>
+              <option value="alpha">A-Z</option>
             </select>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">Filters</span>
+            <div className="flex-1 min-w-0">
+              <DynamicFilters
+                filters={controller.filters}
+                onFiltersChange={(f) => setFilters(f)}
+                exclude={['q']}
+                showCounts
+              />
+            </div>
           </div>
         </div>
 
@@ -328,7 +1087,68 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
       {/* Scrollable gallery */}
       <div className="flex-1 overflow-auto mt-4">
-        {layout === 'masonry' ? (
+        {hasGrouping && groupPath.length > 0 && (
+          <div className="mb-4 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium">{groupBreadcrumb ?? activeGroupLabel}</span>
+              <span className="text-neutral-500 dark:text-neutral-400">
+                {controller.assets.length} items
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={clearGroup}
+              className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        {showGroupOverview ? (
+          groupLoading ? (
+            <div className="text-sm text-neutral-500 dark:text-neutral-400">
+              Loading groups...
+            </div>
+          ) : groupError ? (
+            <div className="text-sm text-red-500">{groupError}</div>
+          ) : groups.length > 0 ? (
+            showGroupFolders ? (
+              <div
+                className="grid"
+                style={{
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                  rowGap: `${layoutSettings.rowGap}px`,
+                  columnGap: `${layoutSettings.columnGap}px`,
+                }}
+              >
+                {groups.map((group) => (
+                  <GroupFolderTile
+                    key={group.key}
+                    group={group}
+                    cardSize={cardSize}
+                    onOpen={() => openGroup(group.key)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {groups.map((group) => (
+                  <GroupListRow
+                    key={group.key}
+                    group={group}
+                    cardSize={cardSize}
+                    onOpen={() => openGroup(group.key)}
+                  />
+                ))}
+              </div>
+            )
+          ) : (
+            <div className="text-sm text-neutral-500 dark:text-neutral-400">
+              No groups available for this mode.
+            </div>
+          )
+        ) : layout === 'masonry' ? (
           <MasonryGrid
             items={cardItems}
             rowGap={layoutSettings.rowGap}
@@ -348,28 +1168,267 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
           </div>
         )}
         {/* Bottom pagination controls (duplicate of top for convenience) */}
-        <div className="pt-4 pb-8 flex justify-center">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => controller.goToPage(controller.currentPage - 1)}
-              disabled={controller.loading || controller.currentPage <= 1}
-              className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              ← Prev
-            </button>
-            <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
-              Page {controller.currentPage} of {controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}
-            </span>
-            <button
-              onClick={() => controller.goToPage(controller.currentPage + 1)}
-              disabled={controller.loading || !controller.hasMore}
-              className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              Next →
-            </button>
+        
+        {showGroupOverview ? (
+          <div className="pt-4 pb-8 flex justify-center">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToGroupPage(groupPage - 1)}
+                disabled={groupLoading || groupPage <= 1}
+                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Prev
+              </button>
+              <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
+                Group page {groupPage} of {groupTotalPages}
+              </span>
+              <button
+                onClick={() => goToGroupPage(groupPage + 1)}
+                disabled={groupLoading || !groupHasMore}
+                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
           </div>
+        ) : (
+          <div className="pt-4 pb-8 flex justify-center">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToPage(controller.currentPage - 1)}
+                disabled={controller.loading || controller.currentPage <= 1}
+                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Prev
+              </button>
+              <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
+                Page {controller.currentPage} of {controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}
+              </span>
+              <button
+                onClick={() => goToPage(controller.currentPage + 1)}
+                disabled={controller.loading || !controller.hasMore}
+                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupFolderTile({
+  group,
+  cardSize,
+  onOpen,
+}: {
+  group: AssetGroup;
+  cardSize: number;
+  onOpen: () => void;
+}) {
+  const tileHeight = Math.max(160, Math.round(cardSize * 0.75));
+  const previewAssets = useMemo(() => {
+    return selectGroupPreviewAssets(group.previewAssets);
+  }, [group.previewAssets]);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-400 dark:hover:border-blue-400 transition-colors overflow-hidden text-left"
+      style={{ height: tileHeight }}
+      title={group.label}
+    >
+      <div className="grid grid-cols-2 grid-rows-2 gap-1 p-2 h-full">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <GroupPreviewCell
+            key={index}
+            asset={previewAssets[index]}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-x-2 bottom-2 px-2 py-1 rounded bg-white/90 dark:bg-neutral-900/90 border border-neutral-200 dark:border-neutral-700">
+        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+          {group.label}
+        </div>
+        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+          {group.count} items
         </div>
       </div>
+    </button>
+  );
+}
+
+function GroupListRow({
+  group,
+  cardSize,
+  onOpen,
+}: {
+  group: AssetGroup;
+  cardSize: number;
+  onOpen: () => void;
+}) {
+  const previewAssets = useMemo(() => {
+    return selectGroupPreviewAssets(group.previewAssets);
+  }, [group.previewAssets]);
+  const previewSize = Math.max(56, Math.round(cardSize * 0.28));
+  const infoLine = useMemo(() => {
+    const parts: string[] = [];
+    const meta = group.meta;
+    if (meta && meta.kind === 'prompt') {
+      if (meta.family_title) parts.push(meta.family_title);
+      if (meta.version_number !== null && meta.version_number !== undefined) {
+        parts.push(`v${meta.version_number}`);
+      }
+      if (meta.author) parts.push(meta.author);
+      if (meta.commit_message) {
+        const trimmed = meta.commit_message.trim();
+        if (trimmed) {
+          parts.push(trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed);
+        }
+      }
+    } else if (meta && meta.kind === 'generation') {
+      if (meta.provider_id) parts.push(meta.provider_id);
+      if (meta.operation_type) parts.push(meta.operation_type.replace(/_/g, ' '));
+      if (meta.status) parts.push(meta.status);
+    } else if (meta && meta.kind === 'source') {
+      parts.push(`Asset #${meta.asset_id}`);
+      if (meta.media_type) parts.push(meta.media_type);
+    }
+
+    parts.push(`${group.count} items`);
+    return parts.filter(Boolean).join(' \u2022 ');
+  }, [group.count, group.meta]);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="group w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/60 hover:border-blue-400 dark:hover:border-blue-400 transition-colors px-3 py-3 text-left"
+      title={group.label}
+    >
+      <div className="flex items-center gap-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <GroupMetaThumb meta={group.meta} size={previewSize} />
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-2">
+              {group.label}
+            </div>
+            <div className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1">
+              {infoLine}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <GroupPreviewCell
+              key={index}
+              asset={previewAssets[index]}
+              size={previewSize}
+            />
+          ))}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function GroupMetaThumb({
+  meta,
+  size,
+}: {
+  meta?: AssetGroupMeta | null;
+  size: number;
+}) {
+  const isSource = meta?.kind === 'source';
+  const fallbackThumb = isSource
+    ? meta.thumbnail_url ?? meta.preview_url ?? meta.remote_url ?? undefined
+    : undefined;
+  const thumbSrc = useMediaThumbnail(
+    fallbackThumb,
+    isSource ? meta.preview_url ?? undefined : undefined,
+    isSource ? meta.remote_url ?? undefined : undefined,
+    { preferPreview: true },
+  );
+
+  if (!isSource) {
+    return null;
+  }
+
+  return (
+    <div
+      className="flex-none rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
+      style={{ width: size, height: size }}
+    >
+      {thumbSrc ? (
+        <img src={thumbSrc} alt="" className="w-full h-full object-cover" loading="lazy" />
+      ) : null}
+    </div>
+  );
+}
+
+function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: number }) {
+  const urls = useMemo(() => {
+    if (!asset) {
+      return { mainUrl: undefined, thumbnailUrl: undefined, previewUrl: undefined };
+    }
+    return getAssetDisplayUrls(asset);
+  }, [asset]);
+
+  const isVideo = asset?.mediaType === 'video';
+  const { thumbSrc, thumbLoading, thumbFailed, videoSrc, usePosterImage } = useMediaPreviewSource({
+    mediaType: asset?.mediaType ?? 'image',
+    thumbUrl: urls.thumbnailUrl,
+    previewUrl: urls.previewUrl,
+    remoteUrl: urls.mainUrl ?? asset?.remoteUrl ?? asset?.fileUrl,
+  });
+  const showPoster = isVideo && usePosterImage && !!thumbSrc && !thumbFailed;
+  const showImage = !isVideo && !!thumbSrc && !thumbFailed;
+  const showVideo = isVideo && !!videoSrc && !showPoster;
+
+  return (
+    <div
+      className="w-full h-full rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
+      style={size ? { width: size, height: size } : undefined}
+    >
+      {showPoster ? (
+        <img
+          src={thumbSrc}
+          alt=""
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      ) : showImage ? (
+        <img
+          src={thumbSrc}
+          alt=""
+          className="w-full h-full object-cover"
+          loading="lazy"
+        />
+      ) : showVideo ? (
+        <video
+          src={videoSrc}
+          poster={thumbSrc}
+          className="w-full h-full object-cover"
+          preload="metadata"
+          muted
+          playsInline
+        />
+      ) : thumbLoading ? (
+        <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
+          <div className="w-4 h-4 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
+          <ThemedIcon
+            name={asset?.mediaType === 'video' ? 'video' : 'image'}
+            size={16}
+            variant="subtle"
+          />
+        </div>
+      )}
     </div>
   );
 }

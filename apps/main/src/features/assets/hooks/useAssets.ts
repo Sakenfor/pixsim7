@@ -4,6 +4,7 @@ import { listAssets } from '@lib/api/assets';
 import type { AssetListResponse, AssetResponse, AssetSearchRequest } from '@lib/api/assets';
 
 import { assetEvents } from '../lib/assetEvents';
+import { buildAssetSearchRequest, extractExtraRegistryFilters } from '../lib/searchParams';
 import { type AssetModel, fromAssetResponse, fromAssetResponses } from '../models/asset';
 
 // Re-export AssetModel for consumers
@@ -14,11 +15,11 @@ export type { AssetResponse } from '@lib/api/assets';
 export type AssetFilters = {
   // Existing filters
   q?: string;
-  tag?: string;
-  provider_id?: string | null;
+  tag?: string | string[];
+  provider_id?: string | string[] | null;
   sort?: 'new' | 'old' | 'size';  // Removed 'alpha' - Asset has no name field
-  media_type?: 'video' | 'image' | 'audio' | '3d_model';
-  upload_method?: string;
+  media_type?: 'video' | 'image' | 'audio' | '3d_model' | Array<'video' | 'image' | 'audio' | '3d_model'>;
+  upload_method?: string | string[];
   provider_status?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   include_archived?: boolean;
 
@@ -40,18 +41,35 @@ export type AssetFilters = {
 
   // Lineage filters
   source_generation_id?: number;
+  source_asset_id?: number;
   operation_type?: string;
   has_parent?: boolean;
   has_children?: boolean;
 
+  // Prompt analysis filters (dynamic)
+  analysis_tags?: string | string[];
+
+  // Prompt version filter (UUID string)
+  prompt_version_id?: string;
+
   // Sort options (backend fields)
   sort_by?: 'created_at' | 'file_size_bytes';
   sort_dir?: 'asc' | 'desc';
-} & Record<string, string | boolean | number | undefined>;
+} & Record<string, string | boolean | number | string[] | boolean[] | number[] | undefined>;
 
-export function useAssets(options?: { limit?: number; filters?: AssetFilters; paginationMode?: 'infinite' | 'page' }) {
+export function useAssets(options?: {
+  limit?: number;
+  filters?: AssetFilters;
+  paginationMode?: 'infinite' | 'page';
+  initialPage?: number;
+  preservePageOnFilterChange?: boolean;
+  requestOverrides?: Partial<AssetSearchRequest>;
+}) {
   const limit = options?.limit ?? 20;
   const filters = options?.filters ?? {};
+  const initialPage = options?.initialPage ?? 1;
+  const preservePageOnFilterChange = options?.preservePageOnFilterChange ?? false;
+  const requestOverrides = options?.requestOverrides;
   // paginationMode reserved for future use
 
   const [items, setItems] = useState<AssetModel[]>([]);
@@ -63,9 +81,12 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
   // Page-based pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
 
   // Guard to avoid duplicate initial loads in React StrictMode
   const initialLoadRequestedRef = useRef(false);
+  const initialPageRef = useRef(initialPage);
   // Request ID to ignore stale responses after filter changes
   const requestIdRef = useRef(0);
 
@@ -101,59 +122,34 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
 
     // Lineage filters
     source_generation_id: filters.source_generation_id,
+    source_asset_id: filters.source_asset_id,
     operation_type: filters.operation_type || undefined,
     has_parent: filters.has_parent,
     has_children: filters.has_children,
+
+    // Prompt version filter
+    prompt_version_id: filters.prompt_version_id || undefined,
   }), [
     filters.q, filters.tag, filters.provider_id, filters.sort,
     filters.media_type, filters.upload_method, filters.provider_status, filters.include_archived,
     filters.created_from, filters.created_to,
     filters.min_width, filters.max_width, filters.min_height, filters.max_height,
     filters.content_domain, filters.content_category, filters.content_rating, filters.searchable,
-    filters.source_generation_id, filters.operation_type, filters.has_parent, filters.has_children,
+    filters.source_generation_id, filters.source_asset_id, filters.operation_type, filters.has_parent, filters.has_children,
+    filters.prompt_version_id,
   ]);
 
   const extraRegistryFilters = useMemo(() => {
-    const knownKeys = new Set([
-      'q',
-      'tag',
-      'provider_id',
-      'sort',
-      'media_type',
-      'upload_method',
-      'provider_status',
-      'include_archived',
-      'created_from',
-      'created_to',
-      'min_width',
-      'max_width',
-      'min_height',
-      'max_height',
-      'content_domain',
-      'content_category',
-      'content_rating',
-      'searchable',
-      'source_generation_id',
-      'operation_type',
-      'has_parent',
-      'has_children',
-      'sort_by',
-      'sort_dir',
-    ]);
-    const extras: Record<string, string | boolean | number> = {};
-    Object.entries(filters).forEach(([key, value]) => {
-      if (knownKeys.has(key)) return;
-      if (value === undefined || value === null || value === '') return;
-      if (typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') {
-        extras[key] = value;
-      }
-    });
-    return extras;
+    return extractExtraRegistryFilters(filters);
   }, [filters]);
 
   const extraRegistryFiltersKey = useMemo(
     () => JSON.stringify(extraRegistryFilters),
     [extraRegistryFilters]
+  );
+  const requestOverridesKey = useMemo(
+    () => JSON.stringify(requestOverrides || {}),
+    [requestOverrides],
   );
 
   // Use ref to always access current filterParams in loadMore without stale closures
@@ -166,53 +162,22 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
 
   // Build query params helper
   const buildQueryParams = useCallback((currentFilters: AssetFilters, offset?: number, currentCursor?: string | null): AssetSearchRequest => {
-    const registryFilters: Record<string, string> = {};
-    if (currentFilters.provider_id) {
-      registryFilters.provider_id = currentFilters.provider_id;
-    }
-    if (currentFilters.media_type) {
-      registryFilters.media_type = currentFilters.media_type;
-    }
-    if (currentFilters.upload_method) {
-      registryFilters.upload_method = currentFilters.upload_method;
-    }
-    Object.entries(extraRegistryFilters).forEach(([key, value]) => {
-      registryFilters[key] = String(value);
-    });
-
-    return {
+    const base = buildAssetSearchRequest(currentFilters, {
       limit,
-      offset: offset !== undefined ? offset : undefined,
-      cursor: offset === undefined ? (currentCursor || undefined) : undefined,
-      filters: Object.keys(registryFilters).length ? registryFilters : undefined,
-      // Basic filters
-      q: currentFilters.q || undefined,
-      tag: currentFilters.tag || undefined,
-      provider_status: currentFilters.provider_status || undefined,
-      include_archived: currentFilters.include_archived || undefined,
-      // Date range filters
-      created_from: currentFilters.created_from || undefined,
-      created_to: currentFilters.created_to || undefined,
-      // Dimension filters
-      min_width: currentFilters.min_width,
-      max_width: currentFilters.max_width,
-      min_height: currentFilters.min_height,
-      max_height: currentFilters.max_height,
-      // Content filters
-      content_domain: currentFilters.content_domain || undefined,
-      content_category: currentFilters.content_category || undefined,
-      content_rating: currentFilters.content_rating || undefined,
-      searchable: currentFilters.searchable,
-      // Lineage filters
-      source_generation_id: currentFilters.source_generation_id,
-      operation_type: currentFilters.operation_type || undefined,
-      has_parent: currentFilters.has_parent,
-      has_children: currentFilters.has_children,
-      // Sort options
-      sort_by: currentFilters.sort_by || undefined,
-      sort_dir: currentFilters.sort_dir || undefined,
+      offset,
+      cursor: currentCursor,
+    });
+    if (!requestOverrides || Object.keys(requestOverrides).length === 0) {
+      return base;
+    }
+    return {
+      ...base,
+      ...requestOverrides,
+      limit: base.limit,
+      offset: base.offset,
+      cursor: base.cursor,
     };
-  }, [limit, extraRegistryFilters]);
+  }, [limit, requestOverrides]);
 
   const loadMore = useCallback(async () => {
     if (loading || !hasMore) return;
@@ -327,7 +292,8 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     }
   }, [loading, limit, buildQueryParams]);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((pageOverride?: number) => {
+    const nextPage = pageOverride && pageOverride > 0 ? pageOverride : 1;
     // Increment request ID to invalidate any in-flight requests
     requestIdRef.current += 1;
     setItems([]);
@@ -335,8 +301,9 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     setHasMore(true);
     setError(null);
     setLoading(false); // Also reset loading state
-    setCurrentPage(1);
+    setCurrentPage(nextPage);
     setTotalPages(1);
+    initialPageRef.current = nextPage;
     initialLoadRequestedRef.current = false;
   }, []);
 
@@ -380,11 +347,23 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
       const tags = (asset.tags || []).map((tag) => (typeof tag === 'string' ? tag : tag.name));
       // Only prepend if it matches current filters (or no filters)
       const matchesFilters =
-        (!filterParams.media_type || asset.media_type === filterParams.media_type) &&
-        (!filterParams.provider_id || asset.provider_id === filterParams.provider_id) &&
-        (!filterParams.upload_method || asset.upload_method === filterParams.upload_method) &&
+        (!filterParams.media_type ||
+          (Array.isArray(filterParams.media_type)
+            ? filterParams.media_type.includes(asset.media_type)
+            : asset.media_type === filterParams.media_type)) &&
+        (!filterParams.provider_id ||
+          (Array.isArray(filterParams.provider_id)
+            ? filterParams.provider_id.includes(asset.provider_id)
+            : asset.provider_id === filterParams.provider_id)) &&
+        (!filterParams.upload_method ||
+          (Array.isArray(filterParams.upload_method)
+            ? filterParams.upload_method.includes(asset.upload_method)
+            : asset.upload_method === filterParams.upload_method)) &&
         (!filterParams.provider_status || asset.provider_status === filterParams.provider_status) &&
-        (!filterParams.tag || tags.includes(filterParams.tag)) &&
+        (!filterParams.tag ||
+          (Array.isArray(filterParams.tag)
+            ? filterParams.tag.some((tag) => tags.includes(tag))
+            : tags.includes(filterParams.tag))) &&
         (!filterParams.q ||
           asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
           tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
@@ -418,17 +397,19 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
 
   // Reset when filters change
   useEffect(() => {
-    reset();
+    reset(preservePageOnFilterChange ? currentPageRef.current : 1);
   }, [
     filterParams.q, filterParams.tag, filterParams.provider_id,
     filterParams.media_type, filterParams.upload_method, filterParams.provider_status, filterParams.include_archived,
     filterParams.created_from, filterParams.created_to,
     filterParams.min_width, filterParams.max_width, filterParams.min_height, filterParams.max_height,
     filterParams.content_domain, filterParams.content_category, filterParams.content_rating, filterParams.searchable,
-    filterParams.source_generation_id, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.source_generation_id, filterParams.source_asset_id, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.prompt_version_id,
     filterParams.sort_by, filterParams.sort_dir,
     extraRegistryFiltersKey,
-    limit, reset,
+    requestOverridesKey,
+    limit, preservePageOnFilterChange, reset,
   ]);
 
   // Load first page on mount and after resets (cursor becomes null and items empty)
@@ -436,9 +417,14 @@ export function useAssets(options?: { limit?: number; filters?: AssetFilters; pa
     if (items.length === 0 && !loading && !initialLoadRequestedRef.current) {
       // initial or after reset (guarded so StrictMode doesn't double-load)
       initialLoadRequestedRef.current = true;
-      loadMore();
+      const startPage = Math.max(1, initialPageRef.current || 1);
+      if (startPage > 1) {
+        goToPage(startPage);
+      } else {
+        loadMore();
+      }
     }
-  }, [items.length, loading, loadMore]);
+  }, [items.length, loading, loadMore, goToPage]);
 
   return {
     items,

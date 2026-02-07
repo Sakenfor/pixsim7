@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
+import type { AssetSearchRequest } from '@lib/api/assets';
 import { BACKEND_BASE } from '@lib/api/client';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { getGeneration, createGeneration } from '@lib/api/generations';
@@ -36,7 +37,7 @@ const SESSION_KEY = 'assets_filters';
  * This allows the AssetsRoute component to be mostly declarative,
  * wiring UI elements to controller state/actions.
  */
-export function useAssetsController() {
+export function useAssetsController(options?: { initialPage?: number; preservePageOnFilterChange?: boolean; requestOverrides?: Partial<AssetSearchRequest> }) {
   // Asset picker mode from store
   const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
   const selectAsset = useAssetPickerStore((s) => s.selectAsset);
@@ -66,6 +67,12 @@ export function useAssetsController() {
       upload_method: undefined,
       include_archived: undefined,
     },
+    arrayKeys: ['media_type', 'provider_id', 'upload_method', 'tag', 'analysis_tags'],
+    allowUnknownKeys: true,
+    excludeUrlKeys: ['page', 'source', 'surface', 'group_by', 'group_view', 'group_scope', 'group_key', 'group_path', 'group_page'],
+    syncToSession: true,
+    readFromSession: true,
+    sessionFallbackOnlyWhenNoQuery: true,
   });
 
   // Data loading with page-based pagination support
@@ -81,7 +88,13 @@ export function useAssetsController() {
     totalPages,
     goToPage,
     pageSize,
-  } = useAssets({ filters, limit: 50 });
+  } = useAssets({
+    filters,
+    limit: 50,
+    initialPage: options?.initialPage,
+    preservePageOnFilterChange: options?.preservePageOnFilterChange,
+    requestOverrides: options?.requestOverrides,
+  });
 
   // Viewer state
   const [viewerSrc, setViewerSrc] = useState<string | null>(null);

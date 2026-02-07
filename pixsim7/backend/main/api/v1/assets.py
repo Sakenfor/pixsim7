@@ -23,7 +23,9 @@ from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import json
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal, Union
+from enum import Enum
+from uuid import UUID
 from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim7.backend.main.domain.assets.upload_attribution import (
@@ -59,13 +61,32 @@ router.include_router(assets_versions.router)
 
 # ===== ASSET SEARCH =====
 
+class AssetGroupBy(str, Enum):
+    source = "source"
+    generation = "generation"
+    prompt = "prompt"
+
+
+class AssetGroupPathEntry(BaseModel):
+    group_by: AssetGroupBy
+    group_key: str
+
+
 class AssetSearchRequest(BaseModel):
     """Request body for asset search."""
     filters: dict[str, Any] = Field(
         default_factory=dict,
         description="Filter key/value pairs (registry-defined)",
     )
-    tag: Optional[str] = Field(None, description="Filter assets containing tag (slug)")
+    group_filter: dict[str, Any] | None = Field(
+        None,
+        description="Optional registry filters that scope grouping eligibility",
+    )
+    group_path: list[AssetGroupPathEntry] = Field(
+        default_factory=list,
+        description="Nested grouping path (ordered list of group_by + group_key)",
+    )
+    tag: str | list[str] | None = Field(None, description="Filter assets containing tag (slug)")
     q: Optional[str] = Field(None, description="Full-text search over description/tags")
     include_archived: bool = Field(False, description="Include archived assets (default: false)")
     searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
@@ -85,9 +106,18 @@ class AssetSearchRequest(BaseModel):
     sync_status: SyncStatus | None = Field(None, description="Filter by sync status")
 
     source_generation_id: int | None = Field(None, description="Filter by source generation ID")
+    source_asset_id: int | None = Field(None, description="Filter by source asset ID")
     operation_type: OperationType | None = Field(None, description="Filter by lineage operation type")
     has_parent: bool | None = Field(None, description="Has lineage parent")
     has_children: bool | None = Field(None, description="Has lineage children")
+
+    prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
+
+    group_by: AssetGroupBy | None = Field(None, description="Group key to filter assets by (source, generation, prompt)")
+    group_key: str | None = Field(
+        None,
+        description="Group value to filter assets by (use 'ungrouped' or 'other')",
+    )
 
     sort_by: str | None = Field(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field")
     sort_dir: str = Field("desc", pattern=r"^(asc|desc)$", description="Sort direction")
@@ -118,6 +148,8 @@ async def search_assets(
         assets = await asset_service.list_assets(
             user=user,
             filters=request.filters,
+            group_filter=request.group_filter,
+            group_path=request.group_path,
             sync_status=request.sync_status,
             provider_status=request.provider_status,
             tag=request.tag,
@@ -138,9 +170,13 @@ async def search_assets(
             content_rating=request.content_rating,
             searchable=request.searchable,
             source_generation_id=request.source_generation_id,
+            source_asset_id=request.source_asset_id,
             operation_type=request.operation_type,
             has_parent=request.has_parent,
             has_children=request.has_children,
+            prompt_version_id=request.prompt_version_id,
+            group_by=request.group_by.value if isinstance(request.group_by, Enum) else request.group_by,
+            group_key=request.group_key,
             sort_by=request.sort_by,
             sort_dir=request.sort_dir,
         )
@@ -172,6 +208,239 @@ async def search_assets(
         raise HTTPException(status_code=500, detail=f"Failed to list assets: {str(e)}")
 
 
+# ===== ASSET GROUPS =====
+
+class AssetGroupRequest(AssetSearchRequest):
+    """Request body for asset grouping."""
+    group_by: AssetGroupBy = Field(..., description="Group assets by this key")
+    preview_limit: int = Field(4, ge=0, le=12, description="Preview assets per group")
+
+class AssetGroupSourceMeta(BaseModel):
+    kind: Literal["source"] = "source"
+    asset_id: int
+    media_type: str
+    created_at: datetime
+    description: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    preview_url: Optional[str] = None
+    remote_url: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+
+
+class AssetGroupGenerationMeta(BaseModel):
+    kind: Literal["generation"] = "generation"
+    generation_id: int
+    provider_id: str
+    operation_type: str
+    status: Optional[str] = None
+    created_at: datetime
+    final_prompt: Optional[str] = None
+    prompt_version_id: Optional[UUID] = None
+
+
+class AssetGroupPromptMeta(BaseModel):
+    kind: Literal["prompt"] = "prompt"
+    prompt_version_id: UUID
+    prompt_text: str
+    commit_message: Optional[str] = None
+    author: Optional[str] = None
+    version_number: Optional[int] = None
+    family_id: Optional[UUID] = None
+    family_title: Optional[str] = None
+    family_slug: Optional[str] = None
+    created_at: datetime
+    tags: List[str] = Field(default_factory=list)
+
+
+AssetGroupMeta = Union[AssetGroupSourceMeta, AssetGroupGenerationMeta, AssetGroupPromptMeta]
+
+
+class AssetGroupSummary(BaseModel):
+    key: str
+    count: int
+    latest_created_at: datetime
+    preview_assets: list[AssetResponse] = Field(default_factory=list)
+    meta: Optional[AssetGroupMeta] = None
+
+
+class AssetGroupListResponse(BaseModel):
+    groups: list[AssetGroupSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.post("/groups", response_model=AssetGroupListResponse)
+async def list_asset_groups(
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+    request: AssetGroupRequest,
+):
+    """Group assets for the current user with filters and pagination."""
+    try:
+        group_by = request.group_by.value if isinstance(request.group_by, Enum) else request.group_by
+        groups, total_groups = await asset_service.list_asset_groups(
+            user=user,
+            group_by=group_by,
+            filters=request.filters,
+            group_filter=request.group_filter,
+            group_path=request.group_path,
+            sync_status=request.sync_status,
+            provider_status=request.provider_status,
+            tag=request.tag,
+            q=request.q,
+            include_archived=request.include_archived,
+            searchable=request.searchable,
+            created_from=request.created_from,
+            created_to=request.created_to,
+            min_width=request.min_width,
+            max_width=request.max_width,
+            min_height=request.min_height,
+            max_height=request.max_height,
+            content_domain=request.content_domain,
+            content_category=request.content_category,
+            content_rating=request.content_rating,
+            source_generation_id=request.source_generation_id,
+            source_asset_id=request.source_asset_id,
+            prompt_version_id=request.prompt_version_id,
+            operation_type=request.operation_type,
+            has_parent=request.has_parent,
+            has_children=request.has_children,
+            limit=request.limit,
+            offset=request.offset,
+            preview_limit=request.preview_limit,
+        )
+
+        meta_map: dict[str, AssetGroupMeta] = {}
+        group_keys = [
+            group.key
+            for group in groups
+            if group.key and group.key not in {"ungrouped", "other"}
+        ]
+
+        if group_keys:
+            if group_by == "source":
+                from sqlalchemy import select
+                from pixsim7.backend.main.domain import Asset
+
+                source_ids: list[int] = []
+                for key in group_keys:
+                    try:
+                        source_ids.append(int(key))
+                    except (TypeError, ValueError):
+                        continue
+                if source_ids:
+                    result = await db.execute(select(Asset).where(Asset.id.in_(source_ids)))
+                    for asset in result.scalars().all():
+                        asset_response = AssetResponse.model_validate(asset)
+                        media_type = (
+                            asset_response.media_type.value
+                            if hasattr(asset_response.media_type, "value")
+                            else str(asset_response.media_type)
+                        )
+                        meta_map[str(asset.id)] = AssetGroupSourceMeta(
+                            asset_id=asset.id,
+                            media_type=media_type,
+                            created_at=asset.created_at,
+                            description=asset.description,
+                            thumbnail_url=asset_response.thumbnail_url,
+                            preview_url=asset_response.preview_url,
+                            remote_url=asset_response.remote_url,
+                            width=asset_response.width,
+                            height=asset_response.height,
+                        )
+            elif group_by == "generation":
+                from sqlalchemy import select
+                from pixsim7.backend.main.domain import Generation
+
+                generation_ids: list[int] = []
+                for key in group_keys:
+                    try:
+                        generation_ids.append(int(key))
+                    except (TypeError, ValueError):
+                        continue
+                if generation_ids:
+                    result = await db.execute(
+                        select(Generation).where(Generation.id.in_(generation_ids))
+                    )
+                    for generation in result.scalars().all():
+                        operation_type = (
+                            generation.operation_type.value
+                            if hasattr(generation.operation_type, "value")
+                            else str(generation.operation_type)
+                        )
+                        status_value = (
+                            generation.status.value
+                            if hasattr(generation.status, "value")
+                            else str(generation.status)
+                        )
+                        meta_map[str(generation.id)] = AssetGroupGenerationMeta(
+                            generation_id=generation.id,
+                            provider_id=generation.provider_id,
+                            operation_type=operation_type,
+                            status=status_value,
+                            created_at=generation.created_at,
+                            final_prompt=generation.final_prompt,
+                            prompt_version_id=generation.prompt_version_id,
+                        )
+            elif group_by == "prompt":
+                from sqlalchemy import select
+                from pixsim7.backend.main.domain import PromptVersion, PromptFamily
+
+                prompt_ids: list[UUID] = []
+                for key in group_keys:
+                    try:
+                        prompt_ids.append(UUID(key))
+                    except (TypeError, ValueError):
+                        continue
+                if prompt_ids:
+                    result = await db.execute(
+                        select(PromptVersion, PromptFamily)
+                        .outerjoin(PromptFamily, PromptFamily.id == PromptVersion.family_id)
+                        .where(PromptVersion.id.in_(prompt_ids))
+                    )
+                    for version, family in result.all():
+                        meta_map[str(version.id)] = AssetGroupPromptMeta(
+                            prompt_version_id=version.id,
+                            prompt_text=version.prompt_text,
+                            commit_message=version.commit_message,
+                            author=version.author,
+                            version_number=version.version_number,
+                            family_id=version.family_id,
+                            family_title=family.title if family else None,
+                            family_slug=family.slug if family else None,
+                            created_at=version.created_at,
+                            tags=list(version.tags or []),
+                        )
+
+        response_groups: list[AssetGroupSummary] = []
+        for group in groups:
+            previews: list[AssetResponse] = []
+            for asset in group.preview_assets:
+                previews.append(await build_asset_response_with_tags(asset, db))
+            response_groups.append(
+                AssetGroupSummary(
+                    key=group.key,
+                    count=group.count,
+                    latest_created_at=group.latest_created_at,
+                    preview_assets=previews,
+                    meta=meta_map.get(group.key),
+                )
+            )
+
+        return AssetGroupListResponse(
+            groups=response_groups,
+            total=total_groups,
+            limit=request.limit,
+            offset=request.offset,
+        )
+    except Exception as e:
+        logger.error("asset_groups_failed", error=str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to group assets: {str(e)}")
+
+
 # ===== FILTER OPTIONS =====
 
 class FilterDefinition(BaseModel):
@@ -183,6 +452,11 @@ class FilterDefinition(BaseModel):
     depends_on: dict[str, list[str]] | None = Field(
         None,
         description="Context dependencies for showing this filter",
+    )
+    multi: Optional[bool] = Field(None, description="Allows selecting multiple values")
+    match_modes: Optional[List[str]] = Field(
+        None,
+        description="Supported match modes (e.g., any/all)",
     )
 
 
@@ -245,7 +519,7 @@ async def get_filter_options(
                 continue
             include_keys.extend([key for key in entry.split(",") if key])
 
-    context = request.context or {}
+    context = request.context or None
     filters = [
         FilterDefinition(
             key=spec.key,
@@ -253,6 +527,8 @@ async def get_filter_options(
             label=spec.label,
             description=spec.description,
             depends_on={k: sorted(v) for k, v in spec.depends_on.items()} if spec.depends_on else None,
+            multi=spec.multi,
+            match_modes=sorted(spec.match_modes) if spec.match_modes else None,
         )
         for spec in asset_filter_registry.list_filters(include=include_keys, context=context)
     ]

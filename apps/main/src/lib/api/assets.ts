@@ -20,6 +20,10 @@ import { pixsimClient } from './client';
 export type {
   AssetListResponse,
   AssetResponse,
+  AssetGroupBy,
+  AssetGroupListResponse,
+  AssetGroupRequest,
+  AssetGroupSummary,
   EnrichAssetResponse,
   ExtractFrameRequest,
   ReuploadAssetRequest,
@@ -37,6 +41,7 @@ const assetsApi = createAssetsApi(pixsimClient);
 // ============================================================================
 
 export const listAssets = assetsApi.listAssets;
+export const listAssetGroups = assetsApi.listAssetGroups;
 export const getAsset = assetsApi.getAsset;
 export const deleteAsset = assetsApi.deleteAsset;
 
