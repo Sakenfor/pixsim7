@@ -1,0 +1,39 @@
+# Prompt role pack: camera
+version: "1.0.0"
+
+roles:
+  camera:
+    label: "Camera"
+    description: "Camera and shot instructions"
+    priority: 10
+    composition_role: role:effect
+    keywords:
+      - camera
+      - shot
+      - frame
+      - framing
+      - angle
+      - close-up
+      - closeup
+      - close up
+      - wide
+      - medium
+      - extreme
+      - establishing
+      - cutaway
+      - tight framing
+      - pov
+      - point of view
+      - first-person
+      - third-person
+      - over-the-shoulder
+      - bird's eye
+      - low angle
+      - high angle
+      - viewpoint
+      - pan
+      - zoom
+      - dolly
+      - tracking
+      - steadicam
+    aliases: []

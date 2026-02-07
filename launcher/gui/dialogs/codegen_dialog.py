@@ -1,7 +1,7 @@
 """
 Codegen Tools Dialog for running code generation tasks.
 
-Reads from scripts/codegen.manifest.ts to dynamically list available generators.
+Reads from tools/codegen/manifest.ts to dynamically list available generators.
 Provides Run and Check buttons for each generator that supports them.
 """
 from PySide6.QtWidgets import (
@@ -24,11 +24,11 @@ except ImportError:
 
 def parse_codegen_manifest():
     """
-    Parse scripts/codegen.manifest.ts to extract CodegenTask entries.
+    Parse tools/codegen/manifest.ts to extract CodegenTask entries.
 
     Returns list of dicts with keys: id, description, script, supportsCheck, groups
     """
-    manifest_path = os.path.join(ROOT, "scripts", "codegen.manifest.ts")
+    manifest_path = os.path.join(ROOT, "tools", "codegen", "manifest.ts")
 
     if not os.path.exists(manifest_path):
         return []
@@ -319,7 +319,7 @@ class CodegenToolsWidget(QWidget):
         tasks = parse_codegen_manifest()
 
         if not tasks:
-            no_tasks = QLabel("No codegen tasks found.\nCheck scripts/codegen.manifest.ts exists.")
+            no_tasks = QLabel("No codegen tasks found.\nCheck tools/codegen/manifest.ts exists.")
             no_tasks.setStyleSheet(f"color: {theme.ACCENT_WARNING}; font-size: 10pt; padding: 20px;")
             layout.addWidget(no_tasks)
             layout.addStretch()

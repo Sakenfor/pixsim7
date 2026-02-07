@@ -1,0 +1,37 @@
+# Prompt role pack: romance
+version: "1.0.0"
+
+roles:
+  romance:
+    label: "Romance"
+    description: "Romantic or intimate content"
+    priority: 60
+    composition_role: role:style_reference
+    keywords:
+      - kiss
+      - kisses
+      - kissing
+      - embrace
+      - embracing
+      - caress
+      - caressing
+      - fondle
+      - fondling
+      - romance
+      - romantic
+      - intimacy
+      - intimate
+      - passion
+      - desire
+      - lust
+      - arousal
+      - attraction
+      - lover
+      - lovers
+      - beloved
+      - partner
+      - sensual
+      - erotic
+      - sexual
+      - seductive
+    aliases: []

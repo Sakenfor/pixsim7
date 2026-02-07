@@ -1,0 +1,44 @@
+# Prompt role pack: moods
+version: "1.0.0"
+
+roles:
+  mood:
+    label: "Mood"
+    description: "Emotional tone or atmosphere"
+    priority: 50
+    composition_role: role:style_reference
+    keywords:
+      - afraid
+      - anxious
+      - nervous
+      - worried
+      - scared
+      - terrified
+      - happy
+      - joyful
+      - excited
+      - eager
+      - enthusiastic
+      - teasing
+      - playful
+      - tender
+      - gentle
+      - passionate
+      - angry
+      - furious
+      - sad
+      - melancholy
+      - depressed
+      - frustrated
+      - annoyed
+      - tense
+      - relaxed
+      - calm
+      - chaotic
+      - peaceful
+      - soft
+      - intense
+      - harsh
+      - rough
+      - violent
+    aliases: []

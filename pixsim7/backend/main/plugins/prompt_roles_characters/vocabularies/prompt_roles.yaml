@@ -1,0 +1,34 @@
+# Prompt role pack: characters
+version: "1.0.0"
+
+roles:
+  character:
+    label: "Character"
+    description: "Descriptions of people, creatures, or beings"
+    priority: 20
+    composition_role: role:main_character
+    keywords:
+      - werewolf
+      - vampire
+      - minotaur
+      - centaur
+      - dragon
+      - beast
+      - woman
+      - man
+      - person
+      - character
+      - lady
+      - girl
+      - boy
+      - male
+      - female
+      - protagonist
+      - antagonist
+      - warrior
+      - knight
+      - mage
+      - wizard
+      - hunter
+      - creature
+    aliases: []

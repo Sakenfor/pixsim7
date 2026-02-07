@@ -141,3 +141,6 @@ docs/plans/
 
 # Claude Code temp files
 tmpclaude-*-cwd
+
+# MkDocs output
+site-docs/

@@ -9,7 +9,7 @@ Provides monitoring and management capabilities:
 """
 import logging
 from fastapi import APIRouter, HTTPException, Query
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
 from pydantic import BaseModel
 import os
@@ -150,7 +150,7 @@ async def get_services_status(admin: CurrentAdminUser):
     from pixsim7.backend.main.shared.config import settings
 
     services = []
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Get app instance to analyze routes
     # Note: We need to import the app from main
@@ -229,8 +229,6 @@ async def get_services_status(admin: CurrentAdminUser):
     # ARQ Worker (comprehensive health check)
     try:
         from pixsim7.backend.main.workers.health import get_worker_health, get_queue_stats
-        from datetime import timezone
-
         # Get worker heartbeat data
         worker_health = await get_worker_health()
 
@@ -301,7 +299,7 @@ async def get_system_metrics(admin: CurrentAdminUser):
 
     Returns CPU, memory, disk usage
     """
-    metrics = SystemMetrics(timestamp=datetime.utcnow())
+    metrics = SystemMetrics(timestamp=datetime.now(timezone.utc))
 
     try:
         import psutil
@@ -349,7 +347,7 @@ async def get_event_metrics(admin: CurrentAdminUser):
         stats = get_handler_stats()
 
         return {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "handlers": {
                 "registered_event_types": stats["registered_event_types"],
                 "wildcard_handlers": stats["wildcard_handlers"],

@@ -1,0 +1,48 @@
+# Prompt role pack: settings
+version: "1.0.0"
+
+roles:
+  setting:
+    label: "Setting"
+    description: "Environment, location, or time of day"
+    priority: 40
+    composition_role: role:environment
+    keywords:
+      - forest
+      - woods
+      - trees
+      - river
+      - lake
+      - mountain
+      - cave
+      - clearing
+      - path
+      - trail
+      - castle
+      - tower
+      - dungeon
+      - chamber
+      - hall
+      - room
+      - street
+      - alley
+      - square
+      - marketplace
+      - bedroom
+      - bathroom
+      - kitchen
+      - lounge
+      - library
+      - bar
+      - tavern
+      - inn
+      - night
+      - day
+      - dawn
+      - dusk
+      - evening
+      - morning
+      - moonlight
+      - sunlight
+      - candlelight
+    aliases: []

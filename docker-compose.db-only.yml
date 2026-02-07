@@ -4,7 +4,7 @@
 services:
   # PostgreSQL Database (Application Data)
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg16
     container_name: pixsim7-db
     environment:
       POSTGRES_DB: pixsim7

@@ -2,8 +2,10 @@
 Log formatting utilities for database log viewer.
 Handles HTML generation, tooltips, clickable elements, and copy functionality.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 import re
+
+_UTC = timezone.utc
 from urllib.parse import quote
 
 try:
@@ -42,6 +44,13 @@ def escape_html(text):
             .replace("'", '&#39;'))
 
 
+def _to_local(dt: datetime) -> datetime:
+    """Convert a datetime to local time. Assumes naive datetimes are UTC."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_UTC)
+    return dt.astimezone(tz=None)  # system local tz
+
+
 def format_relative_time(timestamp):
     """Convert timestamp to relative time string (e.g., '5m ago')."""
     try:
@@ -75,7 +84,8 @@ def format_timestamp(ts_str):
             ts = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
         else:
             ts = ts_str
-        ts_display = ts.strftime('%Y-%m-%d %H:%M:%S')
+        ts_local = _to_local(ts)
+        ts_display = ts_local.strftime('%Y-%m-%d %H:%M:%S')
         ts_relative = format_relative_time(ts)
         ts_tooltip = f' title="{ts_relative}"' if ts_relative else ''
         return f'<span style="color: {COMPONENT_COLORS["timestamp"]};"{ts_tooltip}>[{ts_display}]</span>', ts_relative

@@ -2,11 +2,11 @@
 Codegen Routes - Endpoints for codegen task discovery.
 """
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
-from launcher.core.codegen import load_codegen_tasks
+from launcher.core.codegen import load_codegen_tasks, run_codegen_task
 
-from ..models import CodegenTaskResponse, CodegenTasksResponse
+from ..models import CodegenRunRequest, CodegenRunResponse, CodegenTaskResponse, CodegenTasksResponse
 
 
 router = APIRouter(prefix="/codegen", tags=["codegen"])
@@ -27,4 +27,20 @@ async def list_codegen_tasks():
             for task in tasks
         ],
         total=len(tasks),
+    )
+
+
+@router.post("/run", response_model=CodegenRunResponse)
+async def run_codegen_task_endpoint(payload: CodegenRunRequest):
+    try:
+        result = run_codegen_task(payload.task_id, check_mode=payload.check)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return CodegenRunResponse(
+        task_id=result.task_id,
+        ok=result.ok,
+        exit_code=result.exit_code,
+        duration_ms=result.duration_ms,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )

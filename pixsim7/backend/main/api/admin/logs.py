@@ -4,7 +4,7 @@ Admin logs endpoint - query application logs
 Provides log searching, filtering, and pagination for admin panel.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 import logging
@@ -52,7 +52,7 @@ def parse_log_line(line: str) -> Optional[LogEntry]:
         if not match:
             # Fallback: treat as plain message
             return LogEntry(
-                timestamp=datetime.utcnow().isoformat(),
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 level="INFO",
                 logger="unknown",
                 message=line.strip()
@@ -60,7 +60,7 @@ def parse_log_line(line: str) -> Optional[LogEntry]:
 
         timestamp_str, level, logger, message = match.groups()
 
-        # Parse timestamp
+        # Parse timestamp (console logs use local time via %(asctime)s)
         timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f').isoformat()
 
         # Extract user_id and job_id from message if present
@@ -86,7 +86,7 @@ def parse_log_line(line: str) -> Optional[LogEntry]:
     except Exception as e:
         # If parsing fails, return as plain message
         return LogEntry(
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             level="ERROR",
             logger="log_parser",
             message=f"Failed to parse log: {line[:100]}"

@@ -147,6 +147,7 @@ class BaseUrlSettingsModel(BaseModel):
     admin: str
     launcher: str
     analysis: str
+    docs: str
 
 
 class AdvancedEnvSettingsModel(BaseModel):
@@ -228,6 +229,7 @@ class BaseUrlSettingsUpdate(BaseModel):
     admin: Optional[str] = None
     launcher: Optional[str] = None
     analysis: Optional[str] = None
+    docs: Optional[str] = None
 
 
 class AdvancedEnvSettingsUpdate(BaseModel):
@@ -268,6 +270,20 @@ class CodegenTaskResponse(BaseModel):
 class CodegenTasksResponse(BaseModel):
     tasks: List[CodegenTaskResponse]
     total: int
+
+
+class CodegenRunRequest(BaseModel):
+    task_id: str
+    check: bool = False
+
+
+class CodegenRunResponse(BaseModel):
+    task_id: str
+    ok: bool
+    exit_code: Optional[int]
+    duration_ms: int
+    stdout: str
+    stderr: str
 
 
 # ============================================================================

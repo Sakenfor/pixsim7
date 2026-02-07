@@ -18,7 +18,8 @@
       "game_frontend": "",
       "launcher": "",
       "devtools": "",
-      "admin": ""
+      "admin": "",
+      "docs": ""
     }
   },
   "https_local": {
@@ -40,7 +41,8 @@
       "game_frontend": "https://game.pixsim7.local",
       "launcher": "https://launcher.pixsim7.local",
       "devtools": "https://dev.pixsim7.local",
-      "admin": "https://admin.pixsim7.local"
+      "admin": "https://admin.pixsim7.local",
+      "docs": "https://docs.pixsim7.local"
     }
   }
 }

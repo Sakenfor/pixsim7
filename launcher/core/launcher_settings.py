@@ -55,6 +55,7 @@ class BaseUrlSettings:
     admin: str = ""
     launcher: str = ""
     analysis: str = ""
+    docs: str = ""
 
 
 @dataclass
@@ -248,6 +249,7 @@ def load_launcher_settings(root_dir: Optional[Path] = None) -> LauncherSettings:
         admin=_coerce_str(env_vars.get("ADMIN_BASE_URL"), ""),
         launcher=_coerce_str(env_vars.get("LAUNCHER_BASE_URL"), ""),
         analysis=_coerce_str(env_vars.get("ANALYSIS_BASE_URL"), ""),
+        docs=_coerce_str(env_vars.get("DOCS_BASE_URL"), ""),
     )
 
     advanced = AdvancedEnvSettings(
@@ -350,6 +352,7 @@ def update_launcher_settings(
             "admin": "ADMIN_BASE_URL",
             "launcher": "LAUNCHER_BASE_URL",
             "analysis": "ANALYSIS_BASE_URL",
+            "docs": "DOCS_BASE_URL",
         }.items():
             if key in base_url_updates:
                 value = _coerce_str(base_url_updates[key], "")

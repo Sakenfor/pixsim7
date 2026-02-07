@@ -54,6 +54,7 @@ dependencies:
     - pgvector==0.2.4
     - pydantic-settings==2.1.0
     - arq==0.25.0
+    - mistune==3.0.2
     # Editable provider SDKs (must exist at paths or remove these lines):
     - -e ../pixverse-py
     - -e ../sora-py
