@@ -1,195 +1,233 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+
+import { useHoverExpand } from '@pixsim7/shared.ui';
 
 import { Icon, ThemedIcon } from '@lib/icons';
 
-import { getAsset, fromAssetResponse, useAsset, getAssetDisplayUrls } from '@features/assets';
+import { SlotPickerGrid, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/mediaCardGeneration';
+import { getAsset, fromAssetResponse, getAssetDisplayUrls, useAssetViewerStore } from '@features/assets';
+import { CompactAssetCard } from '@features/assets/components/shared';
+import type { AssetModel } from '@features/assets';
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
+import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import type { OperationType } from '@/types/operations';
-import { OPERATION_METADATA, OPERATION_TYPES } from '@/types/operations';
+import { OPERATION_METADATA, OPERATION_TYPES, isMultiAssetOperation } from '@/types/operations';
 
 import { useGenerationHistoryStore, type AssetHistoryEntry } from '../stores/generationHistoryStore';
 
 export interface QuickGenHistoryPanelProps {
   operationType?: OperationType;
   generationScopeId?: string;
+  sourceLabel?: string;
   context?: {
     operationType?: OperationType;
     generationScopeId?: string;
+    sourceLabel?: string;
+  };
+}
+
+/**
+ * Build a minimal AssetModel from an AssetHistoryEntry for display purposes.
+ * The full asset is only fetched when the user clicks (in handleSelectFromHistory).
+ */
+function assetFromHistoryEntry(entry: AssetHistoryEntry): AssetModel {
+  return {
+    id: entry.assetId,
+    createdAt: entry.lastUsedAt,
+    mediaType: entry.mediaType,
+    thumbnailUrl: entry.thumbnailUrl || null,
+    previewUrl: null,
+    remoteUrl: null,
+    providerAssetId: '',
+    providerId: '',
+    providerStatus: null,
+    syncStatus: 'remote',
+    isArchived: false,
+    userId: 0,
+    description: null,
+    durationSec: null,
+    height: null,
+    width: null,
   };
 }
 
 interface HistoryItemProps {
   entry: AssetHistoryEntry;
-  isCompatible: boolean;
   isLoading: boolean;
-  autoPrefetchThumbnails: boolean;
+  operationType: OperationType;
   onSelect: () => void;
+  onSelectSlot: (asset: AssetModel, slotIndex: number) => void;
   onTogglePin: () => void;
   onRemove: () => void;
+  inputScopeId?: string;
+  maxSlots?: number;
 }
 
 function HistoryItem({
   entry,
-  isCompatible,
   isLoading,
-  autoPrefetchThumbnails,
+  operationType,
   onSelect,
+  onSelectSlot,
   onTogglePin,
   onRemove,
+  inputScopeId,
+  maxSlots,
 }: HistoryItemProps) {
-  const [shouldFetchAsset, setShouldFetchAsset] = useState(
-    autoPrefetchThumbnails && !entry.thumbnailUrl
-  );
-  const { asset, loading: assetLoading } = useAsset(shouldFetchAsset ? entry.assetId : null);
-  const displayUrls = useMemo(
-    () => (asset ? getAssetDisplayUrls(asset) : null),
-    [asset],
-  );
-  const fallbackThumbUrl =
-    displayUrls?.thumbnailUrl ?? displayUrls?.previewUrl ?? displayUrls?.mainUrl;
-  const resolvedThumbUrl = entry.thumbnailUrl || fallbackThumbUrl;
-  const { thumbSrc, thumbLoading, thumbFailed, thumbRetry } = useResolvedAssetMedia({
-    thumbUrl: resolvedThumbUrl,
-    previewUrl: displayUrls?.previewUrl,
-    remoteUrl: displayUrls?.mainUrl,
-    thumbOptions: { preferPreview: true },
+  const asset = useMemo(() => assetFromHistoryEntry(entry), [entry]);
+  const showSlotPicker = isMultiAssetOperation(operationType);
+  const zapRef = useRef<HTMLButtonElement | null>(null);
+  const { isExpanded: slotPickerExpanded, handlers: slotPickerHandlers } = useHoverExpand({
+    expandDelay: 150,
+    collapseDelay: 150,
   });
-  const isThumbLoading = thumbLoading || assetLoading;
-  const canSelect = isCompatible && !isLoading;
+
+  // Stabilize handlers to prevent unnecessary re-renders
+  const stableHandlers = useMemo(
+    () => slotPickerHandlers,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slotPickerHandlers.onMouseEnter, slotPickerHandlers.onMouseLeave],
+  );
+
+  // Compute portal position - use state to trigger re-render when position changes
+  const [slotPickerPos, setSlotPickerPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
-    if (!autoPrefetchThumbnails) return;
-    if (!shouldFetchAsset && (thumbFailed || (!entry.thumbnailUrl && !resolvedThumbUrl))) {
-      setShouldFetchAsset(true);
+    if (slotPickerExpanded && zapRef.current) {
+      const rect = zapRef.current.getBoundingClientRect();
+      setSlotPickerPos({ x: rect.left + rect.width / 2, y: rect.top - 8 });
+    } else {
+      setSlotPickerPos(null);
     }
-  }, [autoPrefetchThumbnails, entry.thumbnailUrl, resolvedThumbUrl, shouldFetchAsset, thumbFailed]);
+  }, [slotPickerExpanded]);
 
-  useEffect(() => {
-    if (autoPrefetchThumbnails && !entry.thumbnailUrl) {
-      setShouldFetchAsset(true);
-    }
-  }, [autoPrefetchThumbnails, entry.thumbnailUrl]);
-
-  return (
-    <div
-      className={`relative rounded-md overflow-hidden group border border-neutral-700/60 ${
-        canSelect ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-      }`}
-      onClick={() => {
-        if (!canSelect) return;
-        onSelect();
-      }}
-      role="button"
-      tabIndex={0}
-      aria-disabled={!canSelect}
-      onKeyDown={(e) => {
-        if (!canSelect) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-    >
-      <div className="relative w-full h-0 pb-[100%] bg-neutral-900">
-        {thumbSrc ? (
-          <img
-            src={thumbSrc}
-            alt={`Asset ${entry.assetId}`}
-            className="absolute inset-0 w-full h-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-[10px] text-neutral-400 gap-1">
-            <span>{isThumbLoading ? 'Loading...' : 'No preview'}</span>
-            {thumbFailed && !isThumbLoading && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  thumbRetry();
-                }}
-                className="text-[10px] text-neutral-300 hover:text-white transition-colors"
-              >
-                Retry
-              </button>
-            )}
-            {!autoPrefetchThumbnails && !resolvedThumbUrl && !isThumbLoading && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShouldFetchAsset(true);
-                }}
-                className="text-[10px] text-neutral-300 hover:text-white transition-colors"
-              >
-                Fetch
-              </button>
-            )}
-          </div>
-        )}
-
+  const overlay = useMemo(
+    () => (
+      <>
+        {/* Pin badge - top left */}
         {entry.pinned && (
-          <div className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-purple-600 flex items-center justify-center text-white">
-            <Icon name="pin" size={8} className="text-white" color="#fff" />
+          <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-purple-600 flex items-center justify-center pointer-events-none">
+            <Icon name="pin" size={10} className="text-white" color="#fff" />
           </div>
         )}
 
-        {entry.mediaType === 'video' && (
-          <div className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 flex items-center justify-center">
-            <ThemedIcon name="play" size={8} variant="default" className="text-white" />
-          </div>
-        )}
-
+        {/* Use count - top right */}
         {entry.useCount > 1 && (
-          <div className="absolute bottom-0.5 left-0.5 bg-black/80 text-white text-[9px] px-1 rounded font-medium">
+          <div className="absolute top-1 right-1 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium pointer-events-none">
             {entry.useCount}x
           </div>
         )}
 
-        {!isCompatible && (
-          <div className="absolute inset-0 bg-neutral-900/70 flex items-center justify-center text-[10px] text-neutral-200 text-center px-1">
-            Not compatible
+        {/* Video indicator - bottom right */}
+        {entry.mediaType === 'video' && (
+          <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center pointer-events-none">
+            <ThemedIcon name="play" size={10} variant="default" className="text-white" />
           </div>
         )}
 
+        {/* Loading overlay */}
         {isLoading && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-white">
+          <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-[10px] text-white pointer-events-none">
             Loading...
           </div>
         )}
+      </>
+    ),
+    [entry.pinned, entry.useCount, entry.mediaType, isLoading],
+  );
 
-        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+  const hoverActions = useMemo(
+    () => (
+      <div className="flex items-center gap-1">
+        {/* Pin toggle */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePin();
+          }}
+          className={`w-7 h-7 rounded-full flex items-center justify-center transition-colors text-white ${
+            entry.pinned
+              ? 'bg-purple-600 hover:bg-purple-700'
+              : 'bg-neutral-700 hover:bg-neutral-600'
+          }`}
+          title={entry.pinned ? 'Unpin' : 'Pin'}
+          type="button"
+        >
+          <Icon name="pin" size={12} className="text-white" color="#fff" />
+        </button>
+
+        {/* Zap button — always shown; hover triggers slot picker for multi-asset ops */}
+        <div {...(showSlotPicker ? stableHandlers : {})}>
           <button
+            ref={zapRef}
             onClick={(e) => {
               e.stopPropagation();
-              onTogglePin();
+              onSelect();
             }}
-            className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors text-white ${
-              entry.pinned
-                ? 'bg-purple-600 hover:bg-purple-700'
-                : 'bg-neutral-700 hover:bg-neutral-600'
-            }`}
-            title={entry.pinned ? 'Unpin' : 'Pin'}
+            className="w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-700 flex items-center justify-center transition-colors text-white"
+            title={showSlotPicker ? 'Add to input (hover for slot picker)' : 'Add to input'}
             type="button"
           >
-            <Icon name="pin" size={10} className="text-white" color="#fff" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove();
-            }}
-            className="w-6 h-6 rounded-full bg-red-600/80 hover:bg-red-600 flex items-center justify-center transition-colors text-white"
-            title="Remove from history"
-            type="button"
-          >
-            <Icon name="close" size={10} className="text-white" color="#fff" />
+            <Icon name="zap" size={12} className="text-white" color="#fff" />
           </button>
         </div>
+
+        {/* Remove button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          className="w-7 h-7 rounded-full bg-red-600/80 hover:bg-red-600 flex items-center justify-center transition-colors text-white"
+          title="Remove from history"
+          type="button"
+        >
+          <Icon name="close" size={12} className="text-white" color="#fff" />
+        </button>
       </div>
-    </div>
+    ),
+    [entry.pinned, showSlotPicker, stableHandlers, onTogglePin, onSelect, onRemove],
+  );
+
+  return (
+    <>
+      <CompactAssetCard
+        asset={asset}
+        hideFooter
+        className={isLoading ? 'opacity-60 pointer-events-none' : ''}
+        onClick={onSelect}
+        enableHoverPreview={entry.mediaType === 'video'}
+        showPlayOverlay={false}
+        overlay={overlay}
+        hoverActions={hoverActions}
+      />
+
+      {/* Slot picker grid - portal to body to escape overflow-hidden */}
+      {showSlotPicker && slotPickerExpanded && slotPickerPos && createPortal(
+        <div
+          className="fixed pb-4"
+          style={{
+            zIndex: 99999,
+            left: slotPickerPos.x,
+            bottom: window.innerHeight - slotPickerPos.y,
+            transform: 'translateX(-50%)',
+          }}
+          {...stableHandlers}
+        >
+          <SlotPickerGrid
+            asset={asset}
+            operationType={operationType}
+            onSelectSlot={onSelectSlot}
+            maxSlots={maxSlots}
+            inputScopeId={inputScopeId}
+          />
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -197,16 +235,25 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
   const controller = useQuickGenerateController();
   const operationType =
     props.operationType ?? props.context?.operationType ?? controller.operationType;
+  const sourceLabel = props.sourceLabel ?? props.context?.sourceLabel ?? 'History';
   const [historyOperation, setHistoryOperation] = useState<OperationType>(operationType);
-  const { useInputStore } = useGenerationScopeStores();
+  const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
   const addInput = useInputStore((s) => s.addInput);
+
+  // Resolve max slots for slot picker
+  const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
+  const scopedProviderId = useSessionStore((s) => s.providerId);
+  const inferredProviderId = useProviderIdForModel(activeModel);
+  const effectiveProviderId = scopedProviderId ?? inferredProviderId;
+  const operationSpec = useOperationSpec(effectiveProviderId, operationType);
+  const maxSlots = useMemo(() => {
+    const fromSpecs = resolveMaxSlotsFromSpecs(operationSpec?.parameters, operationType, activeModel);
+    return fromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
+  }, [operationSpec?.parameters, operationType, activeModel]);
 
   const historyMode = useGenerationHistoryStore((s) => s.historyMode);
   const historySortMode = useGenerationHistoryStore((s) => s.historySortMode);
   const hideIncompatibleAssets = useGenerationHistoryStore((s) => s.hideIncompatibleAssets);
-  const autoPrefetchHistoryThumbnails = useGenerationHistoryStore(
-    (s) => s.autoPrefetchHistoryThumbnails,
-  );
   const historyByOperation = useGenerationHistoryStore((s) => s.historyByOperation);
   const togglePin = useGenerationHistoryStore((s) => s.togglePin);
   const removeFromHistory = useGenerationHistoryStore((s) => s.removeFromHistory);
@@ -285,10 +332,11 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
     [visibleHistory, historySortMode],
   );
 
+  const openViewer = useAssetViewerStore((s) => s.openViewer);
+
   const handleSelectFromHistory = useCallback(
     async (entry: AssetHistoryEntry) => {
       if (loadingIds[entry.assetId]) return;
-      if (!canAcceptAssets || !acceptsInput.includes(entry.mediaType)) return;
 
       setLoadingIds((prev) => ({ ...prev, [entry.assetId]: true }));
       setError(null);
@@ -296,7 +344,21 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
       try {
         const response = await getAsset(entry.assetId);
         const asset = fromAssetResponse(response);
-        addInput({ asset, operationType });
+        const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
+
+        // If operation accepts this asset type, add as input; otherwise open in viewer
+        if (canAcceptAssets && acceptsInput.includes(entry.mediaType)) {
+          addInput({ asset, operationType });
+        } else {
+          openViewer({
+            id: asset.id,
+            name: asset.name || `Asset ${asset.id}`,
+            type: asset.mediaType === 'video' ? 'video' : 'image',
+            url: thumbnailUrl || previewUrl || mainUrl || '',
+            fullUrl: mainUrl,
+            source: 'gallery',
+          });
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Failed to load asset');
       } finally {
@@ -307,17 +369,41 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
         });
       }
     },
-    [addInput, operationType, loadingIds, canAcceptAssets, acceptsInput],
+    [addInput, operationType, loadingIds, canAcceptAssets, acceptsInput, openViewer],
+  );
+
+  const handleSelectSlot = useCallback(
+    async (minimalAsset: AssetModel, slotIndex: number) => {
+      const assetId = minimalAsset.id;
+      if (loadingIds[assetId]) return;
+
+      setLoadingIds((prev) => ({ ...prev, [assetId]: true }));
+      setError(null);
+
+      try {
+        const response = await getAsset(assetId);
+        const asset = fromAssetResponse(response);
+        addInput({ asset, operationType, slotIndex });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Failed to load asset');
+      } finally {
+        setLoadingIds((prev) => {
+          const next = { ...prev };
+          delete next[assetId];
+          return next;
+        });
+      }
+    },
+    [addInput, operationType, loadingIds],
   );
 
   return (
     <div className="h-full w-full flex flex-col bg-white dark:bg-neutral-900">
       <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-700 flex items-center justify-between">
         <div className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
-          Asset History
+          {sourceLabel}
         </div>
         <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">History</span>
           <select
             value={historyOperation}
             onChange={(e) => setHistoryOperation(e.target.value as OperationType)}
@@ -355,21 +441,15 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
       )}
 
       <div className="flex-1 overflow-auto p-3">
-        {!canAcceptAssets && (
-          <div className="text-xs text-neutral-500 italic text-center py-4">
-            This operation does not accept asset inputs.
-          </div>
-        )}
-
-        {canAcceptAssets && visibleHistory.length === 0 && (
+        {visibleHistory.length === 0 && (
           <div className="text-xs text-neutral-500 italic text-center py-4">
             {sortedHistory.length > 0 && hideIncompatibleAssets
               ? 'No compatible assets for this operation.'
-              : 'No history yet.'}
+              : 'No history yet. Generated outputs will appear here.'}
           </div>
         )}
 
-        {canAcceptAssets && visibleHistory.length > 0 && (
+        {visibleHistory.length > 0 && (
           <div className="space-y-4">
             {pinnedEntries.length > 0 && (
               <div>
@@ -379,18 +459,20 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                 </div>
                 <div
                   className="grid gap-2"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))' }}
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}
                 >
                   {pinnedEntries.map((entry) => (
                     <HistoryItem
                       key={`pinned-${entry.assetId}`}
                       entry={entry}
-                      isCompatible={acceptsInput.includes(entry.mediaType)}
                       isLoading={!!loadingIds[entry.assetId]}
-                      autoPrefetchThumbnails={autoPrefetchHistoryThumbnails}
+                      operationType={operationType}
                       onSelect={() => handleSelectFromHistory(entry)}
+                      onSelectSlot={handleSelectSlot}
                       onTogglePin={() => togglePin(historyOperation, entry.assetId)}
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}
+                      inputScopeId={scopeId}
+                      maxSlots={maxSlots}
                     />
                   ))}
                 </div>
@@ -405,18 +487,20 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                 </div>
                 <div
                   className="grid gap-2"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(64px, 1fr))' }}
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}
                 >
                   {recentEntries.map((entry) => (
                     <HistoryItem
                       key={`recent-${entry.assetId}`}
                       entry={entry}
-                      isCompatible={acceptsInput.includes(entry.mediaType)}
                       isLoading={!!loadingIds[entry.assetId]}
-                      autoPrefetchThumbnails={autoPrefetchHistoryThumbnails}
+                      operationType={operationType}
                       onSelect={() => handleSelectFromHistory(entry)}
+                      onSelectSlot={handleSelectSlot}
                       onTogglePin={() => togglePin(historyOperation, entry.assetId)}
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}
+                      inputScopeId={scopeId}
+                      maxSlots={maxSlots}
                     />
                   ))}
                 </div>

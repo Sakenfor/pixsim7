@@ -24,8 +24,8 @@ import { VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
+import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
-
 
 import type { AssetModel } from '../../types';
 
@@ -69,6 +69,10 @@ export interface CompactAssetCardProps {
   enableHoverPreview?: boolean;
   showPlayOverlay?: boolean;
   clickToPlay?: boolean;
+  // Extension points
+  onClick?: () => void; // Custom click handler for the card body
+  overlay?: React.ReactNode; // Custom overlay content (absolute-positioned, pointer-events-none)
+  hoverActions?: React.ReactNode; // Custom hover overlay replacing default behavior
 }
 
 export function CompactAssetCard({
@@ -90,16 +94,20 @@ export function CompactAssetCard({
   enableHoverPreview = true,
   showPlayOverlay = true,
   clickToPlay = false,
+  onClick,
+  overlay,
+  hoverActions,
 }: CompactAssetCardProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [showQueueGrid, setShowQueueGrid] = useState(false);
   const [popupPosition, setPopupPosition] = useState<PopupPosition | null>(null);
 
-  // Resolve URLs for the asset
+  // Resolve URLs for the asset (shared helper handles video vs image thumbnail correctly)
   const { thumbnailUrl: resolvedThumbUrl, previewUrl: resolvedPreviewUrl, mainUrl: resolvedMainUrl } =
     getAssetDisplayUrls(asset);
-  const { thumbSrc } = useResolvedAssetMedia({
+  const { thumbSrc, videoSrc: resolvedVideoSrc } = useMediaPreviewSource({
+    mediaType: asset.mediaType,
     thumbUrl: resolvedThumbUrl,
     previewUrl: resolvedPreviewUrl,
     remoteUrl: resolvedMainUrl,
@@ -109,8 +117,8 @@ export function CompactAssetCard({
   const hoverPreviewEnabled = enableHoverPreview && !clickToPlay;
   const isHovering = hoverPreviewEnabled && isHovered;
 
-  // For video scrubbing, prefer the resolved main URL (respects local-vs-remote settings)
-  const videoSrc = isVideo ? resolvedMainUrl : undefined;
+  // For video scrubbing, use the properly resolved video source
+  const videoSrc = isVideo ? resolvedVideoSrc : undefined;
   const hasLockedFrame = lockedTimestamp !== undefined;
 
   // Toggle grid and calculate position with edge detection
@@ -182,9 +190,10 @@ export function CompactAssetCard({
 
   return (
     <div
-      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${className}`}
+      className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${onClick ? 'cursor-pointer' : ''} group/card ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={onClick}
       {...contextMenuProps}
     >
       {label && (
@@ -216,13 +225,23 @@ export function CompactAssetCard({
               configDuration={asset.durationSec ?? undefined}
               isHovering={isHovering}
               showTimeline={true}
-              showTimestamp={false}
+              showTimestamp={true}
               timelinePosition="bottom"
               onDotClick={onLockTimestamp ? handleDotClick : undefined}
-              dotTooltip={hasLockedFrame ? `Unlock frame (${lockedTimestamp?.toFixed(1)}s)` : 'Lock current frame'}
+              dotTooltip={hasLockedFrame ? `Unlock frame (${lockedTimestamp?.toFixed(1)}s)` : 'Click to use this frame'}
               dotActive={hasLockedFrame}
               lockedTimestamp={lockedTimestamp}
             />
+          </div>
+        )}
+
+        {/* Locked frame indicator - visible when not hovering */}
+        {isVideo && hasLockedFrame && !isHovering && (
+          <div className="absolute top-1 left-1 z-10">
+            <div className="px-1.5 py-0.5 bg-blue-600/90 text-white text-[9px] rounded whitespace-nowrap flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              {lockedTimestamp?.toFixed(1)}s
+            </div>
           </div>
         )}
 
@@ -252,6 +271,22 @@ export function CompactAssetCard({
           >
             <ThemedIcon name="close" size={8} variant="default" className="text-white" />
           </button>
+        )}
+
+        {/* Custom overlay (badges, indicators) */}
+        {overlay && (
+          <div className="absolute inset-0 pointer-events-none z-10">
+            {overlay}
+          </div>
+        )}
+
+        {/* Custom hover actions overlay */}
+        {hoverActions && (
+          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity z-20 flex items-end justify-center pb-1.5 pointer-events-none">
+            <div className="pointer-events-auto">
+              {hoverActions}
+            </div>
+          </div>
         )}
 
         {/* Navigation pill - bottom center */}

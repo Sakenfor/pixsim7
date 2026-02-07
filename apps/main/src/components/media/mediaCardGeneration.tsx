@@ -11,12 +11,13 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 
 import { getAsset } from '@lib/api/assets';
 import { getGeneration } from '@lib/api/generations';
+import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
 import { createBadgeWidget } from '@lib/ui/overlay';
 
-import { getAssetDisplayUrls, fromAssetResponse, type AssetModel } from '@features/assets';
+import { getAssetDisplayUrls, fromAssetResponse, toSelectedAsset, type AssetModel } from '@features/assets';
 import {
   CAP_GENERATION_WIDGET,
   useCapability,
@@ -31,6 +32,10 @@ import {
   type InputItem,
 } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
+import { generateAsset } from '@features/generation/lib/api';
+import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import { createPendingGeneration } from '@features/generation/models';
+import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
@@ -134,6 +139,47 @@ function extractGenerationPrompt(
     (generationConfig as any).prompt,
     (params as any).prompt,
   );
+}
+
+/**
+ * Parse a generation record into normalized fields.
+ * Used by both regenerate and extend handlers.
+ */
+function parseGenerationRecord(
+  genRecord: Record<string, unknown>,
+  fallbackOperationType: OperationType,
+): {
+  params: Record<string, unknown>;
+  operationType: OperationType;
+  providerId: string;
+  prompt: string;
+} {
+  const params =
+    (genRecord as any).params ??
+    (genRecord as any).canonical_params ??
+    (genRecord as any).raw_params ??
+    (genRecord as any).canonicalParams ??
+    (genRecord as any).rawParams ??
+    {};
+
+  const candidateOperation =
+    (genRecord as any).operation_type ??
+    (genRecord as any).operationType ??
+    (genRecord as any).generation_type ??
+    (genRecord as any).generationType;
+  const operationType =
+    candidateOperation && candidateOperation in OPERATION_METADATA
+      ? (candidateOperation as OperationType)
+      : fallbackOperationType;
+
+  const providerId =
+    (genRecord as any).provider_id ??
+    (genRecord as any).providerId ??
+    'pixverse';
+
+  const prompt = extractGenerationPrompt(genRecord, params as Record<string, unknown>);
+
+  return { params, operationType, providerId, prompt };
 }
 
 function extractGenerationAssetIds(
@@ -265,6 +311,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
 
   const [isLoadingSource, setIsLoadingSource] = useState(false);
+  const [isExtending, setIsExtending] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Get generations store for seeding new generations
+  const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
+  const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
   const handleLoadToQuickGen = useCallback(async () => {
     if (!data.sourceGenerationId || isLoadingSource) return;
@@ -274,30 +326,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     try {
       const generation = await getGeneration(data.sourceGenerationId);
       const genRecord = generation as unknown as Record<string, unknown>;
-      const params =
-        (genRecord as any).params ??
-        (genRecord as any).canonical_params ??
-        (genRecord as any).raw_params ??
-        (genRecord as any).canonicalParams ??
-        (genRecord as any).rawParams ??
-        {};
-
-      const candidateOperation =
-        (genRecord as any).operation_type ??
-        (genRecord as any).operationType ??
-        (genRecord as any).generation_type ??
-        (genRecord as any).generationType;
-      const resolvedOperationType =
-        candidateOperation && candidateOperation in OPERATION_METADATA
-          ? (candidateOperation as OperationType)
-          : operationType;
-
-      const providerId =
-        (genRecord as any).provider_id ??
-        (genRecord as any).providerId ??
-        undefined;
-
-      const prompt = extractGenerationPrompt(genRecord, params as Record<string, unknown>);
+      const {
+        params,
+        operationType: resolvedOperationType,
+        providerId,
+        prompt,
+      } = parseGenerationRecord(genRecord, operationType);
 
       const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
       const sessionStore = getGenerationSessionStore(scopeId).getState();
@@ -347,6 +381,189 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       setIsLoadingSource(false);
     }
   }, [data.sourceGenerationId, isLoadingSource, operationType, scopedScopeId, widgetContext]);
+
+  // Handler for extending video with the same prompt
+  const handleExtendWithSamePrompt = useCallback(async () => {
+    if (!data.sourceGenerationId || isExtending) return;
+    if (mediaType !== 'video') return;
+
+    setIsExtending(true);
+
+    try {
+      // Fetch the source generation to get the prompt
+      const generation = await getGeneration(data.sourceGenerationId);
+      const genRecord = generation as unknown as Record<string, unknown>;
+      const { providerId, prompt } = parseGenerationRecord(genRecord, operationType);
+
+      // Get current scoped stores for any additional settings
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const sessionState = getGenerationSessionStore(scopeId).getState();
+      const settingsState = getGenerationSettingsStore(scopeId).getState();
+
+      // Build params for video_extend with the current asset as source
+      const dynamicParams = settingsState.params || {};
+      const presetParams = sessionState.presetParams || {};
+
+      // Build the generation request
+      const buildResult = buildGenerationRequest({
+        operationType: 'video_extend',
+        prompt: prompt || '',
+        presetParams,
+        dynamicParams: {
+          ...stripInputParams(dynamicParams),
+          source_asset_id: id,
+        },
+        prompts: [],
+        transitionDurations: [],
+        activeAsset: toSelectedAsset({
+          id,
+          mediaType,
+          providerId: cardProps.providerId,
+          providerAssetId: cardProps.providerAssetId,
+          thumbnailUrl: cardProps.thumbUrl ?? null,
+          previewUrl: cardProps.previewUrl ?? null,
+          remoteUrl: cardProps.remoteUrl ?? null,
+          createdAt: cardProps.createdAt,
+          description: cardProps.description ?? null,
+          durationSec: cardProps.durationSec ?? null,
+          height: cardProps.height ?? null,
+          width: cardProps.width ?? null,
+          isArchived: false,
+          providerStatus: cardProps.providerStatus ?? null,
+          syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
+          userId: 0,
+        }, 'gallery'),
+        currentInput: undefined,
+      });
+
+      if (buildResult.error || !buildResult.params) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: buildResult.error || 'Failed to build extend request.',
+          duration: 4000,
+        });
+        return;
+      }
+
+      // Trigger the generation
+      const result = await generateAsset({
+        prompt: buildResult.finalPrompt,
+        providerId,
+        presetId: sessionState.presetId,
+        operationType: 'video_extend',
+        extraParams: buildResult.params,
+        presetParams,
+      });
+
+      // Seed the generations store
+      const genId = result.job_id;
+      addOrUpdateGeneration(createPendingGeneration({
+        id: genId,
+        operationType: 'video_extend',
+        providerId,
+        finalPrompt: buildResult.finalPrompt,
+        params: buildResult.params,
+        status: result.status || 'pending',
+      }));
+
+      setWatchingGeneration(genId);
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        message: 'Extending video...',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Failed to extend video:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `Failed to extend video: ${extractErrorMessage(error)}`,
+        duration: 4000,
+      });
+    } finally {
+      setIsExtending(false);
+    }
+  }, [
+    data.sourceGenerationId,
+    isExtending,
+    mediaType,
+    operationType,
+    id,
+    cardProps,
+    widgetContext,
+    scopedScopeId,
+    addOrUpdateGeneration,
+    setWatchingGeneration,
+  ]);
+
+  // Handler for regenerating (re-run the exact same generation)
+  const handleRegenerate = useCallback(async () => {
+    if (!data.sourceGenerationId || isRegenerating) return;
+
+    setIsRegenerating(true);
+
+    try {
+      // Fetch the source generation to get all params
+      const generation = await getGeneration(data.sourceGenerationId);
+      const genRecord = generation as unknown as Record<string, unknown>;
+      const {
+        params,
+        operationType: resolvedOperationType,
+        providerId,
+        prompt,
+      } = parseGenerationRecord(genRecord, operationType);
+
+      // Get current scoped stores for preset info
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const sessionState = getGenerationSessionStore(scopeId).getState();
+
+      // Trigger the generation with the same params
+      const result = await generateAsset({
+        prompt,
+        providerId,
+        presetId: sessionState.presetId,
+        operationType: resolvedOperationType as OperationType,
+        extraParams: params as Record<string, any>,
+        presetParams: {},
+      });
+
+      // Seed the generations store
+      const genId = result.job_id;
+      addOrUpdateGeneration(createPendingGeneration({
+        id: genId,
+        operationType: resolvedOperationType as OperationType,
+        providerId,
+        finalPrompt: prompt,
+        params: params as Record<string, any>,
+        status: result.status || 'pending',
+      }));
+
+      setWatchingGeneration(genId);
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        message: 'Regenerating...',
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error('Failed to regenerate:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `Failed to regenerate: ${extractErrorMessage(error)}`,
+        duration: 4000,
+      });
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [
+    data.sourceGenerationId,
+    isRegenerating,
+    operationType,
+    widgetContext,
+    scopedScopeId,
+    addOrUpdateGeneration,
+    setWatchingGeneration,
+  ]);
 
   // Reconstruct asset for slot picker
   const inputAsset: AssetModel = {
@@ -468,14 +685,34 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   }
 
-  // Regenerate button - only show if asset has a source generation
+  // Extend Video button - only show for videos with a source generation
   const sourceGenerationId = data.sourceGenerationId;
-  if (sourceGenerationId && actions?.onRegenerateAsset) {
+  if (mediaType === 'video' && sourceGenerationId) {
+    buttonItems.push({
+      id: 'extend-video',
+      icon: isExtending ? (
+        <Icon name="loader" size={14} className="animate-spin" />
+      ) : (
+        <Icon name="arrowRight" size={14} />
+      ),
+      onClick: handleExtendWithSamePrompt,
+      title: 'Extend video with same prompt',
+      disabled: isExtending,
+    });
+  }
+
+  // Regenerate button - only show if asset has a source generation
+  if (sourceGenerationId) {
     buttonItems.push({
       id: 'regenerate',
-      icon: <Icon name="rotateCcw" size={14} />,
-      onClick: () => actions.onRegenerateAsset?.(sourceGenerationId),
+      icon: isRegenerating ? (
+        <Icon name="loader" size={14} className="animate-spin" />
+      ) : (
+        <Icon name="rotateCcw" size={14} />
+      ),
+      onClick: handleRegenerate,
       title: 'Regenerate (run same generation again)',
+      disabled: isRegenerating,
       expandContent: (
         <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
           <button
@@ -614,19 +851,21 @@ export function buildGenerationMenuItems(
  * Slot picker content for selecting an input position in the current operation.
  * Uses the operation's input list to preview filled slots.
  */
-function SlotPickerContent({
-  asset,
-  operationType,
-  onSelectSlot,
-  maxSlots: maxSlotsProp,
-  inputScopeId,
-}: {
+export interface SlotPickerContentProps {
   asset: AssetModel;
   operationType: OperationType;
   onSelectSlot: (asset: AssetModel, slotIndex: number) => void;
   maxSlots?: number;
   inputScopeId?: string;
-}) {
+}
+
+export function SlotPickerContent({
+  asset,
+  operationType,
+  onSelectSlot,
+  maxSlots: maxSlotsProp,
+  inputScopeId,
+}: SlotPickerContentProps) {
   const inputStore = useMemo(
     () => (inputScopeId ? getGenerationInputStore(inputScopeId) : useGenerationInputStore),
     [inputScopeId],
@@ -700,6 +939,77 @@ function SlotPickerContent({
               )}
             </button>
           </React.Fragment>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Grid variant of SlotPickerContent for portal-based slot pickers.
+ * Renders slots in a compact 2-row grid instead of a vertical pill.
+ */
+export function SlotPickerGrid({
+  asset,
+  operationType,
+  onSelectSlot,
+  maxSlots: maxSlotsProp,
+  inputScopeId,
+}: SlotPickerContentProps) {
+  const inputStore = useMemo(
+    () => (inputScopeId ? getGenerationInputStore(inputScopeId) : useGenerationInputStore),
+    [inputScopeId],
+  );
+  const inputs = inputStore((s) => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
+  const inputBySlot = useMemo(() => {
+    const map = new Map<number, InputItem>();
+    inputs.forEach((item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      map.set(slot, item);
+    });
+    return map;
+  }, [inputs]);
+
+  const maxSlotIndex = useMemo(() => {
+    return inputs.reduce((max, item, idx) => {
+      const slot = typeof item.slotIndex === 'number' ? item.slotIndex : idx;
+      return Math.max(max, slot);
+    }, -1);
+  }, [inputs]);
+
+  const maxAllowed = maxSlotsProp ?? 7;
+  const minVisibleSlots = maxSlotsProp ?? 3;
+  const baseSlots = Math.max(maxSlotIndex + 1, inputBySlot.size);
+  const visibleSlots = Math.min(Math.max(baseSlots + 1, minVisibleSlots), maxAllowed);
+  const slots = Array.from({ length: visibleSlots }, (_, i) => i);
+  const cols = Math.ceil(visibleSlots / 2);
+
+  return (
+    <div
+      className="grid gap-px overflow-hidden rounded-lg bg-blue-600/95 backdrop-blur-sm shadow-2xl"
+      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
+    >
+      {slots.map((slotIndex) => {
+        const inputItem = inputBySlot.get(slotIndex);
+        const isFilled = !!inputItem;
+
+        return (
+          <button
+            key={slotIndex}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSelectSlot(asset, slotIndex);
+            }}
+            className="w-7 h-7 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+            title={`Slot ${slotIndex + 1}${isFilled ? ' (filled)' : ''}`}
+            type="button"
+          >
+            {isFilled ? (
+              <Icon name="check" size={12} className="text-white" />
+            ) : (
+              <span className="text-[10px] font-medium">{slotIndex + 1}</span>
+            )}
+          </button>
         );
       })}
     </div>
@@ -855,7 +1165,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
   return {
     id: 'generation-button-group',
     type: 'custom',
-    position: { anchor: 'bottom-center', offset: { x: 0, y: -8 } },
+    position: { anchor: 'bottom-center', offset: { x: 0, y: -14 } },
     visibility: { trigger: 'hover-container' },
     priority: 35,
     interactive: true,

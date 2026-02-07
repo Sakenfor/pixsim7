@@ -133,7 +133,7 @@ export function VideoScrubWidgetRenderer({
   onClick,
   onDotClick,
   onExtractFrame,
-  onExtractLastFrame,
+  onExtractLastFrame: _onExtractLastFrame,
   lockedTimestamp,
   dotActive = false,
   dotTooltip,
@@ -168,7 +168,6 @@ export function VideoScrubWidgetRenderer({
   const lastClickTimeRef = useRef<number>(0);
   const lastClickMarkRef = useRef<number | null>(null);
   const canExtract = showExtractButton && !!handleDotAction;
-  const canExtractLast = showExtractButton && !!onExtractLastFrame;
   const dotTitle = dotTooltip ?? (
     canExtract ? 'Extract frame at current time' : 'Click to add mark here'
   );
@@ -306,17 +305,6 @@ export function VideoScrubWidgetRenderer({
   const removeMark = useCallback((time: number) => {
     setMarks((prev) => prev.filter((m) => m !== time));
   }, []);
-
-  // Extract last frame of video
-  const handleExtractLastFrame = useCallback(async () => {
-    if (!onExtractLastFrame || isExtracting) return;
-    setIsExtracting(true);
-    try {
-      await onExtractLastFrame(data);
-    } finally {
-      setIsExtracting(false);
-    }
-  }, [onExtractLastFrame, data, isExtracting]);
 
   const handleDotActionClick = useCallback(async () => {
     if (!handleDotAction || isExtracting) return;
@@ -762,13 +750,13 @@ export function VideoScrubWidgetRenderer({
         <div
           className={`
             absolute left-0 right-0 ${
-              timelinePosition === 'bottom' ? 'bottom-2' : 'top-2'
+              timelinePosition === 'bottom' ? 'bottom-1.5' : 'top-2'
             }
           `}
         >
           {/* Timeline background - clickable to clear range */}
           <div
-            className="relative h-1.5 bg-black/30 rounded-full backdrop-blur-sm cursor-pointer"
+            className="relative h-1 bg-black/30 rounded-full backdrop-blur-sm cursor-pointer"
             onClick={handleTimelineClick}
             title={loopRange ? 'Click to clear loop range' : undefined}
           >
@@ -844,12 +832,12 @@ export function VideoScrubWidgetRenderer({
               }}
               disabled={canExtract && isExtracting}
               className={`
-                absolute top-1/2 p-0 m-0 border-0 outline-none
+                absolute top-1/2 p-0 m-0 border-0 outline-none cursor-pointer
                 ${dotActive
-                  ? 'bg-blue-500 hover:bg-blue-400 scale-110'
+                  ? 'bg-blue-500 hover:bg-blue-400 scale-110 hover:scale-150'
                   : isExtracting
-                    ? 'bg-blue-400'
-                    : 'bg-white hover:bg-orange-400 hover:scale-125'
+                    ? 'bg-blue-400 animate-pulse'
+                    : 'bg-white hover:bg-orange-400 hover:scale-150 hover:shadow-[0_0_8px_rgba(251,146,60,0.8)]'
                 }
               `}
               style={{
@@ -858,60 +846,57 @@ export function VideoScrubWidgetRenderer({
                 width: '8px',
                 height: '8px',
                 borderRadius: '50%',
-                boxShadow: '0 0 3px rgba(0,0,0,0.4)',
-                transition: 'transform 100ms, background-color 100ms',
+                boxShadow: '0 0 3px rgba(0,0,0,0.5)',
+                transition: 'transform 100ms ease-out, background-color 100ms ease-out, box-shadow 100ms ease-out',
               }}
               title={dotTitle}
             />
+
+            {/* Prev/Next buttons flanking the dot on the timeline */}
+            <div
+              ref={dotControlsRef}
+              className="absolute flex items-center"
+              style={{
+                left: `${displayPercentage}%`,
+                top: '50%',
+                transform: 'translate(-50%, -50%)',
+              }}
+            >
+              <button
+                onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors"
+                title={marks.length > 0 ? "Previous mark (Home)" : "Go to start (Home)"}
+              >
+                ◀
+              </button>
+              {/* Spacer for the dot in the middle (accounts for hover scale) */}
+              <div className="w-5" />
+              <button
+                onClick={(e) => { e.stopPropagation(); goToNext(); }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="w-3.5 h-3.5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/80 hover:text-white rounded-sm text-[7px] font-bold transition-colors"
+                title={marks.length > 0 ? "Next mark (End)" : "Go to end (End)"}
+              >
+                ▶
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Dot controls - first/last frame buttons that follow the dot */}
-      {showTimeline && isHovering && videoDuration > 0 && (
-        <div
-          ref={dotControlsRef}
-          className="absolute flex items-center gap-1"
-          style={{
-            left: `${displayPercentage}%`,
-            top: timelinePosition === 'bottom' ? 'auto' : '0.5rem',
-            bottom: timelinePosition === 'bottom' ? '1.75rem' : 'auto',
-            transform: 'translateX(-50%)',
-          }}
-        >
-          <button
-            onClick={(e) => { e.stopPropagation(); goToPrevious(); }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="w-5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/70 hover:text-white rounded transition-colors text-[10px] font-bold"
-            title={marks.length > 0 ? "Go to previous mark (Home)" : "Go to start (Home)"}
-          >
-            |◀
-          </button>
-          {showTimestamp && (
-            <div className="px-1.5 py-0.5 bg-black/60 text-white text-[10px] rounded whitespace-nowrap">
-              {formatTime(currentTime)}
+      {/* Timestamp - top left */}
+      {showTimeline && showTimestamp && isHovering && videoDuration > 0 && (
+        <div className="absolute top-1 left-1 flex items-center gap-1">
+          <div className="px-1.5 py-0.5 bg-black/70 text-white text-[10px] rounded whitespace-nowrap">
+            {formatTime(currentTime)}
+          </div>
+          {lockedTimestamp !== undefined && (
+            <div className="px-1.5 py-0.5 bg-blue-600/90 text-white text-[10px] rounded whitespace-nowrap flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-white" />
+              {formatTime(lockedTimestamp)}
             </div>
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); goToNext(); }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="w-5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 text-white/70 hover:text-white rounded transition-colors text-[10px] font-bold"
-            title={marks.length > 0 ? "Go to next mark (End)" : "Go to end (End)"}
-          >
-            ▶|
-          </button>
-          {canExtractLast && (
-            <button
-              onClick={(e) => { e.stopPropagation(); void handleExtractLastFrame(); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              disabled={isExtracting}
-              className="px-1.5 h-5 flex items-center justify-center bg-black/60 hover:bg-black/80 disabled:bg-black/40 text-white/70 hover:text-white rounded transition-colors text-[9px] font-semibold"
-              title="Extract last frame"
-            >
-              Last
-            </button>
-          )}
-
         </div>
       )}
 
