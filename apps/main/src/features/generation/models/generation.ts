@@ -86,6 +86,24 @@ export interface GenerationModel {
 }
 
 // ============================================================================
+// Helpers
+// ============================================================================
+
+/**
+ * Ensure an ISO timestamp is interpreted as UTC.
+ * Backend stores UTC but may omit the 'Z' suffix on older records.
+ */
+function ensureUtc(ts: string): string;
+function ensureUtc(ts: string | null): string | null;
+function ensureUtc(ts: string | null | undefined): string | null | undefined;
+function ensureUtc(ts: string | null | undefined): string | null | undefined {
+  if (!ts) return ts;
+  // Already has timezone info
+  if (ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts)) return ts;
+  return ts + 'Z';
+}
+
+// ============================================================================
 // Mappers
 // ============================================================================
 
@@ -100,12 +118,12 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     // Identity
     id: response.id,
 
-    // Timestamps
-    createdAt: response.created_at,
-    updatedAt: response.updated_at,
-    startedAt: response.started_at,
-    completedAt: response.completed_at,
-    scheduledAt: response.scheduled_at,
+    // Timestamps (ensure UTC — backend stores UTC but older records may lack 'Z')
+    createdAt: ensureUtc(response.created_at),
+    updatedAt: ensureUtc(response.updated_at),
+    startedAt: ensureUtc(response.started_at),
+    completedAt: ensureUtc(response.completed_at),
+    scheduledAt: ensureUtc(response.scheduled_at),
 
     // Status
     status: response.status,

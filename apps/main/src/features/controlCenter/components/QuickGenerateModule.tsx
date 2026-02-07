@@ -271,7 +271,7 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
 
   const panelContext = useMemo(
-    () => ({ targetProviderId: CONTROL_CENTER_WIDGET_ID }),
+    () => ({ targetProviderId: CONTROL_CENTER_WIDGET_ID, sourceLabel: 'Control Center' }),
     [],
   );
 

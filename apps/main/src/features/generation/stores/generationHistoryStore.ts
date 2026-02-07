@@ -81,7 +81,7 @@ export const useGenerationHistoryStore = create<GenerationHistoryState>()(
       maxHistorySize: DEFAULT_MAX_HISTORY_SIZE,
       historyMode: 'per-operation' as HistoryMode,
       historySortMode: 'pinned-first' as HistorySortMode,
-      includeOutputsInHistory: false,
+      includeOutputsInHistory: true,
       hideIncompatibleAssets: false,
       autoPrefetchHistoryThumbnails: true,
       usePerOperationHistoryLimits: false,

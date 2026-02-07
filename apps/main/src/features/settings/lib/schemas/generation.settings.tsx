@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Generation Settings Schema
  *
@@ -109,7 +110,7 @@ const generationGroups: SettingGroup[] = [
         type: 'toggle',
         label: 'Include outputs in history',
         description: 'Record generated output assets in history for quick reuse.',
-        defaultValue: false,
+        defaultValue: true,
       },
       {
         id: 'hideIncompatibleAssets',
@@ -291,7 +292,7 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
         case 'historySortMode':
           return historySortMode ?? 'pinned-first';
         case 'includeOutputsInHistory':
-          return includeOutputsInHistory ?? false;
+          return includeOutputsInHistory ?? true;
         case 'hideIncompatibleAssets':
           return hideIncompatibleAssets ?? false;
         case 'autoPrefetchHistoryThumbnails':
@@ -403,7 +404,7 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       historyMode: historyMode ?? 'per-operation',
       maxHistorySize: maxHistorySize ?? 20,
       historySortMode: historySortMode ?? 'pinned-first',
-      includeOutputsInHistory: includeOutputsInHistory ?? false,
+      includeOutputsInHistory: includeOutputsInHistory ?? true,
       hideIncompatibleAssets: hideIncompatibleAssets ?? false,
       autoPrefetchHistoryThumbnails: autoPrefetchHistoryThumbnails ?? true,
       usePerOperationHistoryLimits: usePerOperationHistoryLimits ?? false,

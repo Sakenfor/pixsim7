@@ -7,7 +7,6 @@
 import { resolveMediaTypes } from '@pixsim7/shared.assets.core';
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { PromptInput } from '@pixsim7/shared.ui';
 import type { IDockviewPanelProps } from 'dockview-core';
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 
@@ -49,7 +48,7 @@ import {
   QUICKGEN_ASSET_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore } from '@features/panels';
-import { useQuickGenerateController } from '@features/prompts';
+import { PromptComposer, useQuickGenerateController } from '@features/prompts';
 import { useWorkspaceStore } from '@features/workspace';
 
 import type { OperationType } from '@/types/operations';
@@ -97,6 +96,9 @@ export interface QuickGenPanelContext {
 
   // Target toggle
   targetProviderId?: string;
+
+  // History panel source label
+  sourceLabel?: string;
 }
 
 // Panel props with injected context from SmartDockview
@@ -129,6 +131,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // History state
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
+  const isHistoryOpenerRef = useRef(false);
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const updateFloatingPanelContext = useWorkspaceStore((s) => s.updateFloatingPanelContext);
@@ -428,12 +431,20 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const currentInput = orderedInputs[currentInputIdx];
   const currentInputId = currentInput?.id;
 
+  // Reset opener tracking when the history panel closes
+  useEffect(() => {
+    if (!isHistoryPanelOpen) {
+      isHistoryOpenerRef.current = false;
+    }
+  }, [isHistoryPanelOpen]);
+
   // History panel toggle handler
   const handleToggleHistory = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
       if (isHistoryPanelOpen) {
         closeFloatingPanel('quickgen-history');
+        isHistoryOpenerRef.current = false;
         return;
       }
 
@@ -456,28 +467,31 @@ export function AssetPanel(props: QuickGenPanelProps) {
         y = Math.max(minY, Math.min(maxY, desiredY));
       }
 
+      const resolvedSourceLabel = ctx?.sourceLabel || scopeInstanceId || instanceId || 'History';
+      isHistoryOpenerRef.current = true;
       openFloatingPanel('quickgen-history', {
         x,
         y,
         width: panelWidth,
         height: panelHeight,
         context: scopeInstanceId
-          ? { operationType, generationScopeId: scopeInstanceId }
-          : { operationType },
+          ? { operationType, generationScopeId: scopeInstanceId, sourceLabel: resolvedSourceLabel }
+          : { operationType, sourceLabel: resolvedSourceLabel },
       });
     },
-    [isHistoryPanelOpen, closeFloatingPanel, openFloatingPanel, operationType, scopeInstanceId],
+    [isHistoryPanelOpen, closeFloatingPanel, openFloatingPanel, operationType, scopeInstanceId, instanceId, dockviewId],
   );
 
   useEffect(() => {
-    if (!isHistoryPanelOpen) return;
+    if (!isHistoryPanelOpen || !isHistoryOpenerRef.current) return;
+    const resolvedSourceLabel = ctx?.sourceLabel || scopeInstanceId || instanceId || 'History';
     updateFloatingPanelContext(
       'quickgen-history',
       scopeInstanceId
-        ? { operationType, generationScopeId: scopeInstanceId }
-        : { operationType },
+        ? { operationType, generationScopeId: scopeInstanceId, sourceLabel: resolvedSourceLabel }
+        : { operationType, sourceLabel: resolvedSourceLabel },
     );
-  }, [isHistoryPanelOpen, operationType, scopeInstanceId, updateFloatingPanelContext]);
+  }, [isHistoryPanelOpen, operationType, scopeInstanceId, instanceId, ctx?.sourceLabel, updateFloatingPanelContext]);
 
   useEffect(() => {
     if (!showSettingsPopover) return;
@@ -614,12 +628,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
     </div>
   ) : null;
 
-  // Header bar with history button
+  // Header bar with history and settings buttons grouped on right
   const headerBar = (
     <div className="relative flex items-center justify-between gap-1 px-2 py-1 shrink-0">
       {limitLabel ?? <div />}
-      {historyButton}
-      {settingsButton}
+      <div className="flex items-center gap-1">
+        {historyButton}
+        {settingsButton}
+      </div>
       {settingsPopover}
     </div>
   );
@@ -964,7 +980,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
             )}
           </div>
         )}
-        <PromptInput
+        <PromptComposer
           value={promptValue}
           onChange={handlePromptChange}
           maxChars={maxChars}
