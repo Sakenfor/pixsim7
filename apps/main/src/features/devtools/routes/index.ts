@@ -42,6 +42,12 @@ export const healthModule: Module = {
   },
 };
 
+/**
+ * @appMap.docs docs/APP_MAP.md, docs/APP_MAP_JSDOC.md
+ * @appMap.backend pixsim7.backend.main.api.v1.dev_architecture
+ * @appMap.frontend apps/main/src/features/panels/components/dev/AppMapPanel.tsx, apps/main/src/features/panels/components/dev/appMap, packages/shared/app-map/src/generateAppMap.ts
+ * @appMap.notes App Map is the canonical source for architecture introspection. | Backend API: GET /dev/architecture/map | Frontend uses module-derived appMap metadata (JSDoc @appMap tags). | Static JSON (app_map.sources.json) is deprecated.
+ */
 export const appMapModule: Module = {
   id: 'app-map-dev',
   name: 'App Map',
@@ -59,21 +65,6 @@ export const appMapModule: Module = {
     devTool: {
       category: 'graph',
       tags: ['architecture', 'map', 'visualization', 'structure'],
-    },
-    appMap: {
-      docs: ['docs/APP_MAP.md'],
-      backend: ['pixsim7.backend.main.api.v1.dev_architecture'],
-      frontend: [
-        'apps/main/src/features/panels/components/dev/AppMapPanel.tsx',
-        'apps/main/src/features/panels/components/dev/appMap',
-        'scripts/generate-app-map.ts',
-      ],
-      notes: [
-        'App Map is the canonical source for architecture introspection.',
-        'Backend API: GET /dev/architecture/map',
-        'Frontend uses module-derived appMap metadata (page.appMap).',
-        'Static JSON (app_map.sources.json) is deprecated.',
-      ],
     },
   },
 };

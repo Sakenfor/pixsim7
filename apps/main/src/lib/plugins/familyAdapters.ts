@@ -12,7 +12,7 @@ import type { GallerySurfaceDefinition } from '@features/gallery';
 import type { GizmoSurfaceDefinition } from '@features/gizmos';
 import { nodeRendererRegistry, type NodeRenderer } from '@features/graph/lib/editor/nodeRendererRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
-import type { PanelDefinition } from '@features/panels';
+import type { PanelDefinition, PanelGroupDefinition } from '@features/panels';
 import type { GenerationUIPlugin } from '@features/providers';
 import type { WorldToolPlugin } from '@features/worldTools';
 
@@ -421,6 +421,32 @@ function buildGizmoSurfaceMetadata(
   } as ExtendedPluginMetadata<'gizmo-surface'>;
 }
 
+function buildPanelGroupMetadata(
+  group: PanelGroupDefinition,
+  context: PluginRegistrationContext
+): ExtendedPluginMetadata<'panel-group'> {
+  const slotNames = Object.keys(group.panels);
+  const presetNames = Object.keys(group.presets);
+
+  return {
+    id: group.id,
+    name: group.title || group.id,
+    family: 'panel-group',
+    origin: context.origin,
+    activationState: resolveActivationState(context),
+    canDisable: resolveCanDisable(context),
+    groupId: group.id,
+    category: group.category,
+    icon: group.icon,
+    description: group.description,
+    tags: group.tags,
+    slots: slotNames,
+    presets: presetNames,
+    defaultScopes: group.defaultScopes,
+    ...context.metadata,
+  } as ExtendedPluginMetadata<'panel-group'>;
+}
+
 type SceneViewRegistration = {
   manifest: SceneViewPluginManifest;
   plugin: SceneViewPlugin;
@@ -594,5 +620,9 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
       }
     },
     buildMetadata: buildUiPluginMetadata,
+  },
+  'panel-group': {
+    register: () => {},
+    buildMetadata: buildPanelGroupMetadata,
   },
 };

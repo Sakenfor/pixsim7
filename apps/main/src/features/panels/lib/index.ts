@@ -12,7 +12,7 @@ export {
   type PanelInstancePolicy,
 } from "@pixsim7/shared.ui.panels";
 
-export { panelSelectors, dockWidgetSelectors } from "@lib/plugins/catalogSelectors";
+export { panelSelectors, dockWidgetSelectors, panelGroupSelectors } from "@lib/plugins/catalogSelectors";
 
 export {
   PanelRegistry,

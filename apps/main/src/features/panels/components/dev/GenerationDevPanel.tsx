@@ -20,13 +20,14 @@
  */
 
 import { useState, useEffect } from "react";
+
+import { useGenerationDevController } from "@features/generation";
 import {
-  PromptSegmentsViewer,
+  PromptCandidatesViewer,
   usePromptInspection,
   usePromptAiEdit,
 } from "@features/prompts";
 import { useAiProviders } from "@features/providers";
-import { useGenerationDevController } from "@features/generation";
 
 interface GenerationDevPanelProps {
   /** Optional workspace filter */
@@ -377,7 +378,7 @@ interface PromptInspectorSectionProps {
 
 function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
   // Use the hook to fetch prompt inspection data
-  const { prompt, segments, loading, error } = usePromptInspection({
+  const { prompt, candidates, loading, error } = usePromptInspection({
     jobId: generationId,
   });
 
@@ -515,9 +516,9 @@ function PromptInspectorSection({ generationId }: PromptInspectorSectionProps) {
       )}
 
       {prompt && (
-        <PromptSegmentsViewer
+        <PromptCandidatesViewer
           prompt={prompt}
-          segments={segments}
+          candidates={candidates}
           collapsible={true}
           initialOpen={false}
         />

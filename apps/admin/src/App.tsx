@@ -28,6 +28,7 @@ import { CodegenPanel } from './panels/CodegenPanel';
 import { EventsStatsPanel } from './panels/EventsStatsPanel';
 import { HealthPanel } from './panels/HealthPanel';
 import { LogsPanel } from './panels/LogsPanel';
+import { AppMapPanel } from './panels/AppMapPanel';
 import { ServiceInspectorPanel } from './panels/ServiceInspectorPanel';
 import { ServicesPanel } from './panels/ServicesPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
@@ -354,6 +355,7 @@ export default function App() {
       logs: LogsPanel,
       health: HealthPanel,
       eventsStats: EventsStatsPanel,
+      appMap: AppMapPanel,
     }),
     [],
   );
@@ -404,6 +406,12 @@ export default function App() {
       id: 'eventsStats',
       component: 'eventsStats',
       title: 'Events & Stats',
+      position: { referencePanel: 'logs', direction: 'within' },
+    });
+    api.addPanel({
+      id: 'appMap',
+      component: 'appMap',
+      title: 'App Map',
       position: { referencePanel: 'logs', direction: 'within' },
     });
   }, []);

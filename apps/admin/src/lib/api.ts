@@ -2,6 +2,8 @@ import type {
   APIHealthResponse,
   BuildablesResponse,
   CodegenTasksResponse,
+  CodegenRunRequest,
+  CodegenRunResponse,
   EventStatsResponse,
   LauncherSettings,
   LauncherSettingsUpdate,
@@ -72,6 +74,13 @@ export async function getBuildables(): Promise<BuildablesResponse> {
 
 export async function getCodegenTasks(): Promise<CodegenTasksResponse> {
   return request('/codegen/tasks');
+}
+
+export async function runCodegenTask(payload: CodegenRunRequest): Promise<CodegenRunResponse> {
+  return request('/codegen/run', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getSettings(): Promise<LauncherSettings> {

@@ -86,6 +86,7 @@ export function useMediaThumbnailFull(
   const objectUrlRef = useRef<string | null>(null);
   const globalPreventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const galleryQualityMode = useAssetViewerStore((s) => s.settings.qualityMode);
+  const preferOriginal = useAssetViewerStore((s) => s.settings.preferOriginal);
 
   const preventDiskCache = options?.preventDiskCache ?? globalPreventDiskCache;
 
@@ -93,10 +94,14 @@ export function useMediaThumbnailFull(
   const shouldPreferPreview = options?.preferPreview ??
     (galleryQualityMode === 'preview' || galleryQualityMode === 'auto');
 
-  // Select URL with fallback chain: preview (if preferred) → thumbnail → preview (fallback)
-  const selectedUrl = shouldPreferPreview && previewUrl
-    ? previewUrl
-    : (thumbUrl || previewUrl);
+  // Select URL with fallback chain:
+  // - If preferOriginal is enabled, use remoteUrl directly (skips derivatives)
+  // - Otherwise: preview (if preferred) → thumbnail → preview (fallback)
+  const selectedUrl = preferOriginal && remoteUrl
+    ? remoteUrl
+    : shouldPreferPreview && previewUrl
+      ? previewUrl
+      : (thumbUrl || previewUrl);
 
   // Retry state for CDN propagation delays and thumbnail regeneration
   const retryCountRef = useRef(0);

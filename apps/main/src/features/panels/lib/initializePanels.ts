@@ -5,9 +5,13 @@
  * Part of Task 50 Phase 50.3 - Plugin-based Panel Registry
  */
 
+import { registerDefaultBrowsableFamilies } from "@lib/plugins/browsableFamilies";
+import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
+
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
 
 import { autoRegisterPanels } from "./autoDiscovery";
+import type { PanelGroupDefinition } from "./definePanelGroup";
 import { registerDefaultDockWidgets } from "./dockWidgetRegistry";
 import { panelGroupRegistry } from "./panelGroupRegistry";
 
@@ -70,13 +74,34 @@ export function arePanelsInitialized(): boolean {
  * Currently uses explicit imports; can be extended with auto-discovery.
  */
 async function registerPanelGroups(): Promise<void> {
+  // Register browsable families for Widget Builder
+  registerDefaultBrowsableFamilies();
+
   // Import panel group definitions
   const quickgenGroup = await import("../domain/groups/quickgen");
 
-  // Register each group
-  panelGroupRegistry.register(quickgenGroup.default);
+  // Register each group with both registries
+  await registerPanelGroup(quickgenGroup.default);
 
   console.log(
     `[initializePanels] Registered ${panelGroupRegistry.getAll().length} panel groups`
   );
+}
+
+/**
+ * Register a panel group with both the legacy registry and plugin catalog.
+ */
+async function registerPanelGroup(group: PanelGroupDefinition): Promise<void> {
+  // Register with legacy registry for backward compatibility
+  panelGroupRegistry.register(group);
+
+  // Register with plugin catalog for unified browsing
+  await registerPluginDefinition({
+    id: group.id,
+    family: "panel-group",
+    origin: "builtin",
+    source: "source",
+    plugin: group,
+    canDisable: false,
+  });
 }

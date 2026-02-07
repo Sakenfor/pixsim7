@@ -145,6 +145,11 @@ export {
   type PanelInstance,
   type PanelConfigState,
   type PanelConfigActions,
+  type GalleryGroupBy,
+  type GalleryGroupBySelection,
+  type GalleryGroupMode,
+  type GalleryGroupView,
+  type GalleryGroupScope,
   type GalleryPanelSettings,
   type PanelRegistryOverride,
 } from "./stores/panelConfigStore";

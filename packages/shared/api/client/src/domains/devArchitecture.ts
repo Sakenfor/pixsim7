@@ -141,7 +141,7 @@ export function createDevArchitectureApi(client: PixSimApiClient) {
 
     /**
      * Get frontend architecture (feature modules with appMap metadata).
-     * Data is derived from module definitions via generate-app-map.ts.
+     * Data is derived from module definitions via packages/shared/app-map.
      */
     async getFrontendArchitecture(): Promise<FrontendArchitectureResponse> {
       return client.get<FrontendArchitectureResponse>('/dev/architecture/frontend');

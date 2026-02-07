@@ -37,20 +37,9 @@ import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 
-import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
-import { BACKEND_BASE } from '@/lib/api/client';
-import { isBackendUrl } from '@/lib/media/backendUrl';
+import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
-
-/** Resolve the video source URL - prefer main URL over thumbnail for videos */
-function resolveVideoSrc(
-  mediaType: 'video' | 'image' | 'audio' | '3d_model',
-  mainUrl: string | undefined,
-  thumbUrl: string | undefined
-): string | undefined {
-  return mediaType === 'video' ? (mainUrl || thumbUrl) : undefined;
-}
 
 /** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
 function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
@@ -212,32 +201,16 @@ export function MediaCard(props: MediaCardProps) {
     exposeToContextMenu: true,
   }), [assetForCapability]);
   useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
-  const {
-    thumbSrc,
-    thumbFailed,
-    thumbRetry: retryThumb,
-  } = useResolvedAssetMedia({
-    thumbUrl,
-    previewUrl,
-    remoteUrl: mediaType === 'video' ? undefined : remoteUrl,
-  });
+  const { thumbSrc, thumbFailed, thumbRetry: retryThumb, videoSrc, usePosterImage } =
+    useMediaPreviewSource({
+      mediaType,
+      thumbUrl,
+      previewUrl,
+      remoteUrl,
+    });
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [intrinsicVideoAspectRatio, setIntrinsicVideoAspectRatio] = useState<number | null>(null);
   const [intrinsicThumbAspectRatio, setIntrinsicThumbAspectRatio] = useState<number | null>(null);
-
-  // For videos, prefer the actual video URL for metadata/ratio accuracy.
-  // Use thumbnail as poster when available.
-  // Uses shared helper for consistency with CompactAssetCard.
-  const rawVideoSrc = resolveVideoSrc(mediaType, remoteUrl, thumbSrc) ?? thumbSrc;
-  const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
-  const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
-    mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,
-    mediaActive: mediaType === 'video',
-  });
-  const videoSrc = mediaType === 'video'
-    ? (isBackendVideoSrc ? resolvedVideoSrc : rawVideoSrc)
-    : undefined;
-  const usePosterImage = mediaType === 'video' && !!thumbSrc && isBackendVideoSrc;
 
   useEffect(() => {
     if (mediaType !== 'video' || !thumbSrc) {

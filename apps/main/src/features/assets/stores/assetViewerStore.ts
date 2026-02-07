@@ -60,6 +60,8 @@ export interface ViewerSettings {
   loopVideos: boolean;
   /** Gallery quality mode for thumbnail loading */
   qualityMode: GalleryQualityMode;
+  /** Use original source instead of generated thumbnails/previews (for large display sizes) */
+  preferOriginal: boolean;
 }
 
 interface AssetViewerState {
@@ -106,6 +108,7 @@ const defaultSettings: ViewerSettings = {
   showMetadata: false,
   loopVideos: true,
   qualityMode: 'auto',
+  preferOriginal: false,
 };
 
 export const useAssetViewerStore = create<AssetViewerState>()(

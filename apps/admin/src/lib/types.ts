@@ -46,6 +46,7 @@ export interface BaseUrlSettings {
   admin: string;
   launcher: string;
   analysis: string;
+  docs: string;
 }
 
 export interface AdvancedEnvSettings {
@@ -132,6 +133,20 @@ export interface BuildablesResponse {
 export interface CodegenTasksResponse {
   tasks: CodegenTask[];
   total: number;
+}
+
+export interface CodegenRunRequest {
+  task_id: string;
+  check?: boolean;
+}
+
+export interface CodegenRunResponse {
+  task_id: string;
+  ok: boolean;
+  exit_code: number | null;
+  duration_ms: number;
+  stdout: string;
+  stderr: string;
 }
 
 // Logs API types

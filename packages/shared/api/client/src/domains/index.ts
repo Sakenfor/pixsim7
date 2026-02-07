@@ -13,6 +13,7 @@ export { createAutomationApi } from './automation';
 export { createCompositionApi } from './composition';
 export { createConceptsApi } from './concepts';
 export { createDevArchitectureApi } from './devArchitecture';
+export { createDevDocsApi } from './devDocs';
 export { createGameApi } from './game';
 export { createGenerationOperationsApi } from './generationOperations';
 export { createGenerationsApi } from './generations';
@@ -45,11 +46,16 @@ export type {
 export type {
   AssetResponse,
   AssetListResponse,
+  AssetGroupBy,
+  AssetGroupListResponse,
+  AssetGroupRequest,
+  AssetGroupSummary,
   EnrichAssetResponse,
   ExtractFrameRequest,
   ReuploadAssetRequest,
   ListAssetsQuery,
   AssetSearchRequest,
+  AssetGroupPathEntry,
   FilterDefinition,
   FilterMetadataResponse,
   FilterMetadataQueryOptions,
@@ -164,6 +170,8 @@ export type {
   UnifiedArchitectureMetrics,
   UnifiedArchitectureResponse,
 } from './devArchitecture';
+
+export type { DocsIndexResponse, DocsSearchResponse } from './devDocs';
 
 // ===== Game Types =====
 export type {

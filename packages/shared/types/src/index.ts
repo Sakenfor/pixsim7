@@ -147,6 +147,12 @@ export * from './actions'
 export * as Actions from './actions'
 
 // ===================
+// Docs Types
+// ===================
+
+export * from './docs'
+
+// ===================
 // App Map Types
 // ===================
 
@@ -169,6 +175,12 @@ export * from './asset-core'
 // ===================
 
 export * from './composition-roles.generated'
+
+// ===================
+// Prompt Roles (Generated)
+// ===================
+
+export * from './prompt-roles.generated'
 
 // ===================
 // Composition Packages

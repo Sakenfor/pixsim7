@@ -237,6 +237,7 @@ export function SettingsPanel() {
                   ['admin', 'Admin'],
                   ['launcher', 'Launcher API'],
                   ['analysis', 'Analysis'],
+                  ['docs', 'Docs'],
                 ] as const
               ).map(([key, label]) => (
                 <label key={key} className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white/80 px-4 py-3 text-sm">

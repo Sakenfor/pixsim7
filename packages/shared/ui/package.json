@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@pixsim7/shared.types": "workspace:*",
     "clsx": "^2.1.1",
     "framer-motion": "^12.23.24",
     "zustand": "^5.0.8"

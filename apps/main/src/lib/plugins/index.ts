@@ -30,7 +30,15 @@ export type {
 } from './pluginSystem';
 
 // Catalog selectors (catalog-only families)
-export { generationUiSelectors } from './catalogSelectors';
+export { generationUiSelectors, panelGroupSelectors } from './catalogSelectors';
+
+// Browsable families registry
+export {
+  browsableFamilyRegistry,
+  registerDefaultBrowsableFamilies,
+  type BrowsableFamilyConfig,
+  type BrowsableColumn,
+} from './browsableFamilies';
 
 // Types and mapping helpers
 export type * from './types';

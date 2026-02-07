@@ -100,9 +100,19 @@ export interface PanelConfigActions {
 }
 
 // Gallery panel badge configuration
+export type GalleryGroupBy = "none" | "source" | "generation" | "prompt";
+export type GalleryGroupView = "folders" | "inline" | "panel";
+export type GalleryGroupScope = string[];
+export type GalleryGroupMode = "single" | "multi";
+export type GalleryGroupBySelection = GalleryGroupBy | GalleryGroupBy[];
+
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
   badgeConfig?: Partial<MediaCardBadgeConfig>;
+  groupBy?: GalleryGroupBySelection;
+  groupView?: GalleryGroupView;
+  groupScope?: GalleryGroupScope;
+  groupMode?: GalleryGroupMode;
   [key: string]: unknown;
 }
 
@@ -123,6 +133,10 @@ const defaultPanelConfigs: Partial<Record<PanelId, PanelConfig>> = {
     settings: {
       overlayPresetId: "media-card-default",
       badgeConfig: defaultGalleryBadgeConfig,
+      groupBy: "none",
+      groupView: "inline",
+      groupScope: [],
+      groupMode: "single",
     } as GalleryPanelSettings,
     category: "workspace",
     tags: ["assets", "media"],

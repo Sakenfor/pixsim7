@@ -22,6 +22,7 @@ import type {
   GizmoSurfaceId,
 } from '@features/gizmos/lib/core/surfaceRegistry';
 import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
+import type { PanelGroupDefinition } from '@features/panels/lib/definePanelGroup';
 import type { PanelDefinition, WorkspaceContext } from '@features/panels/lib/panelRegistry';
 import type {
   GenerationUIPlugin,
@@ -1091,6 +1092,95 @@ export const generationUiSelectors = {
    */
   get size(): number {
     return pluginCatalog.getByFamily('generation-ui').length;
+  },
+
+  /**
+   * Subscribe to catalog changes
+   */
+  subscribe(callback: () => void): () => void {
+    return pluginCatalog.subscribe(callback);
+  },
+};
+
+// ============================================================================
+// Panel Group Selectors
+// ============================================================================
+
+/**
+ * Panel group catalog selectors
+ *
+ * Provides access to registered panel groups from the catalog.
+ */
+export const panelGroupSelectors = {
+  /**
+   * Get all panel groups
+   */
+  getAll(): PanelGroupDefinition[] {
+    return pluginCatalog.getPluginsByFamily<PanelGroupDefinition>('panel-group');
+  },
+
+  /**
+   * Get a panel group by ID
+   */
+  get(id: string): PanelGroupDefinition | undefined {
+    const meta = pluginCatalog.get(id);
+    if (!meta || meta.family !== 'panel-group') return undefined;
+    return pluginCatalog.getPlugin<PanelGroupDefinition>(id);
+  },
+
+  /**
+   * Check if a panel group exists
+   */
+  has(id: string): boolean {
+    const meta = pluginCatalog.get(id);
+    return meta?.family === 'panel-group';
+  },
+
+  /**
+   * Get all panel group IDs
+   */
+  getIds(): string[] {
+    return pluginCatalog.getByFamily('panel-group').map((meta) => meta.id);
+  },
+
+  /**
+   * Get the number of registered panel groups
+   */
+  get size(): number {
+    return pluginCatalog.getByFamily('panel-group').length;
+  },
+
+  /**
+   * Get panel groups by category
+   */
+  getByCategory(category: string): PanelGroupDefinition[] {
+    return this.getAll().filter((group) => group.category === category);
+  },
+
+  /**
+   * Search panel groups by query (searches id, title, description, tags)
+   */
+  search(query: string): PanelGroupDefinition[] {
+    const lowerQuery = query.toLowerCase();
+    return this.getAll().filter((group) => {
+      const matchesId = group.id.toLowerCase().includes(lowerQuery);
+      const matchesTitle = group.title.toLowerCase().includes(lowerQuery);
+      const matchesDescription = group.description?.toLowerCase().includes(lowerQuery);
+      const matchesTags = group.tags?.some((tag) =>
+        tag.toLowerCase().includes(lowerQuery)
+      );
+
+      return matchesId || matchesTitle || matchesDescription || matchesTags;
+    });
+  },
+
+  /**
+   * Get panel IDs for a group's preset
+   */
+  getPanelIdsForPreset(groupId: string, presetName: string): string[] {
+    const group = this.get(groupId);
+    if (!group) return [];
+    return group.getPanelIds(presetName as any);
   },
 
   /**

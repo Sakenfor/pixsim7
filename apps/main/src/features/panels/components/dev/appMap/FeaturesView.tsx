@@ -5,13 +5,20 @@
  */
 
 import type { AppMapMetadata } from '@pixsim7/shared.types';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type {
   FeatureCapability,
   RouteCapability,
   ActionCapability,
 } from '@lib/capabilities';
+
+import { DocViewer } from './DocViewer';
+
+const getDocLabel = (docPath: string) => {
+  const parts = docPath.split('/');
+  return parts[parts.length - 1] || docPath;
+};
 
 interface FeaturesViewProps {
   features: FeatureCapability[];
@@ -28,6 +35,12 @@ export function FeaturesView({
   selectedFeatureActions,
   onSelectFeature,
 }: FeaturesViewProps) {
+  const [selectedDocPath, setSelectedDocPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedDocPath(null);
+  }, [selectedFeature?.id]);
+
   const featuresByCategory = useMemo(() => {
     const grouped: Record<string, FeatureCapability[]> = {};
     features.forEach((f) => {
@@ -41,8 +54,8 @@ export function FeaturesView({
   const categories = Object.keys(featuresByCategory).sort();
   // Prefer top-level appMap, fall back to metadata.appMap for compatibility
   const appMapMeta = (selectedFeature?.appMap ?? selectedFeature?.metadata?.appMap) as AppMapMetadata | undefined;
+  const docItems = appMapMeta?.docs ?? [];
   const appMapSections = [
-    { label: 'Docs', items: appMapMeta?.docs },
     { label: 'Frontend', items: appMapMeta?.frontend },
     { label: 'Backend', items: appMapMeta?.backend },
     { label: 'Notes', items: appMapMeta?.notes },
@@ -119,12 +132,36 @@ export function FeaturesView({
               )}
             </div>
 
-            {appMapSections.length > 0 && (
+            {(docItems.length > 0 || appMapSections.length > 0) && (
               <div>
                 <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-3">
                   Notes & References
                 </h3>
                 <div className="space-y-3">
+                  {docItems.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-neutral-500 dark:text-neutral-400">
+                        Docs
+                      </div>
+                      <div className="mt-1 space-y-1">
+                        {docItems.map((item) => (
+                          <button
+                            key={item}
+                            onClick={() => setSelectedDocPath(item)}
+                            className={`w-full text-left px-2 py-1 rounded transition-colors ${
+                              selectedDocPath === item
+                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200'
+                                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                            }`}
+                          >
+                            <code className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
+                              {getDocLabel(item)}
+                            </code>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {appMapSections.map((section) => (
                     <div key={section.label}>
                       <div className="text-xs font-semibold uppercase text-neutral-500 dark:text-neutral-400">
@@ -143,6 +180,13 @@ export function FeaturesView({
                   ))}
                 </div>
               </div>
+            )}
+
+            {selectedDocPath && (
+              <DocViewer
+                docPath={selectedDocPath}
+                onNavigateDoc={setSelectedDocPath}
+              />
             )}
 
             {/* Routes */}

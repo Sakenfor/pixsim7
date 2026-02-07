@@ -189,6 +189,20 @@ export function AppMapPanel() {
   const featureUsageStats = useMemo(() => getFeatureUsageStats(allPlugins), [allPlugins]);
 
   const selectedFeature = allFeatures.find((f) => f.id === selectedFeatureId);
+  const docsUrl = useMemo(() => {
+    const envUrl = import.meta.env.VITE_DOCS_URL as string | undefined;
+    if (envUrl && envUrl.trim()) {
+      return envUrl.trim().replace(/\/+$/, '');
+    }
+    if (typeof window === 'undefined') {
+      return '';
+    }
+    const { protocol, host } = window.location;
+    if (host.startsWith('app.')) {
+      return `${protocol}//${host.replace(/^app\./, 'docs.')}`;
+    }
+    return '';
+  }, []);
 
   // Export app map data
   const handleExport = () => {
@@ -295,6 +309,16 @@ export function AppMapPanel() {
               >
                 Export JSON
               </button>
+              {docsUrl ? (
+                <a
+                  href={docsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  Open Docs
+                </a>
+              ) : null}
             </div>
           </div>
 
