@@ -4,7 +4,7 @@ AccountService - provider account selection and management
 Clean service for account pool management with normalized credit tracking
 """
 from typing import Optional, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -81,7 +81,7 @@ class AccountService:
             query = query.where(ProviderAccount.is_private == False)
 
         # Filter out accounts in cooldown
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         query = query.where(
             (ProviderAccount.cooldown_until == None) |
             (ProviderAccount.cooldown_until < now)
@@ -151,7 +151,7 @@ class AccountService:
             raise ResourceNotFoundError("ProviderAccount", account_id)
 
         account.current_processing_jobs += 1
-        account.last_used = datetime.utcnow()
+        account.last_used = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(account)
@@ -179,7 +179,7 @@ class AccountService:
         Raises:
             NoAccountAvailableError: No suitable account found
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Build query with row-level locking
         query = select(ProviderAccount).where(
@@ -370,7 +370,7 @@ class AccountService:
         result = await self.db.execute(query)
         credit = result.scalar_one_or_none()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if credit:
             # Update existing
@@ -440,7 +440,7 @@ class AccountService:
             raise AccountExhaustedError(account_id, account.provider_id if account else "unknown")
 
         credit.amount -= amount
-        credit.updated_at = datetime.utcnow()
+        credit.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
 
@@ -489,7 +489,7 @@ class AccountService:
             return
 
         # Clear expired cooldown
-        if account.cooldown_until and datetime.utcnow() >= account.cooldown_until:
+        if account.cooldown_until and datetime.now(timezone.utc) >= account.cooldown_until:
             account.cooldown_until = None
             logger.info(
                 "cooldown_expired",
@@ -558,7 +558,7 @@ class AccountService:
             "no_change": 0
         }
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for account in accounts:
             changed = False
@@ -746,7 +746,7 @@ class AccountService:
             is_private=is_private,
             nickname=nickname,
             status=AccountStatus.ACTIVE,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
 
         self.db.add(account)

@@ -4,11 +4,12 @@ User domain model - authentication and authorization
 Multi-user support for PixSim7
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
 
 from .enums import AccountStatus
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class UserRole(str):
@@ -107,8 +108,8 @@ class User(SQLModel, table=True):
     )
 
     # ===== TIMESTAMPS =====
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     last_login_at: Optional[datetime] = None
 
     def __repr__(self):
@@ -157,7 +158,7 @@ class UserSession(SQLModel, table=True):
     token_id: str = Field(unique=True, index=True, max_length=255)
 
     # Token metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime
     last_used_at: Optional[datetime] = None
 
@@ -182,7 +183,7 @@ class UserSession(SQLModel, table=True):
         """Check if session is still valid"""
         if self.is_revoked:
             return False
-        if self.expires_at < datetime.utcnow():
+        if self.expires_at < datetime.now(timezone.utc):
             return False
         return True
 
@@ -209,7 +210,7 @@ class UserQuotaUsage(SQLModel, table=True):
     storage_added_gb: float = Field(default=0.0)
 
     # Timestamps
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def __repr__(self):
         return f"<UserQuotaUsage(user_id={self.user_id}, date={self.date}, jobs={self.jobs_created})>"

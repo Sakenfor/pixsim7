@@ -7,7 +7,7 @@ Provides atomic device assignment for automation executions with:
 - Extensibility hooks for future wait queue and affinity features
 """
 from typing import Optional, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -190,7 +190,7 @@ class DevicePoolService:
             execution: AutomationExecution to assign to
             device: AndroidDevice to assign
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         execution.device_id = device.id
         device.last_used_at = now

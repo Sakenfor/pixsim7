@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -87,7 +87,7 @@ class PromptOperationsService:
 
         export_data = {
             "format_version": "1.0",
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "family": {
                 "slug": family.slug,
                 "title": family.title,
@@ -150,7 +150,7 @@ class PromptOperationsService:
             import_data = {
                 "family": {
                     "title": "Imported Prompt",
-                    "slug": f"imported-{datetime.utcnow().timestamp()}",
+                    "slug": f"imported-{datetime.now(timezone.utc).timestamp()}",
                     "prompt_type": "visual",
                     "description": "Imported from external source"
                 },
@@ -528,7 +528,7 @@ class PromptOperationsService:
             version.provider_compatibility = {}
 
         version.provider_compatibility[provider_id] = {
-            "validated_at": datetime.utcnow().isoformat(),
+            "validated_at": datetime.now(timezone.utc).isoformat(),
             "valid": validation_result["valid"],
             "char_count": validation_result.get("char_count"),
             "char_limit": validation_result.get("char_limit"),

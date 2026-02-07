@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 import secrets
 
@@ -90,7 +90,7 @@ async def register_agent(
     )
     existing = result.scalars().first()
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     
     if existing:
         # Update existing agent
@@ -147,7 +147,7 @@ async def request_pairing(
     Agent calls this to obtain a short-lived pairing code. The user then enters
     this code in the web UI to associate the agent with their account.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Cleanup expired requests (older than TTL)
     expiry_cutoff = now - timedelta(minutes=PAIRING_TTL_MINUTES)
@@ -223,7 +223,7 @@ async def complete_pairing(
     This associates the agent with the user and creates/updates the DeviceAgent
     record. Agents can then poll pairing-status to know when pairing is done.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Look up pairing request by code
     pairing_request = (await db.execute(
@@ -296,7 +296,7 @@ async def get_pairing_status(
     if not pairing_request:
         return PairingStatusResponse(status="unknown")
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if pairing_request.expires_at < now:
         return PairingStatusResponse(status="expired")
 
@@ -328,7 +328,7 @@ async def agent_heartbeat(
         raise HTTPException(status_code=404, detail="Agent not found - complete pairing first")
     
     # Update agent status
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     agent.status = "online"
     agent.last_heartbeat = now
     agent.updated_at = now
@@ -409,7 +409,7 @@ async def list_agents(
     agents = result.scalars().all()
     
     # Mark stale agents as offline
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     stale_threshold = now - timedelta(minutes=2)
     
     for agent in agents:
@@ -449,7 +449,7 @@ async def admin_create_agent(
         }
     """
     import uuid
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     # Check if agent with same host already exists for this user
     result = await db.execute(

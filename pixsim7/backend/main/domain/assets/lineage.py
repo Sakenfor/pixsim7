@@ -9,6 +9,7 @@ from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, Enum as SAEnum
 
 from pixsim7.backend.main.domain.enums import OperationType
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class AssetLineage(SQLModel, table=True):
@@ -114,7 +115,7 @@ class AssetLineage(SQLModel, table=True):
         description="Structured edit summaries with domain refs: [{action, target_ref, attribute, ...}]"
     )
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     __table_args__ = (
         # Fast lookups

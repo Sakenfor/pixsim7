@@ -29,6 +29,8 @@ from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column, Relationship
 from sqlalchemy.dialects.postgresql import JSONB, JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class CharacterInstance(SQLModel, table=True):
     """Character instantiation in a specific world
@@ -90,8 +92,8 @@ class CharacterInstance(SQLModel, table=True):
     )
 
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class CharacterCapability(SQLModel, table=True):
@@ -140,7 +142,7 @@ class CharacterCapability(SQLModel, table=True):
     tags: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class SceneCharacterManifest(SQLModel, table=True):
@@ -224,8 +226,8 @@ class SceneCharacterManifest(SQLModel, table=True):
 
     # Metadata
     created_by: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class CharacterDialogueProfile(SQLModel, table=True):
@@ -298,5 +300,5 @@ class CharacterDialogueProfile(SQLModel, table=True):
 
     # Metadata
     is_active: bool = Field(default=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

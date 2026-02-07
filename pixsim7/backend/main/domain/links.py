@@ -27,6 +27,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Index
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class ObjectLink(SQLModel, table=True):
     """Generic template↔runtime link table
@@ -117,8 +119,8 @@ class ObjectLink(SQLModel, table=True):
         sa_column=Column(JSONB),
         description="Extensible metadata for domain-specific use"
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     last_synced_at: Optional[datetime] = Field(None)
     last_sync_direction: Optional[str] = Field(None, max_length=50)
 

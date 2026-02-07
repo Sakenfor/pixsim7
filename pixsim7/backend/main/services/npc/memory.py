@@ -8,7 +8,7 @@ Provides methods to:
 - Manage memory decay
 - Track conversation topics
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, func
@@ -113,7 +113,7 @@ class MemoryService:
         Returns:
             Expiration datetime or None for permanent
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Long-term memories don't expire (or expire very slowly)
         if memory_type == MemoryType.LONG_TERM:
@@ -212,7 +212,7 @@ class MemoryService:
 
         # Filter expired
         if not include_expired:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             query = query.where(
                 or_(
                     ConversationMemory.expires_at.is_(None),
@@ -234,7 +234,7 @@ class MemoryService:
         # Update access tracking
         for memory in memories:
             memory.access_count += 1
-            memory.last_accessed_at = datetime.utcnow()
+            memory.last_accessed_at = datetime.now(timezone.utc)
             # Accessing a memory slightly strengthens it
             memory.strength = min(1.0, memory.strength + 0.05)
 
@@ -295,7 +295,7 @@ class MemoryService:
         memories = result.scalars().all()
 
         decayed_count = 0
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for memory in memories:
             # Calculate time since last access or creation
@@ -328,7 +328,7 @@ class MemoryService:
         Returns:
             Number of memories deleted
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Also forget memories with very low strength
         query = select(ConversationMemory).where(

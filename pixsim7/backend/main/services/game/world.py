@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 import logging
 
@@ -105,7 +105,7 @@ class GameWorldService:
             .where(GameWorldState.world_id == world_id)
             .values(
                 world_time=GameWorldState.world_time + delta_seconds,
-                last_advanced_at=datetime.utcnow()
+                last_advanced_at=datetime.now(timezone.utc)
             )
             .returning(GameWorldState)
         )

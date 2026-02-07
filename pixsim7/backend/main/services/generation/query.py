@@ -4,7 +4,7 @@ GenerationQueryService - Generation retrieval and listing
 Handles all read-only generation queries.
 """
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -182,7 +182,7 @@ class GenerationQueryService:
             query = query.where(Generation.provider_id == provider_id)
 
         # Check if scheduled time has passed
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         query = query.where(
             (Generation.scheduled_at == None) |
             (Generation.scheduled_at <= now)

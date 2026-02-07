@@ -9,7 +9,7 @@ Use Cases:
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
 
@@ -73,8 +73,8 @@ class CharacterInstanceService:
             behavioral_overrides=behavioral_overrides or {},
             current_state=current_state or {},
             instance_metadata={},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(instance)
@@ -184,7 +184,7 @@ class CharacterInstanceService:
         current = instance.current_state.copy()
         current.update(state_updates)
         instance.current_state = current
-        instance.updated_at = datetime.utcnow()
+        instance.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(instance)
@@ -228,7 +228,7 @@ class CharacterInstanceService:
             current.update(behavioral_overrides)
             instance.behavioral_overrides = current
 
-        instance.updated_at = datetime.utcnow()
+        instance.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(instance)
@@ -326,7 +326,7 @@ class CharacterInstanceService:
 
         if soft:
             instance.is_active = False
-            instance.updated_at = datetime.utcnow()
+            instance.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
         else:
             # Clean up associated ObjectLinks before deleting instance

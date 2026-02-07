@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, ContentDomain
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class Asset(SQLModel, table=True):
@@ -289,14 +290,14 @@ class Asset(SQLModel, table=True):
 
     # ===== TIMESTAMPS =====
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
     downloaded_at: Optional[datetime] = None
 
     # For LRU cache eviction strategy
     last_accessed_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True,
         description="Last time asset was used (for cache management)"
     )
@@ -356,7 +357,7 @@ class AssetVariant(SQLModel, table=True):
     cdn_url: Optional[str] = None
     file_size_bytes: int
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     def __repr__(self):
         return (

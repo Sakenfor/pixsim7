@@ -12,6 +12,7 @@ from sqlalchemy import JSON
 from enum import Enum
 
 from pixsim7.backend.main.domain.enums import enum_column
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class AnalysisStatus(str, Enum):
@@ -95,8 +96,8 @@ class AssetAnalysis(SQLModel, table=True):
     )
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     __table_args__ = (
         Index("idx_analysis_asset_type", "asset_id", "analyzer_type"),

@@ -8,6 +8,8 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class Workspace(SQLModel, table=True):
     """
@@ -90,8 +92,8 @@ class Workspace(SQLModel, table=True):
     )
 
     # ===== TIMESTAMPS =====
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
     last_activity_at: Optional[datetime] = None
 
     def __repr__(self):

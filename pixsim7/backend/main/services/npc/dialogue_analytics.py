@@ -8,7 +8,7 @@ Tracks dialogue generation analytics including:
 - A/B testing support
 - Optimization insights
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc
@@ -151,7 +151,7 @@ class DialogueAnalyticsService:
         Returns:
             Cost summary
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(DialogueAnalytics).where(
             DialogueAnalytics.generated_at >= cutoff
@@ -210,7 +210,7 @@ class DialogueAnalyticsService:
         Returns:
             Engagement metrics
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(DialogueAnalytics).where(
             DialogueAnalytics.generated_at >= cutoff
@@ -271,7 +271,7 @@ class DialogueAnalyticsService:
         Returns:
             Quality metrics
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(DialogueAnalytics).where(
             DialogueAnalytics.generated_at >= cutoff
@@ -315,7 +315,7 @@ class DialogueAnalyticsService:
         Returns:
             Model performance comparison
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(DialogueAnalytics).where(
             DialogueAnalytics.generated_at >= cutoff
@@ -366,7 +366,7 @@ class DialogueAnalyticsService:
         Returns:
             Program performance data
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(DialogueAnalytics).where(
             DialogueAnalytics.generated_at >= cutoff
@@ -418,7 +418,7 @@ class DialogueAnalyticsService:
         Returns:
             Comparison data
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         # Get data for both variants
         variants_data = {}

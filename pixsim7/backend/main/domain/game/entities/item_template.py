@@ -11,6 +11,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Text
 
 from ..stats import HasStatsWithMetadata
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class ItemTemplate(SQLModel, HasStatsWithMetadata, table=True):
@@ -28,5 +29,5 @@ class ItemTemplate(SQLModel, HasStatsWithMetadata, table=True):
     template_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
 
     is_active: bool = Field(default=True, index=True)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)

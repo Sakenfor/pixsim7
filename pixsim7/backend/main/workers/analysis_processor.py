@@ -8,7 +8,7 @@ Processes analyses created via AnalysisService:
 
 Mirrors the generation processor pattern for consistency.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -249,7 +249,7 @@ async def requeue_pending_analyses(ctx: dict) -> dict:
 
     async for db in get_db():
         try:
-            threshold = datetime.utcnow() - timedelta(seconds=STALE_THRESHOLD_SECONDS)
+            threshold = datetime.now(timezone.utc) - timedelta(seconds=STALE_THRESHOLD_SECONDS)
 
             result = await db.execute(
                 select(AssetAnalysis)
@@ -281,7 +281,7 @@ async def requeue_pending_analyses(ctx: dict) -> dict:
                     logger.info(
                         "requeue_analysis",
                         analysis_id=analysis.id,
-                        age_seconds=(datetime.utcnow() - analysis.created_at).total_seconds()
+                        age_seconds=(datetime.now(timezone.utc) - analysis.created_at).total_seconds()
                     )
                     requeued += 1
                 except Exception as e:
@@ -291,7 +291,7 @@ async def requeue_pending_analyses(ctx: dict) -> dict:
             stats = {
                 "requeued": requeued,
                 "errors": errors,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             logger.info("requeue_analyses_complete", **stats)

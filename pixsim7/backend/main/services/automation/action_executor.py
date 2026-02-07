@@ -17,7 +17,7 @@ import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional, Callable, Awaitable
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.shared.logging import get_backend_logger
@@ -324,7 +324,7 @@ class ActionExecutor:
                 await self.adb.swipe(ctx.serial, x1, y1, x2, y2, int(params.get("duration_ms", 300)))
 
             elif a_type == "screenshot":
-                ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+                ts = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
                 dest = ctx.screenshots_dir / f"shot-{ts}.png"
                 await self.adb.screenshot(ctx.serial, dest)
 

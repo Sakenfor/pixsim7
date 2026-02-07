@@ -11,7 +11,7 @@ Use Cases:
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -64,8 +64,8 @@ class SceneCharacterManifestService:
             instance_requirements=instance_requirements or {},
             validation_rules=validation_rules or {},
             created_by=created_by,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(manifest)
@@ -237,7 +237,7 @@ class SceneCharacterManifestService:
         if required_relationships is not None:
             manifest.required_relationships = required_relationships
 
-        manifest.updated_at = datetime.utcnow()
+        manifest.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(manifest)
@@ -276,7 +276,7 @@ class SceneCharacterManifestService:
                 roles = manifest.character_roles.copy()
                 roles[character_id] = role
                 manifest.character_roles = roles
-            manifest.updated_at = datetime.utcnow()
+            manifest.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
             await self.db.refresh(manifest)
 
@@ -308,7 +308,7 @@ class SceneCharacterManifestService:
             del roles[character_id]
             manifest.character_roles = roles
 
-        manifest.updated_at = datetime.utcnow()
+        manifest.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(manifest)
 

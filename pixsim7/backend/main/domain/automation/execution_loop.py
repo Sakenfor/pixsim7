@@ -7,6 +7,8 @@ from enum import Enum
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, Text
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class LoopSelectionMode(str, Enum):
     MOST_CREDITS = "most_credits"
@@ -89,8 +91,8 @@ class ExecutionLoop(SQLModel, table=True):
     last_error: Optional[str] = Field(default=None, max_length=500)
 
     # Timestamps
-    created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    updated_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
+    created_at: Optional[datetime] = Field(default_factory=utcnow)
+    updated_at: Optional[datetime] = Field(default_factory=utcnow)
     started_at: Optional[datetime] = Field(default=None)
     stopped_at: Optional[datetime] = Field(default=None)
 
@@ -170,7 +172,7 @@ class ExecutionLoopHistory(SQLModel, table=True):
     device_name: Optional[str] = Field(default=None, max_length=255)
     selection_mode: Optional[str] = Field(default=None, max_length=50)
 
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=utcnow)
     completed_at: Optional[datetime] = Field(default=None)
     duration_seconds: Optional[float] = Field(default=None)
 

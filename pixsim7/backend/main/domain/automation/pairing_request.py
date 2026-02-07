@@ -5,6 +5,8 @@ from typing import Optional
 from datetime import datetime
 from sqlmodel import SQLModel, Field
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class PairingRequest(SQLModel, table=True):
     """Pairing request for remote device agent"""
@@ -28,7 +30,7 @@ class PairingRequest(SQLModel, table=True):
     paired_user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     expires_at: datetime  # Calculated as created_at + TTL
 
     def __repr__(self) -> str:

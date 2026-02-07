@@ -6,7 +6,7 @@ Phase 2 will add Redis-backed persistent events.
 """
 from typing import Callable, Dict, List, Any, Awaitable, Optional
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import asyncio
 
@@ -18,7 +18,7 @@ class Event:
     """Base event class"""
     event_type: str
     data: Dict[str, Any]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     event_id: str | None = None
 
     def __post_init__(self):
@@ -129,7 +129,7 @@ class EventBus:
             else:
                 logger.warning(message)
 
-        event = Event(event_type=event_type, data=data, event_id=event_id, timestamp=timestamp or datetime.utcnow())
+        event = Event(event_type=event_type, data=data, event_id=event_id, timestamp=timestamp or datetime.now(timezone.utc))
 
         # Get handlers for this event type
         handlers = self._handlers.get(event_type, []) + self._wildcard_handlers

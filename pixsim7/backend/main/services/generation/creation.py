@@ -10,7 +10,7 @@ a new one with prompt analysis.
 """
 import logging
 from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
@@ -628,8 +628,8 @@ class GenerationCreationService:
             estimated_credits=estimated_credits,
             # credit_type=None - derived at billing time from account credits
             billing_state=BillingState.PENDING,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         self.db.add(generation)

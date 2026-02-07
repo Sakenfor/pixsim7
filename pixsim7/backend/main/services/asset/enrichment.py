@@ -5,7 +5,7 @@ Handles asset metadata enrichment: recognition data, embedded asset extraction,
 and paused frame creation.
 """
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import os
@@ -55,7 +55,7 @@ class AssetEnrichmentService:
         meta["actions"] = [a.model_dump() for a in recognition.actions]
         meta["interactions"] = [i.model_dump() for i in recognition.interactions]
         asset.media_metadata = meta
-        asset.last_accessed_at = datetime.utcnow()
+        asset.last_accessed_at = datetime.now(timezone.utc)
         self.db.add(asset)
         await self.db.commit()
         await self.db.refresh(asset)

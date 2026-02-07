@@ -8,7 +8,7 @@ Provides database operations for action blocks including:
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from sqlmodel import SQLModel
@@ -57,8 +57,8 @@ class ActionBlockService:
         block_data['char_count'] = char_count
         block_data['word_count'] = word_count
         block_data['created_by'] = created_by
-        block_data['created_at'] = datetime.utcnow()
-        block_data['updated_at'] = datetime.utcnow()
+        block_data['created_at'] = datetime.now(timezone.utc)
+        block_data['updated_at'] = datetime.now(timezone.utc)
 
         # Normalize tags to use ontology IDs where possible (Task 84, Task C)
         if 'tags' in block_data and block_data['tags']:
@@ -118,7 +118,7 @@ class ActionBlockService:
             block.char_count = len(block.prompt)
             block.word_count = len(block.prompt.split())
 
-        block.updated_at = datetime.utcnow()
+        block.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(block)

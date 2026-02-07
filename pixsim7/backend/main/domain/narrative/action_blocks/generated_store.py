@@ -11,6 +11,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON, String, DateTime, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class GeneratedActionBlockRecord(SQLModel, table=True):
     """
@@ -30,7 +32,7 @@ class GeneratedActionBlockRecord(SQLModel, table=True):
     reference_asset_id: Optional[int] = Field(default=None, index=True)
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         sa_column=Column(DateTime(timezone=True), index=True),
     )
 

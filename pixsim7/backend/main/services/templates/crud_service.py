@@ -35,7 +35,7 @@ Usage:
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, Tuple, TypeVar, Type, Union
 from uuid import UUID
 
@@ -498,7 +498,7 @@ class TemplateCRUDService(Generic[T]):
 
         # Update timestamp if exists
         if hasattr(entity, "updated_at"):
-            entity.updated_at = datetime.utcnow()
+            entity.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(entity)
@@ -535,7 +535,7 @@ class TemplateCRUDService(Generic[T]):
             if hasattr(entity, "is_active"):
                 entity.is_active = False
                 if hasattr(entity, "updated_at"):
-                    entity.updated_at = datetime.utcnow()
+                    entity.updated_at = datetime.now(timezone.utc)
                 await self.db.commit()
         else:
             # Hard delete

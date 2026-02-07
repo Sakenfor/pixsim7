@@ -9,6 +9,8 @@ from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 from uuid import UUID
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class PromptVariantFeedback(SQLModel, table=True):
     """
@@ -73,7 +75,7 @@ class PromptVariantFeedback(SQLModel, table=True):
     )
 
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
 

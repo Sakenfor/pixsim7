@@ -15,6 +15,8 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON, Integer, ForeignKey
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class ProviderSubmission(SQLModel, table=True):
     """
@@ -101,7 +103,7 @@ class ProviderSubmission(SQLModel, table=True):
 
     # ===== TIMING METRICS =====
     submitted_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
     responded_at: Optional[datetime] = None

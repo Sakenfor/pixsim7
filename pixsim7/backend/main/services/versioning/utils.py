@@ -5,7 +5,7 @@ Shared helpers used across different versioning implementations.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 
@@ -40,7 +40,7 @@ def time_since(dt: datetime) -> str:
     """Get human-readable time since a datetime."""
     if dt is None:
         return "unknown"
-    delta = datetime.utcnow() - dt
+    delta = datetime.now(timezone.utc) - dt
     return format_timedelta(delta)
 
 

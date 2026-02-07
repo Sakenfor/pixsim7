@@ -251,8 +251,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
 
             # Check if scheduled for later
-            from datetime import datetime
-            if generation.scheduled_at and generation.scheduled_at > datetime.utcnow():
+            from datetime import datetime, timezone
+            if generation.scheduled_at and generation.scheduled_at > datetime.now(timezone.utc):
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
                 debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
@@ -468,7 +468,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     # Put account in short cooldown (30 seconds) so it's not immediately reselected
                     try:
                         from datetime import timedelta
-                        account.cooldown_until = datetime.utcnow() + timedelta(seconds=30)
+                        account.cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=30)
                         await db.commit()
                         gen_logger.info(
                             "account_cooldown_concurrent_limit",

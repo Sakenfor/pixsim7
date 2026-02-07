@@ -6,7 +6,7 @@ This is a minimal stub that simulates execution and marks it complete.
 """
 import asyncio
 from pixsim_logging import configure_logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.automation import AutomationExecution, AutomationStatus, AppActionPreset, AndroidDevice
@@ -64,7 +64,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 return {"status": "skipped", "reason": f"status={execution.status}"}
 
             execution.status = AutomationStatus.RUNNING
-            execution.started_at = datetime.utcnow()
+            execution.started_at = datetime.now(timezone.utc)
             await db.commit()
 
             # Check if this is a test execution with inline actions
@@ -212,7 +212,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
 
                 # Mark completed
                 execution.status = AutomationStatus.COMPLETED
-                execution.completed_at = datetime.utcnow()
+                execution.completed_at = datetime.now(timezone.utc)
                 execution.current_action_index = ctx.current_action_index
                 execution.total_actions = ctx.total_actions
                 # Store condition results for IF actions
@@ -268,7 +268,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                         "action_index": e.action_index,
                         "condition_results": ctx.condition_results if 'ctx' in locals() else {},
                     }
-                    execution.completed_at = datetime.utcnow()
+                    execution.completed_at = datetime.now(timezone.utc)
                     execution.current_action_index = e.action_index
                     execution.total_actions = ctx.total_actions if 'ctx' in locals() else 0
                     await db.commit()
@@ -282,7 +282,7 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 if execution:
                     execution.status = AutomationStatus.FAILED
                     execution.error_message = str(e)
-                    execution.completed_at = datetime.utcnow()
+                    execution.completed_at = datetime.now(timezone.utc)
                     await db.commit()
             except Exception:
                 pass

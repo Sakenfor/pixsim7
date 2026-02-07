@@ -4,7 +4,7 @@ Asset Sync Service
 Manages asset downloading, syncing, and provider upload/download operations.
 """
 from typing import Optional, Literal, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
@@ -115,7 +115,7 @@ class AssetSyncService:
             attempt = {
                 'provider_id': provider_id,
                 'status': status,
-                'at': datetime.utcnow().isoformat() + 'Z',  # ISO 8601 UTC
+                'at': datetime.now(timezone.utc).isoformat() + 'Z',  # ISO 8601 UTC
             }
 
             # Add optional fields
@@ -209,7 +209,7 @@ class AssetSyncService:
                 mime_type=asset.mime_type,
             )
             asset.content_id = content.id
-        asset.downloaded_at = datetime.utcnow()
+        asset.downloaded_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(asset)
@@ -328,7 +328,7 @@ class AssetSyncService:
         asset = await self.get_asset(asset_id)
 
         # Update last accessed time for LRU cache
-        asset.last_accessed_at = datetime.utcnow()
+        asset.last_accessed_at = datetime.now(timezone.utc)
 
         # Check if remote_url is already on the target provider (avoids re-upload)
         if target_provider_id in PROVIDER_URL_DOMAINS and asset.remote_url:

@@ -16,6 +16,8 @@ from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class AssetVersionFamily(SQLModel, table=True):
     """
@@ -74,11 +76,11 @@ class AssetVersionFamily(SQLModel, table=True):
 
     # Timestamps
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="When family was created"
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="When family was last modified (new version added, HEAD changed)"
     )
 

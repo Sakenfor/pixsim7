@@ -1,7 +1,7 @@
 """Character Service - CRUD operations for character registry"""
 from typing import List, Optional, Dict, Any
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 from sqlmodel import col
@@ -81,8 +81,8 @@ class CharacterService:
             tags=kwargs.get('tags', {}),
             character_metadata=kwargs.get('character_metadata', {}),
             created_by=created_by,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(character)
@@ -165,7 +165,7 @@ class CharacterService:
                 if hasattr(character, key):
                     setattr(character, key, value)
 
-            character.updated_at = datetime.utcnow()
+            character.updated_at = datetime.now(timezone.utc)
             await self.db.commit()
             await self.db.refresh(character)
 
@@ -202,8 +202,8 @@ class CharacterService:
             tags=updates.get('tags', old_character.tags.copy()),
             character_metadata=updates.get('character_metadata', old_character.character_metadata.copy()),
             created_by=old_character.created_by,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(new_character)
@@ -220,7 +220,7 @@ class CharacterService:
 
         if soft:
             character.is_active = False
-            character.deleted_at = datetime.utcnow()
+            character.deleted_at = datetime.now(timezone.utc)
             await self.db.commit()
         else:
             await self.db.delete(character)
@@ -272,12 +272,12 @@ class CharacterService:
             prompt_version_id=prompt_version_id,
             action_block_id=action_block_id,
             template_reference=template_reference,
-            used_at=datetime.utcnow()
+            used_at=datetime.now(timezone.utc)
         )
 
         # Update character usage count
         character.usage_count += 1
-        character.last_used_at = datetime.utcnow()
+        character.last_used_at = datetime.now(timezone.utc)
 
         self.db.add(usage)
         await self.db.commit()

@@ -120,7 +120,7 @@ async def execute_legacy_action_blocks_as_program(
     Returns:
         Legacy-compatible response dict
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Create a minimal program with a single action block node
     action_node = ActionBlockNode(
@@ -143,7 +143,7 @@ async def execute_legacy_action_blocks_as_program(
         metadata={
             "contentRating": "sfw",
             "npcIds": [npc_id],
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "source": "legacy_wrapper"
         }
     )

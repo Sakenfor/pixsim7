@@ -4,7 +4,7 @@ Default automation presets for Pixverse Android app
 These presets are automatically seeded into the database on first run.
 """
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Pixverse Android app details
 PIXVERSE_PACKAGE = "com.pixverseai.pixverse"
@@ -339,7 +339,7 @@ async def seed_default_presets(db):
                 existing.description = preset_data.get("description", "")
                 existing.app_package = preset_data.get("app_package", PIXVERSE_PACKAGE)
                 existing.requires_password = preset_data.get("requires_password", False)
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 print(f"[OK] Updated preset: {preset_data['name']}")
             else:
                 print(f"Preset '{preset_data['name']}' already exists (not system), skipping")
@@ -356,8 +356,8 @@ async def seed_default_presets(db):
             is_system=True,
             is_shared=True,
             owner_id=None,  # System presets have no owner
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         db.add(preset)

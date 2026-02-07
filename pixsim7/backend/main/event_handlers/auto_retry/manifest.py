@@ -14,7 +14,7 @@ Behavior (v2):
 Max retry attempts configurable via settings (default: 20, overridable via AUTO_RETRY_MAX_ATTEMPTS).
 Can be disabled via AUTO_RETRY_ENABLED=false in .env
 """
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pixsim7.backend.main.infrastructure.events.bus import Event
 from pixsim7.backend.main.shared.config import settings
@@ -95,7 +95,7 @@ async def handle_event(event: Event) -> None:
             generation.status = GenerationStatus.PENDING
             generation.started_at = None
             generation.completed_at = None
-            generation.updated_at = datetime.utcnow()
+            generation.updated_at = datetime.now(timezone.utc)
             # Keep error_message for history; caller can inspect last failure reason
 
             await db.commit()

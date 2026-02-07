@@ -7,7 +7,7 @@ import json
 import os
 from typing import List, Dict, Any, Optional
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
@@ -306,8 +306,8 @@ Return JSON array of block definitions."""
                 "compatible_with": block_data.get('compatible_with', [])
             },
             created_by=created_by,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(db_block)

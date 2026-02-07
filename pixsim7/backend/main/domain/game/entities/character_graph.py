@@ -11,7 +11,7 @@ Key Functions:
 """
 from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select, or_, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -648,7 +648,7 @@ def _build_graph_response(
         "nodes": nodes,
         "edges": edges,
         "meta": {
-            "builtAt": datetime.utcnow().isoformat(),
+            "builtAt": datetime.now(timezone.utc).isoformat(),
             "rootNodeId": f"character:{root_id}",
             "stats": {
                 "totalNodes": len(nodes),

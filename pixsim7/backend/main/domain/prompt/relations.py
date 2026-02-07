@@ -10,6 +10,7 @@ from uuid import UUID
 
 from pixsim7.backend.main.domain.enums import enum_column
 from pixsim7.backend.main.domain.prompt.enums import BlockIntent
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class PromptVersionBlock(SQLModel, table=True):
@@ -71,7 +72,7 @@ class PromptVersionBlock(SQLModel, table=True):
 
     # Timestamps
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
 

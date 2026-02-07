@@ -5,7 +5,7 @@ Helps convert category discovery suggestions into draft SemanticPackDB instances
 that can be persisted via the existing API.
 """
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
 from pixsim7.backend.main.shared.schemas.discovery_schemas import SuggestedPackEntry
@@ -36,7 +36,7 @@ def build_draft_pack_from_suggestion(
     # Build metadata for traceability (Task D)
     extra_metadata = {
         "source_type": "ai_suggested",
-        "source_discovery_timestamp": datetime.utcnow().isoformat(),
+        "source_discovery_timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
     # Add source prompt excerpt if provided (first 200 chars)
@@ -61,8 +61,8 @@ def build_draft_pack_from_suggestion(
         action_block_ids=[],  # Will be populated later as blocks are applied
         prompt_family_slugs=[],  # Will be populated later if needed
         extra=extra_metadata,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
     return pack

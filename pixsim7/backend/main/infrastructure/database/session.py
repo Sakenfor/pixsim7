@@ -5,8 +5,9 @@ Clean implementation for PixSim7
 """
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, event
 from contextlib import asynccontextmanager, contextmanager
+from datetime import datetime, timezone
 from typing import AsyncGenerator, Generator
 import logging
 import os
@@ -92,6 +93,21 @@ naming_convention = {
     "pk": "pk_%(table_name)s"
 }
 SQLModel.metadata.naming_convention = naming_convention
+
+
+# ===== UTC DATETIME FIX =====
+# PostgreSQL `timestamp without time zone` columns return naive datetimes.
+# The backend stores everything in UTC, so tag them as UTC on load.
+# This is the single-place fix: every datetime from the DB gets tzinfo=UTC,
+# so Pydantic serializes them with "+00:00" and JS interprets them correctly.
+
+@event.listens_for(SQLModel, "load", propagate=True)
+def _stamp_utc_on_load(target, context):
+    """Mark naive datetime attributes as UTC when loaded from DB."""
+    for key in target.__class__.model_fields:
+        val = target.__dict__.get(key)
+        if isinstance(val, datetime) and val.tzinfo is None:
+            target.__dict__[key] = val.replace(tzinfo=timezone.utc)
 
 
 # ===== DEPENDENCY INJECTION =====

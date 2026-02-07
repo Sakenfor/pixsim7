@@ -121,7 +121,7 @@ def intimacy_scene_to_narrative_program(
     Returns:
         NarrativeProgram
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     if not program_id:
         program_id = f"intimacy_scene_{scene_config.get('id', 'unknown')}"
@@ -213,7 +213,7 @@ def intimacy_scene_to_narrative_program(
         "contentRating": scene_config.get("maxRating", "sfw"),
         "tags": scene_config.get("tags", []),
         "author": scene_config.get("createdBy"),
-        "createdAt": datetime.utcnow().isoformat(),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
         "source": "intimacy_composer",
         "originalSceneId": scene_config.get("id")
     }
@@ -285,7 +285,7 @@ def create_simple_dialogue_program(
     Returns:
         NarrativeProgram
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     nodes = []
     edges = []
@@ -324,7 +324,7 @@ def create_simple_dialogue_program(
         metadata={
             "contentRating": "sfw",
             "npcIds": [npc_id],
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "source": "helper_function"
         }
     )
@@ -348,7 +348,7 @@ def create_simple_choice_program(
     Returns:
         NarrativeProgram
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Create choice node
     choice_options = []
@@ -397,7 +397,7 @@ def create_simple_choice_program(
         entry_node_id="choice",
         metadata={
             "contentRating": "sfw",
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "source": "helper_function"
         }
     )
@@ -428,7 +428,7 @@ def create_behavior_dialogue_program(
     Returns:
         NarrativeProgram
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Single dialogue node that executes the prompt program
     dialogue_node = DialogueNode(
@@ -453,7 +453,7 @@ def create_behavior_dialogue_program(
             "npcIds": [npc_id],
             "behaviorId": behavior_id,
             "mood": mood,
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "source": "behavior_system"
         }
     )
@@ -482,7 +482,7 @@ def wrap_legacy_dialogue_request_as_program(
     Returns:
         NarrativeProgram
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     # Determine if this is static text or a program ID
     mode = "llm_program" if program_id else "static"
@@ -508,7 +508,7 @@ def wrap_legacy_dialogue_request_as_program(
         metadata={
             "contentRating": "sfw",
             "npcIds": [npc_id],
-            "createdAt": datetime.utcnow().isoformat(),
+            "createdAt": datetime.now(timezone.utc).isoformat(),
             "source": "legacy_wrapper"
         }
     )

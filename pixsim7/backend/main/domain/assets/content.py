@@ -8,6 +8,8 @@ from typing import Optional
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Index
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class ContentBlob(SQLModel, table=True):
     """Global content record keyed by SHA256 hash."""
@@ -34,7 +36,7 @@ class ContentBlob(SQLModel, table=True):
         max_length=512,
         description="Optional global storage key (reserved for future use)",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
 
     __table_args__ = (
         Index("idx_content_blobs_sha256", "sha256", unique=True),

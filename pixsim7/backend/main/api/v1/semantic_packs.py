@@ -7,7 +7,7 @@ REST API for managing shareable prompt semantics bundles including:
 - Export for sharing
 """
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_
@@ -163,7 +163,7 @@ async def create_or_update_semantic_pack(
         existing_pack.prompt_family_slugs = request.prompt_family_slugs
         existing_pack.status = request.status.value if isinstance(request.status, SemanticPackStatus) else request.status
         existing_pack.extra = extra
-        existing_pack.updated_at = datetime.utcnow()
+        existing_pack.updated_at = datetime.now(timezone.utc)
 
         pack = existing_pack
     else:
@@ -188,8 +188,8 @@ async def create_or_update_semantic_pack(
             prompt_family_slugs=request.prompt_family_slugs,
             status=request.status.value if isinstance(request.status, SemanticPackStatus) else request.status,
             extra=extra,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
         db.add(pack)
 
@@ -231,7 +231,7 @@ async def publish_semantic_pack(
 
     # Update status
     pack.status = "published"
-    pack.updated_at = datetime.utcnow()
+    pack.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(pack)
@@ -321,7 +321,7 @@ async def deprecate_semantic_pack(
     pack = await get_pack_or_404(db, pack_id)
 
     pack.status = "deprecated"
-    pack.updated_at = datetime.utcnow()
+    pack.updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(pack)

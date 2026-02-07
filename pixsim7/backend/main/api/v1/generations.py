@@ -478,7 +478,7 @@ async def retry_generation(
     Maximum retry attempts per generation are limited by server configuration
     (settings.auto_retry_max_attempts, default: 20).
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
     from pixsim7.backend.main.shared.config import settings
 
     try:
@@ -513,7 +513,7 @@ async def retry_generation(
         generation.started_at = None
         generation.completed_at = None
         generation.error_message = None  # Clear previous error
-        generation.updated_at = datetime.utcnow()
+        generation.updated_at = datetime.now(timezone.utc)
 
         await db.commit()
         await db.refresh(generation)

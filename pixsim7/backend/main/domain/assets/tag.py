@@ -13,6 +13,8 @@ from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
 import re
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class Tag(SQLModel, table=True):
     """
@@ -83,11 +85,11 @@ class Tag(SQLModel, table=True):
 
     # ===== TIMESTAMPS =====
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow
+        default_factory=utcnow
     )
 
     def __repr__(self):
@@ -118,7 +120,7 @@ class AssetTag(SQLModel, table=True):
 
     # Timestamp
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
 

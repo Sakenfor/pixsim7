@@ -20,7 +20,7 @@ Field authority guidance (for future delta-based sync):
 """
 from typing import List, Optional, Dict, Any
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.links import ObjectLink
@@ -226,7 +226,7 @@ class CharacterNPCSyncService:
             changes["runtime_to_template"] = npc_to_char_changes
 
         # Update link metadata
-        link.last_synced_at = datetime.utcnow()
+        link.last_synced_at = datetime.now(timezone.utc)
         link.last_sync_direction = sync_dir
         await self.db.flush()
 
@@ -262,7 +262,7 @@ class CharacterNPCSyncService:
                 npc_id=link.runtime_id,
                 state={},
                 version=0,
-                updated_at=datetime.utcnow()
+                updated_at=datetime.now(timezone.utc)
             )
             self.db.add(npc_state)
 
@@ -298,7 +298,7 @@ class CharacterNPCSyncService:
 
         if npc_state:
             npc_state.version += 1
-            npc_state.updated_at = datetime.utcnow()
+            npc_state.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
 
@@ -356,7 +356,7 @@ class CharacterNPCSyncService:
             set_nested_value(instance.current_state, char_field, npc_value)
             changes[char_field] = npc_value
 
-        instance.updated_at = datetime.utcnow()
+        instance.updated_at = datetime.now(timezone.utc)
         await self.db.flush()
 
         return changes

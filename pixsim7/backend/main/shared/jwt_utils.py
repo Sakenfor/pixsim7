@@ -7,7 +7,7 @@ NO VALIDATION - just parsing for display purposes
 import json
 import base64
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pydantic import BaseModel
 
@@ -68,7 +68,7 @@ def parse_jwt_token(token: str) -> JWTInfo:
 
         expires_at = datetime.fromtimestamp(exp) if exp else None
         issued_at = datetime.fromtimestamp(iat) if iat else None
-        is_expired = expires_at < datetime.utcnow() if expires_at else False
+        is_expired = expires_at < datetime.now(timezone.utc) if expires_at else False
 
         return JWTInfo(
             is_expired=is_expired,
@@ -165,7 +165,7 @@ def needs_refresh(token: Optional[str], hours_threshold: int = 24) -> bool:
     if info.expires_at is not None:
         from datetime import datetime, timedelta
 
-        threshold = datetime.utcnow() + timedelta(hours=hours_threshold)
+        threshold = datetime.now(timezone.utc) + timedelta(hours=hours_threshold)
         if info.expires_at < threshold:
             return True
 

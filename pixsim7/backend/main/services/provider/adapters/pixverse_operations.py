@@ -5,7 +5,7 @@ Handles video generation, status checking, and uploads.
 """
 import asyncio
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 
 from pixsim_logging import get_logger
@@ -224,7 +224,7 @@ class PixverseOperationsMixin:
 
             # Use adaptive ETA from account if available
             estimated_seconds = account.get_estimated_completion_time()
-            estimated_completion = datetime.utcnow() + timedelta(seconds=estimated_seconds)
+            estimated_completion = datetime.now(timezone.utc) + timedelta(seconds=estimated_seconds)
 
             metadata: Dict[str, Any] = {
                 "operation_type": operation_type.value,

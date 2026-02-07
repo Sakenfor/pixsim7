@@ -12,7 +12,7 @@ Usage:
 
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any
 
 from sqlalchemy import select
@@ -47,7 +47,7 @@ async def tick_active_worlds(ctx: dict) -> Dict[str, Any]:
     if not SIMULATION_ENABLED:
         return {"skipped": True, "reason": "SIMULATION_ENABLED=false"}
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     results = {
         "worlds_ticked": 0,
         "npcs_simulated": 0,

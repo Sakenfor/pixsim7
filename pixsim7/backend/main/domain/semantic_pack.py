@@ -9,6 +9,8 @@ from sqlalchemy import JSON, Text, Index
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class SemanticPackDB(SQLModel, table=True):
     """
@@ -108,13 +110,13 @@ class SemanticPackDB(SQLModel, table=True):
 
     # Timestamps
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True,
         description="Pack creation timestamp"
     )
 
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="Last update timestamp"
     )
 

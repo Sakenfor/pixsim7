@@ -7,7 +7,7 @@ Manages NPC awareness of world events including:
 - NPC reactions and opinions about events
 - Contextual relevance for dialogue
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc
@@ -65,7 +65,7 @@ class WorldAwarenessService:
         # Calculate expiration
         expires_at = None
         if duration_hours:
-            expires_at = datetime.utcnow() + timedelta(hours=duration_hours)
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
 
         context = NPCWorldContext(
             npc_id=npc_id,
@@ -157,7 +157,7 @@ class WorldAwarenessService:
         Returns:
             List of relevant events
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         query = select(NPCWorldContext).where(
             and_(
@@ -199,7 +199,7 @@ class WorldAwarenessService:
         Returns:
             List of recent events
         """
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
         query = select(NPCWorldContext).where(
             and_(
@@ -277,7 +277,7 @@ class WorldAwarenessService:
 
         context.is_aware = True
         context.awareness_source = awareness_source
-        context.npc_learned_at = datetime.utcnow()
+        context.npc_learned_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(context)
@@ -297,7 +297,7 @@ class WorldAwarenessService:
         Returns:
             Number of events expired
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         query = select(NPCWorldContext).where(
             and_(

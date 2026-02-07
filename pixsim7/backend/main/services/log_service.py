@@ -4,7 +4,7 @@ Log ingestion and query service.
 Handles centralized structured log storage and retrieval.
 """
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any, Set
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc, func, delete, text
@@ -30,9 +30,9 @@ class LogService:
             try:
                 timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
             except ValueError:
-                timestamp = datetime.utcnow()
+                timestamp = datetime.now(timezone.utc)
         elif timestamp is None:
-            timestamp = datetime.utcnow()
+            timestamp = datetime.now(timezone.utc)
 
         entry_data: dict = {}
         extra_data: dict = {}
@@ -242,7 +242,7 @@ class LogService:
         Returns:
             Number of logs deleted
         """
-        cutoff = datetime.utcnow() - timedelta(days=days)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
         result = await self.db.execute(
             select(func.count())

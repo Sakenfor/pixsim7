@@ -13,7 +13,7 @@ Features:
 import logging
 import time
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import statistics
 
@@ -83,7 +83,7 @@ class GenerationTelemetryService:
                 "provider_id": generation.provider_id,
                 "status": generation.status.value,
                 "latency_seconds": latency_seconds,
-                "timestamp": generation.completed_at.isoformat() if generation.completed_at else datetime.utcnow().isoformat(),
+                "timestamp": generation.completed_at.isoformat() if generation.completed_at else datetime.now(timezone.utc).isoformat(),
             }
 
             # Add cost data if available
@@ -403,7 +403,7 @@ class GenerationTelemetryService:
 
             # Store recent error message (for debugging)
             await redis_client.hset(error_key, "last_error", error_message)
-            await redis_client.hset(error_key, "last_seen", datetime.utcnow().isoformat())
+            await redis_client.hset(error_key, "last_seen", datetime.now(timezone.utc).isoformat())
 
             # Set expiration (keep for 7 days)
             await redis_client.expire(error_key, 86400 * 7)

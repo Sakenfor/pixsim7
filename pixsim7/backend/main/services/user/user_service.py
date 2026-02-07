@@ -3,7 +3,7 @@ UserService - user management and quota enforcement
 
 Clean service for user CRUD and quota checks
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -76,8 +76,8 @@ class UserService:
             username=username,
             password_hash=password_hash,
             role=role,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         self.db.add(user)
@@ -159,7 +159,7 @@ class UserService:
             if hasattr(user, key):
                 setattr(user, key, value)
 
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(user)
@@ -178,7 +178,7 @@ class UserService:
         """
         user = await self.get_user(user_id)
         user.is_active = False
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
 
@@ -269,7 +269,7 @@ class UserService:
         Args:
             user: User to check
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Check if last reset was today
         if user.last_job_reset:
@@ -307,7 +307,7 @@ class UserService:
         Returns:
             UserQuotaUsage record
         """
-        today = datetime.utcnow().date()
+        today = datetime.now(timezone.utc).date()
 
         # Get or create today's record
         result = await self.db.execute(
@@ -321,7 +321,7 @@ class UserService:
         if not usage:
             usage = UserQuotaUsage(
                 user_id=user_id,
-                date=datetime.utcnow(),
+                date=datetime.now(timezone.utc),
             )
             self.db.add(usage)
 
@@ -331,7 +331,7 @@ class UserService:
         usage.jobs_failed += jobs_failed
         usage.assets_created += assets_created
         usage.storage_added_gb += storage_added_gb
-        usage.updated_at = datetime.utcnow()
+        usage.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(usage)

@@ -6,7 +6,7 @@ Manages user asset quotas, storage tracking, and hash-based deduplication.
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pixsim7.backend.main.domain import Asset
 from pixsim7.backend.main.domain.enums import SyncStatus
@@ -80,7 +80,7 @@ class AssetQuotaService:
             >>> existing = await asset_service.find_asset_by_hash(sha256, user.id)
             >>> if existing:
             >>>     # Reuse existing asset, update last_accessed_at
-            >>>     existing.last_accessed_at = datetime.utcnow()
+            >>>     existing.last_accessed_at = datetime.now(timezone.utc)
         """
         result = await self.db.execute(
             select(Asset).where(
@@ -92,7 +92,7 @@ class AssetQuotaService:
 
         if asset:
             # Update last accessed time for LRU tracking
-            asset.last_accessed_at = datetime.utcnow()
+            asset.last_accessed_at = datetime.now(timezone.utc)
             await self.db.commit()
 
         return asset
@@ -133,7 +133,7 @@ class AssetQuotaService:
                 best_dist = dist
 
         if best and best_dist <= max_distance:
-            best.last_accessed_at = datetime.utcnow()
+            best.last_accessed_at = datetime.now(timezone.utc)
             await self.db.commit()
             return best
 

@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column, JSON, Text, Relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class Character(SQLModel, table=True):
     """Character registry - reusable character definitions
@@ -115,8 +117,8 @@ class Character(SQLModel, table=True):
         sa_column=Column(JSONB)
     )
     created_by: Optional[str] = Field(None, max_length=200)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     # Soft delete
     is_active: bool = Field(default=True, index=True)
@@ -155,8 +157,8 @@ class CharacterRelationship(SQLModel, table=True):
 
     # Metadata
     created_by: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
 
 class CharacterUsage(SQLModel, table=True):
@@ -178,4 +180,4 @@ class CharacterUsage(SQLModel, table=True):
     template_reference: Optional[str] = None  # "{{character:gorilla_01}}"
 
     # Metadata
-    used_at: datetime = Field(default_factory=datetime.utcnow)
+    used_at: datetime = Field(default_factory=utcnow)

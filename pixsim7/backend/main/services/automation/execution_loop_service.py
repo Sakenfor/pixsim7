@@ -6,7 +6,7 @@ account selection strategies and enqueue ARQ tasks.
 """
 import logging
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -50,8 +50,8 @@ class ExecutionLoopService:
         # Delay between executions
         if not bypass_status and loop.last_execution_at:
             next_allowed = loop.last_execution_at + timedelta(seconds=loop.delay_between_executions)
-            if datetime.utcnow() < next_allowed:
-                wait_seconds = int((next_allowed - datetime.utcnow()).total_seconds())
+            if datetime.now(timezone.utc) < next_allowed:
+                wait_seconds = int((next_allowed - datetime.now(timezone.utc)).total_seconds())
                 return False, f"Waiting {wait_seconds}s before next execution"
 
         return True, None
@@ -201,7 +201,7 @@ class ExecutionLoopService:
             status=AutomationStatus.PENDING,
             priority=1,
             total_actions=total_actions,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             source="loop",
             loop_id=loop.id,
         )
@@ -211,7 +211,7 @@ class ExecutionLoopService:
 
         loop.total_executions += 1
         loop.executions_today += 1
-        loop.last_execution_at = datetime.utcnow()
+        loop.last_execution_at = datetime.now(timezone.utc)
         loop.last_account_id = account.id
 
         # For SHARED_LIST mode, set current account when starting a new account's preset cycle

@@ -5,7 +5,7 @@ Discovers ADB-connected devices and syncs to AndroidDevice table.
 Also monitors devices for ad activity and updates status accordingly.
 """
 from typing import Dict
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -71,7 +71,7 @@ class DeviceSyncService:
         # Scan (will also try common emulator ports)
         devices = await self.adb.devices()
         scanned = len(devices)
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for serial, state in devices:
             # Find existing by adb_id
@@ -306,7 +306,7 @@ class DeviceSyncService:
         watching_ads = 0
         in_session = 0
         cleared = 0
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         # Get all online/busy devices (include BUSY to track ongoing sessions)
         result = await self.db.execute(

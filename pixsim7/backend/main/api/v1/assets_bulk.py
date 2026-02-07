@@ -8,7 +8,7 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -142,7 +142,7 @@ async def bulk_export_assets(
     try:
         # Create temporary directory for ZIP
         temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, f"export_{user.id}_{datetime.utcnow().timestamp()}.zip")
+        zip_path = os.path.join(temp_dir, f"export_{user.id}_{datetime.now(timezone.utc).timestamp()}.zip")
 
         # Create ZIP file
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
@@ -168,7 +168,7 @@ async def bulk_export_assets(
         export_dir = Path("data/exports")
         export_dir.mkdir(parents=True, exist_ok=True)
 
-        zip_filename = f"export_{user.id}_{int(datetime.utcnow().timestamp())}.zip"
+        zip_filename = f"export_{user.id}_{int(datetime.now(timezone.utc).timestamp())}.zip"
         final_path = export_dir / zip_filename
         shutil.move(zip_path, final_path)
 

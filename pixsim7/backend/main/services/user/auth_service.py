@@ -3,7 +3,7 @@ AuthService - authentication and session management
 
 Clean service for login, logout, and JWT token management
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -129,7 +129,7 @@ class AuthService:
         session = UserSession(
             user_id=user.id,
             token_id=jti,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
             expires_at=exp,
             ip_address=ip_address,
             user_agent=user_agent,
@@ -140,7 +140,7 @@ class AuthService:
         self.db.add(session)
 
         # Update last login
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(user)
@@ -171,7 +171,7 @@ class AuthService:
 
         # Revoke session
         session.is_revoked = True
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(timezone.utc)
         session.revoke_reason = "user_logout"
 
         await self.db.commit()
@@ -197,7 +197,7 @@ class AuthService:
         count = 0
         for session in sessions:
             session.is_revoked = True
-            session.revoked_at = datetime.utcnow()
+            session.revoked_at = datetime.now(timezone.utc)
             session.revoke_reason = "logout_all"
             count += 1
 
@@ -246,7 +246,7 @@ class AuthService:
                 raise AuthenticationError("Token has been revoked or expired")
 
             # Update last used
-            session.last_used_at = datetime.utcnow()
+            session.last_used_at = datetime.now(timezone.utc)
             await self.db.commit()
         else:
             # Stateless mode: check if session exists, but don't require it
@@ -261,7 +261,7 @@ class AuthService:
                     raise AuthenticationError("Token has been revoked or expired")
 
                 # Update last used
-                session.last_used_at = datetime.utcnow()
+                session.last_used_at = datetime.now(timezone.utc)
                 await self.db.commit()
             # If no session found, continue (stateless accepts valid JWTs without session record)
 
@@ -336,7 +336,7 @@ class AuthService:
             raise ResourceNotFoundError("Session", session_id)
 
         session.is_revoked = True
-        session.revoked_at = datetime.utcnow()
+        session.revoked_at = datetime.now(timezone.utc)
         session.revoke_reason = reason
 
         await self.db.commit()
@@ -351,7 +351,7 @@ class AuthService:
         Returns:
             Number of sessions cleaned up
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         result = await self.db.execute(
             select(UserSession).where(

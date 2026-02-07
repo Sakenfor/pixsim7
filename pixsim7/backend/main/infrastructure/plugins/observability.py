@@ -13,7 +13,7 @@ See: claude-tasks/16-backend-plugin-capabilities-and-sandboxing.md Phase 16.5
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 import structlog
 import time
@@ -56,7 +56,7 @@ class PluginMetrics:
         """Record an HTTP request"""
         self.request_count += 1
         self.total_request_time += duration
-        self.last_request = datetime.utcnow()
+        self.last_request = datetime.now(timezone.utc)
 
         if not success:
             self.error_count += 1
@@ -91,7 +91,7 @@ class PluginMetrics:
     ):
         """Record an error"""
         error_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "error_type": error_type,
             "error_message": error_message,
             "context": context or {},
@@ -145,7 +145,7 @@ class PluginMetrics:
 
         # If we got here, plugin is healthy
         self.is_healthy = True
-        self.last_health_check = datetime.utcnow()
+        self.last_health_check = datetime.now(timezone.utc)
 
     def get_average_request_time(self) -> float:
         """Get average request time in milliseconds"""

@@ -4,7 +4,7 @@ GenerationRetryService - Generation retry logic
 Handles retry logic for failed generations.
 """
 from typing import TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import get_logger
@@ -100,7 +100,7 @@ class GenerationRetryService:
         """
         generation = await self._get_generation(generation_id)
         generation.retry_count += 1
-        generation.updated_at = datetime.utcnow()
+        generation.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(generation)
         return generation

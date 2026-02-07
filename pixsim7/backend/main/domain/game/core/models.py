@@ -6,6 +6,7 @@ from sqlalchemy import JSON, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 from ..stats import HasStats, HasStatsWithMetadata
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 # Scene graph
 class GameScene(SQLModel, table=True):
@@ -19,7 +20,7 @@ class GameScene(SQLModel, table=True):
         foreign_key="game_scene_nodes.id"
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
 
 class GameSceneNode(SQLModel, table=True):
     __tablename__ = "game_scene_nodes"
@@ -34,7 +35,7 @@ class GameSceneNode(SQLModel, table=True):
     skippable: bool = Field(default=False)
     reveal_choices_at_sec: Optional[float] = None
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
     __table_args__ = (Index("idx_scene_node_scene", "scene_id"),)
 
 class GameSceneEdge(SQLModel, table=True):
@@ -49,7 +50,7 @@ class GameSceneEdge(SQLModel, table=True):
     cooldown_sec: Optional[int] = None
     conditions: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     effects: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     __table_args__ = (
         Index("idx_scene_edge_from", "scene_id", "from_node_id"),
     )
@@ -73,8 +74,8 @@ class GameSession(SQLModel, table=True):
 
     world_time: float = Field(default=0.0, description="Game time seconds (can map to day cycles)")
     version: int = Field(default=1, nullable=False, description="Optimistic locking version")
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()}, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()}, index=True)
 
 class GameSessionEvent(SQLModel, table=True):
     __tablename__ = "game_session_events"
@@ -84,7 +85,7 @@ class GameSessionEvent(SQLModel, table=True):
     edge_id: Optional[int] = Field(default=None, foreign_key="game_scene_edges.id")
     action: str = Field(max_length=64)
     diff: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    ts: datetime = Field(default_factory=datetime.utcnow, index=True)
+    ts: datetime = Field(default_factory=utcnow, index=True)
 
 # World basics
 class GameWorld(SQLModel, table=True):
@@ -93,14 +94,14 @@ class GameWorld(SQLModel, table=True):
     owner_user_id: int = Field(index=True)
     name: str = Field(max_length=128)
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class GameWorldState(SQLModel, table=True):
     __tablename__ = "game_world_states"
     world_id: int = Field(primary_key=True, foreign_key="game_worlds.id")
     world_time: float = Field(default=0.0, description="Global world time in seconds")
-    last_advanced_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_advanced_at: datetime = Field(default_factory=utcnow, index=True)
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
@@ -121,7 +122,7 @@ class GameLocation(SQLModel, HasStats, table=True):
         description="Name of spawn point node in the primary 3D asset (e.g. a marker or empty)",
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
     # stats field inherited from HasStats - used for environmental effects
 
 class GameNPC(SQLModel, HasStats, table=True):
@@ -141,8 +142,8 @@ class GameItem(SQLModel, HasStatsWithMetadata, table=True):
     name: str = Field(max_length=128)
     description: Optional[str] = Field(default=None, sa_column=Column(Text))
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
     # stats fields inherited from HasStatsWithMetadata - item modifiers/runtime state
 
 class NPCSchedule(SQLModel, table=True):
@@ -171,7 +172,7 @@ class NPCState(SQLModel, HasStats, table=True):
         )
     )
     version: int = Field(default=0)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
     # stats field inherited from HasStats - runtime stat overrides (damage, buffs, etc.)
 
 
@@ -196,8 +197,8 @@ class NpcExpression(SQLModel, table=True):
         description="Optional crop rect for portrait framing (e.g. {x,y,w,h} in 0-1)",
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
 
 
 class GameHotspot(SQLModel, table=True):
@@ -227,4 +228,4 @@ class GameHotspot(SQLModel, table=True):
         description="Hotspot action payload (play_scene, change_location, npc_talk, etc.)",
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)

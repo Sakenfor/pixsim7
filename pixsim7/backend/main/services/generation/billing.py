@@ -5,7 +5,7 @@ Handles credit deduction and billing state management for completed generations.
 Provides idempotent billing finalization to prevent double-charging.
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import configure_logging
@@ -190,7 +190,7 @@ class GenerationBillingService:
             generation.actual_credits = actual_credits
             generation.account_id = account_id
             generation.credit_type = credit_type
-            generation.charged_at = datetime.utcnow()
+            generation.charged_at = datetime.now(timezone.utc)
             generation.billing_error = None
 
             logger.info(

@@ -5,7 +5,7 @@ Handles all generation status updates and lifecycle transitions.
 """
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
@@ -75,20 +75,20 @@ class GenerationLifecycleService:
                 generation.error_message = error_message
                 if error_code:
                     generation.error_code = error_code
-                generation.updated_at = datetime.utcnow()
+                generation.updated_at = datetime.now(timezone.utc)
                 await self.db.commit()
                 await self.db.refresh(generation)
             return generation
 
         # Update status
         generation.status = status
-        generation.updated_at = datetime.utcnow()
+        generation.updated_at = datetime.now(timezone.utc)
 
         # Update timestamps
         if status == GenerationStatus.PROCESSING and not generation.started_at:
-            generation.started_at = datetime.utcnow()
+            generation.started_at = datetime.now(timezone.utc)
         elif status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
-            generation.completed_at = datetime.utcnow()
+            generation.completed_at = datetime.now(timezone.utc)
 
         # Update error message and code
         if error_message:
@@ -178,7 +178,7 @@ class GenerationLifecycleService:
         """
         generation = await self._get_generation(generation_id)
         generation.asset_id = asset_id
-        generation.updated_at = datetime.utcnow()
+        generation.updated_at = datetime.now(timezone.utc)
         await self.db.commit()
         await self.db.refresh(generation)
 

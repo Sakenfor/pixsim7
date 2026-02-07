@@ -7,7 +7,7 @@ Manages emotional states for NPCs including:
 - Managing multiple simultaneous emotions
 - Event-triggered emotional responses
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, desc
@@ -56,7 +56,7 @@ class EmotionalStateService:
         # Calculate expiration
         expires_at = None
         if duration_seconds:
-            expires_at = datetime.utcnow() + timedelta(seconds=duration_seconds)
+            expires_at = datetime.now(timezone.utc) + timedelta(seconds=duration_seconds)
 
         state = NPCEmotionalState(
             npc_id=npc_id,
@@ -157,7 +157,7 @@ class EmotionalStateService:
         Returns:
             Updated states (excluding expired ones)
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         active_states = []
 
         for state in states:
@@ -204,7 +204,7 @@ class EmotionalStateService:
             return False
 
         state.is_active = False
-        state.ended_at = datetime.utcnow()
+        state.ended_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         return True
@@ -237,7 +237,7 @@ class EmotionalStateService:
         result = await self.db.execute(query)
         states = result.scalars().all()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for state in states:
             state.is_active = False
             state.ended_at = now
@@ -286,7 +286,7 @@ class EmotionalStateService:
 
         # Clear current emotion
         current_state.is_active = False
-        current_state.ended_at = datetime.utcnow()
+        current_state.ended_at = datetime.now(timezone.utc)
 
         # Create new emotion
         new_state = await self.set_emotion(

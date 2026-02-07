@@ -7,7 +7,7 @@ Runs periodically to:
 3. Create assets when completed
 4. Update generation status
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, func, distinct
 
@@ -96,7 +96,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
             # Timeout threshold (processing > 2 hours = stuck)
             TIMEOUT_HOURS = 2
-            timeout_threshold = datetime.utcnow() - timedelta(hours=TIMEOUT_HOURS)
+            timeout_threshold = datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)
 
             for generation in processing_generations:
                 checked += 1
@@ -312,7 +312,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     generation.status = GenStatus.PENDING
                                     generation.started_at = None
                                     generation.completed_at = None
-                                    generation.updated_at = datetime.utcnow()
+                                    generation.updated_at = datetime.now(timezone.utc)
 
                                     await db.commit()
                                     await db.refresh(generation)
@@ -405,7 +405,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                     # Check timeout (analyses > 30 min = stuck)
                     ANALYSIS_TIMEOUT_MINUTES = 30
-                    analysis_timeout_threshold = datetime.utcnow() - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
+                    analysis_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=ANALYSIS_TIMEOUT_MINUTES)
 
                     if analysis.started_at and analysis.started_at < analysis_timeout_threshold:
                         logger.warning("analysis_timeout", analysis_id=analysis.id, started_at=str(analysis.started_at))
@@ -502,7 +502,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                 "analyses_completed": analyses_completed,
                 "analyses_failed": analyses_failed,
                 "analyses_still_processing": analyses_still_processing,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             total_checked = checked + analyses_checked
@@ -667,7 +667,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
             # Find stale PENDING generations
-            threshold = datetime.utcnow() - timedelta(seconds=STALE_THRESHOLD_SECONDS)
+            threshold = datetime.now(timezone.utc) - timedelta(seconds=STALE_THRESHOLD_SECONDS)
 
             result = await db.execute(
                 select(Generation)
@@ -675,7 +675,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 .where(Generation.created_at < threshold)
                 .where(
                     (Generation.scheduled_at == None) |
-                    (Generation.scheduled_at <= datetime.utcnow())
+                    (Generation.scheduled_at <= datetime.now(timezone.utc))
                 )
                 .order_by(Generation.created_at)
                 .limit(MAX_REQUEUE_PER_RUN)
@@ -707,7 +707,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                     )
 
                     logger.info("requeue_generation", generation_id=generation.id,
-                               age_seconds=(datetime.utcnow() - generation.created_at).total_seconds())
+                               age_seconds=(datetime.now(timezone.utc) - generation.created_at).total_seconds())
                     requeued += 1
 
                 except Exception as e:
@@ -719,7 +719,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 "requeued": requeued,
                 "skipped": skipped,
                 "errors": errors,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
 
             logger.info("requeue_complete", **stats)

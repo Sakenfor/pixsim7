@@ -14,6 +14,8 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Column
 from sqlalchemy import JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class Scene(SQLModel, table=True):
     """
@@ -50,8 +52,8 @@ class Scene(SQLModel, table=True):
     )
 
     # ===== TIMESTAMPS =====
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     def __repr__(self):
         return f"<Scene(id={self.id}, name='{self.name}')>"

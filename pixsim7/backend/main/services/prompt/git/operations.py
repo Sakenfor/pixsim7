@@ -9,7 +9,7 @@ Provides additional git-like operations:
 """
 from typing import List, Dict, Any, Optional
 from uuid import UUID
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 
@@ -110,7 +110,7 @@ class GitOperationsService:
         Returns:
             Activity statistics
         """
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         query = select(PromptVersion).where(
             and_(
@@ -487,6 +487,6 @@ class GitOperationsService:
             "descendants_count": descendants_count,
             "tags": version.tags or [],
             "created_at": version.created_at.isoformat(),
-            "age_days": (datetime.utcnow() - version.created_at).days,
+            "age_days": (datetime.now(timezone.utc) - version.created_at).days,
             "author": version.author
         }

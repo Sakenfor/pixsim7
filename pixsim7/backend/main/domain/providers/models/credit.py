@@ -10,6 +10,8 @@ from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Index, Relationship
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 if TYPE_CHECKING:
     from .account import ProviderAccount
 
@@ -55,11 +57,11 @@ class ProviderCredit(SQLModel, table=True):
 
     # Timestamps
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="Last credit update"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow
+        default_factory=utcnow
     )
 
     # ===== RELATIONSHIPS =====

@@ -12,6 +12,8 @@ from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class ClipSequence(SQLModel, table=True):
     """Groups clips into a playable animation sequence."""
@@ -33,7 +35,7 @@ class ClipSequence(SQLModel, table=True):
     loop_start_order: Optional[int] = Field(default=None)
     loop_end_order: Optional[int] = Field(default=None)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class ClipSequenceEntry(SQLModel, table=True):
@@ -64,4 +66,4 @@ class ClipSequenceEntry(SQLModel, table=True):
     # Ontology concept tags (overrides/extends sequence-level tags)
     concept_refs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)

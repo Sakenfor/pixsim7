@@ -9,6 +9,8 @@ from typing import Optional
 from sqlmodel import Field, SQLModel, JSON, Column
 from sqlalchemy import Index, Text
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class LogEntry(SQLModel, table=True):
     """Centralized structured log entry.
@@ -53,7 +55,7 @@ class LogEntry(SQLModel, table=True):
     extra: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Additional structured context")
 
     # Metadata
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="When log was ingested")
+    created_at: datetime = Field(default_factory=utcnow, description="When log was ingested")
 
     __table_args__ = (
         # Composite indexes for common query patterns

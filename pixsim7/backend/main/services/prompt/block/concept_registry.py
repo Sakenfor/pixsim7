@@ -7,7 +7,7 @@ Manages discovered concepts/tags from AI extraction:
 - Provides concept recommendations for future extractions
 """
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
@@ -134,7 +134,7 @@ class ConceptRegistry:
             confirmed.append({
                 "type": concept_type,
                 "value": concept_value,
-                "confirmed_at": datetime.utcnow().isoformat(),
+                "confirmed_at": datetime.now(timezone.utc).isoformat(),
                 "confirmed_by": confirmed_by,
                 "reusability_score": concept.get('reusable', True)
             })
@@ -144,7 +144,7 @@ class ConceptRegistry:
             self.concept_cache[cache_key] = {
                 "confirmed": True,
                 "usage_count": 1,
-                "confirmed_at": datetime.utcnow()
+                "confirmed_at": datetime.now(timezone.utc)
             }
 
         return {

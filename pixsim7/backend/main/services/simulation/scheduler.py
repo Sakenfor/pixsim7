@@ -12,7 +12,7 @@ Task 21 Phase 21.3: Central Scheduler Design & API
 
 from __future__ import annotations
 from typing import Dict, Optional, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 import logging
 
@@ -205,7 +205,7 @@ class WorldScheduler:
         # await self._progress_interaction_chains(world_id, context)
 
         # 6. Persist world time to DB (periodically, not every tick)
-        context.last_tick_at = datetime.utcnow()
+        context.last_tick_at = datetime.now(timezone.utc)
         if context.ticks_processed % 10 == 0:  # Persist every 10 ticks
             await self._persist_world_time(world_id, context.current_world_time)
 
@@ -230,7 +230,7 @@ class WorldScheduler:
         world_state = await self.db.get(GameWorldState, world_id)
         if world_state:
             world_state.world_time = world_time
-            world_state.last_advanced_at = datetime.utcnow()
+            world_state.last_advanced_at = datetime.now(timezone.utc)
             await self.db.commit()
 
     async def _select_npcs_for_simulation(
@@ -514,7 +514,7 @@ class SchedulerLoopRunner:
 
         Ticks all registered worlds that are due for a tick.
         """
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         for world_id, context in self.scheduler.get_all_contexts().items():
             # Calculate delta time since last tick

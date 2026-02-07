@@ -16,6 +16,8 @@ from datetime import datetime
 from pydantic import ConfigDict
 from sqlmodel import SQLModel, Field, Index
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class AiInteraction(SQLModel, table=True):
     """
@@ -73,7 +75,7 @@ class AiInteraction(SQLModel, table=True):
 
     # Timestamp
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         description="When this interaction occurred"
     )
 

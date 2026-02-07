@@ -8,7 +8,7 @@ Business logic for plugin management:
 - Seeding built-in plugins
 """
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from sqlmodel import col
@@ -185,7 +185,7 @@ class PluginCatalogService:
         state_result = await self.db.execute(state_query)
         user_state = state_result.scalar_one_or_none()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if user_state:
             user_state.is_enabled = True
@@ -237,7 +237,7 @@ class PluginCatalogService:
         state_result = await self.db.execute(state_query)
         user_state = state_result.scalar_one_or_none()
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         if user_state:
             user_state.is_enabled = False

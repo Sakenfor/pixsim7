@@ -10,7 +10,7 @@ Extends the shared VersioningServiceBase for common operations.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -244,7 +244,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
             raise ValueError(f"Family {family_id} not found")
 
         family.head_asset_id = asset_id
-        family.updated_at = datetime.utcnow()
+        family.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
         return family
@@ -270,7 +270,7 @@ class AssetVersioningService(VersioningServiceBase[AssetVersionFamily, Asset]):
             family = await self.get_family(family_id)
             if family:
                 family.head_asset_id = new_head_id
-                family.updated_at = datetime.utcnow()
+                family.updated_at = datetime.now(timezone.utc)
                 await self.db.flush()
 
         return new_head_id

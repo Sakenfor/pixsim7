@@ -3,7 +3,7 @@ Authentication utilities - password hashing and JWT token management
 
 Clean auth utilities for PixSim7
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 import hashlib
@@ -139,9 +139,9 @@ def create_access_token(
 
     # Set expiration
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(days=settings.jwt_expiration_days)
+        expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_expiration_days)
 
     to_encode.update({"exp": expire})
 

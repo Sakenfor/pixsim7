@@ -14,6 +14,8 @@ from sqlmodel import SQLModel, Field, Relationship, JSON, Column
 from sqlalchemy import Index
 from pydantic import ConfigDict
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class MemoryType(str, Enum):
     """Type of memory"""
@@ -108,7 +110,7 @@ class ConversationMemory(SQLModel, table=True):
     )
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
     expires_at: Optional[datetime] = Field(None, description="When this memory should be forgotten")
 
     # Indexes for efficient queries
@@ -155,7 +157,7 @@ class NPCEmotionalState(SQLModel, table=True):
     is_active: bool = Field(default=True, description="Whether this emotion is currently affecting the NPC")
 
     # Timestamps
-    started_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=utcnow)
     expires_at: Optional[datetime] = Field(None, description="When this emotion expires")
     ended_at: Optional[datetime] = Field(None, description="When this emotion actually ended")
 
@@ -188,8 +190,8 @@ class ConversationTopic(SQLModel, table=True):
 
     # Discussion tracking
     times_discussed: int = Field(default=1, description="How many times this topic has come up")
-    first_discussed_at: datetime = Field(default_factory=datetime.utcnow)
-    last_discussed_at: datetime = Field(default_factory=datetime.utcnow)
+    first_discussed_at: datetime = Field(default_factory=utcnow)
+    last_discussed_at: datetime = Field(default_factory=utcnow)
 
     # Depth of knowledge
     depth_level: int = Field(default=1, description="How deeply this topic has been explored (1=surface, 5=very deep)")
@@ -272,7 +274,7 @@ class RelationshipMilestone(SQLModel, table=True):
     )
 
     # Timestamp
-    achieved_at: datetime = Field(default_factory=datetime.utcnow)
+    achieved_at: datetime = Field(default_factory=utcnow)
 
     # Indexes
     __table_args__ = (
@@ -334,8 +336,8 @@ class NPCWorldContext(SQLModel, table=True):
     )
 
     # Timestamps
-    occurred_at: datetime = Field(default_factory=datetime.utcnow)
-    npc_learned_at: datetime = Field(default_factory=datetime.utcnow)
+    occurred_at: datetime = Field(default_factory=utcnow)
+    npc_learned_at: datetime = Field(default_factory=utcnow)
 
     # Indexes
     __table_args__ = (
@@ -385,7 +387,7 @@ class PersonalityEvolutionEvent(SQLModel, table=True):
     )
 
     # Timestamp
-    changed_at: datetime = Field(default_factory=datetime.utcnow)
+    changed_at: datetime = Field(default_factory=utcnow)
 
     # Indexes
     __table_args__ = (
@@ -450,7 +452,7 @@ class DialogueAnalytics(SQLModel, table=True):
     )
 
     # Timestamp
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=utcnow)
 
     # Indexes
     __table_args__ = (

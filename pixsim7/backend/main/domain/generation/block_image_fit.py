@@ -9,6 +9,8 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class BlockImageFit(SQLModel, table=True):
     """
@@ -72,4 +74,4 @@ class BlockImageFit(SQLModel, table=True):
 
     notes: Optional[str] = Field(default=None, description="Optional free-form notes")
 
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)

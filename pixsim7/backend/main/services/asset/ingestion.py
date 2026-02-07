@@ -24,7 +24,7 @@ import hashlib
 import mimetypes
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -367,17 +367,17 @@ class AssetIngestionService:
             # Step 4: Extract metadata (if not already done or forced)
             if extract_metadata and (force or not asset.metadata_extracted_at):
                 await self._extract_metadata(asset, local_path)
-                asset.metadata_extracted_at = datetime.utcnow()
+                asset.metadata_extracted_at = datetime.now(timezone.utc)
 
             # Step 5: Generate thumbnails (if not already done or forced)
             if generate_thumbnails and (force or not asset.thumbnail_generated_at):
                 await self._generate_thumbnail(asset, local_path)
-                asset.thumbnail_generated_at = datetime.utcnow()
+                asset.thumbnail_generated_at = datetime.now(timezone.utc)
 
             # Step 6: Generate previews (if not already done or forced)
             if generate_previews and (force or not asset.preview_generated_at):
                 await self._generate_preview(asset, local_path)
-                asset.preview_generated_at = datetime.utcnow()
+                asset.preview_generated_at = datetime.now(timezone.utc)
 
             # Link to global content blob (best-effort)
             if asset.sha256 and asset.content_id is None:
@@ -392,12 +392,12 @@ class AssetIngestionService:
             # Mark as completed
             asset.ingest_status = INGEST_COMPLETED
             asset.ingest_error = None
-            asset.ingested_at = datetime.utcnow()
+            asset.ingested_at = datetime.now(timezone.utc)
 
             # Update sync status if we now have local file
             if asset.sync_status == SyncStatus.REMOTE:
                 asset.sync_status = SyncStatus.DOWNLOADED
-                asset.downloaded_at = datetime.utcnow()
+                asset.downloaded_at = datetime.now(timezone.utc)
 
             attributes.flag_modified(asset, 'media_metadata')
             await self.db.commit()
@@ -557,7 +557,7 @@ class AssetIngestionService:
                 asset.stored_key = stored_key
                 asset.file_size_bytes = total_size
                 asset.sync_status = SyncStatus.DOWNLOADED
-                asset.downloaded_at = datetime.utcnow()
+                asset.downloaded_at = datetime.now(timezone.utc)
 
                 logger.info(
                     "download_completed",

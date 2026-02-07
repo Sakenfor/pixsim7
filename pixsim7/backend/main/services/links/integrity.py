@@ -22,7 +22,7 @@ Usage:
     report = await service.get_integrity_report()
 """
 from typing import List, Dict, Any, Optional, Set, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import logging
 
@@ -327,7 +327,7 @@ class LinkIntegrityService:
             orphan_by_type[key] = orphan_by_type.get(key, 0) + 1
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "total_links": total_count or 0,
             "enabled_links": enabled_count or 0,
             "disabled_links": disabled_count,

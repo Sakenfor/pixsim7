@@ -29,6 +29,7 @@ from pixsim7.backend.main.domain.enums import (
     enum_column,
     normalize_enum,
 )
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class Generation(SQLModel, table=True):
@@ -203,8 +204,8 @@ class Generation(SQLModel, table=True):
     # Metadata
     name: Optional[str] = Field(default=None, max_length=255)
     description: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
-    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(default_factory=utcnow, index=True)
 
     __table_args__ = (
         Index("idx_generation_user_status_created", "user_id", "status", "created_at"),

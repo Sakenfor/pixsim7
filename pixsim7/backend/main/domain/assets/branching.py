@@ -14,6 +14,8 @@ from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
 from sqlalchemy import JSON
 
+from pixsim7.backend.main.shared.datetime_utils import utcnow
+
 
 class AssetBranch(SQLModel, table=True):
     """
@@ -86,7 +88,7 @@ class AssetBranch(SQLModel, table=True):
         description="Game-specific metadata: conditions, triggers, variables"
     )
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     __table_args__ = (
         Index("idx_branch_source_time", "source_asset_id", "branch_time"),
@@ -145,7 +147,7 @@ class AssetBranchVariant(SQLModel, table=True):
     # Display order
     display_order: int = Field(default=0)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     __table_args__ = (
         Index("idx_branch_variant_unique", "branch_id", "variant_asset_id", unique=True),
@@ -212,7 +214,7 @@ class AssetClip(SQLModel, table=True):
         description="Loop count, speed multiplier, effects, etc."
     )
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
 
     __table_args__ = (
         Index("idx_clip_source", "source_asset_id", "start_time"),

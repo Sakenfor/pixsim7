@@ -16,7 +16,7 @@ from pixsim7.backend.main.services.automation.device_sync_service import DeviceS
 from pixsim7.backend.main.services.automation.action_schemas import get_action_schemas, get_action_schemas_by_category
 from pixsim7.backend.main.infrastructure.queue import queue_task
 from pixsim7.backend.main.api.dependencies import CurrentUser
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/automation", tags=["automation"])
@@ -618,7 +618,7 @@ async def execute_preset_for_account(
         status=AutomationStatus.PENDING,
         priority=request.priority,
         total_actions=total_actions,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         source="manual",
     )
     db.add(execution)
@@ -694,7 +694,7 @@ async def test_actions(
         status=AutomationStatus.PENDING,
         priority=10,  # High priority for tests
         total_actions=len(actions_to_run),
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         source="test",
         execution_context={
             "test_actions": actions_to_run,
@@ -766,7 +766,7 @@ async def execute_loop_for_account(
         status=AutomationStatus.PENDING,
         priority=1,
         total_actions=total_actions,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
         source="manual_loop",
         loop_id=loop.id,
     )
@@ -776,7 +776,7 @@ async def execute_loop_for_account(
 
     # Update loop stats and advance preset index
     loop.total_executions += 1
-    loop.last_execution_at = datetime.utcnow()
+    loop.last_execution_at = datetime.now(timezone.utc)
     loop.last_account_id = request.account_id
     loop.advance_preset_index(request.account_id)
     await db.commit()

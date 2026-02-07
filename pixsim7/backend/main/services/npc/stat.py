@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import Optional, Dict, Any
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -220,7 +220,7 @@ class NPCStatService:
         # Update runtime stats
         npc_state.stats[stat_definition_id].update(stat_updates)
         npc_state.version += 1
-        npc_state.updated_at = datetime.utcnow()
+        npc_state.updated_at = datetime.now(timezone.utc)
 
         logger.info(
             f"Updated NPC runtime stats",

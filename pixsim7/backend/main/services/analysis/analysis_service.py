@@ -9,7 +9,7 @@ Handles the full lifecycle of asset analysis jobs:
 """
 import logging
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -100,8 +100,8 @@ class AnalysisService:
             params=params or {},
             status=AnalysisStatus.PENDING,
             priority=priority,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
         )
 
         self.db.add(analysis)
@@ -143,8 +143,8 @@ class AnalysisService:
         """Mark analysis as started/processing"""
         analysis = await self._get_analysis(analysis_id)
         analysis.status = AnalysisStatus.PROCESSING
-        analysis.started_at = datetime.utcnow()
-        analysis.updated_at = datetime.utcnow()
+        analysis.started_at = datetime.now(timezone.utc)
+        analysis.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(analysis)
@@ -174,8 +174,8 @@ class AnalysisService:
         """
         analysis = await self._get_analysis(analysis_id)
         analysis.status = AnalysisStatus.COMPLETED
-        analysis.completed_at = datetime.utcnow()
-        analysis.updated_at = datetime.utcnow()
+        analysis.completed_at = datetime.now(timezone.utc)
+        analysis.updated_at = datetime.now(timezone.utc)
         analysis.result = result
 
         await self.db.commit()
@@ -199,8 +199,8 @@ class AnalysisService:
         """Mark analysis as failed"""
         analysis = await self._get_analysis(analysis_id)
         analysis.status = AnalysisStatus.FAILED
-        analysis.completed_at = datetime.utcnow()
-        analysis.updated_at = datetime.utcnow()
+        analysis.completed_at = datetime.now(timezone.utc)
+        analysis.updated_at = datetime.now(timezone.utc)
         analysis.error_message = error_message
 
         await self.db.commit()
@@ -234,8 +234,8 @@ class AnalysisService:
             raise InvalidOperationError(f"Analysis already {analysis.status.value}")
 
         analysis.status = AnalysisStatus.CANCELLED
-        analysis.completed_at = datetime.utcnow()
-        analysis.updated_at = datetime.utcnow()
+        analysis.completed_at = datetime.now(timezone.utc)
+        analysis.updated_at = datetime.now(timezone.utc)
 
         await self.db.commit()
         await self.db.refresh(analysis)

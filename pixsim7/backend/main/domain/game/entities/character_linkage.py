@@ -431,13 +431,13 @@ async def track_character_usage_in_scene(
         scene_id: GameScene ID
     """
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="scene",
         template_reference=f"scene:{scene_id}",
-        used_at=datetime.utcnow(),
+        used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)
@@ -457,13 +457,13 @@ async def track_character_usage_in_asset(
         asset_id: Asset ID
     """
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="asset",
         template_reference=f"asset:{asset_id}",
-        used_at=datetime.utcnow(),
+        used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)
@@ -483,13 +483,13 @@ async def track_character_usage_in_generation(
         generation_id: Generation ID
     """
     from pixsim7.backend.main.domain.game.entities.character import CharacterUsage
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     usage = CharacterUsage(
         character_id=character_id,
         usage_type="generation",
         template_reference=f"generation:{generation_id}",
-        used_at=datetime.utcnow(),
+        used_at=datetime.now(timezone.utc),
     )
 
     db.add(usage)

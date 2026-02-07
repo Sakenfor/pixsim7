@@ -4,7 +4,7 @@ Provider account authentication & session management API endpoints
 Handles cookie import/export, JWT refresh, re-authentication, and OAuth flows.
 """
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import asyncio
 from fastapi import APIRouter, HTTPException, status
@@ -586,7 +586,7 @@ async def import_cookies(
                 existing.provider_metadata = new_meta
                 updated_fields.append("provider_metadata")
 
-            existing.updated_at = datetime.utcnow()
+            existing.updated_at = datetime.now(timezone.utc)
 
             # Update credits if provided
             if credits_data:

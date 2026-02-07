@@ -9,7 +9,7 @@ Contract:
 from __future__ import annotations
 
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
@@ -297,7 +297,7 @@ async def add_asset(
         if existing.sync_status != SyncStatus.DOWNLOADED and sync_status:
             existing.sync_status = sync_status
 
-        existing.last_accessed_at = datetime.utcnow()
+        existing.last_accessed_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(existing)
         return existing
@@ -339,7 +339,7 @@ async def add_asset(
         phash64=phash64,
         upload_method=upload_method,
         upload_context=upload_context,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
     )
     db.add(asset)
     await db.commit()

@@ -10,12 +10,13 @@ Owns:
 Credits are tracked in separate ProviderCredit table (normalized).
 """
 from typing import Optional, Dict, Any, TYPE_CHECKING
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlmodel import SQLModel, Field, Column, Relationship
 from sqlalchemy import JSON, UniqueConstraint
 from pydantic import field_validator
 
 from pixsim7.backend.main.domain.enums import AccountStatus
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 if TYPE_CHECKING:
     from .credit import ProviderCredit
@@ -146,8 +147,8 @@ class ProviderAccount(SQLModel, table=True):
     videos_today: int = Field(default=0)
 
     # ===== TIMESTAMPS =====
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
 
     # ===== RELATIONSHIPS =====
     credits: list["ProviderCredit"] = Relationship(
@@ -261,7 +262,7 @@ class ProviderAccount(SQLModel, table=True):
             return False
 
         # Check cooldown
-        if self.cooldown_until and datetime.utcnow() < self.cooldown_until:
+        if self.cooldown_until and datetime.now(timezone.utc) < self.cooldown_until:
             return False
 
         # Check daily limit
