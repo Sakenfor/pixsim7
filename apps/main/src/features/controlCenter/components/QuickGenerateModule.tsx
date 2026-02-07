@@ -358,7 +358,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       generating={generating}
       showSettings={workbench.showSettings}
       onToggleSettings={workbench.toggleSettings}
-      presetId={workbench.presetId}
       operationType={operationType}
       // Generation action - hidden since we have inline Go button
       onGenerate={generate}

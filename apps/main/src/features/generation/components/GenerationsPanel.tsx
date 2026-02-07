@@ -11,7 +11,7 @@ import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } fr
 import { Icons, ThemedIcon } from '@lib/icons';
 
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
-import { getGenerationSessionStore } from '@features/generation/stores/generationScopeStores';
+import { getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation/stores/generationScopeStores';
 
 import { useGenerationWebSocket } from '../hooks/useGenerationWebSocket';
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
@@ -159,7 +159,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
     // Set params from rawParams or canonicalParams
     const params = generation.canonicalParams || generation.rawParams;
     if (params) {
-      sessionStore.setPresetParams(params);
+      getGenerationSettingsStore('global').getState().setDynamicParams(params);
     }
   }, []);
 

@@ -10,8 +10,8 @@ import { ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/share
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { getAsset } from '@lib/api/assets';
-import { getGeneration } from '@lib/api/generations';
 import { extractErrorMessage } from '@lib/api/errorHandling';
+import { getGeneration } from '@lib/api/generations';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
@@ -35,8 +35,8 @@ import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { createPendingGeneration } from '@features/generation/models';
-import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
+import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
@@ -66,8 +66,6 @@ const INPUT_PARAM_KEYS = new Set([
   'sourceAssetIds',
   'composition_assets',
   'compositionAssets',
-  'preset_id',
-  'presetId',
   'operation_type',
   'operationType',
 ]);
@@ -347,8 +345,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         sessionStore.setProvider(providerId);
       }
 
-      sessionStore.setPreset(undefined);
-      sessionStore.setPresetParams({});
       sessionStore.setPrompt(prompt);
 
       if (params && typeof params === 'object') {
@@ -397,18 +393,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
       // Get current scoped stores for any additional settings
       const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
-      const sessionState = getGenerationSessionStore(scopeId).getState();
       const settingsState = getGenerationSettingsStore(scopeId).getState();
 
       // Build params for video_extend with the current asset as source
       const dynamicParams = settingsState.params || {};
-      const presetParams = sessionState.presetParams || {};
 
       // Build the generation request
       const buildResult = buildGenerationRequest({
         operationType: 'video_extend',
         prompt: prompt || '',
-        presetParams,
         dynamicParams: {
           ...stripInputParams(dynamicParams),
           source_asset_id: id,
@@ -449,10 +442,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       const result = await generateAsset({
         prompt: buildResult.finalPrompt,
         providerId,
-        presetId: sessionState.presetId,
         operationType: 'video_extend',
         extraParams: buildResult.params,
-        presetParams,
       });
 
       // Seed the generations store
@@ -513,18 +504,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         prompt,
       } = parseGenerationRecord(genRecord, operationType);
 
-      // Get current scoped stores for preset info
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
-      const sessionState = getGenerationSessionStore(scopeId).getState();
-
       // Trigger the generation with the same params
       const result = await generateAsset({
         prompt,
         providerId,
-        presetId: sessionState.presetId,
         operationType: resolvedOperationType as OperationType,
         extraParams: params as Record<string, any>,
-        presetParams: {},
       });
 
       // Seed the generations store

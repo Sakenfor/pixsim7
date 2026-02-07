@@ -9,10 +9,10 @@
  * Usage: Render in widget header/chrome, inside a GenerationScopeProvider.
  */
 
-import { Icon } from '@lib/icons';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
 import { getGeneration } from '@lib/api/generations';
+import { Icon } from '@lib/icons';
 
 import {
   CAP_GENERATION_SOURCE,
@@ -48,7 +48,7 @@ export function GenerationSourceToggle({
   // Track which generation ID we've fetched to avoid refetching same data
   const [fetchedGenerationId, setFetchedGenerationId] = useState<number | null>(null);
 
-  const { useSessionStore, id: scopeId } = useGenerationScopeStores();
+  const { useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
 
   const available = typeof sourceGenerationId === 'number' && Number.isFinite(sourceGenerationId);
 
@@ -93,7 +93,7 @@ export function GenerationSourceToggle({
           state.setProvider(gen.providerId);
         }
         if (gen.canonicalParams || gen.rawParams) {
-          state.setPresetParams(gen.canonicalParams || gen.rawParams || {});
+          (useSettingsStore as any).getState().setDynamicParams(gen.canonicalParams || gen.rawParams || {});
         }
       })
       .catch((err) => {

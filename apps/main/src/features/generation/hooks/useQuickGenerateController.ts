@@ -33,14 +33,11 @@ export function useQuickGenerateController() {
   // Generation session state (scoped)
   const operationType = useSessionStore((s) => s.operationType);
   const providerId = useSessionStore((s) => s.providerId);
-  const presetId = useSessionStore((s) => s.presetId);
-  const presetParams = useSessionStore((s) => s.presetParams);
   const generating = useSessionStore((s) => s.generating);
 
   const setProvider = useSessionStore((s) => s.setProvider);
   const setOperationType = useSessionStore((s) => s.setOperationType);
   const setGenerating = useSessionStore((s) => s.setGenerating);
-  const setPresetParams = useSessionStore((s) => s.setPresetParams);
   const prompt = useSessionStore((s) => s.prompt);
   const setPrompt = useSessionStore((s) => s.setPrompt);
 
@@ -170,7 +167,6 @@ export function useQuickGenerateController() {
       const buildResult = buildGenerationRequest({
         operationType,
         prompt,
-        presetParams,
         dynamicParams: modifiedDynamicParams,
         operationInputs: currentInputs,
         prompts: bindings.prompts,
@@ -195,10 +191,8 @@ export function useQuickGenerateController() {
       const result = await generateAsset({
         prompt: finalPrompt,
         providerId,
-        presetId,
         operationType: effectiveOperationType,
         extraParams: buildResult.params,
-        presetParams,
       });
 
       // Record assets used for this generation in history
@@ -314,7 +308,6 @@ export function useQuickGenerateController() {
       const buildResult = buildGenerationRequest({
         operationType,
         prompt,
-        presetParams,
         dynamicParams: modifiedDynamicParams,
         operationInputs: currentInputs,
         prompts: bindings.prompts,
@@ -356,10 +349,8 @@ export function useQuickGenerateController() {
           const result = await generateAsset({
             prompt: finalPrompt,
             providerId,
-            presetId,
             operationType: effectiveOperationType,
             extraParams: buildResult.params,
-            presetParams,
           });
 
           const genId = result.job_id;
@@ -415,9 +406,7 @@ export function useQuickGenerateController() {
     generate,
     operationType,
     prompt,
-    presetParams,
     providerId,
-    presetId,
     bindings.dynamicParams,
     bindings.prompts,
     bindings.transitionDurations,
@@ -432,8 +421,6 @@ export function useQuickGenerateController() {
     // Core control center state
     operationType,
     providerId,
-    presetId,
-    presetParams,
     generating,
     prompt,
 
@@ -441,7 +428,6 @@ export function useQuickGenerateController() {
     setProvider,
     setOperationType,
     setPrompt,
-    setPresetParams,
 
     // Error + generation ID
     error,

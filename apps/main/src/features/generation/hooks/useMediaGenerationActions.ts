@@ -170,14 +170,13 @@ export function useMediaGenerationActions() {
         const sessionState = (useSessionStore as any).getState();
         const settingsState = (useSettingsStore as any).getState();
 
-        const { operationType, prompt, providerId, presetId, presetParams } = sessionState;
+        const { operationType, prompt, providerId } = sessionState;
         const dynamicParams = settingsState.params || {};
 
         // Build the generation request with the asset as source
         const buildResult = buildGenerationRequest({
           operationType,
           prompt: prompt || '',
-          presetParams: presetParams || {},
           dynamicParams: {
             ...dynamicParams,
             source_asset_id: asset.id,
@@ -196,10 +195,8 @@ export function useMediaGenerationActions() {
         const result = await generateAsset({
           prompt: buildResult.finalPrompt,
           providerId,
-          presetId,
           operationType,
           extraParams: buildResult.params,
-          presetParams: presetParams || {},
         });
 
         // Seed the generations store

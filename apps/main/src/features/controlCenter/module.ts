@@ -1,8 +1,7 @@
-import { ProviderOverviewModule } from '@features/providers';
 
 import { PanelLauncherModule } from '@features/controlCenter/components/PanelLauncherModule';
-import { PresetsModule } from '@features/controlCenter/components/PresetsModule';
 import { QuickGenerateModule } from '@features/controlCenter/components/QuickGenerateModule';
+import { ProviderOverviewModule } from '@features/providers';
 
 import type { Module } from '@app/modules/types';
 
@@ -37,17 +36,6 @@ export const controlCenterModule: Module = {
       description: 'Quick asset generation',
       tags: ['generate', 'create', 'ai'],
       scopes: ['generation'],
-    },
-    {
-      id: 'cc-presets',
-      title: 'Presets',
-      icon: '🎨',
-      component: PresetsModule,
-      category: 'core',
-      order: 20,
-      enabledByDefault: true,
-      description: 'Generation presets and templates',
-      tags: ['presets', 'templates'],
     },
     {
       id: 'cc-providers',

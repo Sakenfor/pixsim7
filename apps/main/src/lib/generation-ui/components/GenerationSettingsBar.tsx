@@ -60,8 +60,6 @@ export interface GenerationSettingsBarProps {
   showSettings: boolean;
   /** Callback to toggle settings visibility */
   onToggleSettings: () => void;
-  /** Currently active preset ID (shown as a badge) */
-  presetId?: string;
   /** Optional operation type (used for cost estimation heuristics) */
   operationType?: string;
 }
@@ -115,7 +113,6 @@ export function GenerationSettingsBar({
   generating = false,
   showSettings,
   onToggleSettings,
-  presetId,
   operationType,
   }: GenerationSettingsBarProps) {
   const [expandedSetting, setExpandedSetting] = useState<string | null>(null);
@@ -379,12 +376,6 @@ export function GenerationSettingsBar({
             </div>
           )}
 
-          {/* Preset indicator */}
-          {presetId && (
-            <span className="px-1.5 py-0.5 text-[9px] bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded">
-              {presetId}
-            </span>
-          )}
         </div>
       )}
 

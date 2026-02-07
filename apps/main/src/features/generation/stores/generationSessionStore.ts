@@ -20,8 +20,6 @@ export interface GenerationSessionFields {
   /** Per-operation prompt storage - prompts are preserved when switching operations */
   promptPerOperation?: Partial<Record<OperationType, string>>;
   providerId?: string;
-  presetId?: string;
-  presetParams: Record<string, any>;
   generating: boolean;
 }
 
@@ -32,8 +30,6 @@ export interface GenerationSessionActions {
   setOperationType: (op: OperationType) => void;
   setPrompt: (value: string) => void;
   setProvider: (id?: string) => void;
-  setPreset: (id?: string) => void;
-  setPresetParams: (params: Record<string, any>) => void;
   setGenerating: (value: boolean) => void;
   reset: () => void;
 }
@@ -52,8 +48,6 @@ export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   prompt: "",
   promptPerOperation: {},
   providerId: undefined,
-  presetId: undefined,
-  presetParams: {},
   generating: false,
 };
 
@@ -108,11 +102,6 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
           if (get().providerId === id) return;
           set({ providerId: id });
         },
-        setPreset: (id) => {
-          if (get().presetId === id) return;
-          set({ presetId: id });
-        },
-        setPresetParams: (params) => set({ presetParams: params }),
         setGenerating: (value) => {
           if (get().generating === value) return;
           set({ generating: value });
@@ -122,20 +111,13 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
       {
         name: storageKey,
         storage: createJSONStorage(() => localStorage),
-        version: 3,
+        version: 4,
         partialize: (state) => {
-          // Exclude seed from presetParams - it should be random each time unless explicitly set
-          const filteredPresetParams = { ...state.presetParams };
-          if ("seed" in filteredPresetParams) {
-            delete filteredPresetParams.seed;
-          }
           return {
             operationType: state.operationType,
             prompt: state.prompt,
             promptPerOperation: state.promptPerOperation,
             providerId: state.providerId,
-            presetId: state.presetId,
-            presetParams: filteredPresetParams,
           };
         },
         migrate: (persistedState: any, version: number) => {
@@ -150,12 +132,10 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
             }
           }
 
-          // Migrate from version 2 to 3: remove seed from presetParams
-          // Seed should be random each time, not persisted
-          if (version < 3) {
-            if (migrated.presetParams && 'seed' in migrated.presetParams) {
-              delete migrated.presetParams.seed;
-            }
+          // Migrate to version 4: remove defunct preset fields
+          if (version < 4) {
+            delete migrated.presetId;
+            delete migrated.presetParams;
           }
 
           return migrated;

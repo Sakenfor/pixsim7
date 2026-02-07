@@ -301,13 +301,6 @@ export function isFusion(params: unknown): params is FusionParams {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Get active preset parameter keys (for memoization checks)
- */
-export function getActivePresetParamKeys(presetParams: Record<string, any>): string[] {
-  return Object.keys(presetParams);
-}
-
-/**
  * Check if operation requires a prompt
  */
 export function operationRequiresPrompt(operationType: OperationType): boolean {

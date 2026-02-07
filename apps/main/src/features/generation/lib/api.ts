@@ -6,10 +6,8 @@ import type { OperationType } from '@/types/operations';
 export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
-  presetId?: string;
   operationType?: OperationType;
   extraParams?: Record<string, any>;
-  presetParams?: Record<string, any>;
 }
 
 export interface GenerateAssetResponse {
@@ -144,13 +142,10 @@ function buildGenerationConfig(
  * Returns a job ID that can be tracked via polling.
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
-  // extraParams from buildGenerationRequest already includes presetParams merged in,
-  // so we just add prompt and preset_id for the final merged params
   const { preferred_account_id, ...restExtra } = (req.extraParams || {}) as Record<string, any>;
 
   const mergedParams = {
     prompt: req.prompt,
-    preset_id: req.presetId,
     ...restExtra,
   };
 
@@ -166,8 +161,6 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   const providerId = req.providerId || 'pixverse';
 
   // Build proper GenerationNodeConfig from Control Center settings
-  // Note: extraParams already contains presetParams from buildGenerationRequest,
-  // so we pass empty object for presetParams to avoid double-merging
   const config = buildGenerationConfig(
     generationType,
     { prompt: req.prompt, ...restExtra },

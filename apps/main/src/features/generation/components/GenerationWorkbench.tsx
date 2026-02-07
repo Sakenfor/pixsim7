@@ -24,10 +24,11 @@
  * ```
  */
 
-import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
-import { ThemedIcon } from '@lib/icons';
 import clsx from 'clsx';
 import React from 'react';
+
+import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
+import { ThemedIcon } from '@lib/icons';
 
 import { useGenerationsStore, type GenerationModel } from '@features/generation';
 
@@ -79,8 +80,6 @@ export interface GenerationWorkbenchProps {
   showSettings: boolean;
   /** Callback to toggle settings visibility */
   onToggleSettings: () => void;
-  /** Currently active preset ID */
-  presetId?: string;
   /** Operation type for cost estimation */
   operationType?: string;
 
@@ -196,7 +195,6 @@ export function GenerationWorkbench({
   generating = false,
   showSettings,
   onToggleSettings,
-  presetId,
   operationType,
 
   // Generation action
@@ -264,7 +262,6 @@ export function GenerationWorkbench({
               generating={generating}
               showSettings={showSettings}
               onToggleSettings={onToggleSettings}
-              presetId={presetId}
               operationType={operationType}
             />
           )}

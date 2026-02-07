@@ -459,7 +459,6 @@ export function IntimacySceneComposer({
                 generating={workbench.generating}
                 showSettings={workbench.showSettings}
                 onToggleSettings={workbench.toggleSettings}
-                presetId={workbench.presetId}
                 operationType="text_to_video"
               />
             </div>

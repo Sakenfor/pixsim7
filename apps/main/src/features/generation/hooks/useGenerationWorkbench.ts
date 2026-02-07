@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useEffect, useCallback } from 'react';
 
 import type { ParamSpec } from '@lib/generation-ui';
 
@@ -68,8 +68,6 @@ export interface GenerationWorkbenchState {
   setShowSettings: (show: boolean) => void;
   /** Toggle settings visibility */
   toggleSettings: () => void;
-  /** Current preset ID */
-  presetId: string | undefined;
   /** Whether generation is in progress */
   generating: boolean;
   /** The effective operation type being used */
@@ -95,29 +93,6 @@ function coerceParamValue(value: any, spec: ParamSpec | undefined): any {
 }
 
 /**
- * Apply preset overrides to params.
- * Returns new params object if changes were made, otherwise returns input.
- */
-function applyPresetOverrides(
-  params: Record<string, any>,
-  presetParams: Record<string, any>,
-  specParams: ParamSpec[]
-): Record<string, any> {
-  let changed = false;
-  const next = { ...params };
-
-  for (const spec of specParams) {
-    const presetValue = presetParams[spec.name];
-    if (presetValue !== undefined && next[spec.name] !== presetValue) {
-      next[spec.name] = presetValue;
-      changed = true;
-    }
-  }
-
-  return changed ? next : params;
-}
-
-/**
  * Validate params against specs and apply defaults.
  * - Removes invalid enum values
  * - Applies defaults for undefined values
@@ -125,18 +100,13 @@ function applyPresetOverrides(
  */
 function validateAndApplyDefaults(
   params: Record<string, any>,
-  specParams: ParamSpec[],
-  presetParams: Record<string, any>
+  specParams: ParamSpec[]
 ): Record<string, any> {
   let changed = false;
   const next = { ...params };
 
   for (const spec of specParams) {
     const { name } = spec;
-
-    // Skip if preset controls this value
-    if (presetParams[name] !== undefined) continue;
-
     const currentValue = next[name];
 
     // Apply default if undefined
@@ -208,8 +178,6 @@ export function useGenerationWorkbench(
   // Core state from stores
   const storeOperationType = useSessionStore((s) => s.operationType);
   const storeProviderId = useSessionStore((s) => s.providerId);
-  const presetId = useSessionStore((s) => s.presetId);
-  const presetParams = useSessionStore((s) => s.presetParams);
   const generating = useSessionStore((s) => s.generating);
   const setStoreProvider = useSessionStore((s) => s.setProvider);
 
@@ -279,29 +247,7 @@ export function useGenerationWorkbench(
     return map;
   }, [paramSpecs]);
 
-  // Track previous preset to detect changes
-  const prevPresetParamsRef = useRef(presetParams);
-
-  // Effect 1: Apply preset overrides when presetParams change
-  useEffect(() => {
-    if (!hasHydrated) return;
-    // Skip if operation types are out of sync (wait for sync effect to complete)
-    if (effectiveOperationType !== activeOperationType) return;
-
-    const prevPreset = prevPresetParamsRef.current;
-    prevPresetParamsRef.current = presetParams;
-
-    // Only run if presetParams actually changed
-    if (prevPreset === presetParams) return;
-
-    if (!specs?.operation_specs) return;
-    const opSpec = specs.operation_specs[effectiveOperationType];
-    if (!opSpec?.parameters) return;
-
-    setDynamicParams((prev) => applyPresetOverrides(prev, presetParams, opSpec.parameters));
-  }, [hasHydrated, presetParams, specs, effectiveOperationType, activeOperationType, setDynamicParams]);
-
-  // Effect 2: Validate params and apply defaults when specs change
+  // Validate params and apply defaults when specs change
   useEffect(() => {
     if (!hasHydrated) return;
     // Skip if operation types are out of sync (wait for sync effect to complete)
@@ -311,9 +257,9 @@ export function useGenerationWorkbench(
     if (!opSpec?.parameters) return;
 
     setDynamicParams((prev) =>
-      validateAndApplyDefaults(prev, opSpec.parameters, presetParams)
+      validateAndApplyDefaults(prev, opSpec.parameters)
     );
-  }, [hasHydrated, specs, effectiveOperationType, activeOperationType, setDynamicParams, presetParams]);
+  }, [hasHydrated, specs, effectiveOperationType, activeOperationType, setDynamicParams]);
 
   // Handler for dynamic param changes - coerces types on input
   const handleParamChange = useCallback(
@@ -337,7 +283,6 @@ export function useGenerationWorkbench(
     showSettings,
     setShowSettings,
     toggleSettings,
-    presetId,
     generating,
     effectiveOperationType,
   };

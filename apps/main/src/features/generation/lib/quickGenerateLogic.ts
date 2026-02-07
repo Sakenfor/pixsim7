@@ -12,7 +12,6 @@ export type { OperationType };
 export interface QuickGenerateContext {
   operationType: OperationType;
   prompt: string;
-  presetParams: Record<string, any>;
   dynamicParams: Record<string, any>;
   operationInputs?: InputItem[];
   prompts: string[];
@@ -53,7 +52,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   const {
     operationType,
     prompt,
-    presetParams,
     dynamicParams,
     operationInputs = [],
     prompts,
@@ -325,7 +323,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   const params: Record<string, any> = {
     prompt: trimmedPrompt,
-    ...presetParams,
     ...dynamicParams,
   };
 

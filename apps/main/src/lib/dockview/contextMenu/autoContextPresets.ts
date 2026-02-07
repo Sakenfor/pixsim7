@@ -95,33 +95,6 @@ const promptConfig: AutoContextConfig<PromptLike> = {
 autoContextConfigRegistry.register('prompt', promptConfig);
 
 // ============================================================================
-// Preset Configuration (for PresetsModule)
-// ============================================================================
-
-interface PresetLike {
-  id: string | number;
-  name: string;
-  description?: string;
-  params?: Record<string, any>;
-}
-
-const presetConfig: AutoContextConfig<PresetLike> = {
-  idField: 'id',
-  labelField: 'name',
-
-  computeFields: preset => ({
-    id: preset.id,
-    name: preset.name,
-    description: preset.description,
-    params: preset.params,
-  }),
-
-  includeFullObject: true,
-};
-
-autoContextConfigRegistry.register('preset', presetConfig);
-
-// ============================================================================
 // Generation Configuration
 // ============================================================================
 

@@ -6,7 +6,6 @@ function createBaseContext(partial: Partial<QuickGenerateContext> = {}): QuickGe
   return {
     operationType: 'text_to_image',
     prompt: '',
-    presetParams: {},
     dynamicParams: {},
     prompts: [],
     ...partial,

@@ -5,30 +5,9 @@ import { createBackendStorage } from '../lib/backendStorage';
 import { debugFlags } from '../lib/debugFlags';
 import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandPersistWorkaround';
 
-export type ControlModule = 'quickGenerate' | 'presets' | 'providers' | 'panels' | 'none';
+export type ControlModule = 'quickGenerate' | 'providers' | 'panels' | 'none';
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
 export type LayoutBehavior = 'overlay' | 'push';
-
-export type FusionAssetType = 'character' | 'background' | 'image' | 'video';
-export type AssetSourceType = 'url' | 'asset' | 'paused_frame';
-
-export type TimelineAsset = {
-  id: string;
-  type: 'image' | 'video';
-
-  // Source can be URL, existing asset, or paused frame
-  sourceType: AssetSourceType;
-  url?: string;                    // When sourceType === 'url'
-  assetId?: number;                // When sourceType === 'asset' or 'paused_frame'
-  pauseTimestamp?: number;         // When sourceType === 'paused_frame'
-  frameNumber?: number;            // Optional frame number for paused frames
-
-  prompt?: string;
-  duration?: number;
-  thumbnail?: string;
-  name?: string;
-  fusionType?: FusionAssetType;    // For fusion operations
-};
 
 /**
  * ControlCenterState contains UI-specific state for the Control Center dock.
@@ -45,7 +24,6 @@ export interface ControlCenterState {
   floatingSize: { width: number; height: number };
   activeModule: ControlModule;
   enabledModules: Record<string, boolean>;
-  assets: TimelineAsset[];
   panelLayoutResetTrigger: number;
 }
 
@@ -64,7 +42,6 @@ export interface ControlCenterActions {
   setFloatingSize: (width: number, height: number) => void;
   setActiveModule: (m: ControlModule) => void;
   setModuleEnabled: (moduleId: string, enabled: boolean) => void;
-  setAssets: (assets: TimelineAsset[]) => void;
   triggerPanelLayoutReset: () => void;
   reset: () => void;
 }
@@ -86,7 +63,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         floatingSize: { width: 700, height: 600 },
         activeModule: 'quickGenerate',
         enabledModules: {},
-        assets: [],
         panelLayoutResetTrigger: 0,
         setLayoutBehavior: (behavior) => {
           if (get().layoutBehavior === behavior) return;
@@ -144,7 +120,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
             enabledModules: { ...s.enabledModules, [moduleId]: enabled }
           }));
         },
-        setAssets: (assets) => set({ assets }),
         triggerPanelLayoutReset: () => set({ panelLayoutResetTrigger: Date.now() }),
         reset: () => set({
           dockPosition: 'bottom',
@@ -157,7 +132,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           floatingSize: { width: 700, height: 600 },
           activeModule: 'quickGenerate',
           enabledModules: {},
-          assets: [],
         })
       };
     },
@@ -176,7 +150,6 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         floatingSize: s.floatingSize,
         activeModule: s.activeModule,
         enabledModules: s.enabledModules,
-        assets: s.assets,
       }),
       version: 11,
       migrate: (persistedState: any, version: number) => {
