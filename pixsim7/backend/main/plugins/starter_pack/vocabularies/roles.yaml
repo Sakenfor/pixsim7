@@ -9,6 +9,7 @@ roles:
     description: "Primary subject/character in the scene"
     color: blue
     default_layer: 1
+    default_influence: content
     slots:
       provides: [slot:focal_subject, slot:character_presence]
       requires: []
@@ -20,6 +21,7 @@ roles:
     description: "Supporting characters (NPCs, pets, monsters)"
     color: purple
     default_layer: 1
+    default_influence: content
     slots:
       provides: [slot:secondary_subject, slot:character_presence]
       requires: []
@@ -31,6 +33,7 @@ roles:
     description: "Background, setting, location"
     color: green
     default_layer: 0
+    default_influence: content
     slots:
       provides: [slot:scene_setting, slot:spatial_context]
       requires: []
@@ -42,6 +45,7 @@ roles:
     description: "Objects, vehicles, items"
     color: orange
     default_layer: 1
+    default_influence: content
     slots:
       provides: [slot:scene_prop]
       requires: [slot:spatial_context]
@@ -53,6 +57,7 @@ roles:
     description: "Style/aesthetic reference images"
     color: pink
     default_layer: 0
+    default_influence: style
     slots:
       provides: [slot:aesthetic_guidance]
       requires: []
@@ -64,6 +69,7 @@ roles:
     description: "Lighting, camera, visual effects"
     color: cyan
     default_layer: 2
+    default_influence: blend
     slots:
       provides: [slot:visual_effect]
       requires: []

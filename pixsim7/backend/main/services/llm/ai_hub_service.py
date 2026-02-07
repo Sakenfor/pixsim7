@@ -188,7 +188,7 @@ class AiHubService:
     ) -> dict:
         """
         Call an LLM model to suggest ontology IDs, semantic pack entries,
-        and candidate ActionBlocks for a given prompt and context.
+        and prompt block candidates for a given prompt and context.
 
         This is used by the Category Discovery feature in Prompt Lab to help
         identify gaps in parser/ontology coverage and suggest new semantic elements.
@@ -198,7 +198,7 @@ class AiHubService:
             model_id: Model to use (None = use default prompt_edit model)
             prompt_text: The prompt to analyze
             analysis_context: Dict with:
-                - blocks: List of parsed blocks from SimplePromptParser
+                - candidates: List of parsed candidates from prompt analysis
                 - tags: List of auto-generated tags
                 - existing_ontology_ids: List of ontology IDs already found
                 - world_id: Optional world context
@@ -209,7 +209,7 @@ class AiHubService:
             Dict with:
                 - suggested_ontology_ids: List of SuggestedOntologyId dicts
                 - suggested_packs: List of SuggestedPackEntry dicts
-                - suggested_action_blocks: List of SuggestedActionBlock dicts
+                - suggested_candidates: List of PromptBlockCandidate dicts
 
         Raises:
             ProviderError: If LLM call fails
@@ -317,7 +317,7 @@ class AiHubService:
             suggestions = {
                 "suggested_ontology_ids": [],
                 "suggested_packs": [],
-                "suggested_action_blocks": [],
+                "suggested_candidates": [],
             }
 
         # Ensure all required fields are present
@@ -325,14 +325,14 @@ class AiHubService:
             suggestions["suggested_ontology_ids"] = []
         if "suggested_packs" not in suggestions:
             suggestions["suggested_packs"] = []
-        if "suggested_action_blocks" not in suggestions:
-            suggestions["suggested_action_blocks"] = []
+        if "suggested_candidates" not in suggestions:
+            suggestions["suggested_candidates"] = []
 
         logger.info(
             f"Category discovery suggestions generated: "
             f"{len(suggestions['suggested_ontology_ids'])} ontology IDs, "
             f"{len(suggestions['suggested_packs'])} packs, "
-            f"{len(suggestions['suggested_action_blocks'])} action blocks"
+            f"{len(suggestions['suggested_candidates'])} candidates"
         )
 
         return suggestions
@@ -344,7 +344,7 @@ class AiHubService:
 Your task is to analyze prompts and suggest:
 1. Ontology IDs: Semantic categories that describe actions, states, anatomy parts, camera angles, etc.
 2. Semantic Pack entries: Collections of related parser hints that help classify similar prompts
-3. ActionBlocks: Reusable prompt building blocks with semantic tags
+3. Prompt candidates: Reusable prompt building blocks with semantic tags
 
 Guidelines:
 - PREFER reusing existing ontology IDs when possible
@@ -376,10 +376,10 @@ Response format: Valid JSON object with these exact keys:
       "notes": "Why this pack is useful"
     }
   ],
-  "suggested_action_blocks": [
+  "suggested_candidates": [
     {
       "block_id": "suggested_block_slug",
-      "prompt": "The actual prompt text for this block",
+      "text": "The actual prompt text for this block",
       "tags": {
         "ontology_ids": ["act:example"],
         "intensity": "medium",
@@ -398,7 +398,7 @@ CRITICAL: Return ONLY the JSON object, no other text."""
         analysis_context: dict,
     ) -> str:
         """Build the user prompt for category discovery."""
-        blocks = analysis_context.get("blocks", [])
+        candidates = analysis_context.get("candidates", [])
         tags = analysis_context.get("tags", [])
         existing_ids = analysis_context.get("existing_ontology_ids", [])
         world_id = analysis_context.get("world_id")
@@ -416,11 +416,11 @@ CRITICAL: Return ONLY the JSON object, no other text."""
 
         context_str = "\n".join(context_parts) if context_parts else "No additional context"
 
-        # Build blocks summary
-        blocks_str = "\n".join([
+        # Build candidates summary
+        candidates_str = "\n".join([
             f"  - {b.get('role', 'other')}: {b.get('text', '')}"
-            for b in blocks
-        ]) if blocks else "  (no blocks parsed)"
+            for b in candidates
+        ]) if candidates else "  (no candidates parsed)"
 
         # Build tags summary
         tags_str = ", ".join(tags) if tags else "(no tags)"
@@ -436,8 +436,8 @@ PROMPT:
 CURRENT ANALYSIS:
 {context_str}
 
-Parser detected these blocks:
-{blocks_str}
+Parser detected these candidates:
+{candidates_str}
 
 Auto-generated tags: {tags_str}
 Existing ontology IDs: {existing_str}
@@ -445,7 +445,7 @@ Existing ontology IDs: {existing_str}
 Based on this analysis:
 1. What ontology IDs are missing or would better describe this prompt's semantics?
 2. What semantic pack entries would help the parser classify similar prompts?
-3. What reusable ActionBlocks could be extracted from this prompt?
+3. What reusable prompt candidates could be extracted from this prompt?
 
 Return your suggestions as a JSON object following the specified schema."""
 

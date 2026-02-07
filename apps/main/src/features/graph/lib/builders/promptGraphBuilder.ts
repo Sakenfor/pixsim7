@@ -1,15 +1,18 @@
 /**
- * Prompt Segment Graph Builder
+ * Prompt Candidate Graph Builder
  *
- * Utility functions to build PromptSegmentGraph from prompt analysis data.
+ * Utility functions to build PromptCandidateGraph from prompt analysis data.
  * Part of Task 81 - Prompt & Action Block Graph Surfaces
  */
 
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
+
+import { getPromptRoleHex } from '@/lib/promptRoleUi';
 import type {
   PromptBlockGraph,
   PromptGraphNode,
   PromptGraphEdge,
-  PromptSegment,
+  PromptBlockCandidate,
   PromptSegmentRole,
 } from '@/types/promptGraphs';
 
@@ -20,10 +23,10 @@ export interface BuildPromptGraphOptions {
 }
 
 /**
- * Build a PromptBlockGraph from parsed prompt segments
+ * Build a PromptBlockGraph from parsed prompt candidates
  */
-export function buildPromptSegmentGraph(
-  segments: PromptSegment[],
+export function buildPromptCandidateGraph(
+  candidates: PromptBlockCandidate[],
   options: BuildPromptGraphOptions = {}
 ): PromptBlockGraph {
   const {
@@ -47,44 +50,44 @@ export function buildPromptSegmentGraph(
   // Track role groups if enabled
   const roleGroups = new Set<PromptSegmentRole>();
 
-  // Create segment nodes
-  segments.forEach((segment, index) => {
-    const segmentNodeId = `seg:${index}`;
-    const truncatedText = segment.text.length > 50
-      ? segment.text.substring(0, 50) + '...'
-      : segment.text;
+  // Create candidate nodes
+  candidates.forEach((candidate, index) => {
+    const candidateNodeId = `cand:${index}`;
+    const truncatedText = candidate.text.length > 50
+      ? candidate.text.substring(0, 50) + '...'
+      : candidate.text;
 
     nodes.push({
-      id: segmentNodeId,
-      kind: 'segment',
+      id: candidateNodeId,
+      kind: 'candidate',
       label: truncatedText,
-      role: segment.role,
+      role: candidate.role as PromptSegmentRole | undefined,
       versionId,
-      segmentIndex: index,
-      text: segment.text,
+      candidateIndex: index,
+      text: candidate.text,
     });
 
-    // Add contains edge from prompt to segment
+    // Add contains edge from prompt to candidate
     edges.push({
       id: `e-contains-${index}`,
       kind: 'contains',
       from: promptNodeId,
-      to: segmentNodeId,
+      to: candidateNodeId,
     });
 
-    // Add next edge to previous segment
+    // Add next edge to previous candidate
     if (index > 0) {
       edges.push({
         id: `e-next-${index - 1}-${index}`,
         kind: 'next',
-        from: `seg:${index - 1}`,
-        to: segmentNodeId,
+        from: `cand:${index - 1}`,
+        to: candidateNodeId,
       });
     }
 
     // Track roles for role grouping
-    if (includeRoleGroups && segment.role) {
-      roleGroups.add(segment.role);
+    if (includeRoleGroups && candidate.role) {
+      roleGroups.add(candidate.role as PromptSegmentRole);
     }
   });
 
@@ -99,14 +102,14 @@ export function buildPromptSegmentGraph(
         role,
       });
 
-      // Add role-group edges to matching segments
-      segments.forEach((segment, index) => {
-        if (segment.role === role) {
+      // Add role-group edges to matching candidates
+      candidates.forEach((candidate, index) => {
+        if (candidate.role === role) {
           edges.push({
             id: `e-role-${role}-${index}`,
             kind: 'role-group',
             from: roleNodeId,
-            to: `seg:${index}`,
+            to: `cand:${index}`,
           });
         }
       });
@@ -121,18 +124,8 @@ export function buildPromptSegmentGraph(
  */
 export function getNodeColorByRole(role?: PromptSegmentRole): string {
   if (!role) return '#94a3b8'; // neutral-400
-
-  // Canonical role colors matching PromptSegmentRole
-  const roleColors: Record<PromptSegmentRole, string> = {
-    character: '#3b82f6', // blue-500
-    action: '#10b981',    // green-500
-    setting: '#a855f7',   // purple-500
-    mood: '#eab308',      // yellow-500
-    romance: '#ec4899',   // pink-500
-    other: '#64748b',     // slate-500
-  };
-
-  return roleColors[role];
+  const promptRoleColors = usePromptSettingsStore.getState().promptRoleColors;
+  return getPromptRoleHex(role, promptRoleColors);
 }
 
 /**

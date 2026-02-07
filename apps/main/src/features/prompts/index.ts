@@ -7,7 +7,7 @@
  * ```typescript
  * // Import from barrel
  * import {
- *   PromptSegmentsViewer,
+ *   PromptCandidatesViewer,
  *   usePromptInspection,
  *   useQuickGenerateController
  * } from '@features/prompts';
@@ -28,20 +28,22 @@ export * from './types';
 // ============================================================================
 
 export {
-  PromptSegmentsViewer,
-  type PromptSegmentsViewerProps,
+  PromptCandidatesViewer,
+  type PromptCandidatesViewerProps,
 } from './components/PromptBlocksViewer';
 
 export {
   PromptInlineViewer,
-  PromptBlockList,
+  PromptCandidateList,
   type PromptInlineViewerProps,
-  type PromptSegmentListProps,
-  type PromptSegmentDisplay,
-  // Deprecated aliases for backward compatibility
-  type PromptBlockListProps,
-  type PromptBlock,
+  type PromptCandidateListProps,
+  type PromptCandidateDisplay,
 } from './components/PromptInlineViewer';
+
+export {
+  PromptComposer,
+  type PromptComposerProps,
+} from './components/PromptComposer';
 
 // ============================================================================
 // Hooks

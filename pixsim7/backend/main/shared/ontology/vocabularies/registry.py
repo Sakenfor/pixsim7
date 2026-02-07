@@ -15,6 +15,7 @@ from pixsim7.backend.main.lib.registry.pack import PackRegistryBase
 from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotDef,
     RoleDef,
+    PromptRoleDef,
     PoseDef,
     MoodDef,
     RatingDef,
@@ -72,7 +73,9 @@ class VocabularyRegistry:
         if vocab_dir is None:
             vocab_dir = Path(__file__).parent
         if plugins_dir is None:
-            plugins_dir = Path(__file__).parent.parent.parent / "plugins"
+            # registry.py lives at backend/main/shared/ontology/vocabularies
+            # so plugins live at backend/main/plugins (one level above shared).
+            plugins_dir = Path(__file__).parent.parent.parent.parent / "plugins"
 
         self._vocab_dir = vocab_dir
         self._plugins_dir = plugins_dir
@@ -203,6 +206,20 @@ class VocabularyRegistry:
         data = self._load_yaml(config.yaml_file, directory)
         items = data.get(config.yaml_key, {})
 
+        # Spatial vocab files may be organized by sections
+        # (camera_views/camera_framing/body_orientation/depth) rather than a
+        # single top-level "spatial" map.
+        if config.name == "spatial" and not items:
+            merged: Dict[str, Any] = {}
+            for section in ("camera_views", "camera_framing", "body_orientation", "depth"):
+                section_items = data.get(section, {})
+                if isinstance(section_items, dict):
+                    merged.update(section_items)
+            items = merged
+            compatibility = data.get("compatibility", {})
+            if isinstance(compatibility, dict):
+                self._spatial_compatibility = compatibility
+
         if not isinstance(items, dict):
             return 0
 
@@ -236,6 +253,17 @@ class VocabularyRegistry:
         for vocab_name, config in configs.items():
             data = self._load_yaml(config.yaml_file, directory)
             raw_items = data.get(config.yaml_key, {})
+
+            if config.name == "spatial" and not raw_items:
+                merged: Dict[str, Any] = {}
+                for section in ("camera_views", "camera_framing", "body_orientation", "depth"):
+                    section_items = data.get(section, {})
+                    if isinstance(section_items, dict):
+                        merged.update(section_items)
+                raw_items = merged
+                compatibility = data.get("compatibility", {})
+                if isinstance(compatibility, dict):
+                    self._spatial_compatibility = compatibility
 
             if not isinstance(raw_items, dict):
                 continue
@@ -565,6 +593,9 @@ class VocabularyRegistry:
     def get_role(self, role_id: str) -> Optional[RoleDef]:
         return self.get("roles", role_id)
 
+    def get_prompt_role(self, role_id: str) -> Optional[PromptRoleDef]:
+        return self.get("prompt_roles", role_id)
+
     def get_pose(self, pose_id: str) -> Optional[PoseDef]:
         return self.get("poses", pose_id)
 
@@ -598,6 +629,9 @@ class VocabularyRegistry:
 
     def all_roles(self) -> List[RoleDef]:
         return self.all_of("roles")
+
+    def all_prompt_roles(self) -> List[PromptRoleDef]:
+        return self.all_of("prompt_roles")
 
     def all_poses(self) -> List[PoseDef]:
         return self.all_of("poses")
@@ -977,6 +1011,29 @@ class VocabularyRegistry:
     # =========================================================================
     # Keyword Matching (dynamic, config-driven)
     # =========================================================================
+
+    def get_keyword_to_ids(self) -> Dict[str, List[str]]:
+        """
+        Return a keyword → [vocab_item_ids] mapping.
+
+        Useful for systems (e.g., the prompt parser) that already do their own
+        keyword matching with stemming/negation and just need to resolve which
+        vocab items a matched keyword belongs to.
+
+        Returns:
+            Dict mapping lowercase keywords to lists of vocab item IDs.
+            Example: {"tender": ["mood:tender"], "forest": ["location:forest"]}
+        """
+        self._ensure_loaded()
+
+        result: Dict[str, List[str]] = {}
+        for _mode, entries in self._keyword_index.items():
+            for keyword, item_id in entries:
+                if keyword not in result:
+                    result[keyword] = []
+                if item_id not in result[keyword]:
+                    result[keyword].append(item_id)
+        return result
 
     def match_keywords(self, text: str) -> List[str]:
         """

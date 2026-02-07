@@ -11,7 +11,7 @@ import os
 # Add the backend to the path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "pixsim7", "backend"))
 
-from main.services.prompt.parser import SimplePromptParser, parse_prompt_to_blocks, analyze_prompt
+from main.services.prompt.parser import SimplePromptParser, parse_prompt_to_candidates, analyze_prompt
 
 
 async def test_parser():
@@ -44,8 +44,8 @@ async def test_parser():
                 print(f"    Metadata: {segment.metadata}")
 
         # Test adapter
-        adapter_result = await parse_prompt_to_blocks(prompt_text)
-        print(f"Adapter blocks: {adapter_result['blocks']}")
+        adapter_result = await parse_prompt_to_candidates(prompt_text)
+        print(f"Adapter candidates: {adapter_result['candidates']}")
 
         # Test full analysis
         analysis = await analyze_prompt(prompt_text)

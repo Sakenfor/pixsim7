@@ -5,11 +5,11 @@
  * Accepts prompt text + metadata and creates PromptFamily + PromptVersion records.
  */
 
-import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
-import { Icon } from '../lib/icons';
+import { useState } from 'react';
+
 import { useApi } from '../hooks/useApi';
-import { PromptSegmentsViewer } from '@features/prompts';
+import { Icon } from '../lib/icons';
 
 // Response types matching backend
 interface PromptFamilyResponse {

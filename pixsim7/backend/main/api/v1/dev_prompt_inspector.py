@@ -21,7 +21,7 @@ from sqlmodel import select
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.domain.assets.models import Asset
-from pixsim7.backend.main.services.prompt.parser import parse_prompt_to_segments, analyze_prompt
+from pixsim7.backend.main.services.prompt.parser import parse_prompt_to_candidates, analyze_prompt
 from pixsim_logging import get_logger
 from pydantic import BaseModel
 
@@ -40,7 +40,7 @@ async def inspect_prompt(
     """
     Inspect prompt structure for an asset or generation.
 
-    Returns the original prompt text and parsed segments showing:
+    Returns the original prompt text and parsed candidates showing:
     - Role (character, action, setting, mood, romance, other)
     - Text content
     - Position info (start_pos, end_pos)
@@ -54,7 +54,7 @@ async def inspect_prompt(
     Returns:
         {
             "prompt": "full original prompt text",
-            "segments": [
+            "candidates": [
                 {"role": "character", "text": "...", "start_pos": 0, "end_pos": 10},
                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
                 ...
@@ -146,9 +146,9 @@ async def inspect_prompt(
 
     # Parse prompt using adapter
     try:
-        parsed = await parse_prompt_to_segments(prompt_text)
+        parsed = await parse_prompt_to_candidates(prompt_text)
     except Exception as e:
-        # Log error but don't fail - return empty segments
+        # Log error but don't fail - return empty candidates
         # This ensures the UI can still show the prompt text
         logger.warning(
             "prompt_dsl_parse_failed",
@@ -157,12 +157,12 @@ async def inspect_prompt(
             generation_id=generation.id,
             user_id=user.id,
         )
-        parsed = {"segments": []}
+        parsed = {"candidates": []}
 
     # Return response
     return {
         "prompt": prompt_text,
-        "segments": parsed["segments"]
+        "candidates": parsed["candidates"]
     }
 
 
@@ -180,7 +180,7 @@ async def analyze_prompt_text(
     Analyze arbitrary prompt text and return structured breakdown.
 
     Dev-only endpoint for quick prompt analysis without needing an asset/job.
-    Returns the original prompt text, parsed segments, and auto-generated tags.
+    Returns the original prompt text, parsed candidates, and auto-generated tags.
 
     Request body:
         { "prompt_text": "..." }
@@ -188,7 +188,7 @@ async def analyze_prompt_text(
     Returns:
         {
             "prompt": "original text",
-            "segments": [
+            "candidates": [
                 {"role": "character", "text": "...", "start_pos": 0, "end_pos": 10},
                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
                 ...
@@ -218,7 +218,7 @@ async def analyze_prompt_text(
         )
         analysis = {
             "prompt": request.prompt_text,
-            "segments": [],
+            "candidates": [],
             "tags": []
         }
 

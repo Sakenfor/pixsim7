@@ -5,10 +5,13 @@
  * Shows structured breakdown of prompt components without modifying database.
  */
 
-import { useState } from 'react';
 import { Panel, Button, Input } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
+import { PromptCandidatesViewer, usePromptInspection } from '@features/prompts';
+
 import { Icon } from '../lib/icons';
-import { PromptSegmentsViewer, usePromptInspection } from '@features/prompts';
+
 
 export function PromptInspectorDev() {
   // Input field values (strings)
@@ -23,7 +26,7 @@ export function PromptInspectorDev() {
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Use the hook for data fetching
-  const { prompt, segments, loading, error } = usePromptInspection({
+  const { prompt, candidates, loading, error } = usePromptInspection({
     assetId: activeAssetId,
     jobId: activeJobId,
   });
@@ -119,9 +122,9 @@ export function PromptInspectorDev() {
 
       {/* Results Section */}
       {prompt && (
-        <PromptSegmentsViewer
+        <PromptCandidatesViewer
           prompt={prompt}
-          segments={segments}
+          candidates={candidates}
         />
       )}
 

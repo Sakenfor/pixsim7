@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional
 
 from pixsim7.backend.main.lib.registry import SimpleRegistry
-from pixsim7.backend.main.services.prompt.parser.ontology import ROLE_KEYWORDS
 
 
 DEFAULT_ROLE_PRIORITIES: Dict[str, int] = {
@@ -86,17 +85,98 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
         ]
         return PromptRoleRegistry(roles=roles)
 
+    @staticmethod
+    def _normalize_vocab_role_id(role_id: str) -> str:
+        role_key = role_id.strip().lower()
+        if role_key.startswith("role:"):
+            role_key = role_key.split(":", 1)[1]
+        if role_key.startswith("prompt_role:"):
+            role_key = role_key.split(":", 1)[1]
+        return role_key
+
+    @staticmethod
+    def _merge_keywords(*groups: Iterable[str]) -> List[str]:
+        merged: List[str] = []
+        seen = set()
+        for group in groups:
+            for keyword in group:
+                kw = keyword.lower()
+                if kw and kw not in seen:
+                    seen.add(kw)
+                    merged.append(kw)
+        return merged
+
+    @staticmethod
+    def _load_prompt_roles_from_vocab() -> List[object]:
+        try:
+            from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+
+            registry = get_registry()
+            return list(registry.all_prompt_roles())
+        except Exception:
+            return []
+
     def _register_builtin_roles(self) -> None:
-        for role_id, keywords in ROLE_KEYWORDS.items():
-            self.register_role(
-                PromptRoleDefinition(
-                    id=role_id,
-                    label=role_id.replace("_", " ").title(),
-                    description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
-                    keywords=keywords,
-                    priority=DEFAULT_ROLE_PRIORITIES.get(role_id, DEFAULT_DYNAMIC_PRIORITY),
+        vocab_roles = self._load_prompt_roles_from_vocab()
+        composition_roles: Dict[str, object] = {}
+        if vocab_roles:
+            try:
+                from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+
+                registry = get_registry()
+                composition_roles = {
+                    str(role.id).strip().lower(): role
+                    for role in registry.all_roles()
+                }
+            except Exception:
+                composition_roles = {}
+        if vocab_roles:
+            for role in vocab_roles:
+                role_id = self._normalize_vocab_role_id(getattr(role, "id", ""))
+                if not role_id:
+                    continue
+                label = getattr(role, "label", "") or ""
+                description = getattr(role, "description", "") or ""
+                composition_role = getattr(role, "composition_role", None)
+                if composition_role:
+                    comp_id = str(composition_role).strip().lower()
+                    if comp_id and not comp_id.startswith("role:"):
+                        comp_id = f"role:{comp_id}"
+                    comp = composition_roles.get(comp_id)
+                    if comp:
+                        if not label:
+                            label = getattr(comp, "label", "") or label
+                        if not description:
+                            description = getattr(comp, "description", "") or description
+                merged_keywords = self._merge_keywords(
+                    getattr(role, "keywords", []) or [],
                 )
-            )
+                priority = getattr(role, "priority", None)
+                if priority is None:
+                    priority = DEFAULT_ROLE_PRIORITIES.get(role_id, DEFAULT_DYNAMIC_PRIORITY)
+                self.register_role(
+                    PromptRoleDefinition(
+                        id=role_id,
+                        label=label or role_id.replace("_", " ").title(),
+                        description=description or DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
+                        keywords=merged_keywords,
+                        aliases=list(getattr(role, "aliases", []) or []),
+                        priority=priority,
+                    )
+                )
+        else:
+            for role_id, priority in DEFAULT_ROLE_PRIORITIES.items():
+                if role_id == "other":
+                    continue
+                self.register_role(
+                    PromptRoleDefinition(
+                        id=role_id,
+                        label=role_id.replace("_", " ").title(),
+                        description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
+                        keywords=[],
+                        priority=priority,
+                    )
+                )
 
         if not self.has("other"):
             self.register_role(

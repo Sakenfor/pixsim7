@@ -9,21 +9,21 @@
  */
 
 // Re-export prompt types from canonical source
-export type { PromptSegment, PromptSegmentRole, PromptParseResult } from '@pixsim7/shared.types/prompt';
+export type { PromptBlockCandidate, PromptSegmentRole } from '@pixsim7/shared.types/prompt';
 import type { PromptSegmentRole } from '@pixsim7/shared.types/prompt';
 
-// ===== Prompt Segment Graph Types =====
+// ===== Prompt Candidate Graph Types =====
 
-export type PromptGraphNodeKind = 'prompt' | 'segment' | 'role';
+export type PromptGraphNodeKind = 'prompt' | 'candidate' | 'role';
 export type PromptGraphEdgeKind = 'next' | 'contains' | 'role-group';
 
 export interface PromptGraphNode {
   id: string;                     // e.g., "prompt:{versionId}", "seg:{idx}", "role:action"
   kind: PromptGraphNodeKind;
   label: string;                  // short label for node
-  role?: PromptSegmentRole;       // for segment nodes (character/action/setting/...)
-  versionId?: string;             // prompt version UUID (for prompt/segment nodes)
-  segmentIndex?: number;          // for segment nodes
+  role?: PromptSegmentRole;       // for candidate nodes (character/action/setting/...)
+  versionId?: string;             // prompt version UUID (for prompt/candidate nodes)
+  candidateIndex?: number;        // for candidate nodes
   text?: string;                  // full text for tooltips
 }
 

@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 BASE_ANALYSIS_SYSTEM_PROMPT = """You are a prompt analyzer for an AI video generation system.
 
-Your task is to parse a prompt into semantic blocks, classifying each by role.
+Your task is to parse a prompt into semantic candidates, classifying each by role.
 
 ROLES (use exactly these values):
 {role_lines}
@@ -34,7 +34,7 @@ Ontology ID format: "prefix:name"
 
 RESPONSE FORMAT (JSON only, no other text):
 {
-  "blocks": [
+  "candidates": [
     {
       "role": "<role_id>",
       "text": "the exact text from the prompt",
@@ -68,7 +68,7 @@ async def analyze_prompt_with_llm(
         Dict with same format as analyze_prompt():
         {
             "prompt": "<original text>",
-            "blocks": [{"role": "...", "text": "...", "category": "...", "ontology_ids": [...]}],
+            "candidates": [{"role": "...", "text": "...", "category": "...", "ontology_ids": [...]}],
             "tags": [...]
         }
     """
@@ -117,18 +117,19 @@ async def analyze_prompt_with_llm(
         cleaned = _clean_json_response(response_text)
         result = json.loads(cleaned)
 
-        blocks = _normalize_blocks(result.get("blocks", []), role_registry)
+        raw_candidates = result.get("candidates") or result.get("blocks") or []
+        candidates = _normalize_candidates(raw_candidates, role_registry)
         tags = result.get("tags", [])
 
-        derived_tags = _derive_tags_from_blocks(blocks)
+        derived_tags = _derive_tags_from_candidates(candidates)
         all_tags = list(set(tags + derived_tags))
 
-        logger.info(f"LLM analysis complete: {len(blocks)} blocks, {len(all_tags)} tags")
+        logger.info(f"LLM analysis complete: {len(candidates)} candidates, {len(all_tags)} tags")
 
         sorted_tags = sorted(all_tags)
         return {
             "prompt": text,
-            "blocks": blocks,
+            "candidates": candidates,
             "tags": sorted_tags,
             "tags_flat": sorted_tags,  # Consistent with simple parser output
         }
@@ -159,39 +160,40 @@ def _clean_json_response(response: str) -> str:
     return cleaned.strip()
 
 
-def _normalize_blocks(
-    blocks: List[Dict[str, Any]],
+def _normalize_candidates(
+    candidates: List[Dict[str, Any]],
     role_registry: PromptRoleRegistry,
 ) -> List[Dict[str, Any]]:
-    """Normalize and validate blocks from LLM response."""
+    """Normalize and validate candidates from LLM response."""
     normalized = []
 
-    for block in blocks:
-        role = block.get("role")
+    for candidate in candidates:
+        role = candidate.get("role")
         role_id = role_registry.resolve_role_id(str(role)) if role else "other"
         if not role_registry.has_role(role_id):
             role_id = "other"
 
         normalized.append({
             "role": role_id,
-            "text": block.get("text", ""),
-            "category": block.get("category"),
-            "ontology_ids": block.get("ontology_ids", []),
+            "text": candidate.get("text", ""),
+            "category": candidate.get("category"),
+            "ontology_ids": candidate.get("ontology_ids", []),
+            "source_type": "llm",
         })
 
     return normalized
 
 
-def _derive_tags_from_blocks(blocks: List[Dict[str, Any]]) -> List[str]:
-    """Derive standard tags from blocks."""
+def _derive_tags_from_candidates(candidates: List[Dict[str, Any]]) -> List[str]:
+    """Derive standard tags from candidates."""
     tags = set()
 
-    for block in blocks:
-        role = block.get("role")
+    for candidate in candidates:
+        role = candidate.get("role")
         if role:
             tags.add(f"has:{role}")
 
-        for oid in block.get("ontology_ids", []):
+        for oid in candidate.get("ontology_ids", []):
             if oid.startswith("cam:"):
                 tags.add(f"camera:{oid.split(':')[1]}")
             elif oid.startswith("manner:"):

@@ -3,6 +3,7 @@ Unified Vocabulary System.
 
 This package provides a centralized registry for all vocabulary types:
 - slots (provides/requires matching)
+- prompt_roles (prompt segment roles)
 - roles (composition roles)
 - poses (character poses)
 - moods (emotional tones)
@@ -34,6 +35,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotBinding,
     Progression,
     RoleDef,
+    PromptRoleDef,
     PoseDef,
     MoodDef,
     RatingDef,
@@ -76,6 +78,11 @@ def get_slot(slot_id: str) -> Optional[SlotDef]:
 def get_role(role_id: str) -> Optional[RoleDef]:
     """Get a role by ID."""
     return get_registry().get_role(role_id)
+
+
+def get_prompt_role(role_id: str) -> Optional[PromptRoleDef]:
+    """Get a prompt role by ID."""
+    return get_registry().get_prompt_role(role_id)
 
 
 def get_pose(pose_id: str) -> Optional[PoseDef]:
@@ -134,6 +141,7 @@ __all__ = [
     "SlotBinding",
     "Progression",
     "RoleDef",
+    "PromptRoleDef",
     "PoseDef",
     "MoodDef",
     "RatingDef",
@@ -158,6 +166,7 @@ __all__ = [
     # Convenience functions
     "get_slot",
     "get_role",
+    "get_prompt_role",
     "get_pose",
     "get_mood",
     "get_rating",

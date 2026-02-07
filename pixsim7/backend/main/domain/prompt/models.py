@@ -21,6 +21,7 @@ from pixsim7.backend.main.domain.prompt.enums import (
     ComplexityLevel,
     BlockIntent,
 )
+from pixsim7.backend.main.shared.datetime_utils import utcnow
 
 
 class PromptFamily(SQLModel, table=True):
@@ -93,7 +94,7 @@ class PromptFamily(SQLModel, table=True):
 
     # Metadata
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
     created_by: Optional[str] = Field(
@@ -126,7 +127,7 @@ class PromptVersion(SQLModel, table=True):
     Individual version of a prompt (Git commit analog).
 
     Immutable once created - changes require new version.
-    The prompt_analysis JSON contains parsed blocks for quick access;
+    The prompt_analysis JSON contains parsed candidates for quick access;
     meaningful blocks are also stored in PromptBlock table for querying.
     """
     __tablename__ = "prompt_versions"
@@ -198,7 +199,7 @@ class PromptVersion(SQLModel, table=True):
         description="Who created this version"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
 
@@ -529,11 +530,11 @@ class PromptBlock(SQLModel, table=True):
 
     # Timestamps
     created_at: datetime = Field(
-        default_factory=datetime.utcnow,
+        default_factory=utcnow,
         index=True
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow
+        default_factory=utcnow
     )
 
     __table_args__ = (

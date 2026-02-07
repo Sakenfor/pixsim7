@@ -1,9 +1,9 @@
 /**
  * Prompt Block Graph Surface
  *
- * Visualizes parsed prompt blocks as a graph showing:
+ * Visualizes parsed prompt candidates as a graph showing:
  * - Prompt node at the top
- * - Block nodes for each parsed block
+ * - Candidate nodes for each parsed block
  * - Edges showing containment and sequence
  *
  * Part of Task 81 - Prompt & Action Block Graph Surfaces
@@ -24,12 +24,12 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
-import type { PromptSegment, PromptSegmentRole } from '@/types/promptGraphs';
+import type { PromptBlockCandidate, PromptSegmentRole } from '@/types/promptGraphs';
 
-import { buildPromptSegmentGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/builders/promptGraphBuilder';
+import { buildPromptCandidateGraph, getNodeColorByRole, getEdgeStyle } from '../../lib/builders/promptGraphBuilder';
 
 export interface PromptBlockGraphSurfaceProps {
-  segments: PromptSegment[];
+  candidates: PromptBlockCandidate[];
   versionId?: string;
   promptTitle?: string;
   includeRoleGroups?: boolean;
@@ -39,13 +39,13 @@ export interface PromptBlockGraphSurfaceProps {
  * PromptBlockGraphSurface - Main graph component
  */
 export function PromptBlockGraphSurface({
-  segments,
+  candidates,
   versionId = 'unknown',
   promptTitle = 'Prompt',
   includeRoleGroups = false,
 }: PromptBlockGraphSurfaceProps) {
   const { nodes: initialNodes, edges: initialEdges } = useMemo(() => {
-    const graph = buildPromptSegmentGraph(segments, {
+    const graph = buildPromptCandidateGraph(candidates, {
       versionId,
       promptTitle,
       includeRoleGroups,
@@ -58,10 +58,10 @@ export function PromptBlockGraphSurface({
       if (node.kind === 'prompt') {
         // Prompt node at top center
         position = { x: 400, y: 50 };
-      } else if (node.kind === 'segment') {
-        // Segment nodes in a vertical chain
-        const segmentIndex = node.segmentIndex ?? index;
-        position = { x: 400, y: 200 + segmentIndex * 120 };
+      } else if (node.kind === 'candidate') {
+        // Candidate nodes in a vertical chain
+        const candidateIndex = node.candidateIndex ?? index;
+        position = { x: 400, y: 200 + candidateIndex * 120 };
       } else if (node.kind === 'role') {
         // Role nodes on the left
         const roleIndex = graph.nodes.filter(n => n.kind === 'role').indexOf(node);
@@ -70,7 +70,7 @@ export function PromptBlockGraphSurface({
 
       return {
         id: node.id,
-        type: node.kind === 'prompt' ? 'promptNode' : node.kind === 'segment' ? 'segmentNode' : 'roleNode',
+        type: node.kind === 'prompt' ? 'promptNode' : node.kind === 'candidate' ? 'candidateNode' : 'roleNode',
         position,
         data: {
           label: node.label,
@@ -100,7 +100,7 @@ export function PromptBlockGraphSurface({
     });
 
     return { nodes, edges };
-  }, [segments, versionId, promptTitle, includeRoleGroups]);
+  }, [candidates, versionId, promptTitle, includeRoleGroups]);
 
   const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edges, , onEdgesChange] = useEdgesState(initialEdges);
@@ -108,17 +108,17 @@ export function PromptBlockGraphSurface({
   const nodeTypes = useMemo<NodeTypes>(
     () => ({
       promptNode: PromptNode,
-      segmentNode: SegmentNode,
+      candidateNode: CandidateNode,
       roleNode: RoleNode,
     }),
     []
   );
 
-  if (!segments || segments.length === 0) {
+  if (!candidates || candidates.length === 0) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
         <div className="text-center text-neutral-500 dark:text-neutral-400">
-          <p className="text-lg font-semibold mb-2">No segments to display</p>
+          <p className="text-lg font-semibold mb-2">No candidates to display</p>
           <p className="text-sm">Select a prompt version to visualize its structure</p>
         </div>
       </div>
@@ -141,8 +141,8 @@ export function PromptBlockGraphSurface({
         <MiniMap
           nodeColor={(node) => {
             if (node.type === 'promptNode') return '#6366f1'; // indigo-500
-            if (node.type === 'segmentNode') {
-              const nodeData = node.data as SegmentNodeData;
+            if (node.type === 'candidateNode') {
+              const nodeData = node.data as CandidateNodeData;
               return getNodeColorByRole(nodeData.role);
             }
             if (node.type === 'roleNode') return '#94a3b8'; // neutral-400
@@ -181,13 +181,13 @@ function PromptNode({ data }: { data: PromptNodeData }) {
   );
 }
 
-interface SegmentNodeData {
+interface CandidateNodeData {
   label: string;
   role?: PromptSegmentRole;
   text?: string;
 }
 
-function SegmentNode({ data }: { data: SegmentNodeData }) {
+function CandidateNode({ data }: { data: CandidateNodeData }) {
   const bgColor = getNodeColorByRole(data.role);
   const isLightColor = ['#10b981', '#06b6d4', '#f59e0b'].includes(bgColor);
 

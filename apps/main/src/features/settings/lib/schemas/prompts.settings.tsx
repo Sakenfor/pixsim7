@@ -5,12 +5,17 @@
  */
 /* eslint-disable react-refresh/only-export-components */
 
+import {
+  PROMPT_ROLE_COLORS,
+  PROMPT_ROLE_LABELS,
+  PROMPT_ROLE_PRIORITY,
+} from '@pixsim7/shared.types';
 import { useEffect, useState } from 'react';
 
 import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers';
 import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
 
-import { usePromptSettingsStore } from '@features/prompts';
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
@@ -65,7 +70,7 @@ function AnalyzerSelector({
 const analysisTab: SettingTab = {
   id: 'analysis',
   label: 'Analysis',
-  icon: '🔍',
+  icon: 'analysis',
   groups: [
     {
       id: 'prompt-analysis',
@@ -95,7 +100,7 @@ const analysisTab: SettingTab = {
 const extractionTab: SettingTab = {
   id: 'extraction',
   label: 'Block Extraction',
-  icon: '📦',
+  icon: 'blocks',
   groups: [
     {
       id: 'block-extraction',
@@ -145,6 +150,40 @@ const extractionTab: SettingTab = {
   ),
 };
 
+const colorOptions = [
+  { value: 'blue', label: 'Blue' },
+  { value: 'green', label: 'Green' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'pink', label: 'Pink' },
+  { value: 'cyan', label: 'Cyan' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'gray', label: 'Gray' },
+];
+
+const roleColorFields = PROMPT_ROLE_PRIORITY.map((roleId) => ({
+  id: `roleColor.${roleId}`,
+  type: 'select',
+  label: `${PROMPT_ROLE_LABELS[roleId]} Color`,
+  description: `Override ${PROMPT_ROLE_LABELS[roleId].toLowerCase()} highlight color in prompt UIs`,
+  options: colorOptions,
+  defaultValue: PROMPT_ROLE_COLORS[roleId] ?? 'gray',
+}));
+
+const appearanceTab: SettingTab = {
+  id: 'appearance',
+  label: 'Appearance',
+  icon: 'palette',
+  groups: [
+    {
+      id: 'role-colors',
+      title: 'Prompt Role Colors',
+      description: 'Override prompt role colors for prompt panels and analysis views.',
+      fields: roleColorFields,
+    },
+  ],
+};
+
 function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
   const {
     autoAnalyze,
@@ -152,15 +191,21 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     autoExtractBlocks,
     extractionThreshold,
     defaultCurationStatus,
+    promptRoleColors,
     setAutoAnalyze,
     setDefaultAnalyzer,
     setAutoExtractBlocks,
     setExtractionThreshold,
     setDefaultCurationStatus,
+    setPromptRoleColor,
   } = usePromptSettingsStore();
 
   return {
     get: (fieldId: string) => {
+      if (fieldId.startsWith('roleColor.')) {
+        const roleId = fieldId.slice('roleColor.'.length);
+        return promptRoleColors[roleId] ?? PROMPT_ROLE_COLORS[roleId as keyof typeof PROMPT_ROLE_COLORS] ?? 'gray';
+      }
       switch (fieldId) {
         case 'autoAnalyze': return autoAnalyze;
         case 'defaultAnalyzer': return defaultAnalyzer;
@@ -171,6 +216,11 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       }
     },
     set: (fieldId: string, value: any) => {
+      if (fieldId.startsWith('roleColor.')) {
+        const roleId = fieldId.slice('roleColor.'.length);
+        setPromptRoleColor(roleId, value);
+        return;
+      }
       switch (fieldId) {
         case 'autoAnalyze': setAutoAnalyze(value); break;
         case 'defaultAnalyzer': setDefaultAnalyzer(value); break;
@@ -185,6 +235,7 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       autoExtractBlocks,
       extractionThreshold: extractionThreshold.toString(),
       defaultCurationStatus,
+      promptRoleColors,
     }),
   };
 }
@@ -194,7 +245,7 @@ export function registerPromptSettings(): () => void {
     categoryId: 'prompts',
     category: {
       label: 'Prompts',
-      icon: '📝',
+      icon: 'prompts',
       order: 35,
     },
     tab: analysisTab,
@@ -207,8 +258,15 @@ export function registerPromptSettings(): () => void {
     useStore: usePromptSettingsStoreAdapter,
   });
 
+  const unregister3 = settingsSchemaRegistry.register({
+    categoryId: 'prompts',
+    tab: appearanceTab,
+    useStore: usePromptSettingsStoreAdapter,
+  });
+
   return () => {
     unregister1();
     unregister2();
+    unregister3();
   };
 }

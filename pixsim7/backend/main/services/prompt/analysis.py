@@ -8,7 +8,7 @@ Keeps adapters pure (no DB), handles storage decisions here.
 import hashlib
 import logging
 from typing import Optional, Dict, Any, Tuple, List
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,7 +76,7 @@ class PromptAnalysisService:
             Analysis result dict:
             {
                 "prompt": "original text",
-                "blocks": [...],
+                "candidates": [...],
                 "tags": [...],
                 "analyzer_id": "prompt:simple"
             }
@@ -137,7 +137,7 @@ class PromptAnalysisService:
             semantic_context: Pre-built semantic context (overrides pack_ids)
             precomputed_analysis: Pre-computed analysis from block composition.
                 If provided, skips analyzer call. Must match analyzer output shape:
-                {"prompt": "...", "blocks": [...], "tags": [...], "source": "composition"}
+                {"prompt": "...", "candidates": [...], "tags": [...], "source": "composition"}
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
@@ -193,7 +193,7 @@ class PromptAnalysisService:
                         semantic_context=semantic_context,
                     )
                 existing.prompt_analysis = analysis
-                existing.updated_at = datetime.utcnow()
+                existing.updated_at = datetime.now(timezone.utc)
                 await self.db.flush()
 
             return existing, False
@@ -218,13 +218,13 @@ class PromptAnalysisService:
             family_id=family_hint,
             version_number=None if family_hint is None else 1,
             author=author,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
 
         self.db.add(new_version)
         await self.db.flush()
 
-        logger.info(f"Created PromptVersion {new_version.id} with {len(analysis.get('blocks', []))} blocks")
+        logger.info(f"Created PromptVersion {new_version.id} with {len(analysis.get('candidates', []))} candidates")
         return new_version, True
 
     async def reanalyze_version(
@@ -276,7 +276,7 @@ class PromptAnalysisService:
             semantic_context=semantic_context,
         )
         version.prompt_analysis = analysis
-        version.updated_at = datetime.utcnow()
+        version.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
 

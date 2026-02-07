@@ -6,8 +6,10 @@
  */
 
 import { useState, useEffect } from 'react';
+
 import { useApi } from '@/hooks/useApi';
-import type { PromptSegment } from '../types';
+
+import type { PromptBlockCandidate } from '../types';
 
 export interface UsePromptInspectionOptions {
   assetId?: number;
@@ -16,7 +18,7 @@ export interface UsePromptInspectionOptions {
 
 export interface PromptInspectionState {
   prompt: string | null;
-  segments: PromptSegment[];
+  candidates: PromptBlockCandidate[];
   loading: boolean;
   error: string | null;
 }
@@ -29,7 +31,7 @@ export function usePromptInspection(
 
   const [state, setState] = useState<PromptInspectionState>({
     prompt: null,
-    segments: [],
+    candidates: [],
     loading: false,
     error: null,
   });
@@ -39,7 +41,7 @@ export function usePromptInspection(
     if (!assetId && !jobId) {
       setState({
         prompt: null,
-        segments: [],
+        candidates: [],
         loading: false,
         error: null,
       });
@@ -50,7 +52,7 @@ export function usePromptInspection(
     if (assetId && jobId) {
       setState({
         prompt: null,
-        segments: [],
+        candidates: [],
         loading: false,
         error: 'Please provide only one of assetId or jobId, not both',
       });
@@ -75,19 +77,19 @@ export function usePromptInspection(
           params.set('job_id', String(jobId));
         }
 
-        // Call API - backend returns { prompt, segments }
+        // Call API - backend returns { prompt, candidates }
         const response = await api.get(`/dev/prompt-inspector?${params.toString()}`);
 
         setState({
           prompt: response.prompt,
-          segments: response.segments || [],
+          candidates: response.candidates || [],
           loading: false,
           error: null,
         });
       } catch (err: unknown) {
         setState({
           prompt: null,
-          segments: [],
+          candidates: [],
           loading: false,
           error: err instanceof Error ? err.message : 'Failed to fetch prompt inspection',
         });

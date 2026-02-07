@@ -10,6 +10,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     SlotBinding,
     Progression,
     RoleDef,
+    PromptRoleDef,
     PoseDef,
     MoodDef,
     RatingDef,
@@ -46,11 +47,28 @@ def make_role(id: str, data: Dict[str, Any], source: str) -> RoleDef:
         description=data.get("description", ""),
         color=data.get("color", "gray"),
         default_layer=data.get("default_layer", 0),
+        default_influence=data.get("default_influence", data.get("defaultInfluence", "content")),
         slots=SlotBinding(
             provides=slots_data.get("provides", []),
             requires=slots_data.get("requires", []),
         ),
         tags=data.get("tags", []),
+        aliases=data.get("aliases", []),
+        source=source,
+    )
+
+
+def make_prompt_role(id: str, data: Dict[str, Any], source: str) -> PromptRoleDef:
+    """Create a PromptRoleDef from YAML data."""
+    priority_value = data.get("priority")
+    priority = int(priority_value) if priority_value is not None else None
+    return PromptRoleDef(
+        id=id,
+        label=data.get("label", ""),
+        description=data.get("description", ""),
+        priority=priority,
+        composition_role=data.get("composition_role", data.get("compositionRole")),
+        keywords=data.get("keywords", []),
         aliases=data.get("aliases", []),
         source=source,
     )
@@ -186,6 +204,7 @@ def make_generic(id: str, data: Dict[str, Any], source: str) -> GenericVocabDef:
 
 __all__ = [
     "make_slot",
+    "make_prompt_role",
     "make_role",
     "make_pose",
     "make_mood",

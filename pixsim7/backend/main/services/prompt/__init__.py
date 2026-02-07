@@ -32,6 +32,12 @@ from .semantic_context import (
     build_prompt_semantic_context,
     build_prompt_semantic_context_from_packs,
 )
+from .candidates import (
+    candidate_from_segment,
+    candidate_from_suggested_action_block,
+    candidates_from_segments,
+)
+from pixsim7.backend.main.shared.schemas.discovery_schemas import PromptBlockCandidate
 from .import_ import (
     PromptSource,
     PromptImportSpec,
@@ -57,7 +63,7 @@ from .parser import (
     analyze_prompt_with_llm,
     analyzer_registry,
     analyze_prompt,
-    parse_prompt_to_blocks,
+    parse_prompt_to_candidates,
 )
 
 # Context
@@ -90,6 +96,11 @@ __all__ = [
     "PromptSource",
     "PromptImportSpec",
     "prepare_import_payloads",
+    # Candidates
+    "PromptBlockCandidate",
+    "candidate_from_segment",
+    "candidate_from_suggested_action_block",
+    "candidates_from_segments",
     # Block services
     "PromptBlockService",
     "BlockCompositionEngine",
@@ -105,7 +116,7 @@ __all__ = [
     "analyze_prompt_with_llm",
     "analyzer_registry",
     "analyze_prompt",
-    "parse_prompt_to_blocks",
+    "parse_prompt_to_candidates",
     # Context
     "FieldMapping",
     "merge_field_mappings",

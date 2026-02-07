@@ -79,6 +79,8 @@ _BASELINE_ROLE_KEYWORDS: Dict[str, List[str]] = {
         "frustrated", "annoyed",
         # Atmosphere
         "tense", "relaxed", "calm", "chaotic", "peaceful",
+        # Tone/intensity
+        "soft", "intense", "harsh", "rough", "violent",
     ],
 
     "romance": [
@@ -98,11 +100,12 @@ _BASELINE_ROLE_KEYWORDS: Dict[str, List[str]] = {
         # Camera types
         "camera", "shot", "frame", "framing", "angle",
         # Shot types
-        "close-up", "closeup", "wide", "medium", "extreme",
-        "establishing", "cutaway",
+        "close-up", "closeup", "close up", "wide", "medium", "extreme",
+        "establishing", "cutaway", "tight framing",
         # Perspectives
         "pov", "point of view", "first-person", "third-person",
         "over-the-shoulder", "bird's eye", "low angle", "high angle",
+        "viewpoint",
         # Camera movement
         "pan", "zoom", "dolly", "tracking", "steadicam",
     ],
@@ -212,9 +215,10 @@ def sync_from_vocabularies(force: bool = False) -> Dict[str, int]:
 
             # Pull keywords from poses vocabulary (can indicate actions)
             for pose in registry.all_poses():
-                if hasattr(pose, 'keywords') and pose.keywords:
+                detector_labels = getattr(pose, "detector_labels", None)
+                if detector_labels:
                     existing = set(ROLE_KEYWORDS.get("action", []))
-                    for kw in pose.keywords:
+                    for kw in detector_labels:
                         kw_lower = kw.lower()
                         if kw_lower not in existing:
                             ROLE_KEYWORDS.setdefault("action", []).append(kw_lower)

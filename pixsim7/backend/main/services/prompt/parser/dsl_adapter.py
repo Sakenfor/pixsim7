@@ -18,18 +18,30 @@ Design:
 from typing import Dict, Any, List, Set, Optional, TypedDict
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
+from pixsim7.backend.main.services.prompt.candidates import candidates_from_segments
 from .simple import SimplePromptParser
+
+
+# Sub-tag derivation rules: tag name -> trigger keywords.
+# Keywords here MUST also exist in role keyword lists (ontology.py) so they go
+# through the parser pipeline (stemming, negation, hints) before reaching here.
+_TAG_KEYWORD_RULES: Dict[str, Set[str]] = {
+    "tone:soft": {"gentle", "soft", "tender"},
+    "tone:intense": {"intense", "harsh", "rough", "violent"},
+    "camera:pov": {"pov", "first-person", "point of view", "viewpoint"},
+    "camera:closeup": {"close-up", "closeup", "close up", "tight framing"},
+}
 
 
 class PromptTag(TypedDict, total=False):
     """Structured tag with segment linking."""
     tag: str
-    segments: List[int]  # Indices into segments array
+    candidates: List[int]  # Indices into candidates array
     source: str  # 'role' | 'keyword' | 'ontology'
     confidence: float
 
 
-async def parse_prompt_to_segments(
+async def parse_prompt_to_candidates(
     text: str,
     model_id: Optional[str] = None,
     *,
@@ -37,10 +49,10 @@ async def parse_prompt_to_segments(
     parser_hints: Optional[Dict[str, List[str]]] = None,
 ) -> Dict[str, Any]:
     """
-    Parse prompt text into segments.
+    Parse prompt text into normalized candidates.
 
-    Pure function: text → {"segments": [...]}
-    Segments are transient parsed pieces (not stored PromptBlock entities).
+    Pure function: text → {"candidates": [...]}
+    Candidates are transient parsed pieces (not stored PromptBlock entities).
 
     Args:
         text: Prompt text to parse
@@ -49,14 +61,17 @@ async def parse_prompt_to_segments(
         parser_hints: Optional parser hints to augment role keywords.
 
     Returns:
-        Dict with "segments" key containing list of:
+        Dict with "candidates" key containing list of:
         {
             "role": "<role_id>",
             "text": "...",
             "start_pos": int,
             "end_pos": int,
+            "sentence_index": int,
             "confidence": float,
             "matched_keywords": [...],
+            "metadata": { ... },
+            "role_scores": { ... },
         }
     """
     # Currently only SimplePromptParser is implemented
@@ -65,49 +80,22 @@ async def parse_prompt_to_segments(
 
     parsed = await parser.parse(text)
 
-    segments: List[Dict[str, Any]] = []
-    for seg in parsed.segments:
-        segment_dict: Dict[str, Any] = {
-            "role": seg.role,
-            "text": seg.text,
-            "start_pos": seg.start_pos,
-            "end_pos": seg.end_pos,
-            "confidence": seg.confidence,
-        }
-        # Only include matched_keywords if non-empty
-        if seg.matched_keywords:
-            segment_dict["matched_keywords"] = seg.matched_keywords
-        segments.append(segment_dict)
-
-    return {"segments": segments}
+    candidates = candidates_from_segments(parsed.segments, source_type="parsed")
+    return {"candidates": [candidate.model_dump() for candidate in candidates]}
 
 
-# Backward-compatibility alias (deprecated, use parse_prompt_to_segments)
-async def parse_prompt_to_blocks(
-    text: str,
-    model_id: Optional[str] = None,
-    *,
-    role_registry: Optional[PromptRoleRegistry] = None,
-    parser_hints: Optional[Dict[str, List[str]]] = None,
-) -> Dict[str, Any]:
-    """Deprecated: Use parse_prompt_to_segments instead."""
-    result = await parse_prompt_to_segments(text, model_id, role_registry=role_registry, parser_hints=parser_hints)
-    # Return old format for backward compatibility
-    return {"blocks": result.get("segments", [])}
-
-
-def _derive_tags_from_segments(
-    segments: List[Dict[str, Any]],
+def _derive_tags_from_candidates(
+    candidates: List[Dict[str, Any]],
     *,
     structured: bool = True,
 ) -> tuple[List[PromptTag], List[str]]:
     """
-    Derive tags from parsed prompt segments.
+    Derive tags from parsed prompt candidates.
 
     Returns structured tags with segment linking and flat tags for backward compatibility.
 
     Args:
-        segments: List of segment dicts from parse_prompt_to_segments
+        candidates: List of candidate dicts from parse_prompt_to_candidates
         structured: If True, return full structured tags; if False, only flat
 
     Returns:
@@ -115,15 +103,14 @@ def _derive_tags_from_segments(
         - structured_tags: List of PromptTag dicts with segment indices
         - flat_tags: Simple list of tag strings for backward compatibility
     """
-    # Track which segments contribute to each tag
+    # Track which candidates contribute to each tag
     role_tag_segments: Dict[str, List[int]] = {}
     role_tag_confidence: Dict[str, float] = {}
-    keyword_tags: Dict[str, tuple[List[int], str]] = {}  # tag -> (segments, source)
+    keyword_tags: Dict[str, tuple[List[int], str]] = {}  # tag -> (candidates, source)
 
-    for idx, segment in enumerate(segments):
-        role = segment.get("role")
-        text = (segment.get("text") or "").lower()
-        confidence = segment.get("confidence", 0.0)
+    for idx, candidate in enumerate(candidates):
+        role = candidate.get("role")
+        confidence = candidate.get("confidence", 0.0)
 
         # Role-based tags
         if role and role != "other":
@@ -135,15 +122,30 @@ def _derive_tags_from_segments(
             # Keep max confidence for the tag
             role_tag_confidence[tag] = max(role_tag_confidence[tag], confidence)
 
-        # Keyword-based tags for tone/camera
-        if any(word in text for word in ("gentle", "soft", "tender")):
-            _add_keyword_tag(keyword_tags, "tone:soft", idx, "keyword")
-        if any(word in text for word in ("intense", "harsh", "rough", "violent")):
-            _add_keyword_tag(keyword_tags, "tone:intense", idx, "keyword")
-        if any(word in text for word in ("pov", "first-person", "viewpoint")):
-            _add_keyword_tag(keyword_tags, "camera:pov", idx, "keyword")
-        if any(word in text for word in ("close-up", "close up", "tight framing")):
-            _add_keyword_tag(keyword_tags, "camera:closeup", idx, "keyword")
+        # Derive sub-tags from parser-matched keywords (benefits from
+        # stemming, negation detection, and semantic-pack hints)
+        matched_kws = {kw.lower() for kw in (candidate.get("matched_keywords") or [])}
+        for tag, trigger_keywords in _TAG_KEYWORD_RULES.items():
+            if matched_kws & trigger_keywords:
+                _add_keyword_tag(keyword_tags, tag, idx, "keyword")
+
+        # Ontology-based tags (matched vocabulary IDs)
+        metadata = candidate.get("metadata") if isinstance(candidate, dict) else None
+        ontology_ids = []
+        if isinstance(metadata, dict):
+            ontology_ids = metadata.get("ontology_ids") or []
+        if not ontology_ids:
+            ontology_ids = candidate.get("ontology_ids") or []
+        if isinstance(ontology_ids, list):
+            for oid in ontology_ids:
+                if not isinstance(oid, str) or not oid:
+                    continue
+                tag = oid.strip()
+                if not tag:
+                    continue
+                if tag in keyword_tags and keyword_tags[tag][1] != "ontology":
+                    keyword_tags[tag] = (keyword_tags[tag][0], "ontology")
+                _add_keyword_tag(keyword_tags, tag, idx, "ontology")
 
     # Build structured tags
     structured_tags: List[PromptTag] = []
@@ -152,7 +154,7 @@ def _derive_tags_from_segments(
     for tag in sorted(role_tag_segments.keys()):
         structured_tags.append({
             "tag": tag,
-            "segments": role_tag_segments[tag],
+            "candidates": role_tag_segments[tag],
             "source": "role",
             "confidence": round(role_tag_confidence[tag], 3),
         })
@@ -162,7 +164,7 @@ def _derive_tags_from_segments(
         seg_indices, source = keyword_tags[tag]
         structured_tags.append({
             "tag": tag,
-            "segments": seg_indices,
+            "candidates": seg_indices,
             "source": source,
         })
 
@@ -175,13 +177,13 @@ def _derive_tags_from_segments(
 def _add_keyword_tag(
     tags_dict: Dict[str, tuple[List[int], str]],
     tag: str,
-    segment_idx: int,
+    candidate_idx: int,
     source: str,
 ) -> None:
-    """Helper to add segment to a keyword tag."""
+    """Helper to add candidate to a keyword tag."""
     if tag not in tags_dict:
         tags_dict[tag] = ([], source)
-    tags_dict[tag][0].append(segment_idx)
+    tags_dict[tag][0].append(candidate_idx)
 
 
 async def analyze_prompt(
@@ -209,7 +211,7 @@ async def analyze_prompt(
     Returns:
         {
           "prompt": "<original text>",
-          "segments": [
+          "candidates": [
             {
               "role": "character",
               "text": "...",
@@ -221,7 +223,7 @@ async def analyze_prompt(
             ...
           ],
           "tags": [
-            {"tag": "has:character", "segments": [0], "source": "role", "confidence": 0.85},
+            {"tag": "has:character", "candidates": [0], "source": "role", "confidence": 0.85},
             ...
           ],
           "tags_flat": ["has:character", "has:setting", ...]
@@ -250,19 +252,19 @@ async def analyze_prompt(
         )
 
     # Default: use simple parser
-    result = await parse_prompt_to_segments(
+    result = await parse_prompt_to_candidates(
         text,
         role_registry=role_registry,
         parser_hints=parser_hints,
     )
-    segments: List[Dict[str, Any]] = result.get("segments", [])
+    candidates: List[Dict[str, Any]] = result.get("candidates", [])
 
     # Derive structured tags with segment linking
-    tags, tags_flat = _derive_tags_from_segments(segments)
+    tags, tags_flat = _derive_tags_from_candidates(candidates)
 
     return {
         "prompt": text,
-        "segments": segments,
+        "candidates": candidates,
         "tags": tags,
         "tags_flat": tags_flat,
     }

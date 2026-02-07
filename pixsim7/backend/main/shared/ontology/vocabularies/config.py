@@ -24,6 +24,7 @@ class VocabTypeConfig(Generic[T]):
 # (factories imports types, config imports factories)
 from pixsim7.backend.main.shared.ontology.vocabularies.factories import (
     make_slot,
+    make_prompt_role,
     make_role,
     make_pose,
     make_mood,
@@ -44,6 +45,13 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
         yaml_key="slots",
         factory=make_slot,
         keywords_attr=None,  # Slots don't have keywords
+    ),
+    "prompt_roles": VocabTypeConfig(
+        name="prompt_roles",
+        yaml_file="prompt_roles.yaml",
+        yaml_key="roles",
+        factory=make_prompt_role,
+        keywords_attr=None,  # Prompt roles use registry keywords, not match_keywords
     ),
     "roles": VocabTypeConfig(
         name="roles",

@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from .ontology import ACTION_VERBS
 from .stemmer import stem, find_stem_matches
 from .negation import get_negated_words, filter_negated_keywords
-from pixsim7.backend.main.shared.ontology.vocabularies import match_keywords
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 
 
@@ -53,6 +52,12 @@ class SimplePromptParser:
         r'([^.!?\u2026\u2014\u2013]+[\u2014\u2013](?=\s|$))'  # Em/en dash as break
     )
 
+    @staticmethod
+    def _normalize_keyword_text(value: str) -> str:
+        """Normalize delimiters so '_' and '-' behave like spaces."""
+        normalized = re.sub(r"[_-]+", " ", value.lower())
+        return " ".join(normalized.split())
+
     def __init__(
         self,
         hints: Optional[Dict[str, List[str]]] = None,
@@ -73,6 +78,26 @@ class SimplePromptParser:
             self.role_registry.apply_hints(hints)
         self.role_keywords = self.role_registry.get_role_keywords()
         self.role_priorities = self.role_registry.get_role_priorities()
+
+        # Build keyword→ontology_ids lookup from vocab registry so the parser
+        # can resolve ontology IDs during its existing matching pass (with
+        # stemming + negation) instead of running a separate match_keywords().
+        self._keyword_to_ontology: Dict[str, List[str]] = {}
+        try:
+            from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+            raw_keyword_to_ontology = get_registry().get_keyword_to_ids()
+            normalized_keyword_to_ontology: Dict[str, List[str]] = {}
+            for keyword, item_ids in raw_keyword_to_ontology.items():
+                norm = self._normalize_keyword_text(keyword)
+                if not norm:
+                    continue
+                existing = normalized_keyword_to_ontology.setdefault(norm, [])
+                for item_id in item_ids:
+                    if item_id not in existing:
+                        existing.append(item_id)
+            self._keyword_to_ontology = normalized_keyword_to_ontology
+        except Exception:
+            pass
 
     async def parse(self, text: str, hints: Optional[Dict[str, List[str]]] = None) -> PromptParseResult:
         """
@@ -168,6 +193,7 @@ class SimplePromptParser:
             Tuple of (role, metadata, confidence, matched_keywords, role_scores)
         """
         text_lower = text.lower()
+        normalized_text = self._normalize_keyword_text(text_lower)
         metadata: Dict[str, Any] = {}
         role_scores: Dict[str, float] = {}
         all_matched_keywords: List[str] = []
@@ -184,7 +210,12 @@ class SimplePromptParser:
         # Match keywords for each role using stemming
         for role, keywords in self.role_keywords.items():
             matched = self._match_keywords_with_stemming(
-                text_lower, words_in_text, stemmed_words, set(keywords), negated_words
+                text_lower,
+                normalized_text,
+                words_in_text,
+                stemmed_words,
+                set(keywords),
+                negated_words,
             )
 
             if matched:
@@ -202,13 +233,20 @@ class SimplePromptParser:
         if has_verb:
             metadata["has_verb"] = True
 
-        # Try ontology matching
-        try:
-            ontology_ids = match_keywords(text_lower)
+        # Resolve ontology IDs from already-matched keywords.
+        # This replaces the separate match_keywords() call so that ontology
+        # matching inherits stemming + negation from the parser pass above.
+        if self._keyword_to_ontology:
+            seen_ids: Set[str] = set()
+            ontology_ids: List[str] = []
+            for kw in all_matched_keywords:
+                normalized_keyword = self._normalize_keyword_text(kw)
+                for oid in self._keyword_to_ontology.get(normalized_keyword, []):
+                    if oid not in seen_ids:
+                        seen_ids.add(oid)
+                        ontology_ids.append(oid)
             if ontology_ids:
                 metadata["ontology_ids"] = ontology_ids
-        except Exception:
-            pass
 
         # Determine best role
         best_role = "other"
@@ -245,6 +283,7 @@ class SimplePromptParser:
     def _match_keywords_with_stemming(
         self,
         text_lower: str,
+        normalized_text: str,
         words_in_text: Set[str],
         stemmed_words: Set[str],
         keywords: Set[str],
@@ -267,27 +306,28 @@ class SimplePromptParser:
 
         for keyword in keywords:
             keyword_lower = keyword.lower()
+            keyword_normalized = self._normalize_keyword_text(keyword_lower)
 
             # Skip if keyword is negated
             if keyword_lower in negated_words:
                 continue
 
             # Multi-word keywords: check substring
-            if ' ' in keyword_lower:
-                if keyword_lower in text_lower:
+            if ' ' in keyword_normalized:
+                if keyword_normalized in normalized_text:
                     # Check if any word in the phrase is negated
-                    phrase_words = set(keyword_lower.split())
+                    phrase_words = set(keyword_normalized.split())
                     if not (phrase_words & negated_words):
                         matched.add(keyword)
                 continue
 
             # Single word: direct match
-            if keyword_lower in words_in_text:
+            if keyword_normalized in words_in_text:
                 matched.add(keyword)
                 continue
 
             # Stem match
-            keyword_stem = stem(keyword_lower)
+            keyword_stem = stem(keyword_normalized)
             if keyword_stem in stemmed_words:
                 # Verify the matched stem isn't from a negated word
                 # by checking if any non-negated word has this stem

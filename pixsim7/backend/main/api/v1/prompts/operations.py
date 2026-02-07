@@ -459,7 +459,7 @@ async def analyze_prompt(
     Does NOT create a PromptVersion - use generation/import flows for persistence.
 
     Returns analysis with:
-    - blocks: Parsed semantic blocks with roles and categories
+    - candidates: Parsed semantic candidates with roles and categories
     - tags: Derived tags (has:character, tone:soft, etc.)
     - ontology_ids: Matched ontology keywords
     """

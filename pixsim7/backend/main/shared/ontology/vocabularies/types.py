@@ -43,8 +43,22 @@ class RoleDef:
     description: str = ""
     color: str = "gray"
     default_layer: int = 0
+    default_influence: str = "content"
     slots: SlotBinding = field(default_factory=SlotBinding)
     tags: List[str] = field(default_factory=list)
+    aliases: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
+class PromptRoleDef:
+    """A prompt role definition for parser classification."""
+    id: str
+    label: str
+    description: str = ""
+    priority: Optional[int] = None
+    composition_role: Optional[str] = None
+    keywords: List[str] = field(default_factory=list)
     aliases: List[str] = field(default_factory=list)
     source: str = "core"
 
@@ -223,6 +237,7 @@ __all__ = [
     "SlotBinding",
     "Progression",
     "RoleDef",
+    "PromptRoleDef",
     "PoseDef",
     "MoodDef",
     "RatingDef",

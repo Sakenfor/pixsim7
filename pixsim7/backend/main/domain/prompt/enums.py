@@ -18,6 +18,7 @@ class PromptSegmentRole(str, Enum):
     SETTING = "setting"
     MOOD = "mood"
     ROMANCE = "romance"
+    CAMERA = "camera"
     OTHER = "other"
 
 

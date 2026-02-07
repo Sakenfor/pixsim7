@@ -381,7 +381,8 @@ class RoleConceptProvider(ConceptProvider):
     def get_priority(self) -> List[str]:
         from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
 
-        return get_registry().role_priority
+        priority = get_registry().role_priority
+        return [role_id[5:] if role_id.startswith("role:") else role_id for role_id in priority]
 
 
 @concept_provider

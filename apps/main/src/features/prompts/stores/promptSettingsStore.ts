@@ -3,6 +3,7 @@
  *
  * Persisted settings for prompt analysis and block extraction.
  */
+import { PROMPT_ROLE_COLORS } from '@pixsim7/shared.types';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
@@ -17,6 +18,9 @@ export interface PromptSettings {
   autoExtractBlocks: boolean;
   extractionThreshold: number;
   defaultCurationStatus: 'raw' | 'reviewed' | 'curated';
+
+  // Prompt role appearance
+  promptRoleColors: Record<string, string>;
 }
 
 interface PromptSettingsStore extends PromptSettings {
@@ -26,6 +30,8 @@ interface PromptSettingsStore extends PromptSettings {
   setAutoExtractBlocks: (value: boolean) => void;
   setExtractionThreshold: (value: number) => void;
   setDefaultCurationStatus: (value: PromptSettings['defaultCurationStatus']) => void;
+  setPromptRoleColor: (roleId: string, color: string) => void;
+  setPromptRoleColors: (colors: Record<string, string>) => void;
   reset: () => void;
 }
 
@@ -35,6 +41,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   autoExtractBlocks: false,
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',
+  promptRoleColors: { ...PROMPT_ROLE_COLORS },
 };
 
 export const usePromptSettingsStore = create<PromptSettingsStore>()(
@@ -47,6 +54,14 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
       setAutoExtractBlocks: (value) => set({ autoExtractBlocks: value }),
       setExtractionThreshold: (value) => set({ extractionThreshold: value }),
       setDefaultCurationStatus: (value) => set({ defaultCurationStatus: value }),
+      setPromptRoleColor: (roleId, color) =>
+        set((state) => ({
+          promptRoleColors: {
+            ...state.promptRoleColors,
+            [roleId]: color,
+          },
+        })),
+      setPromptRoleColors: (colors) => set({ promptRoleColors: { ...colors } }),
       reset: () => set(DEFAULT_SETTINGS),
     }),
     {

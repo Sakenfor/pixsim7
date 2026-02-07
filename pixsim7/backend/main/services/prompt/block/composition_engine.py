@@ -9,7 +9,7 @@ to skip re-analysis when the prompt originates from the block system.
 """
 from typing import List, Dict, Any, Optional, Tuple, Set
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptBlock
@@ -26,7 +26,7 @@ def derive_analysis_from_blocks(
     Produces output matching the analyzer schema exactly:
     {
         "prompt": "<assembled text>",
-        "blocks": [{"role": "...", "text": "..."}],
+        "candidates": [{"role": "...", "text": "..."}],
         "tags": ["has:character", ...],
         "source": "composition"
     }
@@ -38,25 +38,26 @@ def derive_analysis_from_blocks(
     Returns:
         Analysis dict matching analyzer output shape
     """
-    # Build blocks array from source blocks
-    analysis_blocks: List[Dict[str, Any]] = []
+    # Build candidates array from source blocks
+    analysis_candidates: List[Dict[str, Any]] = []
     for block in blocks:
-        analysis_block = {
+        analysis_candidate = {
             "role": block.block_metadata.get("role") or _infer_role_from_block(block),
             "text": block.prompt,
+            "source_type": "composition",
         }
         # Include category if available (LLM analyzers add this)
         category = block.block_metadata.get("category")
         if category:
-            analysis_block["category"] = category
-        analysis_blocks.append(analysis_block)
+            analysis_candidate["category"] = category
+        analysis_candidates.append(analysis_candidate)
 
     # Derive tags from blocks (matching _derive_tags_from_blocks logic)
     tags = _derive_tags_from_composition_blocks(blocks)
 
     return {
         "prompt": assembled_prompt,
-        "blocks": analysis_blocks,
+        "candidates": analysis_candidates,
         "tags": tags,
         "source": "composition",  # Flag indicating this came from block composition
     }
@@ -121,6 +122,10 @@ def _derive_tags_from_composition_blocks(blocks: List[PromptBlock]) -> List[str]
                     keyword_tags.add(key)
                 elif isinstance(value, str):
                     keyword_tags.add(f"{key}:{value}")
+                elif key == "ontology_ids" and isinstance(value, list):
+                    for oid in value:
+                        if isinstance(oid, str) and oid:
+                            keyword_tags.add(oid)
 
     return sorted(role_tags) + sorted(keyword_tags)
 
@@ -443,11 +448,11 @@ class BlockCompositionEngine:
             description=f"Composite of {len(component_blocks)} blocks",
             block_metadata={
                 "component_block_ids": [b.block_id for b in component_blocks],
-                "composition_date": datetime.utcnow().isoformat()
+                "composition_date": datetime.now(timezone.utc).isoformat()
             },
             created_by=created_by,
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc)
         )
 
         self.db.add(composite)

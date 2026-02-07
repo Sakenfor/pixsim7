@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
 from pixsim7.backend.main.services.prompt.parser import analyze_prompt
@@ -30,12 +30,12 @@ from pixsim7.backend.main.services.semantic_packs.utils import (
     merge_parser_hints,
 )
 from pixsim7.backend.main.services.prompt.block.utils import (
-    build_draft_action_block_from_suggestion,
+    build_draft_action_block_from_candidate,
 )
 from pixsim7.backend.main.shared.schemas.discovery_schemas import (
     SuggestedOntologyId,
     SuggestedPackEntry,
-    SuggestedActionBlock,
+    PromptBlockCandidate,
 )
 from sqlalchemy import select
 
@@ -62,12 +62,12 @@ class PromptCategoryDiscoveryRequest(BaseModel):
 class PromptCategoryDiscoveryResponse(BaseModel):
     """Response model with parser analysis and AI suggestions."""
     prompt_text: str
-    parser_roles: List[Dict[str, Any]]      # summary of roles/segments from SimplePromptParser
+    candidates: List[PromptBlockCandidate]  # normalized candidates from analysis
     existing_ontology_ids: List[str]        # union of ontology_ids already found
     suggestions: Dict[str, Any]             # raw AI suggestion payload (for debugging)
     suggested_ontology_ids: List[SuggestedOntologyId]
     suggested_packs: List[SuggestedPackEntry]
-    suggested_action_blocks: List[SuggestedActionBlock]
+    suggested_candidates: List[PromptBlockCandidate]
 
 
 # ===== ENDPOINT =====
@@ -121,8 +121,7 @@ async def discover_prompt_categories(
     # Step 1: Analyze prompt with SimplePromptParser
     try:
         analysis = await analyze_prompt(prompt_text)
-        # Use "segments" (new format), fallback to "blocks" for backward compat
-        segments = analysis.get("segments") or analysis.get("blocks", [])
+        candidates = analysis.get("candidates", [])
         tags = analysis.get("tags", [])
     except Exception as e:
         logger.error(
@@ -140,25 +139,24 @@ async def discover_prompt_categories(
 
     # Step 2: Extract existing ontology IDs from segment metadata
     existing_ontology_ids: List[str] = []
-    parser_roles: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        candidate_ids = candidate.get("ontology_ids") or []
+        if isinstance(candidate_ids, list):
+            for oid in candidate_ids:
+                if isinstance(oid, str) and oid and oid not in existing_ontology_ids:
+                    existing_ontology_ids.append(oid)
 
-    for segment in segments:
-        role = segment.get("role", "other")
-        text = segment.get("text", "")
-
-        # Build simplified segment summary for response
-        parser_roles.append({
-            "role": role,
-            "text": text,
-        })
-
-    # For now, we don't have ontology_ids in the basic analysis
-    # They would come from PromptSegment.metadata if we had access to the raw parsed segments
-    # We'll get them from the AI suggestions instead
+        metadata = candidate.get("metadata") if isinstance(candidate, dict) else None
+        if isinstance(metadata, dict):
+            meta_ids = metadata.get("ontology_ids") or []
+            if isinstance(meta_ids, list):
+                for oid in meta_ids:
+                    if isinstance(oid, str) and oid and oid not in existing_ontology_ids:
+                        existing_ontology_ids.append(oid)
 
     # Step 3: Build context for AI Hub
     analysis_context = {
-        "segments": segments,
+        "candidates": candidates,
         "tags": tags,
         "existing_ontology_ids": existing_ontology_ids,
         "world_id": request.world_id,
@@ -202,9 +200,9 @@ async def discover_prompt_categories(
             for item in ai_suggestions.get("suggested_packs", [])
         ]
 
-        suggested_action_blocks = [
-            SuggestedActionBlock(**item)
-            for item in ai_suggestions.get("suggested_action_blocks", [])
+        suggested_candidates = [
+            PromptBlockCandidate(**item)
+            for item in ai_suggestions.get("suggested_candidates", [])
         ]
     except Exception as e:
         logger.error(
@@ -230,19 +228,19 @@ async def discover_prompt_categories(
             "existing_ontology_count": len(existing_ontology_ids),
             "suggested_ontology_count": len(suggested_ontology_ids),
             "suggested_pack_count": len(suggested_packs),
-            "suggested_action_block_count": len(suggested_action_blocks),
+            "suggested_candidate_count": len(suggested_candidates),
         }
     )
 
     # Step 6: Build and return response
     return PromptCategoryDiscoveryResponse(
         prompt_text=prompt_text,
-        parser_roles=parser_roles,
+        candidates=candidates,
         existing_ontology_ids=existing_ontology_ids,
         suggestions=ai_suggestions,  # Include raw response for debugging
         suggested_ontology_ids=suggested_ontology_ids,
         suggested_packs=suggested_packs,
-        suggested_action_blocks=suggested_action_blocks,
+        suggested_candidates=suggested_candidates,
     )
 
 
@@ -267,12 +265,28 @@ class ApplyPackSuggestionRequest(BaseModel):
 
 
 class ApplyBlockSuggestionRequest(BaseModel):
-    """Request to apply a block suggestion as a draft PromptBlock"""
+    """Request to apply a block candidate as a draft PromptBlock"""
     block_id: str = Field(..., description="Unique block identifier")
-    prompt: str = Field(..., description="The prompt text for this block")
+    text: str = Field(..., description="The prompt text for this block")
+    role: Optional[str] = Field(
+        None,
+        description="Optional role ID for this block"
+    )
+    category: Optional[str] = Field(
+        None,
+        description="Optional fine-grained category label"
+    )
+    ontology_ids: List[str] = Field(
+        default_factory=list,
+        description="Optional ontology IDs extracted for this block"
+    )
     tags: Dict[str, Any] = Field(
         default_factory=dict,
         description="Structured tags (ontology-aligned where possible)"
+    )
+    source_type: Optional[str] = Field(
+        None,
+        description="Optional source type (defaults to ai_suggested)"
     )
     package_name: Optional[str] = Field(
         None,
@@ -376,13 +390,13 @@ async def apply_pack_suggestion(
                 existing_pack.extra["ai_suggestions"] = []
 
             existing_pack.extra["ai_suggestions"].append({
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "source_prompt_excerpt": request.source_prompt[:200] if request.source_prompt else None,
                 "notes": request.notes,
                 "hints_added": request.parser_hints,
             })
 
-            existing_pack.updated_at = datetime.utcnow()
+            existing_pack.updated_at = datetime.now(timezone.utc)
 
             db.add(existing_pack)
             await db.commit()
@@ -474,12 +488,12 @@ async def apply_block_suggestion(
         500: If database operation fails
     """
     block_id = request.block_id.strip()
-    prompt = request.prompt.strip()
+    prompt = request.text.strip()
 
     if not block_id or not prompt:
         raise HTTPException(
             status_code=400,
-            detail="block_id and prompt are required and cannot be empty"
+            detail="block_id and text are required and cannot be empty"
         )
 
     logger.info(
@@ -523,17 +537,21 @@ async def apply_block_suggestion(
             }
         )
 
-        # Build suggestion object
-        suggestion = SuggestedActionBlock(
+        # Build candidate object
+        candidate = PromptBlockCandidate(
             block_id=block_id,
-            prompt=prompt,
+            text=prompt,
+            role=request.role,
+            category=request.category,
+            ontology_ids=request.ontology_ids,
             tags=request.tags,
+            source_type=request.source_type or "ai_suggested",
             notes=request.notes,
         )
 
         # Build draft action block
-        new_block = build_draft_action_block_from_suggestion(
-            suggestion=suggestion,
+        new_block = build_draft_action_block_from_candidate(
+            candidate=candidate,
             package_name=request.package_name,
             source_prompt=request.source_prompt,
         )

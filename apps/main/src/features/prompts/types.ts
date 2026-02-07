@@ -12,6 +12,5 @@ export { isValidPromptSegmentRole } from '@pixsim7/core.prompt';
 
 export type {
   PromptSegmentRole,
-  PromptSegment,
-  PromptParseResult,
+  PromptBlockCandidate,
 } from '@pixsim7/shared.types/prompt';

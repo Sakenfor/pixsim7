@@ -27,8 +27,7 @@ from .registry import (
 from .analyzer_plugins import setup_analyzer_plugin_hooks
 from .dsl_adapter import (
     analyze_prompt,
-    parse_prompt_to_segments,
-    parse_prompt_to_blocks,  # Deprecated alias
+    parse_prompt_to_candidates,
     PromptTag,
 )
 from .stemmer import stem, stems_match, find_stem_matches
@@ -72,8 +71,7 @@ __all__ = [
     "setup_analyzer_plugin_hooks",
     # DSL Adapter
     "analyze_prompt",
-    "parse_prompt_to_segments",
-    "parse_prompt_to_blocks",  # Deprecated
+    "parse_prompt_to_candidates",
     "PromptTag",
     # Stemmer
     "stem",
