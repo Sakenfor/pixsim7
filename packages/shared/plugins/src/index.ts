@@ -24,6 +24,11 @@ export { PluginCatalog, createPluginCatalog } from './catalog';
 // Activation manager
 export { PluginActivationManager, createPluginActivationManager } from './activation';
 
-// Browsable families registry
-export type { BrowsableColumn, BrowsableFamilyConfig } from './browsable';
-export { BrowsableFamilyRegistry, createBrowsableFamilyRegistry } from './browsable';
+// Widget Builder registry
+export type { WidgetBuilderColumn, WidgetBuilderFamilyConfig } from './browsable';
+export { WidgetBuilderRegistry, createWidgetBuilderRegistry } from './browsable';
+
+// Legacy aliases for backward compatibility
+export type { WidgetBuilderColumn as BrowsableColumn } from './browsable';
+export type { WidgetBuilderFamilyConfig as BrowsableFamilyConfig } from './browsable';
+export { WidgetBuilderRegistry as BrowsableFamilyRegistry } from './browsable';

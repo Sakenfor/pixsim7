@@ -1,12 +1,14 @@
 /**
- * Browsable Configs - Tools Category
+ * Widget Builder Configs - Tools Category
  *
  * Configs for graph-editor and dev-tool families.
  */
 
-import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
+import type { WidgetBuilderFamilyConfig } from '@pixsim7/shared.plugins';
 
-export const graphEditorConfig: BrowsableFamilyConfig = {
+type PluginItem = Record<string, unknown>;
+
+export const graphEditorConfig: WidgetBuilderFamilyConfig = {
   family: 'graph-editor',
   label: 'Graph Editors',
   icon: '🔀',
@@ -14,14 +16,14 @@ export const graphEditorConfig: BrowsableFamilyConfig = {
   category: 'tools',
   order: 10,
   columns: [
-    { id: 'label', label: 'Name', render: (item) => item.label || item.id },
-    { id: 'category', label: 'Category', render: (item) => item.category || '—' },
-    { id: 'storeId', label: 'Store', render: (item) => item.storeId || '—' },
+    { id: 'label', label: 'Name', render: (item) => (item as PluginItem).label || (item as PluginItem).id },
+    { id: 'category', label: 'Category', render: (item) => (item as PluginItem).category || '—' },
+    { id: 'storeId', label: 'Store', render: (item) => (item as PluginItem).storeId || '—' },
   ],
-  getItemName: (item) => item.label || item.id,
+  getItemName: (item) => String((item as PluginItem).label || (item as PluginItem).id),
 };
 
-export const devToolConfig: BrowsableFamilyConfig = {
+export const devToolConfig: WidgetBuilderFamilyConfig = {
   family: 'dev-tool',
   label: 'Dev Tools',
   icon: '🛠️',
@@ -29,14 +31,14 @@ export const devToolConfig: BrowsableFamilyConfig = {
   category: 'tools',
   order: 50,
   columns: [
-    { id: 'label', label: 'Name', render: (item) => item.label || item.id },
-    { id: 'category', label: 'Category', render: (item) => item.category || '—' },
+    { id: 'label', label: 'Name', render: (item) => (item as PluginItem).label || (item as PluginItem).id },
+    { id: 'category', label: 'Category', render: (item) => (item as PluginItem).category || '—' },
   ],
-  getItemName: (item) => item.label || item.id,
-  getItemIcon: (item) => item.icon,
+  getItemName: (item) => String((item as PluginItem).label || (item as PluginItem).id),
+  getItemIcon: (item) => (item as PluginItem).icon as string | undefined,
 };
 
-export const toolsConfigs: BrowsableFamilyConfig[] = [
+export const toolsConfigs: WidgetBuilderFamilyConfig[] = [
   graphEditorConfig,
   devToolConfig,
 ];

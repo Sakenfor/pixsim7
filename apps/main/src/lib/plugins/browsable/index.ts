@@ -1,11 +1,11 @@
 /**
- * Browsable Family Configs
+ * Widget Builder Family Configs
  *
- * Co-located configs for all browsable plugin families.
+ * Co-located configs for plugin family display in the Widget Builder.
  * Each category has its own file for easy maintenance.
  */
 
-import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
+import type { WidgetBuilderFamilyConfig } from '@pixsim7/shared.plugins';
 
 import { toolsConfigs } from './toolsConfigs';
 import { widgetsConfigs } from './widgetsConfigs';
@@ -17,10 +17,10 @@ export * from './toolsConfigs';
 export * from './widgetsConfigs';
 
 /**
- * All default browsable family configs.
+ * All default Widget Builder family configs.
  * Import this to register all configs at once.
  */
-export const defaultBrowsableConfigs: BrowsableFamilyConfig[] = [
+export const defaultWidgetBuilderConfigs: WidgetBuilderFamilyConfig[] = [
   ...workspaceConfigs,
   ...toolsConfigs,
   ...widgetsConfigs,

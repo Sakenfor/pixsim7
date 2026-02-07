@@ -1,12 +1,14 @@
 /**
- * Browsable Configs - Widgets Category
+ * Widget Builder Configs - Widgets Category
  *
  * Configs for gallery-surface and gizmo-surface families.
  */
 
-import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
+import type { WidgetBuilderFamilyConfig } from '@pixsim7/shared.plugins';
 
-export const gallerySurfaceConfig: BrowsableFamilyConfig = {
+type PluginItem = Record<string, unknown>;
+
+export const gallerySurfaceConfig: WidgetBuilderFamilyConfig = {
   family: 'gallery-surface',
   label: 'Gallery Surfaces',
   icon: '🖼️',
@@ -14,14 +16,14 @@ export const gallerySurfaceConfig: BrowsableFamilyConfig = {
   category: 'widgets',
   order: 10,
   columns: [
-    { id: 'label', label: 'Name', render: (item) => item.label || item.id },
-    { id: 'category', label: 'Category', render: (item) => item.category || '—' },
+    { id: 'label', label: 'Name', render: (item) => (item as PluginItem).label || (item as PluginItem).id },
+    { id: 'category', label: 'Category', render: (item) => (item as PluginItem).category || '—' },
   ],
-  getItemName: (item) => item.label || item.id,
-  getItemIcon: (item) => item.icon,
+  getItemName: (item) => String((item as PluginItem).label || (item as PluginItem).id),
+  getItemIcon: (item) => (item as PluginItem).icon as string | undefined,
 };
 
-export const gizmoSurfaceConfig: BrowsableFamilyConfig = {
+export const gizmoSurfaceConfig: WidgetBuilderFamilyConfig = {
   family: 'gizmo-surface',
   label: 'Gizmo Surfaces',
   icon: '🎯',
@@ -29,19 +31,19 @@ export const gizmoSurfaceConfig: BrowsableFamilyConfig = {
   category: 'widgets',
   order: 20,
   columns: [
-    { id: 'label', label: 'Name', render: (item) => item.label || item.id },
-    { id: 'category', label: 'Category', render: (item) => item.category || '—' },
+    { id: 'label', label: 'Name', render: (item) => (item as PluginItem).label || (item as PluginItem).id },
+    { id: 'category', label: 'Category', render: (item) => (item as PluginItem).category || '—' },
     {
       id: 'contexts',
       label: 'Contexts',
-      render: (item) => item.supportsContexts?.join(', ') || '—',
+      render: (item) => ((item as PluginItem).supportsContexts as string[])?.join(', ') || '—',
     },
   ],
-  getItemName: (item) => item.label || item.id,
-  getItemIcon: (item) => item.icon,
+  getItemName: (item) => String((item as PluginItem).label || (item as PluginItem).id),
+  getItemIcon: (item) => (item as PluginItem).icon as string | undefined,
 };
 
-export const widgetsConfigs: BrowsableFamilyConfig[] = [
+export const widgetsConfigs: WidgetBuilderFamilyConfig[] = [
   gallerySurfaceConfig,
   gizmoSurfaceConfig,
 ];

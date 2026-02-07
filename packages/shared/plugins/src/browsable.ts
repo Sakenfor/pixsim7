@@ -1,7 +1,8 @@
 /**
- * Browsable Families Registry
+ * Widget Builder Registry
  *
- * Pure TypeScript registry for browsable plugin families.
+ * Pure TypeScript registry for plugin family display configurations.
+ * Used by the Widget Builder UI to browse and inspect plugin families.
  * React hooks are provided separately in the app.
  */
 
@@ -14,7 +15,7 @@ import type { PluginFamily } from './types';
 /**
  * Column definition for rendering items in a table/list view
  */
-export interface BrowsableColumn {
+export interface WidgetBuilderColumn {
   /** Column identifier */
   id: string;
   /** Display label */
@@ -26,9 +27,9 @@ export interface BrowsableColumn {
 }
 
 /**
- * Configuration for a browsable plugin family
+ * Configuration for displaying a plugin family in the Widget Builder
  */
-export interface BrowsableFamilyConfig {
+export interface WidgetBuilderFamilyConfig {
   /** Plugin family this config applies to */
   family: PluginFamily;
   /** Display label for the family */
@@ -46,7 +47,7 @@ export interface BrowsableFamilyConfig {
    * Columns for table/list rendering.
    * If not provided, uses default columns (id, name, description).
    */
-  columns?: BrowsableColumn[];
+  columns?: WidgetBuilderColumn[];
 
   /**
    * Custom component for rendering the browse view.
@@ -89,14 +90,14 @@ export interface BrowsableFamilyConfig {
  * Registry for browsable plugin families.
  * Pure TypeScript class with subscription support.
  */
-export class BrowsableFamilyRegistry {
-  private configs = new Map<PluginFamily, BrowsableFamilyConfig>();
+export class WidgetBuilderRegistry {
+  private configs = new Map<PluginFamily, WidgetBuilderFamilyConfig>();
   private listeners = new Set<() => void>();
 
   /**
    * Register a browsable family configuration
    */
-  register(config: BrowsableFamilyConfig): () => void {
+  register(config: WidgetBuilderFamilyConfig): () => void {
     this.configs.set(config.family, config);
     this.notifyListeners();
 
@@ -109,14 +110,14 @@ export class BrowsableFamilyRegistry {
   /**
    * Get config for a specific family
    */
-  get(family: PluginFamily): BrowsableFamilyConfig | undefined {
+  get(family: PluginFamily): WidgetBuilderFamilyConfig | undefined {
     return this.configs.get(family);
   }
 
   /**
    * Get all browsable family configs
    */
-  getAll(): BrowsableFamilyConfig[] {
+  getAll(): WidgetBuilderFamilyConfig[] {
     return Array.from(this.configs.values()).sort((a, b) => {
       // Sort by category first, then by order
       const catA = a.category || 'system';
@@ -132,7 +133,7 @@ export class BrowsableFamilyRegistry {
   /**
    * Get configs by category
    */
-  getByCategory(category: BrowsableFamilyConfig['category']): BrowsableFamilyConfig[] {
+  getByCategory(category: WidgetBuilderFamilyConfig['category']): WidgetBuilderFamilyConfig[] {
     return this.getAll().filter((config) => config.category === category);
   }
 
@@ -156,7 +157,7 @@ export class BrowsableFamilyRegistry {
   /**
    * Get snapshot for external store compatibility
    */
-  getSnapshot(): BrowsableFamilyConfig[] {
+  getSnapshot(): WidgetBuilderFamilyConfig[] {
     return this.getAll();
   }
 
@@ -174,6 +175,6 @@ export class BrowsableFamilyRegistry {
 /**
  * Create a new browsable family registry
  */
-export function createBrowsableFamilyRegistry(): BrowsableFamilyRegistry {
-  return new BrowsableFamilyRegistry();
+export function createWidgetBuilderRegistry(): WidgetBuilderRegistry {
+  return new WidgetBuilderRegistry();
 }
