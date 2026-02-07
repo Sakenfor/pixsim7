@@ -4,7 +4,7 @@
  * Configs for gallery-surface and gizmo-surface families.
  */
 
-import type { BrowsableFamilyConfig } from '../browsableFamilies';
+import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
 
 export const gallerySurfaceConfig: BrowsableFamilyConfig = {
   family: 'gallery-surface',

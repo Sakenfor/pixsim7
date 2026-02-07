@@ -5,7 +5,7 @@
  * Each category has its own file for easy maintenance.
  */
 
-import type { BrowsableFamilyConfig } from '../browsableFamilies';
+import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
 
 import { toolsConfigs } from './toolsConfigs';
 import { widgetsConfigs } from './widgetsConfigs';

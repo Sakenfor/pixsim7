@@ -142,6 +142,7 @@
       "@pixsim7/shared.graph.editors": ["../../packages/shared/graph/editors/src"],
       "@pixsim7/shared.ui.tools": ["../../packages/shared/ui/tools/src"],
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers/core/src"],
+      "@pixsim7/shared.plugins": ["../../packages/shared/plugins/src"],
       "@pixsim7/shared.preview.protocol": ["../../packages/shared/preview/protocol/src"],
       "@pixsim7/core.composer": ["../../packages/core/composer/src"]
     },

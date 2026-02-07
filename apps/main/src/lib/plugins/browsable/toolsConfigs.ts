@@ -4,7 +4,7 @@
  * Configs for graph-editor and dev-tool families.
  */
 
-import type { BrowsableFamilyConfig } from '../browsableFamilies';
+import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
 
 export const graphEditorConfig: BrowsableFamilyConfig = {
   family: 'graph-editor',

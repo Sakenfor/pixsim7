@@ -4,7 +4,7 @@
  * Configs for dock-widget, workspace-panel, and panel-group families.
  */
 
-import type { BrowsableFamilyConfig } from '../browsableFamilies';
+import type { BrowsableFamilyConfig } from '@pixsim7/shared.plugins';
 
 export const dockWidgetConfig: BrowsableFamilyConfig = {
   family: 'dock-widget',

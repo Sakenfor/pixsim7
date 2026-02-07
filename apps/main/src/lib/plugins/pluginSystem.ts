@@ -4,244 +4,43 @@
  * This module provides a consistent approach to plugin discovery, registration,
  * and lifecycle management across all plugin families in the application.
  *
- * Design Goals:
- * 1. Consistent registration patterns across all plugin types
- * 2. Clear separation of built-in vs user plugins with origin tracking
- * 3. Unified enable/disable semantics
- * 4. Metadata-driven registration (avoid duplication)
- * 5. Generic discovery utilities (no repeated glob patterns)
+ * Core types and registries are imported from @pixsim7/shared.plugins.
+ * This module adds Vite-specific plugin discovery using import.meta.glob.
  */
 
 // ============================================================================
-// Core Types
+// Re-export core types and classes from shared package
 // ============================================================================
 
-/**
- * Plugin origin indicates where the plugin was loaded from
- */
-export type PluginOrigin =
-  | 'builtin'       // Core functionality shipped with the app
-  | 'plugin-dir'    // User plugins from plugins/ directory
-  | 'ui-bundle'     // Dynamically loaded UI plugins via PluginManager
-  | 'dev-project';  // Development-time plugins (e.g., example plugins)
+export type {
+  PluginOrigin,
+  PluginFamily,
+  ActivationState,
+  PluginCapabilityHints,
+  PluginMetadata,
+  PluginMetadataExtensions,
+  ExtendedPluginMetadata,
+} from '@pixsim7/shared.plugins';
 
-/**
- * Plugin family/category - defines what kind of functionality the plugin provides
- */
-export type PluginFamily =
-  | 'world-tool'
-  | 'helper'
-  | 'interaction'
-  | 'gallery-tool'
-  | 'brain-tool'
-  | 'gallery-surface'
-  | 'node-type'
-  | 'renderer'
-  | 'ui-plugin'
-  | 'generation-ui'
-  | 'scene-view'
-  | 'control-center'
-  | 'graph-editor'
-  | 'dev-tool'
-  | 'workspace-panel'
-  | 'dock-widget'
-  | 'gizmo-surface';
+export {
+  PluginCatalog,
+  createPluginCatalog,
+  PluginActivationManager,
+  createPluginActivationManager,
+} from '@pixsim7/shared.plugins';
 
-/**
- * Activation state - whether the plugin is currently active
- */
-export type ActivationState = 'active' | 'inactive';
-
-/**
- * Capability hints for feature plugins
- */
-export interface PluginCapabilityHints {
-  modifiesSession?: boolean;
-  modifiesInventory?: boolean;
-  modifiesRelationships?: boolean;
-  addsUIOverlay?: boolean;
-  addsNodeTypes?: boolean;
-  addsGalleryTools?: boolean;
-  providerId?: string;
-  triggersEvents?: boolean;
-  hasRisk?: boolean;
-  requiresItems?: boolean;
-  consumesItems?: boolean;
-  canBeDetected?: boolean;
-  opensDialogue?: boolean;
-}
-
-/**
- * Core metadata that all plugins should have
- */
-export interface PluginMetadata {
-  /** Unique identifier */
-  id: string;
-
-  /** Human-readable name */
-  name: string;
-
-  /** Plugin family */
-  family: PluginFamily;
-
-  /** Where this plugin came from */
-  origin: PluginOrigin;
-
-  /** Current activation state */
-  activationState: ActivationState;
-
-  /** Whether this plugin can be disabled (some built-ins may be always-on) */
-  canDisable: boolean;
-
-  /** Optional version */
-  version?: string;
-
-  /** Optional description */
-  description?: string;
-
-  /** Optional author */
-  author?: string;
-
-  /** Tags for filtering/searching */
-  tags?: string[];
-
-  /** Capability hints for feature plugins */
-  capabilities?: PluginCapabilityHints;
-
-  /** Features this plugin provides */
-  providesFeatures?: string[];
-
-  /** Features this plugin consumes */
-  consumesFeatures?: string[];
-
-  /** Actions this plugin consumes */
-  consumesActions?: string[];
-
-  /** State IDs this plugin consumes */
-  consumesState?: string[];
-
-  /** Mark as experimental/beta */
-  experimental?: boolean;
-
-  /** Mark as deprecated */
-  deprecated?: boolean;
-
-  /** Deprecation message explaining what to use instead */
-  deprecationMessage?: string;
-
-  /** ID of plugin this replaces (for migration/upgrade paths) */
-  replaces?: string;
-
-  /** Whether plugin has configurable settings */
-  configurable?: boolean;
-}
-
-/**
- * Extended metadata for specific plugin families
- */
-export interface PluginMetadataExtensions {
-  'world-tool': {
-    category?: string;
-    icon?: string;
-  };
-  'helper': {
-    category?: string;
-  };
-  'interaction': {
-    category?: string;
-    icon?: string;
-  };
-  'gallery-tool': {
-    category?: string;
-  };
-  'brain-tool': {
-    category?: string;
-    icon?: string;
-  };
-  'gallery-surface': {
-    category?: string;
-    icon?: string;
-  };
-  'node-type': {
-    category?: string;
-    scope?: 'scene' | 'arc' | 'world' | 'custom';
-    userCreatable?: boolean;
-    preloadPriority?: number;
-  };
-  'renderer': {
-    nodeType: string;
-    preloadPriority?: number;
-  };
-  'ui-plugin': {
-    hasOverlays?: boolean;
-    hasMenuItems?: boolean;
-    pluginType?: 'ui-overlay' | 'theme' | 'tool' | 'enhancement';
-    bundleFamily?: 'ui' | 'tool';
-    icon?: string;
-  };
-  'generation-ui': {
-    providerId: string;
-    operations?: string[];
-    priority?: number;
-    category?: string;
-  };
-  'scene-view': {
-    sceneViewId: string;
-    surfaces?: Array<'overlay' | 'hud' | 'panel' | 'workspace'>;
-    default?: boolean;
-    icon?: string;
-  };
-  'control-center': {
-    controlCenterId: string;
-    displayName?: string;
-    description?: string;
-    preview?: string;
-    default?: boolean;
-    features?: string[];
-    icon?: string;
-  };
-  'graph-editor': {
-    storeId?: string;
-    category?: string;
-    supportsMultiScene?: boolean;
-    supportsWorldContext?: boolean;
-    supportsPlayback?: boolean;
-  };
-  'dev-tool': {
-    category?: string;
-    icon?: string;
-  };
-  'workspace-panel': {
-    panelId: string;
-    category?: 'core' | 'development' | 'game' | 'tools' | 'custom';
-    supportsCompactMode?: boolean;
-    supportsMultipleInstances?: boolean;
-  };
-  'dock-widget': {
-    widgetId: string;
-    dockviewId: string;
-    presetScope?: string;
-    panelScope?: string;
-    storageKey?: string;
-    allowedPanels?: string[];
-    defaultPanels?: string[];
-  };
-  'gizmo-surface': {
-    gizmoSurfaceId?: string;
-    category?: 'scene' | 'world' | 'npc' | 'debug' | 'custom';
-    supportsContexts?: Array<'scene-editor' | 'game-2d' | 'game-3d' | 'playground' | 'workspace' | 'hud'>;
-    icon?: string;
-  };
-}
-
-/**
- * Full plugin metadata with family-specific extensions
- */
-export type ExtendedPluginMetadata<F extends PluginFamily = PluginFamily> =
-  PluginMetadata & PluginMetadataExtensions[F];
+import type {
+  PluginFamily,
+  PluginOrigin,
+  PluginMetadata,
+} from '@pixsim7/shared.plugins';
+import {
+  PluginCatalog,
+  PluginActivationManager,
+} from '@pixsim7/shared.plugins';
 
 // ============================================================================
-// Discovery Configuration
+// Discovery Configuration (Vite-specific)
 // ============================================================================
 
 /**
@@ -282,7 +81,7 @@ export interface PluginDiscoveryConfig {
 }
 
 // ============================================================================
-// Plugin Discovery
+// Plugin Discovery (Vite-specific)
 // ============================================================================
 
 /**
@@ -299,32 +98,34 @@ export interface DiscoveredPlugin {
   origin: PluginOrigin;
 
   /** The actual plugin object/function */
-  plugin: any;
+  plugin: unknown;
 
   /** Extracted metadata (if available) */
   metadata?: Partial<PluginMetadata>;
 }
 
-const EAGER_GLOB_MAP: Record<string, Record<string, any>> = {
-  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: true }),
-  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: true }),
-  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
-  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
-  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: true }),
+// Vite import.meta.glob maps - these must be static string literals
+const EAGER_GLOB_MAP: Record<string, Record<string, unknown>> = {
+  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: true }),
+  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: true }),
 };
 
-const LAZY_GLOB_MAP: Record<string, Record<string, any>> = {
-  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: false }),
-  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: false }),
-  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
-  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
-  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<any>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: false }),
+const LAZY_GLOB_MAP: Record<string, Record<string, () => Promise<unknown>>> = {
+  '/src/plugins/helpers/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/helpers/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/interactions/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/interactions/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/galleryTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/plugins/worldTools/**/*.{ts,tsx,js,jsx}', { eager: false }),
+  '/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}': import.meta.glob<unknown>('/src/lib/plugins/**/*Node.{ts,tsx,js,jsx}', { eager: false }),
 };
 
 /**
- * Generic plugin discovery utility
+ * Generic plugin discovery utility (Vite-specific)
  *
- * This replaces the duplicated import.meta.glob patterns across loaders
+ * This replaces the duplicated import.meta.glob patterns across loaders.
+ * Uses Vite's import.meta.glob for module discovery.
  */
 export class PluginDiscovery {
   /**
@@ -339,7 +140,7 @@ export class PluginDiscovery {
 
     for (const [path, moduleLoader] of Object.entries(globModules)) {
       try {
-        const module = config.eager ? moduleLoader : await moduleLoader();
+        const module = config.eager ? moduleLoader : await (moduleLoader as () => Promise<unknown>)();
         const plugins = this.extractPlugins(module, config);
 
         for (const plugin of plugins) {
@@ -363,9 +164,9 @@ export class PluginDiscovery {
    * Get glob modules for a config using static patterns
    * Vite requires these to be compile-time constants (no variables allowed)
    */
-  private static getGlobModules(config: PluginDiscoveryConfig): Record<string, any> {
+  private static getGlobModules(config: PluginDiscoveryConfig): Record<string, unknown> {
     const globMap = config.eager ? EAGER_GLOB_MAP : LAZY_GLOB_MAP;
-    const modules: Record<string, any> = {};
+    const modules: Record<string, unknown> = {};
 
     for (const pattern of config.patterns) {
       const glob = globMap[pattern];
@@ -382,16 +183,18 @@ export class PluginDiscovery {
   /**
    * Extract plugins from a module based on extraction mode
    */
-  private static extractPlugins(module: any, config: PluginDiscoveryConfig): any[] {
+  private static extractPlugins(module: unknown, config: PluginDiscoveryConfig): unknown[] {
+    const mod = module as Record<string, unknown>;
+
     switch (config.extractionMode) {
       case 'named-export':
-        return this.extractByNamedExport(module, config.exportPattern!);
+        return this.extractByNamedExport(mod, config.exportPattern!);
 
       case 'default-export':
-        return module.default ? [module.default] : [];
+        return mod.default ? [mod.default] : [];
 
       case 'auto-detect':
-        return this.extractByAutoDetect(module, config.requiredProperties!);
+        return this.extractByAutoDetect(mod, config.requiredProperties!);
 
       default:
         throw new Error(`Unknown extraction mode: ${config.extractionMode}`);
@@ -401,7 +204,7 @@ export class PluginDiscovery {
   /**
    * Extract exports matching a naming pattern
    */
-  private static extractByNamedExport(module: any, pattern: string): any[] {
+  private static extractByNamedExport(module: Record<string, unknown>, pattern: string): unknown[] {
     const regex = this.patternToRegex(pattern);
     return Object.entries(module)
       .filter(([name]) => regex.test(name))
@@ -411,12 +214,12 @@ export class PluginDiscovery {
   /**
    * Extract objects with required properties
    */
-  private static extractByAutoDetect(module: any, requiredProps: string[]): any[] {
+  private static extractByAutoDetect(module: Record<string, unknown>, requiredProps: string[]): unknown[] {
     return Object.values(module).filter(
       (value) =>
         value &&
         typeof value === 'object' &&
-        requiredProps.every(prop => prop in value)
+        requiredProps.every(prop => prop in (value as Record<string, unknown>))
     );
   }
 
@@ -433,386 +236,19 @@ export class PluginDiscovery {
   /**
    * Extract metadata from plugin object
    */
-  private static extractMetadata(plugin: any): Partial<PluginMetadata> | undefined {
+  private static extractMetadata(plugin: unknown): Partial<PluginMetadata> | undefined {
     if (!plugin || typeof plugin !== 'object') {
       return undefined;
     }
 
+    const p = plugin as Record<string, unknown>;
     return {
-      id: plugin.id,
-      name: plugin.name,
-      description: plugin.description,
-      version: plugin.version,
-      author: plugin.author,
+      id: p.id as string | undefined,
+      name: p.name as string | undefined,
+      description: p.description as string | undefined,
+      version: p.version as string | undefined,
+      author: p.author as string | undefined,
     };
-  }
-}
-
-// ============================================================================
-// Plugin Catalog
-// ============================================================================
-
-/**
- * Unified catalog of all plugins across all registries
- *
- * This provides a single source of truth for:
- * - What plugins exist
- * - Where they came from (origin)
- * - Whether they're active
- * - What family they belong to
- */
-export class PluginCatalog {
-  private plugins = new Map<string, ExtendedPluginMetadata>();
-  private pluginObjects = new Map<string, unknown>();
-  private listeners = new Set<() => void>();
-
-  /**
-   * Register a plugin in the catalog
-   */
-  register(metadata: ExtendedPluginMetadata): void {
-    // Check for duplicate IDs
-    const existing = this.plugins.get(metadata.id);
-    if (existing) {
-      console.warn(
-        `Plugin ID "${metadata.id}" is already registered (family: ${existing.family}, origin: ${existing.origin}). ` +
-        `Overwriting with new plugin (family: ${metadata.family}, origin: ${metadata.origin}).`
-      );
-    }
-
-    this.plugins.set(metadata.id, metadata);
-    this.notifyListeners();
-  }
-
-  /**
-   * Register a plugin with its runtime object
-   *
-   * This stores both metadata and the actual plugin object (with render functions, etc.)
-   * making the catalog the single source of truth for plugin data.
-   */
-  registerWithPlugin<T>(metadata: ExtendedPluginMetadata, plugin: T): void {
-    this.pluginObjects.set(metadata.id, plugin);
-    this.register(metadata);
-  }
-
-  /**
-   * Store a plugin object (for use when metadata is registered separately)
-   */
-  setPlugin<T>(id: string, plugin: T): void {
-    this.pluginObjects.set(id, plugin);
-  }
-
-  /**
-   * Get the plugin object by ID
-   */
-  getPlugin<T>(id: string): T | undefined {
-    return this.pluginObjects.get(id) as T | undefined;
-  }
-
-  /**
-   * Get all plugin objects for a family
-   */
-  getPluginsByFamily<T>(family: PluginFamily): T[] {
-    const familyPlugins = this.getByFamily(family);
-    return familyPlugins
-      .map(meta => this.pluginObjects.get(meta.id) as T)
-      .filter((p): p is T => p !== undefined);
-  }
-
-  /**
-   * Remove a plugin from the catalog
-   */
-  unregister(id: string): boolean {
-    const existed = this.plugins.delete(id);
-    this.pluginObjects.delete(id);
-    if (existed) {
-      this.notifyListeners();
-    }
-    return existed;
-  }
-
-  /**
-   * Get a plugin by ID
-   */
-  get(id: string): ExtendedPluginMetadata | undefined {
-    return this.plugins.get(id);
-  }
-
-  /**
-   * Get all plugins
-   */
-  getAll(): ExtendedPluginMetadata[] {
-    return Array.from(this.plugins.values());
-  }
-
-  /**
-   * Get plugins by family
-   */
-  getByFamily<F extends PluginFamily>(family: F): ExtendedPluginMetadata<F>[] {
-    return this.getAll().filter(p => p.family === family) as ExtendedPluginMetadata<F>[];
-  }
-
-  /**
-   * Get plugins by origin
-   */
-  getByOrigin(origin: PluginOrigin): ExtendedPluginMetadata[] {
-    return this.getAll().filter(p => p.origin === origin);
-  }
-
-  /**
-   * Get active plugins
-   */
-  getActive(): ExtendedPluginMetadata[] {
-    return this.getAll().filter(p => p.activationState === 'active');
-  }
-
-  /**
-   * Get built-in plugins
-   */
-  getBuiltins(): ExtendedPluginMetadata[] {
-    return this.getByOrigin('builtin');
-  }
-
-  /**
-   * Get user plugins (plugin-dir + ui-bundle)
-   */
-  getUserPlugins(): ExtendedPluginMetadata[] {
-    return this.getAll().filter(
-      p => p.origin === 'plugin-dir' || p.origin === 'ui-bundle'
-    );
-  }
-
-  /**
-   * Update activation state
-   */
-  setActivationState(id: string, state: ActivationState): void {
-    const plugin = this.plugins.get(id);
-    if (plugin) {
-      plugin.activationState = state;
-      this.notifyListeners();
-    }
-  }
-
-  /**
-   * Check if plugin can be disabled
-   */
-  canDisable(id: string): boolean {
-    const plugin = this.plugins.get(id);
-    return plugin?.canDisable ?? true;
-  }
-
-  /**
-   * Get summary statistics
-   */
-  getSummary(): {
-    total: number;
-    byFamily: Record<PluginFamily, number>;
-    byOrigin: Record<PluginOrigin, number>;
-    active: number;
-    inactive: number;
-  } {
-    const all = this.getAll();
-
-    const byFamily = {} as Record<PluginFamily, number>;
-    const byOrigin = {} as Record<PluginOrigin, number>;
-
-    for (const plugin of all) {
-      byFamily[plugin.family] = (byFamily[plugin.family] || 0) + 1;
-      byOrigin[plugin.origin] = (byOrigin[plugin.origin] || 0) + 1;
-    }
-
-    return {
-      total: all.length,
-      byFamily,
-      byOrigin,
-      active: all.filter(p => p.activationState === 'active').length,
-      inactive: all.filter(p => p.activationState === 'inactive').length,
-    };
-  }
-
-  /**
-   * Clear all plugins
-   */
-  clear(): void {
-    this.plugins.clear();
-    this.pluginObjects.clear();
-  }
-
-  /**
-   * Print catalog summary to console
-   */
-  printSummary(): void {
-    const summary = this.getSummary();
-
-    console.log('=== Plugin Catalog Summary ===');
-    console.log(`Total plugins: ${summary.total}`);
-    console.log(`Active: ${summary.active}, Inactive: ${summary.inactive}`);
-    console.log('\nBy Family:');
-    for (const [family, count] of Object.entries(summary.byFamily)) {
-      console.log(`  ${family}: ${count}`);
-    }
-    console.log('\nBy Origin:');
-    for (const [origin, count] of Object.entries(summary.byOrigin)) {
-      console.log(`  ${origin}: ${count}`);
-    }
-  }
-
-  /**
-   * Subscribe to catalog changes
-   * Returns an unsubscribe function
-   */
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
-
-  /**
-   * Notify all listeners of changes
-   */
-  private notifyListeners(): void {
-    for (const listener of this.listeners) {
-      try {
-        listener();
-      } catch (error) {
-        console.error('Error in plugin catalog listener:', error);
-      }
-    }
-  }
-}
-
-// ============================================================================
-// Activation Manager
-// ============================================================================
-
-/**
- * Manages plugin activation/deactivation across all families
- *
- * This provides a unified interface for enable/disable that works
- * consistently regardless of the underlying storage mechanism
- * (pluginConfigStore, PluginManager, etc.)
- */
-export class PluginActivationManager {
-  private catalog: PluginCatalog;
-  private listeners = new Map<string, Set<(state: ActivationState) => void>>();
-
-  constructor(catalog: PluginCatalog) {
-    this.catalog = catalog;
-  }
-
-  /**
-   * Activate a plugin
-   */
-  async activate(id: string): Promise<boolean> {
-    const plugin = this.catalog.get(id);
-    if (!plugin) {
-      console.warn(`Plugin not found: ${id}`);
-      return false;
-    }
-
-    // Some plugins may not support deactivation
-    if (plugin.activationState === 'active') {
-      return true; // Already active
-    }
-
-    try {
-      // Update catalog
-      this.catalog.setActivationState(id, 'active');
-
-      // Notify listeners
-      this.notifyListeners(id, 'active');
-
-      return true;
-    } catch (error) {
-      console.error(`Failed to activate plugin ${id}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Deactivate a plugin
-   */
-  async deactivate(id: string): Promise<boolean> {
-    const plugin = this.catalog.get(id);
-    if (!plugin) {
-      console.warn(`Plugin not found: ${id}`);
-      return false;
-    }
-
-    if (!plugin.canDisable) {
-      console.warn(`Plugin ${id} cannot be disabled`);
-      return false;
-    }
-
-    if (plugin.activationState === 'inactive') {
-      return true; // Already inactive
-    }
-
-    try {
-      // Update catalog
-      this.catalog.setActivationState(id, 'inactive');
-
-      // Notify listeners
-      this.notifyListeners(id, 'inactive');
-
-      return true;
-    } catch (error) {
-      console.error(`Failed to deactivate plugin ${id}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Toggle activation state
-   */
-  async toggle(id: string): Promise<boolean> {
-    const plugin = this.catalog.get(id);
-    if (!plugin) {
-      return false;
-    }
-
-    return plugin.activationState === 'active'
-      ? this.deactivate(id)
-      : this.activate(id);
-  }
-
-  /**
-   * Check if plugin is active
-   */
-  isActive(id: string): boolean {
-    return this.catalog.get(id)?.activationState === 'active';
-  }
-
-  /**
-   * Subscribe to activation state changes
-   */
-  subscribe(id: string, listener: (state: ActivationState) => void): () => void {
-    if (!this.listeners.has(id)) {
-      this.listeners.set(id, new Set());
-    }
-
-    this.listeners.get(id)!.add(listener);
-
-    // Return unsubscribe function
-    return () => {
-      this.listeners.get(id)?.delete(listener);
-    };
-  }
-
-  /**
-   * Notify listeners of state change
-   */
-  private notifyListeners(id: string, state: ActivationState): void {
-    const listeners = this.listeners.get(id);
-    if (listeners) {
-      for (const listener of listeners) {
-        try {
-          listener(state);
-        } catch (error) {
-          console.error(`Listener error for plugin ${id}:`, error);
-        }
-      }
-    }
   }
 }
 
