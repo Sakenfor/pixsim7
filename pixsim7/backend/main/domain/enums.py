@@ -151,3 +151,46 @@ class GenerationOrigin(str, Enum):
     LOCAL = "local"          # Created via UI/API
     SYNC = "sync"            # Imported from provider (synthetic generation)
     MIGRATION = "migration"  # Backfilled from legacy data
+
+
+class GenerationErrorCode(str, Enum):
+    """Structured error codes for generation failures.
+
+    Single source of truth for error categorisation. Each code indicates
+    *why* a generation failed so that consumers (job processor, retry
+    service, frontend) can dispatch on the code instead of parsing
+    the human-readable error_message string.
+    """
+
+    # Content moderation
+    CONTENT_PROMPT_REJECTED = "content_prompt_rejected"
+    CONTENT_TEXT_REJECTED = "content_text_rejected"
+    CONTENT_OUTPUT_REJECTED = "content_output_rejected"
+    CONTENT_IMAGE_REJECTED = "content_image_rejected"
+    CONTENT_FILTERED = "content_filtered"
+
+    # Parameter validation (all non-retryable)
+    PARAM_TOO_LONG = "param_too_long"
+    PARAM_INVALID = "param_invalid"
+    PARAM_MISSING = "param_missing"
+    PARAM_ASSET_UNRESOLVABLE = "param_asset_unresolvable"
+
+    # Provider errors
+    PROVIDER_QUOTA = "provider_quota"
+    PROVIDER_RATE_LIMIT = "provider_rate_limit"
+    PROVIDER_CONCURRENT_LIMIT = "provider_concurrent_limit"
+    PROVIDER_AUTH = "provider_auth"
+    PROVIDER_TIMEOUT = "provider_timeout"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    PROVIDER_GENERIC = "provider_generic"
+
+
+# Which codes are worth retrying (transient / output-varies)
+RETRYABLE_ERROR_CODES: frozenset[GenerationErrorCode] = frozenset({
+    GenerationErrorCode.CONTENT_OUTPUT_REJECTED,
+    GenerationErrorCode.CONTENT_IMAGE_REJECTED,
+    GenerationErrorCode.CONTENT_FILTERED,
+    GenerationErrorCode.PROVIDER_RATE_LIMIT,
+    GenerationErrorCode.PROVIDER_UNAVAILABLE,
+    GenerationErrorCode.PROVIDER_TIMEOUT,
+})

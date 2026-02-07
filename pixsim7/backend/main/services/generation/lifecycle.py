@@ -50,7 +50,8 @@ class GenerationLifecycleService:
         self,
         generation_id: int,
         status: GenerationStatus,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None,
     ) -> Generation:
         """
         Update generation status
@@ -59,6 +60,7 @@ class GenerationLifecycleService:
             generation_id: Generation ID
             status: New status
             error_message: Optional error message (for failed generations)
+            error_code: Optional structured error code from GenerationErrorCode
 
         Returns:
             Updated generation
@@ -71,6 +73,8 @@ class GenerationLifecycleService:
         if generation.status == status:
             if error_message and error_message != generation.error_message:
                 generation.error_message = error_message
+                if error_code:
+                    generation.error_code = error_code
                 generation.updated_at = datetime.utcnow()
                 await self.db.commit()
                 await self.db.refresh(generation)
@@ -86,12 +90,17 @@ class GenerationLifecycleService:
         elif status in {GenerationStatus.COMPLETED, GenerationStatus.FAILED, GenerationStatus.CANCELLED}:
             generation.completed_at = datetime.utcnow()
 
-        # Update error message
+        # Update error message and code
         if error_message:
             generation.error_message = error_message
         elif status == GenerationStatus.COMPLETED:
             # Clear error_message on success (may have leftover from retry attempts)
             generation.error_message = None
+
+        if error_code:
+            generation.error_code = error_code
+        elif status == GenerationStatus.COMPLETED:
+            generation.error_code = None
 
         await self.db.commit()
         await self.db.refresh(generation)
@@ -122,7 +131,8 @@ class GenerationLifecycleService:
                 "generation_id": generation_id,
                 "user_id": generation.user_id,
                 "status": status.value,
-                "error": error_message
+                "error": error_message,
+                "error_code": error_code,
             })
             logger.info(f"[Lifecycle] JOB_FAILED event dispatched for generation {generation_id}")
         elif status == GenerationStatus.CANCELLED:
@@ -178,9 +188,16 @@ class GenerationLifecycleService:
 
         return await self.update_status(generation_id, GenerationStatus.COMPLETED)
 
-    async def mark_failed(self, generation_id: int, error_message: str) -> Generation:
+    async def mark_failed(
+        self,
+        generation_id: int,
+        error_message: str,
+        error_code: Optional[str] = None,
+    ) -> Generation:
         """Mark generation as failed"""
-        return await self.update_status(generation_id, GenerationStatus.FAILED, error_message)
+        return await self.update_status(
+            generation_id, GenerationStatus.FAILED, error_message, error_code=error_code,
+        )
 
     async def cancel_generation(self, generation_id: int, user: User) -> Generation:
         """

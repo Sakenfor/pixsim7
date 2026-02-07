@@ -52,16 +52,33 @@ NON_RETRYABLE_ERROR_PATTERNS = (
     "needs to be re-uploaded",  # Asset needs manual intervention
     "invalid param",  # Provider rejected param as invalid (400 error)
     "invalid parameter",  # Alternative wording
+    "too-long parameters",  # Prompt/param length exceeded (e.g. Pixverse 400018)
+    "cannot exceed",  # Generic length limit exceeded
 )
 
 
 def _is_non_retryable_error(error: Exception) -> bool:
-    """Check if an error should NOT be retried by ARQ."""
+    """Check if an error should NOT be retried by ARQ.
+
+    Primary path: use the structured `retryable` attribute on ProviderError.
+    Fallback: string pattern matching for plain exceptions or legacy errors
+    without structured attributes.
+    """
+    # Structured path: ProviderError subclasses carry .retryable
+    if hasattr(error, 'retryable'):
+        return not error.retryable
+
+    # Fallback: string pattern matching for unstructured errors
     error_msg = str(error).lower()
     for pattern in NON_RETRYABLE_ERROR_PATTERNS:
         if pattern.lower() in error_msg:
             return True
     return False
+
+
+def _extract_error_code(error: Exception) -> str | None:
+    """Extract structured error_code from an exception, if available."""
+    return getattr(error, 'error_code', None)
 
 
 def _get_max_tries() -> int:
@@ -520,8 +537,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             "content_filter_not_retryable",
                             generation_id=generation.id,
                             error=str(e),
+                            error_code=_extract_error_code(e),
                         )
-                        await generation_service.mark_failed(generation_id, str(e))
+                        await generation_service.mark_failed(
+                            generation_id, str(e), error_code=_extract_error_code(e),
+                        )
                         try:
                             await account_service.release_account(account.id)
                         except Exception as release_err:
@@ -598,7 +618,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                 # Only mark as failed (and emit JOB_FAILED event) on final attempt or non-retryable errors
                 if is_final or is_non_retryable:
-                    await generation_service.mark_failed(generation_id, str(e))
+                    await generation_service.mark_failed(
+                        generation_id, str(e), error_code=_extract_error_code(e),
+                    )
                     failed_marked = True
                     gen_logger.info(
                         "generation_marked_failed",
@@ -661,7 +683,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             # Try to mark generation as failed - only on final attempt or non-retryable errors
             if not failed_marked and (is_final or is_non_retryable):
                 try:
-                    await generation_service.mark_failed(generation_id, str(e))
+                    await generation_service.mark_failed(
+                        generation_id, str(e), error_code=_extract_error_code(e),
+                    )
                 except Exception as mark_error:
                     gen_logger.error("mark_failed_error", error=str(mark_error))
 

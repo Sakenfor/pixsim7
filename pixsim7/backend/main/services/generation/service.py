@@ -103,10 +103,13 @@ class GenerationService:
         self,
         generation_id: int,
         status: GenerationStatus,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        error_code: Optional[str] = None,
     ) -> Generation:
         """Delegate to lifecycle service"""
-        return await self._lifecycle.update_status(generation_id, status, error_message)
+        return await self._lifecycle.update_status(
+            generation_id, status, error_message, error_code=error_code,
+        )
 
     async def mark_started(self, generation_id: int) -> Generation:
         """Delegate to lifecycle service"""
@@ -116,9 +119,14 @@ class GenerationService:
         """Delegate to lifecycle service"""
         return await self._lifecycle.mark_completed(generation_id, asset_id)
 
-    async def mark_failed(self, generation_id: int, error_message: str) -> Generation:
+    async def mark_failed(
+        self,
+        generation_id: int,
+        error_message: str,
+        error_code: Optional[str] = None,
+    ) -> Generation:
         """Delegate to lifecycle service"""
-        return await self._lifecycle.mark_failed(generation_id, error_message)
+        return await self._lifecycle.mark_failed(generation_id, error_message, error_code=error_code)
 
     async def cancel_generation(self, generation_id: int, user: User) -> Generation:
         """Delegate to lifecycle service"""

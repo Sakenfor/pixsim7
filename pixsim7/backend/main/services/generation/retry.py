@@ -37,6 +37,8 @@ NON_RETRYABLE_PATTERNS = [
     "content filtered (text)",    # Text input rejection
     "prompt was rejected",
     "text input was rejected",
+    "too-long parameters",        # Prompt/param length exceeded (e.g. Pixverse 400018)
+    "cannot exceed",              # Generic length limit exceeded
 ]
 
 # Content filtering indicators - retryable because output varies
@@ -184,6 +186,9 @@ class GenerationRetryService:
         - Provider temporary errors
         - Not for: validation errors, quota errors, permanent failures
 
+        Uses structured error_code when available, falls back to string pattern
+        matching for legacy generations without error_code.
+
         Args:
             generation: Failed generation to check
 
@@ -203,6 +208,28 @@ class GenerationRetryService:
         if generation.retry_count >= max_retries:
             return False
 
+        # Primary path: use structured error_code if available
+        if generation.error_code:
+            from pixsim7.backend.main.domain.enums import (
+                GenerationErrorCode,
+                RETRYABLE_ERROR_CODES,
+            )
+            try:
+                code = GenerationErrorCode(generation.error_code)
+                is_retryable = code in RETRYABLE_ERROR_CODES
+                logger.info(
+                    f"Generation {generation.id} error_code={generation.error_code} "
+                    f"retryable={is_retryable}"
+                )
+                return is_retryable
+            except ValueError:
+                # Unknown error_code — fall through to string matching
+                logger.warning(
+                    f"Generation {generation.id} has unknown error_code "
+                    f"'{generation.error_code}', falling back to pattern matching"
+                )
+
+        # Fallback: string pattern matching for old generations without error_code
         error_msg = generation.error_message.lower()
 
         # Check non-retryable patterns first (prompt/input rejections)

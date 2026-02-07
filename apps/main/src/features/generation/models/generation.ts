@@ -53,6 +53,7 @@ export interface GenerationModel {
   // Status
   status: GenerationStatus;
   errorMessage: string | null;
+  errorCode: string | null;
   retryCount: number;
   priority: number;
 
@@ -109,6 +110,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     // Status
     status: response.status,
     errorMessage: response.error_message,
+    errorCode: response.error_code ?? null,
     retryCount: response.retry_count,
     priority: response.priority,
 
@@ -233,6 +235,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     scheduledAt: null,
     status: options.status ?? 'pending',
     errorMessage: null,
+    errorCode: null,
     retryCount: 0,
     priority: 5,
     name: null,

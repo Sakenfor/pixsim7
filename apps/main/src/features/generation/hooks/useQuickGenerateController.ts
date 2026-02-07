@@ -72,24 +72,42 @@ export function useQuickGenerateController() {
     if (!generationId || watchedStatus !== 'failed' || !watchedErrorMessage) return;
     if (errorShownForRef.current === generationId) return;
 
-    // Only show error in prompt box for content-filtered prompt rejections
+    // Show error in prompt box for prompt rejections and input validation errors
     // (not for other failures like quota, network errors, output rejections, etc.)
+    // Primary: dispatch on structured errorCode. Fallback: string matching for legacy.
+    const errorCode = watchedGeneration?.errorCode;
     const lowerError = watchedErrorMessage.toLowerCase();
-    const isPromptRejection =
-      lowerError.includes('content filtered (prompt)') ||
-      lowerError.includes('content filtered (text)') ||
-      lowerError.includes('prompt rejected') ||
-      lowerError.includes('text input was rejected') ||
-      lowerError.includes('sensitive') ||
-      lowerError.includes('500063') ||
-      (lowerError.includes('content') && lowerError.includes('text'));
 
-    if (!isPromptRejection) return;
+    const isPromptRejection = errorCode === 'content_prompt_rejected'
+      || errorCode === 'content_text_rejected'
+      || (!errorCode && (
+        lowerError.includes('content filtered (prompt)')
+        || lowerError.includes('content filtered (text)')
+        || lowerError.includes('prompt rejected')
+        || lowerError.includes('text input was rejected')
+        || lowerError.includes('sensitive')
+        || lowerError.includes('500063')
+        || (lowerError.includes('content') && lowerError.includes('text'))
+      ));
+
+    const isPromptTooLong = errorCode === 'param_too_long'
+      || (!errorCode && (
+        lowerError.includes('too-long parameters')
+        || lowerError.includes('cannot exceed')
+        || lowerError.includes('prompt is too long')
+        || lowerError.includes('input is too long')
+      ));
+
+    if (!isPromptRejection && !isPromptTooLong) return;
 
     // Mark as shown before setting error
     errorShownForRef.current = generationId;
 
-    setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
+    if (isPromptTooLong) {
+      setError('Prompt too long: Your prompt exceeds the provider\'s character limit. Please shorten it and try again.');
+    } else {
+      setError('Content filtered: Your prompt may contain sensitive content. Please revise and try again.');
+    }
   }, [generationId, watchedStatus, watchedErrorMessage]);
 
   async function generate(options?: { overrideDynamicParams?: Record<string, any> }) {

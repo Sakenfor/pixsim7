@@ -74,6 +74,11 @@ class Generation(SQLModel, table=True):
         sa_column=Column(JSON),
         description="Normalized params (post mapper, pre provider)",
     )
+    resolved_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Provider-ready params with resolved URLs (cached after first resolution for retries)",
+    )
 
     # Inputs & reproducibility
     inputs: List[Dict[str, Any]] = Field(
@@ -129,6 +134,11 @@ class Generation(SQLModel, table=True):
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    error_code: Optional[str] = Field(
+        default=None,
+        max_length=60,
+        description="Structured error code from GenerationErrorCode enum (e.g. 'content_prompt_rejected')",
+    )
     retry_count: int = Field(default=0)
     parent_generation_id: Optional[int] = Field(
         default=None,

@@ -12,18 +12,47 @@ import { useShallow } from 'zustand/react/shallow';
 import type { GenerationModel } from '../models';
 import { useGenerationsStore } from '../stores/generationsStore';
 
-/** Pattern to detect content moderation errors */
+/** Pattern to detect content moderation errors (legacy fallback) */
 const CONTENT_FILTERED_PATTERN = /Content filtered/i;
 
-/** Extract moderation type from error message like "Content filtered (prompt): ..." */
-function extractModerationType(errorMessage: string): string {
-  const match = errorMessage.match(/Content filtered \(([^)]+)\)/i);
-  return match?.[1] || 'content';
+/** Structured error codes that represent content moderation issues */
+const CONTENT_ERROR_CODES = new Set([
+  'content_prompt_rejected',
+  'content_text_rejected',
+  'content_output_rejected',
+  'content_image_rejected',
+  'content_filtered',
+]);
+
+/** Check if a generation has a content moderation error */
+function isContentModerationError(gen: GenerationModel): boolean {
+  if (gen.errorCode && CONTENT_ERROR_CODES.has(gen.errorCode)) return true;
+  // Legacy fallback: string pattern matching
+  return !gen.errorCode && !!gen.errorMessage && CONTENT_FILTERED_PATTERN.test(gen.errorMessage);
 }
 
-/** Get friendly message for moderation type */
-function getModerationLabel(type: string): string {
-  switch (type.toLowerCase()) {
+/** Get friendly label from structured error_code or legacy error message */
+function getModerationLabel(gen: GenerationModel): string {
+  // Primary: structured errorCode
+  if (gen.errorCode) {
+    switch (gen.errorCode) {
+      case 'content_prompt_rejected':
+      case 'content_text_rejected':
+        return 'Prompt rejected';
+      case 'content_image_rejected':
+        return 'Image rejected';
+      case 'content_output_rejected':
+        return 'Output rejected';
+      case 'content_filtered':
+      default:
+        return 'Content filtered';
+    }
+  }
+
+  // Legacy fallback: extract from error message string
+  const match = gen.errorMessage?.match(/Content filtered \(([^)]+)\)/i);
+  const type = match?.[1]?.toLowerCase();
+  switch (type) {
     case 'prompt':
     case 'text':
       return 'Prompt rejected';
@@ -56,11 +85,7 @@ export function ContentModerationWarning({
     useShallow((state) => {
       const warnings: GenerationModel[] = [];
       for (const gen of state.generations.values()) {
-        if (
-          gen.status === 'failed' &&
-          gen.errorMessage &&
-          CONTENT_FILTERED_PATTERN.test(gen.errorMessage)
-        ) {
+        if (gen.status === 'failed' && isContentModerationError(gen)) {
           warnings.push(gen);
         }
       }
@@ -117,8 +142,7 @@ export function ContentModerationWarning({
       {/* Warning messages */}
       <div className="flex items-center gap-1 min-w-0 overflow-hidden">
         {visibleWarnings.map((warning, idx) => {
-          const moderationType = extractModerationType(warning.errorMessage || '');
-          const label = getModerationLabel(moderationType);
+          const label = getModerationLabel(warning);
 
           return (
             <span key={warning.id} className="flex items-center gap-1 truncate">

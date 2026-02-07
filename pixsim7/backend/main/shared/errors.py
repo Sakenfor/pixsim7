@@ -68,8 +68,25 @@ class AuthenticationError(PixSimError):
 # ===== PROVIDER ERRORS =====
 
 class ProviderError(PixSimError):
-    """Base error for provider-related issues"""
-    pass
+    """Base error for provider-related issues
+
+    Args:
+        message: Human-readable error description
+        code: Internal error code string (for PixSimError)
+        error_code: Structured GenerationErrorCode value (for downstream dispatch)
+        retryable: Whether the operation could succeed on retry
+    """
+    def __init__(
+        self,
+        message: str,
+        code: str | None = None,
+        *,
+        error_code: str | None = None,
+        retryable: bool = True,
+    ):
+        super().__init__(message, code=code)
+        self.error_code = error_code
+        self.retryable = retryable
 
 
 class ProviderNotFoundError(ProviderError):
@@ -77,7 +94,8 @@ class ProviderNotFoundError(ProviderError):
     def __init__(self, provider_id: str):
         super().__init__(
             f"Provider '{provider_id}' not found in registry",
-            code="PROVIDER_NOT_FOUND"
+            code="PROVIDER_NOT_FOUND",
+            retryable=False,
         )
         self.provider_id = provider_id
 
@@ -88,7 +106,12 @@ class ProviderAuthenticationError(ProviderError):
         msg = f"Authentication failed for provider '{provider_id}'"
         if message:
             msg += f": {message}"
-        super().__init__(msg, code="PROVIDER_AUTH_FAILED")
+        super().__init__(
+            msg,
+            code="PROVIDER_AUTH_FAILED",
+            error_code="provider_auth",
+            retryable=False,
+        )
         self.provider_id = provider_id
 
 
@@ -98,7 +121,9 @@ class ProviderQuotaExceededError(ProviderError):
         super().__init__(
             f"Quota exceeded for provider '{provider_id}'. "
             f"Credits needed: {credits_needed}",
-            code="PROVIDER_QUOTA_EXCEEDED"
+            code="PROVIDER_QUOTA_EXCEEDED",
+            error_code="provider_quota",
+            retryable=False,
         )
         self.provider_id = provider_id
         self.credits_needed = credits_needed
@@ -110,7 +135,12 @@ class ProviderRateLimitError(ProviderError):
         msg = f"Rate limit exceeded for provider '{provider_id}'"
         if retry_after:
             msg += f". Retry after {retry_after} seconds"
-        super().__init__(msg, code="PROVIDER_RATE_LIMIT")
+        super().__init__(
+            msg,
+            code="PROVIDER_RATE_LIMIT",
+            error_code="provider_rate_limit",
+            retryable=True,
+        )
         self.provider_id = provider_id
         self.retry_after = retry_after
 
@@ -123,7 +153,12 @@ class ProviderConcurrentLimitError(ProviderError):
     """
     def __init__(self, provider_id: str, account_id: int | None = None):
         msg = f"Concurrent generation limit reached for provider '{provider_id}'"
-        super().__init__(msg, code="PROVIDER_CONCURRENT_LIMIT")
+        super().__init__(
+            msg,
+            code="PROVIDER_CONCURRENT_LIMIT",
+            error_code="provider_concurrent_limit",
+            retryable=False,
+        )
         self.provider_id = provider_id
         self.account_id = account_id
 
@@ -136,15 +171,27 @@ class ProviderContentFilteredError(ProviderError):
         reason: Human-readable reason for filtering
         retryable: Whether retrying might succeed (False for prompt rejections,
                    True for output rejections where AI might generate different content)
+        error_code: Structured GenerationErrorCode value (defaults to content_filtered)
     """
-    def __init__(self, provider_id: str, reason: str | None = None, *, retryable: bool = True):
+    def __init__(
+        self,
+        provider_id: str,
+        reason: str | None = None,
+        *,
+        retryable: bool = True,
+        error_code: str | None = None,
+    ):
         msg = f"Content filtered by provider '{provider_id}'"
         if reason:
             msg += f": {reason}"
-        super().__init__(msg, code="PROVIDER_CONTENT_FILTERED")
+        super().__init__(
+            msg,
+            code="PROVIDER_CONTENT_FILTERED",
+            error_code=error_code or "content_filtered",
+            retryable=retryable,
+        )
         self.provider_id = provider_id
         self.reason = reason
-        self.retryable = retryable
 
 
 class ProviderJobNotFoundError(ProviderError):
@@ -152,7 +199,8 @@ class ProviderJobNotFoundError(ProviderError):
     def __init__(self, provider_id: str, provider_job_id: str):
         super().__init__(
             f"Job '{provider_job_id}' not found on provider '{provider_id}'",
-            code="PROVIDER_JOB_NOT_FOUND"
+            code="PROVIDER_JOB_NOT_FOUND",
+            retryable=False,
         )
         self.provider_id = provider_id
         self.provider_job_id = provider_job_id
@@ -163,7 +211,8 @@ class UnsupportedOperationError(ProviderError):
     def __init__(self, provider_id: str, operation: str):
         super().__init__(
             f"Provider '{provider_id}' does not support operation '{operation}'",
-            code="UNSUPPORTED_OPERATION"
+            code="UNSUPPORTED_OPERATION",
+            retryable=False,
         )
         self.provider_id = provider_id
         self.operation = operation

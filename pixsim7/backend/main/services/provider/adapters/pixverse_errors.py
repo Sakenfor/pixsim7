@@ -88,8 +88,19 @@ def handle_pixverse_error(
             retryable=retryable,
         )
 
+        # Map SDK moderation_type to structured error_code
+        _moderation_error_codes = {
+            "prompt": "content_prompt_rejected",
+            "text": "content_text_rejected",
+            "output": "content_output_rejected",
+            "image": "content_image_rejected",
+        }
+        gen_error_code = _moderation_error_codes.get(moderation_type, "content_filtered")
+
         friendly = f"Content filtered ({moderation_type}): {err_msg or raw_error}"
-        raise ContentFilteredError("pixverse", friendly, retryable=retryable)
+        raise ContentFilteredError(
+            "pixverse", friendly, retryable=retryable, error_code=gen_error_code,
+        )
 
     # Try to extract structured ErrCode/ErrMsg from SDK error (if available)
     err_code: int | None = None
@@ -138,7 +149,13 @@ def handle_pixverse_error(
             )
             # Prompt rejections (500063) are not retryable
             retryable = err_code != 500063
-            raise ContentFilteredError("pixverse", friendly, retryable=retryable)
+            gen_error_code = (
+                "content_prompt_rejected" if err_code == 500063
+                else "content_output_rejected"
+            )
+            raise ContentFilteredError(
+                "pixverse", friendly, retryable=retryable, error_code=gen_error_code,
+            )
 
         # Insufficient balance / quota
         # 500090: generic insufficient balance
@@ -161,7 +178,9 @@ def handle_pixverse_error(
                 "Try shortening or simplifying the prompt and checking extra options. "
                 f"(ErrCode {err_code}: {err_msg or 'invalid parameter'})"
             )
-            raise ProviderError(friendly)
+            raise ProviderError(
+                friendly, error_code="param_too_long", retryable=False,
+            )
 
         # Permission / access
         if err_code in {500020, 500070, 500071}:
@@ -169,7 +188,9 @@ def handle_pixverse_error(
                 "This Pixverse account does not have permission or the required template "
                 f"for the requested operation (ErrCode {err_code}: {err_msg or 'permission error'})."
             )
-            raise ProviderError(friendly)
+            raise ProviderError(
+                friendly, error_code="provider_auth", retryable=False,
+            )
 
         # High load / temporary issues
         if err_code in {500069}:
@@ -177,11 +198,13 @@ def handle_pixverse_error(
                 "Pixverse is currently under high load and cannot process this request. "
                 "Please try again in a few moments."
             )
-            raise ProviderError(friendly)
+            raise ProviderError(
+                friendly, error_code="provider_unavailable", retryable=True,
+            )
 
         # Generic mapping for any other known ErrCode
         friendly = f"Pixverse API error {err_code}: {err_msg or raw_error}"
-        raise ProviderError(friendly)
+        raise ProviderError(friendly, error_code="provider_generic")
 
     # Authentication errors (fallback when no structured ErrCode was found)
     if "auth" in error_msg or "token" in error_msg or "unauthorized" in error_msg:
