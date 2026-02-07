@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "roots": [
+    { "path": "docs", "origin": "core" }
+  ]
+}

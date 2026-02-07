@@ -1,3 +1,16 @@
+---
+id: app-map
+title: App Map & Architecture Index
+featureIds:
+  - app-map
+  - devtools
+visibility: internal
+tags:
+  - architecture
+  - app-map
+summary: Canonical map of PixSim7 features, routes, backend, and tooling.
+---
+
 # App Map & Architecture Index
 
 **Last Updated:** 2025-01-05
@@ -35,12 +48,14 @@ Both the frontend App Map panel and Python launcher GUI should consume these end
 When the backend is not running, the launcher falls back to JSON files:
 
 1) **Generated registry**
-   `docs/app_map.generated.json` - produced from module `page.appMap` metadata.
+   `docs/app_map.generated.json` - produced from module JSDoc `@appMap.*` tags
+   (with `page.appMap` as deprecated fallback).
 
 2) **Manual registry (deprecated)**
-   `docs/app_map.sources.json` - being phased out in favor of inline `page.appMap`.
+   `docs/app_map.sources.json` - being phased out in favor of JSDoc `@appMap.*` tags.
 
-`scripts/generate-app-map.ts` parses module definitions and outputs the generated JSON.
+The generator lives in `packages/shared/app-map` and is invoked via `pnpm docs:app-map`
+(which runs `packages/shared/app-map/src/cli.ts`).
 
 ### Code-Derived Metadata
 
@@ -48,7 +63,8 @@ When generating `app_map.generated.json`, use:
 
 - **Module pages**: `apps/main/src/app/modules/types.ts`  
   `Module.page` fields such as `route`, `description`, `category`, `featureId`, and
-  `featurePrimary` provide feature/route metadata.
+  `featurePrimary` provide feature/route metadata. Use `@appMap.*` JSDoc tags on
+  module declarations for docs/backend/frontend mapping.
 
 - **Actions**: `packages/shared/types/src/actions.ts`  
   `ActionDefinition` (and module `page.actions`) provide action metadata.  
@@ -56,41 +72,45 @@ When generating `app_map.generated.json`, use:
 
 ### Add a Feature to the App Map
 
-**Preferred approach (code-derived):**
+**Preferred approach (JSDoc, canonical):**
 
-1) Add `page.appMap` to your module definition:
+1) Add `@appMap.*` tags to the module declaration:
    ```typescript
    // apps/main/src/features/myFeature/module.ts
+   /**
+    * @appMap.docs docs/my-feature.md
+    * @appMap.backend pixsim7.backend.main.api.v1.my_feature
+    * @appMap.frontend apps/main/src/features/myFeature/
+    * @appMap.notes Optional implementation notes
+    */
    export const myModule: Module = {
      id: 'my-feature',
      name: 'My Feature',
      page: {
        route: '/my-feature',
        featureId: 'my-feature',
-       appMap: {
-         docs: ['docs/my-feature.md'],
-         backend: ['pixsim7.backend.main.api.v1.my_feature'],
-         frontend: ['apps/main/src/features/myFeature/'],
-         notes: ['Optional implementation notes'],
-       },
      },
    };
    ```
 
 2) Run `pnpm docs:app-map` to regenerate `app_map.generated.json`
 
-**Legacy approach (deprecated):**
+**Fallback (deprecated):**
 
-Add entries to `docs/app_map.sources.json` - this is being phased out.
+- `page.appMap` is still supported as a fallback but will be removed once migrations are complete.
+- `docs/app_map.sources.json` is legacy-only and should be avoided for new features.
 
-### Comment Conventions (Planned)
+### Comment Conventions (JSDoc)
 
-If we later parse comments into the generated registry, use short JSDoc lines
-on module and action definitions. Keep them concise and descriptive.
+Use short JSDoc tags on module declarations. Comma-separate lists for `docs`,
+`backend`, and `frontend`. Use `|` to split multiple notes if needed.
+
+See `docs/APP_MAP_JSDOC.md` for the canonical format.
 
 ## Live App Map Registry
 
-The table below is auto-generated from `docs/app_map.sources.json`. Run `pnpm codegen --only app-map` to refresh.
+The table below is auto-generated from module JSDoc `@appMap.*` tags (with legacy registry fallback).
+Run `pnpm codegen --only app-map` to refresh.
 
 <!-- APP_MAP:START -->
 | Feature | Routes | Docs | Frontend | Backend |
@@ -139,9 +159,9 @@ The table below is auto-generated from `docs/app_map.sources.json`. Run `pnpm co
 
 ## Maintaining This Document
 
-- **Registry**: Edit `docs/app_map.sources.json` to add/update features
-- **Regenerate**: Run `python update_app_map.py` to update the table
-- **Validate**: Run `python scripts/docs_check.py` to verify all paths exist
+- **Registry**: Prefer JSDoc `@appMap.*` tags in feature modules; use `docs/app_map.sources.json` only as legacy fallback
+- **Regenerate**: Run `pnpm docs:app-map` to update the table
+- **Validate**: Run `pnpm docs:app-map:check` to verify outputs are current
 
 ---
 

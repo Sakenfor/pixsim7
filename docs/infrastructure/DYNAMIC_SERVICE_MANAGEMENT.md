@@ -125,7 +125,7 @@ To split a new service out of the backend:
 
 The OpenAPI scripts read manifests for `openapi_endpoint` and `openapi_types_path`:
 
-- `scripts/generate-openapi-types.ts`
+- `tools/codegen/generate-openapi-types.ts`
 - `scripts/gen_openapi_docs.py`
 
 No central registry file is required.

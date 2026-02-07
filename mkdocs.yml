@@ -1,0 +1,11 @@
+site_name: PixSim7 Docs
+docs_dir: docs
+site_dir: site-docs
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - App Map: APP_MAP.md
+  - App Map JSDoc: APP_MAP_JSDOC.md
