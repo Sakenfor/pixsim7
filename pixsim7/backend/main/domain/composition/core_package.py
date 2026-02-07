@@ -2,7 +2,7 @@
 Core Composition Package
 
 Provides the base composition roles that are always available.
-These are derived from shared/composition-roles.yaml.
+These are derived from the VocabularyRegistry (roles vocab).
 
 This package is auto-registered and cannot be deactivated.
 """

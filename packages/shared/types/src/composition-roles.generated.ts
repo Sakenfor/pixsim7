@@ -1,4 +1,4 @@
-// Auto-generated from composition-roles.yaml - DO NOT EDIT
+// Auto-generated from roles vocabulary - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
 //
 // ========================================================================
@@ -13,13 +13,13 @@
 // ========================================================================
 
 /**
- * Canonical composition roles from core YAML.
+ * Canonical composition roles from core vocab.
  * @see compositionPackageStore.roles for runtime API with plugin roles
  */
 export const COMPOSITION_ROLES = ["main_character","companion","environment","prop","style_reference","effect"] as const;
 
 /**
- * Core composition role type, derived from YAML.
+ * Core composition role type, derived from vocab.
  * Only includes core roles - not plugin-contributed ones.
  */
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];

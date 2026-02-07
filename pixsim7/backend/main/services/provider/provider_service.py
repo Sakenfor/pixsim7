@@ -6,7 +6,7 @@ Clean service for provider interaction and submission tracking.
 from __future__ import annotations
 
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim_logging import configure_logging
@@ -71,6 +71,37 @@ class ProviderService:
         """
         # Get provider from registry
         provider = registry.get(generation.provider_id)
+
+        # === Use cached resolved_params if available (for retries) ===
+        # This avoids re-resolving assets which can fail intermittently.
+        if generation.resolved_params:
+            logger.info(
+                "using_cached_resolved_params",
+                generation_id=generation.id,
+                retry_count=generation.retry_count,
+            )
+            # Create submission and execute directly with cached params
+            submission = ProviderSubmission(
+                generation_id=generation.id,
+                account_id=account.id,
+                provider_id=generation.provider_id,
+                payload=generation.resolved_params,
+                response={},
+                retry_attempt=generation.retry_count,
+                submitted_at=datetime.now(timezone.utc),
+                status="pending",
+            )
+            self.db.add(submission)
+            await self.db.commit()
+            await self.db.refresh(submission)
+
+            return await self._execute_with_payload(
+                provider=provider,
+                generation=generation,
+                account=account,
+                submission=submission,
+                execute_params=generation.resolved_params,
+            )
 
         # Normalize params and ensure composition_assets for asset-based operations.
         params = dict(params)
@@ -157,7 +188,7 @@ class ProviderService:
             payload=mapped_params,
             response={},
             retry_attempt=generation.retry_count,
-            submitted_at=datetime.utcnow(),
+            submitted_at=datetime.now(timezone.utc),
             status="pending",
         )
         self.db.add(submission)
@@ -204,6 +235,12 @@ class ProviderService:
                     resolve_source_fn=resolve_source_fn,
                     account=account,
                 )
+
+                # Cache resolved params on Generation for retry reuse
+                generation.resolved_params = execute_params
+                submission.payload = execute_params
+                await self.db.commit()
+                await self.db.refresh(generation)
 
             logger.info(
                 "provider_execute_params",
@@ -258,7 +295,7 @@ class ProviderService:
                 )
 
             submission.provider_job_id = result.provider_job_id
-            submission.responded_at = datetime.utcnow()
+            submission.responded_at = datetime.now(timezone.utc)
             submission.status = "success"
 
             # Calculate duration
@@ -291,7 +328,7 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
-            submission.responded_at = datetime.utcnow()
+            submission.responded_at = datetime.now(timezone.utc)
             submission.status = "error"
             submission.calculate_duration()
 
@@ -314,6 +351,121 @@ class ProviderService:
 
     # Note: _prepare_remaker_execute_params has been removed.
     # Providers now implement prepare_execution_params() directly.
+
+    async def _execute_with_payload(
+        self,
+        provider,
+        generation: Generation,
+        account: ProviderAccount,
+        submission: ProviderSubmission,
+        execute_params: Dict[str, Any],
+    ) -> ProviderSubmission:
+        """
+        Execute provider operation with pre-resolved params.
+
+        Used for retries where we reuse the previous submission's payload
+        instead of re-resolving assets.
+        """
+        def _summarize_params(raw: Dict[str, Any]) -> Dict[str, Any]:
+            image_urls = raw.get("image_urls")
+            summary: Dict[str, Any] = {
+                "keys": list(raw.keys()),
+                "model": raw.get("model"),
+                "quality": raw.get("quality"),
+            }
+            if raw.get("image_url"):
+                summary["image_url"] = str(raw.get("image_url"))[:120]
+            if raw.get("video_url"):
+                summary["video_url"] = str(raw.get("video_url"))[:120]
+            if isinstance(image_urls, list):
+                summary["image_urls_count"] = len(image_urls)
+            return summary
+
+        try:
+            logger.info(
+                "provider_execute_with_cached_payload",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                execute_params_summary=_summarize_params(execute_params),
+            )
+
+            # Execute provider operation
+            result: GenerationResult = await provider.execute(
+                operation_type=generation.operation_type,
+                account=account,
+                params=execute_params
+            )
+
+            # Update submission with response
+            if generation.operation_type in get_image_operations():
+                submission.response = {
+                    "provider_job_id": result.provider_job_id,
+                    "provider_image_id": result.provider_video_id,
+                    "status": result.status.value,
+                    "image_url": result.video_url,
+                    "thumbnail_url": result.thumbnail_url,
+                    "metadata": result.metadata or {},
+                    "media_type": "image",
+                }
+            else:
+                submission.response = {
+                    "provider_job_id": result.provider_job_id,
+                    "provider_video_id": result.provider_video_id,
+                    "status": result.status.value,
+                    "video_url": result.video_url,
+                    "thumbnail_url": result.thumbnail_url,
+                    "metadata": result.metadata or {},
+                }
+
+            if not result.provider_job_id:
+                raise ProviderError(
+                    f"Provider did not return a job ID for {generation.operation_type.value}"
+                )
+
+            submission.provider_job_id = result.provider_job_id
+            submission.responded_at = datetime.now(timezone.utc)
+            submission.status = "success"
+            submission.calculate_duration()
+
+            await self.db.commit()
+            await self.db.refresh(submission)
+
+            await event_bus.publish(PROVIDER_SUBMITTED, {
+                "job_id": generation.id,
+                "submission_id": submission.id,
+                "provider_job_id": result.provider_job_id,
+            })
+
+            return submission
+
+        except ProviderError as e:
+            logger.error(
+                "provider_execute_cached_payload_failed",
+                generation_id=generation.id,
+                error=str(e),
+                error_type=e.__class__.__name__,
+            )
+            submission.response = {
+                "error": str(e),
+                "error_type": e.__class__.__name__,
+            }
+            submission.responded_at = datetime.now(timezone.utc)
+            submission.status = "error"
+            submission.calculate_duration()
+
+            await self.db.commit()
+            await self.db.refresh(submission)
+
+            await event_bus.publish(PROVIDER_FAILED, {
+                "job_id": generation.id,
+                "submission_id": submission.id,
+                "error": str(e),
+                "error_type": e.__class__.__name__,
+                "provider_id": generation.provider_id,
+                "operation_type": generation.operation_type.value,
+            })
+
+            raise
 
     async def execute_analysis(
         self,
@@ -353,7 +505,7 @@ class ProviderService:
             payload=analysis_params,
             response={},
             retry_attempt=analysis.retry_count,
-            submitted_at=datetime.utcnow(),
+            submitted_at=datetime.now(timezone.utc),
             status="pending",
         )
         self.db.add(submission)
@@ -390,7 +542,7 @@ class ProviderService:
                 "result": result.metadata or {},
             }
             submission.provider_job_id = result.provider_job_id
-            submission.responded_at = datetime.utcnow()
+            submission.responded_at = datetime.now(timezone.utc)
             submission.status = "success"
 
             submission.calculate_duration()
@@ -413,7 +565,7 @@ class ProviderService:
                 "error": str(e),
                 "error_type": e.__class__.__name__,
             }
-            submission.responded_at = datetime.utcnow()
+            submission.responded_at = datetime.now(timezone.utc)
             submission.status = "error"
             submission.calculate_duration()
 
@@ -518,7 +670,7 @@ class ProviderService:
                 model = submission.payload.get("model")
             model_name = str(model or "").lower()
             threshold_seconds = 180 if ("qwen" in model_name or "seedream" in model_name) else 420
-            elapsed_seconds = (datetime.utcnow() - submission.submitted_at).total_seconds()
+            elapsed_seconds = (datetime.now(timezone.utc) - submission.submitted_at).total_seconds()
 
             if elapsed_seconds >= threshold_seconds:
                 try:

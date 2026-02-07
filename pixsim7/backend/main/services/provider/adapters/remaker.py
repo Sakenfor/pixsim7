@@ -29,7 +29,8 @@ import httpx
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import OperationType, ProviderStatus, Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
-from pixsim7.backend.main.shared.composition_assets import composition_assets_to_refs
+from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.services.provider.base import (
     Provider,
     GenerationResult,
@@ -153,10 +154,32 @@ class RemakerProvider(Provider):
         if not prompt or not str(prompt).strip():
             raise ProviderError("Remaker requires a non-empty prompt")
 
-        image_urls: list[str] = []
-        if isinstance(params.get("composition_assets"), list):
-            image_urls = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
-        if not image_urls:
+        # Extract original image source from composition_assets
+        # Don't resolve asset refs here - prepare_execution_params will handle resolution
+        original_image_source = None
+        composition_assets = params.get("composition_assets")
+        if isinstance(composition_assets, list):
+            assets = coerce_composition_assets(composition_assets)
+            for item in assets:
+                # Filter to images only
+                item_media_type = item.get("media_type")
+                if item_media_type and item_media_type != "image":
+                    continue
+
+                # Get the source - either asset ref or URL
+                # resolve_source_fn in prepare_execution_params handles both
+                asset_value = item.get("asset")
+                url_value = item.get("url")
+
+                if asset_value:
+                    # Could be "asset:123" or a numeric ID - pass through for resolution
+                    original_image_source = asset_value
+                    break
+                elif url_value and isinstance(url_value, str):
+                    original_image_source = url_value
+                    break
+
+        if not original_image_source:
             raise ProviderError("Remaker requires 'composition_assets' with at least one image entry")
 
         # Extra fields for inpaint. We keep these provider-specific to avoid changing
@@ -171,7 +194,7 @@ class RemakerProvider(Provider):
 
         return {
             "prompt": prompt,
-            "original_image_source": image_urls[0],
+            "original_image_source": original_image_source,
             "mask_source": mask_source,
             "file_extension": file_extension,
         }

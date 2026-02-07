@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from pixsim7.backend.main.shared.asset_refs import extract_asset_id, extract_asset_ref
+from pixsim7.backend.main.shared.asset_refs import extract_asset_ref
 
 
 def normalize_media_type(value: Optional[str]) -> Optional[str]:
@@ -112,48 +112,3 @@ def coerce_composition_assets(
         normalized.append(entry)
 
     return normalized
-
-
-def composition_assets_to_refs(
-    composition_assets: Any,
-    *,
-    media_type: Optional[str] = None,
-) -> List[str]:
-    """
-    Extract asset refs or URLs from composition assets.
-    """
-    refs: List[str] = []
-    items = coerce_composition_assets(composition_assets)
-    for item in items:
-        item_media = normalize_media_type(item.get("media_type"))
-        if media_type and item_media and item_media != media_type:
-            continue
-        asset_value = item.get("asset")
-        url_value = item.get("url")
-        ref = extract_asset_ref(asset_value, allow_url_asset_id=True)
-        if ref:
-            refs.append(ref)
-            continue
-        if isinstance(url_value, str) and url_value:
-            refs.append(url_value)
-    return refs
-
-
-def composition_assets_to_asset_ids(
-    composition_assets: Any,
-    *,
-    media_type: Optional[str] = None,
-) -> List[int]:
-    """
-    Extract numeric asset IDs from composition assets.
-    """
-    ids: List[int] = []
-    items = coerce_composition_assets(composition_assets)
-    for item in items:
-        item_media = normalize_media_type(item.get("media_type"))
-        if media_type and item_media and item_media != media_type:
-            continue
-        asset_id = extract_asset_id(item.get("asset"))
-        if asset_id is not None:
-            ids.append(asset_id)
-    return ids

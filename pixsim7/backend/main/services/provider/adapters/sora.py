@@ -4,7 +4,7 @@ Sora provider adapter
 Adapter for OpenAI Sora video generation using sora-py SDK
 """
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import asyncio
 
@@ -41,7 +41,8 @@ from pixsim7.backend.main.services.provider.base import (
     JobNotFoundError,
     RateLimitError,
 )
-from pixsim7.backend.main.shared.composition_assets import composition_assets_to_refs
+from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.shared.jwt_helpers import JWTExtractor
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
@@ -189,18 +190,88 @@ class SoraProvider(Provider):
 
         # Operation-specific parameters
         if operation_type == OperationType.IMAGE_TO_VIDEO:
-            # Image input
-            image_source = params.get("image_url")
-            if not image_source:
-                refs = composition_assets_to_refs(params.get("composition_assets"), media_type="image")
-                if refs:
-                    image_source = refs[0]
-            if image_source is not None:
-                mapped["image_url"] = image_source
+            # Only set image_url if it's already a valid URL
+            # Asset refs in composition_assets will be resolved in prepare_execution_params
+            image_url = params.get("image_url")
+            if image_url and isinstance(image_url, str) and image_url.startswith(("http://", "https://")):
+                mapped["image_url"] = image_url
             elif "image_media_id" in params:
                 mapped["image_media_id"] = params["image_media_id"]
 
+            # Pass through composition_assets for resolution
+            if params.get("composition_assets"):
+                mapped["composition_assets"] = params["composition_assets"]
+
         return mapped
+
+    def requires_file_preparation(self) -> bool:
+        """Enable prepare_execution_params hook for asset resolution."""
+        return True
+
+    async def prepare_execution_params(
+        self,
+        generation,
+        mapped_params: Dict[str, Any],
+        resolve_source_fn,
+        account: Optional[ProviderAccount] = None,
+    ) -> Dict[str, Any]:
+        """
+        Resolve composition_assets to URLs for Sora.
+
+        Sora accepts HTTP URLs for image inputs. This method resolves any
+        asset refs in composition_assets to their actual URLs.
+        """
+        result_params = dict(mapped_params)
+        operation_type = generation.operation_type
+
+        # If we already have an image_url or image_media_id, we're good
+        if result_params.get("image_url") or result_params.get("image_media_id"):
+            result_params.pop("composition_assets", None)
+            return result_params
+
+        # Resolve composition_assets if present
+        composition_assets = result_params.get("composition_assets")
+        if composition_assets and operation_type == OperationType.IMAGE_TO_VIDEO:
+            assets = coerce_composition_assets(composition_assets)
+
+            for item in assets:
+                # Filter to images only
+                item_media_type = item.get("media_type")
+                if item_media_type and item_media_type != "image":
+                    continue
+
+                asset_value = item.get("asset")
+                url_value = item.get("url")
+                asset_id = extract_asset_id(asset_value)
+
+                if asset_id is not None:
+                    # Resolve asset to URL via database lookup
+                    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+                    from pixsim7.backend.main.domain.assets.models import Asset
+                    from sqlmodel import select
+
+                    async with get_async_session() as session:
+                        query = select(Asset).where(Asset.id == asset_id)
+                        db_result = await session.execute(query)
+                        asset = db_result.scalar_one_or_none()
+
+                        if asset and asset.remote_url:
+                            result_params["image_url"] = asset.remote_url
+                            break
+                        else:
+                            raise ProviderError(
+                                f"Sora IMAGE_TO_VIDEO requires an image URL. "
+                                f"Asset {asset_id} has no remote_url."
+                            )
+
+                elif url_value and isinstance(url_value, str) and url_value.startswith(("http://", "https://")):
+                    result_params["image_url"] = url_value
+                    break
+
+            # Remove composition_assets from final params
+            result_params.pop("composition_assets", None)
+
+        return result_params
 
     def get_operation_parameter_spec(self) -> dict:
         """Sora-specific parameter specification for dynamic UI forms."""
@@ -282,7 +353,7 @@ class SoraProvider(Provider):
 
             # Use adaptive ETA from account if available
             estimated_seconds = account.get_estimated_completion_time()
-            estimated_completion = datetime.utcnow() + timedelta(seconds=estimated_seconds)
+            estimated_completion = datetime.now(timezone.utc) + timedelta(seconds=estimated_seconds)
 
             return GenerationResult(
                 provider_job_id=task.id,

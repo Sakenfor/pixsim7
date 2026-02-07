@@ -2,7 +2,7 @@
 Tests for Composition Role System.
 
 Tests:
-1. YAML loading from data/composition-roles.yaml
+1. Vocab loading from VocabularyRegistry (roles vocab)
 2. normalize_composition_role() with various inputs
 3. map_tag_to_composition_role() for namespace/slug mapping
 4. map_composition_role_to_pixverse_type() collapse logic
@@ -13,14 +13,14 @@ import pytest
 
 
 # =============================================================================
-# TEST: YAML Loading
+# TEST: Vocab Loading
 # =============================================================================
 
-class TestYamlLoading:
-    """Tests for loading composition roles from YAML."""
+class TestVocabLoading:
+    """Tests for loading composition roles from vocab registry."""
 
-    def test_yaml_loads_successfully(self):
-        """Test that the YAML file loads without error."""
+    def test_vocab_loads_successfully(self):
+        """Test that the vocab registry loads without error."""
         from pixsim7.backend.main.shared.composition import (
             COMPOSITION_ROLE_ALIASES,
             TAG_NAMESPACE_TO_COMPOSITION_ROLE,

@@ -5,67 +5,94 @@ This module defines the canonical composition roles used across prompt blocks,
 fusion, and multi-image editing. Provider adapters collapse these roles into
 provider-specific formats.
 
-Role mappings are loaded from composition-roles.yaml (single source of truth).
-Frontend generates equivalent TS constants via scripts/generate-composition-roles.ts.
+Role mappings are loaded from the VocabularyRegistry (roles vocab).
+Frontend generates equivalent TS constants via tools/codegen/generate-composition-roles.ts.
 """
 from __future__ import annotations
 
 import copy
-import os
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import yaml
+from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
 
 
 # ============================================================================
-# YAML Loading (Single Source of Truth)
+# Vocabulary Loading (Single Source of Truth)
 # ============================================================================
 
 
-def _resolve_data_path() -> Path:
-    """Resolve path to composition-roles.yaml with robust fallbacks."""
-    # Primary: same directory as this module
-    candidate = Path(__file__).resolve().parent / "composition-roles.yaml"
-    if candidate.exists():
-        return candidate
+def _strip_role_prefix(role_id: str) -> str:
+    if role_id.startswith("role:"):
+        return role_id.split(":", 1)[1]
+    return role_id
 
-    # Fallback: check PIXSIM_DATA_DIR env var
-    env_dir = os.environ.get("PIXSIM_DATA_DIR")
-    if env_dir:
-        candidate = Path(env_dir) / "composition-roles.yaml"
-        if candidate.exists():
-            return candidate
 
-    raise FileNotFoundError(
-        f"composition-roles.yaml not found. "
-        f"Checked: {Path(__file__).resolve().parent / 'composition-roles.yaml'}. "
-        f"Set PIXSIM_DATA_DIR or ensure file exists alongside composition.py."
-    )
+def _normalize_mapping_values(mapping: Dict[str, str]) -> Dict[str, str]:
+    return {str(k).lower(): _strip_role_prefix(str(v)) for k, v in mapping.items()}
 
 
 def _load_role_data() -> Dict[str, Any]:
-    """Load and validate composition role data from YAML."""
-    data_path = _resolve_data_path()
-    with open(data_path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    """Load and normalize composition role data from VocabularyRegistry."""
+    registry = get_registry()
 
-    required = ["roles", "priority", "slugMappings", "namespaceMappings", "aliases"]
-    missing = [k for k in required if k not in data]
-    if missing:
-        raise ValueError(
-            f"composition-roles.yaml missing required keys: {missing}"
-        )
-    return data
+    roles_data: Dict[str, Dict[str, Any]] = {}
+    aliases: Dict[str, str] = {}
+
+    for role in registry.all_roles():
+        role_id = _strip_role_prefix(role.id)
+        roles_data[role_id] = {
+            "label": role.label,
+            "description": role.description,
+            "color": role.color,
+            "defaultLayer": role.default_layer,
+            "defaultInfluence": role.default_influence,
+            "tags": list(role.tags),
+        }
+
+        for alias in role.aliases:
+            alias_key = str(alias).strip().lower()
+            if alias_key:
+                aliases[alias_key] = role_id
+
+    priority = [_strip_role_prefix(role_id) for role_id in registry.role_priority]
+    if not priority:
+        priority = list(roles_data.keys())
+
+    slug_mappings = _normalize_mapping_values(registry.role_slug_mappings)
+    namespace_mappings = _normalize_mapping_values(registry.role_namespace_mappings)
+
+    return {
+        "roles": roles_data,
+        "priority": priority,
+        "slugMappings": slug_mappings,
+        "namespaceMappings": namespace_mappings,
+        "aliases": aliases,
+    }
+
+
+def _load_prompt_role_mappings() -> Dict[str, str]:
+    """Load prompt role -> composition role mappings from vocab."""
+    registry = get_registry()
+    mapping: Dict[str, str] = {}
+    for prompt_role in registry.all_prompt_roles():
+        prompt_id = str(prompt_role.id).strip().lower()
+        if not prompt_id:
+            continue
+        composition_role = getattr(prompt_role, "composition_role", None)
+        if not composition_role:
+            continue
+        mapping[prompt_id] = _strip_role_prefix(str(composition_role))
+    return mapping
 
 
 # Load at module init - fail fast with clear error
 _ROLE_DATA = _load_role_data()
+_PROMPT_ROLE_TO_COMPOSITION_ROLE = _load_prompt_role_mappings()
 
 
 def _build_composition_role_enum() -> type:
-    """Dynamically build ImageCompositionRole enum from YAML roles."""
+    """Dynamically build ImageCompositionRole enum from vocab roles."""
     # roles is now an object with metadata, extract keys
     roles_data = _ROLE_DATA["roles"]
     role_ids = list(roles_data.keys())
@@ -74,10 +101,10 @@ def _build_composition_role_enum() -> type:
     return Enum("ImageCompositionRole", members, type=str)
 
 
-# Build enum dynamically from YAML - no separate Python edits needed
+# Build enum dynamically from vocab - no separate Python edits needed
 ImageCompositionRole = _build_composition_role_enum()
 
-# Role mappings from YAML
+# Role mappings from vocab
 COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA["aliases"]
 TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["namespaceMappings"]
 TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["slugMappings"]
@@ -85,12 +112,12 @@ COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA["priority"]
 
 
 def get_composition_role_metadata() -> Dict[str, Dict[str, Any]]:
-    """Return a defensive copy of role metadata from YAML."""
+    """Return a defensive copy of role metadata from vocab."""
     return copy.deepcopy(_ROLE_DATA["roles"])
 
 
 def get_role_to_influence_mapping() -> Dict[str, str]:
-    """Build role->influence type mapping from YAML metadata.
+    """Build role->influence type mapping from vocab metadata.
 
     Returns a mapping from composition role id to default influence type.
     Used by lineage tracking to determine how a source asset influenced the output.
@@ -103,16 +130,7 @@ def get_role_to_influence_mapping() -> Dict[str, str]:
         for role_id, meta in roles.items()
     }
 
-# Prompt role mapping (PromptSegmentRole -> composition role)
-# Not in YAML because prompt roles are a separate concern from tag/alias roles
-PROMPT_ROLE_TO_COMPOSITION_ROLE = {
-    "character": ImageCompositionRole.MAIN_CHARACTER.value,
-    "setting": ImageCompositionRole.ENVIRONMENT.value,
-    "mood": ImageCompositionRole.STYLE_REFERENCE.value,
-    "romance": ImageCompositionRole.STYLE_REFERENCE.value,
-    "action": ImageCompositionRole.EFFECT.value,
-    "camera": ImageCompositionRole.EFFECT.value,
-}
+PROMPT_ROLE_TO_COMPOSITION_ROLE = _PROMPT_ROLE_TO_COMPOSITION_ROLE
 
 
 def normalize_composition_role(role: Optional[str]) -> Optional[str]:
