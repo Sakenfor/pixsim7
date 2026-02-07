@@ -1,9 +1,8 @@
-#!/usr/bin/env tsx
 /**
  * Generates APP_MAP.md and action registry from code metadata.
  *
  * Sources (in priority order):
- *   1. Code parsing: module page.appMap (docs, backend, frontend, notes)
+ *   1. Code parsing: module JSDoc @appMap.* tags (page.appMap fallback)
  *   2. Code parsing: routes, capabilities, module pages, actions
  *   3. DEPRECATED: docs/app_map.sources.json (fallback only)
  *
@@ -16,18 +15,17 @@
  *   pnpm docs:app-map        # Generate all outputs
  *   pnpm docs:app-map:check  # Verify outputs are current (CI)
  *
- * Migration: Move metadata from app_map.sources.json into module.ts page.appMap
+ * Migration: Move metadata from app_map.sources.json into module JSDoc @appMap.* tags
  */
 
 import fs from 'fs';
 import path from 'path';
 import * as ts from 'typescript';
+import { Project, SyntaxKind, type JSDoc } from 'ts-morph';
 
 // =============================================================================
 // Configuration
 // =============================================================================
-
-const CHECK_MODE = process.argv.includes('--check');
 
 const PROJECT_ROOT = process.cwd();
 const ROUTES_FILE = path.join(
@@ -63,6 +61,7 @@ type AppMapEntry = {
   frontend?: string[];
   docs?: string[];
   backend?: string[];
+  notes?: string[];
   sources?: string[];
 };
 
@@ -73,11 +72,19 @@ type ManualRegistryEntry = {
   frontend?: string[];
   backend?: string[];
   routes?: string[];
+  notes?: string[];
 };
 
 type ManualRegistry = {
   version: string;
   entries: ManualRegistryEntry[];
+};
+
+type JsDocAppMap = {
+  docs?: string[];
+  backend?: string[];
+  frontend?: string[];
+  notes?: string[];
 };
 
 type ActionDocEntry = {
@@ -164,6 +171,92 @@ function resolveBoolean(expr: ts.Expression | undefined): boolean | null {
 }
 
 // =============================================================================
+// JSDoc App Map Parsing
+// =============================================================================
+
+function parseTagValues(comment: string | undefined): string[] {
+  const text = (comment ?? '').trim();
+  if (!text) return [];
+  if (text.includes(',')) {
+    return text
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  return text
+    .split(/\s+/)
+    .map(value => value.trim())
+    .filter(Boolean);
+}
+
+function parseNotes(comment: string | undefined): string[] {
+  const text = (comment ?? '').trim();
+  if (!text) return [];
+  if (text.includes('|')) {
+    return text
+      .split('|')
+      .map(value => value.trim())
+      .filter(Boolean);
+  }
+  return [text];
+}
+
+function extractAppMapMetaFromJsDocs(jsDocs: JSDoc[]): JsDocAppMap | null {
+  let meta: JsDocAppMap = {};
+
+  for (const jsDoc of jsDocs) {
+    for (const tag of jsDoc.getTags()) {
+      const tagName = tag.getTagName();
+      const comment = tag.getComment() ?? '';
+
+      if (tagName === 'appMap.docs') {
+        meta = mergeAppMapMeta(meta, { docs: parseTagValues(comment) });
+      } else if (tagName === 'appMap.backend') {
+        meta = mergeAppMapMeta(meta, { backend: parseTagValues(comment) });
+      } else if (tagName === 'appMap.frontend') {
+        meta = mergeAppMapMeta(meta, { frontend: parseTagValues(comment) });
+      } else if (tagName === 'appMap.notes') {
+        meta = mergeAppMapMeta(meta, { notes: parseNotes(comment) });
+      }
+    }
+  }
+
+  return hasAppMapMeta(meta) ? meta : null;
+}
+
+function parseJsDocAppMap(filePath: string): Map<string, JsDocAppMap> {
+  const map = new Map<string, JsDocAppMap>();
+  let sourceFile;
+
+  try {
+    const project = new Project({
+      useInMemoryFileSystem: false,
+      skipAddingFilesFromTsConfig: true,
+    });
+    sourceFile = project.addSourceFileAtPath(filePath);
+  } catch {
+    return map;
+  }
+
+  for (const declaration of sourceFile.getVariableDeclarations()) {
+    const name = declaration.getName();
+    const jsDocs = declaration.getJsDocs();
+    const statementDocs = declaration.getFirstAncestorByKind(SyntaxKind.VariableStatement)?.getJsDocs() ?? [];
+    const docsToRead = jsDocs.length > 0 ? jsDocs : statementDocs;
+
+    if (docsToRead.length === 0) continue;
+
+    const meta = extractAppMapMetaFromJsDocs(docsToRead);
+    if (!meta) continue;
+
+    const existing = map.get(name);
+    map.set(name, mergeAppMapMeta(existing, meta));
+  }
+
+  return map;
+}
+
+// =============================================================================
 // List Merging
 // =============================================================================
 
@@ -184,6 +277,37 @@ function mergeList<T>(left: T[] | undefined, right: T[] | undefined): T[] {
   add(left);
   add(right);
   return result;
+}
+
+function hasAppMapMeta(meta?: JsDocAppMap | null): boolean {
+  return Boolean(
+    meta &&
+      ((meta.docs?.length ?? 0) > 0 ||
+        (meta.backend?.length ?? 0) > 0 ||
+        (meta.frontend?.length ?? 0) > 0 ||
+        (meta.notes?.length ?? 0) > 0)
+  );
+}
+
+function mergeAppMapMeta(left?: JsDocAppMap, right?: JsDocAppMap): JsDocAppMap {
+  return {
+    docs: mergeList(left?.docs, right?.docs),
+    backend: mergeList(left?.backend, right?.backend),
+    frontend: mergeList(left?.frontend, right?.frontend),
+    notes: mergeList(left?.notes, right?.notes),
+  };
+}
+
+function normalizeList(values?: string[]): string[] {
+  if (!values || values.length === 0) return [];
+  return [...values].map(v => v.trim()).filter(Boolean).sort();
+}
+
+function listsEqual(a?: string[], b?: string[]): boolean {
+  const left = normalizeList(a);
+  const right = normalizeList(b);
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
 }
 
 // =============================================================================
@@ -274,10 +398,12 @@ function parseCapabilities(
 function parseModuleFile(
   filePath: string,
   routesMap: Record<string, string>
-): { entries: AppMapEntry[]; actions: ActionDocEntry[] } {
+): { entries: AppMapEntry[]; actions: ActionDocEntry[]; warnings: string[] } {
   const source = readSource(filePath);
   const entries: AppMapEntry[] = [];
   const actions: ActionDocEntry[] = [];
+  const warnings: string[] = [];
+  const jsDocAppMap = parseJsDocAppMap(filePath);
 
   const frontendPath = (() => {
     const normalized = filePath.replace(/\\/g, '/');
@@ -345,6 +471,7 @@ function parseModuleFile(
       const id = resolveString(getObjectProp(obj, 'id'));
       const name = resolveString(getObjectProp(obj, 'name'));
       const pageExpr = getObjectProp(obj, 'page');
+      const declarationName = ts.isIdentifier(node.name) ? node.name.text : undefined;
 
       if (id && pageExpr && ts.isObjectLiteralExpression(pageExpr)) {
         const route = resolveString(getObjectProp(pageExpr, 'route'), routesMap);
@@ -365,6 +492,49 @@ function parseModuleFile(
           appMapNotes = resolveStringArray(getObjectProp(appMapExpr, 'notes')) ?? undefined;
         }
 
+        const jsDocMeta = declarationName ? jsDocAppMap.get(declarationName) : undefined;
+        const hasJsDoc = hasAppMapMeta(jsDocMeta);
+        const hasPageAppMap = Boolean(
+          (appMapDocs && appMapDocs.length > 0) ||
+            (appMapBackend && appMapBackend.length > 0) ||
+            (appMapFrontend && appMapFrontend.length > 0) ||
+            (appMapNotes && appMapNotes.length > 0)
+        );
+
+        if (hasJsDoc && hasPageAppMap && jsDocMeta) {
+          if (appMapDocs && !listsEqual(jsDocMeta.docs, appMapDocs)) {
+            warnings.push(
+              `  "${featureId ?? id}": @appMap.docs overrides page.appMap.docs in ${sourcePath}`
+            );
+          }
+          if (appMapBackend && !listsEqual(jsDocMeta.backend, appMapBackend)) {
+            warnings.push(
+              `  "${featureId ?? id}": @appMap.backend overrides page.appMap.backend in ${sourcePath}`
+            );
+          }
+          if (appMapFrontend && !listsEqual(jsDocMeta.frontend, appMapFrontend)) {
+            warnings.push(
+              `  "${featureId ?? id}": @appMap.frontend overrides page.appMap.frontend in ${sourcePath}`
+            );
+          }
+          if (appMapNotes && !listsEqual(jsDocMeta.notes, appMapNotes)) {
+            warnings.push(
+              `  "${featureId ?? id}": @appMap.notes overrides page.appMap.notes in ${sourcePath}`
+            );
+          }
+        }
+
+        const finalDocs = jsDocMeta?.docs?.length ? jsDocMeta.docs : appMapDocs;
+        const finalBackend = jsDocMeta?.backend?.length ? jsDocMeta.backend : appMapBackend;
+        const finalFrontend = jsDocMeta?.frontend?.length ? jsDocMeta.frontend : appMapFrontend;
+        const finalNotes = jsDocMeta?.notes?.length ? jsDocMeta.notes : appMapNotes;
+        const hasFinalAppMap = Boolean(
+          (finalDocs && finalDocs.length > 0) ||
+            (finalBackend && finalBackend.length > 0) ||
+            (finalFrontend && finalFrontend.length > 0) ||
+            (finalNotes && finalNotes.length > 0)
+        );
+
         // Use featureId as the entry id if available (for grouping)
         const entryId = featureId ?? id;
 
@@ -373,21 +543,23 @@ function parseModuleFile(
             id: entryId,
             label: name ?? entryId,
             routes: [route],
-            frontend: mergeList(frontendPath, appMapFrontend),
-            docs: appMapDocs,
-            backend: appMapBackend,
-            sources: appMapDocs || appMapBackend ? ['modules:appMap'] : ['modules'],
+            frontend: mergeList(frontendPath, finalFrontend),
+            docs: finalDocs,
+            backend: finalBackend,
+            notes: finalNotes,
+            sources: hasJsDoc ? ['modules:jsdoc'] : hasFinalAppMap ? ['modules:appMap'] : ['modules'],
           });
-        } else if (appMapDocs || appMapBackend) {
+        } else if (hasFinalAppMap) {
           // Entry has appMap but no visible route - still include it
           entries.push({
             id: entryId,
             label: name ?? entryId,
             routes: route ? [route] : undefined,
-            frontend: mergeList(frontendPath, appMapFrontend),
-            docs: appMapDocs,
-            backend: appMapBackend,
-            sources: ['modules:appMap'],
+            frontend: mergeList(frontendPath, finalFrontend),
+            docs: finalDocs,
+            backend: finalBackend,
+            notes: finalNotes,
+            sources: hasJsDoc ? ['modules:jsdoc'] : ['modules:appMap'],
           });
         }
 
@@ -412,7 +584,7 @@ function parseModuleFile(
   };
 
   visit(source);
-  return { entries, actions };
+  return { entries, actions, warnings };
 }
 
 function getFeatureModuleFiles(): string[] {
@@ -456,6 +628,7 @@ function mergeCodeEntries(
       label: existing.label ?? entry.label,
       routes: mergeList(existing.routes, entry.routes),
       frontend: mergeList(existing.frontend, entry.frontend),
+      notes: mergeList(existing.notes, entry.notes),
       sources: mergeList(existing.sources, entry.sources),
     });
   }
@@ -520,14 +693,16 @@ function mergeWithManualRegistry(
   for (const manual of manualEntries) {
     const generated = generatedById.get(manual.id);
     if (generated) {
-      // Check if module already has appMap data (sources includes 'modules:appMap')
-      const hasModuleAppMap = generated.sources?.includes('modules:appMap');
+      // Check if module already has appMap metadata (JSDoc or page.appMap)
+      const hasModuleAppMap =
+        generated.sources?.includes('modules:jsdoc') ||
+        generated.sources?.includes('modules:appMap');
 
       if (hasModuleAppMap) {
         // Module has appMap - use it as primary, warn about manual registry
         if (manual.docs?.length || manual.backend?.length) {
           deprecationWarnings.push(
-            `  "${manual.id}": has appMap in module.ts - remove from app_map.sources.json`
+            `  \"${manual.id}\": has appMap metadata in module - remove from app_map.sources.json`
           );
         }
         // Use module-derived data as primary
@@ -535,6 +710,7 @@ function mergeWithManualRegistry(
           id: manual.id,
           label: generated.label ?? manual.label,
           docs: generated.docs ?? manual.docs ?? [],
+          notes: generated.notes ?? manual.notes ?? [],
           backend: generated.backend ?? manual.backend ?? [],
           routes: mergeList(generated.routes, manual.routes),
           frontend: mergeList(generated.frontend, manual.frontend),
@@ -546,6 +722,7 @@ function mergeWithManualRegistry(
           id: manual.id,
           label: manual.label ?? generated.label,
           docs: manual.docs ?? [],
+          notes: generated.notes ?? manual.notes ?? [],
           backend: manual.backend ?? [],
           routes: mergeList(generated.routes, manual.routes),
           frontend: mergeList(generated.frontend, manual.frontend),
@@ -557,13 +734,14 @@ function mergeWithManualRegistry(
       // Manual-only entry - warn that it should be added to a module
       if (manual.docs?.length || manual.backend?.length) {
         deprecationWarnings.push(
-          `  "${manual.id}": not found in modules - consider adding module.ts with page.appMap`
+          `  \"${manual.id}\": not found in modules - consider adding JSDoc @appMap.* tags`
         );
       }
       merged.push({
         id: manual.id,
         label: manual.label,
         docs: manual.docs ?? [],
+        notes: manual.notes ?? [],
         backend: manual.backend ?? [],
         routes: manual.routes ?? [],
         frontend: manual.frontend ?? [],
@@ -672,7 +850,7 @@ function formatActionRegistry(actions: ActionDocEntry[]): string {
   const lines = [
     '# Action Registry',
     '',
-    'Generated from module page actions by `scripts/generate-app-map.ts`.',
+    'Generated from module page actions by `packages/shared/app-map`.',
     'Includes actions defined inline or as consts in the same module file.',
     '',
     '| Action ID | Title | Feature | Route | Shortcut | Icon | Visibility | Contexts | Category | Tags | Description | Sources |',
@@ -711,13 +889,14 @@ function formatActionRegistry(actions: ActionDocEntry[]): string {
 // Main Generation Logic
 // =============================================================================
 
-function generateAppMap(): {
+export function generateAppMap(): {
   generatedJson: string;
   appMapMd: string;
   actionRegistryMd: string;
   entriesCount: number;
   actionsCount: number;
   deprecationWarnings: string[];
+  jsdocWarnings: string[];
 } {
   // 1. Parse code for routes, capabilities, modules
   const routesMap = parseRoutesMap(ROUTES_FILE);
@@ -725,16 +904,19 @@ function generateAppMap(): {
 
   const moduleEntries: AppMapEntry[] = [];
   const actionEntries: ActionDocEntry[] = [];
+  const jsdocWarnings: string[] = [];
   if (fs.existsSync(MODULE_PAGES_FILE)) {
     const parsed = parseModuleFile(MODULE_PAGES_FILE, routesMap);
     moduleEntries.push(...parsed.entries);
     actionEntries.push(...parsed.actions);
+    jsdocWarnings.push(...parsed.warnings);
   }
 
   for (const moduleFile of getFeatureModuleFiles()) {
     const parsed = parseModuleFile(moduleFile, routesMap);
     moduleEntries.push(...parsed.entries);
     actionEntries.push(...parsed.actions);
+    jsdocWarnings.push(...parsed.warnings);
   }
 
   // 2. Merge code-derived entries
@@ -776,6 +958,7 @@ function generateAppMap(): {
     entriesCount: finalEntries.length,
     actionsCount: actions.length,
     deprecationWarnings,
+    jsdocWarnings,
   };
 }
 
@@ -783,7 +966,7 @@ function generateAppMap(): {
 // Check Mode
 // =============================================================================
 
-function checkOutputs(outputs: {
+export function checkOutputs(outputs: {
   generatedJson: string;
   appMapMd: string;
   actionRegistryMd: string;
@@ -792,7 +975,7 @@ function checkOutputs(outputs: {
 
   // Check generated JSON
   if (!fs.existsSync(GENERATED_JSON_FILE)) {
-    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+    console.error(`âœ— Missing: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
     allCurrent = false;
   } else {
     const existing = fs.readFileSync(GENERATED_JSON_FILE, 'utf8');
@@ -803,31 +986,31 @@ function checkOutputs(outputs: {
       return JSON.stringify(parsed, null, 2);
     };
     if (normalizeJson(existing) !== normalizeJson(outputs.generatedJson)) {
-      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+      console.error(`âœ— Out of date: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
       allCurrent = false;
     }
   }
 
   // Check APP_MAP.md
   if (!fs.existsSync(APP_MAP_FILE)) {
-    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+    console.error(`âœ— Missing: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
     allCurrent = false;
   } else {
     const existing = fs.readFileSync(APP_MAP_FILE, 'utf8');
     if (existing !== outputs.appMapMd) {
-      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+      console.error(`âœ— Out of date: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
       allCurrent = false;
     }
   }
 
   // Check action registry
   if (!fs.existsSync(ACTIONS_DOC_FILE)) {
-    console.error(`✗ Missing: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+    console.error(`âœ— Missing: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
     allCurrent = false;
   } else {
     const existing = fs.readFileSync(ACTIONS_DOC_FILE, 'utf8');
     if (existing !== outputs.actionRegistryMd) {
-      console.error(`✗ Out of date: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+      console.error(`âœ— Out of date: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
       allCurrent = false;
     }
   }
@@ -836,17 +1019,19 @@ function checkOutputs(outputs: {
 }
 
 // =============================================================================
-// Main Entry Point
+// CLI Entry Point
 // =============================================================================
 
-function main() {
+export function runAppMapGenerator(argv: string[] = process.argv) {
+  const checkMode = argv.includes('--check');
+
   try {
     const outputs = generateAppMap();
 
-    if (CHECK_MODE) {
+    if (checkMode) {
       const allCurrent = checkOutputs(outputs);
       if (allCurrent) {
-        console.log('✓ All app-map outputs are current');
+        console.log('âœ“ All app-map outputs are current');
         process.exit(0);
       } else {
         console.error('\nRun: pnpm docs:app-map');
@@ -863,27 +1048,36 @@ function main() {
     fs.mkdirSync(path.dirname(ACTIONS_DOC_FILE), { recursive: true });
     fs.writeFileSync(ACTIONS_DOC_FILE, outputs.actionRegistryMd, 'utf8');
 
-    console.log(`✓ Generated: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
-    console.log(`✓ Updated: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
-    console.log(`✓ Generated: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
+    console.log(`âœ“ Generated: ${path.relative(PROJECT_ROOT, GENERATED_JSON_FILE)}`);
+    console.log(`âœ“ Updated: ${path.relative(PROJECT_ROOT, APP_MAP_FILE)}`);
+    console.log(`âœ“ Generated: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
     console.log(`  Entries: ${outputs.entriesCount}`);
     console.log(`  Actions: ${outputs.actionsCount}`);
 
     // Show deprecation warnings for entries that should be migrated to module.ts
     if (outputs.deprecationWarnings.length > 0) {
       console.log('');
-      console.log('⚠ DEPRECATION: app_map.sources.json entries to migrate:');
+      console.log('âš  DEPRECATION: app_map.sources.json entries to migrate:');
       for (const warning of outputs.deprecationWarnings) {
         console.log(warning);
       }
       console.log('');
-      console.log('  Move metadata to module.ts page.appMap property.');
-      console.log('  See: apps/main/src/features/automation/module.ts for example.');
+      console.log('  Move metadata to module JSDoc @appMap.* tags.');
+      console.log('  See: docs/APP_MAP.md for example.');
+    }
+
+
+    if (outputs.jsdocWarnings.length > 0) {
+      console.log('');
+      console.log('WARN: JSDOC conflicts detected (JSDoc overrides page.appMap):');
+      for (const warning of outputs.jsdocWarnings) {
+        console.log(warning);
+      }
+      console.log('');
+      console.log('  Prefer @appMap.* tags on module declarations.');
     }
   } catch (error) {
-    console.error(`✗ Error: ${error instanceof Error ? error.message : error}`);
+    console.error(`âœ— Error: ${error instanceof Error ? error.message : error}`);
     process.exit(1);
   }
 }
-
-main();

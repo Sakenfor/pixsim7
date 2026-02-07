@@ -1,6 +1,6 @@
 # Action Registry
 
-Generated from module page actions by `scripts/generate-app-map.ts`.
+Generated from module page actions by `packages/shared/app-map`.
 Includes actions defined inline or as consts in the same module file.
 
 | Action ID | Title | Feature | Route | Shortcut | Icon | Visibility | Contexts | Category | Tags | Description | Sources |

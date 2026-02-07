@@ -12,7 +12,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { CODEGEN_TASKS, type CodegenTask } from './codegen.manifest';
+import { CODEGEN_TASKS, type CodegenTask } from './manifest';
 
 function resolveBin(name: string): string {
   return process.platform === 'win32' ? `${name}.cmd` : name;

@@ -1,7 +1,7 @@
 {
   "$schema": "./app_map.schema.json",
   "version": "1.0.0",
-  "description": "DEPRECATED: Legacy app map entries for library features without route modules. Prefer adding page.appMap to module definitions. See docs/APP_MAP.md for migration guide.",
+  "description": "DEPRECATED: Legacy app map entries for library features without route modules. Prefer @appMap JSDoc tags on module definitions. See docs/APP_MAP.md for migration guide.",
   "entries": [
     {
       "id": "providers",

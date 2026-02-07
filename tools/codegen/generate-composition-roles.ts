@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 /**
- * Generates TypeScript constants from composition-roles.yaml
+ * Generates TypeScript constants from roles vocabulary
  *
- * Source:  pixsim7/backend/main/shared/composition-roles.yaml (single source of truth)
+ * Source:  pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml (single source of truth)
  * Output:  packages/shared/types/src/composition-roles.generated.ts
  *
  * Usage:
@@ -25,13 +25,13 @@ const normalizedDir = process.platform === 'win32' && SCRIPT_DIR.startsWith('/')
   ? SCRIPT_DIR.slice(1)
   : SCRIPT_DIR;
 
-const YAML_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/shared/composition-roles.yaml');
-const OUT_PATH = path.resolve(normalizedDir, '../packages/shared/types/src/composition-roles.generated.ts');
+const YAML_PATH = path.resolve(normalizedDir, '../../pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml');
+const OUT_PATH = path.resolve(normalizedDir, '../../packages/shared/types/src/composition-roles.generated.ts');
 
 // Validate YAML file exists
 if (!fs.existsSync(YAML_PATH)) {
   console.error(`✗ Missing composition roles data: ${YAML_PATH}`);
-  console.error('  Ensure pixsim7/backend/main/shared/composition-roles.yaml exists.');
+  console.error('  Ensure pixsim7/backend/main/plugins/starter_pack/vocabularies/roles.yaml exists.');
   process.exit(1);
 }
 
@@ -46,7 +46,7 @@ try {
 }
 
 // Validate required keys
-const required = ['roles', 'priority', 'slugMappings', 'namespaceMappings'];
+const required = ['roles', 'priority', 'slug_mappings', 'namespace_mappings'];
 const missing = required.filter((k) => !(k in data));
 if (missing.length > 0) {
   console.error(`✗ Missing required keys in ${YAML_PATH}: ${missing.join(', ')}`);
@@ -54,43 +54,45 @@ if (missing.length > 0) {
 }
 
 // Extract and normalize mappings (lowercase keys for consistency)
-const slugMappings = Object.fromEntries(
-  Object.entries(data.slugMappings as Record<string, string>).map(([k, v]) => [
-    k.toLowerCase(),
-    v,
-  ])
+const normalizeRoleId = (value: string) => (
+  value.startsWith('role:') ? value.slice(5) : value
 );
-const namespaceMappings = Object.fromEntries(
-  Object.entries(data.namespaceMappings as Record<string, string>).map(([k, v]) => [
-    k.toLowerCase(),
-    v,
-  ])
+const normalizeRoleMapping = (mapping: Record<string, string>) => (
+  Object.fromEntries(
+    Object.entries(mapping).map(([k, v]) => [k.toLowerCase(), normalizeRoleId(String(v))])
+  )
 );
-const priority = data.priority as string[];
+const slugMappings = normalizeRoleMapping(data.slug_mappings as Record<string, string>);
+const namespaceMappings = normalizeRoleMapping(data.namespace_mappings as Record<string, string>);
+const priority = (data.priority as string[]).map((role) => normalizeRoleId(role));
 
 // Extract roles - now an object with metadata
 const rolesData = data.roles as Record<string, {
   description: string;
   color: string;
+  default_layer?: number;
   defaultLayer?: number;
   tags?: string[];
 }>;
-const roles = Object.keys(rolesData);
+const roles = Object.keys(rolesData).map((role) => normalizeRoleId(role));
 const descriptions = Object.fromEntries(
-  Object.entries(rolesData).map(([k, v]) => [k, v.description])
+  Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.description])
 );
 const colors = Object.fromEntries(
-  Object.entries(rolesData).map(([k, v]) => [k, v.color])
+  Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.color])
 );
 const defaultLayers = Object.fromEntries(
-  Object.entries(rolesData).map(([k, v]) => [k, v.defaultLayer ?? 0])
+  Object.entries(rolesData).map(([k, v]) => [
+    normalizeRoleId(k),
+    v.default_layer ?? v.defaultLayer ?? 0,
+  ])
 );
 const roleTags = Object.fromEntries(
-  Object.entries(rolesData).map(([k, v]) => [k, v.tags ?? []])
+  Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.tags ?? []])
 );
 
 // Generate TypeScript output
-const output = `// Auto-generated from composition-roles.yaml - DO NOT EDIT
+const output = `// Auto-generated from roles vocabulary - DO NOT EDIT
 // Re-run: pnpm composition-roles:gen
 //
 // ========================================================================
@@ -105,13 +107,13 @@ const output = `// Auto-generated from composition-roles.yaml - DO NOT EDIT
 // ========================================================================
 
 /**
- * Canonical composition roles from core YAML.
+ * Canonical composition roles from core vocab.
  * @see compositionPackageStore.roles for runtime API with plugin roles
  */
 export const COMPOSITION_ROLES = ${JSON.stringify(roles)} as const;
 
 /**
- * Core composition role type, derived from YAML.
+ * Core composition role type, derived from vocab.
  * Only includes core roles - not plugin-contributed ones.
  */
 export type ImageCompositionRole = typeof COMPOSITION_ROLES[number];
