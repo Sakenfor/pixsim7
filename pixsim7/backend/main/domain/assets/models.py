@@ -62,6 +62,11 @@ class Asset(SQLModel, table=True):
         index=True,
         description="Original provider's internal ID"
     )
+    model: Optional[str] = Field(
+        default=None,
+        max_length=64,
+        description="Provider model used for generation (e.g. 'v3.5', 'qwen')"
+    )
     provider_account_id: Optional[int] = Field(
         default=None,
         foreign_key="provider_accounts.id",

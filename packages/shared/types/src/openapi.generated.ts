@@ -5343,7 +5343,7 @@ export interface paths {
          *                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
          *                 ...
          *             ],
-         *             "tags": ["has:character", "tone:soft", "camera:pov", ...]
+         *             "tags": ["has:character", "mood:tender", "tone:soft", "camera:pov", ...]
          *         }
          *
          *     Raises:
@@ -9381,7 +9381,7 @@ export interface paths {
          *
          *     Returns analysis with:
          *     - candidates: Parsed semantic candidates with roles and categories
-         *     - tags: Derived tags (has:character, tone:soft, etc.)
+         *     - tags: Derived tags (role tags + ontology IDs + metadata-derived sub-tags like tone/camera)
          *     - ontology_ids: Matched ontology keywords
          */
         readonly post: operations["analyze_prompt_api_v1_prompts_analyze_post"];
@@ -12476,6 +12476,12 @@ export interface components {
             /** Total */
             readonly total: number;
         };
+        /** AssetGroupPathEntry */
+        readonly AssetGroupPathEntry: {
+            readonly group_by: components["schemas"]["AssetGroupBy"];
+            /** Group Key */
+            readonly group_key: string;
+        };
         /** AssetGroupPromptMeta */
         readonly AssetGroupPromptMeta: {
             /** Author */
@@ -12560,6 +12566,11 @@ export interface components {
              * @description Group value to filter assets by (use 'ungrouped' or 'other')
              */
             readonly group_key?: string | null;
+            /**
+             * Group Path
+             * @description Nested grouping path (ordered list of group_by + group_key)
+             */
+            readonly group_path?: readonly components["schemas"]["AssetGroupPathEntry"][];
             /**
              * Has Children
              * @description Has lineage children
@@ -12767,6 +12778,8 @@ export interface components {
             readonly media_type: components["schemas"]["MediaType"];
             /** Mime Type */
             readonly mime_type?: string | null;
+            /** Model */
+            readonly model?: string | null;
             /** Parent Asset Id */
             readonly parent_asset_id?: number | null;
             /** Preview Key */
@@ -12860,6 +12873,11 @@ export interface components {
              * @description Group value to filter assets by (use 'ungrouped' or 'other')
              */
             readonly group_key?: string | null;
+            /**
+             * Group Path
+             * @description Nested grouping path (ordered list of group_by + group_key)
+             */
+            readonly group_path?: readonly components["schemas"]["AssetGroupPathEntry"][];
             /**
              * Has Children
              * @description Has lineage children
@@ -19707,7 +19725,7 @@ export interface components {
             };
             /**
              * Parser Hints
-             * @description Role/attribute-specific keywords keyed by ontology-aligned IDs. Role hints must use 'role:<name>' keys (e.g. 'role:character', 'role:action') to augment classification. Other keys should be ontology IDs or attribute IDs (e.g. 'act:sit_closer', 'phys:size:large') and are reserved for higher-level tools.
+             * @description Role/attribute-specific keywords keyed by ontology-aligned IDs. Role hints must use 'role:<name>' keys (e.g. 'role:character', 'role:action') to augment classification. Other keys should be ontology IDs or attribute IDs (e.g. 'camera:angle_pov', 'phys:size:large') and are reserved for higher-level tools.
              */
             readonly parser_hints?: {
                 readonly [key: string]: readonly string[];

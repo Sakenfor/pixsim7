@@ -133,6 +133,7 @@ class AssetCoreService:
         width = response.get("width") or metadata.get("width")
         height = response.get("height") or metadata.get("height")
         duration_sec = response.get("duration_sec") or metadata.get("duration_sec")
+        model = submission.model  # convenience property on ProviderSubmission
 
         # Get prompt analysis - prefer existing analysis from PromptVersion to avoid re-analyzing
         prompt_analysis_result = None
@@ -209,6 +210,9 @@ class AssetCoreService:
             if prompt_analysis_result and not existing.prompt_analysis:
                 existing.prompt_analysis = prompt_analysis_result
                 updated = True
+            if model and not existing.model:
+                existing.model = model
+                updated = True
             if updated:
                 existing.last_accessed_at = datetime.now(timezone.utc)
                 await self.db.commit()
@@ -222,6 +226,7 @@ class AssetCoreService:
             provider_id=submission.provider_id,
             provider_asset_id=provider_asset_id,
             provider_account_id=submission.account_id,
+            model=model,
             remote_url=asset_url,
             width=width,
             height=height,

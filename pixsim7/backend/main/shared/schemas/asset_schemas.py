@@ -65,6 +65,7 @@ class AssetResponse(BaseModel):
     media_type: MediaType
     provider_id: str
     provider_asset_id: str
+    model: Optional[str] = None
 
     # Provenance
     source_generation_id: Optional[int] = None

@@ -54,6 +54,7 @@ export interface AssetModel {
   localPath?: string | null;
   mediaType: MediaType;
   mimeType?: string | null;
+  model?: string | null;
   previewKey?: string | null;
   previewUrl?: string | null;
   providerAssetId: string;
@@ -138,6 +139,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     localPath: response.local_path,
     mediaType: response.media_type,
     mimeType: response.mime_type,
+    model: response.model ?? null,
     previewKey: response.preview_key,
     previewUrl: response.preview_url,
     providerAssetId: response.provider_asset_id,
