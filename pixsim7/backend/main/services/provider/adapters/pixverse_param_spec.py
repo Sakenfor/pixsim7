@@ -58,12 +58,17 @@ def build_operation_parameter_spec() -> dict:
     image_aspect_enum: list[str] = []
     image_quality_per_model: dict[str, list[str]] = {}
     image_aspect_per_model: dict[str, list[str]] = {}
+    image_max_images_per_model: dict[str, int] = {}
 
     if ImageModel is not None and getattr(ImageModel, "ALL", None):
         # ALL is now List[ImageModelSpec]
         for spec in ImageModel.ALL:
             model_id = str(spec)
             image_model_enum.append(model_id)
+
+            # Collect max composition images per model
+            if hasattr(spec, "max_images"):
+                image_max_images_per_model[model_id] = spec.max_images
 
             # Collect qualities
             if hasattr(spec, "qualities"):
@@ -186,14 +191,17 @@ def build_operation_parameter_spec() -> dict:
         "name": "composition_assets", "type": "array", "required": True, "default": None,
         "enum": None, "description": "Assets used for multi-image composition", "group": "source"
     }
+    # Derive max composition images from SDK; fall back to conservative default
+    image_composition_max = (
+        max(image_max_images_per_model.values())
+        if image_max_images_per_model
+        else 7
+    )
     composition_assets_image = {
         **composition_assets_base,
         "metadata": {
-            "max_items": 7,
-            "per_model_max_items": {
-                "seedream-4.0": 6,
-                "seedream-4.5": 7,
-            },
+            "max_items": image_composition_max,
+            "per_model_max_items": image_max_images_per_model,
             "note": "Max images for multi-image composition.",
         },
     }

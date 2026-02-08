@@ -658,11 +658,13 @@ class ProviderService:
         )
 
         # Pixverse image fallback: bypass message list after a threshold.
+        # Skip when provider_job_id is null (job was never submitted to provider).
         if (
             submission.provider_id == "pixverse"
             and operation_type in get_image_operations()
             and status_result.status == ProviderStatus.PROCESSING
             and submission.submitted_at
+            and submission.provider_job_id
             and hasattr(provider, "check_image_status_from_list")
         ):
             model = None
