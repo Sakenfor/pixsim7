@@ -27,6 +27,8 @@
     "composition-roles:check": "tsx tools/codegen/generate-composition-roles.ts --check",
     "prompt-roles:gen": "tsx tools/codegen/generate-prompt-roles.ts",
     "prompt-roles:check": "tsx tools/codegen/generate-prompt-roles.ts --check",
+    "prompt-role-authority:report": "python scripts/check_prompt_role_authority.py",
+    "prompt-role-authority:check": "python scripts/check_prompt_role_authority.py --check",
     "upload-context:gen": "tsx tools/codegen/generate-upload-context.ts",
     "upload-context:check": "tsx tools/codegen/generate-upload-context.ts --check",
     "types:gen": "pnpm codegen -- --group types",
