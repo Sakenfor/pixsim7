@@ -1,0 +1,7 @@
+include_in_codegen: true
+
+pack:
+  id: prompt_roles_settings
+  kind: prompt_role_keywords
+  owns_roles: [setting]
+  description: "Authority pack for setting prompt-role keywords."

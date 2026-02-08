@@ -1,0 +1,7 @@
+include_in_codegen: true
+
+pack:
+  id: prompt_roles_camera
+  kind: prompt_role_keywords
+  owns_roles: [camera]
+  description: "Authority pack for camera prompt-role keywords."

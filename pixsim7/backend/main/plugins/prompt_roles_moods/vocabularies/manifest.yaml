@@ -1,0 +1,7 @@
+include_in_codegen: true
+
+pack:
+  id: prompt_roles_moods
+  kind: prompt_role_keywords
+  owns_roles: [mood]
+  description: "Authority pack for mood prompt-role keywords."

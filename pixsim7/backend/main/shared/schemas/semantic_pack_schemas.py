@@ -65,7 +65,7 @@ class SemanticPackManifest(BaseModel):
             "Role/attribute-specific keywords keyed by ontology-aligned IDs. "
             "Role hints must use 'role:<name>' keys (e.g. 'role:character', "
             "'role:action') to augment classification. Other keys should be "
-            "ontology IDs or attribute IDs (e.g. 'act:sit_closer', "
+            "ontology IDs or attribute IDs (e.g. 'camera:angle_pov', "
             "'phys:size:large') and are reserved for higher-level tools."
         ),
     )

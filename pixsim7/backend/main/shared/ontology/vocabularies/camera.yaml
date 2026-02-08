@@ -1,0 +1,6 @@
+# Camera Vocabulary (core schema only)
+# Actual camera content is provided by vocab packs (e.g., starter_pack).
+version: "1.0.0"
+
+categories: {}
+camera: {}

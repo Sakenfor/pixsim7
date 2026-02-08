@@ -23,6 +23,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     PartDef,
     InfluenceRegionDef,
     SpatialDef,
+    CameraDef,
     ProgressionDef,
     ScoringConfig,
     ScoringWeights,
@@ -51,6 +52,7 @@ class VocabularyRegistry:
         "part": "parts",
         "influence_region": "influence_regions",
         "spatial": "spatial",
+        "camera": "camera",
         # These are stored in "progression" with kind filter
         "intimacy": "progression",
         "branch": "progression",
@@ -100,7 +102,6 @@ class VocabularyRegistry:
         self._role_priority: List[str] = []
         self._role_slug_mappings: Dict[str, str] = {}
         self._role_namespace_mappings: Dict[str, str] = {}
-        self._spatial_compatibility: Dict[str, List[List[str]]] = {}
         self._progression_tension: Dict[str, Any] = {}
         self._progression_constraints: Dict[str, Any] = {}
 
@@ -164,6 +165,9 @@ class VocabularyRegistry:
         # Load scoring config from core
         self._load_scoring(self._vocab_dir)
 
+        # Validate prompt-role ownership rules before plugin loading.
+        self._validate_prompt_role_authority()
+
         # Discover and load plugin vocabularies
         self._discover_plugins()
 
@@ -207,18 +211,14 @@ class VocabularyRegistry:
         items = data.get(config.yaml_key, {})
 
         # Spatial vocab files may be organized by sections
-        # (camera_views/camera_framing/body_orientation/depth) rather than a
-        # single top-level "spatial" map.
+        # (body_orientation/depth) rather than a single top-level "spatial" map.
         if config.name == "spatial" and not items:
             merged: Dict[str, Any] = {}
-            for section in ("camera_views", "camera_framing", "body_orientation", "depth"):
+            for section in ("body_orientation", "depth"):
                 section_items = data.get(section, {})
                 if isinstance(section_items, dict):
                     merged.update(section_items)
             items = merged
-            compatibility = data.get("compatibility", {})
-            if isinstance(compatibility, dict):
-                self._spatial_compatibility = compatibility
 
         if not isinstance(items, dict):
             return 0
@@ -256,14 +256,11 @@ class VocabularyRegistry:
 
             if config.name == "spatial" and not raw_items:
                 merged: Dict[str, Any] = {}
-                for section in ("camera_views", "camera_framing", "body_orientation", "depth"):
+                for section in ("body_orientation", "depth"):
                     section_items = data.get(section, {})
                     if isinstance(section_items, dict):
                         merged.update(section_items)
                 raw_items = merged
-                compatibility = data.get("compatibility", {})
-                if isinstance(compatibility, dict):
-                    self._spatial_compatibility = compatibility
 
             if not isinstance(raw_items, dict):
                 continue
@@ -495,7 +492,7 @@ class VocabularyRegistry:
         if not self._plugins_dir.exists():
             return
 
-        for plugin_dir in self._plugins_dir.iterdir():
+        for plugin_dir in sorted(self._plugins_dir.iterdir(), key=lambda p: p.name):
             if not plugin_dir.is_dir():
                 continue
 
@@ -504,6 +501,52 @@ class VocabularyRegistry:
                 self._load_plugin_manifest(plugin_dir.name, vocab_dir)
                 configs = self._configs()
                 self._load_plugin_vocabs(plugin_dir.name, vocab_dir, configs)
+
+    def _validate_prompt_role_authority(self) -> None:
+        """
+        Enforce single-pack authority for prompt-role keyword sources.
+
+        A plugin is considered authoritative for a role if its prompt_roles.yaml
+        entry for that role contains non-empty `keywords` or `action_verbs`.
+        """
+        if not self._plugins_dir.exists():
+            return
+
+        role_owner: Dict[str, str] = {}
+        for plugin_dir in sorted(self._plugins_dir.iterdir(), key=lambda p: p.name):
+            if not plugin_dir.is_dir():
+                continue
+
+            vocab_dir = plugin_dir / "vocabularies"
+            if not vocab_dir.exists():
+                continue
+
+            prompt_roles_data = self._load_yaml("prompt_roles.yaml", vocab_dir)
+            roles = prompt_roles_data.get("roles", {})
+            if not isinstance(roles, dict):
+                continue
+
+            for raw_role_id, raw_role_data in roles.items():
+                if not isinstance(raw_role_data, dict):
+                    continue
+
+                role_id = str(raw_role_id).strip().lower()
+                if not role_id:
+                    continue
+
+                keywords = raw_role_data.get("keywords") or []
+                action_verbs = raw_role_data.get("action_verbs") or raw_role_data.get("actionVerbs") or []
+                has_authority = bool(keywords) or bool(action_verbs)
+                if not has_authority:
+                    continue
+
+                existing_owner = role_owner.get(role_id)
+                if existing_owner and existing_owner != plugin_dir.name:
+                    raise ValueError(
+                        f"Duplicate prompt role authority for '{role_id}' "
+                        f"across plugins '{existing_owner}' and '{plugin_dir.name}'."
+                    )
+                role_owner[role_id] = plugin_dir.name
 
     def _load_plugin_vocabs(
         self,
@@ -617,6 +660,9 @@ class VocabularyRegistry:
     def get_spatial(self, spatial_id: str) -> Optional[SpatialDef]:
         return self.get("spatial", spatial_id)
 
+    def get_camera(self, camera_id: str) -> Optional[CameraDef]:
+        return self.get("camera", camera_id)
+
     def get_progression(self, progression_id: str) -> Optional[ProgressionDef]:
         return self.get("progression", progression_id)
 
@@ -653,6 +699,9 @@ class VocabularyRegistry:
 
     def all_spatial(self) -> List[SpatialDef]:
         return self.all_of("spatial")
+
+    def all_camera(self) -> List[CameraDef]:
+        return self.all_of("camera")
 
     def all_progression(self) -> List[ProgressionDef]:
         return self.all_of("progression")
@@ -934,7 +983,7 @@ class VocabularyRegistry:
 
         Args:
             kind: Concept kind ('pose', 'mood', 'location', 'intimacy', 'rating',
-                  'branch', 'role', 'part', 'influence_region', 'spatial')
+                  'branch', 'role', 'part', 'influence_region', 'spatial', 'camera')
             concept_id: The ID to check (with or without kind prefix)
 
         Returns:

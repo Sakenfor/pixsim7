@@ -7,7 +7,6 @@ Provides lightweight, deterministic prompt parsing without external dependencies
 Main components:
 - SimplePromptParser: Basic sentence-level parser with role classification
 - PromptParseResult, PromptSegment: Type-safe parsed output
-- Ontology: Centralized keyword lists for role classification
 - LLM Analyzer: Deep semantic analysis using LLMs
 """
 
@@ -36,13 +35,6 @@ from .negation import (
     get_negated_words,
     filter_negated_keywords,
     NegatedSpan,
-)
-from .ontology import (
-    sync_from_vocabularies,
-    is_synced as is_ontology_synced,
-    reset_to_baseline as reset_ontology,
-    ROLE_KEYWORDS,
-    ACTION_VERBS,
 )
 
 # Re-export PromptSegmentRole from domain for convenience
@@ -82,10 +74,4 @@ __all__ = [
     "get_negated_words",
     "filter_negated_keywords",
     "NegatedSpan",
-    # Ontology
-    "sync_from_vocabularies",
-    "is_ontology_synced",
-    "reset_ontology",
-    "ROLE_KEYWORDS",
-    "ACTION_VERBS",
 ]

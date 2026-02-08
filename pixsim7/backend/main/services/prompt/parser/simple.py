@@ -9,7 +9,6 @@ import re
 from typing import List, Optional, Dict, Any, Set
 from pydantic import BaseModel
 
-from .ontology import ACTION_VERBS
 from .stemmer import stem, find_stem_matches
 from .negation import get_negated_words, filter_negated_keywords
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
@@ -71,9 +70,10 @@ class SimplePromptParser:
                    Format: { 'role:character': ['minotaur', 'werecow'], ... }
         """
         self.role_registry = role_registry.clone() if role_registry else PromptRoleRegistry.default()
-        self.action_verbs = set(ACTION_VERBS)
+        action_verbs = [v.lower() for v in self.role_registry.get_action_verbs() if isinstance(v, str)]
+        self.action_verbs = set(action_verbs)
         # Pre-compute stemmed action verbs for matching
-        self.action_verb_stems = {stem(v) for v in ACTION_VERBS}
+        self.action_verb_stems = {stem(v) for v in action_verbs}
         if hints:
             self.role_registry.apply_hints(hints)
         self.role_keywords = self.role_registry.get_role_keywords()

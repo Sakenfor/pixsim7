@@ -40,6 +40,7 @@ class PromptRoleDefinition:
     label: str
     description: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
+    action_verbs: List[str] = field(default_factory=list)
     aliases: List[str] = field(default_factory=list)
     priority: int = 0
 
@@ -78,6 +79,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                 label=role.label,
                 description=role.description,
                 keywords=list(role.keywords),
+                action_verbs=list(role.action_verbs),
                 aliases=list(role.aliases),
                 priority=role.priority,
             )
@@ -151,6 +153,9 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                 merged_keywords = self._merge_keywords(
                     getattr(role, "keywords", []) or [],
                 )
+                merged_action_verbs = self._merge_keywords(
+                    getattr(role, "action_verbs", []) or [],
+                )
                 priority = getattr(role, "priority", None)
                 if priority is None:
                     priority = DEFAULT_ROLE_PRIORITIES.get(role_id, DEFAULT_DYNAMIC_PRIORITY)
@@ -160,6 +165,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                         label=label or role_id.replace("_", " ").title(),
                         description=description or DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
                         keywords=merged_keywords,
+                        action_verbs=merged_action_verbs,
                         aliases=list(getattr(role, "aliases", []) or []),
                         priority=priority,
                     )
@@ -174,6 +180,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                         label=role_id.replace("_", " ").title(),
                         description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
                         keywords=[],
+                        action_verbs=[],
                         priority=priority,
                     )
                 )
@@ -185,6 +192,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                     label="Other",
                     description=DEFAULT_ROLE_DESCRIPTIONS.get("other"),
                     keywords=[],
+                    action_verbs=[],
                     priority=DEFAULT_ROLE_PRIORITIES.get("other", 0),
                 )
             )
@@ -200,6 +208,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
             label=role.label or role_id.replace("_", " ").title(),
             description=role.description,
             keywords=[k.lower() for k in role.keywords],
+            action_verbs=[v.lower() for v in role.action_verbs],
             aliases=[a.lower() for a in role.aliases],
             priority=role.priority,
         )
@@ -217,6 +226,10 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
             k = keyword.lower()
             if k not in existing.keywords:
                 existing.keywords.append(k)
+        for action_verb in role.action_verbs:
+            v = action_verb.lower()
+            if v not in existing.action_verbs:
+                existing.action_verbs.append(v)
         for alias in role.aliases:
             a = alias.lower()
             if a not in existing.aliases:
@@ -258,6 +271,17 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
     def get_role_priorities(self) -> Dict[str, int]:
         return {role.id: role.priority for role in self.values()}
 
+    def get_action_verbs(self) -> List[str]:
+        role = self.get_role("action")
+        if role is None:
+            return []
+        if role.action_verbs:
+            return list(role.action_verbs)
+        return [
+            kw for kw in role.keywords
+            if kw and " " not in kw and "_" not in kw and "-" not in kw
+        ]
+
     def apply_hints(self, hints: Dict[str, List[str]]) -> None:
         for key, words in hints.items():
             role_id = self._normalize_hint_role(key)
@@ -270,6 +294,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                         label=role_id.replace("_", " ").title(),
                         description=DEFAULT_ROLE_DESCRIPTIONS.get(role_id),
                         keywords=[],
+                        action_verbs=[],
                         priority=DEFAULT_DYNAMIC_PRIORITY,
                     )
                 )
@@ -315,6 +340,7 @@ class PromptRoleRegistry(SimpleRegistry[str, PromptRoleDefinition]):
                     label=str(role.get("label") or role_id),
                     description=role.get("description"),
                     keywords=role.get("keywords") or [],
+                    action_verbs=role.get("action_verbs") or role.get("actionVerbs") or [],
                     aliases=role.get("aliases") or [],
                     priority=DEFAULT_DYNAMIC_PRIORITY if priority is None else priority,
                 )

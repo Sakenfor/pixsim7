@@ -33,6 +33,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.factories import (
     make_part,
     make_influence_region,
     make_spatial,
+    make_camera,
     make_progression,
 )
 
@@ -107,6 +108,13 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
         yaml_file="spatial.yaml",
         yaml_key="spatial",
         factory=make_spatial,
+        keywords_attr="keywords",
+    ),
+    "camera": VocabTypeConfig(
+        name="camera",
+        yaml_file="camera.yaml",
+        yaml_key="camera",
+        factory=make_camera,
         keywords_attr="keywords",
     ),
     "progression": VocabTypeConfig(

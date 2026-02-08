@@ -108,7 +108,7 @@ We recently bridged this by having the parser look up ontology IDs from its matc
 
 The `_TAG_KEYWORD_RULES` dict in `dsl_adapter.py` maps keywords to sub-tags like `tone:soft` and `camera:pov`. These rules are informed by the vocabulary data (the keywords in the rules correspond to keywords in mood and spatial vocab items) but are maintained separately. If someone adds a new mood item to YAML with keywords that semantically indicate "soft tone", the sub-tag rules will not automatically pick it up.
 
-The vocabulary items already have structured metadata that could drive this. Mood items have a `category` field (`positive`, `negative`, `romantic`, `action`, `neutral`) and a `tension_range`. Spatial items have a `category` field (`camera_view`, `camera_framing`, `body_orientation`, `depth`). This metadata could be used to derive sub-tags programmatically rather than maintaining a separate mapping.
+The vocabulary items already have structured metadata that could drive this. Mood items have a `category` field (`positive`, `negative`, `romantic`, `action`, `neutral`) and a `tension_range`. Camera items have a `category` field (`angle`, `framing`), and spatial items now focus on non-camera geometry (`orientation`, `depth`). This metadata could be used to derive sub-tags programmatically rather than maintaining a separate mapping.
 
 ---
 
@@ -146,7 +146,7 @@ The aggregation of vocab item keywords by role could work through the `compositi
 
 ### Sub-tag rules derive from vocab metadata
 
-Instead of maintaining `_TAG_KEYWORD_RULES` as a hardcoded dict, the tag derivation system would query vocab item metadata. For example, when a candidate has `mood:tender` in its ontology IDs, the system looks up `mood:tender`'s category (`romantic`) and tension range (`[3, 7]`) and derives that this is a "soft" tone. When it has `mood:passionate`, the higher tension range (`[6, 10]`) indicates "intense" tone. For camera sub-tags, the spatial item's category directly provides the classification (`camera_view`, `camera_framing`, etc.).
+Instead of maintaining `_TAG_KEYWORD_RULES` as a hardcoded dict, the tag derivation system would query vocab item metadata. For example, when a candidate has `mood:tender` in its ontology IDs, the system looks up `mood:tender`'s category (`romantic`) and tension range (`[3, 7]`) and derives that this is a "soft" tone. When it has `mood:passionate`, the higher tension range (`[6, 10]`) indicates "intense" tone. For camera sub-tags, the camera item's category directly provides the classification (`angle`, `framing`).
 
 This would mean that adding a new mood item to YAML with appropriate category and tension range would automatically affect both role classification AND sub-tag derivation, with no Python code changes needed.
 

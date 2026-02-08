@@ -58,8 +58,8 @@ COMPOSITION_VOCAB_FIELDS = {
     "pose_id": "poses",           # pose:standing_neutral, pose:sitting
     "location_id": "locations",   # location:park_bench, location:bedroom
     "influence_region": "influence_regions",  # region:foreground, region:background
-    "camera_view_id": "spatial",  # spatial:medium_shot, spatial:close_up
-    "camera_framing_id": "spatial",  # spatial:centered, spatial:rule_of_thirds
+    "camera_view_id": "camera",  # camera:angle_pov, camera:angle_front
+    "camera_framing_id": "camera",  # camera:framing_closeup, camera:framing_centered
 }
 
 # Free-form composition fields (no vocab validation)

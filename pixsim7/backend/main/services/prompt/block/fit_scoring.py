@@ -21,9 +21,9 @@ def compute_block_asset_fit(
 
     Strategy (first pass):
         - Required matches:
-          - If block tags contain camera/view IDs (e.g. 'cam:from_behind'),
+          - If block tags contain canonical camera/spatial IDs
+            (e.g. 'camera:angle_pov', 'spatial:depth_foreground'),
             treat them as required; penalize if asset_tags lack them.
-          - Similarly for obvious spatial relations (rel:*).
         - Soft matches:
           - Overlap on mood/intensity/speed/beat IDs improves score.
         - Compute a simple weighted sum:
@@ -52,9 +52,12 @@ def compute_block_asset_fit(
     for oid in block_ids_set:
         prefix = oid.split(":")[0] if ":" in oid else ""
 
-        # Camera and spatial relations are "required" - they strongly define the scene
-        if prefix in ("cam", "rel"):
+        # Canonical camera/spatial IDs are required because they strongly define scene geometry.
+        if prefix in ("camera", "spatial"):
             required_ids.add(oid)
+        # Controlled schema path: non-canonical legacy camera/relation IDs are ignored.
+        elif prefix in ("cam", "rel"):
+            continue
         # Everything else is "soft" - mood, intensity, speed, beats, etc.
         else:
             soft_ids.add(oid)
@@ -82,9 +85,6 @@ def compute_block_asset_fit(
         # Bonus based on fraction of soft IDs that match
         match_fraction = len(soft_matches) / len(soft_ids)
         score += match_fraction * SOFT_MATCH_BONUS
-    elif soft_matches:
-        # Even if block has no soft IDs, if asset has matching IDs, give small bonus
-        score += len(soft_matches) * 0.05
 
     # Clamp to [0.0, 1.0]
     score = max(0.0, min(1.0, score))
@@ -123,7 +123,6 @@ def explain_fit_score(details: Dict[str, Any]) -> str:
     """
     lines = []
     score = details.get("score", 0.0)
-    scoring = details.get("scoring", {})
 
     lines.append(f"Fit Score: {score:.2f} (0.0 = poor, 1.0 = perfect)")
     lines.append("")

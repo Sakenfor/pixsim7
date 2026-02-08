@@ -460,7 +460,7 @@ async def analyze_prompt(
 
     Returns analysis with:
     - candidates: Parsed semantic candidates with roles and categories
-    - tags: Derived tags (has:character, tone:soft, etc.)
+    - tags: Derived tags (role tags + ontology IDs + metadata-derived sub-tags like tone/camera)
     - ontology_ids: Matched ontology keywords
     """
     from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService

@@ -1,0 +1,7 @@
+include_in_codegen: true
+
+pack:
+  id: prompt_roles_romance
+  kind: prompt_role_keywords
+  owns_roles: [romance]
+  description: "Authority pack for romance prompt-role keywords."

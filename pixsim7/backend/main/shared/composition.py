@@ -86,15 +86,25 @@ def _load_prompt_role_mappings() -> Dict[str, str]:
     return mapping
 
 
-# Load at module init - fail fast with clear error
-_ROLE_DATA = _load_role_data()
-_PROMPT_ROLE_TO_COMPOSITION_ROLE = _load_prompt_role_mappings()
+def _get_role_data() -> Dict[str, Any]:
+    """Fetch normalized role data from the current registry state."""
+    return _load_role_data()
+
+
+def _get_prompt_role_mappings() -> Dict[str, str]:
+    """Fetch prompt-role mappings from the current registry state."""
+    return _load_prompt_role_mappings()
+
+
+# Snapshot exports kept for compatibility with modules importing constants.
+_ROLE_DATA_SNAPSHOT = _get_role_data()
+_PROMPT_ROLE_TO_COMPOSITION_ROLE_SNAPSHOT = _get_prompt_role_mappings()
 
 
 def _build_composition_role_enum() -> type:
     """Dynamically build ImageCompositionRole enum from vocab roles."""
     # roles is now an object with metadata, extract keys
-    roles_data = _ROLE_DATA["roles"]
+    roles_data = _ROLE_DATA_SNAPSHOT["roles"]
     role_ids = list(roles_data.keys())
     # Create enum members: MAIN_CHARACTER = "main_character", etc.
     members = {role.upper(): role for role in role_ids}
@@ -105,15 +115,15 @@ def _build_composition_role_enum() -> type:
 ImageCompositionRole = _build_composition_role_enum()
 
 # Role mappings from vocab
-COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA["aliases"]
-TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["namespaceMappings"]
-TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA["slugMappings"]
-COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA["priority"]
+COMPOSITION_ROLE_ALIASES: Dict[str, str] = _ROLE_DATA_SNAPSHOT["aliases"]
+TAG_NAMESPACE_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA_SNAPSHOT["namespaceMappings"]
+TAG_SLUG_TO_COMPOSITION_ROLE: Dict[str, str] = _ROLE_DATA_SNAPSHOT["slugMappings"]
+COMPOSITION_ROLE_PRIORITY: List[str] = _ROLE_DATA_SNAPSHOT["priority"]
 
 
 def get_composition_role_metadata() -> Dict[str, Dict[str, Any]]:
     """Return a defensive copy of role metadata from vocab."""
-    return copy.deepcopy(_ROLE_DATA["roles"])
+    return copy.deepcopy(_get_role_data()["roles"])
 
 
 def get_role_to_influence_mapping() -> Dict[str, str]:
@@ -124,13 +134,18 @@ def get_role_to_influence_mapping() -> Dict[str, str]:
 
     Influence types: content, style, structure, mask, blend, replacement, reference
     """
-    roles = _ROLE_DATA["roles"]
+    roles = _get_role_data()["roles"]
     return {
         role_id: meta.get("defaultInfluence", "content")
         for role_id, meta in roles.items()
     }
 
-PROMPT_ROLE_TO_COMPOSITION_ROLE = _PROMPT_ROLE_TO_COMPOSITION_ROLE
+PROMPT_ROLE_TO_COMPOSITION_ROLE = _PROMPT_ROLE_TO_COMPOSITION_ROLE_SNAPSHOT
+
+
+def get_composition_role_priority() -> List[str]:
+    """Return role priority ordering from current registry data."""
+    return list(_get_role_data()["priority"])
 
 
 def normalize_composition_role(role: Optional[str]) -> Optional[str]:
@@ -140,7 +155,8 @@ def normalize_composition_role(role: Optional[str]) -> Optional[str]:
     key = role.strip().lower()
     if key.startswith("role:"):
         key = key.split(":", 1)[1]
-    return COMPOSITION_ROLE_ALIASES.get(key, key)
+    aliases = _get_role_data()["aliases"]
+    return aliases.get(key, key)
 
 
 def map_prompt_role_to_composition_role(prompt_role: Optional[str]) -> Optional[str]:
@@ -148,7 +164,8 @@ def map_prompt_role_to_composition_role(prompt_role: Optional[str]) -> Optional[
     if not prompt_role:
         return None
     key = prompt_role.strip().lower()
-    return PROMPT_ROLE_TO_COMPOSITION_ROLE.get(key, normalize_composition_role(key))
+    role_map = _get_prompt_role_mappings()
+    return role_map.get(key, normalize_composition_role(key))
 
 
 def map_tag_to_composition_role(
@@ -163,14 +180,17 @@ def map_tag_to_composition_role(
     namespace_key = namespace.strip().lower()
     name_key = name.strip().lower() if name else None
     slug_key = slug.strip().lower() if slug else None
+    role_data = _get_role_data()
+    slug_mappings = role_data["slugMappings"]
+    namespace_mappings = role_data["namespaceMappings"]
 
-    if slug_key and slug_key in TAG_SLUG_TO_COMPOSITION_ROLE:
-        return TAG_SLUG_TO_COMPOSITION_ROLE[slug_key]
+    if slug_key and slug_key in slug_mappings:
+        return slug_mappings[slug_key]
 
     if namespace_key == "role" and name_key:
         return normalize_composition_role(name_key)
 
-    return TAG_NAMESPACE_TO_COMPOSITION_ROLE.get(namespace_key)
+    return namespace_mappings.get(namespace_key)
 
 
 def map_composition_role_to_pixverse_type(

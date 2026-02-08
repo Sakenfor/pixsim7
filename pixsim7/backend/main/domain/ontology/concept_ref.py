@@ -225,6 +225,9 @@ BodyRegionConceptRef = PartConceptRef  # Deprecated alias
 # Built-in regions for image composition masking.
 InfluenceRegionConceptRef = _make_concept_ref_type("influence_region")
 
+# Camera concepts (camera:angle_pov, camera:framing_closeup, etc.)
+CameraConceptRef = _make_concept_ref_type("camera")
+
 
 # ===================
 # Factory Function
@@ -355,6 +358,7 @@ __all__ = [
     "PartConceptRef",
     "BodyRegionConceptRef",  # Deprecated alias for PartConceptRef
     "InfluenceRegionConceptRef",
+    "CameraConceptRef",
     # Factory
     "concept_ref_field",
     # Utilities

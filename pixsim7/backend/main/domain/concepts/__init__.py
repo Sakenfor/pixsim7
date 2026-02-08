@@ -16,7 +16,7 @@ Usage:
     concepts = provider.get_concepts()
 
     # List all available kinds
-    kinds = get_all_kinds()  # ['role', 'part', 'pose', 'influence_region']
+    kinds = get_all_kinds()  # e.g. ['role', 'part', 'pose', 'mood', 'location', 'rating', 'camera', 'influence_region']
 
     # List kinds for label autocomplete
     label_kinds = get_label_kinds()  # Only kinds with include_in_labels=True

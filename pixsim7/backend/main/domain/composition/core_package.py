@@ -11,11 +11,7 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from pixsim7.backend.main.shared.composition import (
-    TAG_NAMESPACE_TO_COMPOSITION_ROLE,
-    TAG_SLUG_TO_COMPOSITION_ROLE,
-    get_composition_role_metadata,
-)
+from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
 
 from .package_registry import (
     CompositionPackage,
@@ -45,24 +41,41 @@ def _invert_mapping(mapping: Dict[str, str]) -> Dict[str, List[str]]:
     return inverted
 
 
+def _strip_role_prefix(role_id: str) -> str:
+    if role_id.startswith("role:"):
+        return role_id.split(":", 1)[1]
+    return role_id
+
+
 def _build_core_roles() -> List[CompositionRoleDefinition]:
-    roles_meta = get_composition_role_metadata()
-    slug_by_role = _invert_mapping(TAG_SLUG_TO_COMPOSITION_ROLE)
-    namespace_by_role = _invert_mapping(TAG_NAMESPACE_TO_COMPOSITION_ROLE)
+    registry = get_registry()
+
+    slug_mappings = {
+        str(k).lower(): _strip_role_prefix(str(v))
+        for k, v in registry.role_slug_mappings.items()
+    }
+    namespace_mappings = {
+        str(k).lower(): _strip_role_prefix(str(v))
+        for k, v in registry.role_namespace_mappings.items()
+    }
+
+    slug_by_role = _invert_mapping(slug_mappings)
+    namespace_by_role = _invert_mapping(namespace_mappings)
 
     roles: List[CompositionRoleDefinition] = []
-    for role_id, meta in roles_meta.items():
-        default_layer = meta.get("defaultLayer", meta.get("default_layer", 0))
+    for role in registry.all_roles():
+        role_id = _strip_role_prefix(role.id)
+        default_layer = role.default_layer
         if default_layer is None:
             default_layer = 0
         roles.append(
             CompositionRoleDefinition(
                 id=role_id,
-                label=meta.get("label") or _format_role_label(role_id),
-                description=meta.get("description", ""),
-                color=meta.get("color", "slate"),
+                label=role.label or _format_role_label(role_id),
+                description=role.description or "",
+                color=role.color or "slate",
                 default_layer=int(default_layer),
-                tags=list(meta.get("tags") or []),
+                tags=list(role.tags or []),
                 slug_mappings=sorted(slug_by_role.get(role_id, [])),
                 namespace_mappings=sorted(namespace_by_role.get(role_id, [])),
             )

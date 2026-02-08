@@ -1,0 +1,7 @@
+include_in_codegen: true
+
+pack:
+  id: prompt_roles_actions
+  kind: prompt_role_keywords
+  owns_roles: [action]
+  description: "Authority pack for action prompt-role keywords and action verbs."

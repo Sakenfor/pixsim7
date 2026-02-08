@@ -8,10 +8,9 @@ from sqlmodel import Session
 
 from pixsim7.backend.main.domain.assets.models import Asset
 from pixsim7.backend.main.domain.generation.models import Generation
-from pixsim7.backend.main.shared.ontology.vocabularies import match_keywords
 from pixsim7.backend.main.services.prompt.parser import SimplePromptParser
 from pixsim7.backend.main.shared.composition import (
-    ImageCompositionRole,
+    get_composition_role_priority,
     map_tag_to_composition_role,
 )
 
@@ -19,7 +18,6 @@ from pixsim7.backend.main.shared.composition import (
 async def tag_asset_from_metadata(
     asset: Asset,
     generation: Optional[Generation] = None,
-    session: Optional[Session] = None
 ) -> Dict[str, Any]:
     """
     Best-effort ontology tag extraction for an asset.
@@ -29,18 +27,17 @@ async def tag_asset_from_metadata(
       - Asset metadata/captions from provider (if any)
 
     Strategy:
-      - Run SimplePromptParser + ontology.match_keywords on prompts/captions
+      - Run SimplePromptParser on prompts/captions
       - Merge ontology_ids into a dict { "ontology_ids": [...], "roles": [...], ... }
 
     Args:
         asset: Asset to tag
         generation: Optional Generation record associated with this asset
-        session: Optional SQLModel session (for loading generation if not provided)
 
     Returns:
         Dict with:
         {
-            "ontology_ids": ["cam:pov", "intensity:soft", ...],
+            "ontology_ids": ["camera:angle_pov", "mood:tender", ...],
             "roles": ["character", "action", ...],
             "text_sources": ["final_prompt", "caption", ...]
         }
@@ -68,12 +65,6 @@ async def tag_asset_from_metadata(
                 for oid in block_ontology_ids:
                     if oid not in ontology_ids:
                         ontology_ids.append(oid)
-
-        # Also run keyword matching on the full prompt text
-        matched_ids = match_keywords(generation.final_prompt)
-        for oid in matched_ids:
-            if oid not in ontology_ids:
-                ontology_ids.append(oid)
 
     # Strategy 2: Check asset metadata for captions or descriptions
     # (This is optional - the Asset model may have a metadata JSON field in the future)
@@ -110,15 +101,6 @@ def extract_ontology_ids_from_asset_tags(asset_tags: Dict[str, Any]) -> List[str
 
 
 # ===== COMPOSITION ROLE INFERENCE =====
-
-COMPOSITION_ROLE_PRIORITY = [
-    ImageCompositionRole.MAIN_CHARACTER.value,
-    ImageCompositionRole.COMPANION.value,
-    ImageCompositionRole.PROP.value,
-    ImageCompositionRole.STYLE_REFERENCE.value,
-    ImageCompositionRole.EFFECT.value,
-    ImageCompositionRole.ENVIRONMENT.value,
-]
 
 
 def infer_composition_role_from_namespace(
@@ -167,7 +149,7 @@ async def infer_composition_role_from_tags(
         if role:
             roles.add(role)
 
-    for role in COMPOSITION_ROLE_PRIORITY:
+    for role in get_composition_role_priority():
         if role in roles:
             return role
 

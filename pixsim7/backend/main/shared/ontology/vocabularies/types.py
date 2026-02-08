@@ -59,6 +59,7 @@ class PromptRoleDef:
     priority: Optional[int] = None
     composition_role: Optional[str] = None
     keywords: List[str] = field(default_factory=list)
+    action_verbs: List[str] = field(default_factory=list)
     aliases: List[str] = field(default_factory=list)
     source: str = "core"
 
@@ -143,7 +144,17 @@ class InfluenceRegionDef:
 
 @dataclass
 class SpatialDef:
-    """A spatial definition (camera, framing, orientation, depth)."""
+    """A spatial definition (orientation, depth, positioning)."""
+    id: str
+    label: str
+    category: str = ""
+    keywords: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
+class CameraDef:
+    """A camera definition (angle, framing)."""
     id: str
     label: str
     category: str = ""
@@ -245,6 +256,7 @@ __all__ = [
     "PartDef",
     "InfluenceRegionDef",
     "SpatialDef",
+    "CameraDef",
     "ProgressionDef",
     "GenericVocabDef",
     "ScoringWeights",

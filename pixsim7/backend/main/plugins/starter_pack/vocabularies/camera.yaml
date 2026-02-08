@@ -1,0 +1,68 @@
+# Camera Vocabulary
+# Camera-specific view and framing semantics
+version: "1.0.0"
+
+categories:
+  angle: "Camera angle and perspective"
+  framing: "Camera framing and shot composition"
+
+camera:
+  camera:angle_front:
+    label: "Front Angle"
+    category: angle
+    keywords: [front, facing, forward]
+
+  camera:angle_side:
+    label: "Side Angle"
+    category: angle
+    keywords: [side, profile, lateral]
+
+  camera:angle_back:
+    label: "Back Angle"
+    category: angle
+    keywords: [back, behind, rear]
+
+  camera:angle_pov:
+    label: "Point of View"
+    category: angle
+    keywords: [pov, point_of_view, first_person]
+
+  camera:angle_high:
+    label: "High Angle"
+    category: angle
+    keywords: [above, overhead, birds_eye]
+
+  camera:angle_low:
+    label: "Low Angle"
+    category: angle
+    keywords: [below, low_angle, worms_eye]
+
+  camera:framing_full:
+    label: "Full Body Framing"
+    category: framing
+    keywords: [full_body, full_shot, wide]
+
+  camera:framing_upper:
+    label: "Upper Body Framing"
+    category: framing
+    keywords: [upper_body, torso, bust]
+
+  camera:framing_closeup:
+    label: "Close-up Framing"
+    category: framing
+    keywords: [closeup, close_up, face]
+
+  camera:framing_centered:
+    label: "Centered Framing"
+    category: framing
+    keywords: [centered, center_frame, middle]
+
+  camera:framing_left:
+    label: "Left Framing"
+    category: framing
+    keywords: [left, left_side, stage_right]
+
+  camera:framing_right:
+    label: "Right Framing"
+    category: framing
+    keywords: [right, right_side, stage_left]

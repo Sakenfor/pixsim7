@@ -338,30 +338,25 @@ class DynamicVocabConceptProvider(ConceptProvider):
 
 @concept_provider
 class RoleConceptProvider(ConceptProvider):
-    """Provider for composition roles from VocabularyRegistry."""
+    """Provider for composition roles from CompositionPackageRegistry."""
 
     kind = "role"
     group_name = "Composition Roles"
+    supports_packages = True
 
     def get_concepts(
         self, package_ids: Optional[List[str]] = None
     ) -> List[ConceptResponse]:
-        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+        from pixsim7.backend.main.domain.composition import get_available_roles
 
-        registry = get_registry()
-        roles = registry.all_roles()
+        roles = get_available_roles(package_ids)
 
         concepts = []
         for role in roles:
-            # Strip "role:" prefix for the concept ID
-            short_id = role.id
-            if short_id.startswith("role:"):
-                short_id = short_id[5:]
-
             concepts.append(
                 ConceptResponse(
                     kind="role",
-                    id=short_id,
+                    id=role.id,
                     label=role.label,
                     description=role.description,
                     color=role.color,
@@ -369,9 +364,8 @@ class RoleConceptProvider(ConceptProvider):
                     tags=role.tags,
                     metadata={
                         "default_layer": role.default_layer,
-                        "aliases": role.aliases,
-                        "slots_provides": role.slots.provides,
-                        "slots_requires": role.slots.requires,
+                        "slug_mappings": role.slug_mappings,
+                        "namespace_mappings": role.namespace_mappings,
                     },
                 )
             )
@@ -473,6 +467,12 @@ def _rating_metadata(r) -> Dict[str, Any]:
     }
 
 
+def _camera_metadata(c) -> Dict[str, Any]:
+    return {
+        "category": c.category,
+    }
+
+
 # Provider configs
 VOCAB_PROVIDER_CONFIGS: List[VocabProviderConfig] = [
     VocabProviderConfig(
@@ -511,6 +511,15 @@ VOCAB_PROVIDER_CONFIGS: List[VocabProviderConfig] = [
         tags_attr="keywords",
         metadata_fn=_rating_metadata,
     ),
+    VocabProviderConfig(
+        kind="camera",
+        group_name="Camera",
+        color="blue",
+        prefix="camera:",
+        getter_name="all_camera",
+        tags_attr="keywords",
+        metadata_fn=_camera_metadata,
+    ),
 ]
 
 # Create and register vocab-backed providers
@@ -518,6 +527,7 @@ PoseConceptProvider = concept_provider(_make_vocab_provider(VOCAB_PROVIDER_CONFI
 LocationConceptProvider = concept_provider(_make_vocab_provider(VOCAB_PROVIDER_CONFIGS[1]))
 MoodConceptProvider = concept_provider(_make_vocab_provider(VOCAB_PROVIDER_CONFIGS[2]))
 RatingConceptProvider = concept_provider(_make_vocab_provider(VOCAB_PROVIDER_CONFIGS[3]))
+CameraConceptProvider = concept_provider(_make_vocab_provider(VOCAB_PROVIDER_CONFIGS[4]))
 
 
 @concept_provider
@@ -581,5 +591,6 @@ __all__ = [
     "LocationConceptProvider",
     "MoodConceptProvider",
     "RatingConceptProvider",
+    "CameraConceptProvider",
     "InfluenceRegionConceptProvider",
 ]

@@ -68,7 +68,14 @@ def extract_all_vocab_ids_from_registry() -> Dict[str, Dict[str, Any]]:
             "category": f"part.{part.category}" if part.category else "part"
         }
 
-    # Spatial (camera views, framing, orientation)
+    # Camera (angles, framing)
+    for camera in registry.all_camera():
+        id_map[camera.id] = {
+            "label": camera.label,
+            "category": f"camera.{camera.category}" if camera.category else "camera"
+        }
+
+    # Spatial (orientation, depth, layout)
     for spatial in registry.all_spatial():
         id_map[spatial.id] = {
             "label": spatial.label,
@@ -235,7 +242,7 @@ async def get_ontology_info(
         info = {
             "version": "1.0.0",
             "label": "PixSim7 Vocabulary Registry",
-            "description": "Unified vocabulary system for poses, moods, locations, parts, spatial, etc.",
+            "description": "Unified vocabulary system for poses, moods, locations, parts, camera, spatial, etc.",
             "counts": {
                 "poses": len(registry.all_poses()),
                 "moods": len(registry.all_moods()),
@@ -243,6 +250,7 @@ async def get_ontology_info(
                 "ratings": len(registry.all_ratings()),
                 "roles": len(registry.all_roles()),
                 "parts": len(registry.all_parts()),
+                "camera": len(registry.all_camera()),
                 "spatial": len(registry.all_spatial()),
             },
             "loaded_packs": [p.id for p in registry.packs],

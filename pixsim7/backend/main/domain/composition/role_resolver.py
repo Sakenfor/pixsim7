@@ -36,7 +36,7 @@ from pixsim7.backend.main.shared.composition import (
     normalize_composition_role,
     map_tag_to_composition_role,
     map_prompt_role_to_composition_role,
-    COMPOSITION_ROLE_PRIORITY,
+    get_composition_role_priority,
 )
 from .package_registry import get_available_roles
 
@@ -159,7 +159,7 @@ def resolve_role_from_tags(
             roles_found.add(core_role)
 
     # Return highest priority role
-    for role_id in COMPOSITION_ROLE_PRIORITY:
+    for role_id in get_composition_role_priority():
         if role_id in roles_found:
             return ConceptRef(kind="role", id=role_id)
 

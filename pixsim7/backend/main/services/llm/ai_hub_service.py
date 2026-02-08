@@ -349,8 +349,8 @@ Your task is to analyze prompts and suggest:
 Guidelines:
 - PREFER reusing existing ontology IDs when possible
 - Only suggest NEW ontology IDs when existing ones don't capture the semantics
-- Ontology ID format: "category:name" (e.g., "act:movement", "state:aroused", "part:shaft", "cam:pov")
-- Ontology categories: action, state, part (anatomy), manner, agency, camera
+- Ontology ID format: "prefix:name" (e.g., "mood:tender", "camera:angle_pov", "spatial:orient_profile", "part:face")
+- Canonical prefixes: mood, camera, spatial, location, pose, rating, part
 - Be conservative: suggest only high-confidence additions
 - Consider adult/NSFW content as valid and appropriate for this system
 
@@ -358,10 +358,10 @@ Response format: Valid JSON object with these exact keys:
 {
   "suggested_ontology_ids": [
     {
-      "id": "act:example",
+      "id": "mood:example",
       "label": "Human-readable label",
       "description": "What this represents",
-      "kind": "action|state|part|manner|agency|camera",
+      "kind": "mood|camera|spatial|location|pose|rating|part|other",
       "confidence": 0.0-1.0
     }
   ],
@@ -381,7 +381,7 @@ Response format: Valid JSON object with these exact keys:
       "block_id": "suggested_block_slug",
       "text": "The actual prompt text for this block",
       "tags": {
-        "ontology_ids": ["act:example"],
+        "ontology_ids": ["mood:example"],
         "intensity": "medium",
         "category": "example"
       },

@@ -9,6 +9,9 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
+from pixsim7.backend.main.services.prompt.tag_derivation import (
+    derive_flat_tags,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +29,15 @@ INSTRUCTIONS:
 4. Identify a category label for fine-grained classification
 
 Ontology ID format: "prefix:name"
-- act: actions (act:walk, act:embrace, act:look)
-- state: states (state:aroused, state:tired, state:happy)
-- part: anatomy (part:face, part:hand, part:chest)
-- manner: how something is done (manner:gentle, manner:aggressive)
-- cam: camera (cam:pov, cam:closeup, cam:pan)
+Prefer canonical vocabulary IDs from the registry when possible:
+- mood:* (mood:tender, mood:passionate)
+- location:* (location:forest, location:bedroom)
+- camera:* (camera:angle_pov, camera:framing_closeup)
+- spatial:* (spatial:orient_profile, spatial:depth_background)
+- pose:* (pose:standing_neutral)
+- rating:* (rating:sfw)
+- part:* (part:face)
+Do not use legacy prefixes such as cam:, manner:, act:, or state:.
 
 RESPONSE FORMAT (JSON only, no other text):
 {
@@ -39,10 +46,10 @@ RESPONSE FORMAT (JSON only, no other text):
       "role": "<role_id>",
       "text": "the exact text from the prompt",
       "category": "fine-grained label like 'entrance', 'description', 'camera_move'",
-      "ontology_ids": ["act:walk", "manner:slow"]
+      "ontology_ids": ["mood:tender", "camera:angle_pov"]
     }
   ],
-  "tags": ["has:<role_id>", "tone:soft", "cam:pov"]
+  "tags": ["has:<role_id>", "tone:soft", "camera:pov"]
 }
 
 Be precise. Extract meaningful semantic information. Return ONLY valid JSON."""
@@ -186,24 +193,7 @@ def _normalize_candidates(
 
 def _derive_tags_from_candidates(candidates: List[Dict[str, Any]]) -> List[str]:
     """Derive standard tags from candidates."""
-    tags = set()
-
-    for candidate in candidates:
-        role = candidate.get("role")
-        if role:
-            tags.add(f"has:{role}")
-
-        for oid in candidate.get("ontology_ids", []):
-            if oid.startswith("cam:"):
-                tags.add(f"camera:{oid.split(':')[1]}")
-            elif oid.startswith("manner:"):
-                manner = oid.split(':')[1]
-                if manner in ("gentle", "soft", "tender"):
-                    tags.add("tone:soft")
-                elif manner in ("intense", "aggressive", "rough"):
-                    tags.add("tone:intense")
-
-    return list(tags)
+    return derive_flat_tags(candidates, include_ontology_ids=False)
 
 
 async def _fallback_to_simple(text: str) -> Dict[str, Any]:

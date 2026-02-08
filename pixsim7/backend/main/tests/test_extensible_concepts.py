@@ -147,9 +147,9 @@ class TestVocabularyRegistry:
         assert registry.is_known_concept("location", "bench_park")
         assert registry.is_known_concept("location", "bedroom")
 
-        # Core spatial concepts should exist
-        assert registry.is_known_concept("spatial", "cam_pov")
-        assert registry.is_known_concept("spatial", "frame_closeup")
+        # Core camera concepts should exist
+        assert registry.is_known_concept("camera", "angle_pov")
+        assert registry.is_known_concept("camera", "framing_closeup")
 
     def test_registry_loads_plugin_packs(self, registry):
         """Test that plugin vocabulary packs are discovered and loaded."""
@@ -252,11 +252,11 @@ class TestVocabularyRegistry:
         assert plugin_pack is not None
         assert plugin_pack.id == "plugin_example_concepts"
 
-    def test_registry_keyword_index_includes_spatial_keywords(self, registry):
-        """Spatial vocabulary keywords should be indexed for ontology lookup."""
+    def test_registry_keyword_index_includes_camera_keywords(self, registry):
+        """Camera vocabulary keywords should be indexed for ontology lookup."""
         keyword_to_ids = registry.get_keyword_to_ids()
         assert "point_of_view" in keyword_to_ids
-        assert "spatial:cam_pov" in keyword_to_ids["point_of_view"]
+        assert "camera:angle_pov" in keyword_to_ids["point_of_view"]
 
 
 # =============================================================================

@@ -76,18 +76,6 @@ def normalize_tags(raw_tags: Dict[str, Any]) -> Dict[str, Any]:
             if mood in mood_map:
                 normalized["mood"] = mood_map[mood]
 
-        # Normalize location tags to spatial relation IDs
-        if "location" in normalized:
-            location = str(normalized["location"]).lower()
-            location_map = {
-                "between_legs": "rel:between_legs",
-                "at_crotch": "rel:at_crotch",
-                "at_groin": "rel:at_groin",
-                "against_back": "rel:against_back",
-            }
-            if location in location_map:
-                normalized["location"] = location_map[location]
-
         # Add ontology_ids field if we have semantic content
         # This collects all ontology IDs present in the tags
         ontology_ids = []
@@ -98,10 +86,8 @@ def normalize_tags(raw_tags: Dict[str, Any]) -> Dict[str, Any]:
                 if ":" in value and value.split(":")[0] in (
                     # Core vocabulary prefixes
                     "pose", "mood", "location", "rating", "role",
-                    "intimacy", "branch", "spatial", "influence_region",
-                    # Legacy/detailed prefixes (keep for compatibility)
-                    "part", "region", "act", "state",
-                    "rel", "ori", "contact", "cam", "beat",
+                    "intimacy", "branch", "spatial", "camera", "influence_region",
+                    "part",
                     "intensity", "speed"
                 ):
                     ontology_ids.append(value)
@@ -147,10 +133,8 @@ def extract_ontology_ids_from_tags(tags: Dict[str, Any]) -> list[str]:
             if ":" in value and value.split(":")[0] in (
                 # Core vocabulary prefixes
                 "pose", "mood", "location", "rating", "role",
-                "intimacy", "branch", "spatial", "influence_region",
-                # Legacy/detailed prefixes (keep for compatibility)
-                "part", "region", "act", "state",
-                "rel", "ori", "contact", "cam", "beat",
+                "intimacy", "branch", "spatial", "camera", "influence_region",
+                "part",
                 "intensity", "speed"
             ):
                 if value not in ontology_ids:

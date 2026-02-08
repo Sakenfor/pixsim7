@@ -11,7 +11,8 @@ This package provides a centralized registry for all vocabulary types:
 - locations (scene locations)
 - parts (anatomy parts)
 - influence_regions (effect regions)
-- spatial (camera/composition)
+- spatial (orientation/depth/layout)
+- camera (camera angle/framing)
 - progression (tension/intimacy)
 
 Usage:
@@ -43,6 +44,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     PartDef,
     InfluenceRegionDef,
     SpatialDef,
+    CameraDef,
     ProgressionDef,
     ScoringConfig,
     ScoringWeights,
@@ -120,6 +122,11 @@ def get_spatial(spatial_id: str) -> Optional[SpatialDef]:
     return get_registry().get_spatial(spatial_id)
 
 
+def get_camera(camera_id: str) -> Optional[CameraDef]:
+    """Get a camera item by ID."""
+    return get_registry().get_camera(camera_id)
+
+
 def get_progression(progression_id: str) -> Optional[ProgressionDef]:
     """Get a progression item by ID."""
     return get_registry().get_progression(progression_id)
@@ -149,6 +156,7 @@ __all__ = [
     "PartDef",
     "InfluenceRegionDef",
     "SpatialDef",
+    "CameraDef",
     "ProgressionDef",
     "ScoringConfig",
     "ScoringWeights",
@@ -174,6 +182,7 @@ __all__ = [
     "get_part",
     "get_influence_region",
     "get_spatial",
+    "get_camera",
     "get_progression",
     "check_pose_compatibility",
     "match_keywords",

@@ -193,7 +193,7 @@ async def analyze_prompt_text(
                 {"role": "action", "text": "...", "start_pos": 11, "end_pos": 25},
                 ...
             ],
-            "tags": ["has:character", "tone:soft", "camera:pov", ...]
+            "tags": ["has:character", "mood:tender", "tone:soft", "camera:pov", ...]
         }
 
     Raises:

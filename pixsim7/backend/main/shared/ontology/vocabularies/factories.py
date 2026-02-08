@@ -18,6 +18,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     PartDef,
     InfluenceRegionDef,
     SpatialDef,
+    CameraDef,
     ProgressionDef,
     GenericVocabDef,
 )
@@ -69,6 +70,7 @@ def make_prompt_role(id: str, data: Dict[str, Any], source: str) -> PromptRoleDe
         priority=priority,
         composition_role=data.get("composition_role", data.get("compositionRole")),
         keywords=data.get("keywords", []),
+        action_verbs=data.get("action_verbs", data.get("actionVerbs", [])),
         aliases=data.get("aliases", []),
         source=source,
     )
@@ -178,6 +180,17 @@ def make_spatial(id: str, data: Dict[str, Any], source: str) -> SpatialDef:
     )
 
 
+def make_camera(id: str, data: Dict[str, Any], source: str) -> CameraDef:
+    """Create a CameraDef from YAML data."""
+    return CameraDef(
+        id=id,
+        label=data.get("label", ""),
+        category=data.get("category", ""),
+        keywords=data.get("keywords", []),
+        source=source,
+    )
+
+
 def make_progression(id: str, data: Dict[str, Any], source: str) -> ProgressionDef:
     """Create a ProgressionDef from YAML data."""
     return ProgressionDef(
@@ -213,6 +226,7 @@ __all__ = [
     "make_part",
     "make_influence_region",
     "make_spatial",
+    "make_camera",
     "make_progression",
     "make_generic",
 ]

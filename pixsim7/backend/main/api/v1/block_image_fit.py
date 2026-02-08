@@ -139,7 +139,6 @@ async def compute_fit_score(
     asset_tags = await tag_asset_from_metadata(
         asset=asset,
         generation=generation,
-        session=db
     )
 
     # Compute fit
@@ -226,7 +225,6 @@ async def rate_fit(
     asset_tags = await tag_asset_from_metadata(
         asset=asset,
         generation=generation,
-        session=db
     )
 
     # Compute fit
