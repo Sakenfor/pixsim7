@@ -3,7 +3,7 @@ import { useMemo, useEffect, useCallback } from 'react';
 import type { ParamSpec } from '@lib/generation-ui';
 
 import { useProviders } from '@features/providers';
-import { useProviderSpecs } from '@features/providers';
+import { useProviderCapability } from '@features/providers';
 import { useProviderIdForModel } from '@features/providers';
 
 import type { OperationType } from '@/types/operations';
@@ -209,9 +209,10 @@ export function useGenerationWorkbench(
     return 'pixverse';
   }, [providerId, inferredProviderId]);
 
-  // Provider and specs
+  // Provider and specs (capability registry is cached, survives remounts)
   const { providers } = useProviders();
-  const { specs } = useProviderSpecs(resolvedProviderId);
+  const { capability } = useProviderCapability(resolvedProviderId);
+  const operationSpecs = capability?.operation_specs;
 
   const setProvider = (id: string | undefined) => {
     setStoreProvider(id);
@@ -219,7 +220,7 @@ export function useGenerationWorkbench(
 
   // Prefer native image_to_image specs when the provider exposes them
   const hasNativeImageToImageSpec =
-    !!specs?.operation_specs && !!specs.operation_specs['image_to_image'];
+    !!operationSpecs && !!operationSpecs['image_to_image'];
   const effectiveOperationType: OperationType =
     operationType === 'image_to_image' && !hasNativeImageToImageSpec
       ? 'image_to_video'
@@ -227,10 +228,10 @@ export function useGenerationWorkbench(
 
   // All parameter specs for current operation (unfiltered)
   const allParamSpecs = useMemo<ParamSpec[]>(() => {
-    if (!specs?.operation_specs) return [];
-    const opSpec = specs.operation_specs[effectiveOperationType];
+    if (!operationSpecs) return [];
+    const opSpec = operationSpecs[effectiveOperationType];
     return opSpec?.parameters ?? [];
-  }, [specs, effectiveOperationType]);
+  }, [operationSpecs, effectiveOperationType]);
 
   // Get parameter specs for current operation (filtered)
   const paramSpecs = useMemo<ParamSpec[]>(() => {
@@ -252,14 +253,14 @@ export function useGenerationWorkbench(
     if (!hasHydrated) return;
     // Skip if operation types are out of sync (wait for sync effect to complete)
     if (effectiveOperationType !== activeOperationType) return;
-    if (!specs?.operation_specs) return;
-    const opSpec = specs.operation_specs[effectiveOperationType];
+    if (!operationSpecs) return;
+    const opSpec = operationSpecs[effectiveOperationType];
     if (!opSpec?.parameters) return;
 
     setDynamicParams((prev) =>
       validateAndApplyDefaults(prev, opSpec.parameters)
     );
-  }, [hasHydrated, specs, effectiveOperationType, activeOperationType, setDynamicParams]);
+  }, [hasHydrated, operationSpecs, effectiveOperationType, activeOperationType, setDynamicParams]);
 
   // Handler for dynamic param changes - coerces types on input
   const handleParamChange = useCallback(

@@ -1,18 +1,18 @@
+
+import { useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { useHoverExpand } from '@pixsim7/shared.ui';
-
 import { Icon, ThemedIcon } from '@lib/icons';
 
-import { SlotPickerGrid, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/mediaCardGeneration';
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, useAssetViewerStore } from '@features/assets';
-import { CompactAssetCard } from '@features/assets/components/shared';
 import type { AssetModel } from '@features/assets';
+import { CompactAssetCard } from '@features/assets/components/shared';
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
+import { SlotPickerGrid, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA, OPERATION_TYPES, isMultiAssetOperation } from '@/types/operations';
 

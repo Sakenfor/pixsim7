@@ -91,17 +91,15 @@ export function GenerationSettingsPanel({
 
   // Input count from scoped store
   const inputCount = useInputStore(s => s.inputsByOperation[operationType]?.items?.length ?? 0);
+  // Read preferred provider directly from state slice for reliable reactivity
+  // (getPreferredProviderId uses get() internally which can cause stale selector reads)
   const preferredProviderId = useContextHubOverridesStore(
-    (state) => state.getPreferredProviderId(CAP_GENERATION_WIDGET)
+    (state) => state.overrides[CAP_GENERATION_WIDGET as string]?.preferredProviderId
   );
   const setPreferredProvider = useContextHubOverridesStore((state) => state.setPreferredProvider);
   const clearOverride = useContextHubOverridesStore((state) => state.clearOverride);
-  const resolvedTargetProviderId = useMemo(() => {
-    if (!targetProviderId) return undefined;
-    return targetProviderId;
-  }, [targetProviderId]);
-  const isTargeted = !!resolvedTargetProviderId && preferredProviderId === resolvedTargetProviderId;
-  const canTarget = !!resolvedTargetProviderId;
+  const isTargeted = !!targetProviderId && preferredProviderId === targetProviderId;
+  const canTarget = !!targetProviderId;
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
@@ -233,12 +231,12 @@ export function GenerationSettingsPanel({
               <button
                 type="button"
                 onClick={() => {
-                  if (!resolvedTargetProviderId) return;
+                  if (!targetProviderId) return;
                   if (isTargeted) {
                     clearOverride(CAP_GENERATION_WIDGET);
                     return;
                   }
-                  setPreferredProvider(CAP_GENERATION_WIDGET, resolvedTargetProviderId);
+                  setPreferredProvider(CAP_GENERATION_WIDGET, targetProviderId);
                 }}
                 className={clsx(
                   'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
