@@ -97,6 +97,10 @@ async def poll_job_statuses(ctx: dict) -> dict:
             # Timeout threshold (processing > 2 hours = stuck)
             TIMEOUT_HOURS = 2
             timeout_threshold = datetime.now(timezone.utc) - timedelta(hours=TIMEOUT_HOURS)
+            # Shorter timeout for jobs that never got a provider_job_id
+            # (submission to provider failed, no point waiting 2 hours)
+            UNSUBMITTED_TIMEOUT_MINUTES = 15
+            unsubmitted_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=UNSUBMITTED_TIMEOUT_MINUTES)
 
             for generation in processing_generations:
                 checked += 1
@@ -134,6 +138,45 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     if not account:
                         logger.error("account_not_found", account_id=submission.account_id)
                         await generation_service.mark_failed(generation.id, "Account not found")
+                        failed += 1
+                        continue
+
+                    # Fail jobs that never got a provider_job_id after the short timeout
+                    # (submission to provider failed; no point polling for 2 hours)
+                    if (
+                        not submission.provider_job_id
+                        and generation.started_at
+                        and generation.started_at < unsubmitted_timeout_threshold
+                    ):
+                        logger.warning(
+                            "generation_timeout_unsubmitted",
+                            generation_id=generation.id,
+                            started_at=str(generation.started_at),
+                            timeout_minutes=UNSUBMITTED_TIMEOUT_MINUTES,
+                        )
+                        await generation_service.mark_failed(
+                            generation.id,
+                            f"Generation failed: never submitted to provider (timed out after {UNSUBMITTED_TIMEOUT_MINUTES} minutes)",
+                        )
+
+                        try:
+                            billing_service = GenerationBillingService(db)
+                            await db.refresh(generation)
+                            await billing_service.finalize_billing(
+                                generation=generation,
+                                final_submission=submission,
+                                account=account,
+                            )
+                        except Exception as billing_err:
+                            logger.warning(
+                                "billing_finalization_error",
+                                generation_id=generation.id,
+                                error=str(billing_err),
+                            )
+
+                        if account.current_processing_jobs > 0:
+                            account.current_processing_jobs -= 1
+
                         failed += 1
                         continue
 
