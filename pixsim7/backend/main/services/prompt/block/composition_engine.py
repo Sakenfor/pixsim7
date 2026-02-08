@@ -14,6 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.prompt.block.action import ActionBlockService
+from pixsim7.backend.main.services.prompt.tag_inference import (
+    derive_sub_tags_from_ontology_ids,
+)
 
 
 def derive_analysis_from_blocks(
@@ -103,19 +106,9 @@ def _derive_tags_from_composition_blocks(blocks: List[PromptBlock]) -> List[str]
         if role and role != "other":
             role_tags.add(f"has:{role}")
 
-        # Extract keyword-based tags from block text
-        text = (block.prompt or "").lower()
-        if any(word in text for word in ("gentle", "soft", "tender")):
-            keyword_tags.add("tone:soft")
-        if any(word in text for word in ("intense", "harsh", "rough", "violent")):
-            keyword_tags.add("tone:intense")
-        if any(word in text for word in ("pov", "first-person", "viewpoint")):
-            keyword_tags.add("camera:pov")
-        if any(word in text for word in ("close-up", "close up", "tight framing")):
-            keyword_tags.add("camera:closeup")
-
         # Include existing block tags (convert to flat format)
         block_tags = block.tags or {}
+        ontology_ids: List[str] = []
         if isinstance(block_tags, dict):
             for key, value in block_tags.items():
                 if value is True:
@@ -123,9 +116,12 @@ def _derive_tags_from_composition_blocks(blocks: List[PromptBlock]) -> List[str]
                 elif isinstance(value, str):
                     keyword_tags.add(f"{key}:{value}")
                 elif key == "ontology_ids" and isinstance(value, list):
+                    ontology_ids = [oid for oid in value if isinstance(oid, str) and oid]
                     for oid in value:
                         if isinstance(oid, str) and oid:
                             keyword_tags.add(oid)
+        if ontology_ids:
+            keyword_tags.update(derive_sub_tags_from_ontology_ids(ontology_ids))
 
     return sorted(role_tags) + sorted(keyword_tags)
 
