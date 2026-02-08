@@ -1,0 +1,1 @@
+# Command Embedding Provider Plugin

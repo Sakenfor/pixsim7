@@ -72,6 +72,38 @@ class ConfirmConceptsRequest(BaseModel):
     confirmed_by: Optional[str] = None
 
 
+class EmbedBatchRequest(BaseModel):
+    model_id: Optional[str] = Field(None, description="Embedding model ID (defaults to system default)")
+    force: bool = Field(False, description="Re-embed blocks even if already embedded with same model")
+    role: Optional[str] = Field(None, description="Filter by role")
+    kind: Optional[str] = Field(None, description="Filter by kind")
+
+
+class SimilarByTextRequest(BaseModel):
+    text: str = Field(..., description="Text to find similar blocks for")
+    model_id: Optional[str] = Field(None, description="Embedding model ID")
+    role: Optional[str] = Field(None, description="Filter by role")
+    kind: Optional[str] = Field(None, description="Filter by kind")
+    category: Optional[str] = Field(None, description="Filter by category")
+    limit: int = Field(10, le=100, description="Max results")
+    threshold: Optional[float] = Field(None, description="Max cosine distance")
+
+
+class SimilarBlockResponse(BaseModel):
+    id: UUID
+    block_id: str
+    kind: str
+    role: Optional[str]
+    category: Optional[str]
+    prompt: str
+    description: Optional[str]
+    distance: float
+    similarity_score: float
+
+    class Config:
+        from_attributes = True
+
+
 class ActionBlockResponse(BaseModel):
     id: UUID
     block_id: str
@@ -261,6 +293,123 @@ async def get_compatible_blocks(
     service = ActionBlockService(db)
     blocks = await service.find_compatible_blocks(block_id, direction)
     return blocks
+
+
+# ===== Embedding & Similarity Endpoints =====
+
+@router.post("/{block_id}/embed", response_model=Dict[str, Any])
+async def embed_block(
+    block_id: UUID,
+    model_id: Optional[str] = Query(None, description="Embedding model ID"),
+    force: bool = Query(False, description="Re-embed even if already done"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Embed a single action block for similarity search"""
+    from pixsim7.backend.main.services.embedding import EmbeddingService
+    service = EmbeddingService(db)
+
+    block = await service.embed_block(block_id, model_id=model_id, force=force)
+    if not block:
+        raise HTTPException(404, "Block not found")
+
+    return {
+        "success": True,
+        "block_id": str(block.id),
+        "embedding_model": block.embedding_model,
+        "has_embedding": block.embedding is not None,
+    }
+
+
+@router.post("/embed/batch", response_model=Dict[str, Any])
+async def embed_blocks_batch(
+    request: EmbedBatchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Batch embed action blocks that need embeddings"""
+    from pixsim7.backend.main.services.embedding import EmbeddingService
+    service = EmbeddingService(db)
+
+    stats = await service.embed_blocks_batch(
+        model_id=request.model_id,
+        force=request.force,
+        role=request.role,
+        kind=request.kind,
+    )
+    return stats
+
+
+@router.get("/{block_id}/similar", response_model=List[SimilarBlockResponse])
+async def find_similar_blocks(
+    block_id: UUID,
+    role: Optional[str] = Query(None, description="Filter by role"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    limit: int = Query(10, le=100),
+    threshold: Optional[float] = Query(None, description="Max cosine distance"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Find action blocks similar to a given block using embeddings"""
+    service = ActionBlockService(db)
+    results = await service.find_similar_blocks(
+        block_id,
+        role=role,
+        kind=kind,
+        category=category,
+        limit=limit,
+        threshold=threshold,
+    )
+
+    return [
+        SimilarBlockResponse(
+            id=r["block"].id,
+            block_id=r["block"].block_id,
+            kind=r["block"].kind,
+            role=r["block"].role,
+            category=r["block"].category,
+            prompt=r["block"].text,
+            description=r["block"].description,
+            distance=r["distance"],
+            similarity_score=r["similarity_score"],
+        )
+        for r in results
+    ]
+
+
+@router.post("/similar/by-text", response_model=List[SimilarBlockResponse])
+async def find_similar_by_text(
+    request: SimilarByTextRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Find action blocks similar to arbitrary text using embeddings"""
+    from pixsim7.backend.main.services.embedding import EmbeddingService
+    service = EmbeddingService(db)
+
+    results = await service.find_similar_by_text(
+        request.text,
+        model_id=request.model_id,
+        role=request.role,
+        kind=request.kind,
+        category=request.category,
+        limit=request.limit,
+        threshold=request.threshold,
+    )
+
+    return [
+        SimilarBlockResponse(
+            id=r["block"].id,
+            block_id=r["block"].block_id,
+            kind=r["block"].kind,
+            role=r["block"].role,
+            category=r["block"].category,
+            prompt=r["block"].text,
+            description=r["block"].description,
+            distance=r["distance"],
+            similarity_score=r["similarity_score"],
+        )
+        for r in results
+    ]
 
 
 # ===== AI Extraction Endpoints =====

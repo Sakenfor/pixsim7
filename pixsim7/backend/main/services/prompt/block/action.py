@@ -384,3 +384,39 @@ class ActionBlockService:
 
         result = await self.db.execute(query)
         return list(result.scalars().all())
+
+    async def find_similar_blocks(
+        self,
+        block_id: UUID,
+        *,
+        role: Optional[str] = None,
+        kind: Optional[str] = None,
+        category: Optional[str] = None,
+        limit: int = 10,
+        threshold: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Find semantically similar blocks using embeddings.
+
+        Delegates to EmbeddingService for vector similarity search.
+
+        Args:
+            block_id: Source block UUID
+            role: Filter by role (defaults to source block's role)
+            kind: Optional filter by kind
+            category: Optional filter by category
+            limit: Max results
+            threshold: Max cosine distance
+
+        Returns:
+            List of dicts with block, distance, similarity_score
+        """
+        from pixsim7.backend.main.services.embedding import EmbeddingService
+        embedding_service = EmbeddingService(self.db)
+        return await embedding_service.find_similar(
+            block_id,
+            role=role,
+            kind=kind,
+            category=category,
+            limit=limit,
+            threshold=threshold,
+        )

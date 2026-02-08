@@ -8,9 +8,10 @@ from typing import List, Optional
 
 class AiModelKind(str, Enum):
     """Type of AI model."""
-    LLM = "llm"       # Remote LLM text model
-    PARSER = "parser" # Parsing/analysis engine
-    BOTH = "both"     # Supports both roles
+    LLM = "llm"             # Remote LLM text model
+    PARSER = "parser"       # Parsing/analysis engine
+    EMBEDDING = "embedding" # Text embedding model
+    BOTH = "both"           # Supports both roles
 
 
 class AiModelCapability(str, Enum):
@@ -18,6 +19,7 @@ class AiModelCapability(str, Enum):
     PROMPT_EDIT = "prompt_edit"
     PROMPT_PARSE = "prompt_parse"
     TAG_SUGGEST = "tag_suggest"
+    EMBEDDING = "embedding"
 
 
 class AiModel(BaseModel):

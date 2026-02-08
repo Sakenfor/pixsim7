@@ -108,3 +108,45 @@ def initialize_ai_models() -> None:
             ),
         )
     )
+
+    # === Embedding Models ===
+
+    # OpenAI text-embedding-3-small (default for embeddings)
+    ai_model_registry.register(
+        AiModel(
+            id="openai:text-embedding-3-small",
+            label="Text Embedding 3 Small",
+            provider_id="openai-embedding",
+            kind=AiModelKind.EMBEDDING,
+            capabilities=[AiModelCapability.EMBEDDING],
+            default_for=[AiModelCapability.EMBEDDING],
+            description="OpenAI text-embedding-3-small (768 dims) for semantic similarity",
+        )
+    )
+
+    # OpenAI text-embedding-3-large
+    ai_model_registry.register(
+        AiModel(
+            id="openai:text-embedding-3-large",
+            label="Text Embedding 3 Large",
+            provider_id="openai-embedding",
+            kind=AiModelKind.EMBEDDING,
+            capabilities=[AiModelCapability.EMBEDDING],
+            description="OpenAI text-embedding-3-large (768 dims) for high-quality semantic similarity",
+        )
+    )
+
+    # Command Embedding (user-defined local command)
+    ai_model_registry.register(
+        AiModel(
+            id="cmd:embedding-default",
+            label="Command Embedding (Default)",
+            provider_id="cmd-embedding",
+            kind=AiModelKind.EMBEDDING,
+            capabilities=[AiModelCapability.EMBEDDING],
+            description=(
+                "Embedding via local CLI command. Configure via CMD_EMBEDDING_COMMAND "
+                "environment variable."
+            ),
+        )
+    )

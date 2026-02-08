@@ -291,6 +291,10 @@ def load_provider_plugin(provider_name: str, providers_dir: str = DEFAULT_PROVID
                 # Register LLM provider in LLM registry
                 from pixsim7.backend.main.services.llm.registry import llm_registry
                 llm_registry.register(provider_instance)
+            elif manifest.kind == ProviderKind.EMBEDDING:
+                # Register embedding provider in embedding registry
+                from pixsim7.backend.main.services.embedding.registry import embedding_registry
+                embedding_registry.register(provider_instance)
             elif manifest.kind in (ProviderKind.VIDEO, ProviderKind.BOTH):
                 # Register video provider in video registry
                 registry.register(provider_instance)

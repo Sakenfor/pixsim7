@@ -9,9 +9,10 @@ Core models for prompt versioning and reusable blocks:
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON, Text
+from sqlalchemy import JSON, Text, String
 from uuid import UUID, uuid4
 import hashlib
+from pgvector.sqlalchemy import Vector
 
 from pixsim7.backend.main.domain.enums import enum_column
 from pixsim7.backend.main.domain.prompt.enums import (
@@ -526,6 +527,18 @@ class PromptBlock(SQLModel, table=True):
         default_factory=dict,
         sa_column=Column(JSON, name="block_metadata"),
         description="Additional flexible metadata"
+    )
+
+    # Embedding (for semantic similarity search)
+    embedding: Optional[List[float]] = Field(
+        default=None,
+        sa_column=Column(Vector(768)),
+        description="Vector embedding for semantic similarity search"
+    )
+    embedding_model: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(100)),
+        description="Model that generated the embedding (for invalidation on model switch)"
     )
 
     # Timestamps

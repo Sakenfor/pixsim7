@@ -15,6 +15,7 @@ class ProviderKind(str, Enum):
     """Provider kind/capability type"""
     VIDEO = "video"
     LLM = "llm"
+    EMBEDDING = "embedding"
     BOTH = "both"
 
 

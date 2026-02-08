@@ -1,0 +1,1 @@
+# OpenAI Embedding Provider Plugin

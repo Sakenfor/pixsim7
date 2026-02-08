@@ -44,6 +44,7 @@ FALLBACK_DEFAULTS = {
     AiModelCapability.PROMPT_EDIT: "openai:gpt-4o-mini",
     AiModelCapability.PROMPT_PARSE: "prompt-dsl:simple",
     AiModelCapability.TAG_SUGGEST: "openai:gpt-4o-mini",
+    AiModelCapability.EMBEDDING: "openai:text-embedding-3-small",
 }
 
 
