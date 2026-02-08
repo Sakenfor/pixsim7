@@ -12,7 +12,7 @@ from typing import Optional
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.services.embedding.registry import embedding_registry
@@ -22,10 +22,54 @@ from pixsim7.backend.main.services.ai_model.defaults import (
     FALLBACK_DEFAULTS,
 )
 from pixsim7.backend.main.shared.schemas.ai_model_schemas import AiModelCapability
+from pixsim7.backend.main.shared.errors import ProviderNotFoundError
 
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 64
+EXPECTED_DIMENSIONS = 768
+
+
+# ===== Domain errors raised by EmbeddingService =====
+
+class EmbeddingModelError(ValueError):
+    """Unknown or misconfigured embedding model/provider (maps to 400)."""
+
+
+class BlockNotFoundError(LookupError):
+    """Block not found in database (maps to 404)."""
+
+
+class BlockNotEmbeddedError(Exception):
+    """Block exists but has no embedding yet (maps to 422)."""
+
+
+class EmbeddingDimensionError(ValueError):
+    """Embedding vector has wrong dimensions (maps to 500 / skipped in batch)."""
+
+
+# ===== Validation helper =====
+
+def validate_embeddings(embeddings: list, expected_count: int) -> list[list[float]]:
+    """
+    Validate embedding output: correct count, list[float]-compatible, correct dims.
+
+    Raises EmbeddingDimensionError on any validation failure.
+    """
+    if len(embeddings) != expected_count:
+        raise EmbeddingDimensionError(
+            f"Expected {expected_count} embeddings, got {len(embeddings)}"
+        )
+    for i, emb in enumerate(embeddings):
+        if not isinstance(emb, (list, tuple)):
+            raise EmbeddingDimensionError(
+                f"Embedding [{i}] is {type(emb).__name__}, expected list[float]"
+            )
+        if len(emb) != EXPECTED_DIMENSIONS:
+            raise EmbeddingDimensionError(
+                f"Embedding [{i}] has {len(emb)} dimensions, expected {EXPECTED_DIMENSIONS}"
+            )
+    return embeddings
 
 
 def _build_embed_text(block: PromptBlock) -> str:
@@ -63,14 +107,23 @@ class EmbeddingService:
             )
 
     def _get_provider(self, model_id: str):
-        """Look up the embedding provider for a model_id."""
+        """
+        Look up the embedding provider for a model_id.
+
+        Raises EmbeddingModelError for unknown model or missing provider.
+        """
         model = ai_model_registry.get(model_id)
         if not model:
-            raise ValueError(f"Model '{model_id}' not found in AI model registry")
+            raise EmbeddingModelError(f"Model '{model_id}' not found in AI model registry")
         provider_id = model.provider_id
         if not provider_id:
-            raise ValueError(f"Model '{model_id}' has no provider_id")
-        return embedding_registry.get(provider_id)
+            raise EmbeddingModelError(f"Model '{model_id}' has no provider_id")
+        try:
+            return embedding_registry.get(provider_id)
+        except ProviderNotFoundError:
+            raise EmbeddingModelError(
+                f"Embedding provider '{provider_id}' for model '{model_id}' is not registered"
+            )
 
     def _extract_bare_model(self, model_id: str) -> str:
         """Extract bare model name from prefixed ID (e.g., 'openai:text-embedding-3-small' -> 'text-embedding-3-small')."""
@@ -83,7 +136,7 @@ class EmbeddingService:
         block_id: UUID,
         model_id: str | None = None,
         force: bool = False,
-    ) -> PromptBlock | None:
+    ) -> PromptBlock:
         """
         Embed a single block.
 
@@ -93,14 +146,19 @@ class EmbeddingService:
             force: Re-embed even if already embedded with same model
 
         Returns:
-            Updated block, or None if not found
+            Updated block
+
+        Raises:
+            BlockNotFoundError: Block not found
+            EmbeddingModelError: Unknown model/provider
+            EmbeddingDimensionError: Provider returned wrong-dimension vectors
         """
         result = await self.db.execute(
             select(PromptBlock).where(PromptBlock.id == block_id)
         )
         block = result.scalar_one_or_none()
         if not block:
-            return None
+            raise BlockNotFoundError(f"Block '{block_id}' not found")
 
         model_id = await self._resolve_model_id(model_id)
 
@@ -113,6 +171,8 @@ class EmbeddingService:
         text = _build_embed_text(block)
 
         embeddings = await provider.embed_texts(model_id=bare_model, texts=[text])
+        validate_embeddings(embeddings, expected_count=1)
+
         block.embedding = embeddings[0]
         block.embedding_model = model_id
 
@@ -132,6 +192,10 @@ class EmbeddingService:
         """
         Batch embed blocks that need embeddings.
 
+        Uses keyset pagination to avoid loading all candidates into memory.
+        Each DB chunk is embedded and committed independently; a failed chunk
+        is rolled back and skipped without aborting the whole run.
+
         Args:
             model_id: Embedding model to use
             force: Re-embed all blocks regardless of current state
@@ -139,13 +203,85 @@ class EmbeddingService:
             kind: Optional filter by kind
 
         Returns:
-            Stats dict with embedded_count, skipped_count, total
+            Stats dict with embedded_count, skipped_count, total, model_id
+
+        Raises:
+            EmbeddingModelError: Unknown model/provider (fast-fail before any work)
         """
         model_id = await self._resolve_model_id(model_id)
         provider = self._get_provider(model_id)
         bare_model = self._extract_bare_model(model_id)
 
-        # Build filter for blocks that need embedding
+        # Count total candidates up-front (cheap query)
+        count_conditions = self._batch_conditions(model_id, force, role, kind)
+        count_q = select(func.count(PromptBlock.id))
+        if count_conditions:
+            count_q = count_q.where(and_(*count_conditions))
+        total = (await self.db.execute(count_q)).scalar() or 0
+
+        embedded_count = 0
+        skipped_count = 0
+        last_created_at = None
+        last_id = None
+
+        while True:
+            # Keyset pagination: fetch next chunk
+            conditions = self._batch_conditions(model_id, force, role, kind)
+            if last_created_at is not None and last_id is not None:
+                conditions.append(
+                    (PromptBlock.created_at > last_created_at)
+                    | (
+                        (PromptBlock.created_at == last_created_at)
+                        & (PromptBlock.id > last_id)
+                    )
+                )
+
+            query = (
+                select(PromptBlock)
+                .where(and_(*conditions)) if conditions else select(PromptBlock)
+            )
+            query = query.order_by(PromptBlock.created_at, PromptBlock.id).limit(BATCH_SIZE)
+
+            result = await self.db.execute(query)
+            batch = list(result.scalars().all())
+            if not batch:
+                break
+
+            # Advance keyset cursor
+            last_created_at = batch[-1].created_at
+            last_id = batch[-1].id
+
+            texts = [_build_embed_text(b) for b in batch]
+
+            try:
+                embeddings = await provider.embed_texts(model_id=bare_model, texts=texts)
+                validate_embeddings(embeddings, expected_count=len(batch))
+            except Exception as e:
+                logger.error("Batch embedding failed (cursor=%s): %s", last_id, e)
+                skipped_count += len(batch)
+                # Rollback any dirty state from this batch
+                await self.db.rollback()
+                continue
+
+            for block, emb in zip(batch, embeddings):
+                block.embedding = emb
+                block.embedding_model = model_id
+                embedded_count += 1
+
+            await self.db.commit()
+            logger.info("Embedded batch of %d blocks (cursor=%s)", len(batch), last_id)
+
+        return {
+            "embedded_count": embedded_count,
+            "skipped_count": skipped_count,
+            "total": total,
+            "model_id": model_id,
+        }
+
+    @staticmethod
+    def _batch_conditions(
+        model_id: str, force: bool, role: str | None, kind: str | None
+    ) -> list:
         conditions = []
         if not force:
             conditions.append(
@@ -155,47 +291,7 @@ class EmbeddingService:
             conditions.append(PromptBlock.role == role)
         if kind:
             conditions.append(PromptBlock.kind == kind)
-
-        query = select(PromptBlock)
-        if conditions:
-            query = query.where(and_(*conditions))
-        query = query.order_by(PromptBlock.created_at)
-
-        result = await self.db.execute(query)
-        blocks = list(result.scalars().all())
-
-        embedded_count = 0
-        skipped_count = 0
-
-        # Process in batches
-        for i in range(0, len(blocks), BATCH_SIZE):
-            batch = blocks[i : i + BATCH_SIZE]
-            texts = [_build_embed_text(b) for b in batch]
-
-            try:
-                embeddings = await provider.embed_texts(model_id=bare_model, texts=texts)
-            except Exception as e:
-                logger.error("Batch embedding failed at offset %d: %s", i, e)
-                skipped_count += len(batch)
-                continue
-
-            for block, emb in zip(batch, embeddings):
-                block.embedding = emb
-                block.embedding_model = model_id
-                embedded_count += 1
-
-            await self.db.commit()
-            logger.info(
-                "Embedded batch %d-%d (%d blocks)",
-                i, i + len(batch), len(batch),
-            )
-
-        return {
-            "embedded_count": embedded_count,
-            "skipped_count": skipped_count,
-            "total": len(blocks),
-            "model_id": model_id,
-        }
+        return conditions
 
     async def find_similar(
         self,
@@ -210,23 +306,20 @@ class EmbeddingService:
         """
         Find blocks similar to a given block.
 
-        Args:
-            block_id: Source block UUID
-            role: Filter by role (defaults to source block's role)
-            kind: Optional filter by kind
-            category: Optional filter by category
-            limit: Max results
-            threshold: Max cosine distance (lower = more similar)
-
-        Returns:
-            List of dicts with block, distance, similarity_score
+        Raises:
+            BlockNotFoundError: Block not found
+            BlockNotEmbeddedError: Block exists but has no embedding
         """
         result = await self.db.execute(
             select(PromptBlock).where(PromptBlock.id == block_id)
         )
         source_block = result.scalar_one_or_none()
-        if not source_block or source_block.embedding is None:
-            return []
+        if not source_block:
+            raise BlockNotFoundError(f"Block '{block_id}' not found")
+        if source_block.embedding is None:
+            raise BlockNotEmbeddedError(
+                f"Block '{block_id}' has no embedding. Embed it first via POST /{block_id}/embed"
+            )
 
         # Default to source block's role for broad filtering
         if role is None:
@@ -257,23 +350,15 @@ class EmbeddingService:
         """
         Find blocks similar to arbitrary text.
 
-        Args:
-            text: Text to find similar blocks for
-            model_id: Embedding model to use
-            role: Optional role filter
-            kind: Optional kind filter
-            category: Optional category filter
-            limit: Max results
-            threshold: Max cosine distance
-
-        Returns:
-            List of dicts with block, distance, similarity_score
+        Raises:
+            EmbeddingModelError: Unknown model/provider
         """
         model_id = await self._resolve_model_id(model_id)
         provider = self._get_provider(model_id)
         bare_model = self._extract_bare_model(model_id)
 
         embeddings = await provider.embed_texts(model_id=bare_model, texts=[text])
+        validate_embeddings(embeddings, expected_count=1)
         query_embedding = embeddings[0]
 
         return await self._similarity_query(

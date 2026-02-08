@@ -12,11 +12,25 @@ from pixsim7.backend.main.services.embedding.registry import (
     EmbeddingProviderRegistry,
     embedding_registry,
 )
-from pixsim7.backend.main.services.embedding.embedding_service import EmbeddingService
+from pixsim7.backend.main.services.embedding.embedding_service import (
+    EmbeddingService,
+    EmbeddingModelError,
+    BlockNotFoundError,
+    BlockNotEmbeddedError,
+    EmbeddingDimensionError,
+    validate_embeddings,
+    EXPECTED_DIMENSIONS,
+)
 
 __all__ = [
     "EmbeddingProvider",
     "EmbeddingProviderRegistry",
     "embedding_registry",
     "EmbeddingService",
+    "EmbeddingModelError",
+    "BlockNotFoundError",
+    "BlockNotEmbeddedError",
+    "EmbeddingDimensionError",
+    "validate_embeddings",
+    "EXPECTED_DIMENSIONS",
 ]

@@ -306,12 +306,17 @@ async def embed_block(
     current_user: User = Depends(get_current_user),
 ):
     """Embed a single action block for similarity search"""
-    from pixsim7.backend.main.services.embedding import EmbeddingService
+    from pixsim7.backend.main.services.embedding import (
+        EmbeddingService, EmbeddingModelError, BlockNotFoundError,
+    )
     service = EmbeddingService(db)
 
-    block = await service.embed_block(block_id, model_id=model_id, force=force)
-    if not block:
+    try:
+        block = await service.embed_block(block_id, model_id=model_id, force=force)
+    except BlockNotFoundError:
         raise HTTPException(404, "Block not found")
+    except EmbeddingModelError as e:
+        raise HTTPException(400, str(e))
 
     return {
         "success": True,
@@ -328,15 +333,21 @@ async def embed_blocks_batch(
     current_user: User = Depends(get_current_user),
 ):
     """Batch embed action blocks that need embeddings"""
-    from pixsim7.backend.main.services.embedding import EmbeddingService
+    from pixsim7.backend.main.services.embedding import (
+        EmbeddingService, EmbeddingModelError,
+    )
     service = EmbeddingService(db)
 
-    stats = await service.embed_blocks_batch(
-        model_id=request.model_id,
-        force=request.force,
-        role=request.role,
-        kind=request.kind,
-    )
+    try:
+        stats = await service.embed_blocks_batch(
+            model_id=request.model_id,
+            force=request.force,
+            role=request.role,
+            kind=request.kind,
+        )
+    except EmbeddingModelError as e:
+        raise HTTPException(400, str(e))
+
     return stats
 
 
@@ -351,15 +362,24 @@ async def find_similar_blocks(
     db: AsyncSession = Depends(get_db),
 ):
     """Find action blocks similar to a given block using embeddings"""
-    service = ActionBlockService(db)
-    results = await service.find_similar_blocks(
-        block_id,
-        role=role,
-        kind=kind,
-        category=category,
-        limit=limit,
-        threshold=threshold,
+    from pixsim7.backend.main.services.embedding import (
+        EmbeddingService, BlockNotFoundError, BlockNotEmbeddedError,
     )
+    service = EmbeddingService(db)
+
+    try:
+        results = await service.find_similar(
+            block_id,
+            role=role,
+            kind=kind,
+            category=category,
+            limit=limit,
+            threshold=threshold,
+        )
+    except BlockNotFoundError:
+        raise HTTPException(404, "Block not found")
+    except BlockNotEmbeddedError as e:
+        raise HTTPException(422, str(e))
 
     return [
         SimilarBlockResponse(
@@ -381,20 +401,26 @@ async def find_similar_blocks(
 async def find_similar_by_text(
     request: SimilarByTextRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """Find action blocks similar to arbitrary text using embeddings"""
-    from pixsim7.backend.main.services.embedding import EmbeddingService
+    from pixsim7.backend.main.services.embedding import (
+        EmbeddingService, EmbeddingModelError,
+    )
     service = EmbeddingService(db)
 
-    results = await service.find_similar_by_text(
-        request.text,
-        model_id=request.model_id,
-        role=request.role,
-        kind=request.kind,
-        category=request.category,
-        limit=request.limit,
-        threshold=request.threshold,
-    )
+    try:
+        results = await service.find_similar_by_text(
+            request.text,
+            model_id=request.model_id,
+            role=request.role,
+            kind=request.kind,
+            category=request.category,
+            limit=request.limit,
+            threshold=request.threshold,
+        )
+    except EmbeddingModelError as e:
+        raise HTTPException(400, str(e))
 
     return [
         SimilarBlockResponse(
