@@ -11,6 +11,8 @@ export interface ButtonGroupItem {
   icon: React.ReactNode;
   label?: string;
   onClick?: (e: React.MouseEvent) => void;
+  /** Middle-click handler */
+  onAuxClick?: (e: React.MouseEvent) => void;
   title?: string;
   disabled?: boolean;
   /** Content to show on hover (expands in opposite direction of layout) */
@@ -179,6 +181,7 @@ export function ButtonGroup({
             ) : (
               <button
                 onClick={item.onClick}
+                onAuxClick={item.onAuxClick}
                 disabled={item.disabled}
                 className={clsx(
                   sizeClass,
@@ -253,6 +256,7 @@ function ExpandableItem({
     >
       <button
         onClick={item.onClick}
+        onAuxClick={item.onAuxClick}
         disabled={item.disabled}
         className={clsx(
           sizeClass,

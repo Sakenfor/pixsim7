@@ -1,9 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import clsx from 'clsx';
-
-import { FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
 import type { PromptBlockLike } from '@pixsim7/core.prompt';
-import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
 import {
   BASE_PROMPT_ROLES,
   DEFAULT_PROMPT_ROLE,
@@ -11,9 +6,15 @@ import {
   deriveBlocksFromCandidates,
   ensurePromptBlocks,
 } from '@pixsim7/core.prompt';
+import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
+import { FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import { ClipboardPaste } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
+
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 
 type PromptComposerMode = 'text' | 'blocks';
@@ -202,6 +203,17 @@ export function PromptComposer({
     [blocks, updateBlocks]
   );
 
+  const handlePasteFromClipboard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+      const trimmed = maxChars != null ? text.slice(0, maxChars) : text;
+      onChange(trimmed);
+    } catch {
+      // Clipboard access denied or unavailable
+    }
+  }, [onChange, maxChars]);
+
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
   const remaining = typeof maxChars === 'number' ? maxChars - composedPrompt.length : null;
   const isOverLimit = remaining !== null && remaining < 0;
@@ -237,6 +249,16 @@ export function PromptComposer({
             Blocks
           </button>
         </div>
+
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={handlePasteFromClipboard}
+          title="Paste from clipboard"
+          className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+        >
+          <ClipboardPaste size={14} />
+        </button>
 
         {mode === 'blocks' && (
           <button
