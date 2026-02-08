@@ -152,9 +152,9 @@ export function useAssets(options?: {
     [requestOverrides],
   );
 
-  // Use ref to always access current filterParams in loadMore without stale closures
-  const filterParamsRef = useRef(filterParams);
-  filterParamsRef.current = filterParams;
+  // Use ref to always access current raw filters in loadMore without stale closures
+  const filtersRef = useRef(filters);
+  filtersRef.current = filters;
 
   // Use ref for cursor to avoid stale closure issues
   const cursorRef = useRef(cursor);
@@ -188,7 +188,7 @@ export function useAssets(options?: {
     const thisRequestId = requestIdRef.current;
 
     try {
-      const currentFilters = filterParamsRef.current;
+      const currentFilters = filtersRef.current;
       const currentCursor = cursorRef.current;
 
       const queryParams = buildQueryParams(currentFilters, undefined, currentCursor);
@@ -239,7 +239,7 @@ export function useAssets(options?: {
     const thisRequestId = requestIdRef.current;
 
     try {
-      const currentFilters = filterParamsRef.current;
+      const currentFilters = filtersRef.current;
       const offset = (page - 1) * limit;
 
       const queryParams = buildQueryParams(currentFilters, offset);

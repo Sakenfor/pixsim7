@@ -1,11 +1,11 @@
-import { Button } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Dropdown } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest, AssetGroupMeta } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { ThemedIcon } from '@lib/icons';
+import { Icon, ThemedIcon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { GalleryToolsPanel } from '@features/gallery';
@@ -101,9 +101,21 @@ const parseGroupParams = (
   if (groupKeyFallback && groupBy.length > 0 && pathEntries.length === 0) {
     pathEntries.push({ groupBy: groupBy[0], groupKey: groupKeyFallback });
   }
+  let resolvedGroupBy = groupBy;
+  if (pathEntries.length > 0) {
+    const pathOrder = Array.from(
+      new Set(pathEntries.map((entry) => entry.groupBy)),
+    );
+    if (pathOrder.length > 0) {
+      resolvedGroupBy = [
+        ...pathOrder,
+        ...groupBy.filter((value) => !pathOrder.includes(value)),
+      ];
+    }
+  }
   const groupPath: { groupBy: GalleryGroupBy; groupKey: string }[] = [];
-  if (groupBy.length > 0 && pathEntries.length > 0) {
-    for (const entryBy of groupBy) {
+  if (resolvedGroupBy.length > 0 && pathEntries.length > 0) {
+    for (const entryBy of resolvedGroupBy) {
       const match = pathEntries.find((entry) => entry.groupBy === entryBy);
       if (!match) break;
       groupPath.push(match);
@@ -111,7 +123,7 @@ const parseGroupParams = (
   }
   const groupPage = parseGroupPageParam(search);
   return {
-    groupBy,
+    groupBy: resolvedGroupBy,
     groupView,
     groupScope,
     groupPath,
@@ -246,6 +258,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
   const [groupData, setGroupData] = useState<AssetGroupListResponse | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const groupMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const [groupMenuRect, setGroupMenuRect] = useState<DOMRect | null>(null);
 
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
@@ -257,6 +272,25 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     const preset = getMediaCardPreset(overlayPresetId);
     return preset?.configuration;
   }, [overlayPresetId]);
+
+  useLayoutEffect(() => {
+    if (!groupMenuOpen || !groupMenuAnchorRef.current) {
+      setGroupMenuRect(null);
+      return;
+    }
+
+    const update = () => {
+      setGroupMenuRect(groupMenuAnchorRef.current?.getBoundingClientRect() ?? null);
+    };
+
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [groupMenuOpen]);
 
   const pageFromUrl = useMemo(() => parsePageParam(location.search), [location.search]);
   const groupRequest = useMemo<AssetGroupRequest | null>(() => {
@@ -571,6 +605,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     if (showGroupOverview) return [];
     return controller.assets;
   }, [controller.assets, showGroupOverview]);
+  const groupSummary = useMemo(() => {
+    if (groupByStack.length === 0) return 'Grouping: None';
+    return `Grouping: ${groupByStack.map((value) => GROUP_BY_LABELS[value]).join(' > ')}`;
+  }, [groupByStack]);
 
   const openGroup = useCallback(
     (key: string) => {
@@ -983,71 +1021,139 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
             {/* Grouping */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">Group</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => toggleGroupBy('none')}
-                  className={`px-2 py-1 text-xs rounded border transition-colors ${
-                    groupByStack.length === 0
-                      ? 'bg-blue-600 border-blue-600 text-white'
-                      : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
-                  }`}
-                >
-                  None
-                </button>
-                {GROUP_BY_UI_VALUES.map((value) => {
-                  const index = groupByStack.indexOf(value);
-                  const selected = index >= 0;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => toggleGroupBy(value)}
-                      className={`px-2 py-1 text-xs rounded border transition-colors inline-flex items-center gap-1 ${
-                        selected
-                          ? 'bg-blue-600 border-blue-600 text-white'
-                          : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
-                      }`}
-                    >
-                      <span>{GROUP_BY_LABELS[value]}</span>
-                      {groupMode === 'multi' && selected && (
-                        <span className="text-[10px] px-1 rounded-full bg-white/20">
-                          {index + 1}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-1 ml-1">
-                {(['single', 'multi'] as GalleryGroupMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => handleGroupModeChange(mode)}
-                    className={`px-2 py-1 text-xs rounded border transition-colors ${
-                      groupMode === mode
-                        ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                        : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-blue-400'
-                    }`}
-                  >
-                    {mode === 'single' ? 'Single' : 'Multi'}
-                  </button>
-                ))}
-              </div>
-              <select
-                className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={groupView}
-                onChange={(e) => handleGroupViewChange(e.target.value as GalleryGroupView)}
-                disabled={!hasGrouping}
+              <button
+                ref={groupMenuAnchorRef}
+                type="button"
+                onClick={() => setGroupMenuOpen((prev) => !prev)}
+                title={groupSummary}
+                aria-label={groupSummary}
+                className={`relative inline-flex h-9 w-9 items-center justify-center rounded border transition-colors ${
+                  hasGrouping
+                    ? 'bg-blue-600/10 border-blue-400 text-blue-600 dark:text-blue-300'
+                    : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-blue-400'
+                }`}
               >
-                <option value="inline">List</option>
-                <option value="folders">Folders</option>
-                <option value="panel" disabled>
-                  Panel (soon)
-                </option>
-              </select>
+                <Icon
+                  name="layers"
+                  size={16}
+                  className={hasGrouping ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-600 dark:text-neutral-300'}
+                />
+                {groupByStack.length > 0 && (
+                  <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-blue-600 text-white">
+                    {groupByStack.length}
+                  </span>
+                )}
+              </button>
+              {groupMenuOpen && groupMenuRect && (
+                <Dropdown
+                  isOpen={groupMenuOpen}
+                  onClose={() => setGroupMenuOpen(false)}
+                  positionMode="fixed"
+                  anchorPosition={{
+                    x: Math.max(
+                      8,
+                      Math.min(
+                        groupMenuRect.left,
+                        window.innerWidth - 320 - 8
+                      )
+                    ),
+                    y: groupMenuRect.bottom + 8,
+                  }}
+                  minWidth="280px"
+                  className="max-w-[360px]"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                        Grouping
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleGroupBy('none')}
+                        className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                          Mode
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {(['single', 'multi'] as GalleryGroupMode[]).map((mode) => (
+                            <button
+                              key={mode}
+                              type="button"
+                              onClick={() => handleGroupModeChange(mode)}
+                              className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                groupMode === mode
+                                  ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
+                                  : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-blue-400'
+                              }`}
+                            >
+                              {mode === 'single' ? 'Single' : 'Multi'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroupBy('none')}
+                          className={`px-2 py-1 text-xs rounded border transition-colors ${
+                            groupByStack.length === 0
+                              ? 'bg-blue-600 border-blue-600 text-white'
+                              : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
+                          }`}
+                        >
+                          None
+                        </button>
+                        {GROUP_BY_UI_VALUES.map((value) => {
+                          const index = groupByStack.indexOf(value);
+                          const selected = index >= 0;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => toggleGroupBy(value)}
+                              className={`px-2 py-1 text-xs rounded border transition-colors inline-flex items-center gap-1 ${
+                                selected
+                                  ? 'bg-blue-600 border-blue-600 text-white'
+                                  : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-blue-400'
+                              }`}
+                            >
+                              <span>{GROUP_BY_LABELS[value]}</span>
+                              {groupMode === 'multi' && selected && (
+                                <span className="text-[10px] px-1 rounded-full bg-white/20">
+                                  {index + 1}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                        View
+                      </span>
+                      <select
+                        className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={groupView}
+                        onChange={(e) => handleGroupViewChange(e.target.value as GalleryGroupView)}
+                        disabled={!hasGrouping}
+                      >
+                        <option value="inline">List</option>
+                        <option value="folders">Folders</option>
+                        <option value="panel" disabled>
+                          Panel (soon)
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+                </Dropdown>
+              )}
             </div>
 
             {/* Divider */}

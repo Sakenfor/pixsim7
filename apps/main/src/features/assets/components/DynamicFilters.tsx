@@ -28,6 +28,12 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number }> = {
   include_archived: { icon: 'archive', order: 4 },
   upload_method: { icon: 'upload', order: 5 },
   provider_status: { icon: 'shield', order: 6 },
+  source_site: { icon: 'globe', order: 7 },
+  source_folder: { icon: 'folder', order: 7 },
+  source_filename: { icon: 'video', order: 7 },
+  source_folder_id: { icon: 'folder', order: 7 },
+  source_relative_path: { icon: 'folder-tree', order: 7 },
+  source_url: { icon: 'external-link', order: 7 },
 };
 
 interface DynamicFiltersProps {
@@ -179,6 +185,7 @@ export function DynamicFilters({
             ? 1
             : 0;
         const uiConfig = FILTER_UI_CONFIG[filter.key] || {};
+        const resolvedIcon = uiConfig.icon ?? 'sliders';
         const displayLabel =
           filter.label ||
           filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -213,7 +220,11 @@ export function DynamicFilters({
               }`}
             >
               <span className="relative">
-                {uiConfig.icon && <Icon name={uiConfig.icon} className="w-4 h-4 text-gray-400" />}
+                <Icon
+                  name={resolvedIcon}
+                  size={16}
+                  className="w-4 h-4 text-neutral-200"
+                />
                 {selectedCount > 0 && (
                   <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-blue-500 text-gray-950">
                     {selectedCount}
