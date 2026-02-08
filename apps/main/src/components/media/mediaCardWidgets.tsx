@@ -37,11 +37,16 @@ export {
   createGenerationButtonGroup,
   createGenerationStatusWidget,
   buildGenerationMenuItems,
+  GenerationButtonGroupContent,
+} from './mediaCardGeneration';
+export {
   getSmartActionLabel,
   resolveMaxSlotsFromSpecs,
   resolveMaxSlotsForModel,
-  GenerationButtonGroupContent,
-} from './mediaCardGeneration';
+  SlotPickerContent,
+  SlotPickerGrid,
+  type SlotPickerContentProps,
+} from './SlotPicker';
 
 export interface MediaCardOverlayData {
   id: number;
