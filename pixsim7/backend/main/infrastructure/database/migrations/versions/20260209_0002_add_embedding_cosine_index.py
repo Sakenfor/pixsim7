@@ -36,8 +36,16 @@ def upgrade() -> None:
     # Partial index: only rows that actually have an embedding.
     # Uses cosine ops (vector_cosine_ops) matching the <=> operator used in queries.
     # IVFFlat with lists=1 degrades to exact brute-force scan but still lets
-    # Postgres use the index for ORDER BY ... LIMIT k.  When row count grows
-    # past ~10k, increase lists via CREATE INDEX CONCURRENTLY.
+    # Postgres use the index for ORDER BY ... LIMIT k.
+    #
+    # Tuning guide — when to raise `lists`:
+    #   lists ≈ sqrt(row_count) is the standard heuristic.
+    #     ~1k rows  → lists=1  (current, exact scan)
+    #     ~10k rows → lists=100
+    #     ~100k rows → lists=316
+    #   After changing lists you MUST run VACUUM ANALYZE on the table so the
+    #   index gets rebuilt with the new parameters.  Prefer
+    #   CREATE INDEX CONCURRENTLY to avoid locking writes.
     op.execute(
         """
         CREATE INDEX idx_prompt_block_embedding_cosine

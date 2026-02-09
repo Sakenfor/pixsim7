@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.api.dependencies import get_db, get_current_user, get_current_admin_user
 from pixsim7.backend.main.services.prompt.block import (
     ActionBlockService,
     ActionBlockMigrationService,
@@ -80,13 +80,13 @@ class EmbedBatchRequest(BaseModel):
 
 
 class SimilarByTextRequest(BaseModel):
-    text: str = Field(..., description="Text to find similar blocks for")
+    text: str = Field(..., min_length=1, max_length=8000, description="Text to find similar blocks for")
     model_id: Optional[str] = Field(None, description="Embedding model ID")
     role: Optional[str] = Field(None, description="Filter by role")
     kind: Optional[str] = Field(None, description="Filter by kind")
     category: Optional[str] = Field(None, description="Filter by category")
-    limit: int = Field(10, le=100, description="Max results")
-    threshold: Optional[float] = Field(None, description="Max cosine distance")
+    limit: int = Field(10, ge=1, le=100, description="Max results")
+    threshold: Optional[float] = Field(None, ge=0.0, le=2.0, description="Max cosine distance")
 
 
 class SimilarBlockResponse(BaseModel):
@@ -303,9 +303,9 @@ async def embed_block(
     model_id: Optional[str] = Query(None, description="Embedding model ID"),
     force: bool = Query(False, description="Re-embed even if already done"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    admin: User = Depends(get_current_admin_user),
 ):
-    """Embed a single action block for similarity search"""
+    """Embed a single action block for similarity search (admin only)"""
     from pixsim7.backend.main.services.embedding import (
         EmbeddingService, EmbeddingModelError, BlockNotFoundError,
     )
@@ -330,9 +330,9 @@ async def embed_block(
 async def embed_blocks_batch(
     request: EmbedBatchRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    admin: User = Depends(get_current_admin_user),
 ):
-    """Batch embed action blocks that need embeddings"""
+    """Batch embed action blocks that need embeddings (admin only)"""
     from pixsim7.backend.main.services.embedding import (
         EmbeddingService, EmbeddingModelError,
     )
@@ -357,8 +357,8 @@ async def find_similar_blocks(
     role: Optional[str] = Query(None, description="Filter by role"),
     kind: Optional[str] = Query(None, description="Filter by kind"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    limit: int = Query(10, le=100),
-    threshold: Optional[float] = Query(None, description="Max cosine distance"),
+    limit: int = Query(10, ge=1, le=100),
+    threshold: Optional[float] = Query(None, ge=0.0, le=2.0, description="Max cosine distance"),
     db: AsyncSession = Depends(get_db),
 ):
     """Find action blocks similar to a given block using embeddings"""
