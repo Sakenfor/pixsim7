@@ -18,7 +18,7 @@ import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_PROMPT_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 import { PromptComposer, useQuickGenerateController } from '@features/prompts';
 
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
@@ -31,7 +31,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const allowAnySelected = !ctx;
   const controller = useQuickGenerateController();
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
-  const scopeInstanceId = useScopeInstanceId("generation");
+  const scopeInstanceId = useScopeInstanceId(GENERATION_SCOPE_ID);
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);

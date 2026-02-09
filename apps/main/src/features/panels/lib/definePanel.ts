@@ -166,6 +166,23 @@ export function definePanel<TSettings = any>(
   const resolvedContexts = availability?.docks ?? availableIn ?? contexts;
   const resolvedSettingScopes = settingScopes ?? scopes;
 
+  // Warn about unregistered scopes in development
+  if (import.meta.env.DEV && resolvedSettingScopes?.length) {
+    // Lazy import to avoid circular dependency - validation runs after registration
+    queueMicrotask(() => {
+      import('./panelSettingsScopes').then(({ panelSettingsScopeRegistry }) => {
+        for (const scopeId of resolvedSettingScopes) {
+          if (!panelSettingsScopeRegistry.get(scopeId)) {
+            console.warn(
+              `[definePanel] Panel "${id}" declares settingScope "${scopeId}" which is not registered. ` +
+              `Ensure the scope is registered before panels mount.`,
+            );
+          }
+        }
+      });
+    });
+  }
+
   const resolvedInstances =
     instances === "single"
       ? { supportsMultipleInstances: false, maxInstances: 1 }

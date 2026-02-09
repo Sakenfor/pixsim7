@@ -15,7 +15,7 @@ import {
   type CapabilityDescriptor,
 } from "../domain/descriptorRegistry";
 
-import { useContextHubState, type ContextHubState } from "./contextHubContext";
+import { useContextHubState, getRegistryChain } from "./contextHubContext";
 
 export type UnifiedCapabilityKind =
   | "context"
@@ -47,16 +47,6 @@ export interface UnifiedCapabilityOptions {
   includeStates?: boolean;
   includeRoutes?: boolean;
   includeFeatures?: boolean;
-}
-
-function getRegistryChain(root: ContextHubState | null) {
-  const registries = [];
-  let current = root;
-  while (current) {
-    registries.push(current.registry);
-    current = current.parent;
-  }
-  return registries;
 }
 
 function useContextHubKeys(): CapabilityKey[] {

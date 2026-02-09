@@ -3,14 +3,40 @@ import { Rnd } from "react-rnd";
 
 import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { ContextHubHost } from "@features/contextHub";
+import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
 import { useDragToDock, type DropZone } from "../../hooks/useDragToDock";
+import { ScopeHost } from "../scope/ScopeHost";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
+
+/**
+ * Provides panel context as a capability for floating panels,
+ * matching SmartDockview's pattern.
+ */
+function FloatingPanelContextProvider({
+  context,
+  instanceId,
+  children,
+}: {
+  context: any;
+  instanceId: string;
+  children: React.ReactNode;
+}) {
+  useProvideCapability(
+    CAP_PANEL_CONTEXT,
+    {
+      id: `panel-context:${instanceId}`,
+      label: "Panel Context",
+      getValue: () => context,
+    },
+    [context],
+  );
+  return <>{children}</>;
+}
 
 interface FloatingPanelProps {
   panel: FloatingPanelState;
@@ -46,6 +72,9 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
 
   let Component: React.ComponentType<any>;
   let title: string;
+  let declaredScopes: string[] | undefined;
+  let panelTags: string[] | undefined;
+  let panelCategory: string | undefined;
 
   // For dev-tool panels, extract toolId from panel ID and ensure it's in context
   let panelContext = panel.context || {};
@@ -67,6 +96,9 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
 
     Component = panelDef.component;
     title = panelDef.title;
+    declaredScopes = panelDef.settingScopes;
+    panelTags = panelDef.tags;
+    panelCategory = panelDef.category;
   }
 
   const handleDragStart = () => {
@@ -149,11 +181,24 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
         {/* Content */}
         <div className="flex-1 overflow-auto">
           <ContextHubHost hostId={`floating:${panel.id}`}>
-            {isDevToolPanel ? (
-              <Component context={panelContext} />
-            ) : (
-              <Component {...panelContext} />
-            )}
+            <ScopeHost
+              panelId={panel.id}
+              instanceId={`floating:${panel.id}`}
+              declaredScopes={declaredScopes}
+              tags={panelTags}
+              category={panelCategory}
+            >
+              <FloatingPanelContextProvider
+                context={panelContext}
+                instanceId={`floating:${panel.id}`}
+              >
+                {isDevToolPanel ? (
+                  <Component context={panelContext} />
+                ) : (
+                  <Component {...panelContext} />
+                )}
+              </FloatingPanelContextProvider>
+            </ScopeHost>
           </ContextHubHost>
         </div>
       </div>

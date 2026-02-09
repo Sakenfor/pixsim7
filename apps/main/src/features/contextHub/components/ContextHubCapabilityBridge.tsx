@@ -16,17 +16,9 @@ import {
   registerCapabilityDescriptor,
   unregisterCapabilityDescriptor,
 } from "../domain/descriptorRegistry";
-import { useContextHubState } from "../hooks/contextHubContext";
+import { useContextHubState, getRootHub } from "../hooks/contextHubContext";
 
 type ProviderDisposer = () => void;
-
-function getRootHub(state: ReturnType<typeof useContextHubState>) {
-  let current = state;
-  while (current?.parent) {
-    current = current.parent;
-  }
-  return current;
-}
 
 export function ContextHubCapabilityBridge() {
   const hub = useContextHubState();
@@ -58,6 +50,7 @@ export function ContextHubCapabilityBridge() {
           id: action.id,
           label: action.name,
           description: action.description,
+          priority: 0,
           exposeToContextMenu: false,
           getValue: () => actionRef.current.get(action.id) ?? null,
         };
@@ -88,6 +81,7 @@ export function ContextHubCapabilityBridge() {
           id: state.id,
           label: state.name,
           description: state.readonly ? "Read-only state" : undefined,
+          priority: 0,
           exposeToContextMenu: false,
           getValue: () => stateRef.current.get(state.id) ?? null,
         };

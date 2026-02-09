@@ -110,6 +110,8 @@ export {
 } from "./lib/panelConstants";
 export {
   panelSettingsScopeRegistry,
+  GENERATION_SCOPE_ID,
+  PREVIEW_SCOPE_ID,
   type PanelSettingsScopeDefinition,
   type PanelSettingsScopeMode,
   type ScopeMatchContext,

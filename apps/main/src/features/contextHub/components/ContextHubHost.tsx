@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useContext, useEffect, useMemo, useRef } from "react";
 
 import { createCapabilityRegistry } from "../domain/registry";
-import { ContextHubContext, type ContextHubState } from "../hooks/contextHubContext";
+import { ContextHubContext, getRootHub, type ContextHubState } from "../hooks/contextHubContext";
 import type { CapabilityRegistry } from "../types";
 
 export interface ContextHubHostProps {
@@ -23,11 +23,8 @@ export function ContextHubHost({ children, hostId }: ContextHubHostProps) {
     if (!hostId || !parent) return;
     return () => {
       // Consumption is recorded at root level, so clear from there
-      let root = parent;
-      while (root.parent) {
-        root = root.parent;
-      }
-      root.registry.clearConsumptionForHost(hostId);
+      const root = getRootHub(parent);
+      root?.registry.clearConsumptionForHost(hostId);
     };
   }, [hostId, parent]);
 

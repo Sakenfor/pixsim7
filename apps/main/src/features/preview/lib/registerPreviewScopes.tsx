@@ -2,7 +2,9 @@ import {
   panelSettingsScopeRegistry,
   createScopeMatcher,
   ScopeInstanceProvider,
+  PREVIEW_SCOPE_ID,
 } from "@features/panels";
+
 import { PreviewScopeProvider } from "../hooks/usePreviewScope";
 
 let registered = false;
@@ -22,7 +24,7 @@ export function registerPreviewScopes() {
   registered = true;
 
   panelSettingsScopeRegistry.register({
-    id: "preview",
+    id: PREVIEW_SCOPE_ID,
     label: "Preview Settings",
     description: "Zoom, background, and display settings for this preview panel.",
     defaultMode: "local",
@@ -30,13 +32,13 @@ export function registerPreviewScopes() {
       return mode === "global" ? "global" : instanceId;
     },
     renderProvider: (resolvedScopeId, children) => (
-      <ScopeInstanceProvider scopeId="preview" instanceId={resolvedScopeId}>
+      <ScopeInstanceProvider scopeId={PREVIEW_SCOPE_ID} instanceId={resolvedScopeId}>
         <PreviewScopeProvider scopeId={resolvedScopeId} label="Preview Settings">
           {children}
         </PreviewScopeProvider>
       </ScopeInstanceProvider>
     ),
-    shouldApply: createScopeMatcher("preview"),
+    shouldApply: createScopeMatcher(PREVIEW_SCOPE_ID),
     priority: 90,
   });
 }

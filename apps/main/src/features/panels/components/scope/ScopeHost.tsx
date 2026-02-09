@@ -70,7 +70,7 @@ export function ScopeHost({
     [],
   );
 
-  const effectiveScopes = declaredScopes ?? fallbackScopes;
+  const effectiveScopes = declaredScopes?.length ? declaredScopes : fallbackScopes;
 
   // Build the match context for scope shouldApply checks
   const context: ScopeMatchContext = useMemo(

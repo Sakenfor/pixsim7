@@ -5,6 +5,10 @@ import { BaseRegistry } from "@lib/core/BaseRegistry";
 
 export type PanelSettingsScopeMode = "global" | "local";
 
+// Well-known scope IDs - use these instead of string literals
+export const GENERATION_SCOPE_ID = "generation" as const;
+export const PREVIEW_SCOPE_ID = "preview" as const;
+
 export interface ScopeMatchContext {
   panelId: string;
   instanceId: string;

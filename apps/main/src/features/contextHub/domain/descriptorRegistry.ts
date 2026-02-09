@@ -31,7 +31,8 @@ export interface CapabilityDescriptor {
 // ============================================================================
 
 const descriptors = new Map<CapabilityKey, CapabilityDescriptor>();
-let warnOnOverwrite = false; // Default to false for backward compatibility
+let warnOnOverwrite = typeof import.meta !== "undefined" &&
+  (import.meta as any).env?.DEV === true; // Warn in dev, silent in prod
 
 /**
  * Register a capability descriptor.

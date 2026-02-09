@@ -8,10 +8,11 @@ import {
 } from "@lib/context";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
-import { ContextHubHost } from "@features/contextHub";
+import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import type { PanelId } from "@features/workspace";
 
 import type { ContextLabelStrategy, CoreEditorRole } from "../../lib/panelRegistry";
+import { ScopeHost } from "../scope/ScopeHost";
 import { PanelHeader } from "../shared/PanelHeader";
 
 type PanelHostVariant = "standalone" | "embedded" | "dockview";
@@ -110,6 +111,28 @@ function resolveContextLabel(
   return baseLabel;
 }
 
+/**
+ * Provides the panel context as a capability, matching SmartDockview's pattern.
+ */
+function LitePanelContextProvider({
+  instanceId,
+  children,
+}: {
+  instanceId: string;
+  children: React.ReactNode;
+}) {
+  useProvideCapability(
+    CAP_PANEL_CONTEXT,
+    {
+      id: `panel-context:${instanceId}`,
+      label: "Panel Context",
+      getValue: () => null,
+    },
+    [],
+  );
+  return <>{children}</>;
+}
+
 export function PanelHostLite({
   panelId,
   className,
@@ -173,7 +196,17 @@ export function PanelHostLite({
         className={clsx(fill ? "flex-1 min-h-0" : undefined, "overflow-auto")}
       >
         <ContextHubHost hostId={`panel:${panelId}`}>
-          <Component />
+          <ScopeHost
+            panelId={panelId}
+            instanceId={`panel:${panelId}`}
+            declaredScopes={panelDef.settingScopes}
+            tags={panelDef.tags}
+            category={panelDef.category}
+          >
+            <LitePanelContextProvider instanceId={`panel:${panelId}`}>
+              <Component />
+            </LitePanelContextProvider>
+          </ScopeHost>
         </ContextHubHost>
       </div>
     </div>

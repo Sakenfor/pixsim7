@@ -14,6 +14,8 @@ import { useContextHubOverridesStore } from "../stores/contextHubOverridesStore"
 import {
   useContextHubHostId,
   useContextHubState,
+  getRegistryChain,
+  getRootHub,
   type ContextHubState,
 } from "./contextHubContext";
 
@@ -41,16 +43,6 @@ function shallowEqual(a: unknown, b: unknown): boolean {
     if (!Object.is(aRecord[key], bRecord[key])) return false;
   }
   return true;
-}
-
-function getRegistryChain(root: ContextHubState | null) {
-  const registries = [];
-  let current = root;
-  while (current) {
-    registries.push(current.registry);
-    current = current.parent;
-  }
-  return registries;
 }
 
 function resolveProvider<T>(
@@ -125,11 +117,8 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   // Always record at root level so it's accessible from Properties popup
   useEffect(() => {
     if (hostId && hub) {
-      let root = hub;
-      while (root.parent) {
-        root = root.parent;
-      }
-      root.registry.recordConsumption(key, hostId, snapshot.provider ?? null);
+      const root = getRootHub(hub);
+      root?.registry.recordConsumption(key, hostId, snapshot.provider ?? null);
     }
   }, [hub, hostId, key, snapshot.provider]);
 
@@ -161,13 +150,11 @@ export function useProvideCapability<T>(
       return;
     }
     const scope = options?.scope ?? "local";
-    let target = hub;
+    let target: ContextHubState = hub;
     if (scope === "parent") {
       target = hub.parent ?? hub;
     } else if (scope === "root") {
-      while (target.parent) {
-        target = target.parent;
-      }
+      target = getRootHub(hub) ?? hub;
     }
     return target.registry.register(key, stableProvider);
   }, [hub, key, options?.scope, stableProvider]);

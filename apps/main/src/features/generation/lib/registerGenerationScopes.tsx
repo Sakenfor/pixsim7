@@ -2,7 +2,9 @@ import {
   panelSettingsScopeRegistry,
   createScopeMatcher,
   ScopeInstanceProvider,
+  GENERATION_SCOPE_ID,
 } from "@features/panels";
+
 import { GenerationScopeProvider } from "../hooks/useGenerationScope";
 
 let registered = false;
@@ -22,7 +24,7 @@ export function registerGenerationScopes() {
   registered = true;
 
   panelSettingsScopeRegistry.register({
-    id: "generation",
+    id: GENERATION_SCOPE_ID,
     label: "Generation Settings",
     description: "Provider, prompt, model, and parameter defaults for this panel instance.",
     defaultMode: "local",
@@ -30,13 +32,13 @@ export function registerGenerationScopes() {
       return mode === "global" ? "global" : instanceId;
     },
     renderProvider: (resolvedScopeId, children) => (
-      <ScopeInstanceProvider scopeId="generation" instanceId={resolvedScopeId}>
+      <ScopeInstanceProvider scopeId={GENERATION_SCOPE_ID} instanceId={resolvedScopeId}>
         <GenerationScopeProvider scopeId={resolvedScopeId} label="Generation Settings">
           {children}
         </GenerationScopeProvider>
       </ScopeInstanceProvider>
     ),
-    shouldApply: createScopeMatcher("generation"),
+    shouldApply: createScopeMatcher(GENERATION_SCOPE_ID),
     priority: 100,
   });
 }

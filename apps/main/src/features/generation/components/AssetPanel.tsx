@@ -31,7 +31,7 @@ import {
   QUICKGEN_ASSET_COMPONENT_ID,
   QUICKGEN_ASSET_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore, GENERATION_SCOPE_ID } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
 import { useWorkspaceStore } from '@features/workspace';
 
@@ -48,7 +48,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const controller = useQuickGenerateController();
   const containerRef = useRef<HTMLDivElement>(null);
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-asset';
-  const scopeInstanceId = useScopeInstanceId("generation");
+  const scopeInstanceId = useScopeInstanceId(GENERATION_SCOPE_ID);
   const dockviewId = useDockviewId();
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
   const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);

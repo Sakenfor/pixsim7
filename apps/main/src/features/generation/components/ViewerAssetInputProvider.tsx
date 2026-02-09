@@ -17,7 +17,7 @@ import {
   useProvideCapability,
   type AssetInputContext,
 } from '@features/contextHub';
-import { useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId } from '@features/panels';
+import { useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 
 
 export interface ViewerAssetInputProviderProps {
@@ -35,7 +35,7 @@ export function ViewerAssetInputProvider({
   asset,
   scope,
 }: ViewerAssetInputProviderProps) {
-  const scopeInstanceId = useScopeInstanceId('generation');
+  const scopeInstanceId = useScopeInstanceId(GENERATION_SCOPE_ID);
   const capabilityScope = scope ?? resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   useProvideCapability<AssetInputContext>(

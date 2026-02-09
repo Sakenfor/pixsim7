@@ -26,6 +26,7 @@ import {
   panelSettingsScopeRegistry,
   resolveScopeInstanceId,
   usePanelInstanceSettingsStore,
+  GENERATION_SCOPE_ID,
   type PanelSettingsScopeMode,
 } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
@@ -38,7 +39,6 @@ import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGen
 
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
-const GENERATION_SCOPE_ID = 'generation';
 const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
 const CONTROL_CENTER_WIDGET_ID = 'generation-widget:controlCenter';
 
