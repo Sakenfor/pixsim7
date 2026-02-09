@@ -16,6 +16,23 @@ import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 
 
+/** Record assets used for a generation in the history store */
+function recordInputHistory(operationType: string, inputs: any[]) {
+  const assetsToRecord = inputs
+    .filter((item: any) => item?.asset)
+    .map((item: any) => {
+      const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
+      return {
+        id: item.asset.id,
+        thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
+        mediaType: item.asset.mediaType,
+      };
+    });
+  if (assetsToRecord.length > 0) {
+    useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
+  }
+}
+
 /**
  * Hook: useQuickGenerateController
  *
@@ -107,129 +124,141 @@ export function useQuickGenerateController() {
     }
   }, [generationId, watchedStatus, watchedErrorMessage]);
 
-  async function generate(options?: { overrideDynamicParams?: Record<string, any> }) {
+  // ─── Shared generation helpers ───
+
+  /** Reset state for a new generation attempt */
+  function resetForGeneration() {
     setError(null);
     setGenerating(true);
     setGenerationId(null);
-    errorShownForRef.current = null; // Reset so new generation can show errors
+    errorShownForRef.current = null;
+  }
+
+  /** Read current input state from store (avoids stale React hook values) */
+  function getInputState() {
+    const inputState = (useInputStore as any).getState();
+    const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
+    const currentInput = inputState.getCurrentInput
+      ? inputState.getCurrentInput(operationType)
+      : null;
+    const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
+    return { currentInputs, currentInput, transitionInputs };
+  }
+
+  /** Extract frames for video inputs, mutating dynamicParams in-place */
+  async function applyFrameExtraction(
+    dynamicParams: Record<string, any>,
+    currentInput: any,
+    transitionInputs: any[],
+  ) {
+    if (operationType === 'image_to_video' && currentInput) {
+      if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
+        const extractedFrame = fromAssetResponse(await extractFrame({
+          video_asset_id: currentInput.asset.id,
+          timestamp: currentInput.lockedTimestamp,
+        }));
+        dynamicParams.source_asset_id = extractedFrame.id;
+      }
+    }
+
+    if (operationType === 'video_transition' && transitionInputs.length > 0) {
+      const extractedAssetIds: number[] = [];
+      for (const item of transitionInputs) {
+        if (item.lockedTimestamp !== undefined && item.asset.mediaType === 'video') {
+          const extractedFrame = fromAssetResponse(await extractFrame({
+            video_asset_id: item.asset.id,
+            timestamp: item.lockedTimestamp,
+          }));
+          extractedAssetIds.push(extractedFrame.id);
+        } else {
+          extractedAssetIds.push(item.asset.id);
+        }
+      }
+      dynamicParams.source_asset_ids = extractedAssetIds;
+    }
+  }
+
+  /** Build and validate a generation request, resolving the effective operation type */
+  function buildRequest(
+    dynamicParams: Record<string, any>,
+    operationInputs: any[],
+    currentInput: any,
+  ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
+    const buildResult = buildGenerationRequest({
+      operationType,
+      prompt,
+      dynamicParams,
+      operationInputs,
+      prompts: bindings.prompts,
+      transitionDurations: bindings.transitionDurations,
+      activeAsset: bindings.lastSelectedAsset,
+      currentInput,
+    });
+
+    if (buildResult.error || !buildResult.params) {
+      return { error: buildResult.error ?? 'Invalid generation request' };
+    }
+
+    const hasAssetInput =
+      Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
+
+    return {
+      finalPrompt: buildResult.finalPrompt,
+      params: buildResult.params,
+      effectiveOperationType: getFallbackOperation(operationType, hasAssetInput),
+    };
+  }
+
+  /** Submit a single generation to the API and seed the generations store */
+  async function submitOne(request: { finalPrompt: string; params: any; effectiveOperationType: string }) {
+    const result = await generateAsset({
+      prompt: request.finalPrompt,
+      providerId,
+      operationType: request.effectiveOperationType,
+      extraParams: request.params,
+    });
+
+    const genId = result.job_id;
+    addOrUpdateGeneration(createPendingGeneration({
+      id: genId,
+      operationType,
+      providerId,
+      finalPrompt: request.finalPrompt,
+      params: request.params,
+      status: result.status || 'pending',
+    }));
+
+    return genId;
+  }
+
+  // ─── Generation actions ───
+
+  async function generate(options?: { overrideDynamicParams?: Record<string, any> }) {
+    resetForGeneration();
 
     try {
-      const overrideParams = options?.overrideDynamicParams || {};
+      const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
-      // Merge dynamic params with any overrides
-      const modifiedDynamicParams = {
-        ...bindings.dynamicParams,
-        ...overrideParams,
-      };
+      await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      // Get current input state directly from store to avoid stale React hook values
-      // This is critical for frame extraction and passing context to logic
-      const inputState = (useInputStore as any).getState();
-      const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
-      const currentInput = inputState.getCurrentInput
-        ? inputState.getCurrentInput(operationType)
-        : null;
-
-      // NOTE: We no longer set source_asset_id from inputs here.
-      // That inference happens in buildGenerationRequest via currentInput context.
-      // Controller only handles async operations (frame extraction).
-
-      // For image_to_video: extract frame if video has locked timestamp
-      if (operationType === 'image_to_video' && currentInput) {
-        if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
-          const extractedFrame = fromAssetResponse(await extractFrame({
-            video_asset_id: currentInput.asset.id,
-            timestamp: currentInput.lockedTimestamp,
-          }));
-          // Set extracted frame's asset ID - this overrides input inference in logic
-          modifiedDynamicParams.source_asset_id = extractedFrame.id;
-        }
-      }
-
-      // For video_transition: extract frames for videos with locked timestamps
-      const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
-      if (operationType === 'video_transition' && transitionInputs.length > 0) {
-        const extractedAssetIds: number[] = [];
-        for (const inputItem of transitionInputs) {
-          if (inputItem.lockedTimestamp !== undefined && inputItem.asset.mediaType === 'video') {
-            const extractedFrame = fromAssetResponse(await extractFrame({
-              video_asset_id: inputItem.asset.id,
-              timestamp: inputItem.lockedTimestamp,
-            }));
-            extractedAssetIds.push(extractedFrame.id);
-          } else {
-            extractedAssetIds.push(inputItem.asset.id);
-          }
-        }
-        modifiedDynamicParams.source_asset_ids = extractedAssetIds;
-      }
-
-      const buildResult = buildGenerationRequest({
-        operationType,
-        prompt,
-        dynamicParams: modifiedDynamicParams,
-        operationInputs: currentInputs,
-        prompts: bindings.prompts,
-        transitionDurations: bindings.transitionDurations,
-        activeAsset: bindings.lastSelectedAsset,
-        currentInput,
-      });
-
-      if (buildResult.error || !buildResult.params) {
-        setError(buildResult.error ?? 'Invalid generation request');
+      const request = buildRequest(dynamicParams, currentInputs, currentInput);
+      if ('error' in request) {
+        setError(request.error);
         setGenerating(false);
         return;
       }
 
-      const finalPrompt = buildResult.finalPrompt;
-
-      // For flexible operations: switch to text-based operation if no image provided
-      const hasAssetInput =
-        Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
-      const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
-
-      const result = await generateAsset({
-        prompt: finalPrompt,
-        providerId,
-        operationType: effectiveOperationType,
-        extraParams: buildResult.params,
-      });
-
-      // Record assets used for this generation in history
-      const assetsToRecord = currentInputs
-        .filter((item: any) => item?.asset)
-        .map((item: any) => {
-          const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
-          return {
-            id: item.asset.id,
-            thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
-            mediaType: item.asset.mediaType,
-          };
-        });
-      if (assetsToRecord.length > 0) {
-        useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
-      }
-
-      // Keep prompt for easy re-generation with tweaks
-      const genId = result.job_id;
+      const genId = await submitOne(request);
       setGenerationId(genId);
       setWatchingGeneration(genId);
-
-      // Seed store with initial generation status
-      addOrUpdateGeneration(createPendingGeneration({
-        id: genId,
-        operationType,
-        providerId,
-        finalPrompt,
-        params: buildResult.params,
-        status: result.status || 'pending',
-      }));
+      recordInputHistory(operationType, currentInputs);
 
       logEvent('INFO', 'generation_created', {
         generationId: genId,
         operationType,
         providerId: providerId || 'pixverse',
-        status: result.status || 'pending',
+        status: 'pending',
       });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to generate asset'));
@@ -241,130 +270,36 @@ export function useQuickGenerateController() {
   /**
    * Generate multiple times (burst mode).
    * Submits the same generation request N times for variety.
-   * Backend handles capacity limits via account selection.
    */
   const generateBurst = useCallback(async (count: number, options?: { overrideDynamicParams?: Record<string, any> }) => {
-    if (count <= 1) {
-      // Just do a single generation
-      return generate(options);
-    }
+    if (count <= 1) return generate(options);
 
-    setError(null);
-    setGenerating(true);
-    setGenerationId(null);
-    errorShownForRef.current = null;
-
+    resetForGeneration();
     const total = count;
     let queued = 0;
     const generatedIds: number[] = [];
-
     setQueueProgress({ queued: 0, total });
 
     try {
-      const overrideParams = options?.overrideDynamicParams || {};
+      const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
-      // Build params once (same for all burst generations)
-      const modifiedDynamicParams = {
-        ...bindings.dynamicParams,
-        ...overrideParams,
-      };
+      await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      // Get current input state
-      const inputState = (useInputStore as any).getState();
-      const currentInputs = inputState.inputsByOperation?.[operationType]?.items ?? [];
-      const currentInput = inputState.getCurrentInput
-        ? inputState.getCurrentInput(operationType)
-        : null;
-
-      // Handle frame extraction for video inputs (once, reuse for all)
-      if (operationType === 'image_to_video' && currentInput) {
-        if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
-          const extractedFrame = fromAssetResponse(await extractFrame({
-            video_asset_id: currentInput.asset.id,
-            timestamp: currentInput.lockedTimestamp,
-          }));
-          modifiedDynamicParams.source_asset_id = extractedFrame.id;
-        }
-      }
-
-      // Handle video_transition frame extraction
-      const transitionInputs = inputState.inputsByOperation?.video_transition?.items ?? [];
-      if (operationType === 'video_transition' && transitionInputs.length > 0) {
-        const extractedAssetIds: number[] = [];
-        for (const inputItem of transitionInputs) {
-          if (inputItem.lockedTimestamp !== undefined && inputItem.asset.mediaType === 'video') {
-            const extractedFrame = fromAssetResponse(await extractFrame({
-              video_asset_id: inputItem.asset.id,
-              timestamp: inputItem.lockedTimestamp,
-            }));
-            extractedAssetIds.push(extractedFrame.id);
-          } else {
-            extractedAssetIds.push(inputItem.asset.id);
-          }
-        }
-        modifiedDynamicParams.source_asset_ids = extractedAssetIds;
-      }
-
-      const buildResult = buildGenerationRequest({
-        operationType,
-        prompt,
-        dynamicParams: modifiedDynamicParams,
-        operationInputs: currentInputs,
-        prompts: bindings.prompts,
-        transitionDurations: bindings.transitionDurations,
-        activeAsset: bindings.lastSelectedAsset,
-        currentInput,
-      });
-
-      if (buildResult.error || !buildResult.params) {
-        setError(buildResult.error ?? 'Invalid generation request');
+      const request = buildRequest(dynamicParams, currentInputs, currentInput);
+      if ('error' in request) {
+        setError(request.error);
         setGenerating(false);
         setQueueProgress(null);
         return;
       }
 
-      const finalPrompt = buildResult.finalPrompt;
-      const hasAssetInput =
-        Array.isArray(buildResult.params.composition_assets) && buildResult.params.composition_assets.length > 0;
-      const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
+      recordInputHistory(operationType, currentInputs);
 
-      // Record assets used for this burst in history (once, before the loop)
-      const assetsToRecord = currentInputs
-        .filter((item: any) => item?.asset)
-        .map((item: any) => {
-          const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(item.asset);
-          return {
-            id: item.asset.id,
-            thumbnailUrl: thumbnailUrl || previewUrl || mainUrl || '',
-            mediaType: item.asset.mediaType,
-          };
-        });
-      if (assetsToRecord.length > 0) {
-        useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
-      }
-
-      // Submit N generations
       for (let i = 0; i < count; i++) {
         try {
-          const result = await generateAsset({
-            prompt: finalPrompt,
-            providerId,
-            operationType: effectiveOperationType,
-            extraParams: buildResult.params,
-          });
-
-          const genId = result.job_id;
+          const genId = await submitOne(request);
           generatedIds.push(genId);
-
-          addOrUpdateGeneration(createPendingGeneration({
-            id: genId,
-            operationType,
-            providerId,
-            finalPrompt,
-            params: buildResult.params,
-            status: result.status || 'pending',
-          }));
-
           queued++;
           setQueueProgress({ queued, total });
 
@@ -383,7 +318,6 @@ export function useQuickGenerateController() {
         }
       }
 
-      // Watch the last generated ID
       if (generatedIds.length > 0) {
         const lastId = generatedIds[generatedIds.length - 1];
         setGenerationId(lastId);
@@ -398,6 +332,93 @@ export function useQuickGenerateController() {
       });
     } catch (err) {
       setError(extractErrorMessage(err, 'Failed to queue generations'));
+    } finally {
+      setGenerating(false);
+      setTimeout(() => setQueueProgress(null), 2000);
+    }
+  }, [
+    generate,
+    operationType,
+    prompt,
+    providerId,
+    bindings.dynamicParams,
+    bindings.prompts,
+    bindings.transitionDurations,
+    bindings.lastSelectedAsset,
+    useInputStore,
+    addOrUpdateGeneration,
+    setWatchingGeneration,
+    setGenerating,
+  ]);
+
+  /**
+   * Generate individually for each queued input asset.
+   * Same prompt and settings, but one generation per asset.
+   */
+  const generateEach = useCallback(async (options?: { overrideDynamicParams?: Record<string, any> }) => {
+    const { currentInputs } = getInputState();
+    if (currentInputs.length <= 1) return generate(options);
+
+    resetForGeneration();
+    const total = currentInputs.length;
+    let queued = 0;
+    const generatedIds: number[] = [];
+    setQueueProgress({ queued: 0, total });
+
+    try {
+      const overrideParams = options?.overrideDynamicParams || {};
+
+      for (let i = 0; i < currentInputs.length; i++) {
+        const inputItem = currentInputs[i];
+
+        try {
+          const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
+          await applyFrameExtraction(dynamicParams, inputItem, []);
+
+          const request = buildRequest(dynamicParams, [inputItem], inputItem);
+          if ('error' in request) {
+            logEvent('ERROR', 'generate_each_item_skipped', {
+              index: i,
+              error: request.error,
+            });
+            continue;
+          }
+
+          const genId = await submitOne(request);
+          generatedIds.push(genId);
+          queued++;
+          setQueueProgress({ queued, total });
+          recordInputHistory(operationType, [inputItem]);
+
+          logEvent('INFO', 'generate_each_created', {
+            generationId: genId,
+            operationType,
+            providerId: providerId || 'pixverse',
+            eachIndex: i + 1,
+            eachTotal: total,
+          });
+        } catch (itemErr) {
+          logEvent('ERROR', 'generate_each_item_failed', {
+            eachIndex: i + 1,
+            error: extractErrorMessage(itemErr, 'Unknown error'),
+          });
+        }
+      }
+
+      if (generatedIds.length > 0) {
+        const lastId = generatedIds[generatedIds.length - 1];
+        setGenerationId(lastId);
+        setWatchingGeneration(lastId);
+      }
+
+      logEvent('INFO', 'generate_each_complete', {
+        queued,
+        total,
+        operationType,
+        providerId: providerId || 'pixverse',
+      });
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to queue individual generations'));
     } finally {
       setGenerating(false);
       setTimeout(() => setQueueProgress(null), 2000);
@@ -442,5 +463,6 @@ export function useQuickGenerateController() {
     // Actions
     generate,
     generateBurst,
+    generateEach,
   };
 }
