@@ -9,7 +9,6 @@ import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace"
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
 import { useDragToDock, type DropZone } from "../../hooks/useDragToDock";
-import { ScopeHost } from "../scope/ScopeHost";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
 
@@ -72,9 +71,6 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
 
   let Component: React.ComponentType<any>;
   let title: string;
-  let declaredScopes: string[] | undefined;
-  let panelTags: string[] | undefined;
-  let panelCategory: string | undefined;
 
   // For dev-tool panels, extract toolId from panel ID and ensure it's in context
   let panelContext = panel.context || {};
@@ -96,9 +92,6 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
 
     Component = panelDef.component;
     title = panelDef.title;
-    declaredScopes = panelDef.settingScopes;
-    panelTags = panelDef.tags;
-    panelCategory = panelDef.category;
   }
 
   const handleDragStart = () => {
@@ -178,27 +171,20 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
           </div>
         </div>
 
-        {/* Content */}
+        {/* Content — no ScopeHost here: floating panels manage their own scope
+           via explicit context props from the opener (e.g. generationScopeId). */}
         <div className="flex-1 overflow-auto">
           <ContextHubHost hostId={`floating:${panel.id}`}>
-            <ScopeHost
-              panelId={panel.id}
+            <FloatingPanelContextProvider
+              context={panelContext}
               instanceId={`floating:${panel.id}`}
-              declaredScopes={declaredScopes}
-              tags={panelTags}
-              category={panelCategory}
             >
-              <FloatingPanelContextProvider
-                context={panelContext}
-                instanceId={`floating:${panel.id}`}
-              >
-                {isDevToolPanel ? (
-                  <Component context={panelContext} />
-                ) : (
-                  <Component {...panelContext} />
-                )}
-              </FloatingPanelContextProvider>
-            </ScopeHost>
+              {isDevToolPanel ? (
+                <Component context={panelContext} />
+              ) : (
+                <Component {...panelContext} />
+              )}
+            </FloatingPanelContextProvider>
           </ContextHubHost>
         </div>
       </div>
