@@ -12,18 +12,11 @@
 // Core hooks
 export * from './usePixSim7Core';
 
-// Session management
-export * from './session';
-
 // Interactions
-export * from './interactionSchema';
 export * from './interactions';
 
-// Relationships & NPCs
-export * from './relationshipHelpers';
-export * from './relationshipComputation';
+// NPCs
 export * from './npcPreferences';
-export * from './slotAssignment';
 
 // Custom helpers
 export * from './customHelpers';

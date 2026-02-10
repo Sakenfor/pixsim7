@@ -60,13 +60,13 @@ export type {
 
 // Time helpers (for components that need direct access)
 export {
-  worldTimeToSeconds,
-  secondsToWorldTime,
+  worldTimeDisplayToSeconds as worldTimeToSeconds,
+  secondsToWorldTimeDisplay as secondsToWorldTime,
   isTurnBasedMode,
   getTurnDelta,
   getCurrentTurnNumber,
   createTurnAdvanceFlags,
-} from './timeHelpers';
+} from '@pixsim7/game.engine';
 
 // Game hooks (plugin system)
 export {
