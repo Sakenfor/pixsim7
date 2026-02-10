@@ -389,7 +389,9 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             still_processing += 1
 
                     except ProviderError as e:
-                        logger.error("provider_check_error", generation_id=generation.id, error=str(e))
+                        # Expected provider errors (content filter, quota, etc.) → WARNING
+                        _poll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
+                        _poll_log("provider_check_error", generation_id=generation.id, error=str(e))
                         # Don't fail the generation yet - might be temporary
                         # Let it retry on next poll
                         still_processing += 1
@@ -523,7 +525,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             analyses_still_processing += 1
 
                     except ProviderError as e:
-                        logger.error("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
+                        _apoll_log = logger.warning if getattr(e, 'error_code', None) else logger.error
+                        _apoll_log("provider_analysis_check_error", analysis_id=analysis.id, error=str(e))
                         analyses_still_processing += 1
 
                 except Exception as e:

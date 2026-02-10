@@ -409,11 +409,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 if isinstance(e, ProviderQuotaExceededError):
                     try:
                         await account_service.mark_exhausted(account.id)
-                        gen_logger.warning(
-                            "account_marked_exhausted_due_to_provider_quota",
-                            account_id=account.id,
-                            provider_id=generation.provider_id,
-                        )
+                        # Note: account_service.mark_exhausted already logs account_marked_exhausted
                     except Exception as mark_err:
                         gen_logger.warning(
                             "account_mark_exhausted_failed",
@@ -426,6 +422,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         await account_service.release_account(account.id)
                     except Exception as release_err:
                         gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Clear account_id so requeued job doesn't try to reuse the exhausted account
+                    generation.account_id = None
 
                     # Reset generation to PENDING and re-enqueue so it picks a different account
                     # Don't mark as failed - we want to try again with another account
