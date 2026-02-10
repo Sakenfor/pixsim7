@@ -11,7 +11,6 @@ CHANGELOG (SDK Integration):
 For SDK source: https://github.com/Sakenfor/pixverse-py
 """
 from typing import Dict, Any, Optional
-
 # Import pixverse-py SDK
 # NOTE: pixverse-py SDK imports are optional; guard for environments where
 # the SDK isn't installed yet to keep the adapter importable. Real runtime
@@ -235,6 +234,25 @@ class PixverseProvider(
 
         # === Resolve composition_assets if present ===
         composition_assets = result_params.get("composition_assets")
+        original_video_id = result_params.get("original_video_id")
+
+        # Fast path for Pixverse VIDEO_EXTEND:
+        # If we already have a numeric original_video_id, we can submit extend
+        # without resolving a video URL from composition assets.
+        if (
+            operation_type == OperationType.VIDEO_EXTEND
+            and composition_assets
+            and isinstance(original_video_id, (str, int))
+            and str(original_video_id).isdigit()
+        ):
+            logger.info(
+                "pixverse_extend_original_id_fast_path",
+                original_video_id=str(original_video_id),
+                composition_assets_count=len(composition_assets) if isinstance(composition_assets, list) else 1,
+                msg="Skipping composition asset URL resolution for VIDEO_EXTEND",
+            )
+            result_params.pop("composition_assets", None)
+            composition_assets = None
 
         # Debug logging for IMAGE_TO_IMAGE resolution path
         if operation_type == OperationType.IMAGE_TO_IMAGE:

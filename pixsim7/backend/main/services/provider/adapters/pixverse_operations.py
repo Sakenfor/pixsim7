@@ -90,6 +90,58 @@ def _build_generation_options(params: Dict[str, Any]) -> "GenerationOptions":
     )
 
 
+def _extract_pixverse_error_code(error: Exception) -> Optional[int]:
+    """Best-effort extraction of Pixverse ErrCode from SDK/API exceptions."""
+    for attr in ("err_code", "code"):
+        raw = getattr(error, attr, None)
+        if raw is None:
+            continue
+        try:
+            return int(raw)
+        except Exception:
+            continue
+
+    response = getattr(error, "response", None)
+    if response is not None and hasattr(response, "json"):
+        try:
+            payload = response.json()
+            if isinstance(payload, dict):
+                raw = payload.get("ErrCode")
+                if raw is not None:
+                    return int(raw)
+        except Exception:
+            pass
+
+    return None
+
+
+def _is_invalid_media_error(error: Exception) -> bool:
+    """
+    True when Pixverse reports the source media reference is invalid.
+
+    ErrCode 500047 is the known structured signal. We also keep a text fallback
+    for SDK versions that only surface raw message strings.
+    """
+    err_code = _extract_pixverse_error_code(error)
+    if err_code == 500047:
+        return True
+
+    message = str(error).lower()
+    return "provided media is invalid" in message or "invalid media" in message
+
+
+def _get_field(obj: Any, *keys: str, default: Any = None) -> Any:
+    """Get field from dict or object, trying multiple key names."""
+    for key in keys:
+        if isinstance(obj, dict):
+            if key in obj:
+                return obj[key]
+        else:
+            if hasattr(obj, key):
+                return getattr(obj, key)
+    return default
+
+
 def _ensure_required_params(operation_type: OperationType, params: Dict[str, Any]) -> None:
     """
     Normalize + validate required params across Pixverse operations.
@@ -287,7 +339,15 @@ class PixverseOperationsMixin:
                     ]
                 return summary
 
-            # Log the error (session manager already handles cache eviction)
+            # Classify error before logging - expected errors (quota, content
+            # filter, concurrent limit) get WARNING without traceback; unexpected
+            # errors keep ERROR + traceback.
+            from pixsim7.backend.main.services.provider.adapters.pixverse_errors import (
+                is_expected_pixverse_error,
+            )
+            is_expected = is_expected_pixverse_error(e)
+            severity = "warning" if is_expected else "error"
+
             log_provider_error(
                 provider_id="pixverse",
                 operation=operation_type.value,
@@ -297,17 +357,19 @@ class PixverseOperationsMixin:
                 error=str(e),
                 error_type=e.__class__.__name__,
                 extra=_summarize_params(params),
+                severity=severity,
             )
-            logger.error(
-                "provider:error",
-                msg="pixverse_api_error",
-                provider_id="pixverse",
-                operation_type=operation_type.value,
-                error=str(e),
-                error_type=e.__class__.__name__,
-                params_summary=_summarize_params(params),
-                exc_info=True
-            )
+            if not is_expected:
+                logger.error(
+                    "provider:error",
+                    msg="pixverse_api_error",
+                    provider_id="pixverse",
+                    operation_type=operation_type.value,
+                    error=str(e),
+                    error_type=e.__class__.__name__,
+                    params_summary=_summarize_params(params),
+                    exc_info=True
+                )
             self._handle_error(e)
 
 
@@ -444,19 +506,16 @@ class PixverseOperationsMixin:
         params: Dict[str, Any]
     ):
         """Extend video"""
-        # Prepare video reference (prefer original_video_id if available)
-        video_url = params.get("video_url")
+        # Canonical contract:
+        # - If original_video_id is present, submit ID-only.
+        # - Otherwise submit URL.
+        video_url = params.get("video_url") or params.get("customer_video_url")
         original_video_id = params.get("original_video_id")
 
-        # Build video reference dict or string
         if original_video_id:
-            # Prefer Pixverse job ID if available
-            video_ref = {"original_video_id": original_video_id}
-            if video_url:
-                video_ref["url"] = video_url
+            # Use SDK-supported video_id:<id> token to enforce ID-only payload.
+            video_ref = f"video_id:{str(original_video_id).strip()}"
         elif video_url:
-            # Check if this is a Pixverse-hosted URL without video ID
-            # Pixverse extend API requires original_video_id for Pixverse-generated videos
             is_pixverse_url = "pixverse" in str(video_url).lower()
             if is_pixverse_url:
                 logger.warning(
@@ -465,7 +524,6 @@ class PixverseOperationsMixin:
                     msg="Extending Pixverse video without original_video_id may fail. "
                         "The video may not have been generated in this system.",
                 )
-            # Use video URL - SDK will attempt to extract ID or use customer_video_path
             video_ref = video_url
         else:
             raise ProviderError(
@@ -479,9 +537,9 @@ class PixverseOperationsMixin:
         logger.info(
             "extend_video_request",
             extra={
-                "video_ref": video_ref,
+                "video_ref_type": "original_video_id" if original_video_id else "video_url",
                 "original_video_id": original_video_id,
-                "video_url": video_url,
+                "has_input_video_url": bool(video_url),
                 "prompt": params.get("prompt", "")[:100],
                 "quality": kwargs.get("quality"),
             }
@@ -753,20 +811,58 @@ class PixverseOperationsMixin:
         image_ops = get_image_operations()
         is_image_operation = operation_type in image_ops if operation_type else False
 
+        async def _check_video_status_from_list_with_client(
+            client: Any,
+            video_id: str,
+            *,
+            limit: int = 200,
+            offset: int = 0,
+            max_pages: int = 5,
+        ) -> ProviderStatusResult:
+            current_offset = offset
+            for page in range(max_pages):
+                videos = await client.list_videos(limit=limit, offset=current_offset)
+                if not videos:
+                    break
+
+                for video in videos:
+                    raw_video_id = _get_field(video, "video_id", "VideoId", "id")
+                    if str(raw_video_id) != str(video_id):
+                        continue
+
+                    raw_status = _get_field(video, "video_status", "status")
+                    status = self._map_pixverse_status(video)
+                    video_url_raw = _get_field(video, "url", "video_url")
+                    thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
+
+                    return ProviderStatusResult(
+                        status=status,
+                        video_url=_normalize_pixverse_url(video_url_raw) if video_url_raw else None,
+                        thumbnail_url=_normalize_pixverse_url(thumb_raw) if thumb_raw else None,
+                        width=_get_field(video, "output_width", "width"),
+                        height=_get_field(video, "output_height", "height"),
+                        duration_sec=_get_field(video, "video_duration", "duration"),
+                        provider_video_id=str(raw_video_id or video_id),
+                        metadata={
+                            "provider_status": raw_status,
+                            "source": "list_fallback",
+                            "matched": True,
+                            "page": page,
+                        },
+                    )
+
+                if len(videos) < limit:
+                    break
+                current_offset += limit
+
+            return ProviderStatusResult(
+                status=ProviderStatus.PROCESSING,
+                provider_video_id=str(video_id),
+                metadata={"source": "list_fallback", "matched": False},
+            )
+
         async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
             client = self._create_client(account)
-
-            # Handle both dict and object access (SDK may return either)
-            def get_field(obj, *keys, default=None):
-                """Get field from dict or object, trying multiple key names."""
-                for key in keys:
-                    if isinstance(obj, dict):
-                        if key in obj:
-                            return obj[key]
-                    else:
-                        if hasattr(obj, key):
-                            return getattr(obj, key)
-                return default
 
             try:
                 if is_image_operation:
@@ -777,8 +873,8 @@ class PixverseOperationsMixin:
                     # Map image status
                     # Pixverse returns image_status as int: 1=completed, 0=processing, -1=failed
                     # Newer codes (e.g. 7, 8) represent flagged/rejected content.
-                    raw_status = get_field(result, "image_status", "status", default=0)
-                    image_url_raw = get_field(result, "image_url", "url")
+                    raw_status = _get_field(result, "image_status", "status", default=0)
+                    image_url_raw = _get_field(result, "image_url", "url")
                     image_url = (
                         _normalize_pixverse_url(image_url_raw) if image_url_raw else None
                     )
@@ -802,13 +898,25 @@ class PixverseOperationsMixin:
                         status=status,
                         video_url=image_url,  # Image URL
                         thumbnail_url=image_url,  # Use image as thumbnail
-                        width=get_field(result, "width"),
-                        height=get_field(result, "height"),
+                        width=_get_field(result, "width"),
+                        height=_get_field(result, "height"),
                         duration_sec=None,  # Images don't have duration
-                        provider_video_id=str(get_field(result, "image_id", "id")),
+                        provider_video_id=str(_get_field(result, "image_id", "id")),
                         metadata={"provider_status": raw_status, "is_image": True},
                     )
                 else:
+                    if operation_type == OperationType.VIDEO_EXTEND:
+                        # Extend jobs can be absent from /openapi/v2/video/result but present in list_videos.
+                        list_result = await _check_video_status_from_list_with_client(
+                            client=client,
+                            video_id=provider_job_id,
+                            limit=200,
+                            offset=0,
+                            max_pages=5,
+                        )
+                        if (list_result.metadata or {}).get("matched"):
+                            return list_result
+
                     # Use get_video for video operations (now async)
                     video = await client.get_video(
                         video_id=provider_job_id,
@@ -817,18 +925,38 @@ class PixverseOperationsMixin:
 
                     return ProviderStatusResult(
                         status=status,
-                        video_url=_normalize_pixverse_url(get_field(video, "url")),
+                        video_url=_normalize_pixverse_url(_get_field(video, "url")),
                         thumbnail_url=_normalize_pixverse_url(
-                            get_field(video, "first_frame", "thumbnail_url")
+                            _get_field(video, "first_frame", "thumbnail_url")
                         ),
-                        width=get_field(video, "output_width", "width"),
-                        height=get_field(video, "output_height", "height"),
-                        duration_sec=get_field(video, "video_duration", "duration"),
-                        provider_video_id=str(get_field(video, "video_id", "id")),
-                        metadata={"provider_status": get_field(video, "video_status", "status")},
+                        width=_get_field(video, "output_width", "width"),
+                        height=_get_field(video, "output_height", "height"),
+                        duration_sec=_get_field(video, "video_duration", "duration"),
+                        provider_video_id=str(_get_field(video, "video_id", "id")),
+                        metadata={"provider_status": _get_field(video, "video_status", "status")},
                     )
 
             except Exception as exc:
+                if not is_image_operation and _is_invalid_media_error(exc):
+                    logger.warning(
+                        "pixverse_video_status_invalid_media_fallback",
+                        provider_job_id=provider_job_id,
+                        operation_type=operation_type.value if operation_type else None,
+                        error=str(exc),
+                    )
+                    fallback_result = await _check_video_status_from_list_with_client(
+                        client=client,
+                        video_id=provider_job_id,
+                        limit=200,
+                        offset=0,
+                        max_pages=8,
+                    )
+                    fallback_result.metadata = {
+                        **(fallback_result.metadata or {}),
+                        "invalid_media_fallback": True,
+                    }
+                    return fallback_result
+
                 log_provider_error(
                     provider_id="pixverse",
                     operation="check_status",
@@ -853,6 +981,74 @@ class PixverseOperationsMixin:
         return await self.session_manager.run_with_session(
             account=account,
             op_name="check_status",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
+    async def check_video_status_from_list(
+        self,
+        account: ProviderAccount,
+        video_id: str,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+        max_pages: int = 8,
+    ) -> ProviderStatusResult:
+        """
+        Fallback video status check using the personal video list.
+
+        This bypasses openapi/video-result lookups that can return invalid-media
+        for otherwise valid extend jobs.
+        """
+        async def _operation(session: PixverseSessionData) -> ProviderStatusResult:
+            client = self._create_client_from_session(session, account)
+            current_offset = offset
+
+            for page in range(max_pages):
+                videos = await client.list_videos(limit=limit, offset=current_offset)
+                if not videos:
+                    break
+
+                for video in videos:
+                    raw_video_id = _get_field(video, "video_id", "VideoId", "id")
+                    if str(raw_video_id) != str(video_id):
+                        continue
+
+                    raw_status = _get_field(video, "video_status", "status")
+                    status = self._map_pixverse_status(video)
+                    video_url_raw = _get_field(video, "url", "video_url")
+                    thumb_raw = _get_field(video, "first_frame", "thumbnail_url")
+
+                    return ProviderStatusResult(
+                        status=status,
+                        video_url=_normalize_pixverse_url(video_url_raw) if video_url_raw else None,
+                        thumbnail_url=_normalize_pixverse_url(thumb_raw) if thumb_raw else None,
+                        width=_get_field(video, "output_width", "width"),
+                        height=_get_field(video, "output_height", "height"),
+                        duration_sec=_get_field(video, "video_duration", "duration"),
+                        provider_video_id=str(raw_video_id or video_id),
+                        metadata={
+                            "provider_status": raw_status,
+                            "is_image": False,
+                            "source": "list_fallback",
+                            "matched": True,
+                            "page": page,
+                        },
+                    )
+
+                if len(videos) < limit:
+                    break
+                current_offset += limit
+
+            return ProviderStatusResult(
+                status=ProviderStatus.PROCESSING,
+                provider_video_id=str(video_id),
+                metadata={"is_image": False, "source": "list_fallback", "matched": False},
+            )
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_video_status_from_list",
             operation=_operation,
             retry_on_session_error=True,
         )

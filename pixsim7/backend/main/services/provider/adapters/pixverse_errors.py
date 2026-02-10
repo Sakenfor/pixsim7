@@ -133,7 +133,10 @@ def handle_pixverse_error(
 
     # If we have a structured error code, map it to a more precise ProviderError
     if err_code is not None and err_code != 0:
-        logger.error(
+        # Expected operational errors get WARNING; unexpected errors get ERROR.
+        # Caller already logs context.
+        _log = logger.warning if err_code in _EXPECTED_ERR_CODES else logger.error
+        _log(
             "pixverse_error",
             err_code=err_code,
             err_msg=err_msg or raw_error,
@@ -229,7 +232,7 @@ def handle_pixverse_error(
                 job_id = current_params.get("original_video_id") or \
                          current_params.get("video_url") or \
                          "unknown"
-                logger.error(
+                logger.warning(
                     "extend_video_404",
                     extra={
                         "video_url": current_params.get("video_url"),
@@ -241,3 +244,38 @@ def handle_pixverse_error(
 
     # Generic provider error
     raise ProviderError(f"Pixverse API error: {raw_error}")
+
+
+# Error codes that represent expected operational conditions (quota, content
+# moderation, concurrency, param validation, high load, permissions).
+# These should be logged at WARNING, not ERROR.
+_EXPECTED_ERR_CODES = {
+    500043, 500090,          # quota / insufficient balance
+    500054, 500063,          # content moderation (output / prompt)
+    500044,                  # concurrent limit
+    400017, 400018, 400019,  # param validation (prompt too long, etc.)
+    500069,                  # high load / temporary unavailable
+    500020, 500070, 500071,  # permission / access
+}
+
+
+def is_expected_pixverse_error(error: Exception) -> bool:
+    """Return True if the error maps to an expected operational condition.
+
+    Used by callers to decide log severity before ``handle_pixverse_error``
+    re-raises as a typed ProviderError.
+    """
+    err_code = getattr(error, "err_code", None)
+    if err_code is not None:
+        try:
+            return int(err_code) in _EXPECTED_ERR_CODES
+        except (ValueError, TypeError):
+            pass
+
+    # Also check for SDK ContentModerationError
+    if PixverseContentModerationError and isinstance(error, PixverseContentModerationError):
+        return True
+
+    # Fallback: check common string patterns for quota/content errors
+    msg = str(error).lower()
+    return any(kw in msg for kw in ("credits", "quota", "insufficient", "filtered", "policy"))

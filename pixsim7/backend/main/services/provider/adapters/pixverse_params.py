@@ -222,7 +222,7 @@ def map_parameters(
 
     elif operation_type == OperationType.VIDEO_EXTEND:
         # If video_url is a valid URL, use it
-        video_url = params.get("video_url")
+        video_url = params.get("video_url") or params.get("customer_video_url")
         if video_url and _is_valid_url(video_url):
             mapped["video_url"] = normalize_url(video_url) or video_url
 

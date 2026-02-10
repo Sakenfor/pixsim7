@@ -26,7 +26,11 @@ from pixsim7.backend.main.services.provider.base import (
 )
 from pixsim7.backend.main.shared.errors import ProviderNotFoundError, ResourceNotFoundError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, PROVIDER_SUBMITTED, PROVIDER_COMPLETED, PROVIDER_FAILED
-from pixsim7.backend.main.shared.operation_mapping import get_image_operations, OPERATION_REGISTRY
+from pixsim7.backend.main.shared.operation_mapping import (
+    get_image_operations,
+    get_video_operations,
+    OPERATION_REGISTRY,
+)
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 
 logger = configure_logging("provider_service")
@@ -439,8 +443,17 @@ class ProviderService:
             return submission
 
         except ProviderError as e:
-            logger.error(
-                "provider_execute_cached_payload_failed",
+            # Expected operational errors (quota, content filter, concurrent
+            # limit) → WARNING; unexpected errors → ERROR.
+            from pixsim7.backend.main.shared.errors import (
+                ProviderQuotaExceededError,
+                ProviderContentFilteredError,
+                ProviderConcurrentLimitError,
+            )
+            _EXPECTED = (ProviderQuotaExceededError, ProviderContentFilteredError, ProviderConcurrentLimitError)
+            _log = logger.warning if isinstance(e, _EXPECTED) else logger.error
+            _log(
+                "provider_execute_failed",
                 generation_id=generation.id,
                 error=str(e),
                 error_type=e.__class__.__name__,
@@ -685,6 +698,38 @@ class ProviderService:
                 except Exception as fallback_err:
                     logger.warning(
                         "pixverse_image_fallback_failed",
+                        submission_id=submission.id,
+                        provider_job_id=submission.provider_job_id,
+                        error=str(fallback_err),
+                    )
+
+        # Pixverse video fallback: for extend/video jobs that keep returning
+        # "processing" from direct status APIs, check the personal video list.
+        if (
+            submission.provider_id == "pixverse"
+            and operation_type in get_video_operations()
+            and status_result.status == ProviderStatus.PROCESSING
+            and submission.submitted_at
+            and submission.provider_job_id
+            and hasattr(provider, "check_video_status_from_list")
+        ):
+            threshold_seconds = 90 if operation_type == OperationType.VIDEO_EXTEND else 240
+            elapsed_seconds = (datetime.now(timezone.utc) - submission.submitted_at).total_seconds()
+
+            if elapsed_seconds >= threshold_seconds:
+                try:
+                    fallback_result = await provider.check_video_status_from_list(
+                        account=account,
+                        video_id=submission.provider_job_id,
+                    )
+                    if (
+                        fallback_result.status != ProviderStatus.PROCESSING
+                        or (fallback_result.metadata or {}).get("matched")
+                    ):
+                        status_result = fallback_result
+                except Exception as fallback_err:
+                    logger.warning(
+                        "pixverse_video_fallback_failed",
                         submission_id=submission.id,
                         provider_job_id=submission.provider_job_id,
                         error=str(fallback_err),
