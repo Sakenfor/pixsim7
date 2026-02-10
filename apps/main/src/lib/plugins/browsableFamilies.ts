@@ -11,7 +11,7 @@ import {
   type WidgetBuilderFamilyConfig,
   type WidgetBuilderColumn,
 } from '@pixsim7/shared.plugins';
-import { useSyncExternalStore, useCallback } from 'react';
+import { useSyncExternalStore, useCallback, useRef } from 'react';
 
 // Re-export types for convenience
 export type { WidgetBuilderFamilyConfig, WidgetBuilderColumn };
@@ -59,12 +59,29 @@ export const registerDefaultBrowsableFamilies = registerWidgetBuilderConfigs;
  * Re-renders when the registry changes.
  */
 export function useWidgetBuilderFamilies(): WidgetBuilderFamilyConfig[] {
+  const versionRef = useRef(0);
+  const snapshotRef = useRef<{ version: number; value: WidgetBuilderFamilyConfig[] }>({
+    version: -1,
+    value: [],
+  });
+
   const subscribe = useCallback(
-    (onStoreChange: () => void) => widgetBuilderRegistry.subscribe(onStoreChange),
+    (onStoreChange: () => void) => widgetBuilderRegistry.subscribe(() => {
+      versionRef.current += 1;
+      onStoreChange();
+    }),
     []
   );
 
-  const getSnapshot = useCallback(() => widgetBuilderRegistry.getAll(), []);
+  const getSnapshot = useCallback(() => {
+    if (snapshotRef.current.version !== versionRef.current) {
+      snapshotRef.current = {
+        version: versionRef.current,
+        value: widgetBuilderRegistry.getAll(),
+      };
+    }
+    return snapshotRef.current.value;
+  }, []);
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }

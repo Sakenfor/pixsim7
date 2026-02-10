@@ -7,16 +7,40 @@
 
 import type { PluginMetadata, PluginFamily } from '@pixsim7/shared.plugins';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
-import { useState, useSyncExternalStore, useMemo } from 'react';
+import { useState, useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
 
 import { pluginCatalog, pluginActivationManager } from '@lib/plugins';
 
 // ===== Hooks =====
 
 function useCatalogPlugins() {
+  const versionRef = useRef(0);
+  const snapshotRef = useRef<{ version: number; value: PluginMetadata[] }>({
+    version: -1,
+    value: [],
+  });
+
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    return pluginCatalog.subscribe(() => {
+      versionRef.current += 1;
+      onStoreChange();
+    });
+  }, []);
+
+  const getSnapshot = useCallback(() => {
+    if (snapshotRef.current.version !== versionRef.current) {
+      snapshotRef.current = {
+        version: versionRef.current,
+        value: pluginCatalog.getAll(),
+      };
+    }
+    return snapshotRef.current.value;
+  }, []);
+
   const plugins = useSyncExternalStore(
-    (cb) => pluginCatalog.subscribe(cb),
-    () => pluginCatalog.getAll(),
+    subscribe,
+    getSnapshot,
+    getSnapshot,
   );
   return plugins;
 }
