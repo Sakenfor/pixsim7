@@ -6,6 +6,7 @@
  */
 
 export { createAccountsApi } from './accounts';
+export { createActionBlocksApi } from './actionBlocks';
 export { createAdminApi } from './admin';
 export { createAnalyzersApi } from './analyzers';
 export { createAssetsApi } from './assets';
@@ -30,6 +31,17 @@ export type {
   AccountStatus,
   CreateApiKeyResponse,
 } from './accounts';
+export type {
+  ActionBlockSummary,
+  ActionBlockSearchQuery,
+  SimilarActionBlockQuery,
+  SimilarActionBlocksByTextRequest,
+  SimilarActionBlockMatch,
+  EmbedActionBlockQuery,
+  EmbedActionBlockResponse,
+  EmbedActionBlocksBatchRequest,
+  EmbedActionBlocksBatchResponse,
+} from './actionBlocks';
 
 export type {
   AnalyzerInfo,

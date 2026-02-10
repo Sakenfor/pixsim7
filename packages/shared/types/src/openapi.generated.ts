@@ -833,6 +833,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/action-blocks/{block_id}/embed": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Embed Block
+         * @description Embed a single action block for similarity search (admin only)
+         */
+        readonly post: operations["embed_block_api_v1_action_blocks__block_id__embed_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/action-blocks/{block_id}/increment-usage": {
         readonly parameters: {
             readonly query?: never;
@@ -867,6 +887,26 @@ export interface paths {
          * @description Rate an action block
          */
         readonly post: operations["rate_block_api_v1_action_blocks__block_id__rate_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/action-blocks/{block_id}/similar": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Find Similar Blocks
+         * @description Find action blocks similar to a given block using embeddings
+         */
+        readonly get: operations["find_similar_blocks_api_v1_action_blocks__block_id__similar_get"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1077,6 +1117,26 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/action-blocks/embed/batch": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Embed Blocks Batch
+         * @description Batch embed action blocks that need embeddings (admin only)
+         */
+        readonly post: operations["embed_blocks_batch_api_v1_action_blocks_embed_batch_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/action-blocks/extract": {
         readonly parameters: {
             readonly query?: never;
@@ -1238,6 +1298,26 @@ export interface paths {
         readonly get: operations["search_by_text_api_v1_action_blocks_search_text_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/action-blocks/similar/by-text": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Find Similar By Text
+         * @description Find action blocks similar to arbitrary text using embeddings
+         */
+        readonly post: operations["find_similar_by_text_api_v1_action_blocks_similar_by_text_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -11766,13 +11846,13 @@ export interface components {
          * @description Capabilities that AI models can provide.
          * @enum {string}
          */
-        readonly AiModelCapability: "prompt_edit" | "prompt_parse" | "tag_suggest";
+        readonly AiModelCapability: "prompt_edit" | "prompt_parse" | "tag_suggest" | "embedding";
         /**
          * AiModelKind
          * @description Type of AI model.
          * @enum {string}
          */
-        readonly AiModelKind: "llm" | "parser" | "both";
+        readonly AiModelKind: "llm" | "parser" | "embedding" | "both";
         /**
          * AIProviderSettings
          * @description AI Provider configuration for LLM services
@@ -14982,6 +15062,30 @@ export interface components {
              */
             readonly target?: number | null;
         };
+        /** EmbedBatchRequest */
+        readonly EmbedBatchRequest: {
+            /**
+             * Force
+             * @description Re-embed blocks even if already embedded with same model
+             * @default false
+             */
+            readonly force: boolean;
+            /**
+             * Kind
+             * @description Filter by kind
+             */
+            readonly kind?: string | null;
+            /**
+             * Model Id
+             * @description Embedding model ID (defaults to system default)
+             */
+            readonly model_id?: string | null;
+            /**
+             * Role
+             * @description Filter by role
+             */
+            readonly role?: string | null;
+        };
         /**
          * EmotionalStateInput
          * @description Emotional state override.
@@ -16494,6 +16598,8 @@ export interface components {
             readonly id: number;
             /** Inputs */
             readonly inputs: readonly Record<string, unknown>[];
+            /** Latest Submission Payload */
+            readonly latest_submission_payload?: Record<string, unknown> | null;
             /** Name */
             readonly name: string | null;
             readonly operation_type: components["schemas"]["OperationType"];
@@ -20057,6 +20163,69 @@ export interface components {
             /** Without Sha With Local */
             readonly without_sha_with_local: number;
         };
+        /** SimilarBlockResponse */
+        readonly SimilarBlockResponse: {
+            /** Block Id */
+            readonly block_id: string;
+            /** Category */
+            readonly category: string | null;
+            /** Description */
+            readonly description: string | null;
+            /** Distance */
+            readonly distance: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            readonly id: string;
+            /** Kind */
+            readonly kind: string;
+            /** Prompt */
+            readonly prompt: string;
+            /** Role */
+            readonly role: string | null;
+            /** Similarity Score */
+            readonly similarity_score: number;
+        };
+        /** SimilarByTextRequest */
+        readonly SimilarByTextRequest: {
+            /**
+             * Category
+             * @description Filter by category
+             */
+            readonly category?: string | null;
+            /**
+             * Kind
+             * @description Filter by kind
+             */
+            readonly kind?: string | null;
+            /**
+             * Limit
+             * @description Max results
+             * @default 10
+             */
+            readonly limit: number;
+            /**
+             * Model Id
+             * @description Embedding model ID
+             */
+            readonly model_id?: string | null;
+            /**
+             * Role
+             * @description Filter by role
+             */
+            readonly role?: string | null;
+            /**
+             * Text
+             * @description Text to find similar blocks for
+             */
+            readonly text: string;
+            /**
+             * Threshold
+             * @description Max cosine distance
+             */
+            readonly threshold?: number | null;
+        };
         /**
          * SimpleImageToVideoRequest
          * @description Minimal request for quick image-to-video generations.
@@ -23069,6 +23238,44 @@ export interface operations {
             };
         };
     };
+    readonly embed_block_api_v1_action_blocks__block_id__embed_post: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Re-embed even if already done */
+                readonly force?: boolean;
+                /** @description Embedding model ID */
+                readonly model_id?: string | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly block_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly increment_usage_api_v1_action_blocks__block_id__increment_usage_post: {
         readonly parameters: {
             readonly query?: {
@@ -23124,6 +23331,47 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly find_similar_blocks_api_v1_action_blocks__block_id__similar_get: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Filter by category */
+                readonly category?: string | null;
+                /** @description Filter by kind */
+                readonly kind?: string | null;
+                readonly limit?: number;
+                /** @description Filter by role */
+                readonly role?: string | null;
+                /** @description Max cosine distance */
+                readonly threshold?: number | null;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly block_id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["SimilarBlockResponse"][];
                 };
             };
             /** @description Validation Error */
@@ -23406,6 +23654,41 @@ export interface operations {
             };
         };
     };
+    readonly embed_blocks_batch_api_v1_action_blocks_embed_batch_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmbedBatchRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": Record<string, unknown>;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly extract_blocks_from_prompt_api_v1_action_blocks_extract_post: {
         readonly parameters: {
             readonly query?: never;
@@ -23636,6 +23919,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": readonly components["schemas"]["ActionBlockResponse"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly find_similar_by_text_api_v1_action_blocks_similar_by_text_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SimilarByTextRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["SimilarBlockResponse"][];
                 };
             };
             /** @description Validation Error */

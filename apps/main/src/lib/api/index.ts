@@ -38,6 +38,7 @@ export type { ErrorResponse, ErrorCode } from './errorHandling';
 // Domain clients
 export * from './game';
 export * from './accounts';
+export * from './actionBlocks';
 export * from './assets';
 export * from './automation';
 export * from './composition';
