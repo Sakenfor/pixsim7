@@ -32,6 +32,7 @@
     "axios": "^1.6.0"
   },
   "dependencies": {
+    "@pixsim7/shared.helpers.core": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {

@@ -26,20 +26,25 @@ Usage:
         # Link is active - "evening" matches "night" alias
         ...
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from pixsim7.backend.main.services.prompt.context.mapping import get_nested_value
-from pixsim7.backend.main.domain.game.time import (
-    WorldTimeConfig,
-    DEFAULT_WORLD_TIME_CONFIG,
-    period_matches_target,
-    day_has_flag,
-)
+
+if TYPE_CHECKING:
+    from pixsim7.backend.main.domain.game.time import WorldTimeConfig
+
+
+def _get_context_value(context: Dict[str, Any], path: str) -> Any:
+    """Read context values from either nested objects or flat dot-keys."""
+    value = get_nested_value(context, path)
+    if value is not None:
+        return value
+    return context.get(path)
 
 
 def evaluate_activation(
     conditions: Optional[Dict[str, Any]],
     context: Dict[str, Any],
-    time_config: Optional[WorldTimeConfig] = None,
+    time_config: Optional["WorldTimeConfig"] = None,
 ) -> bool:
     """Evaluate activation conditions against a runtime context
 
@@ -102,13 +107,19 @@ def evaluate_activation(
     if not conditions:
         return True  # No conditions = always active
 
+    from pixsim7.backend.main.domain.game.time import (
+        DEFAULT_WORLD_TIME_CONFIG,
+        period_matches_target,
+        day_has_flag,
+    )
+
     if time_config is None:
         time_config = DEFAULT_WORLD_TIME_CONFIG
 
     for key, expected_value in conditions.items():
         # Special handling for time.period with alias support
         if key == "time.period":
-            actual_period = get_nested_value(context, "time.period")
+            actual_period = _get_context_value(context, "time.period")
             if actual_period is None:
                 return False
             if not period_matches_target(str(actual_period), str(expected_value), time_config):
@@ -117,7 +128,7 @@ def evaluate_activation(
 
         # Special handling for time.dayFlags
         if key == "time.dayFlags":
-            day_of_week = get_nested_value(context, "time.dayOfWeek")
+            day_of_week = _get_context_value(context, "time.dayOfWeek")
             if day_of_week is None:
                 return False
             if not day_has_flag(int(day_of_week), str(expected_value), time_config):
@@ -125,7 +136,7 @@ def evaluate_activation(
             continue
 
         # Standard equality check with dot-notation support
-        context_value = get_nested_value(context, key)
+        context_value = _get_context_value(context, key)
         if context_value != expected_value:
             return False
 
@@ -135,7 +146,7 @@ def evaluate_activation(
 def evaluate_activation_for_link(
     link: Any,
     context: Dict[str, Any],
-    time_config: Optional[WorldTimeConfig] = None,
+    time_config: Optional["WorldTimeConfig"] = None,
 ) -> bool:
     """Evaluate activation conditions for an ObjectLink
 
@@ -170,7 +181,7 @@ def evaluate_activation_for_link(
 def filter_active_links(
     links: list[Any],
     context: Dict[str, Any],
-    time_config: Optional[WorldTimeConfig] = None,
+    time_config: Optional["WorldTimeConfig"] = None,
 ) -> list[Any]:
     """Filter a list of links to only those active in the given context
 
@@ -203,7 +214,7 @@ def filter_active_links(
 def get_highest_priority_active_link(
     links: list[Any],
     context: Dict[str, Any],
-    time_config: Optional[WorldTimeConfig] = None,
+    time_config: Optional["WorldTimeConfig"] = None,
 ) -> Optional[Any]:
     """Get the highest-priority active link from a list
 

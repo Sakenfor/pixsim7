@@ -49,7 +49,14 @@ export type {
 export { createRegistry, createHelperRegistry } from './registry';
 
 // Case conversion utilities
-export { toSnakeCaseKey, toSnakeCaseDeep, toSnakeCaseShallow } from './case';
+export {
+  toSnakeCaseKey,
+  toSnakeCaseDeep,
+  toSnakeCaseShallow,
+  toCamelCaseKey,
+  toCamelCaseDeep,
+  toCamelCaseShallow,
+} from './case';
 
 // Hash utilities
 export { computeFileSha256 } from './hash';

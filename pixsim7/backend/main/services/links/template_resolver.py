@@ -24,6 +24,7 @@ from typing import Optional, Dict, Any, List, Iterable
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.services.links.link_service import LinkService
+from pixsim7.backend.main.services.links.activation import evaluate_activation_for_link
 
 
 def _get_value(definition: Any, keys: Iterable[str]) -> Optional[Any]:
@@ -74,10 +75,25 @@ async def resolve_template_to_runtime(
     if link_id:
         # Use explicit link
         from uuid import UUID
-        link = await link_service.get_link(UUID(link_id))
-        if link and link.sync_enabled:
-            return link.runtime_id
-        return None
+        try:
+            link_uuid = UUID(str(link_id))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid link_id format") from exc
+
+        link = await link_service.get_link(link_uuid)
+        if not link or not link.sync_enabled:
+            return None
+
+        # Prevent link_id from bypassing template identity constraints.
+        if link.template_kind != template_kind or link.template_id != template_id:
+            return None
+
+        # Match the same activation semantics as LinkService.
+        if context is None:
+            return link.runtime_id if not link.activation_conditions else None
+        if not evaluate_activation_for_link(link, context):
+            return None
+        return link.runtime_id
 
     # Delegate to LinkService for canonical filtering (sync_enabled + activation + priority)
     link = await link_service.get_active_link_for_template(

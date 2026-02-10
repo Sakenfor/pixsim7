@@ -1,24 +1,37 @@
 /**
  * Interactions API Domain Client
  *
- * Provides typed access to NPC interaction endpoints including
- * listing available interactions, executing them, and handling dialogue.
+ * Uses canonical interaction contracts from @pixsim7/shared.types.
+ * Request/response payloads are normalized at the boundary to tolerate
+ * snake_case and camelCase backend serialization differences.
  */
 import type { PixSimApiClient } from '../client';
+import type {
+  InteractionParticipant as SharedInteractionParticipant,
+  InteractionTarget as SharedInteractionTarget,
+  InteractionInstance as SharedInteractionInstance,
+  ListInteractionsRequest as SharedListInteractionsRequest,
+  ListInteractionsResponse as SharedListInteractionsResponse,
+  ExecuteInteractionRequest as SharedExecuteInteractionRequest,
+  ExecuteInteractionResponse as SharedExecuteInteractionResponse,
+} from '@pixsim7/shared.types';
+import { toCamelCaseDeep } from '@pixsim7/shared.helpers.core';
 
-// ===== Interaction Types =====
+// ===== Canonical Shared Types =====
 
-export interface InteractionParticipant {
-  role: string;
-  npcId?: number;
-  entityId?: string;
-}
+export type InteractionParticipant = SharedInteractionParticipant;
+export type InteractionTarget = SharedInteractionTarget;
+export type InteractionInstance = SharedInteractionInstance;
+export type ListInteractionsRequest = SharedListInteractionsRequest;
+export type ListInteractionsResponse = SharedListInteractionsResponse;
+export type ExecuteInteractionRequest = SharedExecuteInteractionRequest;
+export type ExecuteInteractionResponse = SharedExecuteInteractionResponse;
 
-export interface InteractionTarget {
-  type: 'npc' | 'location' | 'item' | 'self';
-  id?: number | string;
-}
+// ===== Backward-compatible Legacy Types =====
 
+/**
+ * @deprecated Legacy pre-unified shape; keep only for compatibility.
+ */
 export interface InteractionCondition {
   type: string;
   params: Record<string, unknown>;
@@ -26,64 +39,17 @@ export interface InteractionCondition {
   reason?: string;
 }
 
+/**
+ * @deprecated Legacy pre-unified shape; keep only for compatibility.
+ */
 export interface InteractionEffect {
   type: string;
   params: Record<string, unknown>;
 }
 
-export interface InteractionInstance {
-  id: string;
-  name: string;
-  description?: string;
-  category?: string;
-  icon?: string;
-  available: boolean;
-  conditions: InteractionCondition[];
-  effects: InteractionEffect[];
-  priority?: number;
-  tags?: string[];
-  pluginId?: string;
-}
-
-export interface ListInteractionsRequest {
-  worldId: number;
-  sessionId: number;
-  target?: InteractionTarget;
-  participants?: InteractionParticipant[];
-  primaryRole?: string;
-  locationId?: number;
-  includeUnavailable?: boolean;
-}
-
-export interface ListInteractionsResponse {
-  interactions: InteractionInstance[];
-  total: number;
-  availableCount: number;
-}
-
-export interface ExecuteInteractionRequest {
-  worldId: number;
-  sessionId: number;
-  interactionId: string;
-  target?: InteractionTarget;
-  participants?: InteractionParticipant[];
-  params?: Record<string, unknown>;
-}
-
-export interface ExecuteInteractionResponse {
-  success: boolean;
-  effects: Array<{
-    type: string;
-    applied: boolean;
-    result?: unknown;
-    error?: string;
-  }>;
-  sessionUpdated: boolean;
-  newSessionVersion?: number;
-}
-
-// ===== Dialogue Types =====
-
+/**
+ * @deprecated Pending dialogue is stored on session flags and read via app wrapper.
+ */
 export interface PendingDialogueRequest {
   requestId: string;
   npcId: number;
@@ -100,7 +66,37 @@ export interface PendingDialogueRequest {
 export interface DialogueExecutionResponse {
   text: string;
   cached: boolean;
+  generationTimeMs?: number;
   generation_time_ms?: number;
+}
+
+interface DialogueExecutionResponseDto {
+  text?: string;
+  cached?: boolean;
+  generation_time_ms?: number;
+  generationTimeMs?: number;
+}
+
+function normalizeListInteractionsResponse(raw: unknown): ListInteractionsResponse {
+  return toCamelCaseDeep(raw as Record<string, unknown>) as unknown as ListInteractionsResponse;
+}
+
+function normalizeExecuteInteractionResponse(raw: unknown): ExecuteInteractionResponse {
+  return toCamelCaseDeep(raw as Record<string, unknown>) as unknown as ExecuteInteractionResponse;
+}
+
+function normalizeDialogueExecutionResponse(raw: DialogueExecutionResponseDto): DialogueExecutionResponse {
+  const camel = toCamelCaseDeep(raw as Record<string, unknown>) as {
+    text?: string;
+    cached?: boolean;
+    generationTimeMs?: number;
+  };
+  return {
+    text: camel.text ?? '',
+    cached: Boolean(camel.cached),
+    generationTimeMs: camel.generationTimeMs,
+    generation_time_ms: camel.generationTimeMs,
+  };
 }
 
 // ===== Interactions API Factory =====
@@ -111,14 +107,16 @@ export function createInteractionsApi(client: PixSimApiClient) {
      * List available interactions for a target.
      */
     async listInteractions(req: ListInteractionsRequest): Promise<ListInteractionsResponse> {
-      return client.post<ListInteractionsResponse>('/game/interactions/list', req);
+      const raw = await client.post<unknown>('/game/interactions/list', req);
+      return normalizeListInteractionsResponse(raw);
     },
 
     /**
      * Execute an interaction.
      */
     async executeInteraction(req: ExecuteInteractionRequest): Promise<ExecuteInteractionResponse> {
-      return client.post<ExecuteInteractionResponse>('/game/interactions/execute', req);
+      const raw = await client.post<unknown>('/game/interactions/execute', req);
+      return normalizeExecuteInteractionResponse(raw);
     },
 
     /**
@@ -143,7 +141,7 @@ export function createInteractionsApi(client: PixSimApiClient) {
         primaryRole: options?.primaryRole,
         includeUnavailable: false,
       });
-      return response.interactions;
+      return response.interactions || [];
     },
 
     /**
@@ -168,7 +166,7 @@ export function createInteractionsApi(client: PixSimApiClient) {
         primaryRole: options?.primaryRole,
         includeUnavailable: true,
       });
-      return response.interactions;
+      return response.interactions || [];
     },
 
     // ===== Dialogue =====
@@ -182,12 +180,13 @@ export function createInteractionsApi(client: PixSimApiClient) {
       playerInput?: string;
       programId?: string;
     }): Promise<DialogueExecutionResponse> {
-      return client.post<DialogueExecutionResponse>('/game/dialogue/next-line/execute', {
+      const raw = await client.post<DialogueExecutionResponseDto>('/game/dialogue/next-line/execute', {
         npc_id: params.npcId,
         session_id: params.sessionId,
         player_input: params.playerInput,
         program_id: params.programId,
       });
+      return normalizeDialogueExecutionResponse(raw);
     },
   };
 }

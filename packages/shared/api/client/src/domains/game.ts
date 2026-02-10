@@ -5,6 +5,13 @@
  * sessions, scenes, NPCs, quests, and inventory.
  */
 import type { PixSimApiClient } from '../client';
+import type {
+  TemplateKind as SharedTemplateKind,
+  ResolveTemplateResponse as SharedResolveTemplateResponse,
+  ResolveBatchResponse as SharedResolveBatchResponse,
+  RuntimeKind,
+} from '@pixsim7/shared.types';
+import { toCamelCaseShallow } from '@pixsim7/shared.helpers.core';
 
 // ===== World Types =====
 
@@ -164,17 +171,56 @@ export interface InventoryStatsResponse {
 
 // ===== Template Resolution Types =====
 
-export type TemplateKind = 'characterInstance' | 'locationInstance' | 'itemInstance' | string;
+export type TemplateKind = SharedTemplateKind;
+export type ResolveTemplateResponse = SharedResolveTemplateResponse;
+export type ResolveBatchResponse = SharedResolveBatchResponse;
 
-export interface ResolveTemplateResponse {
-  found: boolean;
-  runtime_id?: number;
-  runtime_kind?: string;
-  link_id?: number;
+interface ResolveTemplateResponseDto {
+  resolved?: boolean;
+  found?: boolean;
+  runtime_kind?: string | null;
+  runtime_id?: number | null;
+  template_kind?: string;
+  template_id?: string;
 }
 
-export interface ResolveBatchResponse {
-  results: Record<string, ResolveTemplateResponse>;
+interface ResolveBatchResponseDto {
+  results: Record<string, ResolveTemplateResponseDto>;
+  resolved_count?: number;
+  total_count?: number;
+}
+
+function normalizeResolveTemplateResponse(
+  raw: ResolveTemplateResponseDto,
+  fallback: { templateKind: string; templateId: string }
+): ResolveTemplateResponse {
+  const camel = toCamelCaseShallow(raw) as {
+    resolved?: boolean;
+    found?: boolean;
+    runtimeKind?: string | null;
+    runtimeId?: number | null;
+    templateKind?: string;
+    templateId?: string;
+  };
+
+  return {
+    resolved: camel.resolved ?? camel.found ?? false,
+    runtimeKind: (camel.runtimeKind ?? undefined) as RuntimeKind | undefined,
+    runtimeId: camel.runtimeId ?? undefined,
+    templateKind: camel.templateKind ?? fallback.templateKind,
+    templateId: camel.templateId ?? fallback.templateId,
+  };
+}
+
+function parseTemplateRefKey(key: string): { templateKind: string; templateId: string } {
+  const idx = key.indexOf(':');
+  if (idx === -1) {
+    return { templateKind: '', templateId: key };
+  }
+  return {
+    templateKind: key.slice(0, idx),
+    templateId: key.slice(idx + 1),
+  };
 }
 
 // ===== Game API Factory =====
@@ -332,11 +378,12 @@ export function createGameApi(client: PixSimApiClient) {
       templateId: string,
       context?: Record<string, unknown>
     ): Promise<ResolveTemplateResponse> {
-      return client.post<ResolveTemplateResponse>('/game/links/resolve', {
+      const raw = await client.post<ResolveTemplateResponseDto>('/game/links/resolve', {
         template_kind: templateKind,
         template_id: templateId,
         context,
       });
+      return normalizeResolveTemplateResponse(raw, { templateKind, templateId });
     },
 
     async resolveTemplateBatch(
@@ -347,7 +394,15 @@ export function createGameApi(client: PixSimApiClient) {
       }>,
       sharedContext?: Record<string, unknown>
     ): Promise<ResolveBatchResponse> {
-      return client.post<ResolveBatchResponse>('/game/links/resolve-batch', {
+      const refsByKey = new Map<string, { templateKind: string; templateId: string }>();
+      for (const ref of refs) {
+        refsByKey.set(`${ref.templateKind}:${ref.templateId}`, {
+          templateKind: ref.templateKind,
+          templateId: ref.templateId,
+        });
+      }
+
+      const raw = await client.post<ResolveBatchResponseDto>('/game/links/resolve-batch', {
         refs: refs.map((ref) => ({
           template_kind: ref.templateKind,
           template_id: ref.templateId,
@@ -355,6 +410,30 @@ export function createGameApi(client: PixSimApiClient) {
         })),
         shared_context: sharedContext,
       });
+
+      const rawCamel = toCamelCaseShallow(raw) as {
+        results?: Record<string, ResolveTemplateResponseDto>;
+        resolvedCount?: number;
+        totalCount?: number;
+      };
+
+      const results: Record<string, ResolveTemplateResponse> = {};
+      for (const [key, value] of Object.entries(rawCamel.results || {})) {
+        results[key] = normalizeResolveTemplateResponse(
+          value,
+          refsByKey.get(key) || parseTemplateRefKey(key)
+        );
+      }
+
+      const resolvedCount =
+        rawCamel.resolvedCount ??
+        Object.values(results).filter((entry) => entry.resolved).length;
+
+      return {
+        results,
+        resolvedCount,
+        totalCount: rawCamel.totalCount ?? refs.length,
+      };
     },
   };
 }

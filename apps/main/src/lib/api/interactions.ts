@@ -3,8 +3,8 @@
  *
  * Wraps the shared domain client with app-specific helpers for dialogue management.
  */
-import { IDs } from '@pixsim7/shared.types';
 import { createInteractionsApi, createGameApi } from '@pixsim7/shared.api.client/domains';
+import { IDs } from '@pixsim7/shared.types';
 import type {
   ListInteractionsRequest,
   ListInteractionsResponse,
@@ -13,7 +13,6 @@ import type {
   InteractionParticipant,
   InteractionTarget,
   InteractionInstance,
-  GameSessionDTO,
 } from '@pixsim7/shared.types';
 
 import { pixsimClient } from './client';
@@ -149,7 +148,7 @@ export async function executePendingDialogue(
   return {
     text: response.text,
     cached: response.cached,
-    generationTimeMs: response.generation_time_ms,
+    generationTimeMs: response.generationTimeMs ?? response.generation_time_ms,
     requestId,
   };
 }
