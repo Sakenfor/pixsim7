@@ -15,16 +15,21 @@
  * - Provides loading and error states
  */
 
+import {
+  npcPresenceToActorPresence,
+  extractPlayersFromSession,
+  extractAgentsFromSession,
+} from '@pixsim7/game.engine';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { getNpcPresence, type NpcPresenceDTO } from '../../api/game';
+
 import type {
   ActorType,
   ActorPresence,
-  AnyActor,
-  NpcActor,
-  PlayerActor,
   GameSessionDTO,
 } from '@lib/registries';
+
+import { getNpcPresence, type NpcPresenceDTO } from '../../api/game';
+
 
 export type ActorTypeFilter = ActorType | 'all';
 
@@ -66,111 +71,6 @@ export interface UseActorPresenceReturn {
   getActorsAtLocation: (locationId: number) => ActorPresence[];
   /** Get actor by ID */
   getActorById: (actorId: number) => ActorPresence | undefined;
-}
-
-/**
- * Convert NpcPresenceDTO to ActorPresence
- */
-function npcPresenceToActorPresence(
-  npc: NpcPresenceDTO,
-  worldTimeSeconds: number
-): ActorPresence {
-  return {
-    actorId: npc.npc_id,
-    actorType: 'npc',
-    locationId: npc.location_id,
-    worldTimeSeconds,
-    state: npc.state,
-  };
-}
-
-/**
- * Extract player actors from session state
- * Players are stored in session.flags.players or session.flags.actors
- */
-function extractPlayersFromSession(
-  session: GameSessionDTO | null | undefined,
-  worldTimeSeconds: number
-): ActorPresence[] {
-  if (!session?.flags) return [];
-
-  const players: ActorPresence[] = [];
-
-  // Check for players in session flags
-  const playersData = session.flags.players as Record<string, PlayerActor> | undefined;
-  if (playersData) {
-    for (const [key, player] of Object.entries(playersData)) {
-      if (player && typeof player === 'object' && player.type === 'player') {
-        players.push({
-          actorId: player.id,
-          actorType: 'player',
-          locationId: player.locationId ?? 0,
-          worldTimeSeconds,
-          state: {
-            name: player.name,
-            controlledBy: player.controlledBy,
-            ...player.flags,
-          },
-        });
-      }
-    }
-  }
-
-  // Also check for actors map (unified storage)
-  const actorsData = session.flags.actors as Record<string, AnyActor> | undefined;
-  if (actorsData) {
-    for (const [key, actor] of Object.entries(actorsData)) {
-      if (actor && typeof actor === 'object' && actor.type === 'player') {
-        const playerActor = actor as PlayerActor;
-        players.push({
-          actorId: playerActor.id,
-          actorType: 'player',
-          locationId: playerActor.locationId ?? 0,
-          worldTimeSeconds,
-          state: {
-            name: playerActor.name,
-            controlledBy: playerActor.controlledBy,
-            ...playerActor.flags,
-          },
-        });
-      }
-    }
-  }
-
-  return players;
-}
-
-/**
- * Extract agent actors from session state
- */
-function extractAgentsFromSession(
-  session: GameSessionDTO | null | undefined,
-  worldTimeSeconds: number
-): ActorPresence[] {
-  if (!session?.flags) return [];
-
-  const agents: ActorPresence[] = [];
-
-  // Check for actors map (unified storage)
-  const actorsData = session.flags.actors as Record<string, AnyActor> | undefined;
-  if (actorsData) {
-    for (const [key, actor] of Object.entries(actorsData)) {
-      if (actor && typeof actor === 'object' && actor.type === 'agent') {
-        agents.push({
-          actorId: actor.id,
-          actorType: 'agent',
-          locationId: actor.locationId ?? 0,
-          worldTimeSeconds,
-          state: {
-            name: actor.name,
-            ...actor.flags,
-          },
-        });
-      }
-    }
-  }
-
-  return agents;
 }
 
 /**

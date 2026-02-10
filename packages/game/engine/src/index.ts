@@ -96,6 +96,38 @@ export {
 
 export type { SocialContextConfig } from './relationships/socialContext';
 
+// Preference System (NPC tool preferences, feedback, relationship-gated access)
+export {
+  calculateFeedback,
+  isToolUnlocked,
+  getRecommendedTools,
+  createDefaultPreferences,
+  PREFERENCE_PRESETS,
+  getHolderPreferences,
+  setHolderPreferences,
+  holderHasPreferences,
+  applyHolderPreset,
+  getHolderFavoriteTools,
+  getHolderRecommendedTools,
+  isHolderToolUnlocked,
+  getHolderToolAffinity,
+  setHolderToolPreference,
+  setHolderPatternPreference,
+  addHolderFavoriteTool,
+  removeHolderFavoriteTool,
+  unlockHolderTool,
+  calculateHolderFeedback,
+} from './relationships/preferenceSystem';
+
+export type {
+  ToolPreference,
+  PatternPreference,
+  SensitivityProfile,
+  ReactionThresholds,
+  NpcPreferences,
+  PreferenceHolder,
+} from './relationships/preferenceSystem';
+
 export {
   relationshipKeys,
   arcKeys,
@@ -497,6 +529,15 @@ export {
   getAllAdapters,
   isWritableSource,
 } from './session/statAdapters';
+
+// ===== Actor Presence =====
+export {
+  npcPresenceToActorPresence,
+  extractPlayersFromSession,
+  extractAgentsFromSession,
+} from './session/actorPresence';
+
+export type { NpcPresenceInput } from './session/actorPresence';
 
 // ===== Session Storage =====
 export {

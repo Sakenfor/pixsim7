@@ -1,339 +1,46 @@
 /**
  * NPC Preference System
- * Defines how NPCs react to different tools, patterns, and interactions
+ *
+ * Re-exports from @pixsim7/game.engine where the core logic lives.
+ * This module narrows the pattern type to TouchPattern for gizmo consumers.
  */
 
 import type { TouchPattern } from './tools';
 
-// ============================================================================
-// Preference Types
-// ============================================================================
+// Re-export all types and functions from engine
+export type {
+  ToolPreference,
+  SensitivityProfile,
+  ReactionThresholds,
+  NpcPreferences,
+  PreferenceHolder,
+} from '@pixsim7/game.engine';
 
-/**
- * NPC's preference for a specific tool
- */
-export interface ToolPreference {
-  toolId: string;
-  /** How much the NPC likes this tool (0-1, where 0.5 is neutral) */
-  affinity: number;
-  /** Preferred pressure range */
-  preferredPressure?: { min: number; max: number };
-  /** Preferred speed range */
-  preferredSpeed?: { min: number; max: number };
-  /** Special notes about this tool preference */
-  notes?: string;
-}
-
-/**
- * NPC's preference for touch patterns
- */
+// Re-export PatternPreference with narrowed pattern type
 export interface PatternPreference {
   pattern: TouchPattern;
-  /** How much the NPC likes this pattern (0-1, where 0.5 is neutral) */
   affinity: number;
-  /** Context where this preference applies (e.g., 'intimate', 'casual') */
   context?: string;
 }
 
-/**
- * NPC's sensitivity to different stimuli
- */
-export interface SensitivityProfile {
-  /** Overall sensitivity multiplier (0.5 = less sensitive, 2.0 = very sensitive) */
-  overall: number;
-  /** Sensitivity to touch (affects pressure thresholds) */
-  touch: number;
-  /** Sensitivity to temperature (hot/cold tools) */
-  temperature: number;
-  /** Sensitivity to speed/rhythm changes */
-  rhythm: number;
-}
-
-/**
- * How NPC reacts to tool usage
- */
-export interface ReactionThresholds {
-  /** Below this threshold = negative reaction (e.g., 0.3 means < 0.3 is negative) */
-  negativeThreshold: number;
-  /** Above optimal max = overstimulation/negative (e.g., 1.0 means no upper limit) */
-  overstimulationThreshold: number;
-  /** Optimal intensity range for best reactions */
-  optimal: { min: number; max: number };
-}
-
-/**
- * Complete NPC preference profile
- */
-export interface NpcPreferences {
-  /** Version for future migrations */
-  version: number;
-
-  /** Tool preferences */
-  tools: ToolPreference[];
-
-  /** Pattern preferences */
-  patterns: PatternPreference[];
-
-  /** Sensitivity profile */
-  sensitivity: SensitivityProfile;
-
-  /** Reaction thresholds */
-  reactions: ReactionThresholds;
-
-  /** Favorite tools (shortcuts to highly-preferred tools) */
-  favorites: string[];
-
-  /** Tools that should be unlocked/available for this NPC */
-  unlockedTools?: string[];
-
-  /** Relationship level required to access certain tools */
-  relationshipGates?: Record<string, number>;
-
-  /** Custom metadata for game-specific preferences */
-  meta?: Record<string, unknown>;
-}
-
-// ============================================================================
-// Preference Utilities
-// ============================================================================
-
-/**
- * Calculate feedback intensity based on NPC preferences and tool usage
- */
-export function calculateFeedback(
-  preferences: NpcPreferences,
-  toolId: string,
-  pressure: number,
-  speed: number,
-  pattern?: TouchPattern
-): {
-  intensity: number; // 0-1, how much the NPC enjoys this
-  reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
-  message?: string;
-} {
-  let score = 0.5; // Neutral baseline
-
-  // Tool affinity
-  const toolPref = preferences.tools.find(t => t.toolId === toolId);
-  if (toolPref) {
-    score += (toolPref.affinity - 0.5); // Shift to -0.5 to +0.5
-
-    // Check pressure preference
-    if (toolPref.preferredPressure) {
-      const { min, max } = toolPref.preferredPressure;
-      if (pressure >= min && pressure <= max) {
-        score += 0.1;
-      } else {
-        score -= 0.1;
-      }
-    }
-
-    // Check speed preference
-    if (toolPref.preferredSpeed) {
-      const { min, max } = toolPref.preferredSpeed;
-      if (speed >= min && speed <= max) {
-        score += 0.1;
-      } else {
-        score -= 0.1;
-      }
-    }
-  }
-
-  // Pattern affinity
-  if (pattern) {
-    const patternPref = preferences.patterns.find(p => p.pattern === pattern);
-    if (patternPref) {
-      score += (patternPref.affinity - 0.5) * 0.5; // Less impact than tool
-    }
-  }
-
-  // Apply sensitivity
-  score *= preferences.sensitivity.overall;
-
-  // Clamp to 0-1
-  const intensity = Math.max(0, Math.min(1, score));
-
-  // Determine reaction based on intensity thresholds
-  let reaction: 'negative' | 'neutral' | 'positive' | 'ecstatic';
-  const { negativeThreshold, overstimulationThreshold, optimal } = preferences.reactions;
-
-  if (intensity < negativeThreshold) {
-    // Too weak/unpleasant
-    reaction = 'negative';
-  } else if (intensity >= optimal.min && intensity <= optimal.max) {
-    // In optimal range - positive or ecstatic
-    reaction = intensity > 0.8 ? 'ecstatic' : 'positive';
-  } else if (intensity > overstimulationThreshold) {
-    // Too intense/overstimulating
-    reaction = 'negative';
-  } else {
-    // Between negative threshold and optimal, or between optimal and overstimulation
-    reaction = 'neutral';
-  }
-
-  return { intensity, reaction };
-}
-
-/**
- * Check if a tool is unlocked for this NPC based on relationship level
- */
-export function isToolUnlocked(
-  preferences: NpcPreferences,
-  toolId: string,
-  relationshipLevel: number = 0
-): boolean {
-  // Check if tool is in unlocked list
-  if (preferences.unlockedTools && !preferences.unlockedTools.includes(toolId)) {
-    return false;
-  }
-
-  // Check relationship gate
-  if (preferences.relationshipGates && preferences.relationshipGates[toolId]) {
-    return relationshipLevel >= preferences.relationshipGates[toolId];
-  }
-
-  // Default: unlocked
-  return true;
-}
-
-/**
- * Get recommended tools for this NPC (sorted by affinity)
- */
-export function getRecommendedTools(
-  preferences: NpcPreferences,
-  relationshipLevel: number = 0
-): string[] {
-  return preferences.tools
-    .filter(t => isToolUnlocked(preferences, t.toolId, relationshipLevel))
-    .sort((a, b) => b.affinity - a.affinity)
-    .map(t => t.toolId);
-}
-
-/**
- * Create default preferences for an NPC
- */
-export function createDefaultPreferences(): NpcPreferences {
-  return {
-    version: 1,
-    tools: [],
-    patterns: [],
-    sensitivity: {
-      overall: 1.0,
-      touch: 1.0,
-      temperature: 1.0,
-      rhythm: 1.0,
-    },
-    reactions: {
-      negativeThreshold: 0.3,
-      overstimulationThreshold: 1.0, // No upper limit by default
-      optimal: { min: 0.7, max: 0.9 },
-    },
-    favorites: [],
-    unlockedTools: [],
-    relationshipGates: {},
-    meta: {},
-  };
-}
-
-/**
- * Example preference presets
- */
-export const PREFERENCE_PRESETS = {
-  /** Gentle and sensitive - prefers soft touch */
-  gentle: (): NpcPreferences => ({
-    ...createDefaultPreferences(),
-    tools: [
-      { toolId: 'touch', affinity: 0.8, preferredPressure: { min: 0.2, max: 0.5 } },
-      { toolId: 'feather', affinity: 0.9, preferredPressure: { min: 0.1, max: 0.4 } },
-      { toolId: 'water', affinity: 0.7 },
-    ],
-    patterns: [
-      { pattern: 'circular', affinity: 0.8 },
-      { pattern: 'linear', affinity: 0.6 },
-    ],
-    sensitivity: {
-      overall: 1.5,
-      touch: 2.0,
-      temperature: 1.2,
-      rhythm: 1.0,
-    },
-    reactions: {
-      negativeThreshold: 0.4, // Sensitive - needs gentler approach
-      overstimulationThreshold: 0.85, // Gets overwhelmed easily
-      optimal: { min: 0.5, max: 0.75 },
-    },
-    favorites: ['feather', 'touch'],
-    unlockedTools: ['touch'], // Start with only touch unlocked
-    relationshipGates: {
-      feather: 20, // Unlock at relationship level 20
-      water: 40, // Unlock at relationship level 40
-      banana: 60, // Unlock at relationship level 60 (playful/intimate)
-    },
-  }),
-
-  /** Intense and passionate - prefers strong sensations */
-  intense: (): NpcPreferences => ({
-    ...createDefaultPreferences(),
-    tools: [
-      { toolId: 'touch', affinity: 0.7, preferredPressure: { min: 0.6, max: 0.9 } },
-      { toolId: 'temperature', affinity: 0.8 },
-      { toolId: 'energy', affinity: 0.9 },
-    ],
-    patterns: [
-      { pattern: 'zigzag', affinity: 0.9 },
-      { pattern: 'tap', affinity: 0.7 },
-    ],
-    sensitivity: {
-      overall: 0.7,
-      touch: 0.8,
-      temperature: 1.5,
-      rhythm: 1.3,
-    },
-    reactions: {
-      negativeThreshold: 0.5, // Needs stronger stimulation
-      overstimulationThreshold: 1.0, // Rarely overstimulated
-      optimal: { min: 0.75, max: 0.95 },
-    },
-    favorites: ['energy', 'temperature'],
-    unlockedTools: ['touch'], // Start with basic touch
-    relationshipGates: {
-      temperature: 30, // Unlock temperature tools at level 30
-      energy: 50, // Unlock energy tools at level 50
-      feather: 70, // Gentle tools unlock later for intense NPCs
-    },
-  }),
-
-  /** Playful and exploratory - likes variety */
-  playful: (): NpcPreferences => ({
-    ...createDefaultPreferences(),
-    tools: [
-      { toolId: 'banana', affinity: 0.9 },
-      { toolId: 'feather', affinity: 0.8 },
-      { toolId: 'water', affinity: 0.7 },
-      { toolId: 'touch', affinity: 0.6 },
-    ],
-    patterns: [
-      { pattern: 'spiral', affinity: 0.9 },
-      { pattern: 'circular', affinity: 0.8 },
-      { pattern: 'zigzag', affinity: 0.7 },
-    ],
-    sensitivity: {
-      overall: 1.2,
-      touch: 1.0,
-      temperature: 1.0,
-      rhythm: 1.5,
-    },
-    reactions: {
-      negativeThreshold: 0.35, // Enjoys variety, rarely dislikes
-      overstimulationThreshold: 0.95, // Can handle high intensity playfully
-      optimal: { min: 0.6, max: 0.9 },
-    },
-    favorites: ['banana', 'feather', 'water'],
-    unlockedTools: ['touch', 'feather'], // Start with 2 tools for variety
-    relationshipGates: {
-      water: 25, // Unlock water early for playful type
-      banana: 45, // Unlock banana at mid-level (requires trust/playfulness)
-      energy: 65, // Unlock intense tools later
-    },
-  }),
-};
+export {
+  calculateFeedback,
+  isToolUnlocked,
+  getRecommendedTools,
+  createDefaultPreferences,
+  PREFERENCE_PRESETS,
+  getHolderPreferences,
+  setHolderPreferences,
+  holderHasPreferences,
+  applyHolderPreset,
+  getHolderFavoriteTools,
+  getHolderRecommendedTools,
+  isHolderToolUnlocked,
+  getHolderToolAffinity,
+  setHolderToolPreference,
+  setHolderPatternPreference,
+  addHolderFavoriteTool,
+  removeHolderFavoriteTool,
+  unlockHolderTool,
+  calculateHolderFeedback,
+} from '@pixsim7/game.engine';
