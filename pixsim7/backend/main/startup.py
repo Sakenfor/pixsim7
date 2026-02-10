@@ -112,6 +112,22 @@ async def setup_database_and_seed() -> None:
             msg="Continuing startup without default presets"
         )
 
+    # Built-in plugin seeding is OPTIONAL
+    try:
+        from pixsim7.backend.main.services.plugin.plugin_service import PluginCatalogService
+        async with get_async_session() as db:
+            service = PluginCatalogService(db)
+            count = await service.seed_builtin_plugins()
+            if count:
+                logger.info("builtin_plugins_seeded", count=count)
+    except Exception as e:
+        logger.warning(
+            "plugin_seed_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing startup without built-in plugins"
+        )
+
 
 async def setup_analyzer_definitions() -> int:
     """
