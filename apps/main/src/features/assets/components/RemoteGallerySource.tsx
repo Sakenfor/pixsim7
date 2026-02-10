@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
-import type { AssetGroupListResponse, AssetGroupRequest, AssetGroupMeta } from '@lib/api/assets';
+import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon, ThemedIcon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
@@ -23,22 +23,33 @@ import { useProviders } from '@features/providers';
 
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
-import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
-import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 
-import type { AssetFilters, AssetModel } from '../hooks/useAssets';
+import type { AssetFilters } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
-import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, GROUP_BY_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
+import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
-import { fromAssetResponses, getAssetDisplayUrls } from '../models/asset';
+import { fromAssetResponses } from '../models/asset';
 
 import { DynamicFilters } from './DynamicFilters';
+import { GroupFolderTile, GroupListRow } from './GroupCards';
+import {
+  parsePageParam,
+  parseGroupParams,
+  formatGroupLabel,
+  areScopesEqual,
+  areGroupByStacksEqual,
+  GROUP_PREVIEW_LIMIT,
+  GROUP_PAGE_SIZE,
+  DEFAULT_GROUP_BY_STACK,
+  DEFAULT_GROUP_VIEW,
+  DEFAULT_GROUP_SCOPE,
+  type AssetGroup,
+  type GroupPathEntry,
+} from './groupHelpers';
+import { PageJumpPopover } from './PageJumpPopover';
 import { mediaCardPropsFromAsset } from './shared';
-
-
-
 
 
 interface RemoteGallerySourceProps {
@@ -46,154 +57,6 @@ interface RemoteGallerySourceProps {
   cardSize: number;
   overlayPresetId?: string;
 }
-
-const parsePageParam = (search: string) => {
-  const params = new URLSearchParams(search);
-  const raw = params.get('page');
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-};
-
-const parseGroupPageParam = (search: string) => {
-  const params = new URLSearchParams(search);
-  const raw = params.get('group_page');
-  const parsed = raw ? parseInt(raw, 10) : NaN;
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-};
-
-const DEFAULT_GROUP_BY_STACK: GalleryGroupBy[] = [];
-const DEFAULT_GROUP_VIEW: GalleryGroupView = 'inline';
-const DEFAULT_GROUP_SCOPE: GalleryGroupScope = [];
-
-const GROUP_VIEW_VALUES: GalleryGroupView[] = ['inline', 'folders', 'panel'];
-
-const parseGroupParams = (
-  search: string,
-  defaults: {
-    groupView: GalleryGroupView;
-    groupBy: GalleryGroupBySelection;
-    groupScope: GalleryGroupScope;
-  },
-) => {
-  const params = new URLSearchParams(search);
-  const rawGroupByValues = params.getAll('group_by');
-  const groupByValues = rawGroupByValues.length > 0 ? rawGroupByValues : params.get('group_by');
-  const normalizedGroupBy = normalizeGroupBySelection(groupByValues);
-  const groupBy = normalizedGroupBy.length > 0 ? normalizedGroupBy : normalizeGroupBySelection(defaults.groupBy);
-  const rawGroupView = params.get('group_view') as GalleryGroupView | null;
-  const groupView =
-    rawGroupView && GROUP_VIEW_VALUES.includes(rawGroupView) ? rawGroupView : defaults.groupView;
-  const rawGroupScopeValues = params.getAll('group_scope');
-  const groupScopeValues = rawGroupScopeValues.length > 0 ? rawGroupScopeValues : params.get('group_scope');
-  const normalizedGroupScope = normalizeGroupScopeSelection(groupScopeValues);
-  const groupScope = normalizedGroupScope.length > 0 ? normalizedGroupScope : defaults.groupScope;
-  const rawGroupPathValues = params.getAll('group_path');
-  const rawGroupPath = rawGroupPathValues.length > 0 ? rawGroupPathValues : params.get('group_path');
-  const pathEntries = (Array.isArray(rawGroupPath) ? rawGroupPath : rawGroupPath ? [rawGroupPath] : [])
-    .map((entry) => {
-      const [rawBy, rawKey] = entry.split(':', 2);
-      if (!rawBy || !rawKey) return null;
-      if (!GROUP_BY_VALUES.includes(rawBy as GalleryGroupBy)) return null;
-      return { groupBy: rawBy as GalleryGroupBy, groupKey: rawKey };
-    })
-    .filter((entry): entry is { groupBy: GalleryGroupBy; groupKey: string } => !!entry);
-  const groupKeyFallback = params.get('group_key');
-  if (groupKeyFallback && groupBy.length > 0 && pathEntries.length === 0) {
-    pathEntries.push({ groupBy: groupBy[0], groupKey: groupKeyFallback });
-  }
-  let resolvedGroupBy = groupBy;
-  if (pathEntries.length > 0) {
-    const pathOrder = Array.from(
-      new Set(pathEntries.map((entry) => entry.groupBy)),
-    );
-    if (pathOrder.length > 0) {
-      resolvedGroupBy = [
-        ...pathOrder,
-        ...groupBy.filter((value) => !pathOrder.includes(value)),
-      ];
-    }
-  }
-  const groupPath: { groupBy: GalleryGroupBy; groupKey: string }[] = [];
-  if (resolvedGroupBy.length > 0 && pathEntries.length > 0) {
-    for (const entryBy of resolvedGroupBy) {
-      const match = pathEntries.find((entry) => entry.groupBy === entryBy);
-      if (!match) break;
-      groupPath.push(match);
-    }
-  }
-  const groupPage = parseGroupPageParam(search);
-  return {
-    groupBy: resolvedGroupBy,
-    groupView,
-    groupScope,
-    groupPath,
-    groupPage,
-  };
-};
-
-type AssetGroup = {
-  key: string;
-  label: string;
-  previewAssets: AssetModel[];
-  count: number;
-  latestTimestamp: number;
-  meta?: AssetGroupMeta | null;
-};
-
-type GroupPathEntry = {
-  groupBy: GalleryGroupBy;
-  groupKey: string;
-};
-
-const formatGroupLabel = (
-  groupBy: GalleryGroupBy,
-  key: string,
-  meta?: AssetGroupMeta | null,
-) => {
-  if (key === 'other') return 'Other';
-  if (key === 'ungrouped') return 'Ungrouped';
-  if (meta && meta.kind === 'prompt' && meta.prompt_text) {
-    const text = meta.prompt_text.trim();
-    if (text.length <= 80) return text;
-    return `${text.slice(0, 77)}...`;
-  }
-  if (meta && meta.kind === 'source' && meta.description) {
-    return meta.description;
-  }
-  if (groupBy === 'source') return `Source #${key}`;
-  if (groupBy === 'generation') return `Generation #${key}`;
-  if (groupBy === 'prompt') return `Prompt ${key}`;
-  return key;
-};
-
-const GROUP_PREVIEW_LIMIT = 4;
-const GROUP_PAGE_SIZE = 50;
-
-const areScopesEqual = (left: string[], right: string[]) => {
-  if (left.length !== right.length) return false;
-  const leftSet = new Set(left);
-  for (const entry of right) {
-    if (!leftSet.has(entry)) return false;
-  }
-  return true;
-};
-
-const areGroupByStacksEqual = (left: GalleryGroupBy[], right: GalleryGroupBy[]) => {
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
-};
-
-const selectGroupPreviewAssets = (assets: AssetModel[]) => {
-  return assets
-    .filter((asset) => {
-      const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
-      if (thumbnailUrl || previewUrl) return true;
-      if (asset.mediaType === 'image') return !!mainUrl;
-      if (asset.mediaType === 'video') return !!(mainUrl || asset.remoteUrl || asset.fileUrl);
-      return false;
-    })
-    .slice(0, GROUP_PREVIEW_LIMIT);
-};
 
 export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: RemoteGallerySourceProps) {
   const location = useLocation();
@@ -953,21 +816,12 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 >
                   &lsaquo;
                 </button>
-                <button
-                  onClick={() => {
-                    const targetPage = prompt(`Go to group page (1-${groupTotalPages}):`, String(groupPage));
-                    if (targetPage) {
-                      const page = parseInt(targetPage, 10);
-                      if (!isNaN(page) && page >= 1) {
-                        goToGroupPage(page);
-                      }
-                    }
-                  }}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
-                  title="Click to jump to group page"
-                >
-                  {groupLoading ? '...' : `${groupPage}/${groupTotalPages}`}
-                </button>
+                <PageJumpPopover
+                  currentPage={groupPage}
+                  totalPages={groupTotalPages}
+                  loading={groupLoading}
+                  onGoToPage={goToGroupPage}
+                />
                 <button
                   onClick={() => goToGroupPage(groupPage + 1)}
                   disabled={groupLoading || !groupHasMore}
@@ -990,21 +844,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 >
                   &lsaquo;
                 </button>
-                <button
-                  onClick={() => {
-                    const targetPage = prompt(`Go to page (1-${controller.totalPages}+):`, String(controller.currentPage));
-                    if (targetPage) {
-                      const page = parseInt(targetPage, 10);
-                      if (!isNaN(page) && page >= 1) {
-                        goToPage(page);
-                      }
-                    }
-                  }}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors min-w-[60px] text-center"
-                  title="Click to jump to page"
-                >
-                  {controller.loading ? '...' : `${controller.currentPage}/${controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}`}
-                </button>
+                <PageJumpPopover
+                  currentPage={controller.currentPage}
+                  totalPages={controller.totalPages}
+                  hasMore={controller.hasMore}
+                  loading={controller.loading}
+                  onGoToPage={goToPage}
+                />
                 <button
                   onClick={() => goToPage(controller.currentPage + 1)}
                   disabled={controller.loading || !controller.hasMore}
@@ -1321,220 +1167,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function GroupFolderTile({
-  group,
-  cardSize,
-  onOpen,
-}: {
-  group: AssetGroup;
-  cardSize: number;
-  onOpen: () => void;
-}) {
-  const tileHeight = Math.max(160, Math.round(cardSize * 0.75));
-  const previewAssets = useMemo(() => {
-    return selectGroupPreviewAssets(group.previewAssets);
-  }, [group.previewAssets]);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-400 dark:hover:border-blue-400 transition-colors overflow-hidden text-left"
-      style={{ height: tileHeight }}
-      title={group.label}
-    >
-      <div className="grid grid-cols-2 grid-rows-2 gap-1 p-2 h-full">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <GroupPreviewCell
-            key={index}
-            asset={previewAssets[index]}
-          />
-        ))}
-      </div>
-      <div className="absolute inset-x-2 bottom-2 px-2 py-1 rounded bg-white/90 dark:bg-neutral-900/90 border border-neutral-200 dark:border-neutral-700">
-        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-          {group.label}
-        </div>
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
-          {group.count} items
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function GroupListRow({
-  group,
-  cardSize,
-  onOpen,
-}: {
-  group: AssetGroup;
-  cardSize: number;
-  onOpen: () => void;
-}) {
-  const previewAssets = useMemo(() => {
-    return selectGroupPreviewAssets(group.previewAssets);
-  }, [group.previewAssets]);
-  const previewSize = Math.max(56, Math.round(cardSize * 0.28));
-  const infoLine = useMemo(() => {
-    const parts: string[] = [];
-    const meta = group.meta;
-    if (meta && meta.kind === 'prompt') {
-      if (meta.family_title) parts.push(meta.family_title);
-      if (meta.version_number !== null && meta.version_number !== undefined) {
-        parts.push(`v${meta.version_number}`);
-      }
-      if (meta.author) parts.push(meta.author);
-      if (meta.commit_message) {
-        const trimmed = meta.commit_message.trim();
-        if (trimmed) {
-          parts.push(trimmed.length > 60 ? `${trimmed.slice(0, 57)}...` : trimmed);
-        }
-      }
-    } else if (meta && meta.kind === 'generation') {
-      if (meta.provider_id) parts.push(meta.provider_id);
-      if (meta.operation_type) parts.push(meta.operation_type.replace(/_/g, ' '));
-      if (meta.status) parts.push(meta.status);
-    } else if (meta && meta.kind === 'source') {
-      parts.push(`Asset #${meta.asset_id}`);
-      if (meta.media_type) parts.push(meta.media_type);
-    }
-
-    parts.push(`${group.count} items`);
-    return parts.filter(Boolean).join(' \u2022 ');
-  }, [group.count, group.meta]);
-
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/60 hover:border-blue-400 dark:hover:border-blue-400 transition-colors px-3 py-3 text-left"
-      title={group.label}
-    >
-      <div className="flex items-center gap-4">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          <GroupMetaThumb meta={group.meta} size={previewSize} />
-          <div className="min-w-0">
-            <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 line-clamp-2">
-              {group.label}
-            </div>
-            <div className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-1">
-              {infoLine}
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <GroupPreviewCell
-              key={index}
-              asset={previewAssets[index]}
-              size={previewSize}
-            />
-          ))}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function GroupMetaThumb({
-  meta,
-  size,
-}: {
-  meta?: AssetGroupMeta | null;
-  size: number;
-}) {
-  const isSource = meta?.kind === 'source';
-  const fallbackThumb = isSource
-    ? meta.thumbnail_url ?? meta.preview_url ?? meta.remote_url ?? undefined
-    : undefined;
-  const thumbSrc = useMediaThumbnail(
-    fallbackThumb,
-    isSource ? meta.preview_url ?? undefined : undefined,
-    isSource ? meta.remote_url ?? undefined : undefined,
-    { preferPreview: true },
-  );
-
-  if (!isSource) {
-    return null;
-  }
-
-  return (
-    <div
-      className="flex-none rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
-      style={{ width: size, height: size }}
-    >
-      {thumbSrc ? (
-        <img src={thumbSrc} alt="" className="w-full h-full object-cover" loading="lazy" />
-      ) : null}
-    </div>
-  );
-}
-
-function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: number }) {
-  const urls = useMemo(() => {
-    if (!asset) {
-      return { mainUrl: undefined, thumbnailUrl: undefined, previewUrl: undefined };
-    }
-    return getAssetDisplayUrls(asset);
-  }, [asset]);
-
-  const isVideo = asset?.mediaType === 'video';
-  const { thumbSrc, thumbLoading, thumbFailed, videoSrc, usePosterImage } = useMediaPreviewSource({
-    mediaType: asset?.mediaType ?? 'image',
-    thumbUrl: urls.thumbnailUrl,
-    previewUrl: urls.previewUrl,
-    remoteUrl: urls.mainUrl ?? asset?.remoteUrl ?? asset?.fileUrl,
-  });
-  const showPoster = isVideo && usePosterImage && !!thumbSrc && !thumbFailed;
-  const showImage = !isVideo && !!thumbSrc && !thumbFailed;
-  const showVideo = isVideo && !!videoSrc && !showPoster;
-
-  return (
-    <div
-      className="w-full h-full rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
-      style={size ? { width: size, height: size } : undefined}
-    >
-      {showPoster ? (
-        <img
-          src={thumbSrc}
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      ) : showImage ? (
-        <img
-          src={thumbSrc}
-          alt=""
-          className="w-full h-full object-cover"
-          loading="lazy"
-        />
-      ) : showVideo ? (
-        <video
-          src={videoSrc}
-          poster={thumbSrc}
-          className="w-full h-full object-cover"
-          preload="metadata"
-          muted
-          playsInline
-        />
-      ) : thumbLoading ? (
-        <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
-          <div className="w-4 h-4 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
-          <ThemedIcon
-            name={asset?.mediaType === 'video' ? 'video' : 'image'}
-            size={16}
-            variant="subtle"
-          />
-        </div>
-      )}
     </div>
   );
 }
