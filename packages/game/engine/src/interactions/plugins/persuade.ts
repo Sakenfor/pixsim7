@@ -13,7 +13,6 @@
  *
  * Moved from apps/main/src/lib/game/interactions/persuade.ts
  */
-import type { NpcRelationshipState } from '../../core/types';
 import type { IntimacyGatingConfig } from '@pixsim7/shared.types';
 import {
   advanceIntimacyLevel,
@@ -363,19 +362,16 @@ export const persuadePlugin: InteractionPlugin<PersuadeConfig> = {
       return { success: false, message: 'No active game session' };
     }
 
-    // Get NPC relationship state using generic API
-    const relState = context.session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
-    if (!relState) {
+    if (!context.session.getRelationship(npcId)) {
       context.onError('No relationship data found for this NPC');
       return { success: false, message: 'No relationship data' };
     }
 
     try {
-      // Route to appropriate mode
       if (config.mode === 'persuade') {
-        return await executePersuade(config, context, npcId, relState);
+        return await executePersuade(config, context, npcId);
       } else {
-        return await executeSeduce(config, context, npcId, relState);
+        return await executeSeduce(config, context, npcId);
       }
     } catch (e: any) {
       const errorMsg = String(e?.message ?? e);
@@ -410,43 +406,29 @@ async function executePersuade(
   config: PersuadeConfig,
   context: InteractionContext,
   npcId: number,
-  relState: NpcRelationshipState
 ): Promise<InteractionResult> {
-  const affinity = relState.values.affinity ?? 0;
-  const trust = relState.values.trust ?? 50;
+  const { session } = context;
+  const affinity = session.getRelationshipValue(npcId, 'affinity');
+  const trust = session.getRelationshipValue(npcId, 'trust');
 
-  // Calculate success chance
   const successChance = calculatePersuadeChance(
-    affinity,
-    config.charmStat,
-    config.difficulty,
-    config.persuadeAffinityBonus
+    affinity, config.charmStat, config.difficulty, config.persuadeAffinityBonus
   );
 
-  // Roll the dice!
   const roll = Math.random();
   const success = roll < successChance;
 
   if (success) {
-    // SUCCESS: Increase affinity
     const newAffinity = Math.min(100, affinity + config.persuadeAffinityReward);
 
-    await context.session.updateStat('session.relationships', npcId, {
+    await session.updateRelationship(npcId, {
       values: { affinity: newAffinity },
+      addFlags: config.onPersuadeSuccessFlags,
     });
-
-    // Set success flags
-    if (config.onPersuadeSuccessFlags && config.onPersuadeSuccessFlags.length > 0) {
-      const currentFlags = relState.flags || [];
-      await context.session.updateStat('session.relationships', npcId, {
-        flags: [...currentFlags, ...config.onPersuadeSuccessFlags],
-      });
-    }
 
     const message = `Persuasion succeeded! NPC is convinced. (${Math.round(successChance * 100)}% chance, rolled ${Math.round(roll * 100)})`;
     context.onSuccess(message);
 
-    // Trigger success scene if configured
     if (config.persuadeSuccessSceneId) {
       await context.onSceneOpen(config.persuadeSuccessSceneId, npcId);
     }
@@ -454,32 +436,19 @@ async function executePersuade(
     return {
       success: true,
       message,
-      data: {
-        roll,
-        successChance,
-        affinityChange: config.persuadeAffinityReward,
-      },
+      data: { roll, successChance, affinityChange: config.persuadeAffinityReward },
     };
   } else {
-    // FAILURE: Decrease trust
     const newTrust = Math.max(0, trust - config.persuadeTrustPenalty);
 
-    await context.session.updateStat('session.relationships', npcId, {
+    await session.updateRelationship(npcId, {
       values: { trust: newTrust },
+      addFlags: config.onPersuadeFailFlags,
     });
-
-    // Set failure flags
-    if (config.onPersuadeFailFlags && config.onPersuadeFailFlags.length > 0) {
-      const currentFlags = relState.flags || [];
-      await context.session.updateStat('session.relationships', npcId, {
-        flags: [...currentFlags, ...config.onPersuadeFailFlags],
-      });
-    }
 
     const message = `Persuasion failed. NPC is unconvinced and trust decreased. (${Math.round(successChance * 100)}% chance, rolled ${Math.round(roll * 100)})`;
     context.onError(message);
 
-    // Trigger failure scene if configured
     if (config.persuadeFailureSceneId) {
       await context.onSceneOpen(config.persuadeFailureSceneId, npcId);
     }
@@ -487,11 +456,7 @@ async function executePersuade(
     return {
       success: false,
       message,
-      data: {
-        roll,
-        successChance,
-        trustChange: -config.persuadeTrustPenalty,
-      },
+      data: { roll, successChance, trustChange: -config.persuadeTrustPenalty },
     };
   }
 }
@@ -503,35 +468,28 @@ async function executeSeduce(
   config: PersuadeConfig,
   context: InteractionContext,
   npcId: number,
-  relState: NpcRelationshipState
 ): Promise<InteractionResult> {
-  const affinity = relState.values.affinity ?? 0;
-  const chemistry = relState.values.chemistry ?? 0;
-  const trust = relState.values.trust ?? 50;
-  const intimacyLevel = relState.levelId;
+  const { session } = context;
+  const affinity = session.getRelationshipValue(npcId, 'affinity');
+  const chemistry = session.getRelationshipValue(npcId, 'chemistry');
+  const trust = session.getRelationshipValue(npcId, 'trust');
+  const intimacyLevel = session.getIntimacyLevel(npcId);
 
-  // Build gating config from interaction config (for backwards compatibility)
+  // Build gating config from interaction config
   const gatingConfig: Partial<IntimacyGatingConfig> = {
     interactions: {
       seduction: {
         minimumAffinity: config.minAffinityForSeduction,
         minimumChemistry: config.minChemistryForSeduction,
-        // Use default appropriate levels unless consent checks are disabled
         appropriateLevels: config.consentChecks && config.blockIfInappropriate
-          ? undefined // Use defaults
-          : [], // Empty array = no level restrictions
+          ? undefined
+          : [],
       },
     },
   };
 
-  // Use shared gating helper
   const seductionCheck = canAttemptSeduction(
-    {
-      affinity,
-      chemistry,
-      trust,
-      levelId: intimacyLevel,
-    },
+    { affinity, chemistry, trust, levelId: intimacyLevel },
     gatingConfig
   );
 
@@ -541,57 +499,32 @@ async function executeSeduce(
     return { success: false, message: msg };
   }
 
-  // Calculate success chance
   const successChance = calculateSeduceChance(
-    chemistry,
-    config.charmStat,
-    config.difficulty,
-    config.seductionChemistryBonus
+    chemistry, config.charmStat, config.difficulty, config.seductionChemistryBonus
   );
 
-  // Roll the dice!
   const roll = Math.random();
   const success = roll < successChance;
 
   if (success) {
-    // SUCCESS: Increase affinity, chemistry, advance intimacy
     const newAffinity = Math.min(100, affinity + config.seductionAffinityReward);
     const newChemistry = Math.min(100, chemistry + config.seductionChemistryReward);
 
-    const valueUpdates: Record<string, number> = {
-      affinity: newAffinity,
-      chemistry: newChemistry,
-    };
-
-    // Build update patch
-    const updatePatch: Partial<NpcRelationshipState> = {
-      values: valueUpdates as any,
-    };
-
-    // Advance intimacy level
     let newIntimacyLevel: string | undefined;
     if (config.advanceIntimacyOnSuccess) {
       newIntimacyLevel = advanceIntimacyLevel(intimacyLevel as string | undefined);
-      updatePatch.levelId = newIntimacyLevel as any;
     }
 
-    await context.session.updateStat('session.relationships', npcId, updatePatch);
+    await session.updateRelationship(npcId, {
+      values: { affinity: newAffinity, chemistry: newChemistry },
+      intimacyLevel: newIntimacyLevel,
+      addFlags: config.onSeduceSuccessFlags,
+    });
 
-    // Set success flags
-    if (config.onSeduceSuccessFlags && config.onSeduceSuccessFlags.length > 0) {
-      const currentFlags = relState.flags || [];
-      await context.session.updateStat('session.relationships', npcId, {
-        flags: [...currentFlags, ...config.onSeduceSuccessFlags],
-      });
-    }
-
-    const intimacyMsg = config.advanceIntimacyOnSuccess
-      ? ` Intimacy advanced to: ${newIntimacyLevel}.`
-      : '';
+    const intimacyMsg = newIntimacyLevel ? ` Intimacy advanced to: ${newIntimacyLevel}.` : '';
     const message = `Seduction succeeded!${intimacyMsg} (${Math.round(successChance * 100)}% chance, rolled ${Math.round(roll * 100)})`;
     context.onSuccess(message);
 
-    // Trigger success scene if configured
     if (config.seduceSuccessSceneId) {
       await context.onSceneOpen(config.seduceSuccessSceneId, npcId);
     }
@@ -599,35 +532,20 @@ async function executeSeduce(
     return {
       success: true,
       message,
-      data: {
-        roll,
-        successChance,
-        affinityChange: config.seductionAffinityReward,
-        chemistryChange: config.seductionChemistryReward,
-        newIntimacyLevel,
-      },
+      data: { roll, successChance, affinityChange: config.seductionAffinityReward, chemistryChange: config.seductionChemistryReward, newIntimacyLevel },
     };
   } else {
-    // FAILURE: Decrease trust and chemistry
     const newTrust = Math.max(0, trust - config.seductionTrustPenalty);
     const newChemistry = Math.max(0, chemistry - config.seductionChemistryPenalty);
 
-    await context.session.updateStat('session.relationships', npcId, {
+    await session.updateRelationship(npcId, {
       values: { trust: newTrust, chemistry: newChemistry },
+      addFlags: config.onSeduceFailFlags,
     });
-
-    // Set failure flags
-    if (config.onSeduceFailFlags && config.onSeduceFailFlags.length > 0) {
-      const currentFlags = relState.flags || [];
-      await context.session.updateStat('session.relationships', npcId, {
-        flags: [...currentFlags, ...config.onSeduceFailFlags],
-      });
-    }
 
     const message = `Seduction failed. NPC rejected your advances. Trust and chemistry decreased. (${Math.round(successChance * 100)}% chance, rolled ${Math.round(roll * 100)})`;
     context.onError(message);
 
-    // Trigger failure scene if configured
     if (config.seduceFailureSceneId) {
       await context.onSceneOpen(config.seduceFailureSceneId, npcId);
     }
@@ -635,12 +553,7 @@ async function executeSeduce(
     return {
       success: false,
       message,
-      data: {
-        roll,
-        successChance,
-        trustChange: -config.seductionTrustPenalty,
-        chemistryChange: -config.seductionChemistryPenalty,
-      },
+      data: { roll, successChance, trustChange: -config.seductionTrustPenalty, chemistryChange: -config.seductionChemistryPenalty },
     };
   }
 }

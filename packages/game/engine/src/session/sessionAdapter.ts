@@ -20,6 +20,8 @@ import type {
 
 import {
   getInventory,
+  getNpcRelationshipState,
+  setNpcRelationshipState,
   addInventoryItem as addInventoryItemCore,
   removeInventoryItem as removeInventoryItemCore,
 } from './state';
@@ -36,8 +38,9 @@ import {
 } from './helpers';
 
 import { sessionHelperRegistry } from './helperRegistry';
+import type { NpcRelationshipState } from '../core/types';
 import { getAdapterBySource, type StatSource } from './statAdapters';
-import type { SessionHelpers, SessionAPI, SessionUpdateResponse } from '../interactions/registry';
+import type { SessionHelpers, SessionAPI, SessionUpdateResponse, RelationshipUpdate } from '../interactions/registry';
 
 /** Maximum number of retry attempts for conflict resolution */
 const MAX_RETRIES = 3;
@@ -148,6 +151,11 @@ export function createSessionHelpers(
       triggerEvent: async () => gameSession!,
       endEvent: async () => gameSession!,
       isEventActive: () => false,
+      getRelationship: () => null,
+      getRelationshipValue: () => 0,
+      getIntimacyLevel: () => null,
+      getRelationshipFlags: () => [],
+      updateRelationship: async () => gameSession!,
     };
   }
 
@@ -406,6 +414,57 @@ export function createSessionHelpers(
     },
 
     isEventActive: (eventId) => isEventActive(gameSession, eventId),
+
+    // =====================================================================
+    // Typed Relationship Accessors
+    // =====================================================================
+
+    getRelationship: (npcId) => {
+      return getNpcRelationshipState(gameSession, npcId);
+    },
+
+    getRelationshipValue: (npcId, axis) => {
+      const rel = getNpcRelationshipState(gameSession, npcId);
+      return rel?.values[axis] ?? 0;
+    },
+
+    getIntimacyLevel: (npcId) => {
+      const rel = getNpcRelationshipState(gameSession, npcId);
+      return rel?.levelId ?? null;
+    },
+
+    getRelationshipFlags: (npcId) => {
+      const rel = getNpcRelationshipState(gameSession, npcId);
+      return rel?.flags ?? [];
+    },
+
+    updateRelationship: async (npcId, update) => {
+      // Build a single NpcRelationshipState patch from the typed update
+      const rel = getNpcRelationshipState(gameSession, npcId);
+      const patch: Partial<NpcRelationshipState> = {};
+
+      if (update.values) {
+        patch.values = update.values as any;
+      }
+
+      if (update.intimacyLevel !== undefined) {
+        patch.levelId = update.intimacyLevel as any;
+      }
+
+      if (update.addFlags && update.addFlags.length > 0) {
+        const existing = rel?.flags ?? [];
+        const merged = [...existing];
+        for (const flag of update.addFlags) {
+          if (!merged.includes(flag)) {
+            merged.push(flag);
+          }
+        }
+        patch.flags = merged;
+      }
+
+      // Delegate to the generic stat update (goes through adapter + optimistic update)
+      return updateStat('session.relationships', npcId, patch);
+    },
 
     // Spread dynamic helpers from registry (allows custom extensions)
     ...dynamicHelpers,

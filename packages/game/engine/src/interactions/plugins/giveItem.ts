@@ -5,7 +5,6 @@
  * Demonstrates inventory access, relationship checks, and scene triggers.
  */
 
-import type { NpcRelationshipState } from '../../core/types';
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
@@ -105,9 +104,7 @@ export const giveItemPlugin: InteractionPlugin<GiveItemConfig> = {
       };
     }
 
-    // Check relationship level using generic getStat API
-    const relState = context.session.getStat('session.relationships', state.assignment.npcId!) as NpcRelationshipState | null;
-    const relationshipScore = relState?.values.affinity ?? 0;
+    const relationshipScore = context.session.getRelationshipValue(state.assignment.npcId!, 'affinity');
 
     if (relationshipScore < config.requiredRelationship) {
       return {

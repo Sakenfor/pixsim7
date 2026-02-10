@@ -7,7 +7,6 @@
  *
  * Moved from apps/main/src/lib/game/interactions/sensualize.ts
  */
-import type { NpcRelationshipState } from '../../core/types';
 import type { IntimacyGatingConfig } from '@pixsim7/shared.types';
 import { canAttemptSensualTouch } from '../intimacyGating';
 
@@ -150,10 +149,9 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
       return { success: false, message: 'No active game session' };
     }
 
-    // Get relationship state using generic getStat API
-    const relState = context.session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
+    const { session } = context;
 
-    // Build gating config from interaction config (for backwards compatibility)
+    // Build gating config from interaction config
     const gatingConfig: Partial<IntimacyGatingConfig> = {
       interactions: {
         sensualTouch: {
@@ -162,11 +160,10 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
       },
     };
 
-    // Use shared gating helper
     const touchCheck = canAttemptSensualTouch(
       {
-        affinity: relState?.values.affinity ?? 0,
-        levelId: relState?.levelId,
+        affinity: session.getRelationshipValue(npcId, 'affinity'),
+        levelId: session.getIntimacyLevel(npcId),
       },
       gatingConfig
     );
@@ -235,18 +232,18 @@ export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
     const gameSession = context.state.gameSession;
     if (!gameSession) return false;
 
-    // Get relationship state using generic getStat API
-    const relState = context.session.getStat('session.relationships', npcId) as NpcRelationshipState | null;
+    const { session } = context;
+    const flags = session.getRelationshipFlags(npcId);
 
     // Available if consent flag is set
-    if (relState?.flags?.includes('romance:consented')) {
+    if (flags.includes('romance:consented')) {
       return true;
     }
 
     // Or check if relationship meets gating requirements
     const touchCheck = canAttemptSensualTouch({
-      affinity: relState?.values.affinity ?? 0,
-      levelId: relState?.levelId,
+      affinity: session.getRelationshipValue(npcId, 'affinity'),
+      levelId: session.getIntimacyLevel(npcId),
     });
 
     return touchCheck.allowed;

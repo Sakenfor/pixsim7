@@ -20,6 +20,7 @@ import type {
   InventoryItem,
   StatSource,
 } from '../index';
+import type { NpcRelationshipState } from '../core/types';
 
 /**
  * Base config interface all interaction plugins extend
@@ -121,6 +122,47 @@ export interface SessionHelpers {
 
   /** Check if event is active */
   isEventActive: (eventId: string) => boolean;
+
+  // =========================================================================
+  // Typed Relationship Accessors
+  // =========================================================================
+
+  /** Get full relationship state for an NPC */
+  getRelationship: (npcId: number) => NpcRelationshipState | null;
+
+  /** Get a single relationship axis value (returns 0 if not found) */
+  getRelationshipValue: (npcId: number, axis: string) => number;
+
+  /** Get NPC's intimacy level ID */
+  getIntimacyLevel: (npcId: number) => string | null;
+
+  /** Get NPC's relationship flags */
+  getRelationshipFlags: (npcId: number) => string[];
+
+  /**
+   * Batched relationship update — values, intimacy level, and flags in one call.
+   *
+   * @example
+   * await session.updateRelationship(npcId, {
+   *   values: { affinity: 60, trust: 40 },
+   *   intimacyLevel: 'flirting',
+   *   addFlags: ['persuaded'],
+   * });
+   */
+  updateRelationship: (npcId: number, update: RelationshipUpdate) => Promise<GameSessionDTO>;
+}
+
+/**
+ * Batched relationship update payload.
+ * All fields optional — only provided fields are applied.
+ */
+export interface RelationshipUpdate {
+  /** Absolute axis values to set (e.g., { affinity: 60 }) */
+  values?: Record<string, number>;
+  /** Set intimacy level ID */
+  intimacyLevel?: string;
+  /** Flags to append (merged with existing, no duplicates) */
+  addFlags?: string[];
 }
 
 /**
