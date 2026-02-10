@@ -1,3 +1,4 @@
+import { createAssetActions } from '@pixsim7/shared.assets.core';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import type { AssetSearchRequest } from '@lib/api/assets';
@@ -15,7 +16,6 @@ import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 
 import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
-import { createAssetActions } from '../lib/assetCardActions';
 import { assetEvents } from '../lib/assetEvents';
 import { getAssetDisplayUrls } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';

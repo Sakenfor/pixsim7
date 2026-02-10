@@ -255,6 +255,7 @@ export function buildInteractionMenu(options: {
     notification: [],
     menu: [],
     ambient: [],
+    gizmo: [],
   };
 
   for (const item of filtered) {

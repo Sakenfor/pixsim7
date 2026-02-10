@@ -99,9 +99,30 @@ export type {
   SelectedAssetLike,
 } from './lib/multiAssetMode';
 
-// Lib - Generation Types (from @pixsim7/shared.types)
-export * from './lib/generationTypes';
+// Lib - Generation Types (from @pixsim7/shared.generation.core)
+export type {
+  GenerationStrategy,
+  GenerationSocialContext,
+  SceneSnapshot,
+  PlayerContextSnapshot,
+  DurationRule,
+  ConstraintSet,
+  StyleRules,
+  FallbackConfig,
+  GenerationNodeConfig,
+  GenerationHealthStatus,
+  GenerationNode,
+  GenerationEdgeMeta,
+  GenerateContentRequest,
+  GeneratedContentMetadata,
+  GeneratedContentPayload,
+  GenerateContentResponse,
+  GenerationValidationResult,
+  NpcResponseParams,
+  NpcResponseContent,
+  CacheKeyComputeFn,
+} from '@pixsim7/shared.generation.core';
 export { registerGenerationScopes } from './lib/registerGenerationScopes';
 
 // Namespace export for generation types
-export * as Generation from './lib/generationTypes';
+export * as Generation from '@pixsim7/shared.generation.core';

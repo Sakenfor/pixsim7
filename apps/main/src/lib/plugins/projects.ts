@@ -7,7 +7,7 @@
  * Storage: localStorage with key 'pixsim7_plugin_projects'
  */
 
-import type { FormField } from '../game/interactions/types';
+import type { FormField } from '@pixsim7/game.engine';
 
 import { pluginManager } from './PluginManager';
 import type { PluginManifest, PluginBundle } from './types';

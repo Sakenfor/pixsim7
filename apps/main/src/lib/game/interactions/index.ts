@@ -15,9 +15,9 @@ import {
   sensualizePlugin,
   talkPlugin,
 } from '@pixsim7/game.engine';
+import { interactionRegistry } from '@pixsim7/game.engine';
 
 import { loadPluginInteractions } from './dynamicLoader';
-import { interactionRegistry } from './types';
 
 // Register bundled interactions (always available)
 interactionRegistry.register(talkPlugin);
@@ -46,8 +46,7 @@ export async function initializeInteractions(): Promise<number> {
 }
 
 // Export registry and types for use in components
-// DEPRECATED: Import from @/lib/registries instead for consistency
-export { interactionRegistry } from './types';
+export { interactionRegistry } from '@pixsim7/game.engine';
 export type {
   InteractionPlugin,
   InteractionContext,
@@ -57,7 +56,7 @@ export type {
   InteractionUIMode,
   InteractionCapabilities,
   SessionAPI,
-} from './types';
+} from '@pixsim7/game.engine';
 
 // Export specific configs for type safety
 // Note: PickpocketConfig is in @pixsim7/plugins.stealth/types
@@ -85,7 +84,7 @@ export {
   hasEnabledInteractions,
   getInteractionPlugin,
   getAllInteractions,
-} from './utils';
+} from '@pixsim7/game.engine';
 
 /**
  * Helper to execute an interaction by ID

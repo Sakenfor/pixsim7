@@ -220,8 +220,8 @@ export class NodeHandlerRegistry {
    */
   clone(): NodeHandlerRegistry {
     const copy = new NodeHandlerRegistry();
-    for (const [type, handler] of this.handlers) {
-      copy.handlers.set(type, handler);
+    for (const [type, handler] of this.registry.getAll()) {
+      copy.register(type, handler);
     }
     return copy;
   }

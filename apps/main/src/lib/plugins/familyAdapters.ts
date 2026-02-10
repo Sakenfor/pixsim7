@@ -1,5 +1,6 @@
 
 import { sessionHelperRegistry, type HelperDefinition } from '@pixsim7/game.engine';
+import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
 
 import type { DevToolDefinition } from '@lib/dev/devtools';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
@@ -16,7 +17,6 @@ import type { PanelDefinition, PanelGroupDefinition } from '@features/panels';
 import type { GenerationUIPlugin } from '@features/providers';
 import type { WorldToolPlugin } from '@features/worldTools';
 
-import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '../game/interactions/types';
 
 import { controlCenterRegistry, type ControlCenterPlugin, type ControlCenterPluginManifest } from './controlCenterPlugin';
 import type {

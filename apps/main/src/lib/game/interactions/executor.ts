@@ -12,10 +12,9 @@ import {
   executeSlotInteractions as executeSlotInteractionsCore,
   type SlotExecutionCallbacks,
 } from '@pixsim7/game.engine';
+import { interactionRegistry, type InteractionContext } from '@pixsim7/game.engine';
 
 import { trackPresetUsage, trackPresetOutcome } from './presets';
-import type { InteractionContext } from './types';
-import { interactionRegistry } from './types';
 
 // Re-export engine types for backward compatibility
 export type { SlotInteractionConfig, SlotExecutionCallbacks } from '@pixsim7/game.engine';

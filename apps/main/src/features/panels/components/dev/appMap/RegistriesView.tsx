@@ -5,12 +5,11 @@
  * Provides visibility into the tool and surface registries.
  */
 
+import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
 import { useState, useMemo, useSyncExternalStore } from 'react';
 
 // Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 import type { Identifiable } from '@lib/core/BaseRegistry';
-import { interactionRegistry } from '@lib/game/interactions/types';
-import type { InteractionPlugin, BaseInteractionConfig } from '@lib/game/interactions/types';
 import {
   brainToolSelectors,
   galleryToolSelectors,

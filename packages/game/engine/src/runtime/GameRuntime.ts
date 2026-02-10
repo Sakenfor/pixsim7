@@ -6,6 +6,7 @@
  */
 
 import type {
+  EntityRef,
   GameSessionDTO,
   GameWorldDetail,
   ExecuteInteractionResponse,
@@ -382,7 +383,7 @@ export class GameRuntime implements IGameRuntime {
   private buildEntityRef(
     kind?: string,
     id?: number | string
-  ): string | undefined {
+  ): EntityRef | undefined {
     if (!kind || id == null) return undefined;
     const numeric = typeof id === 'number' ? id : Number(id);
     const hasNumber = Number.isFinite(numeric);
@@ -404,7 +405,7 @@ export class GameRuntime implements IGameRuntime {
       case 'session':
         return Ref.session(numeric);
       default:
-        return `${kind}:${numeric}`;
+        return `${kind}:${numeric}` as EntityRef;
     }
   }
 

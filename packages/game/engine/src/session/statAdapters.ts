@@ -13,7 +13,7 @@
  * @see StatDefinition.source in worldConfig.ts for source types
  */
 
-import { createHelperRegistry, type HelperAdapter } from '@pixsim7/shared.helpers.core';
+import { createRegistry } from '@pixsim7/shared.helpers.core';
 import type { GameSessionDTO, StatDefinition } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 import { getNpcRelationshipState, setNpcRelationshipState } from './state';
@@ -30,11 +30,16 @@ export type StatSource =
 /**
  * Session stat adapter interface.
  *
- * Extends HelperAdapter with session-specific operations.
  * Provides read/write operations for a specific source type.
  * Write is optional - derived and persona sources are read-only.
  */
-export interface SessionStatAdapter extends HelperAdapter {
+export interface SessionStatAdapter {
+  /** Unique identifier for this adapter */
+  id: string;
+  /** Human-readable label */
+  label?: string;
+  /** Description of what this adapter handles */
+  description?: string;
   /** Source type this adapter handles */
   source: StatSource;
 
@@ -84,7 +89,7 @@ export interface SessionStatAdapter extends HelperAdapter {
  * Registry for session stat adapters.
  * Keyed by StatSource type.
  */
-export const statAdapterRegistry = createHelperRegistry<StatSource, SessionStatAdapter>({
+export const statAdapterRegistry = createRegistry<StatSource, SessionStatAdapter>({
   warnOnOverwrite: true,
 });
 

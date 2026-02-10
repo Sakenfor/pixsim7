@@ -23,6 +23,8 @@
 import { ScenePlayer } from '@pixsim7/game.components';
 import {
   assignNpcsToSlots,
+  createSessionHelpers,
+  hasEnabledInteractions,
   parseHotspotAction,
   deriveScenePlaybackPhase,
   getTurnDeltaLabel,
@@ -30,6 +32,7 @@ import {
   type HotspotAction,
   type ScenePlaybackPhase,
 } from '@pixsim7/game.engine';
+import { saveWorldSession } from '@pixsim7/game.engine';
 import { LocationId as toLocationId, SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
 import { Button, Panel, Badge, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState, useMemo } from 'react';
@@ -82,8 +85,6 @@ import {
 } from '../lib/api/game';
 import { type InteractionContext, type SessionAPI } from '../lib/game/interactions';
 import { executeSlotInteractions } from '../lib/game/interactions/executor';
-import { createSessionHelpers } from '../lib/game/interactions/sessionAdapter';
-import { hasEnabledInteractions } from '../lib/game/interactions/utils';
 import {
   useGameRuntime,
   useActorPresence,
@@ -93,7 +94,6 @@ import {
   registerBuiltinGamePlugins,
   unregisterBuiltinGamePlugins,
 } from '../lib/game/runtime';
-import { saveWorldSession } from '../lib/game/session';
 import { pluginManager } from '../lib/plugins';
 import type { PluginGameState } from '../lib/plugins/types';
 import { useWorldTheme, useViewMode, filterToolsByViewMode } from '../lib/theming';

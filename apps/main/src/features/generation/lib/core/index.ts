@@ -3,7 +3,8 @@
  */
 
 // Asset input types (asset ID resolution pattern)
-export * from './assetInputTypes';
+export type { AssetInput } from '@pixsim7/shared.generation.core';
+export { hasAssetIdParams, extractAssetInput } from '@pixsim7/shared.generation.core';
 
 // Asset resolver for ActionBlocks / DSL → Assets (Task 99.2)
 export * from './assetResolver';

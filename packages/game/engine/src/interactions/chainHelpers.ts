@@ -144,7 +144,7 @@ export function createRomanceChain(
             definitionId: 'relationships',
             axis: 'affinity',
             minValue: stage.minAffinity,
-            entityType: 'npc',
+            entityType: 'npc' as const,
           });
         }
         if (stage.minChemistry !== undefined) {
@@ -152,7 +152,7 @@ export function createRomanceChain(
             definitionId: 'relationships',
             axis: 'chemistry',
             minValue: stage.minChemistry,
-            entityType: 'npc',
+            entityType: 'npc' as const,
           });
         }
         return gates.length > 0 ? { statGating: { allOf: gates } } : undefined;
@@ -168,7 +168,7 @@ export function createRomanceChain(
               chemistry: 5,
               trust: 3,
             },
-            entityType: 'npc',
+            entityType: 'npc' as const,
           },
         ],
         flagChanges: {
@@ -228,7 +228,7 @@ export function createFriendshipChain(
             definitionId: 'relationships',
             axis: 'affinity',
             minValue: milestone.minAffinity,
-            entityType: 'npc',
+            entityType: 'npc' as const,
           });
         }
         if (milestone.minTrust !== undefined) {
@@ -236,7 +236,7 @@ export function createFriendshipChain(
             definitionId: 'relationships',
             axis: 'trust',
             minValue: milestone.minTrust,
-            entityType: 'npc',
+            entityType: 'npc' as const,
           });
         }
         return gates.length > 0 ? { statGating: { allOf: gates } } : undefined;
@@ -251,7 +251,7 @@ export function createFriendshipChain(
               affinity: 3,
               trust: 3,
             },
-            entityType: 'npc',
+            entityType: 'npc' as const,
           },
         ],
         flagChanges: {

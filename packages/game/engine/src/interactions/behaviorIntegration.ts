@@ -5,7 +5,7 @@
  * Allows behaviors to trigger interactions and interactions to affect behavior.
  */
 
-import type { InteractionDefinition, InteractionParticipant, InteractionTarget } from '@pixsim7/shared.types';
+import type { EntityRef, InteractionDefinition, InteractionParticipant, InteractionTarget } from '@pixsim7/shared.types';
 
 /**
  * Behavior state types
@@ -302,12 +302,12 @@ export function createIntentFromHook(
   const numericTargetId =
     typeof target.id === 'number' ? target.id : Number(target.id);
   const hasNumericId = Number.isFinite(numericTargetId);
-  const targetRef = target.ref ?? (target.kind && hasNumericId ? `${target.kind}:${numericTargetId}` : 'unknown');
+  const targetRef = target.ref ?? (target.kind && hasNumericId ? `${target.kind}:${numericTargetId}` as EntityRef : undefined);
   const normalizedTarget =
-    target.ref || (target.kind && hasNumericId) ? { ...target, ref: targetRef } : target;
+    targetRef ? { ...target, ref: targetRef } : target;
 
   return {
-    id: `intent:${targetRef}:${interactionId}:${now}`,
+    id: `intent:${targetRef ?? 'unknown'}:${interactionId}:${now}`,
     target: normalizedTarget,
     participants: [{ role: 'target', ...normalizedTarget }],
     primaryRole: 'target',

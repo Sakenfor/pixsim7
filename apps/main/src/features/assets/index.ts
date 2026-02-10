@@ -124,8 +124,7 @@ export {
 // Lib - Asset Actions & API
 // ============================================================================
 
-export { createAssetActions } from './lib/assetCardActions';
-export type { AssetActionHandlers, AssetActions } from './lib/assetCardActions';
+export { createAssetActions, type MinimalAsset } from '@pixsim7/shared.assets.core';
 
 // ============================================================================
 // Models - Internal Asset Types
@@ -148,7 +147,7 @@ export {
 // Lib - Asset Media Type
 // ============================================================================
 
-export { resolveMediaType, resolveMediaTypes } from './lib/assetMediaType';
+export { resolveMediaType, resolveMediaTypes } from '@pixsim7/shared.assets.core';
 
 // ============================================================================
 // Lib - Asset Events
