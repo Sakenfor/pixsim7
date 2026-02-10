@@ -114,6 +114,10 @@ export function ContextHubCapabilityBridge() {
     const providers = providerRef.current;
 
     return () => {
+      // Keep descriptor registry aligned with provider lifecycle (StrictMode/HMR safe).
+      providers.forEach((_, key) => {
+        unregisterCapabilityDescriptor(key);
+      });
       disposers.forEach((dispose) => dispose());
       disposers.clear();
       providers.clear();

@@ -34,6 +34,16 @@ const descriptors = new Map<CapabilityKey, CapabilityDescriptor>();
 let warnOnOverwrite = typeof import.meta !== "undefined" &&
   (import.meta as any).env?.DEV === true; // Warn in dev, silent in prod
 
+function isSameDescriptor(a: CapabilityDescriptor, b: CapabilityDescriptor): boolean {
+  return (
+    a.key === b.key &&
+    a.label === b.label &&
+    a.description === b.description &&
+    a.kind === b.kind &&
+    a.source === b.source
+  );
+}
+
 /**
  * Register a capability descriptor.
  * @param descriptor - The descriptor to register
@@ -43,7 +53,13 @@ export function registerCapabilityDescriptor(
   descriptor: CapabilityDescriptor,
   options?: { silent?: boolean }
 ): void {
-  if (warnOnOverwrite && descriptors.has(descriptor.key) && !options?.silent) {
+  const existing = descriptors.get(descriptor.key);
+
+  if (existing && isSameDescriptor(existing, descriptor)) {
+    return;
+  }
+
+  if (warnOnOverwrite && existing && !options?.silent) {
     console.warn(
       `[CapabilityDescriptor] Overwriting existing descriptor for '${descriptor.key}'. ` +
       `Use unregisterCapabilityDescriptor() first or pass { silent: true } to suppress this warning.`

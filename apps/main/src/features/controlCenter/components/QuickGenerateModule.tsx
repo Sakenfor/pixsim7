@@ -207,11 +207,12 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       scopeId,
       operationType,
       setOperationType,
+      generate,
       addInput: scopedAddInput,
       addInputs: scopedAddInputs,
       widgetId: 'controlCenter',
     }),
-    [ccIsOpen, ccSetOpen, scopeId, operationType, setOperationType, scopedAddInput, scopedAddInputs],
+    [ccIsOpen, ccSetOpen, scopeId, operationType, setOperationType, generate, scopedAddInput, scopedAddInputs],
   );
 
   const generationWidgetProvider = useMemo(

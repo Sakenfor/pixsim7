@@ -1,5 +1,5 @@
 import type { CapabilityKey } from "@pixsim7/shared.capabilities.core";
-import { useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type {
   ActionCapability,
@@ -49,26 +49,70 @@ export interface UnifiedCapabilityOptions {
   includeFeatures?: boolean;
 }
 
+const EMPTY_KEYS: CapabilityKey[] = [];
+
 function useContextHubKeys(): CapabilityKey[] {
   const hub = useContextHubState();
   const registries = useMemo(() => getRegistryChain(hub), [hub]);
+  const versionRef = useRef(0);
+  const snapshotRef = useRef<{
+    version: number;
+    registries: readonly unknown[] | null;
+    value: CapabilityKey[];
+  }>({
+    version: -1,
+    registries: null,
+    value: EMPTY_KEYS,
+  });
 
-  return useSyncExternalStore(
-    (onStoreChange) => {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
       if (registries.length === 0) return () => {};
       const unsubscribes = registries.map((registry) =>
-        registry.subscribe(onStoreChange),
+        registry.subscribe(() => {
+          versionRef.current += 1;
+          onStoreChange();
+        }),
       );
       return () => unsubscribes.forEach((fn) => fn());
     },
-    () => {
-      if (registries.length === 0) return [];
-      const keys = new Set<CapabilityKey>();
-      registries.forEach((registry) => {
-        registry.getKeys().forEach((key) => keys.add(key));
-      });
-      return Array.from(keys).sort();
-    },
+    [registries],
+  );
+
+  const getSnapshot = useCallback(() => {
+    if (registries.length === 0) {
+      snapshotRef.current = {
+        version: versionRef.current,
+        registries,
+        value: EMPTY_KEYS,
+      };
+      return EMPTY_KEYS;
+    }
+
+    if (
+      snapshotRef.current.version === versionRef.current &&
+      snapshotRef.current.registries === registries
+    ) {
+      return snapshotRef.current.value;
+    }
+
+    const keys = new Set<CapabilityKey>();
+    registries.forEach((registry) => {
+      registry.getKeys().forEach((key) => keys.add(key));
+    });
+    const value = Array.from(keys).sort();
+    snapshotRef.current = {
+      version: versionRef.current,
+      registries,
+      value,
+    };
+    return value;
+  }, [registries]);
+
+  return useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getSnapshot,
   );
 }
 
