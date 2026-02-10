@@ -54,6 +54,7 @@ export type {
   SensitivityProfile,
   ReactionThresholds,
   NpcPreferences,
+  PreferenceHolder,
 } from './npc-preferences';
 
 export {
@@ -62,7 +63,32 @@ export {
   getRecommendedTools,
   createDefaultPreferences,
   PREFERENCE_PRESETS,
+  // PreferenceHolder adapters
+  getHolderPreferences,
+  setHolderPreferences,
+  holderHasPreferences,
+  applyHolderPreset,
+  getHolderFavoriteTools,
+  getHolderRecommendedTools,
+  isHolderToolUnlocked,
+  getHolderToolAffinity,
+  setHolderToolPreference,
+  setHolderPatternPreference,
+  addHolderFavoriteTool,
+  removeHolderFavoriteTool,
+  unlockHolderTool,
+  calculateHolderFeedback,
 } from './npc-preferences';
+
+// Manifest Tool Converter
+export type {
+  ManifestToolType,
+  ManifestVisualModel,
+  ManifestToolDefinition,
+  ManifestToolPack,
+} from './manifestConverter';
+
+export { manifestToolToInteractiveTool } from './manifestConverter';
 
 // Mini-Game System
 export type {
