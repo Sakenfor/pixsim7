@@ -312,8 +312,8 @@ class Asset(SQLModel, table=True):
         Index("idx_asset_user_created", "user_id", "created_at"),
         Index("idx_asset_provider_lookup", "provider_id", "provider_asset_id"),
         Index("idx_asset_sync_media", "sync_status", "media_type"),
-        # Composite unique constraint for per-user SHA256 deduplication
-        Index("idx_asset_user_sha256", "user_id", "sha256", unique=True, postgresql_where="sha256 IS NOT NULL"),
+        # Non-unique index for SHA256 lookups (multiple assets can share content)
+        Index("idx_asset_user_sha256", "user_id", "sha256", unique=False, postgresql_where="sha256 IS NOT NULL"),
     )
 
     def model_post_init(self, __context: Any) -> None:
