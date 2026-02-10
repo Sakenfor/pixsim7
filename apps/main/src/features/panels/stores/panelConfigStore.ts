@@ -100,7 +100,7 @@ export interface PanelConfigActions {
 }
 
 // Gallery panel badge configuration
-export type GalleryGroupBy = "none" | "source" | "generation" | "prompt";
+export type GalleryGroupBy = "none" | "source" | "generation" | "prompt" | "sibling";
 export type GalleryGroupView = "folders" | "inline" | "panel";
 export type GalleryGroupScope = string[];
 export type GalleryGroupMode = "single" | "multi";

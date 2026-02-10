@@ -157,9 +157,13 @@ export const formatGroupLabel = (
   if (meta && meta.kind === 'source' && meta.description) {
     return meta.description;
   }
+  if (meta && meta.kind === 'sibling' && meta.prompt_snippet) {
+    return meta.prompt_snippet;
+  }
   if (groupBy === 'source') return `Source #${key}`;
   if (groupBy === 'generation') return `Generation #${key}`;
   if (groupBy === 'prompt') return `Prompt ${key}`;
+  if (groupBy === 'sibling') return `Sibling ${key.slice(0, 8)}`;
   return key;
 };
 

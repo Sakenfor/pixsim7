@@ -65,6 +65,7 @@ class AssetGroupBy(str, Enum):
     source = "source"
     generation = "generation"
     prompt = "prompt"
+    sibling = "sibling"
 
 
 class AssetGroupPathEntry(BaseModel):
@@ -253,7 +254,18 @@ class AssetGroupPromptMeta(BaseModel):
     tags: List[str] = Field(default_factory=list)
 
 
-AssetGroupMeta = Union[AssetGroupSourceMeta, AssetGroupGenerationMeta, AssetGroupPromptMeta]
+class AssetGroupSiblingMeta(BaseModel):
+    kind: Literal["sibling"] = "sibling"
+    hash: str
+    generation_id: int
+    provider_id: str
+    operation_type: str
+    status: Optional[str] = None
+    created_at: datetime
+    prompt_snippet: Optional[str] = None
+
+
+AssetGroupMeta = Union[AssetGroupSourceMeta, AssetGroupGenerationMeta, AssetGroupPromptMeta, AssetGroupSiblingMeta]
 
 
 class AssetGroupSummary(BaseModel):
@@ -413,6 +425,56 @@ async def list_asset_groups(
                             family_slug=family.slug if family else None,
                             created_at=version.created_at,
                             tags=list(version.tags or []),
+                        )
+            elif group_by == "sibling":
+                from sqlalchemy import select, func
+                from pixsim7.backend.main.domain.generation.models import Generation
+
+                # group keys are reproducible_hash strings
+                hash_keys = [k for k in group_keys if k]
+                if hash_keys:
+                    # Get the latest generation for each hash
+                    ranked = (
+                        select(
+                            Generation,
+                            func.row_number()
+                            .over(
+                                partition_by=Generation.reproducible_hash,
+                                order_by=Generation.created_at.desc(),
+                            )
+                            .label("rn"),
+                        )
+                        .where(Generation.reproducible_hash.in_(hash_keys))
+                        .subquery()
+                    )
+                    result = await db.execute(
+                        select(Generation)
+                        .join(ranked, Generation.id == ranked.c.id)
+                        .where(ranked.c.rn == 1)
+                    )
+                    for generation in result.scalars().all():
+                        operation_type = (
+                            generation.operation_type.value
+                            if hasattr(generation.operation_type, "value")
+                            else str(generation.operation_type)
+                        )
+                        status_value = (
+                            generation.status.value
+                            if hasattr(generation.status, "value")
+                            else str(generation.status)
+                        )
+                        prompt_snippet = None
+                        if generation.final_prompt:
+                            text = generation.final_prompt.strip()
+                            prompt_snippet = text[:80] + ("..." if len(text) > 80 else "")
+                        meta_map[generation.reproducible_hash] = AssetGroupSiblingMeta(
+                            hash=generation.reproducible_hash,
+                            generation_id=generation.id,
+                            provider_id=generation.provider_id,
+                            operation_type=operation_type,
+                            status=status_value,
+                            created_at=generation.created_at,
+                            prompt_snippet=prompt_snippet,
                         )
 
         response_groups: list[AssetGroupSummary] = []

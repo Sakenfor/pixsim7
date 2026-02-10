@@ -94,6 +94,10 @@ export function GroupListRow({
       if (meta.provider_id) parts.push(meta.provider_id);
       if (meta.operation_type) parts.push(meta.operation_type.replace(/_/g, ' '));
       if (meta.status) parts.push(meta.status);
+    } else if (meta && meta.kind === 'sibling') {
+      if (meta.provider_id) parts.push(meta.provider_id);
+      if (meta.operation_type) parts.push(meta.operation_type.replace(/_/g, ' '));
+      if (meta.status) parts.push(meta.status);
     } else if (meta && meta.kind === 'source') {
       parts.push(`Asset #${meta.asset_id}`);
       if (meta.media_type) parts.push(meta.media_type);

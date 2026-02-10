@@ -93,6 +93,25 @@ class AssetCoreService:
                 f"Cannot create asset from failed submission (status={submission.status})"
             )
 
+        # Serialize create-from-submission for this generation and keep this path idempotent.
+        # This avoids duplicate Asset rows when pollers race on the same completion.
+        generation_id = getattr(generation, "id", None)
+        if generation_id is not None:
+            from pixsim7.backend.main.domain.generation.models import Generation as GenerationModel
+
+            locked_generation_result = await self.db.execute(
+                select(GenerationModel)
+                .where(GenerationModel.id == generation_id)
+                .with_for_update()
+            )
+            locked_generation = locked_generation_result.scalar_one_or_none()
+            if locked_generation is not None:
+                generation = locked_generation
+
+            existing_asset = await self._existing_asset_for_generation(generation)
+            if existing_asset is not None:
+                return existing_asset
+
         # Extract data from submission response
         response = submission.response
 
@@ -208,6 +227,26 @@ class AssetCoreService:
         await self._create_generation_lineage(asset, generation)
 
         return asset
+
+    async def _existing_asset_for_generation(self, generation) -> Optional[Asset]:
+        """Return an existing output asset for a generation, if present."""
+        generation_id = getattr(generation, "id", None)
+        if generation_id is None:
+            return None
+
+        existing_asset_id = getattr(generation, "asset_id", None)
+        if existing_asset_id:
+            existing_asset = await self.db.get(Asset, existing_asset_id)
+            if existing_asset is not None:
+                return existing_asset
+
+        result = await self.db.execute(
+            select(Asset)
+            .where(Asset.source_generation_id == generation_id)
+            .order_by(Asset.id.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     # Default auto_tags settings
     DEFAULT_AUTO_TAGS = {
@@ -485,6 +524,10 @@ class AssetCoreService:
             from pixsim7.backend.main.domain.generation.models import Generation
             join_generation = True
             raw_key = cast(Generation.prompt_version_id, String)
+        elif group_by == "sibling":
+            from pixsim7.backend.main.domain.generation.models import Generation
+            join_generation = True
+            raw_key = Generation.reproducible_hash
         else:
             return None, False, False, None
 
@@ -1453,21 +1496,14 @@ class AssetCoreService:
             sql_delete(Generation).where(Generation.asset_id == asset_id)
         )
 
-        # Attempt provider deletion if requested
-        if delete_from_provider and asset.provider_asset_id and asset.provider_id:
-            await self._delete_from_provider(asset)
-
-        # Attempt to remove local cache file if present
-        if asset.local_path:
-            try:
-                if os.path.exists(asset.local_path):
-                    os.remove(asset.local_path)
-            except Exception:
-                pass
-
-        # Reference-counted deletion of stored file and ContentBlob
+        # Snapshot owner/files for post-commit cleanup and event payload.
+        asset_owner_id = asset.user_id
+        local_path = asset.local_path
         stored_key = asset.stored_key
         content_id = asset.content_id
+        should_delete_stored_file = False
+        should_delete_local_file = False
+        local_path_managed_by_storage = False
 
         await self.db.delete(asset)
         await self.db.flush()
@@ -1477,21 +1513,30 @@ class AssetCoreService:
             sibling_count_result = await self.db.execute(
                 select(func.count()).select_from(Asset).where(
                     Asset.stored_key == stored_key,
-                    Asset.user_id == user.id,
                 )
             )
             sibling_count = sibling_count_result.scalar() or 0
             if sibling_count == 0:
-                try:
-                    from pixsim7.backend.main.services.storage import get_storage_service
-                    storage = get_storage_service()
-                    await storage.delete(stored_key)
-                except Exception:
-                    logger.warning(
-                        "stored_key_delete_failed",
-                        stored_key=stored_key,
-                        asset_id=asset_id,
-                    )
+                should_delete_stored_file = True
+
+            try:
+                from pixsim7.backend.main.services.storage import get_storage_service
+                storage = get_storage_service()
+                local_path_managed_by_storage = local_path == storage.get_path(stored_key)
+            except Exception:
+                local_path_managed_by_storage = False
+
+        # local_path is cache-oriented and may not be tied to storage keys.
+        # Delete only when no other assets point at the same local file.
+        if local_path and (not stored_key or not local_path_managed_by_storage):
+            local_ref_count_result = await self.db.execute(
+                select(func.count()).select_from(Asset).where(
+                    Asset.local_path == local_path,
+                )
+            )
+            local_ref_count = local_ref_count_result.scalar() or 0
+            if local_ref_count == 0:
+                should_delete_local_file = True
 
         # Clean up ContentBlob if no other assets reference it
         if content_id:
@@ -1512,9 +1557,33 @@ class AssetCoreService:
 
         await self.db.commit()
 
+        # Best-effort remote/provider cleanup AFTER commit to avoid rollback/file mismatch.
+        if delete_from_provider and asset.provider_asset_id and asset.provider_id:
+            await self._delete_from_provider(asset)
+
+        if should_delete_local_file and local_path:
+            try:
+                if os.path.exists(local_path):
+                    os.remove(local_path)
+            except Exception:
+                pass
+
+        if should_delete_stored_file and stored_key:
+            try:
+                from pixsim7.backend.main.services.storage import get_storage_service
+                storage = get_storage_service()
+                await storage.delete(stored_key)
+            except Exception:
+                logger.warning(
+                    "stored_key_delete_failed",
+                    stored_key=stored_key,
+                    asset_id=asset_id,
+                )
+
         await event_bus.publish(ASSET_DELETED, {
             "asset_id": asset_id,
-            "user_id": user.id,
+            "user_id": asset_owner_id,
+            "deleted_by_user_id": user.id,
         })
 
     async def _delete_from_provider(self, asset: Asset) -> None:

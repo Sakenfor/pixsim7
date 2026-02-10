@@ -52,7 +52,7 @@ export interface AssetSearchRequest {
   cursor?: string | null;
 }
 
-export type AssetGroupBy = 'source' | 'generation' | 'prompt';
+export type AssetGroupBy = 'source' | 'generation' | 'prompt' | 'sibling';
 
 export interface AssetGroupSourceMeta {
   kind: 'source';
@@ -92,10 +92,22 @@ export interface AssetGroupPromptMeta {
   tags?: string[];
 }
 
+export interface AssetGroupSiblingMeta {
+  kind: 'sibling';
+  hash: string;
+  generation_id: number;
+  provider_id: string;
+  operation_type: string;
+  status?: string | null;
+  created_at: string;
+  prompt_snippet?: string | null;
+}
+
 export type AssetGroupMeta =
   | AssetGroupSourceMeta
   | AssetGroupGenerationMeta
-  | AssetGroupPromptMeta;
+  | AssetGroupPromptMeta
+  | AssetGroupSiblingMeta;
 
 export interface AssetGroupRequest extends AssetSearchRequest {
   group_by: AssetGroupBy;

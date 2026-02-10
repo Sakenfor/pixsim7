@@ -1,13 +1,14 @@
 import type { GalleryGroupBy } from '@features/panels';
 
-export const GROUP_BY_VALUES: GalleryGroupBy[] = ['source', 'generation', 'prompt'];
-export const GROUP_BY_UI_VALUES: GalleryGroupBy[] = ['source', 'prompt'];
+export const GROUP_BY_VALUES: GalleryGroupBy[] = ['source', 'generation', 'prompt', 'sibling'];
+export const GROUP_BY_UI_VALUES: GalleryGroupBy[] = ['source', 'prompt', 'sibling'];
 
 export const GROUP_BY_LABELS: Record<GalleryGroupBy, string> = {
   none: 'None',
   source: 'Source asset',
   generation: 'Generation',
   prompt: 'Prompt',
+  sibling: 'Sibling',
 };
 
 export function normalizeGroupBySelection(value: unknown): GalleryGroupBy[] {
