@@ -674,11 +674,12 @@ export default {
 // Export/Import Functions (Phase 5)
 // ============================================================================
 
-export interface PluginExportFormat {
-  kind: PluginProjectKind;
-  version: string; // Export format version
-  data: any; // Kind-specific data
-}
+export type PluginExportFormat =
+  | { kind: 'ui-plugin'; version: string; data: { manifest: PluginManifest; code: string } }
+  | { kind: 'interaction'; version: string; data: { metadata: BasePluginMetadata; code: string; configSchema?: string } }
+  | { kind: 'node-type'; version: string; data: { metadata: BasePluginMetadata; code: string } }
+  | { kind: 'gallery-tool'; version: string; data: { metadata: BasePluginMetadata; code: string } }
+  | { kind: 'world-tool'; version: string; data: { metadata: BasePluginMetadata; code: string } };
 
 export function exportProject(project: PluginProject): PluginExportFormat {
   switch (project.kind) {
@@ -821,8 +822,10 @@ export function importProject(exportData: PluginExportFormat): PluginProject {
       return worldProject;
     }
 
-    default:
-      throw new Error(`Unknown plugin kind: ${(exportData as any).kind}`);
+    default: {
+      const _exhaustive: never = exportData;
+      throw new Error(`Unknown plugin kind: ${(_exhaustive as PluginExportFormat).kind}`);
+    }
   }
 }
 

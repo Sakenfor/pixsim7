@@ -5,6 +5,7 @@
  * Ensures plugins can only access permitted APIs.
  */
 
+import { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 import type {
   PluginManifest,
   PluginEntry,
@@ -17,7 +18,6 @@ import type {
   PluginPermission,
   PluginBundle,
 } from './types';
-import { loadPluginInSandbox, SandboxedPlugin } from './sandbox';
 
 /**
  * Plugin manager singleton
@@ -29,6 +29,8 @@ export class PluginManager {
   private menuItems = new Map<string, PluginMenuItem>();
   private stateSubscribers: Array<(state: PluginGameState) => void> = [];
   private currentGameState: PluginGameState | null = null;
+  private disableCallbacks = new Map<string, Array<() => void | Promise<void>>>();
+  private uninstallCallbacks = new Map<string, Array<() => void | Promise<void>>>();
 
   // Callbacks for UI updates
   private onOverlaysChange?: () => void;
@@ -126,9 +128,9 @@ export class PluginManager {
 
       this.savePluginRegistry();
       console.info(`Plugin ${pluginId} enabled`);
-    } catch (e: any) {
+    } catch (e: unknown) {
       entry.state = 'error';
-      entry.error = String(e?.message ?? e);
+      entry.error = e instanceof Error ? e.message : String(e);
       this.savePluginRegistry();
       throw new Error(`Failed to enable plugin ${pluginId}: ${entry.error}`);
     }
@@ -149,12 +151,22 @@ export class PluginManager {
 
     const plugin = this.instances.get(pluginId);
 
-    // Call onDisable
+    // Call onDisable instance method
     if (plugin?.onDisable) {
       try {
         await plugin.onDisable();
       } catch (e) {
         console.error(`Error disabling plugin ${pluginId}:`, e);
+      }
+    }
+
+    // Invoke registered onDisable callbacks
+    const disableCbs = this.disableCallbacks.get(pluginId) ?? [];
+    for (const cb of disableCbs) {
+      try {
+        await cb();
+      } catch (e) {
+        console.error(`Error in onDisable callback for ${pluginId}:`, e);
       }
     }
 
@@ -188,12 +200,22 @@ export class PluginManager {
 
     const plugin = this.instances.get(pluginId);
 
-    // Call onUninstall
+    // Call onUninstall instance method
     if (plugin?.onUninstall) {
       try {
         await plugin.onUninstall();
       } catch (e) {
         console.error(`Error uninstalling plugin ${pluginId}:`, e);
+      }
+    }
+
+    // Invoke registered onUninstall callbacks
+    const uninstallCbs = this.uninstallCallbacks.get(pluginId) ?? [];
+    for (const cb of uninstallCbs) {
+      try {
+        await cb();
+      } catch (e) {
+        console.error(`Error in onUninstall callback for ${pluginId}:`, e);
       }
     }
 
@@ -374,12 +396,15 @@ export class PluginManager {
       },
 
       onDisable: (callback) => {
-        // Store callback for later
-        // (In real implementation, would need to track these)
+        const cbs = this.disableCallbacks.get(pluginId) ?? [];
+        cbs.push(callback);
+        this.disableCallbacks.set(pluginId, cbs);
       },
 
       onUninstall: (callback) => {
-        // Store callback for later
+        const cbs = this.uninstallCallbacks.get(pluginId) ?? [];
+        cbs.push(callback);
+        this.uninstallCallbacks.set(pluginId, cbs);
       },
     };
   }
@@ -473,14 +498,14 @@ export class PluginManager {
    */
   private cleanupPluginUI(pluginId: string): void {
     // Remove overlays
-    for (const [id, overlay] of this.overlays) {
+    for (const [id] of this.overlays) {
       if (id.startsWith(`${pluginId}:`)) {
         this.overlays.delete(id);
       }
     }
 
     // Remove menu items
-    for (const [id, item] of this.menuItems) {
+    for (const [id] of this.menuItems) {
       if (id.startsWith(`${pluginId}:`)) {
         this.menuItems.delete(id);
       }
@@ -491,6 +516,10 @@ export class PluginManager {
     if (styleEl) {
       styleEl.remove();
     }
+
+    // Clear lifecycle callbacks
+    this.disableCallbacks.delete(pluginId);
+    this.uninstallCallbacks.delete(pluginId);
 
     this.onOverlaysChange?.();
     this.onMenuItemsChange?.();
@@ -530,7 +559,7 @@ export class PluginManager {
     if (!data) return;
 
     try {
-      const entries = JSON.parse(data) as Array<any>;
+      const entries = JSON.parse(data) as Array<PluginEntry & { id: string }>;
       for (const entry of entries) {
         this.plugins.set(entry.id, entry);
       }

@@ -102,8 +102,9 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   try {
     const nodeResult = await loadPluginFamily(nodeTypeDiscoveryConfig, verbose);
     result.nodes = nodeResult;
-  } catch (error: any) {
-    result.errors.push({ plugin: 'nodes', error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.errors.push({ plugin: 'nodes', error: message });
     if (strict) throw error;
   }
 
@@ -111,8 +112,9 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   try {
     const helperResult = await loadPluginFamily(helperDiscoveryConfig, verbose);
     result.helpers = helperResult;
-  } catch (error: any) {
-    result.errors.push({ plugin: 'helpers', error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.errors.push({ plugin: 'helpers', error: message });
     if (strict) throw error;
   }
 
@@ -120,8 +122,9 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   try {
     const interactionResult = await loadPluginFamily(interactionDiscoveryConfig, verbose);
     result.interactions = interactionResult;
-  } catch (error: any) {
-    result.errors.push({ plugin: 'interactions', error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.errors.push({ plugin: 'interactions', error: message });
     if (strict) throw error;
   }
 
@@ -129,8 +132,9 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
   try {
     const galleryToolResult = await loadPluginFamily(galleryToolDiscoveryConfig, verbose);
     result.galleryTools = galleryToolResult;
-  } catch (error: any) {
-    result.errors.push({ plugin: 'galleryTools', error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.errors.push({ plugin: 'galleryTools', error: message });
     if (strict) throw error;
   }
 
@@ -141,8 +145,9 @@ export async function loadAllPlugins(config: PluginLoaderConfig = {}): Promise<P
     if (verbose) {
       console.log(`   World Tools: ${worldToolResult.loaded} loaded, ${worldToolResult.failed} failed`);
     }
-  } catch (error: any) {
-    result.errors.push({ plugin: 'worldTools', error: error.message });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.errors.push({ plugin: 'worldTools', error: message });
     if (strict) throw error;
   }
 
@@ -205,8 +210,9 @@ async function loadPluginFamily(
     try {
       await registerDiscoveredPlugin(item, verbose);
       loaded++;
-    } catch (error: any) {
-      console.error(`   Failed ${item.path}: ${error.message}`);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`   Failed ${item.path}: ${message}`);
       failed++;
     }
   }

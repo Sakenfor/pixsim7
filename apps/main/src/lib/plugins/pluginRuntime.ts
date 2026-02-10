@@ -1,4 +1,4 @@
-import { familyAdapters, type PluginRegistrationContext } from './familyAdapters';
+import { familyAdapters, type PluginRegistrationContext, type PluginTypeMap } from './familyAdapters';
 import type {
   ActivationState,
   PluginFamily,
@@ -9,19 +9,19 @@ import { pluginCatalog } from './pluginSystem';
 import type { PluginRegistrationSource } from './registration';
 import { fromPluginSystemMetadata, validateFamilyMetadata } from './types';
 
-export interface PluginDefinition {
+export interface PluginDefinition<F extends PluginFamily = PluginFamily> {
   id: string;
-  family: PluginFamily;
+  family: F;
   origin: PluginOrigin;
   source: PluginRegistrationSource;
-  plugin: any;
+  plugin: PluginTypeMap[F];
   label?: string;
   activationState?: ActivationState;
   canDisable?: boolean;
   metadata?: Partial<PluginMetadata>;
 }
 
-export async function registerPluginDefinition(definition: PluginDefinition): Promise<void> {
+export async function registerPluginDefinition<F extends PluginFamily>(definition: PluginDefinition<F>): Promise<void> {
   const adapter = familyAdapters[definition.family];
   if (!adapter) {
     throw new Error(`No plugin adapter registered for family: ${definition.family}`);

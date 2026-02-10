@@ -6,13 +6,15 @@
  * enable/disable behavior across all plugin families.
  */
 
-import { pluginActivationManager, pluginCatalog } from './pluginSystem';
 import {
   pluginConfigStore,
   getPluginConfig,
   setPluginConfig,
   isPluginEnabled as legacyIsPluginEnabled,
 } from '../../stores/pluginConfigStore';
+
+import type { PluginFamily } from './pluginSystem';
+import { pluginActivationManager, pluginCatalog } from './pluginSystem';
 
 // ============================================================================
 // Unified Activation API
@@ -156,8 +158,8 @@ export function exportActivationStates(): void {
 /**
  * Activate all plugins of a specific family
  */
-export async function activateFamily(family: string): Promise<void> {
-  const plugins = pluginCatalog.getByFamily(family as any);
+export async function activateFamily(family: PluginFamily): Promise<void> {
+  const plugins = pluginCatalog.getByFamily(family);
 
   for (const plugin of plugins) {
     if (plugin.canDisable) {
@@ -169,8 +171,8 @@ export async function activateFamily(family: string): Promise<void> {
 /**
  * Deactivate all plugins of a specific family
  */
-export async function deactivateFamily(family: string): Promise<void> {
-  const plugins = pluginCatalog.getByFamily(family as any);
+export async function deactivateFamily(family: PluginFamily): Promise<void> {
+  const plugins = pluginCatalog.getByFamily(family);
 
   for (const plugin of plugins) {
     if (plugin.canDisable) {

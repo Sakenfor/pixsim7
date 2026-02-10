@@ -6,18 +6,17 @@
  * while the catalog becomes the single source of truth.
  */
 
-import type { DevToolDefinition, DevToolCategory } from '@pixsim7/shared.devtools.core';
+import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 import type { PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 
 import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
 
 
-import type { BrainToolPlugin, BrainToolContext, BrainToolCategory } from '@features/brainTools/lib/types';
-import type { GallerySurfaceDefinition, GallerySurfaceCategory, MediaType } from '@features/gallery/lib/core/surfaceRegistry';
+import type { BrainToolPlugin, BrainToolContext } from '@features/brainTools/lib/types';
+import type { GallerySurfaceDefinition, MediaType } from '@features/gallery/lib/core/surfaceRegistry';
 import type { GalleryToolPlugin, GalleryToolContext } from '@features/gallery/lib/core/types';
 import type {
   GizmoSurfaceDefinition,
-  GizmoSurfaceCategory,
   GizmoSurfaceContext,
   GizmoSurfaceId,
 } from '@features/gizmos/lib/core/surfaceRegistry';
@@ -28,39 +27,86 @@ import type {
   GenerationUIPlugin,
   ValidationResult,
 } from '@features/providers/lib/core/generationPlugins';
-import type { WorldToolPlugin, WorldToolContext, WorldToolCategory } from '@features/worldTools/lib/types';
+import type { WorldToolPlugin, WorldToolContext } from '@features/worldTools/lib/types';
 
+import type { PluginFamily } from './pluginSystem';
 import { pluginCatalog } from './pluginSystem';
+
+// ============================================================================
+// Factory Helpers
+// ============================================================================
+
+function createBaseSelector<T>(family: PluginFamily) {
+  return {
+    getAll(): T[] {
+      return pluginCatalog.getPluginsByFamily<T>(family);
+    },
+    get(id: string): T | undefined {
+      const meta = pluginCatalog.get(id);
+      if (!meta || meta.family !== family) return undefined;
+      return pluginCatalog.getPlugin<T>(id);
+    },
+    has(id: string): boolean {
+      const meta = pluginCatalog.get(id);
+      return meta?.family === family;
+    },
+    subscribe(callback: () => void): () => void {
+      return pluginCatalog.subscribe(callback);
+    },
+  };
+}
+
+function createSearchMethod<T extends { id: string }>(
+  getAll: () => T[],
+  fields: (keyof T)[],
+) {
+  return (query: string): T[] => {
+    const lq = query.toLowerCase();
+    return getAll().filter(item =>
+      fields.some(f => {
+        const v = item[f];
+        if (typeof v === 'string') return v.toLowerCase().includes(lq);
+        if (Array.isArray(v)) return v.some(s => typeof s === 'string' && s.toLowerCase().includes(lq));
+        return false;
+      }),
+    );
+  };
+}
+
+function createVisibilityMethod<T extends { id: string }, C>(
+  getAll: () => T[],
+  predicateField: keyof T,
+) {
+  return (context: C): T[] =>
+    getAll().filter(item => {
+      const pred = item[predicateField];
+      if (typeof pred !== 'function') return true;
+      try {
+        return pred(context);
+      } catch (e) {
+        console.error(`Error checking visibility for ${item.id}:`, e);
+        return false;
+      }
+    });
+}
+
+function createCategoryMethod<T, K extends keyof T>(
+  getAll: () => T[],
+  field: K,
+) {
+  return (category: T[K]): T[] =>
+    getAll().filter(item => item[field] === category);
+}
 
 // ============================================================================
 // Gallery Tool Selectors
 // ============================================================================
 
-/**
- * Gallery tool catalog selectors
- *
- * Provides the same API as GalleryToolRegistry but reads from the catalog.
- */
+const galleryToolBase = createBaseSelector<GalleryToolPlugin>('gallery-tool');
+
 export const galleryToolSelectors = {
-  /**
-   * Get all gallery tools
-   */
-  getAll(): GalleryToolPlugin[] {
-    return pluginCatalog.getPluginsByFamily<GalleryToolPlugin>('gallery-tool');
-  },
+  ...galleryToolBase,
 
-  /**
-   * Get a gallery tool by ID
-   */
-  get(id: string): GalleryToolPlugin | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'gallery-tool') return undefined;
-    return pluginCatalog.getPlugin<GalleryToolPlugin>(id);
-  },
-
-  /**
-   * Get tools that support a specific surface
-   */
   getBySurface(surfaceId: string): GalleryToolPlugin[] {
     return this.getAll().filter(tool => {
       const supportedSurfaces = tool.supportedSurfaces || ['assets-default'];
@@ -68,24 +114,11 @@ export const galleryToolSelectors = {
     });
   },
 
-  /**
-   * Get visible tools based on context predicate
-   */
-  getVisible(context: GalleryToolContext): GalleryToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
-  },
+  getVisible: createVisibilityMethod<GalleryToolPlugin, GalleryToolContext>(
+    () => galleryToolBase.getAll(),
+    'whenVisible',
+  ),
 
-  /**
-   * Get visible tools for a specific surface and context
-   */
   getVisibleForSurface(surfaceId: string, context: GalleryToolContext): GalleryToolPlugin[] {
     return this.getBySurface(surfaceId).filter(tool => {
       if (!tool.whenVisible) return true;
@@ -97,59 +130,19 @@ export const galleryToolSelectors = {
       }
     });
   },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
 };
 
 // ============================================================================
 // Gallery Surface Selectors
 // ============================================================================
 
-/**
- * Gallery surface catalog selectors
- *
- * Provides the same API as GallerySurfaceRegistry but reads from the catalog.
- */
+const gallerySurfaceBase = createBaseSelector<GallerySurfaceDefinition>('gallery-surface');
+
 export const gallerySurfaceSelectors = {
-  /**
-   * Get all gallery surfaces
-   */
-  getAll(): GallerySurfaceDefinition[] {
-    return pluginCatalog.getPluginsByFamily<GallerySurfaceDefinition>('gallery-surface');
-  },
+  ...gallerySurfaceBase,
 
-  /**
-   * Get a gallery surface by ID
-   */
-  get(id: string): GallerySurfaceDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'gallery-surface') return undefined;
-    return pluginCatalog.getPlugin<GallerySurfaceDefinition>(id);
-  },
+  getByCategory: createCategoryMethod(() => gallerySurfaceBase.getAll(), 'category'),
 
-  /**
-   * Check if a surface exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'gallery-surface';
-  },
-
-  /**
-   * Get surfaces by category
-   */
-  getByCategory(category: GallerySurfaceCategory): GallerySurfaceDefinition[] {
-    return this.getAll().filter(surface => surface.category === category);
-  },
-
-  /**
-   * Get surfaces that support a specific media type
-   */
   getByMediaType(mediaType: MediaType): GallerySurfaceDefinition[] {
     return this.getAll().filter(surface => {
       if (!surface.supportsMediaTypes) return true;
@@ -157,26 +150,13 @@ export const gallerySurfaceSelectors = {
     });
   },
 
-  /**
-   * Get the default surface
-   */
   getDefault(): GallerySurfaceDefinition | undefined {
     const defaults = this.getByCategory('default');
     return defaults.length > 0 ? defaults[0] : this.getAll()[0];
   },
 
-  /**
-   * Get count of registered surfaces
-   */
   get count(): number {
     return pluginCatalog.getByFamily('gallery-surface').length;
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
   },
 };
 
@@ -184,189 +164,52 @@ export const gallerySurfaceSelectors = {
 // Brain Tool Selectors
 // ============================================================================
 
-/**
- * Brain tool catalog selectors
- *
- * Provides the same API as BrainToolRegistry but reads from the catalog.
- */
+const brainToolBase = createBaseSelector<BrainToolPlugin>('brain-tool');
+
 export const brainToolSelectors = {
-  /**
-   * Get all brain tools
-   */
-  getAll(): BrainToolPlugin[] {
-    return pluginCatalog.getPluginsByFamily<BrainToolPlugin>('brain-tool');
-  },
+  ...brainToolBase,
 
-  /**
-   * Get a brain tool by ID
-   */
-  get(id: string): BrainToolPlugin | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'brain-tool') return undefined;
-    return pluginCatalog.getPlugin<BrainToolPlugin>(id);
-  },
+  getByCategory: createCategoryMethod(() => brainToolBase.getAll(), 'category'),
 
-  /**
-   * Check if a tool exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'brain-tool';
-  },
-
-  /**
-   * Get tools by category
-   */
-  getByCategory(category: BrainToolCategory): BrainToolPlugin[] {
-    return this.getAll().filter(tool => tool.category === category);
-  },
-
-  /**
-   * Get visible tools based on context predicate
-   */
-  getVisible(context: BrainToolContext): BrainToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
+  getVisible: createVisibilityMethod<BrainToolPlugin, BrainToolContext>(
+    () => brainToolBase.getAll(),
+    'whenVisible',
+  ),
 };
 
 // ============================================================================
 // World Tool Selectors
 // ============================================================================
 
-/**
- * World tool catalog selectors
- *
- * Provides the same API as WorldToolRegistry but reads from the catalog.
- */
+const worldToolBase = createBaseSelector<WorldToolPlugin>('world-tool');
+
 export const worldToolSelectors = {
-  /**
-   * Get all world tools
-   */
-  getAll(): WorldToolPlugin[] {
-    return pluginCatalog.getPluginsByFamily<WorldToolPlugin>('world-tool');
-  },
+  ...worldToolBase,
 
-  /**
-   * Get a world tool by ID
-   */
-  get(id: string): WorldToolPlugin | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'world-tool') return undefined;
-    return pluginCatalog.getPlugin<WorldToolPlugin>(id);
-  },
+  getByCategory: createCategoryMethod(() => worldToolBase.getAll(), 'category'),
 
-  /**
-   * Check if a tool exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'world-tool';
-  },
-
-  /**
-   * Get tools by category
-   */
-  getByCategory(category: WorldToolCategory): WorldToolPlugin[] {
-    return this.getAll().filter(tool => tool.category === category);
-  },
-
-  /**
-   * Get visible tools based on context predicate
-   */
-  getVisible(context: WorldToolContext): WorldToolPlugin[] {
-    return this.getAll().filter(tool => {
-      if (!tool.whenVisible) return true;
-      try {
-        return tool.whenVisible(context);
-      } catch (e) {
-        console.error(`Error checking visibility for tool ${tool.id}:`, e);
-        return false;
-      }
-    });
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
+  getVisible: createVisibilityMethod<WorldToolPlugin, WorldToolContext>(
+    () => worldToolBase.getAll(),
+    'whenVisible',
+  ),
 };
 
 // ============================================================================
 // Dev Tool Selectors
 // ============================================================================
 
-/**
- * Dev tool catalog selectors
- *
- * Provides the same API as DevToolRegistry but reads from the catalog.
- */
+const devToolBase = createBaseSelector<DevToolDefinition>('dev-tool');
+
 export const devToolSelectors = {
-  /**
-   * Get all dev tools
-   */
-  getAll(): DevToolDefinition[] {
-    return pluginCatalog.getPluginsByFamily<DevToolDefinition>('dev-tool');
-  },
+  ...devToolBase,
 
-  /**
-   * Get a dev tool by ID
-   */
-  get(id: string): DevToolDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'dev-tool') return undefined;
-    return pluginCatalog.getPlugin<DevToolDefinition>(id);
-  },
+  getByCategory: createCategoryMethod(() => devToolBase.getAll(), 'category'),
 
-  /**
-   * Check if a tool exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'dev-tool';
-  },
+  search: createSearchMethod(
+    () => devToolBase.getAll(),
+    ['id', 'label', 'description', 'tags'],
+  ),
 
-  /**
-   * Get all dev tools in a specific category
-   */
-  getByCategory(category: DevToolCategory): DevToolDefinition[] {
-    return this.getAll().filter((tool) => tool.category === category);
-  },
-
-  /**
-   * Search dev tools by query string
-   */
-  search(query: string): DevToolDefinition[] {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter((tool) => {
-      const matchesId = tool.id.toLowerCase().includes(lowerQuery);
-      const matchesLabel = tool.label.toLowerCase().includes(lowerQuery);
-      const matchesDescription = tool.description?.toLowerCase().includes(lowerQuery) ?? false;
-      const matchesTags = tool.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery)) ?? false;
-
-      return matchesId || matchesLabel || matchesDescription || matchesTags;
-    });
-  },
-
-  /**
-   * Get all unique categories from registered tools
-   */
   getCategories(): string[] {
     const categories = new Set<string>();
     this.getAll().forEach((tool) => {
@@ -376,87 +219,32 @@ export const devToolSelectors = {
     });
     return Array.from(categories).sort();
   },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
 };
 
 // ============================================================================
 // Graph Editor Selectors
 // ============================================================================
 
-/**
- * Graph editor catalog selectors
- *
- * Provides the same API as GraphEditorRegistry but reads from the catalog.
- */
+const graphEditorBase = createBaseSelector<GraphEditorDefinition>('graph-editor');
+
 export const graphEditorSelectors = {
-  /**
-   * Get all graph editors
-   */
-  getAll(): GraphEditorDefinition[] {
-    return pluginCatalog.getPluginsByFamily<GraphEditorDefinition>('graph-editor');
-  },
+  ...graphEditorBase,
 
-  /**
-   * Get a graph editor by ID
-   */
-  get(id: string): GraphEditorDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'graph-editor') return undefined;
-    return pluginCatalog.getPlugin<GraphEditorDefinition>(id);
-  },
-
-  /**
-   * Check if a graph editor exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'graph-editor';
-  },
-
-  /**
-   * Get all graph editor IDs
-   */
   getIds(): string[] {
     return pluginCatalog.getByFamily('graph-editor').map((meta) => meta.id);
   },
 
-  /**
-   * Get the number of registered graph editors
-   */
   get size(): number {
     return pluginCatalog.getByFamily('graph-editor').length;
   },
 
-  /**
-   * Get graph editors by category
-   */
-  getByCategory(category: string): GraphEditorDefinition[] {
-    return this.getAll().filter((editor) => editor.category === category);
-  },
+  getByCategory: createCategoryMethod(() => graphEditorBase.getAll(), 'category'),
 
-  /**
-   * Search graph editors by query (searches id, label, description)
-   */
-  search(query: string): GraphEditorDefinition[] {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter((editor) => {
-      const matchesId = editor.id.toLowerCase().includes(lowerQuery);
-      const matchesLabel = editor.label.toLowerCase().includes(lowerQuery);
-      const matchesDescription = editor.description?.toLowerCase().includes(lowerQuery);
+  search: createSearchMethod(
+    () => graphEditorBase.getAll(),
+    ['id', 'label', 'description'],
+  ),
 
-      return matchesId || matchesLabel || matchesDescription;
-    });
-  },
-
-  /**
-   * Get registry statistics
-   */
   getStats() {
     const all = this.getAll();
     return {
@@ -475,119 +263,61 @@ export const graphEditorSelectors = {
       },
     };
   },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
 };
 
 // ============================================================================
 // Gizmo Surface Selectors
 // ============================================================================
 
-/**
- * Gizmo surface catalog selectors
- *
- * Provides the same API as GizmoSurfaceRegistry but reads from the catalog.
- */
-export const gizmoSurfaceSelectors = {
-  /**
-   * Get all gizmo surfaces
-   */
-  getAll(): GizmoSurfaceDefinition[] {
-    return pluginCatalog.getPluginsByFamily<GizmoSurfaceDefinition>('gizmo-surface');
-  },
+const gizmoSurfaceBase = createBaseSelector<GizmoSurfaceDefinition>('gizmo-surface');
 
-  /**
-   * Get a gizmo surface by ID
-   */
+export const gizmoSurfaceSelectors = {
+  ...gizmoSurfaceBase,
+
   get(id: GizmoSurfaceId): GizmoSurfaceDefinition | undefined {
     const meta = pluginCatalog.get(id);
     if (!meta || meta.family !== 'gizmo-surface') return undefined;
     return pluginCatalog.getPlugin<GizmoSurfaceDefinition>(id);
   },
 
-  /**
-   * Check if a surface exists
-   */
   has(id: GizmoSurfaceId): boolean {
     const meta = pluginCatalog.get(id);
     return meta?.family === 'gizmo-surface';
   },
 
-  /**
-   * Get surfaces by category
-   */
-  getByCategory(category: GizmoSurfaceCategory): GizmoSurfaceDefinition[] {
-    return this.getAll().filter(surface => surface.category === category);
-  },
+  getByCategory: createCategoryMethod(() => gizmoSurfaceBase.getAll(), 'category'),
 
-  /**
-   * Get surfaces that support a specific context
-   */
   getByContext(context: GizmoSurfaceContext): GizmoSurfaceDefinition[] {
     return this.getAll().filter(surface =>
-      surface.supportsContexts?.includes(context)
+      surface.supportsContexts?.includes(context),
     );
   },
 
-  /**
-   * Get surfaces by tag
-   */
   getByTag(tag: string): GizmoSurfaceDefinition[] {
     return this.getAll().filter(surface =>
-      surface.tags?.includes(tag)
+      surface.tags?.includes(tag),
     );
   },
 
-  /**
-   * Search surfaces by query (searches id, label, description, tags)
-   */
-  search(query: string): GizmoSurfaceDefinition[] {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter(surface => {
-      const matchesId = surface.id.toLowerCase().includes(lowerQuery);
-      const matchesLabel = surface.label.toLowerCase().includes(lowerQuery);
-      const matchesDescription = surface.description?.toLowerCase().includes(lowerQuery);
-      const matchesTags = surface.tags?.some(tag => tag.toLowerCase().includes(lowerQuery));
+  search: createSearchMethod(
+    () => gizmoSurfaceBase.getAll(),
+    ['id', 'label', 'description', 'tags'],
+  ),
 
-      return matchesId || matchesLabel || matchesDescription || matchesTags;
-    });
-  },
-
-  /**
-   * Get count of registered surfaces
-   */
   get count(): number {
     return pluginCatalog.getByFamily('gizmo-surface').length;
   },
 
-  /**
-   * Get all surface IDs
-   */
   getAllIds(): GizmoSurfaceId[] {
     return this.getAll().map((surface) => surface.id);
   },
 
-  /**
-   * Get surfaces sorted by priority (descending)
-   */
   getSortedByPriority(): GizmoSurfaceDefinition[] {
     return this.getAll().sort((a, b) => {
       const priorityA = a.priority ?? 0;
       const priorityB = b.priority ?? 0;
       return priorityB - priorityA;
     });
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
   },
 };
 
@@ -654,70 +384,39 @@ function normalizePanelDefinition<TSettings = any>(
   };
 }
 
-/**
- * Workspace panel catalog selectors
- *
- * Provides the same API as PanelRegistry but reads from the catalog.
- */
+const panelBase = createBaseSelector<PanelDefinition>('workspace-panel');
+
 export const panelSelectors = {
-  /**
-   * Get all panels
-   */
   getAll(): PanelDefinition[] {
-    return pluginCatalog
-      .getPluginsByFamily<PanelDefinition>('workspace-panel')
+    return panelBase
+      .getAll()
       .map((panel) => normalizePanelDefinition(panel));
   },
 
-  /**
-   * Get a panel by ID
-   */
   get(id: string): PanelDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'workspace-panel') return undefined;
-    const panel = pluginCatalog.getPlugin<PanelDefinition>(id);
+    const panel = panelBase.get(id);
     return panel ? normalizePanelDefinition(panel) : undefined;
   },
 
-  /**
-   * Check if a panel exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'workspace-panel';
-  },
+  has: panelBase.has,
+  subscribe: panelBase.subscribe,
 
-  /**
-   * Get all panel IDs
-   */
   getIds(): string[] {
     return pluginCatalog.getByFamily('workspace-panel').map((meta) => meta.id);
   },
 
-  /**
-   * Get the number of registered panels
-   */
   get size(): number {
     return pluginCatalog.getByFamily('workspace-panel').length;
   },
 
-  /**
-   * Get panels by category
-   */
   getByCategory(category: string): PanelDefinition[] {
     return this.getAll().filter((panel) => panel.category === category);
   },
 
-  /**
-   * Get panels that should appear in user-facing lists.
-   */
   getPublicPanels(): PanelDefinition[] {
     return this.getAll().filter((panel) => !panel.isInternal);
   },
 
-  /**
-   * Search panels by query (searches id, title, description, tags)
-   */
   search(query: string): PanelDefinition[] {
     const lowerQuery = query.toLowerCase();
     return this.getAll().filter((panel) => {
@@ -734,9 +433,6 @@ export const panelSelectors = {
     });
   },
 
-  /**
-   * Get visible panels based on context
-   */
   getVisiblePanels(context: WorkspaceContext): PanelDefinition[] {
     return this.getAll().filter((panel) => {
       if (!panel.showWhen) return true;
@@ -749,9 +445,6 @@ export const panelSelectors = {
     });
   },
 
-  /**
-   * Get registry statistics
-   */
   getStats() {
     const all = this.getAll();
     return {
@@ -776,55 +469,30 @@ export const panelSelectors = {
     };
   },
 
-  /**
-   * Get panels by a specific tag
-   */
   getByTag(tag: string): PanelDefinition[] {
     return this.getAll().filter((panel) => panel.tags?.includes(tag));
   },
 
-  /**
-   * Get panel IDs by tag
-   */
   getIdsByTag(tag: string): string[] {
     return this.getByTag(tag).map((panel) => panel.id);
   },
 
-  /**
-   * Get panels available in a specific dockview scope.
-   */
   getForScope(scope: string): PanelDefinition[] {
     return this.getAll()
       .filter((panel) => panel.availableIn?.includes(scope))
       .sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
   },
 
-  /**
-   * Get panel IDs available in a specific dockview scope.
-   */
   getIdsForScope(scope: string): string[] {
     return this.getForScope(scope).map((panel) => panel.id);
   },
 
-  /**
-   * Legacy alias for getForScope
-   */
   getPanelsForScope(scope: string): PanelDefinition[] {
     return this.getForScope(scope);
   },
 
-  /**
-   * Legacy alias for getIdsForScope
-   */
   getPanelIdsForScope(scope: string): string[] {
     return this.getIdsForScope(scope);
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
   },
 };
 
@@ -834,60 +502,23 @@ export const panelSelectors = {
 
 let defaultPresetScope: PresetScope = 'workspace';
 
-/**
- * Dock widget catalog selectors
- *
- * Provides the same API as DockZoneRegistry but reads from the catalog.
- */
+const dockWidgetBase = createBaseSelector<DockZoneDefinition>('dock-widget');
+
 export const dockWidgetSelectors = {
-  /**
-   * Get all dock widgets
-   */
-  getAll(): DockZoneDefinition[] {
-    return pluginCatalog.getPluginsByFamily<DockZoneDefinition>('dock-widget');
-  },
+  ...dockWidgetBase,
 
-  /**
-   * Get a dock widget by ID
-   */
-  get(id: string): DockZoneDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'dock-widget') return undefined;
-    return pluginCatalog.getPlugin<DockZoneDefinition>(id);
-  },
-
-  /**
-   * Check if a dock widget exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'dock-widget';
-  },
-
-  /**
-   * Get all dock widget IDs
-   */
   getIds(): string[] {
     return pluginCatalog.getByFamily('dock-widget').map((meta) => meta.id);
   },
 
-  /**
-   * Get the number of registered dock widgets
-   */
   get size(): number {
     return pluginCatalog.getByFamily('dock-widget').length;
   },
 
-  /**
-   * Get dock widget by dockview ID
-   */
   getByDockviewId(dockviewId: string): DockZoneDefinition | undefined {
     return this.getAll().find((widget) => widget.dockviewId === dockviewId);
   },
 
-  /**
-   * Get panel IDs for a dockview with scope-based filtering.
-   */
   getPanelIds(dockviewId: string | undefined): string[] {
     if (!dockviewId) return [];
     const widget = this.getByDockviewId(dockviewId);
@@ -904,23 +535,14 @@ export const dockWidgetSelectors = {
     return [];
   },
 
-  /**
-   * Set the default preset scope fallback.
-   */
   setDefaultPresetScope(scope: PresetScope): void {
     defaultPresetScope = scope;
   },
 
-  /**
-   * Get the default preset scope fallback.
-   */
   getDefaultPresetScope(): PresetScope {
     return defaultPresetScope;
   },
 
-  /**
-   * Resolve preset scope for a dockview ID.
-   */
   resolvePresetScope(
     dockviewId: string | undefined,
     fallback?: PresetScope,
@@ -936,86 +558,39 @@ export const dockWidgetSelectors = {
 
     return fallback ?? defaultPresetScope;
   },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
-  },
 };
 
 // ============================================================================
 // Generation UI Selectors
 // ============================================================================
 
-/**
- * Plugin match criteria for generation UI
- */
 interface GenerationUIMatcher {
   providerId: string;
   operation?: string;
 }
 
-/**
- * Generation UI catalog selectors
- *
- * Provides the same API as GenerationUIPluginRegistry but reads from the catalog.
- */
+const generationUiBase = createBaseSelector<GenerationUIPlugin>('generation-ui');
+
 export const generationUiSelectors = {
-  /**
-   * Get all generation UI plugins
-   */
-  getAll(): GenerationUIPlugin[] {
-    return pluginCatalog.getPluginsByFamily<GenerationUIPlugin>('generation-ui');
-  },
+  ...generationUiBase,
 
-  /**
-   * Get a generation UI plugin by ID
-   */
-  get(id: string): GenerationUIPlugin | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'generation-ui') return undefined;
-    return pluginCatalog.getPlugin<GenerationUIPlugin>(id);
-  },
-
-  /**
-   * Check if a generation UI plugin exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'generation-ui';
-  },
-
-  /**
-   * Get all generation UI plugin IDs
-   */
   getPluginIds(): string[] {
     return pluginCatalog.getByFamily('generation-ui').map((meta) => meta.id);
   },
 
-  /**
-   * Get a specific plugin by ID (alias for get, returns null instead of undefined)
-   */
   getPlugin(pluginId: string): GenerationUIPlugin | null {
     return this.get(pluginId) ?? null;
   },
 
-  /**
-   * Get all plugins for a provider and optional operation
-   * Matches the registry's getPlugins API
-   */
   getPlugins(matcher: GenerationUIMatcher): GenerationUIPlugin[] {
     const all = this.getAll();
     const matches: GenerationUIPlugin[] = [];
 
     for (const plugin of all) {
-      // Check provider match
       if (plugin.providerId !== matcher.providerId) {
         continue;
       }
 
-      // Check operation match (if plugin specifies operations)
       if (plugin.operations && plugin.operations.length > 0) {
         if (!matcher.operation || !plugin.operations.includes(matcher.operation)) {
           continue;
@@ -1025,34 +600,24 @@ export const generationUiSelectors = {
       matches.push(plugin);
     }
 
-    // Sort by priority (higher first)
     matches.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
 
     return matches;
   },
 
-  /**
-   * Get plugins by provider ID
-   */
   getByProvider(providerId: string): GenerationUIPlugin[] {
     return this.getAll().filter((plugin) => plugin.providerId === providerId);
   },
 
-  /**
-   * Get plugins by operation
-   */
   getByOperation(operation: string): GenerationUIPlugin[] {
     return this.getAll().filter((plugin) => {
       if (!plugin.operations || plugin.operations.length === 0) {
-        return true; // Plugins without operations match all
+        return true;
       }
       return plugin.operations.includes(operation);
     });
   },
 
-  /**
-   * Validate values using all matching plugins
-   */
   validate(
     matcher: GenerationUIMatcher,
     values: Record<string, unknown>,
@@ -1087,18 +652,8 @@ export const generationUiSelectors = {
     };
   },
 
-  /**
-   * Get the number of registered plugins
-   */
   get size(): number {
     return pluginCatalog.getByFamily('generation-ui').length;
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
   },
 };
 
@@ -1106,87 +661,29 @@ export const generationUiSelectors = {
 // Panel Group Selectors
 // ============================================================================
 
-/**
- * Panel group catalog selectors
- *
- * Provides access to registered panel groups from the catalog.
- */
+const panelGroupBase = createBaseSelector<PanelGroupDefinition>('panel-group');
+
 export const panelGroupSelectors = {
-  /**
-   * Get all panel groups
-   */
-  getAll(): PanelGroupDefinition[] {
-    return pluginCatalog.getPluginsByFamily<PanelGroupDefinition>('panel-group');
-  },
+  ...panelGroupBase,
 
-  /**
-   * Get a panel group by ID
-   */
-  get(id: string): PanelGroupDefinition | undefined {
-    const meta = pluginCatalog.get(id);
-    if (!meta || meta.family !== 'panel-group') return undefined;
-    return pluginCatalog.getPlugin<PanelGroupDefinition>(id);
-  },
-
-  /**
-   * Check if a panel group exists
-   */
-  has(id: string): boolean {
-    const meta = pluginCatalog.get(id);
-    return meta?.family === 'panel-group';
-  },
-
-  /**
-   * Get all panel group IDs
-   */
   getIds(): string[] {
     return pluginCatalog.getByFamily('panel-group').map((meta) => meta.id);
   },
 
-  /**
-   * Get the number of registered panel groups
-   */
   get size(): number {
     return pluginCatalog.getByFamily('panel-group').length;
   },
 
-  /**
-   * Get panel groups by category
-   */
-  getByCategory(category: string): PanelGroupDefinition[] {
-    return this.getAll().filter((group) => group.category === category);
-  },
+  getByCategory: createCategoryMethod(() => panelGroupBase.getAll(), 'category'),
 
-  /**
-   * Search panel groups by query (searches id, title, description, tags)
-   */
-  search(query: string): PanelGroupDefinition[] {
-    const lowerQuery = query.toLowerCase();
-    return this.getAll().filter((group) => {
-      const matchesId = group.id.toLowerCase().includes(lowerQuery);
-      const matchesTitle = group.title.toLowerCase().includes(lowerQuery);
-      const matchesDescription = group.description?.toLowerCase().includes(lowerQuery);
-      const matchesTags = group.tags?.some((tag) =>
-        tag.toLowerCase().includes(lowerQuery)
-      );
+  search: createSearchMethod(
+    () => panelGroupBase.getAll(),
+    ['id', 'title', 'description', 'tags'],
+  ),
 
-      return matchesId || matchesTitle || matchesDescription || matchesTags;
-    });
-  },
-
-  /**
-   * Get panel IDs for a group's preset
-   */
   getPanelIdsForPreset(groupId: string, presetName: string): string[] {
     const group = this.get(groupId);
     if (!group) return [];
-    return group.getPanelIds(presetName as any);
-  },
-
-  /**
-   * Subscribe to catalog changes
-   */
-  subscribe(callback: () => void): () => void {
-    return pluginCatalog.subscribe(callback);
+    return group.getPanelIds(presetName);
   },
 };

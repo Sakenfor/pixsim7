@@ -29,6 +29,10 @@ import type {
 import type { PluginRegistrationSource } from './registration';
 import { sceneViewRegistry, type SceneViewPlugin, type SceneViewPluginManifest } from './sceneViewPlugin';
 
+// ============================================================================
+// Registration Types
+// ============================================================================
+
 export interface PluginRegistrationContext {
   id: string;
   family: PluginFamily;
@@ -39,11 +43,60 @@ export interface PluginRegistrationContext {
   metadata?: Partial<PluginMetadata>;
 }
 
-export interface PluginFamilyAdapter {
-  register: (plugin: any, context: PluginRegistrationContext) => void | Promise<void>;
-  unregister?: (id: string, context: PluginRegistrationContext) => void | Promise<void>;
-  buildMetadata: (plugin: any, context: PluginRegistrationContext) => ExtendedPluginMetadata;
+type SceneViewRegistration = {
+  manifest: SceneViewPluginManifest;
+  plugin: SceneViewPlugin;
+};
+
+type ControlCenterRegistration = {
+  manifest: ControlCenterPluginManifest;
+  plugin: ControlCenterPlugin;
+};
+
+type UiPluginRegistration = {
+  metadata: ExtendedPluginMetadata<'ui-plugin'>;
+  register?: () => void | Promise<void>;
+  unregister?: () => void | Promise<void>;
+};
+
+// ============================================================================
+// Plugin Type Map
+// ============================================================================
+
+export interface PluginTypeMap {
+  'helper': HelperDefinition;
+  'interaction': InteractionPlugin<BaseInteractionConfig>;
+  'node-type': SceneNodeTypeDefinition;
+  'renderer': NodeRenderer | { nodeType: string; preloadPriority?: number };
+  'world-tool': WorldToolPlugin;
+  'gallery-tool': GalleryToolPlugin;
+  'brain-tool': BrainToolPlugin;
+  'gallery-surface': GallerySurfaceDefinition;
+  'generation-ui': GenerationUIPlugin;
+  'graph-editor': GraphEditorDefinition;
+  'dev-tool': DevToolDefinition;
+  'workspace-panel': PanelDefinition;
+  'dock-widget': DockZoneDefinition;
+  'gizmo-surface': GizmoSurfaceDefinition;
+  'scene-view': SceneViewRegistration;
+  'control-center': ControlCenterRegistration;
+  'ui-plugin': UiPluginRegistration;
+  'panel-group': PanelGroupDefinition;
 }
+
+// ============================================================================
+// Adapter Interface
+// ============================================================================
+
+export interface PluginFamilyAdapter<F extends PluginFamily = PluginFamily> {
+  register: (plugin: PluginTypeMap[F], context: PluginRegistrationContext) => void | Promise<void>;
+  unregister?: (id: string, context: PluginRegistrationContext) => void | Promise<void>;
+  buildMetadata: (plugin: PluginTypeMap[F], context: PluginRegistrationContext) => ExtendedPluginMetadata<F>;
+}
+
+// ============================================================================
+// Shared Helpers
+// ============================================================================
 
 function resolveActivationState(context: PluginRegistrationContext): ActivationState {
   return context.activationState ?? 'active';
@@ -74,11 +127,31 @@ function extractCommonMetadata(plugin: {
   };
 }
 
+function buildBaseMetadata<F extends PluginFamily>(
+  family: F,
+  plugin: { id?: string; name?: string; description?: string; version?: string; author?: string; tags?: string[] },
+  context: PluginRegistrationContext,
+): ExtendedPluginMetadata<F> {
+  return {
+    ...extractCommonMetadata(plugin),
+    id: plugin.id ?? context.id,
+    name: plugin.name || plugin.id || context.id,
+    family,
+    origin: context.origin,
+    activationState: resolveActivationState(context),
+    canDisable: resolveCanDisable(context),
+    ...context.metadata,
+  } as ExtendedPluginMetadata<F>;
+}
+
+// ============================================================================
+// Family-Specific Metadata Builders
+// ============================================================================
+
 function buildHelperMetadata(
   helper: HelperDefinition,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'helper'> {
-  const metadata = extractCommonMetadata(helper);
   const capabilities: PluginMetadata['capabilities'] = {
     modifiesSession: true,
   };
@@ -92,17 +165,12 @@ function buildHelperMetadata(
   }
 
   return {
-    ...metadata,
+    ...buildBaseMetadata('helper', helper, context),
     id: helper.id || helper.name,
     name: helper.name || helper.id || 'unknown',
-    family: 'helper',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     category: helper.category,
     capabilities,
     consumesFeatures: ['game'],
-    ...context.metadata,
   } as ExtendedPluginMetadata<'helper'>;
 }
 
@@ -110,7 +178,6 @@ function buildInteractionMetadata(
   interaction: InteractionPlugin<BaseInteractionConfig>,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'interaction'> {
-  const metadata = extractCommonMetadata(interaction);
   const capabilities: PluginMetadata['capabilities'] = {
     modifiesSession: true,
   };
@@ -127,18 +194,11 @@ function buildInteractionMetadata(
   }
 
   return {
-    ...metadata,
-    id: interaction.id,
-    name: interaction.name || interaction.id,
-    family: 'interaction',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('interaction', interaction, context),
     category: interaction.category,
     icon: interaction.icon,
     capabilities,
     consumesFeatures: ['game'],
-    ...context.metadata,
   } as ExtendedPluginMetadata<'interaction'>;
 }
 
@@ -146,27 +206,15 @@ function buildNodeTypeMetadata(
   nodeType: SceneNodeTypeDefinition,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'node-type'> {
-  const metadata = extractCommonMetadata(nodeType);
-  const capabilities: PluginMetadata['capabilities'] = {
-    addsNodeTypes: true,
-  };
-
   return {
-    ...metadata,
-    id: nodeType.id,
-    name: nodeType.name || nodeType.id,
-    family: 'node-type',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('node-type', nodeType, context),
     category: nodeType.category,
     scope: nodeType.scope,
     userCreatable: nodeType.userCreatable,
     preloadPriority: nodeType.preloadPriority,
-    capabilities,
+    capabilities: { addsNodeTypes: true },
     consumesFeatures: ['graph', 'game'],
     providesFeatures: ['node-types'],
-    ...context.metadata,
   } as ExtendedPluginMetadata<'node-type'>;
 }
 
@@ -175,15 +223,11 @@ function buildRendererMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'renderer'> {
   return {
+    ...buildBaseMetadata('renderer', {}, context),
     id: `renderer:${renderer.nodeType}`,
     name: `Renderer: ${renderer.nodeType}`,
-    family: 'renderer',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     nodeType: renderer.nodeType,
     preloadPriority: renderer.preloadPriority,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'renderer'>;
 }
 
@@ -191,23 +235,11 @@ function buildWorldToolMetadata(
   tool: WorldToolPlugin,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'world-tool'> {
-  const metadata = extractCommonMetadata(tool);
-  const capabilities: PluginMetadata['capabilities'] = {
-    addsUIOverlay: true,
-  };
-
   return {
-    ...metadata,
-    id: tool.id,
-    name: tool.name || tool.id,
-    family: 'world-tool',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('world-tool', tool, context),
     category: tool.category,
     icon: tool.icon,
-    capabilities,
-    ...context.metadata,
+    capabilities: { addsUIOverlay: true },
   } as ExtendedPluginMetadata<'world-tool'>;
 }
 
@@ -215,10 +247,6 @@ function buildGalleryToolMetadata(
   tool: GalleryToolPlugin,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'gallery-tool'> {
-  const metadata = extractCommonMetadata(tool);
-  const capabilities: PluginMetadata['capabilities'] = {
-    addsGalleryTools: true,
-  };
   const consumesFeatures = ['assets'];
   const providesFeatures: string[] = [];
 
@@ -233,18 +261,11 @@ function buildGalleryToolMetadata(
   }
 
   return {
-    ...metadata,
-    id: tool.id,
-    name: tool.name || tool.id,
-    family: 'gallery-tool',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('gallery-tool', tool, context),
     category: tool.category,
-    capabilities,
+    capabilities: { addsGalleryTools: true },
     consumesFeatures,
     providesFeatures: providesFeatures.length > 0 ? providesFeatures : undefined,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'gallery-tool'>;
 }
 
@@ -252,19 +273,10 @@ function buildBrainToolMetadata(
   tool: BrainToolPlugin,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'brain-tool'> {
-  const metadata = extractCommonMetadata(tool);
-
   return {
-    ...metadata,
-    id: tool.id,
-    name: tool.name || tool.id,
-    family: 'brain-tool',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('brain-tool', tool, context),
     category: tool.category,
     icon: tool.icon,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'brain-tool'>;
 }
 
@@ -273,16 +285,10 @@ function buildGallerySurfaceMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'gallery-surface'> {
   return {
-    id: surface.id,
+    ...buildBaseMetadata('gallery-surface', { id: surface.id, description: surface.description }, context),
     name: surface.label || surface.id,
-    family: 'gallery-surface',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
-    description: surface.description,
     category: surface.category,
     icon: surface.icon,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'gallery-surface'>;
 }
 
@@ -290,33 +296,24 @@ function buildGenerationUIMetadata(
   plugin: GenerationUIPlugin,
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'generation-ui'> {
-  const metadata = extractCommonMetadata({
-    id: plugin.id,
-    name: plugin.metadata?.name ?? plugin.id,
-    description: plugin.metadata?.description,
-    version: plugin.metadata?.version,
-    tags: plugin.operations,
-  });
-
   const providesFeatures = ['generation-ui'];
   if (plugin.providerId) {
     providesFeatures.push(`generation-ui-${plugin.providerId}`);
   }
 
   return {
-    ...metadata,
-    id: plugin.id,
-    name: plugin.metadata?.name ?? plugin.id,
-    family: 'generation-ui',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
+    ...buildBaseMetadata('generation-ui', {
+      id: plugin.id,
+      name: plugin.metadata?.name ?? plugin.id,
+      description: plugin.metadata?.description,
+      version: plugin.metadata?.version,
+      tags: plugin.operations,
+    }, context),
     providerId: plugin.providerId,
     operations: plugin.operations,
     priority: plugin.priority,
     category: plugin.metadata?.name ? 'provider' : undefined,
     providesFeatures,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'generation-ui'>;
 }
 
@@ -325,18 +322,13 @@ function buildGraphEditorMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'graph-editor'> {
   return {
-    id: editor.id,
+    ...buildBaseMetadata('graph-editor', { id: editor.id }, context),
     name: editor.label || editor.id,
-    family: 'graph-editor',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     category: editor.category,
     storeId: editor.storeId,
     supportsMultiScene: editor.supportsMultiScene,
     supportsWorldContext: editor.supportsWorldContext,
     supportsPlayback: editor.supportsPlayback,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'graph-editor'>;
 }
 
@@ -345,16 +337,10 @@ function buildDevToolMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'dev-tool'> {
   return {
-    id: tool.id,
+    ...buildBaseMetadata('dev-tool', { id: tool.id, description: tool.description }, context),
     name: tool.label || tool.id,
-    family: 'dev-tool',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     category: tool.category,
     icon: tool.icon,
-    description: tool.description,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'dev-tool'>;
 }
 
@@ -363,19 +349,12 @@ function buildPanelMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'workspace-panel'> {
   return {
-    id: panel.id,
+    ...buildBaseMetadata('workspace-panel', { id: panel.id, description: panel.description, tags: panel.tags }, context),
     name: panel.title || panel.id,
-    family: 'workspace-panel',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     panelId: panel.id,
     category: panel.category,
     supportsCompactMode: panel.supportsCompactMode,
     supportsMultipleInstances: panel.supportsMultipleInstances,
-    description: panel.description,
-    tags: panel.tags,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'workspace-panel'>;
 }
 
@@ -384,12 +363,8 @@ function buildDockWidgetMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'dock-widget'> {
   return {
-    id: widget.id,
+    ...buildBaseMetadata('dock-widget', { id: widget.id, description: widget.description }, context),
     name: widget.label || widget.id,
-    family: 'dock-widget',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     widgetId: widget.id,
     dockviewId: widget.dockviewId,
     presetScope: widget.presetScope,
@@ -397,8 +372,6 @@ function buildDockWidgetMetadata(
     storageKey: widget.storageKey,
     allowedPanels: widget.allowedPanels,
     defaultPanels: widget.defaultPanels,
-    description: widget.description,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'dock-widget'>;
 }
 
@@ -407,17 +380,11 @@ function buildGizmoSurfaceMetadata(
   context: PluginRegistrationContext
 ): ExtendedPluginMetadata<'gizmo-surface'> {
   return {
-    id: surface.id,
+    ...buildBaseMetadata('gizmo-surface', { id: surface.id, description: surface.description }, context),
     name: surface.label || surface.id,
-    family: 'gizmo-surface',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     gizmoSurfaceId: surface.id,
     category: surface.category,
     icon: surface.icon,
-    description: surface.description,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'gizmo-surface'>;
 }
 
@@ -429,28 +396,16 @@ function buildPanelGroupMetadata(
   const presetNames = Object.keys(group.presets);
 
   return {
-    id: group.id,
+    ...buildBaseMetadata('panel-group', { id: group.id, description: group.description, tags: group.tags }, context),
     name: group.title || group.id,
-    family: 'panel-group',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
     groupId: group.id,
     category: group.category,
     icon: group.icon,
-    description: group.description,
-    tags: group.tags,
     slots: slotNames,
     presets: presetNames,
     defaultScopes: group.defaultScopes,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'panel-group'>;
 }
-
-type SceneViewRegistration = {
-  manifest: SceneViewPluginManifest;
-  plugin: SceneViewPlugin;
-};
 
 function buildSceneViewMetadata(
   entry: SceneViewRegistration,
@@ -466,16 +421,14 @@ function buildSceneViewMetadata(
   }
 
   return {
-    id: manifest.id,
-    name: manifest.name,
-    family: 'scene-view',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
-    version: manifest.version,
-    description: manifest.description,
-    author: manifest.author,
-    tags: manifest.tags,
+    ...buildBaseMetadata('scene-view', {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      tags: manifest.tags,
+    }, context),
     sceneViewId: manifest.sceneView.id,
     surfaces: manifest.sceneView.surfaces,
     default: manifest.sceneView.default,
@@ -483,14 +436,8 @@ function buildSceneViewMetadata(
     capabilities,
     providesFeatures,
     consumesFeatures,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'scene-view'>;
 }
-
-type ControlCenterRegistration = {
-  manifest: ControlCenterPluginManifest;
-  plugin: ControlCenterPlugin;
-};
 
 function buildControlCenterMetadata(
   entry: ControlCenterRegistration,
@@ -504,16 +451,14 @@ function buildControlCenterMetadata(
   const consumesState = ['workspace.panels'];
 
   return {
-    id: manifest.id,
-    name: manifest.name,
-    family: 'control-center',
-    origin: context.origin,
-    activationState: resolveActivationState(context),
-    canDisable: resolveCanDisable(context),
-    version: manifest.version,
-    description: manifest.description,
-    author: manifest.author,
-    tags: manifest.tags,
+    ...buildBaseMetadata('control-center', {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: manifest.description,
+      author: manifest.author,
+      tags: manifest.tags,
+    }, context),
     controlCenterId: manifest.controlCenter.id,
     displayName: manifest.controlCenter.displayName,
     features: manifest.controlCenter.features,
@@ -525,21 +470,18 @@ function buildControlCenterMetadata(
     consumesFeatures,
     consumesActions,
     consumesState,
-    ...context.metadata,
   } as ExtendedPluginMetadata<'control-center'>;
 }
-
-type UiPluginRegistration = {
-  metadata: ExtendedPluginMetadata<'ui-plugin'>;
-  register?: () => void | Promise<void>;
-  unregister?: () => void | Promise<void>;
-};
 
 function buildUiPluginMetadata(
   entry: UiPluginRegistration
 ): ExtendedPluginMetadata<'ui-plugin'> {
   return entry.metadata;
 }
+
+// ============================================================================
+// Family Adapter Registry
+// ============================================================================
 
 export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
   'helper': {

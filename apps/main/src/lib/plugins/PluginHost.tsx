@@ -8,6 +8,9 @@
  */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
+
+import type { GameSessionDTO, GameWorldDetail, GameLocationDetail, NpcPresenceDTO } from '../api/game';
+
 import { pluginManager } from './PluginManager';
 import type { PluginGameState, PluginOverlay, PluginMenuItem, PluginNotification } from './types';
 
@@ -38,7 +41,8 @@ class PluginErrorBoundary extends Component<PluginErrorBoundaryProps, PluginErro
     };
   }
 
-  static getDerivedStateFromError(error: Error): Partial<PluginErrorBoundaryState> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  static getDerivedStateFromError(_error: Error): Partial<PluginErrorBoundaryState> {
     return { hasError: true };
   }
 
@@ -96,6 +100,7 @@ interface PluginHostContext {
 
 const PluginHostContext = createContext<PluginHostContext | null>(null);
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const usePluginHost = () => {
   const context = useContext(PluginHostContext);
   if (!context) {
@@ -320,11 +325,12 @@ function PluginNotificationItem({
 /**
  * Hook to build PluginGameState from app state
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function usePluginGameState(
-  session: any | null,
-  world: any | null,
-  location: any | null,
-  locationNpcs: any[]
+  session: GameSessionDTO | null,
+  world: GameWorldDetail | null,
+  location: GameLocationDetail | null,
+  locationNpcs: NpcPresenceDTO[]
 ): PluginGameState {
   return {
     // Session
