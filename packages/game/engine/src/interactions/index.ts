@@ -20,3 +20,5 @@ export * from './chainHelpers';
 export * from './behaviorIntegration';
 export * from './suggestions';
 export * from './moodIntegration';
+export * from './presets';
+export * from './genericFactory';

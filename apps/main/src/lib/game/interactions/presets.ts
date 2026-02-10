@@ -1,298 +1,173 @@
 /**
  * Interaction Preset System
  *
- * Provides reusable interaction configurations that designers can apply
- * to NPC slots without manually configuring raw values each time.
- *
- * Presets are stored in GameWorld.meta.interactionPresets for per-world customization.
+ * App-specific storage and I/O layer. Pure logic (types, validation,
+ * filtering, conflict detection, suggestions, playlist evaluation) is in
+ * @pixsim7/game.engine — re-exported here for convenience.
  */
+
+import {
+  type InteractionPreset,
+  type PresetWithScope,
+  type PresetLibrary,
+  type ConflictResolution,
+  type ImportResult,
+  type PresetUsageStats,
+  type PresetPlaylist,
+  type PlaylistWithScope,
+  type SuggestionContext,
+  type PresetSuggestion,
+  type InteractionOutcome,
+  generatePresetId,
+  exportPresetsToLibrary,
+  validatePresetLibrary,
+  parsePresetLibrary,
+  buildUsageDetails,
+  getRecommendedPresets as getRecommendedPresetsCore,
+} from '@pixsim7/game.engine';
 
 import type { GameWorldDetail } from '../../api/game';
 import { updateGameWorldMeta, saveGameWorldMeta } from '../../api/game';
 
-import type { BaseInteractionConfig } from './types';
+// Re-export everything from the pure logic module
+export {
+  // Types
+  type InteractionPreset,
+  type PresetCategory,
+  type PresetWithScope,
+  type PresetLibrary,
+  type ConflictResolution,
+  type ImportResult,
+  type ConflictSeverity,
+  type ConflictWarning,
+  type InteractionOutcome,
+  type PresetOutcomeData,
+  type PresetUsageStats,
+  type PresetUsageDetail,
+  type SuggestionContext,
+  type PresetSuggestion,
+  type PlaylistCondition,
+  type PlaylistItem,
+  type PresetPlaylist,
+  type PlaylistWithScope,
+  type PlaylistExecutionState,
+  type PlaylistExecutionHandlers,
+  // Constants
+  PRESET_CATEGORIES,
+  EXAMPLE_PRESETS,
+  // Filtering & search
+  getPresetsForInteraction,
+  getPresetsByCategory,
+  searchPresets,
+  // Apply & validate
+  applyPresetToSlot,
+  validatePreset,
+  generatePresetId,
+  // Library format
+  exportPresetsToLibrary,
+  validatePresetLibrary,
+  parsePresetLibrary,
+  // Conflicts
+  validateActivePresets,
+  getConflictSummary,
+  // Suggestions
+  getSuggestedPresets,
+  getRecommendedPresets as getRecommendedPresetsCore,
+  buildUsageDetails,
+  // Playlists
+  generatePlaylistId,
+  validatePlaylist,
+  evaluatePlaylistCondition,
+  executePlaylist,
+} from '@pixsim7/game.engine';
 
-/**
- * Interaction preset configuration
- */
-export interface InteractionPreset {
-  /** Unique preset ID (e.g., 'flirt_friendly') */
-  id: string;
+// ============================================================================
+// World Preset Storage
+// ============================================================================
 
-  /** Display name (e.g., 'Flirt (Friendly)') */
-  name: string;
-
-  /** Plugin/interaction type this preset configures (e.g., 'persuade') */
-  interactionId: string;
-
-  /** Plugin-specific configuration */
-  config: Record<string, any>;
-
-  /** Category for organization/filtering */
-  category?: string;
-
-  /** Description of what this preset does */
-  description?: string;
-
-  /** Tags for searching/filtering */
-  tags?: string[];
-
-  /** Icon/emoji for visual identification */
-  icon?: string;
-
-  /** Phase 8: Context-aware suggestion metadata */
-
-  /** Recommended NPC roles this preset works well with */
-  recommendedRoles?: string[];
-
-  /** World tags this preset is suitable for (e.g., 'fantasy', 'modern', 'sci-fi') */
-  worldTags?: string[];
-
-  /** Situation tags (e.g., 'intro', 'intense', 'casual', 'combat', 'romance') */
-  situationTags?: string[];
-}
-
-/**
- * Preset category definitions
- */
-export const PRESET_CATEGORIES = {
-  romance: 'Romance',
-  trade: 'Trade',
-  combat: 'Combat',
-  stealth: 'Stealth',
-  social: 'Social',
-  quest: 'Quest',
-  utility: 'Utility',
-  custom: 'Custom',
-} as const;
-
-export type PresetCategory = keyof typeof PRESET_CATEGORIES;
-
-/**
- * Get interaction presets from world metadata
- */
 export function getWorldInteractionPresets(world: GameWorldDetail | null): InteractionPreset[] {
   if (!world?.meta) return [];
-
   const presets = (world.meta as any).interactionPresets;
   if (!Array.isArray(presets)) return [];
-
   return presets;
 }
 
-/**
- * Load interaction presets from world (alias for getWorldInteractionPresets)
- */
 export function loadWorldInteractionPresets(world: GameWorldDetail | null): InteractionPreset[] {
   return getWorldInteractionPresets(world);
 }
 
-/**
- * Set interaction presets on a world (returns updated world object without saving)
- */
 export function setWorldInteractionPresets(
   world: GameWorldDetail,
-  presets: InteractionPreset[]
+  presets: InteractionPreset[],
 ): GameWorldDetail {
-  return {
-    ...world,
-    meta: {
-      ...world.meta,
-      interactionPresets: presets,
-    },
-  };
+  return { ...world, meta: { ...world.meta, interactionPresets: presets } };
 }
 
-/**
- * Save interaction presets to world metadata
- */
 export async function saveWorldInteractionPresets(
   worldId: number,
   presets: InteractionPreset[],
-  currentMeta: Record<string, unknown>
+  currentMeta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
-  const updatedMeta = {
-    ...currentMeta,
-    interactionPresets: presets,
-  };
-
-  return await updateGameWorldMeta(worldId, updatedMeta);
+  return await updateGameWorldMeta(worldId, { ...currentMeta, interactionPresets: presets });
 }
 
-/**
- * Add a new preset to a world
- */
 export async function addInteractionPreset(
   worldId: number,
   preset: InteractionPreset,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<GameWorldDetail> {
-  const existingPresets = getWorldInteractionPresets(currentWorld);
-
-  // Check for duplicate ID
-  if (existingPresets.some((p) => p.id === preset.id)) {
+  const existing = getWorldInteractionPresets(currentWorld);
+  if (existing.some((p) => p.id === preset.id)) {
     throw new Error(`Preset with ID "${preset.id}" already exists`);
   }
-
-  const updatedPresets = [...existingPresets, preset];
-  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
+  return await saveWorldInteractionPresets(worldId, [...existing, preset], currentWorld.meta || {});
 }
 
-/**
- * Update an existing preset
- */
 export async function updateInteractionPreset(
   worldId: number,
   presetId: string,
   updates: Partial<InteractionPreset>,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<GameWorldDetail> {
-  const existingPresets = getWorldInteractionPresets(currentWorld);
-  const presetIndex = existingPresets.findIndex((p) => p.id === presetId);
-
-  if (presetIndex === -1) {
-    throw new Error(`Preset with ID "${presetId}" not found`);
-  }
-
-  const updatedPresets = [...existingPresets];
-  updatedPresets[presetIndex] = {
-    ...updatedPresets[presetIndex],
-    ...updates,
-  };
-
-  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
+  const existing = getWorldInteractionPresets(currentWorld);
+  const idx = existing.findIndex((p) => p.id === presetId);
+  if (idx === -1) throw new Error(`Preset with ID "${presetId}" not found`);
+  const updated = [...existing];
+  updated[idx] = { ...updated[idx], ...updates };
+  return await saveWorldInteractionPresets(worldId, updated, currentWorld.meta || {});
 }
 
-/**
- * Delete a preset from a world
- */
 export async function deleteInteractionPreset(
   worldId: number,
   presetId: string,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<GameWorldDetail> {
-  const existingPresets = getWorldInteractionPresets(currentWorld);
-  const updatedPresets = existingPresets.filter((p) => p.id !== presetId);
-
-  return await saveWorldInteractionPresets(worldId, updatedPresets, currentWorld.meta || {});
-}
-
-/**
- * Find presets by interaction ID
- */
-export function getPresetsForInteraction(
-  presets: InteractionPreset[],
-  interactionId: string
-): InteractionPreset[] {
-  return presets.filter((p) => p.interactionId === interactionId);
-}
-
-/**
- * Find presets by category
- */
-export function getPresetsByCategory(
-  presets: InteractionPreset[],
-  category: string
-): InteractionPreset[] {
-  return presets.filter((p) => p.category === category);
-}
-
-/**
- * Search presets by name or tags
- */
-export function searchPresets(presets: InteractionPreset[], query: string): InteractionPreset[] {
-  const lowerQuery = query.toLowerCase();
-  return presets.filter(
-    (p) =>
-      p.name.toLowerCase().includes(lowerQuery) ||
-      p.description?.toLowerCase().includes(lowerQuery) ||
-      p.tags?.some((tag) => tag.toLowerCase().includes(lowerQuery))
+  const existing = getWorldInteractionPresets(currentWorld);
+  return await saveWorldInteractionPresets(
+    worldId,
+    existing.filter((p) => p.id !== presetId),
+    currentWorld.meta || {},
   );
 }
 
-/**
- * Apply a preset to a slot's interaction config
- * Attaches preset ID for usage tracking
- */
-export function applyPresetToSlot(preset: InteractionPreset): BaseInteractionConfig {
-  return {
-    enabled: true,
-    ...preset.config,
-    __presetId: preset.id, // Metadata for usage tracking
-    __presetName: preset.name, // Store name for reference
-  };
-}
-
-/**
- * Validate preset structure
- */
-export function validatePreset(preset: Partial<InteractionPreset>): string | null {
-  if (!preset.id || preset.id.trim().length === 0) {
-    return 'Preset ID is required';
-  }
-
-  if (!preset.name || preset.name.trim().length === 0) {
-    return 'Preset name is required';
-  }
-
-  if (!preset.interactionId || preset.interactionId.trim().length === 0) {
-    return 'Interaction ID is required';
-  }
-
-  if (!preset.config || typeof preset.config !== 'object') {
-    return 'Preset config must be an object';
-  }
-
-  return null;
-}
-
-/**
- * Generate a unique preset ID from name
- */
-export function generatePresetId(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-
-  return `${base}_${Date.now().toString(36)}`;
-}
-
-/**
- * Preset with scope information
- */
-export interface PresetWithScope extends InteractionPreset {
-  scope: 'global' | 'world';
-}
-
-/**
- * PHASE 4: Global Preset Support
- * Global presets are stored in localStorage and available across all worlds
- */
+// ============================================================================
+// Global Preset Storage (localStorage)
+// ============================================================================
 
 const GLOBAL_PRESETS_KEY = 'pixsim7:global-interaction-presets';
 
-/**
- * Get global presets from localStorage
- */
 export function getGlobalInteractionPresets(): InteractionPreset[] {
   try {
     const stored = localStorage.getItem(GLOBAL_PRESETS_KEY);
     if (!stored) return [];
-
     const parsed = JSON.parse(stored);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed;
+    return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     console.error('Failed to load global presets:', e);
     return [];
   }
 }
 
-/**
- * Save global presets to localStorage
- */
 export function saveGlobalInteractionPresets(presets: InteractionPreset[]): void {
   try {
     localStorage.setItem(GLOBAL_PRESETS_KEY, JSON.stringify(presets));
@@ -302,137 +177,79 @@ export function saveGlobalInteractionPresets(presets: InteractionPreset[]): void
   }
 }
 
-/**
- * Add a global preset
- */
 export function addGlobalPreset(preset: InteractionPreset): void {
   const existing = getGlobalInteractionPresets();
-
   if (existing.some((p) => p.id === preset.id)) {
     throw new Error(`Global preset with ID "${preset.id}" already exists`);
   }
-
   saveGlobalInteractionPresets([...existing, preset]);
 }
 
-/**
- * Update a global preset
- */
-export function updateGlobalPreset(
-  presetId: string,
-  updates: Partial<InteractionPreset>
-): void {
+export function updateGlobalPreset(presetId: string, updates: Partial<InteractionPreset>): void {
   const existing = getGlobalInteractionPresets();
-  const index = existing.findIndex((p) => p.id === presetId);
-
-  if (index === -1) {
-    throw new Error(`Global preset with ID "${presetId}" not found`);
-  }
-
+  const idx = existing.findIndex((p) => p.id === presetId);
+  if (idx === -1) throw new Error(`Global preset with ID "${presetId}" not found`);
   const updated = [...existing];
-  updated[index] = { ...updated[index], ...updates };
-
+  updated[idx] = { ...updated[idx], ...updates };
   saveGlobalInteractionPresets(updated);
 }
 
-/**
- * Delete a global preset
- */
 export function deleteGlobalPreset(presetId: string): void {
   const existing = getGlobalInteractionPresets();
-  const filtered = existing.filter((p) => p.id !== presetId);
-
-  saveGlobalInteractionPresets(filtered);
+  saveGlobalInteractionPresets(existing.filter((p) => p.id !== presetId));
 }
 
-/**
- * Get combined presets (global + world) with scope information
- */
+// ============================================================================
+// Combined Presets
+// ============================================================================
+
 export function getCombinedPresets(world: GameWorldDetail | null): PresetWithScope[] {
   const globalPresets = getGlobalInteractionPresets().map((p) => ({
     ...p,
     scope: 'global' as const,
   }));
-
   const worldPresets = getWorldInteractionPresets(world).map((p) => ({
     ...p,
     scope: 'world' as const,
   }));
-
   return [...globalPresets, ...worldPresets];
 }
 
-/**
- * Copy a world preset to global
- */
 export function promotePresetToGlobal(preset: InteractionPreset): void {
   const global = getGlobalInteractionPresets();
-
-  // Check for conflicts
   if (global.some((p) => p.id === preset.id)) {
-    // Generate new ID to avoid conflicts
-    const newId = generatePresetId(preset.name);
-    addGlobalPreset({ ...preset, id: newId });
+    addGlobalPreset({ ...preset, id: generatePresetId(preset.name) });
   } else {
     addGlobalPreset(preset);
   }
 }
 
-/**
- * Copy a global preset to world
- */
 export async function copyPresetToWorld(
   preset: InteractionPreset,
   worldId: number,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<GameWorldDetail> {
   const worldPresets = getWorldInteractionPresets(currentWorld);
-
-  // Check for conflicts
   if (worldPresets.some((p) => p.id === preset.id)) {
-    // Generate new ID to avoid conflicts
-    const newId = generatePresetId(preset.name);
-    return await addInteractionPreset(worldId, { ...preset, id: newId }, currentWorld);
-  } else {
-    return await addInteractionPreset(worldId, preset, currentWorld);
+    return await addInteractionPreset(
+      worldId,
+      { ...preset, id: generatePresetId(preset.name) },
+      currentWorld,
+    );
   }
+  return await addInteractionPreset(worldId, preset, currentWorld);
 }
 
-/**
- * PHASE 5: Preset Usage Tracking (Dev-Only)
- * Tracks how often presets are used in interactions
- */
+// ============================================================================
+// Usage Tracking (localStorage)
+// ============================================================================
 
 const PRESET_USAGE_KEY = 'pixsim7:preset-usage-stats';
 
-/**
- * PHASE 7: Outcome tracking for presets
- */
-export type InteractionOutcome = 'success' | 'failure' | 'neutral';
-
-export interface PresetOutcomeData {
-  success: number;
-  failure: number;
-  neutral: number;
-}
-
-export interface PresetUsageStats {
-  [presetId: string]: {
-    count: number;
-    lastUsed: number; // timestamp
-    presetName?: string;
-    outcomes?: PresetOutcomeData; // Phase 7: outcome tracking
-  };
-}
-
-/**
- * Get preset usage statistics
- */
 export function getPresetUsageStats(): PresetUsageStats {
   try {
     const stored = localStorage.getItem(PRESET_USAGE_KEY);
     if (!stored) return {};
-
     return JSON.parse(stored);
   } catch (e) {
     console.error('Failed to load preset usage stats:', e);
@@ -440,9 +257,6 @@ export function getPresetUsageStats(): PresetUsageStats {
   }
 }
 
-/**
- * Save preset usage statistics
- */
 function savePresetUsageStats(stats: PresetUsageStats): void {
   try {
     localStorage.setItem(PRESET_USAGE_KEY, JSON.stringify(stats));
@@ -451,12 +265,8 @@ function savePresetUsageStats(stats: PresetUsageStats): void {
   }
 }
 
-/**
- * Track a preset usage
- */
 export function trackPresetUsage(presetId: string, presetName?: string): void {
   const stats = getPresetUsageStats();
-
   if (!stats[presetId]) {
     stats[presetId] = {
       count: 0,
@@ -465,31 +275,21 @@ export function trackPresetUsage(presetId: string, presetName?: string): void {
       outcomes: { success: 0, failure: 0, neutral: 0 },
     };
   }
-
   stats[presetId].count += 1;
   stats[presetId].lastUsed = Date.now();
-  if (presetName) {
-    stats[presetId].presetName = presetName;
-  }
-
-  // Ensure outcomes object exists (for backward compatibility)
+  if (presetName) stats[presetId].presetName = presetName;
   if (!stats[presetId].outcomes) {
     stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
   }
-
   savePresetUsageStats(stats);
 }
 
-/**
- * PHASE 7: Track preset outcome (success/failure/neutral)
- */
 export function trackPresetOutcome(
   presetId: string,
   outcome: InteractionOutcome,
-  presetName?: string
+  presetName?: string,
 ): void {
   const stats = getPresetUsageStats();
-
   if (!stats[presetId]) {
     stats[presetId] = {
       count: 0,
@@ -498,25 +298,14 @@ export function trackPresetOutcome(
       outcomes: { success: 0, failure: 0, neutral: 0 },
     };
   }
-
-  // Ensure outcomes object exists
   if (!stats[presetId].outcomes) {
     stats[presetId].outcomes = { success: 0, failure: 0, neutral: 0 };
   }
-
-  // Increment the specific outcome counter
-  stats[presetId].outcomes[outcome] += 1;
-
-  if (presetName) {
-    stats[presetId].presetName = presetName;
-  }
-
+  stats[presetId].outcomes![outcome] += 1;
+  if (presetName) stats[presetId].presetName = presetName;
   savePresetUsageStats(stats);
 }
 
-/**
- * Clear preset usage statistics
- */
 export function clearPresetUsageStats(): void {
   try {
     localStorage.removeItem(PRESET_USAGE_KEY);
@@ -526,185 +315,52 @@ export function clearPresetUsageStats(): void {
 }
 
 /**
- * Get preset usage statistics with preset details (Phase 7: includes outcome data)
+ * Get usage stats enriched with preset details (convenience wrapper).
  */
 export function getPresetUsageStatsWithDetails(
-  world: GameWorldDetail | null
-): Array<{
-  presetId: string;
-  presetName: string;
-  count: number;
-  lastUsed: number;
-  scope?: 'global' | 'world';
-  outcomes: PresetOutcomeData;
-  successRate: number | null;
-  totalOutcomes: number;
-}> {
-  const stats = getPresetUsageStats();
-  const presets = getCombinedPresets(world);
-
-  return Object.entries(stats)
-    .map(([presetId, data]) => {
-      const preset = presets.find((p) => p.id === presetId);
-
-      // Phase 7: Calculate outcome metrics
-      const outcomes = data.outcomes || { success: 0, failure: 0, neutral: 0 };
-      const totalOutcomes = outcomes.success + outcomes.failure + outcomes.neutral;
-      const successRate =
-        totalOutcomes > 0 ? (outcomes.success / totalOutcomes) * 100 : null;
-
-      return {
-        presetId,
-        presetName: preset?.name || data.presetName || presetId,
-        count: data.count,
-        lastUsed: data.lastUsed,
-        scope: preset?.scope,
-        outcomes,
-        successRate,
-        totalOutcomes,
-      };
-    })
-    .sort((a, b) => b.count - a.count); // Sort by usage count descending
+  world: GameWorldDetail | null,
+) {
+  return buildUsageDetails(getPresetUsageStats(), getCombinedPresets(world));
 }
 
 /**
- * PHASE 6: Cross-World / Cross-Project Preset Libraries
- * Export and import presets to share across worlds and projects
+ * App-level wrapper that auto-resolves usage stats from localStorage.
  */
-
-/**
- * Preset library export format
- */
-export interface PresetLibrary {
-  /** Format version for compatibility checking */
-  version: string;
-
-  /** Export metadata */
-  metadata: {
-    exportDate: string;
-    description?: string;
-    source?: string;
-    author?: string;
-  };
-
-  /** Preset collection */
-  presets: InteractionPreset[];
+export function getRecommendedPresets(
+  presets: PresetWithScope[],
+  context: SuggestionContext & { world?: GameWorldDetail | null },
+  minScore: number = 30,
+  maxResults: number = 3,
+): PresetSuggestion[] {
+  const usageDetails = getPresetUsageStatsWithDetails(context.world || null);
+  return getRecommendedPresetsCore(presets, context, usageDetails, minScore, maxResults);
 }
 
-/**
- * Conflict resolution strategy for imports
- */
-export type ConflictResolution =
-  | 'skip'      // Skip presets with conflicting IDs
-  | 'rename'    // Rename conflicting presets with new IDs
-  | 'overwrite'; // Replace existing presets with imported ones
+// ============================================================================
+// File I/O (Browser)
+// ============================================================================
 
-/**
- * Import result details
- */
-export interface ImportResult {
-  success: boolean;
-  imported: number;
-  skipped: number;
-  renamed: number;
-  errors: string[];
-  presets: InteractionPreset[];
-}
-
-const LIBRARY_FORMAT_VERSION = '1.0';
-
-/**
- * Export presets to a library JSON format
- */
-export function exportPresetsToLibrary(
-  presets: InteractionPreset[],
-  metadata?: Partial<PresetLibrary['metadata']>
-): PresetLibrary {
-  return {
-    version: LIBRARY_FORMAT_VERSION,
-    metadata: {
-      exportDate: new Date().toISOString(),
-      description: metadata?.description,
-      source: metadata?.source,
-      author: metadata?.author,
-    },
-    presets,
-  };
-}
-
-/**
- * Download presets as a JSON file
- */
 export function downloadPresetsAsJSON(
   presets: InteractionPreset[],
   filename: string = 'interaction-presets.json',
-  metadata?: Partial<PresetLibrary['metadata']>
+  metadata?: Partial<PresetLibrary['metadata']>,
 ): void {
   const library = exportPresetsToLibrary(presets, metadata);
   const json = JSON.stringify(library, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
-
   URL.revokeObjectURL(url);
 }
 
-/**
- * Validate preset library format
- */
-export function validatePresetLibrary(data: any): string | null {
-  if (!data || typeof data !== 'object') {
-    return 'Invalid library format: must be an object';
-  }
-
-  if (!data.version || typeof data.version !== 'string') {
-    return 'Invalid library format: missing or invalid version';
-  }
-
-  // Check version compatibility (currently only support 1.x)
-  const majorVersion = data.version.split('.')[0];
-  if (majorVersion !== '1') {
-    return `Unsupported library version: ${data.version}. This tool supports version 1.x only.`;
-  }
-
-  if (!data.metadata || typeof data.metadata !== 'object') {
-    return 'Invalid library format: missing or invalid metadata';
-  }
-
-  if (!Array.isArray(data.presets)) {
-    return 'Invalid library format: presets must be an array';
-  }
-
-  // Validate each preset
-  for (let i = 0; i < data.presets.length; i++) {
-    const preset = data.presets[i];
-    const error = validatePreset(preset);
-    if (error) {
-      return `Invalid preset at index ${i}: ${error}`;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Import presets from library with conflict resolution
- *
- * @param library - Preset library to import
- * @param target - 'global' or world ID for world-specific import
- * @param conflictResolution - How to handle ID conflicts
- * @param currentWorld - Current world (required for world imports)
- * @returns Import result with details
- */
 export async function importPresetsFromLibrary(
   library: PresetLibrary,
   target: 'global' | number,
   conflictResolution: ConflictResolution = 'skip',
-  currentWorld?: GameWorldDetail
+  currentWorld?: GameWorldDetail,
 ): Promise<ImportResult> {
   const result: ImportResult = {
     success: false,
@@ -715,21 +371,18 @@ export async function importPresetsFromLibrary(
     presets: [],
   };
 
-  // Validate library format
   const validationError = validatePresetLibrary(library);
   if (validationError) {
     result.errors.push(validationError);
     return result;
   }
 
-  // Get existing presets based on target
-  const existingPresets = target === 'global'
-    ? getGlobalInteractionPresets()
-    : getWorldInteractionPresets(currentWorld || null);
+  const existingPresets =
+    target === 'global'
+      ? getGlobalInteractionPresets()
+      : getWorldInteractionPresets(currentWorld || null);
+  const existingIds = new Set(existingPresets.map((p) => p.id));
 
-  const existingIds = new Set(existingPresets.map(p => p.id));
-
-  // Process each preset
   for (const preset of library.presets) {
     const hasConflict = existingIds.has(preset.id);
 
@@ -738,16 +391,13 @@ export async function importPresetsFromLibrary(
         result.skipped++;
         continue;
       } else if (conflictResolution === 'rename') {
-        // Generate new ID
         const newId = generatePresetId(preset.name);
         const renamedPreset = { ...preset, id: newId };
-
         try {
           if (target === 'global') {
             addGlobalPreset(renamedPreset);
           } else if (currentWorld) {
             await addInteractionPreset(target, renamedPreset, currentWorld);
-            // Update currentWorld reference for next iteration
             currentWorld = setWorldInteractionPresets(currentWorld, [
               ...getWorldInteractionPresets(currentWorld),
               renamedPreset,
@@ -774,13 +424,11 @@ export async function importPresetsFromLibrary(
         }
       }
     } else {
-      // No conflict, add normally
       try {
         if (target === 'global') {
           addGlobalPreset(preset);
         } else if (currentWorld) {
           await addInteractionPreset(target, preset, currentWorld);
-          // Update currentWorld reference for next iteration
           currentWorld = setWorldInteractionPresets(currentWorld, [
             ...getWorldInteractionPresets(currentWorld),
             preset,
@@ -799,37 +447,15 @@ export async function importPresetsFromLibrary(
   return result;
 }
 
-/**
- * Parse preset library from JSON string
- */
-export function parsePresetLibrary(json: string): PresetLibrary | null {
-  try {
-    const data = JSON.parse(json);
-    const error = validatePresetLibrary(data);
-    if (error) {
-      console.error('Library validation failed:', error);
-      return null;
-    }
-    return data as PresetLibrary;
-  } catch (e) {
-    console.error('Failed to parse preset library:', e);
-    return null;
-  }
-}
-
-/**
- * Import presets from a JSON file
- */
 export async function importPresetsFromFile(
   file: File,
   target: 'global' | number,
   conflictResolution: ConflictResolution = 'skip',
-  currentWorld?: GameWorldDetail
+  currentWorld?: GameWorldDetail,
 ): Promise<ImportResult> {
   try {
     const text = await file.text();
     const library = parsePresetLibrary(text);
-
     if (!library) {
       return {
         success: false,
@@ -840,7 +466,6 @@ export async function importPresetsFromFile(
         presets: [],
       };
     }
-
     return await importPresetsFromLibrary(library, target, conflictResolution, currentWorld);
   } catch (e) {
     return {
@@ -854,473 +479,12 @@ export async function importPresetsFromFile(
   }
 }
 
-/**
- * PHASE 8: Context-Aware Preset Suggestions
- * Suggest relevant presets based on NPC roles, world tags, and usage patterns
- */
-
-export interface SuggestionContext {
-  /** Current NPC role (if applicable) */
-  npcRole?: string;
-
-  /** World tags from current world metadata */
-  worldTags?: string[];
-
-  /** Situation tags describing current context */
-  situationTags?: string[];
-
-  /** Current world detail for usage stats */
-  world?: GameWorldDetail | null;
-
-  /** Selected interaction ID to filter by */
-  interactionId?: string;
-}
-
-export interface PresetSuggestion extends PresetWithScope {
-  /** Suggestion score (0-100, higher is better) */
-  score: number;
-
-  /** Reasons why this preset was suggested */
-  reasons: string[];
-}
-
-/**
- * Calculate suggestion score for a preset based on context
- */
-function calculateSuggestionScore(
-  preset: PresetWithScope,
-  context: SuggestionContext,
-  usageStats: ReturnType<typeof getPresetUsageStatsWithDetails>
-): { score: number; reasons: string[] } {
-  let score = 0;
-  const reasons: string[] = [];
-
-  // Filter by interaction type (essential)
-  if (context.interactionId && preset.interactionId !== context.interactionId) {
-    return { score: 0, reasons: [] };
-  }
-
-  // 1. NPC Role matching (30 points max)
-  if (context.npcRole && preset.recommendedRoles?.length) {
-    const roleMatch = preset.recommendedRoles.some(
-      (role) => role.toLowerCase() === context.npcRole?.toLowerCase()
-    );
-    if (roleMatch) {
-      score += 30;
-      reasons.push(`Matches NPC role: ${context.npcRole}`);
-    }
-  }
-
-  // 2. World tags matching (25 points max)
-  if (context.worldTags?.length && preset.worldTags?.length) {
-    const matchingWorldTags = preset.worldTags.filter((tag) =>
-      context.worldTags?.some((wt) => wt.toLowerCase() === tag.toLowerCase())
-    );
-    if (matchingWorldTags.length > 0) {
-      const tagScore = Math.min(25, matchingWorldTags.length * 10);
-      score += tagScore;
-      reasons.push(`World tags: ${matchingWorldTags.join(', ')}`);
-    }
-  }
-
-  // 3. Situation tags matching (25 points max)
-  if (context.situationTags?.length && preset.situationTags?.length) {
-    const matchingSituationTags = preset.situationTags.filter((tag) =>
-      context.situationTags?.some((st) => st.toLowerCase() === tag.toLowerCase())
-    );
-    if (matchingSituationTags.length > 0) {
-      const tagScore = Math.min(25, matchingSituationTags.length * 10);
-      score += tagScore;
-      reasons.push(`Situation: ${matchingSituationTags.join(', ')}`);
-    }
-  }
-
-  // 4. Recent usage in current world (20 points max)
-  const stats = usageStats.find((s) => s.presetId === preset.id);
-  if (stats && stats.count > 0) {
-    // More recent usage gets higher score
-    const now = Date.now();
-    const hoursSinceLastUse = (now - stats.lastUsed) / (1000 * 60 * 60);
-
-    if (hoursSinceLastUse < 24) {
-      score += 20;
-      reasons.push('Used recently (< 24h)');
-    } else if (hoursSinceLastUse < 168) {
-      // < 1 week
-      score += 15;
-      reasons.push('Used this week');
-    } else if (stats.count >= 3) {
-      score += 10;
-      reasons.push('Frequently used');
-    }
-  }
-
-  // 5. Success rate bonus (Phase 7 integration, max 10 points)
-  if (stats?.successRate !== null && stats.successRate !== undefined) {
-    if (stats.successRate >= 70) {
-      score += 10;
-      reasons.push(`High success rate (${stats.successRate.toFixed(0)}%)`);
-    } else if (stats.successRate >= 40) {
-      score += 5;
-      reasons.push(`Moderate success rate (${stats.successRate.toFixed(0)}%)`);
-    }
-  }
-
-  // 6. Base score for any preset without context (ensures all presets get some score)
-  if (score === 0) {
-    score = 10; // Minimum score for any valid preset
-  }
-
-  return { score: Math.min(100, score), reasons };
-}
-
-/**
- * Get suggested presets for a given context, sorted by relevance
- */
-export function getSuggestedPresets(
-  presets: PresetWithScope[],
-  context: SuggestionContext,
-  maxSuggestions: number = 5
-): PresetSuggestion[] {
-  const usageStats = getPresetUsageStatsWithDetails(context.world || null);
-
-  const suggestions = presets
-    .map((preset) => {
-      const { score, reasons } = calculateSuggestionScore(preset, context, usageStats);
-      return {
-        ...preset,
-        score,
-        reasons,
-      };
-    })
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, maxSuggestions);
-
-  return suggestions;
-}
-
-/**
- * Get top N recommended presets with a minimum score threshold
- */
-export function getRecommendedPresets(
-  presets: PresetWithScope[],
-  context: SuggestionContext,
-  minScore: number = 30,
-  maxResults: number = 3
-): PresetSuggestion[] {
-  const suggestions = getSuggestedPresets(presets, context, maxResults * 2);
-  return suggestions.filter((s) => s.score >= minScore).slice(0, maxResults);
-}
-
-/**
- * PHASE 9: Preset Conflict & Compatibility Checks
- * Detect when multiple presets might conflict or have compatibility issues
- */
-
-export type ConflictSeverity = 'warning' | 'error' | 'info';
-
-export interface ConflictWarning {
-  /** Severity level of the conflict */
-  severity: ConflictSeverity;
-
-  /** Human-readable conflict message */
-  message: string;
-
-  /** IDs of presets involved in the conflict */
-  presetIds: string[];
-
-  /** Suggested resolution */
-  suggestion?: string;
-
-  /** Conflict type identifier */
-  type: string;
-}
-
-/**
- * Check for duplicate interaction types (multiple presets for same plugin)
- */
-function checkDuplicateInteractions(
-  activePresets: Array<{ presetId: string; interactionId: string; presetName: string }>
-): ConflictWarning[] {
-  const warnings: ConflictWarning[] = [];
-  const interactionGroups = new Map<string, Array<{ presetId: string; presetName: string }>>();
-
-  // Group presets by interaction type
-  for (const preset of activePresets) {
-    if (!interactionGroups.has(preset.interactionId)) {
-      interactionGroups.set(preset.interactionId, []);
-    }
-    interactionGroups.get(preset.interactionId)!.push({
-      presetId: preset.presetId,
-      presetName: preset.presetName,
-    });
-  }
-
-  // Check for duplicates
-  for (const [interactionId, group] of interactionGroups.entries()) {
-    if (group.length > 1) {
-      warnings.push({
-        severity: 'warning',
-        message: `Multiple presets configured for ${interactionId}: ${group.map((p) => p.presetName).join(', ')}`,
-        presetIds: group.map((p) => p.presetId),
-        suggestion: 'Consider using only one preset per interaction type, or ensure configurations are compatible',
-        type: 'duplicate-interaction',
-      });
-    }
-  }
-
-  return warnings;
-}
-
-/**
- * Check for conflicting configuration values
- */
-function checkConfigConflicts(
-  activePresets: Array<{
-    presetId: string;
-    presetName: string;
-    config: Record<string, any>;
-  }>
-): ConflictWarning[] {
-  const warnings: ConflictWarning[] = [];
-
-  // Check for mutually exclusive flags
-  const exclusiveFlags: Record<string, string[]> = {
-    aggressive: ['friendly', 'passive'],
-    friendly: ['aggressive', 'hostile'],
-    hostile: ['friendly', 'passive'],
-    stealth: ['loud', 'obvious'],
-  };
-
-  for (let i = 0; i < activePresets.length; i++) {
-    for (let j = i + 1; j < activePresets.length; j++) {
-      const preset1 = activePresets[i];
-      const preset2 = activePresets[j];
-
-      // Check for conflicting flags in config
-      for (const [flag, exclusives] of Object.entries(exclusiveFlags)) {
-        if (preset1.config[flag] && exclusives.some((ex) => preset2.config[ex])) {
-          warnings.push({
-            severity: 'error',
-            message: `Conflicting flags: "${preset1.presetName}" has ${flag}, "${preset2.presetName}" has conflicting behavior`,
-            presetIds: [preset1.presetId, preset2.presetId],
-            suggestion: `Remove one of the conflicting presets or adjust their configurations`,
-            type: 'config-conflict',
-          });
-        }
-      }
-
-      // Check for contradictory boolean flags
-      const sharedKeys = Object.keys(preset1.config).filter((k) =>
-        Object.keys(preset2.config).includes(k)
-      );
-      for (const key of sharedKeys) {
-        const val1 = preset1.config[key];
-        const val2 = preset2.config[key];
-
-        // Check boolean contradictions
-        if (typeof val1 === 'boolean' && typeof val2 === 'boolean' && val1 !== val2) {
-          warnings.push({
-            severity: 'warning',
-            message: `Contradictory setting "${key}": "${preset1.presetName}" sets to ${val1}, "${preset2.presetName}" sets to ${val2}`,
-            presetIds: [preset1.presetId, preset2.presetId],
-            suggestion: 'Verify which setting should take precedence',
-            type: 'boolean-contradiction',
-          });
-        }
-      }
-    }
-  }
-
-  return warnings;
-}
-
-/**
- * Check for performance concerns (too many presets active)
- */
-function checkPerformanceConcerns(
-  activePresets: Array<{ presetId: string; presetName: string }>
-): ConflictWarning[] {
-  const warnings: ConflictWarning[] = [];
-
-  if (activePresets.length > 5) {
-    warnings.push({
-      severity: 'info',
-      message: `${activePresets.length} presets active. This may impact performance.`,
-      presetIds: activePresets.map((p) => p.presetId),
-      suggestion: 'Consider consolidating presets or disabling unused ones',
-      type: 'performance',
-    });
-  }
-
-  return warnings;
-}
-
-/**
- * Validate active presets for conflicts and compatibility issues
- */
-export function validateActivePresets(interactions: Record<string, any>): ConflictWarning[] {
-  const warnings: ConflictWarning[] = [];
-
-  // Extract active presets from interactions
-  const activePresets: Array<{
-    presetId: string;
-    presetName: string;
-    interactionId: string;
-    config: Record<string, any>;
-  }> = [];
-
-  for (const [interactionId, config] of Object.entries(interactions)) {
-    if (config?.enabled && config?.__presetId) {
-      activePresets.push({
-        presetId: config.__presetId,
-        presetName: config.__presetName || config.__presetId,
-        interactionId,
-        config,
-      });
-    }
-  }
-
-  // Skip validation if no presets are active
-  if (activePresets.length === 0) {
-    return [];
-  }
-
-  // Run all conflict checks
-  warnings.push(...checkDuplicateInteractions(activePresets));
-  warnings.push(...checkConfigConflicts(activePresets));
-  warnings.push(...checkPerformanceConcerns(activePresets));
-
-  return warnings;
-}
-
-/**
- * Get a summary of conflicts by severity
- */
-export function getConflictSummary(warnings: ConflictWarning[]): {
-  errors: number;
-  warnings: number;
-  info: number;
-  total: number;
-} {
-  return {
-    errors: warnings.filter((w) => w.severity === 'error').length,
-    warnings: warnings.filter((w) => w.severity === 'warning').length,
-    info: warnings.filter((w) => w.severity === 'info').length,
-    total: warnings.length,
-  };
-}
-
-/**
- * PHASE 10: Preset Playlists & Sequenced Interactions
- * Allow designers to create sequences of presets that execute over time or based on conditions
- */
-
-/**
- * Condition that must be met for a playlist item to execute
- */
-export interface PlaylistCondition {
-  /** Type of condition check */
-  type: 'always' | 'flag' | 'state' | 'random';
-
-  /** For 'flag' type: flag name to check */
-  flagName?: string;
-
-  /** For 'flag' type: required flag value */
-  flagValue?: boolean;
-
-  /** For 'state' type: state key to check */
-  stateKey?: string;
-
-  /** For 'state' type: required state value */
-  stateValue?: any;
-
-  /** For 'random' type: probability (0-1) */
-  probability?: number;
-}
-
-/**
- * Single item in a preset playlist
- */
-export interface PlaylistItem {
-  /** ID of the preset to execute */
-  presetId: string;
-
-  /** Optional delay before executing this preset (milliseconds) */
-  delayMs?: number;
-
-  /** Optional condition that must be met */
-  condition?: PlaylistCondition;
-
-  /** Whether to skip remaining items if this fails */
-  stopOnFailure?: boolean;
-}
-
-/**
- * Playlist of sequenced interaction presets
- */
-export interface PresetPlaylist {
-  /** Unique playlist ID */
-  id: string;
-
-  /** Display name */
-  name: string;
-
-  /** Description of what this playlist does */
-  description?: string;
-
-  /** Ordered list of preset items */
-  items: PlaylistItem[];
-
-  /** Whether to loop the playlist */
-  loop?: boolean;
-
-  /** Maximum loop iterations (if loop is true) */
-  maxLoops?: number;
-
-  /** Category for organization */
-  category?: string;
-
-  /** Tags for filtering */
-  tags?: string[];
-}
-
-/**
- * Playlist with scope information
- */
-export interface PlaylistWithScope extends PresetPlaylist {
-  scope: 'global' | 'world';
-}
-
-/**
- * Runtime state for an active playlist execution
- */
-export interface PlaylistExecutionState {
-  /** Playlist being executed */
-  playlistId: string;
-
-  /** Current item index */
-  currentIndex: number;
-
-  /** Current loop iteration (if looping) */
-  currentLoop: number;
-
-  /** Timestamp when execution started */
-  startedAt: number;
-
-  /** Whether execution is paused */
-  paused: boolean;
-
-  /** Timeout ID for delayed execution */
-  timeoutId?: ReturnType<typeof setTimeout>;
-}
+// ============================================================================
+// Playlist Storage
+// ============================================================================
 
 const GLOBAL_PLAYLISTS_KEY = 'pixsim7:interaction-playlists:global';
 
-/**
- * Get global playlists from localStorage
- */
 export function getGlobalPlaylists(): PresetPlaylist[] {
   try {
     const data = localStorage.getItem(GLOBAL_PLAYLISTS_KEY);
@@ -1332,9 +496,6 @@ export function getGlobalPlaylists(): PresetPlaylist[] {
   }
 }
 
-/**
- * Save global playlists to localStorage
- */
 export function saveGlobalPlaylists(playlists: PresetPlaylist[]): void {
   try {
     localStorage.setItem(GLOBAL_PLAYLISTS_KEY, JSON.stringify(playlists));
@@ -1343,68 +504,34 @@ export function saveGlobalPlaylists(playlists: PresetPlaylist[]): void {
   }
 }
 
-/**
- * Get world-specific playlists
- */
 export function getWorldPlaylists(world: GameWorldDetail | null): PresetPlaylist[] {
   if (!world?.meta) return [];
-  const meta = world.meta as any;
-  return meta.interactionPlaylists || [];
+  return (world.meta as any).interactionPlaylists || [];
 }
 
-/**
- * Set world-specific playlists (returns updated world)
- */
 export function setWorldPlaylists(
   world: GameWorldDetail,
-  playlists: PresetPlaylist[]
+  playlists: PresetPlaylist[],
 ): GameWorldDetail {
-  return {
-    ...world,
-    meta: {
-      ...(world.meta || {}),
-      interactionPlaylists: playlists,
-    },
-  };
+  return { ...world, meta: { ...(world.meta || {}), interactionPlaylists: playlists } };
 }
 
-/**
- * Get combined playlists (global + world-specific)
- */
 export function getCombinedPlaylists(world: GameWorldDetail | null): PlaylistWithScope[] {
   const global = getGlobalPlaylists().map((p) => ({ ...p, scope: 'global' as const }));
   const worldPlaylists = getWorldPlaylists(world).map((p) => ({ ...p, scope: 'world' as const }));
   return [...global, ...worldPlaylists];
 }
 
-/**
- * Generate a unique playlist ID from name
- */
-export function generatePlaylistId(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-  const timestamp = Date.now().toString(36);
-  return `playlist_${base}_${timestamp}`;
-}
-
-/**
- * Add a playlist to global storage
- */
 export function addGlobalPlaylist(playlist: PresetPlaylist): void {
   const playlists = getGlobalPlaylists();
   playlists.push(playlist);
   saveGlobalPlaylists(playlists);
 }
 
-/**
- * Add a playlist to world storage
- */
 export async function addWorldPlaylist(
   worldId: number,
   playlist: PresetPlaylist,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<void> {
   const playlists = getWorldPlaylists(currentWorld);
   playlists.push(playlist);
@@ -1412,289 +539,44 @@ export async function addWorldPlaylist(
   await saveGameWorldMeta(worldId, updatedWorld.meta);
 }
 
-/**
- * Update a global playlist
- */
 export function updateGlobalPlaylist(id: string, updates: Partial<PresetPlaylist>): void {
   const playlists = getGlobalPlaylists();
-  const index = playlists.findIndex((p) => p.id === id);
-  if (index >= 0) {
-    playlists[index] = { ...playlists[index], ...updates };
+  const idx = playlists.findIndex((p) => p.id === id);
+  if (idx >= 0) {
+    playlists[idx] = { ...playlists[idx], ...updates };
     saveGlobalPlaylists(playlists);
   }
 }
 
-/**
- * Update a world playlist
- */
 export async function updateWorldPlaylist(
   worldId: number,
   id: string,
   updates: Partial<PresetPlaylist>,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<void> {
   const playlists = getWorldPlaylists(currentWorld);
-  const index = playlists.findIndex((p) => p.id === id);
-  if (index >= 0) {
-    playlists[index] = { ...playlists[index], ...updates };
+  const idx = playlists.findIndex((p) => p.id === id);
+  if (idx >= 0) {
+    playlists[idx] = { ...playlists[idx], ...updates };
     const updatedWorld = setWorldPlaylists(currentWorld, playlists);
     await saveGameWorldMeta(worldId, updatedWorld.meta);
   }
 }
 
-/**
- * Delete a global playlist
- */
 export function deleteGlobalPlaylist(id: string): void {
   const playlists = getGlobalPlaylists();
-  const filtered = playlists.filter((p) => p.id !== id);
-  saveGlobalPlaylists(filtered);
+  saveGlobalPlaylists(playlists.filter((p) => p.id !== id));
 }
 
-/**
- * Delete a world playlist
- */
 export async function deleteWorldPlaylist(
   worldId: number,
   id: string,
-  currentWorld: GameWorldDetail
+  currentWorld: GameWorldDetail,
 ): Promise<void> {
   const playlists = getWorldPlaylists(currentWorld);
-  const filtered = playlists.filter((p) => p.id !== id);
-  const updatedWorld = setWorldPlaylists(currentWorld, filtered);
+  const updatedWorld = setWorldPlaylists(
+    currentWorld,
+    playlists.filter((p) => p.id !== id),
+  );
   await saveGameWorldMeta(worldId, updatedWorld.meta);
 }
-
-/**
- * Validate a playlist (check if all referenced presets exist)
- */
-export function validatePlaylist(
-  playlist: PresetPlaylist,
-  availablePresets: PresetWithScope[]
-): { valid: boolean; missingPresets: string[] } {
-  const presetIds = new Set(availablePresets.map((p) => p.id));
-  const missingPresets = playlist.items
-    .map((item) => item.presetId)
-    .filter((id) => !presetIds.has(id));
-
-  return {
-    valid: missingPresets.length === 0,
-    missingPresets,
-  };
-}
-
-/**
- * Evaluate a playlist condition
- */
-export function evaluatePlaylistCondition(
-  condition: PlaylistCondition | undefined,
-  context: { flags?: Record<string, boolean>; state?: Record<string, any> }
-): boolean {
-  if (!condition || condition.type === 'always') return true;
-
-  if (condition.type === 'flag' && condition.flagName) {
-    const flagValue = context.flags?.[condition.flagName];
-    return flagValue === condition.flagValue;
-  }
-
-  if (condition.type === 'state' && condition.stateKey) {
-    const stateValue = context.state?.[condition.stateKey];
-    return stateValue === condition.stateValue;
-  }
-
-  if (condition.type === 'random' && condition.probability !== undefined) {
-    return Math.random() < condition.probability;
-  }
-
-  return true;
-}
-
-/**
- * Playlist execution callback handlers
- */
-export interface PlaylistExecutionHandlers {
-  /** Called when a preset is about to be applied */
-  onPresetApply?: (presetId: string, itemIndex: number) => void;
-
-  /** Called when a preset application completes */
-  onPresetComplete?: (presetId: string, itemIndex: number, success: boolean) => void;
-
-  /** Called when the playlist completes a full cycle */
-  onPlaylistComplete?: (playlistId: string, loopIteration: number) => void;
-
-  /** Called when playlist execution fails */
-  onPlaylistError?: (error: string) => void;
-
-  /** Called when a condition is not met */
-  onConditionSkip?: (presetId: string, reason: string) => void;
-}
-
-/**
- * Execute a playlist step-by-step
- * Returns a function to stop the execution
- */
-export async function executePlaylist(
-  playlist: PresetPlaylist,
-  availablePresets: PresetWithScope[],
-  applyPreset: (preset: InteractionPreset) => Promise<boolean>,
-  context: { flags?: Record<string, boolean>; state?: Record<string, any> },
-  handlers?: PlaylistExecutionHandlers
-): Promise<() => void> {
-  // Validate playlist first
-  const validation = validatePlaylist(playlist, availablePresets);
-  if (!validation.valid && validation.missingPresets.length > 0) {
-    // Graceful degradation: filter out missing presets and warn
-    const filteredItems = playlist.items.filter(
-      (item) => !validation.missingPresets.includes(item.presetId)
-    );
-
-    if (filteredItems.length === 0) {
-      handlers?.onPlaylistError?.(
-        `All presets in playlist "${playlist.name}" are missing`
-      );
-      return () => {}; // Return no-op stop function
-    }
-
-    // Continue with filtered items
-    playlist = { ...playlist, items: filteredItems };
-    handlers?.onPlaylistError?.(
-      `Warning: ${validation.missingPresets.length} preset(s) missing from playlist "${playlist.name}"`
-    );
-  }
-
-  let stopped = false;
-  const timeouts: Array<ReturnType<typeof setTimeout>> = [];
-
-  const stopExecution = () => {
-    stopped = true;
-    timeouts.forEach((timeout) => clearTimeout(timeout));
-    timeouts.length = 0;
-  };
-
-  const executeLoop = async (loopIndex: number) => {
-    if (stopped) return;
-
-    for (let i = 0; i < playlist.items.length; i++) {
-      if (stopped) return;
-
-      const item = playlist.items[i];
-      const preset = availablePresets.find((p) => p.id === item.presetId);
-
-      if (!preset) {
-        // Skip missing preset (should have been filtered above, but double-check)
-        continue;
-      }
-
-      // Evaluate condition
-      if (item.condition && !evaluatePlaylistCondition(item.condition, context)) {
-        handlers?.onConditionSkip?.(
-          item.presetId,
-          `Condition not met for ${preset.name}`
-        );
-        continue;
-      }
-
-      // Apply delay if specified
-      if (item.delayMs && item.delayMs > 0) {
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => {
-            timeouts.splice(timeouts.indexOf(timeout), 1);
-            resolve();
-          }, item.delayMs);
-          timeouts.push(timeout);
-        });
-      }
-
-      if (stopped) return;
-
-      // Apply the preset
-      handlers?.onPresetApply?.(item.presetId, i);
-      try {
-        const success = await applyPreset(preset);
-        handlers?.onPresetComplete?.(item.presetId, i, success);
-
-        // Stop on failure if configured
-        if (!success && item.stopOnFailure) {
-          handlers?.onPlaylistError?.(`Playlist stopped due to failure at step ${i + 1}`);
-          return;
-        }
-      } catch (e) {
-        handlers?.onPresetComplete?.(item.presetId, i, false);
-        if (item.stopOnFailure) {
-          handlers?.onPlaylistError?.(
-            `Playlist stopped due to error at step ${i + 1}: ${e}`
-          );
-          return;
-        }
-      }
-    }
-
-    handlers?.onPlaylistComplete?.(playlist.id, loopIndex);
-
-    // Handle looping
-    if (playlist.loop) {
-      const maxLoops = playlist.maxLoops || Infinity;
-      if (loopIndex < maxLoops - 1) {
-        // Schedule next loop
-        await executeLoop(loopIndex + 1);
-      }
-    }
-  };
-
-  // Start execution
-  executeLoop(0).catch((e) => {
-    handlers?.onPlaylistError?.(`Playlist execution failed: ${e}`);
-  });
-
-  return stopExecution;
-}
-
-/**
- * Built-in preset examples (can be used as templates)
- */
-export const EXAMPLE_PRESETS: InteractionPreset[] = [
-  {
-    id: 'flirt_friendly',
-    name: 'Flirt (Friendly)',
-    interactionId: 'persuade',
-    category: 'romance',
-    description: 'A friendly, low-pressure flirtation attempt',
-    icon: '💕',
-    tags: ['romance', 'friendly', 'low-risk'],
-    config: {
-      persuasionType: 'flirt',
-      difficulty: 'easy',
-      baseSuccessChance: 0.7,
-      relationshipChange: 5,
-    },
-  },
-  {
-    id: 'trade_basic',
-    name: 'Trade (Basic)',
-    interactionId: 'trade',
-    category: 'trade',
-    description: 'Basic item trading with fair prices',
-    icon: '🛒',
-    tags: ['trade', 'shop', 'merchant'],
-    config: {
-      priceMultiplier: 1.0,
-      canBuyBack: true,
-      acceptedItemTypes: ['common', 'uncommon'],
-    },
-  },
-  {
-    id: 'pickpocket_novice',
-    name: 'Pickpocket (Novice)',
-    interactionId: 'pickpocket',
-    category: 'stealth',
-    description: 'Easy pickpocket attempt for beginners',
-    icon: '🤏',
-    tags: ['stealth', 'theft', 'easy'],
-    config: {
-      baseSuccessChance: 0.5,
-      detectionChance: 0.3,
-      onSuccessFlags: ['pickpocket_success'],
-      onFailFlags: ['pickpocket_fail'],
-    },
-  },
-];
