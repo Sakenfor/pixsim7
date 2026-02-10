@@ -63,6 +63,12 @@ export {
 } from './hooks/usePromptAiEdit';
 
 export {
+  useSemanticActionBlocks,
+  type UseSemanticActionBlocksOptions,
+  type SemanticActionBlocksState,
+} from './hooks/useSemanticActionBlocks';
+
+export {
   useQuickGenerateBindings,
   type QuickGenerateBindings,
 } from './hooks/useQuickGenerateBindings';

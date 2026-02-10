@@ -5,14 +5,17 @@
  * Provides quick actions for prompt analysis, variant suggestions, and pack hints.
  */
 
-import { Icon } from '@lib/icons';
+import type { PromptBlockCandidate, PromptTag } from '@pixsim7/shared.types/prompt';
 import { Button } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useState, useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
 import type { PromptCompanionContext } from '@lib/ui';
 import { usePromptCompanionEvents } from '@lib/ui';
-import type { PromptBlockCandidate, PromptTag } from '@pixsim7/shared.types/prompt';
+
+import { useSemanticActionBlocks, usePromptSettingsStore } from '@features/prompts';
+
 
 import { useApi } from '@/hooks/useApi';
 
@@ -79,6 +82,18 @@ export function PromptCompanionPanel(context: PromptCompanionContext) {
 
   // Error state
   const [error, setError] = useState<string | null>(null);
+  const hasPrompt = promptValue.trim().length > 0;
+  const semanticEnabled = usePromptSettingsStore((state) => state.semanticEnabled);
+  const semanticEligible = semanticEnabled && promptValue.trim().length >= 16;
+
+  const {
+    results: semanticMatches,
+    loading: semanticLoading,
+    error: semanticError,
+  } = useSemanticActionBlocks(promptValue, {
+    minChars: 16,
+    debounceMs: 450,
+  });
 
   // ──────────────────────────────────────────────────────────────────────────
   // Actions
@@ -200,7 +215,6 @@ export function PromptCompanionPanel(context: PromptCompanionContext) {
   // Render
   // ──────────────────────────────────────────────────────────────────────────
 
-  const hasPrompt = promptValue.trim().length > 0;
   const isCompact = surface === 'quick-generate';
 
   return (
@@ -297,6 +311,54 @@ export function PromptCompanionPanel(context: PromptCompanionContext) {
           </span>
         )}
       </div>
+
+      {semanticEligible && (
+        <div
+          className={clsx(
+            'mt-2 p-2 rounded-lg border',
+            'bg-neutral-50 dark:bg-neutral-900',
+            'border-neutral-200 dark:border-neutral-700'
+          )}
+        >
+          <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-300 mb-1.5">
+            <Icon name="sparkles" className="h-3.5 w-3.5" />
+            <span className="font-medium">Semantic Matches</span>
+            {semanticLoading && (
+              <Icon name="loader" className="h-3.5 w-3.5 animate-spin ml-1" />
+            )}
+          </div>
+
+          {isDevMode && semanticError && (
+            <div className="text-xs text-red-500 mb-1.5">{semanticError}</div>
+          )}
+
+          {!semanticLoading && semanticMatches.length === 0 && !semanticError && (
+            <div className="text-xs text-neutral-500 dark:text-neutral-400">
+              No close ActionBlock matches yet.
+            </div>
+          )}
+
+          {semanticMatches.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {semanticMatches.slice(0, 5).map((match) => (
+                <button
+                  key={match.id}
+                  onClick={() => handleInsertBlock(match.prompt)}
+                  className={clsx(
+                    'text-xs px-2 py-1 rounded-md border transition-colors',
+                    'border-neutral-300 dark:border-neutral-600',
+                    'hover:border-blue-400 hover:bg-blue-50',
+                    'dark:hover:border-blue-500 dark:hover:bg-blue-900/20'
+                  )}
+                  title={match.prompt}
+                >
+                  {match.block_id} ({Math.round(match.similarity_score * 100)}%)
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Drawers and Modals */}
       <BlockBreakdownDrawer
