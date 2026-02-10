@@ -295,7 +295,7 @@ interface GenerationItemProps {
   onLoadToQuickGen: (generation: GenerationModel) => void;
 }
 
-type ParamTab = 'raw' | 'canonical';
+type ParamTab = 'raw' | 'canonical' | 'submitted';
 
 function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, onLoadToQuickGen }: GenerationItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -663,53 +663,60 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
           {(() => {
             const hasRaw = generation.rawParams && Object.keys(generation.rawParams).length > 0;
             const hasCanonical = generation.canonicalParams && Object.keys(generation.canonicalParams).length > 0;
-            if (!hasRaw && !hasCanonical) return null;
+            const hasSubmitted =
+              generation.latestSubmissionPayload &&
+              Object.keys(generation.latestSubmissionPayload).length > 0;
+            if (!hasRaw && !hasCanonical && !hasSubmitted) return null;
+
+            const tabs: Array<{ id: ParamTab; label: string; data: Record<string, unknown> }> = [];
+            if (hasCanonical) {
+              tabs.push({ id: 'canonical', label: 'Canonical', data: generation.canonicalParams });
+            }
+            if (hasRaw) {
+              tabs.push({ id: 'raw', label: 'Raw', data: generation.rawParams });
+            }
+            if (hasSubmitted) {
+              tabs.push({
+                id: 'submitted',
+                label: 'Sent to Provider',
+                data: generation.latestSubmissionPayload as Record<string, unknown>,
+              });
+            }
+
+            const activeTab = tabs.find(tab => tab.id === paramTab)?.id ?? tabs[0].id;
+            const activeData = tabs.find(tab => tab.id === activeTab)?.data ?? tabs[0].data;
 
             const paramContent = (() => {
               // If only one exists, show it directly without tabs
-              if (hasRaw && !hasCanonical) {
+              if (tabs.length === 1) {
                 return (
                   <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
-                    <FoldableJson data={generation.rawParams} defaultExpandDepth={1} compact />
-                  </div>
-                );
-              }
-              if (!hasRaw && hasCanonical) {
-                return (
-                  <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
-                    <FoldableJson data={generation.canonicalParams} defaultExpandDepth={1} compact />
+                    <FoldableJson data={tabs[0].data} defaultExpandDepth={1} compact />
                   </div>
                 );
               }
 
-              // Both exist - show tabbed interface
+              // Multiple sources exist - show tabbed interface
               return (
                 <>
                   <div className="flex gap-0.5 bg-neutral-200 dark:bg-neutral-800 p-0.5 rounded w-fit mb-1">
-                    <button
-                      onClick={() => setParamTab('canonical')}
-                      className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
-                        paramTab === 'canonical'
-                          ? 'bg-white dark:bg-neutral-700 shadow-sm text-neutral-900 dark:text-neutral-100'
-                          : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
-                      }`}
-                    >
-                      Canonical
-                    </button>
-                    <button
-                      onClick={() => setParamTab('raw')}
-                      className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
-                        paramTab === 'raw'
-                          ? 'bg-white dark:bg-neutral-700 shadow-sm text-neutral-900 dark:text-neutral-100'
-                          : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
-                      }`}
-                    >
-                      Raw
-                    </button>
+                    {tabs.map((tab) => (
+                      <button
+                        key={tab.id}
+                        onClick={() => setParamTab(tab.id)}
+                        className={`px-2 py-0.5 text-xs font-medium rounded transition-colors ${
+                          activeTab === tab.id
+                            ? 'bg-white dark:bg-neutral-700 shadow-sm text-neutral-900 dark:text-neutral-100'
+                            : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
                   </div>
                   <div className="bg-neutral-100 dark:bg-neutral-900 p-2 rounded max-h-64 overflow-y-auto">
                     <FoldableJson
-                      data={paramTab === 'canonical' ? generation.canonicalParams : generation.rawParams}
+                      data={activeData}
                       defaultExpandDepth={1}
                       compact
                     />
@@ -718,7 +725,8 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
               );
             })();
 
-            const paramLabel = hasRaw && hasCanonical ? 'Parameters' : hasRaw ? 'Raw Parameters' : 'Canonical Parameters';
+            const paramLabel =
+              tabs.length > 1 ? 'Parameters' : `${tabs[0].label} Parameters`;
 
             return (
               <DisclosureSection

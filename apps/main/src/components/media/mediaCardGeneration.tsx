@@ -7,11 +7,12 @@
  */
 
 import { ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 import { getAsset } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { getGeneration } from '@lib/api/generations';
+import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui/overlay';
@@ -37,7 +38,7 @@ import { createPendingGeneration } from '@features/generation/models';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
 
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+import { OPERATION_METADATA, getFallbackOperation, type OperationType } from '@/types/operations';
 
 import type { MediaCardProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
@@ -54,12 +55,37 @@ export {
 } from './SlotPicker';
 
 import { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGeneration.utils';
-import { getSmartActionLabel, resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel, SlotPickerContent } from './SlotPicker';
+import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
 
 type GenerationButtonGroupContentProps = {
   data: MediaCardOverlayData;
   cardProps: MediaCardProps;
 };
+
+function stripSeedFromValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripSeedFromValue(entry));
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+      if (key === 'seed') {
+        return;
+      }
+      next[key] = stripSeedFromValue(entry);
+    });
+    return next;
+  }
+  return value;
+}
+
+function stripSeedFromParams(params: Record<string, unknown>): Record<string, unknown> {
+  const stripped = stripSeedFromValue(params);
+  if (!stripped || typeof stripped !== 'object' || Array.isArray(stripped)) {
+    return {};
+  }
+  return stripped as Record<string, unknown>;
+}
 
 /**
  * Content component for the generation button group.
@@ -96,27 +122,178 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const effectiveProviderId = scopedProviderId ?? inferredProviderId;
   const operationSpec = useOperationSpec(effectiveProviderId, operationType);
 
-  const menuItems = buildGenerationMenuItems(id, mediaType, actions);
   const smartActionLabel = getSmartActionLabel(mediaType, operationType);
   const targetLabel = widgetProvider?.label ?? widgetContext?.widgetId;
   const targetInfo = targetLabel ? `\nTarget: ${targetLabel}` : '';
   const operationMetadata = OPERATION_METADATA[operationType];
 
-  // Use operation specs first, fall back to model heuristics.
-  const maxSlotsFromSpecs = resolveMaxSlotsFromSpecs(
-    operationSpec?.parameters,
-    operationType,
-    activeModel,
-  );
-  const maxSlots = maxSlotsFromSpecs ?? resolveMaxSlotsForModel(operationType, activeModel);
+  // Resolve max slots the same way AssetPanel does (getArrayParamLimits on composition_assets).
+  const maxSlots = useMemo(() => {
+    if (operationSpec?.parameters) {
+      const limits = getArrayParamLimits(
+        operationSpec.parameters as ParamSpec[],
+        'composition_assets',
+        activeModel,
+      );
+      if (typeof limits?.max === 'number' && Number.isFinite(limits.max)) {
+        return Math.max(1, Math.floor(limits.max));
+      }
+    }
+    return resolveMaxSlotsForModel(operationType, activeModel);
+  }, [operationSpec?.parameters, operationType, activeModel]);
 
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
 
+  // Reconstruct asset for slot picker and quick-generation hydration.
+  const inputAsset = useMemo<AssetModel>(() => ({
+    id: cardProps.id,
+    createdAt: cardProps.createdAt,
+    description: cardProps.description ?? null,
+    durationSec: cardProps.durationSec ?? null,
+    height: cardProps.height ?? null,
+    isArchived: false,
+    mediaType: cardProps.mediaType,
+    previewUrl: cardProps.previewUrl ?? null,
+    providerAssetId: cardProps.providerAssetId,
+    providerId: cardProps.providerId,
+    providerStatus: cardProps.providerStatus ?? null,
+    remoteUrl: cardProps.remoteUrl ?? null,
+    syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
+    thumbnailUrl: cardProps.thumbUrl ?? null,
+    userId: 0,
+    width: cardProps.width ?? null,
+  }), [
+    cardProps.id,
+    cardProps.createdAt,
+    cardProps.description,
+    cardProps.durationSec,
+    cardProps.height,
+    cardProps.mediaType,
+    cardProps.previewUrl,
+    cardProps.providerAssetId,
+    cardProps.providerId,
+    cardProps.providerStatus,
+    cardProps.remoteUrl,
+    cardProps.status,
+    cardProps.thumbUrl,
+    cardProps.width,
+  ]);
+
   // Get generations store for seeding new generations
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
+
+  const resolveAssetsFromGeneration = useCallback(
+    async (
+      genRecord: Record<string, unknown>,
+      params: Record<string, unknown>,
+    ): Promise<AssetModel[]> => {
+      const assetIds = extractGenerationAssetIds(genRecord, params);
+      if (assetIds.length === 0) {
+        return [];
+      }
+
+      const results = await Promise.allSettled(assetIds.map((assetId) => getAsset(assetId)));
+      return results
+        .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
+        .filter((asset): asset is AssetModel => !!asset);
+    },
+    [],
+  );
+
+  const hydrateWidgetGenerationState = useCallback(
+    async (options: {
+      scopeId: string;
+      operationType: OperationType;
+      providerId?: string;
+      prompt: string;
+      dynamicParams: Record<string, unknown>;
+      assets?: AssetModel[];
+      triggerGenerate?: boolean;
+    }): Promise<boolean> => {
+      const {
+        scopeId,
+        operationType: nextOperationType,
+        providerId,
+        prompt,
+        dynamicParams,
+        assets = [],
+        triggerGenerate = false,
+      } = options;
+
+      const sessionStore = getGenerationSessionStore(scopeId).getState();
+      const settingsStore = getGenerationSettingsStore(scopeId).getState();
+      const inputStore = getGenerationInputStore(scopeId).getState();
+
+      sessionStore.setOperationType(nextOperationType);
+      widgetContext?.setOperationType?.(nextOperationType);
+
+      if (providerId) {
+        sessionStore.setProvider(providerId);
+      }
+
+      sessionStore.setPrompt(prompt);
+      settingsStore.setDynamicParams(dynamicParams);
+      inputStore.clearInputs(nextOperationType);
+
+      if (assets.length > 0) {
+        inputStore.addInputs({ assets, operationType: nextOperationType });
+      }
+
+      widgetContext?.setOpen(true);
+
+      if (triggerGenerate && widgetContext?.generate) {
+        await widgetContext.generate();
+        return true;
+      }
+
+      return false;
+    },
+    [widgetContext],
+  );
+
+  const submitDirectGeneration = useCallback(
+    async (options: {
+      operationType: OperationType;
+      providerId?: string;
+      prompt: string;
+      params: Record<string, unknown>;
+      successMessage: string;
+    }) => {
+      const { operationType: requestedOperationType, providerId, prompt, params, successMessage } = options;
+      const compositionAssets = (params as { composition_assets?: unknown[] }).composition_assets;
+      const hasAssetInput = Array.isArray(compositionAssets) && compositionAssets.length > 0;
+      const effectiveOperationType = getFallbackOperation(requestedOperationType, hasAssetInput);
+
+      const result = await generateAsset({
+        prompt,
+        providerId,
+        operationType: effectiveOperationType,
+        extraParams: params,
+      });
+
+      const genId = result.job_id;
+      addOrUpdateGeneration(createPendingGeneration({
+        id: genId,
+        operationType: effectiveOperationType,
+        providerId,
+        finalPrompt: prompt,
+        params,
+        status: result.status || 'pending',
+      }));
+
+      setWatchingGeneration(genId);
+
+      useToastStore.getState().addToast({
+        type: 'success',
+        message: successMessage,
+        duration: 3000,
+      });
+    },
+    [addOrUpdateGeneration, setWatchingGeneration],
+  );
 
   const handleLoadToQuickGen = useCallback(async () => {
     if (!data.sourceGenerationId || isLoadingSource) return;
@@ -134,40 +311,19 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       } = parseGenerationRecord(genRecord, operationType);
 
       const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
-      const sessionStore = getGenerationSessionStore(scopeId).getState();
-      const settingsStore = getGenerationSettingsStore(scopeId).getState();
-      const inputStore = getGenerationInputStore(scopeId).getState();
+      const sourceParams = (params && typeof params === 'object')
+        ? (params as Record<string, unknown>)
+        : {};
+      const assets = await resolveAssetsFromGeneration(genRecord, sourceParams);
 
-      if (resolvedOperationType) {
-        sessionStore.setOperationType(resolvedOperationType);
-        widgetContext?.setOperationType?.(resolvedOperationType);
-      }
-
-      if (providerId) {
-        sessionStore.setProvider(providerId);
-      }
-
-      sessionStore.setPrompt(prompt);
-
-      if (params && typeof params === 'object') {
-        settingsStore.setDynamicParams(stripInputParams(params as Record<string, unknown>));
-      }
-
-      inputStore.clearInputs(resolvedOperationType);
-
-      const assetIds = extractGenerationAssetIds(genRecord, params as Record<string, unknown>);
-      if (assetIds.length > 0) {
-        const results = await Promise.allSettled(assetIds.map((assetId) => getAsset(assetId)));
-        const assets = results
-          .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
-          .filter((asset): asset is AssetModel => !!asset);
-
-        if (assets.length > 0) {
-          inputStore.addInputs({ assets, operationType: resolvedOperationType });
-        }
-      }
-
-      widgetContext?.setOpen(true);
+      await hydrateWidgetGenerationState({
+        scopeId,
+        operationType: resolvedOperationType,
+        providerId,
+        prompt,
+        dynamicParams: stripInputParams(sourceParams),
+        assets,
+      });
     } catch (error) {
       console.error('Failed to load generation into Quick Generate:', error);
       useToastStore.getState().addToast({
@@ -178,7 +334,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     } finally {
       setIsLoadingSource(false);
     }
-  }, [data.sourceGenerationId, isLoadingSource, operationType, scopedScopeId, widgetContext]);
+  }, [
+    data.sourceGenerationId,
+    isLoadingSource,
+    operationType,
+    scopedScopeId,
+    widgetContext,
+    resolveAssetsFromGeneration,
+    hydrateWidgetGenerationState,
+  ]);
 
   // Handler for extending video with the same prompt
   const handleExtendWithSamePrompt = useCallback(async () => {
@@ -198,40 +362,33 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       const settingsState = getGenerationSettingsStore(scopeId).getState();
 
       // Build params for video_extend with the current asset as source
-      const dynamicParams = settingsState.params || {};
+      const extendParams = {
+        ...stripInputParams(settingsState.params || {}),
+        source_asset_id: id,
+        // Let backend resolve original_video_id from canonical asset metadata.
+        // Card-level providerAssetId can be stale/ambiguous and break extend.
+      };
 
       // Build the generation request
       const buildResult = buildGenerationRequest({
         operationType: 'video_extend',
         prompt: prompt || '',
-        dynamicParams: {
-          ...stripInputParams(dynamicParams),
-          source_asset_id: id,
-          // Pass provider video ID so backend doesn't have to look it up
-          // (lookup can fail when provider_uploads stores a URL, not a numeric ID)
-          ...(cardProps.providerAssetId ? { original_video_id: cardProps.providerAssetId } : {}),
-        },
+        dynamicParams: extendParams,
+        operationInputs: [{
+          id: `card-${id}`,
+          asset: inputAsset,
+          queuedAt: new Date().toISOString(),
+          lockedTimestamp: undefined,
+        }],
         prompts: [],
         transitionDurations: [],
-        activeAsset: toSelectedAsset({
-          id,
-          mediaType,
-          providerId: cardProps.providerId,
-          providerAssetId: cardProps.providerAssetId,
-          thumbnailUrl: cardProps.thumbUrl ?? null,
-          previewUrl: cardProps.previewUrl ?? null,
-          remoteUrl: cardProps.remoteUrl ?? null,
-          createdAt: cardProps.createdAt,
-          description: cardProps.description ?? null,
-          durationSec: cardProps.durationSec ?? null,
-          height: cardProps.height ?? null,
-          width: cardProps.width ?? null,
-          isArchived: false,
-          providerStatus: cardProps.providerStatus ?? null,
-          syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
-          userId: 0,
-        }, 'gallery'),
-        currentInput: undefined,
+        activeAsset: toSelectedAsset(inputAsset, 'gallery'),
+        currentInput: {
+          id: `card-${id}`,
+          asset: inputAsset,
+          queuedAt: new Date().toISOString(),
+          lockedTimestamp: undefined,
+        },
       });
 
       if (buildResult.error || !buildResult.params) {
@@ -243,31 +400,20 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         return;
       }
 
-      // Trigger the generation
-      const result = await generateAsset({
+      const extendSubmitParams = { ...buildResult.params };
+      const originalVideoId =
+        extendSubmitParams.original_video_id ?? extendSubmitParams.originalVideoId;
+      if (originalVideoId !== undefined && originalVideoId !== null && `${originalVideoId}`.trim() !== '') {
+        delete extendSubmitParams.video_url;
+        delete extendSubmitParams.videoUrl;
+      }
+
+      await submitDirectGeneration({
+        operationType: 'video_extend',
+        providerId,
         prompt: buildResult.finalPrompt,
-        providerId,
-        operationType: 'video_extend',
-        extraParams: buildResult.params,
-      });
-
-      // Seed the generations store
-      const genId = result.job_id;
-      addOrUpdateGeneration(createPendingGeneration({
-        id: genId,
-        operationType: 'video_extend',
-        providerId,
-        finalPrompt: buildResult.finalPrompt,
-        params: buildResult.params,
-        status: result.status || 'pending',
-      }));
-
-      setWatchingGeneration(genId);
-
-      useToastStore.getState().addToast({
-        type: 'success',
-        message: 'Extending video...',
-        duration: 3000,
+        params: extendSubmitParams,
+        successMessage: 'Extending video...',
       });
     } catch (error) {
       console.error('Failed to extend video:', error);
@@ -285,11 +431,10 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     mediaType,
     operationType,
     id,
-    cardProps,
+    inputAsset,
     widgetContext,
     scopedScopeId,
-    addOrUpdateGeneration,
-    setWatchingGeneration,
+    submitDirectGeneration,
   ]);
 
   // Handler for regenerating (re-run the exact same generation)
@@ -309,31 +454,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         prompt,
       } = parseGenerationRecord(genRecord, operationType);
 
-      // Trigger the generation with the same params
-      const result = await generateAsset({
+      const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
+      await submitDirectGeneration({
+        operationType: resolvedOperationType,
+        providerId,
         prompt,
-        providerId,
-        operationType: resolvedOperationType as OperationType,
-        extraParams: params as Record<string, any>,
-      });
-
-      // Seed the generations store
-      const genId = result.job_id;
-      addOrUpdateGeneration(createPendingGeneration({
-        id: genId,
-        operationType: resolvedOperationType as OperationType,
-        providerId,
-        finalPrompt: prompt,
-        params: params as Record<string, any>,
-        status: result.status || 'pending',
-      }));
-
-      setWatchingGeneration(genId);
-
-      useToastStore.getState().addToast({
-        type: 'success',
-        message: 'Regenerating...',
-        duration: 3000,
+        params: sourceParams,
+        successMessage: 'Regenerating...',
       });
     } catch (error) {
       console.error('Failed to regenerate:', error);
@@ -349,31 +476,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     data.sourceGenerationId,
     isRegenerating,
     operationType,
-    widgetContext,
-    scopedScopeId,
-    addOrUpdateGeneration,
-    setWatchingGeneration,
+    submitDirectGeneration,
   ]);
-
-  // Reconstruct asset for slot picker
-  const inputAsset: AssetModel = {
-    id: cardProps.id,
-    createdAt: cardProps.createdAt,
-    description: cardProps.description ?? null,
-    durationSec: cardProps.durationSec ?? null,
-    height: cardProps.height ?? null,
-    isArchived: false,
-    mediaType: cardProps.mediaType,
-    previewUrl: cardProps.previewUrl ?? null,
-    providerAssetId: cardProps.providerAssetId,
-    providerId: cardProps.providerId,
-    providerStatus: cardProps.providerStatus ?? null,
-    remoteUrl: cardProps.remoteUrl ?? null,
-    syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
-    thumbnailUrl: cardProps.thumbUrl ?? null,
-    userId: 0,
-    width: cardProps.width ?? null,
-  };
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -437,23 +541,74 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   };
 
-  if (menuItems.length === 0) {
-    return null;
-  }
+  const sourceGenerationId = data.sourceGenerationId;
+  const menuItems = useMemo<MenuItem[]>(() => {
+    const items = buildGenerationMenuItems(id, mediaType, actions);
+
+    if (sourceGenerationId) {
+      items.push({
+        id: 'load-to-quick-gen',
+        label: 'Load to Quick Gen',
+        icon: 'edit',
+        onClick: () => {
+          void handleLoadToQuickGen();
+        },
+        disabled: isLoadingSource,
+      });
+      items.push({
+        id: 'regenerate-now',
+        label: 'Regenerate Now',
+        icon: 'rotateCcw',
+        onClick: () => {
+          void handleRegenerate();
+        },
+        disabled: isRegenerating,
+      });
+    }
+
+    if (mediaType === 'video' && sourceGenerationId) {
+      items.unshift({
+        id: 'extend-same-prompt-now',
+        label: 'Extend Same Prompt Now',
+        icon: 'arrowRight',
+        onClick: () => {
+          void handleExtendWithSamePrompt();
+        },
+        disabled: isExtending,
+      });
+    }
+
+    return items;
+  }, [
+    id,
+    mediaType,
+    actions,
+    sourceGenerationId,
+    handleLoadToQuickGen,
+    isLoadingSource,
+    handleRegenerate,
+    isRegenerating,
+    handleExtendWithSamePrompt,
+    isExtending,
+  ]);
 
   const hasQuickGenerate = !!actions?.onQuickAdd;
 
   // Build button group items
   const supportsSlots = operationMetadata?.multiAssetMode !== 'single';
   const inputScopeId = widgetContext?.scopeId;
-  const buttonItems: ButtonGroupItem[] = [
-    {
+  const buttonItems: ButtonGroupItem[] = [];
+
+  if (menuItems.length > 0) {
+    buttonItems.push({
       id: 'menu',
       icon: <Icon name="chevronDown" size={14} />,
       onClick: () => setIsMenuOpen(!isMenuOpen),
       title: 'Generation options',
-    },
-    {
+    });
+  }
+
+  buttonItems.push({
       id: 'smart-action',
       icon: <Icon name="zap" size={14} />,
       onClick: handleSmartAction,
@@ -462,7 +617,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         ? `${smartActionLabel}${targetInfo}\nHover: slot picker\nMiddle-click: replace slot 1`
         : `${smartActionLabel}${targetInfo}`,
       expandContent: supportsSlots ? (
-        <SlotPickerContent
+        <SlotPickerGrid
           asset={inputAsset}
           operationType={operationType}
           onSelectSlot={handleSelectSlot}
@@ -471,8 +626,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         />
       ) : undefined,
       expandDelay: 150,
-    },
-  ];
+    });
 
   if (hasQuickGenerate) {
     buttonItems.push({
@@ -484,7 +638,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   }
 
   // Extend Video button - only show for videos with a source generation
-  const sourceGenerationId = data.sourceGenerationId;
   if (mediaType === 'video' && sourceGenerationId) {
     buttonItems.push({
       id: 'extend-video',
@@ -541,7 +694,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       </div>
 
       {/* Menu dropdown */}
-      {isMenuOpen && (
+      {isMenuOpen && menuItems.length > 0 && (
         <div
           ref={menuRef}
           className="
@@ -598,7 +751,7 @@ export function buildGenerationMenuItems(
     if (actions.onImageToImage) {
       menuItems.push({
         id: 'img2img',
-        label: 'Image to Image',
+        label: 'Queue Image to Image',
         icon: 'image',
         onClick: () => actions.onImageToImage?.(id),
       });
@@ -606,7 +759,7 @@ export function buildGenerationMenuItems(
     if (actions.onImageToVideo) {
       menuItems.push({
         id: 'img2vid',
-        label: 'Image to Video',
+        label: 'Queue Image to Video',
         icon: 'video',
         onClick: () => actions.onImageToVideo?.(id),
       });
@@ -617,7 +770,7 @@ export function buildGenerationMenuItems(
   if (mediaType === 'video' && actions.onVideoExtend) {
     menuItems.push({
       id: 'extend',
-      label: 'Extend Video',
+      label: 'Queue Extend in Quick Gen',
       icon: 'arrowRight',
       onClick: () => actions.onVideoExtend?.(id),
     });
@@ -627,7 +780,7 @@ export function buildGenerationMenuItems(
   if (actions.onAddToTransition) {
     menuItems.push({
       id: 'transition',
-      label: 'Add to Transition',
+      label: 'Queue in Transition',
       icon: 'shuffle',
       onClick: () => actions.onAddToTransition?.(id),
     });
@@ -636,7 +789,7 @@ export function buildGenerationMenuItems(
   if (actions.onAddToGenerate) {
     menuItems.push({
       id: 'generate',
-      label: 'Add to Generation',
+      label: 'Queue in Current Mode',
       icon: 'zap',
       onClick: () => actions.onAddToGenerate?.(id),
     });

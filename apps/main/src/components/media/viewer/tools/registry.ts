@@ -83,18 +83,35 @@ export const regionDrawerRegistry = new RegionDrawerRegistry();
 // React Hooks
 // ============================================================================
 
-import { useSyncExternalStore, useCallback } from 'react';
+import { useSyncExternalStore, useCallback, useRef } from 'react';
 
 /**
  * Hook to access registered drawers with automatic re-render on changes.
  */
 export function useRegionDrawerRegistry() {
+  const versionRef = useRef(0);
+  const snapshotRef = useRef<{ version: number; value: RegionDrawer[] }>({
+    version: -1,
+    value: [],
+  });
+
   const subscribe = useCallback(
-    (callback: () => void) => regionDrawerRegistry.subscribe(callback),
+    (callback: () => void) => regionDrawerRegistry.subscribe(() => {
+      versionRef.current += 1;
+      callback();
+    }),
     []
   );
 
-  const getSnapshot = useCallback(() => regionDrawerRegistry.getAll(), []);
+  const getSnapshot = useCallback(() => {
+    if (snapshotRef.current.version !== versionRef.current) {
+      snapshotRef.current = {
+        version: versionRef.current,
+        value: regionDrawerRegistry.getAll(),
+      };
+    }
+    return snapshotRef.current.value;
+  }, []);
 
   const drawers = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 

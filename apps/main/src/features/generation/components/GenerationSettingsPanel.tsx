@@ -27,6 +27,8 @@ import {
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
 
+import { OPERATION_METADATA } from '@/types/operations';
+
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { PresetSelector } from './PresetSelector';
 
@@ -62,6 +64,8 @@ export interface GenerationSettingsPanelProps {
   queueProgress?: { queued: number; total: number } | null;
   /** Callback for burst generation (receives count) */
   onGenerateBurst?: (count: number) => void;
+  /** Callback for generate-each mode (one generation per queued asset) */
+  onGenerateEach?: () => void;
 }
 
 export function GenerationSettingsPanel({
@@ -78,6 +82,7 @@ export function GenerationSettingsPanel({
   error,
   queueProgress,
   onGenerateBurst,
+  onGenerateEach,
 }: GenerationSettingsPanelProps) {
   const { useSessionStore, useInputStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
@@ -442,6 +447,25 @@ export function GenerationSettingsPanel({
             disabled={generating}
             currentModel={workbench.dynamicParams?.model as string | undefined}
           />
+
+          {/* Generate Each button - one generation per queued asset */}
+          {onGenerateEach && inputCount > 1 && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
+            <button
+              onClick={onGenerateEach}
+              disabled={generating || !canGenerate}
+              className={clsx(
+                'px-2 py-2 rounded-lg text-xs font-semibold text-white',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                generating || !canGenerate
+                  ? 'bg-neutral-400'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+              title="Generate individually for each queued asset"
+            >
+              {generating && queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : 'Each'}
+            </button>
+          )}
 
           {/* Primary Go button */}
           <button

@@ -72,6 +72,7 @@ export interface GenerationModel {
   // Parameters
   rawParams: Record<string, unknown>;
   canonicalParams: Record<string, unknown>;
+  latestSubmissionPayload: Record<string, unknown> | null;
   inputs: readonly Record<string, unknown>[];
   reproducibleHash: string | null;
 
@@ -114,6 +115,10 @@ function ensureUtc(ts: string | null | undefined): string | null | undefined {
  * to convert snake_case API responses to camelCase internal models.
  */
 export function fromGenerationResponse(response: GenerationResponse): GenerationModel {
+  const latestSubmissionPayload =
+    (response as { latest_submission_payload?: Record<string, unknown> | null })
+      .latest_submission_payload ?? null;
+
   return {
     // Identity
     id: response.id,
@@ -147,6 +152,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     // Parameters
     rawParams: response.raw_params,
     canonicalParams: response.canonical_params,
+    latestSubmissionPayload,
     inputs: response.inputs,
     reproducibleHash: response.reproducible_hash,
 
@@ -266,6 +272,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     promptConfig: null,
     rawParams: options.params,
     canonicalParams: options.params,
+    latestSubmissionPayload: null,
     inputs: [],
     reproducibleHash: null,
     account: null,
