@@ -196,7 +196,10 @@ def service_env(base_env: Optional[Dict[str, str]] = None, ports: Optional[Ports
         env['VITE_GAME_URL'] = game_base_url or f"http://localhost:{p.game_frontend}"
     if 'VITE_DEVTOOLS_URL' not in env:
         devtools_base_url = os.getenv("DEVTOOLS_BASE_URL")
-        env['VITE_DEVTOOLS_URL'] = devtools_base_url or f"http://localhost:{p.devtools}"
+        # Only set if explicitly configured; the frontend infers the correct
+        # proxy URL at runtime via devtoolsUrl.ts (same-origin /devtools path)
+        if devtools_base_url:
+            env['VITE_DEVTOOLS_URL'] = devtools_base_url
     env['PORT'] = str(p.backend)  # backend FastAPI if read by app
     settings = None
     if load_launcher_settings:
