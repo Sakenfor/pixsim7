@@ -68,9 +68,11 @@ def _rule_pixverse_sync(hints: Dict[str, Any], asset: Optional[Any]) -> Optional
     if metadata.get("pixverse_asset_uuid") or metadata.get("image_id"):
         return "pixverse_sync"
     # Pixverse provider with no source_site (not from web) and no metadata
+    # But NOT if the asset was generated (generated pixverse assets → "generated")
     provider_id = getattr(asset, "provider_id", None)
     if provider_id == "pixverse" and not hints.get("source_site"):
-        return "pixverse_sync"
+        if not getattr(asset, "source_generation_id", None):
+            return "pixverse_sync"
     return None
 
 
@@ -176,8 +178,8 @@ def extract_hints_from_metadata(metadata: Optional[Dict[str, Any]]) -> Dict[str,
 def infer_upload_method_from_asset(
     asset: "Asset",
     *,
-    default: str = DEFAULT_UPLOAD_METHOD,
-) -> str:
+    default: Optional[str] = DEFAULT_UPLOAD_METHOD,
+) -> Optional[str]:
     """
     Infer upload_method from an Asset object by examining metadata and fields.
 

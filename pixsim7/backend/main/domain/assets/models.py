@@ -316,6 +316,20 @@ class Asset(SQLModel, table=True):
         Index("idx_asset_user_sha256", "user_id", "sha256", unique=True, postgresql_where="sha256 IS NOT NULL"),
     )
 
+    def model_post_init(self, __context: Any) -> None:
+        """Infer upload_method from other fields when not explicitly set.
+
+        Runs the centralized inference rules from upload_attribution so that
+        ALL creation paths get correct upload_method automatically.  Only fires
+        on explicit ``Asset(...)`` construction — SQLAlchemy ORM loads bypass
+        ``__init__`` so existing DB rows are never dirtied.
+        """
+        if self.upload_method is None:
+            from pixsim7.backend.main.domain.assets.upload_attribution import (
+                infer_upload_method_from_asset,
+            )
+            self.upload_method = infer_upload_method_from_asset(self, default=None)
+
     def __repr__(self):
         return (
             f"<Asset(id={self.id}, "
