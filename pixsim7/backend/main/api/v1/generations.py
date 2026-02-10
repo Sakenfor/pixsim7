@@ -8,7 +8,7 @@ Handles generation requests from frontend Generation Nodes with:
 - Validation and health checks
 """
 from fastapi import APIRouter, HTTPException, Query, Request
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from uuid import UUID
 
 from pixsim7.backend.main.api.dependencies import (
@@ -41,6 +41,36 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+async def _get_latest_submission_payloads(
+    db: DatabaseSession,
+    generation_ids: List[int],
+) -> Dict[int, Dict[str, Any]]:
+    """Return latest provider submission payload for each generation ID."""
+    from sqlmodel import select
+    from pixsim7.backend.main.domain.providers import ProviderSubmission
+
+    if not generation_ids:
+        return {}
+
+    result = await db.execute(
+        select(ProviderSubmission.generation_id, ProviderSubmission.payload)
+        .where(ProviderSubmission.generation_id.in_(generation_ids))
+        .where(ProviderSubmission.analysis_id.is_(None))
+        .order_by(
+            ProviderSubmission.generation_id.asc(),
+            ProviderSubmission.retry_attempt.desc(),
+            ProviderSubmission.id.desc(),
+        )
+    )
+
+    payloads: Dict[int, Dict[str, Any]] = {}
+    for generation_id, payload in result.fetchall():
+        if generation_id in payloads or not isinstance(payload, dict):
+            continue
+        payloads[generation_id] = payload
+    return payloads
 
 
 # ===== CREATE GENERATION =====
@@ -298,6 +328,7 @@ async def get_generation(
     req: Request,
     user: CurrentUser,
     generation_gateway: GenerationGatewaySvc,
+    db: DatabaseSession,
 ):
     """
     Get generation by ID
@@ -319,7 +350,10 @@ async def get_generation(
 
         generation_service = generation_gateway.local
         generation = await generation_service.get_generation_for_user(generation_id, user)
-        return GenerationResponse.model_validate(generation)
+        response = GenerationResponse.model_validate(generation)
+        latest_payloads = await _get_latest_submission_payloads(db, [generation.id])
+        response.latest_submission_payload = latest_payloads.get(generation.id)
+        return response
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -402,12 +436,19 @@ async def list_generations(
             )
             account_emails = {row[0]: row[1] for row in result.fetchall()}
 
+        # Attach latest provider submission payloads (exact params sent to provider).
+        latest_payloads = await _get_latest_submission_payloads(
+            db,
+            [g.id for g in generations],
+        )
+
         # Convert to response with account_email populated
         responses = []
         for g in generations:
             resp = GenerationResponse.model_validate(g)
             if g.account_id and g.account_id in account_emails:
                 resp.account_email = account_emails[g.account_id]
+            resp.latest_submission_payload = latest_payloads.get(g.id)
             responses.append(resp)
 
         return GenerationListResponse(

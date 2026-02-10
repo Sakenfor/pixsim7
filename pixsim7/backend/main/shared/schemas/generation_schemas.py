@@ -361,6 +361,7 @@ class GenerationResponse(BaseModel):
     # Params
     raw_params: Dict[str, Any]
     canonical_params: Dict[str, Any]
+    latest_submission_payload: Optional[Dict[str, Any]] = None
 
     # Inputs & reproducibility
     inputs: List[Dict[str, Any]]
