@@ -33,7 +33,7 @@ from pixsim_logging import get_logger
 
 logger = get_logger()
 
-router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block_fit"])
+router = APIRouter(prefix="/dev/block-fit", tags=["dev", "block-fit"])
 
 
 # ===== Request Models =====

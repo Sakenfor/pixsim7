@@ -18,7 +18,7 @@ from pixsim7.backend.main.services.asset.versioning import AssetVersioningServic
 from pixsim7.backend.main.domain.assets.versioning import AssetVersionFamily
 from pixsim_logging import get_logger
 
-router = APIRouter(prefix="/versions", tags=["Asset Versions"])
+router = APIRouter(prefix="/versions", tags=["asset-versions"])
 logger = get_logger()
 
 

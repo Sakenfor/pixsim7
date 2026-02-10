@@ -21,7 +21,7 @@ from pixsim7.backend.main.services.characters import (
 from pixsim7.backend.main.domain.game.entities import Character
 from pixsim7.backend.main.domain.user import User
 
-router = APIRouter(prefix="/characters", tags=["characters"])
+router = APIRouter(tags=["characters"])
 
 
 # ===== Request/Response Models =====

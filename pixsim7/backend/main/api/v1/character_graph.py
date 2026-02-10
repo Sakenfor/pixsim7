@@ -17,7 +17,7 @@ from pixsim7.backend.main.domain.game.entities import (
     get_character_usage_stats,
 )
 
-router = APIRouter(prefix="/character-graph", tags=["character-graph"])
+router = APIRouter(tags=["character-graph"])
 
 
 @router.get("/character/{character_id}")

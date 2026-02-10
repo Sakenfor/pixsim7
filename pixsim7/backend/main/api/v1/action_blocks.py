@@ -26,7 +26,7 @@ from pixsim7.backend.main.services.prompt.block.concept_registry import ConceptR
 from pixsim7.backend.main.domain.prompt import PromptBlock
 from pixsim7.backend.main.domain.user import User
 
-router = APIRouter(prefix="/action-blocks", tags=["action_blocks"])
+router = APIRouter(prefix="/action-blocks", tags=["action-blocks"])
 
 
 # ===== Request/Response Models =====

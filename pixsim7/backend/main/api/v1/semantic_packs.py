@@ -26,7 +26,7 @@ from pixsim7.backend.main.shared.schemas.semantic_pack_schemas import (
     SemanticPackStatus,
 )
 
-router = APIRouter(prefix="/semantic-packs", tags=["semantic_packs"])
+router = APIRouter(prefix="/semantic-packs", tags=["semantic-packs"])
 
 
 # ===== Helper Functions =====

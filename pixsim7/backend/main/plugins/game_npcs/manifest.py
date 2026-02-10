@@ -27,8 +27,8 @@ manifest = PluginManifest(
     description="Provides NPC management, expressions, schedules, and presence tracking",
     author="PixSim Team",
     kind="feature",
-    prefix="/api/v1",
-    tags=["game_npcs"],
+    prefix="/api/v1/game/npcs",
+    tags=["game-npcs"],
     dependencies=[],  # Independent - no dependencies
     requires_db=True,
     requires_redis=False,
@@ -38,7 +38,7 @@ manifest = PluginManifest(
 
 # ===== API ROUTER =====
 
-router = APIRouter(prefix="/game/npcs", tags=["game-npcs"])
+router = APIRouter(tags=["game-npcs"])
 
 
 class NpcSummary(BaseModel):

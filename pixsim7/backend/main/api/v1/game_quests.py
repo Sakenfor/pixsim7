@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
 from pixsim7.backend.main.services.game.quest import QuestService, Quest
 
-router = APIRouter(prefix="/game/quests", tags=["game-quests"])
+router = APIRouter(tags=["game-quests"])
 
 
 # Request/Response models

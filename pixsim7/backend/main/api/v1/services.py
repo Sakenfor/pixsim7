@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import CurrentAdminUser
 
-router = APIRouter(prefix="/services", tags=["Service Management"])
+router = APIRouter(prefix="/services", tags=["service-management"])
 
 
 class ServiceCommand(BaseModel):

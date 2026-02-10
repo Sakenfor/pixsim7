@@ -50,8 +50,8 @@ manifest = PluginManifest(
     description="Provides narrative engine and action block generation for NPC dialogues and interactions",
     author="PixSim Team",
     kind="feature",
-    prefix="/api/v1",
-    tags=["game_dialogue"],
+    prefix="/api/v1/game/dialogue",
+    tags=["game-dialogue"],
     dependencies=[],  # Could depend on game-sessions, game-npcs, but they're optional
     requires_db=True,
     requires_redis=False,
@@ -61,7 +61,7 @@ manifest = PluginManifest(
 
 # ===== API ROUTER =====
 
-router = APIRouter(prefix="/game/dialogue", tags=["game-dialogue"])
+router = APIRouter(tags=["game-dialogue"])
 
 
 # ===== HELPER FUNCTIONS =====

@@ -23,7 +23,7 @@ from pixsim7.backend.main.services.prompt import (
 )
 from pixsim7.backend.main.domain.user import User
 
-router = APIRouter(prefix="/prompts/git", tags=["prompts_git"])
+router = APIRouter(prefix="/prompts/git", tags=["prompts-git"])
 
 
 # ===== Request/Response Models =====
