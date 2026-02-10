@@ -21,6 +21,7 @@ import type {
 } from '@pixsim7/shared.types';
 import type { NpcRelationshipState } from '../core/types';
 import type { StatSource } from '../session/statAdapters';
+import type { IPluginRegistry, GameTickContext, GameEvent } from '../plugins/types';
 
 // ===================
 // API Client Interface
@@ -36,6 +37,7 @@ export interface GameApiClient {
     sessionId: number,
     payload: Partial<GameSessionDTO>
   ): Promise<GameSessionDTO>;
+  createSession(sceneId: number, flags?: Record<string, unknown>): Promise<GameSessionDTO>;
 
   // World APIs
   getWorld(worldId: number): Promise<GameWorldDetail>;
@@ -142,6 +144,9 @@ export interface GameRuntimeConfig {
 
   /** Optional plugins for gating, romance, behavior extensions */
   plugins?: GameRuntimePlugin[];
+
+  /** Optional plugin registry for tick lifecycle hooks */
+  pluginRegistry?: IPluginRegistry;
 
   /** Enable debug logging */
   debug?: boolean;
@@ -261,6 +266,42 @@ export interface RuntimeErrorEvent {
 }
 
 /**
+ * Event emitted when a tick lifecycle completes (advanceTimeWithHooks/advanceTurnWithHooks)
+ */
+export interface TickCompletedEvent {
+  deltaSeconds: number;
+  previousTime: number;
+  newTime: number;
+  events: GameEvent[];
+  turnNumber?: number;
+}
+
+// ===================
+// Orchestration Options
+// ===================
+
+/**
+ * Options for ensureSessionForWorld
+ */
+export interface EnsureSessionOptions {
+  sessionKind?: 'world' | 'scene' | 'simulation';
+  worldMode?: string;
+  turnDeltaSeconds?: number;
+  initialLocationId?: number;
+  initialFlags?: Record<string, unknown>;
+}
+
+/**
+ * Options for advanceTimeWithHooks / advanceTurnWithHooks
+ */
+export interface AdvanceTimeOptions {
+  origin?: 'game' | 'simulation';
+  simulationContext?: { selectedNpcIds: number[] };
+  skipHooks?: boolean;
+  locationId?: number | null;
+}
+
+/**
  * Map of all runtime events
  */
 export interface GameRuntimeEvents {
@@ -269,6 +310,7 @@ export interface GameRuntimeEvents {
   npcRelationshipChanged: NpcRelationshipChangedEvent;
   worldTimeAdvanced: WorldTimeAdvancedEvent;
   interactionExecuted: InteractionExecutedEvent;
+  tickCompleted: TickCompletedEvent;
   error: RuntimeErrorEvent;
 }
 
@@ -320,6 +362,27 @@ export interface GameRuntime {
    * Save session to backend (if changes are pending)
    */
   saveSession(): Promise<void>;
+
+  /**
+   * Ensure a session exists for a world (create if needed)
+   */
+  ensureSessionForWorld(
+    worldId: number,
+    options?: EnsureSessionOptions
+  ): Promise<GameSessionDTO>;
+
+  /**
+   * Advance world time with full plugin hook lifecycle
+   */
+  advanceTimeWithHooks(
+    deltaSeconds: number,
+    options?: AdvanceTimeOptions
+  ): Promise<GameEvent[]>;
+
+  /**
+   * Advance one turn with full plugin hook lifecycle (turn-based mode)
+   */
+  advanceTurnWithHooks(options?: AdvanceTimeOptions): Promise<GameEvent[]>;
 
   /**
    * Subscribe to runtime events

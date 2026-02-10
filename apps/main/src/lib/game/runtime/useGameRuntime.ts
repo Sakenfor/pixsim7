@@ -13,50 +13,30 @@
 
 import {
   createGameRuntime,
+  isTurnBasedMode,
+  getTurnDelta,
+  getCurrentTurnNumber,
+  secondsToWorldTimeDisplay as secondsToWorldTime,
+  loadWorldSession,
+  saveWorldSession,
   type GameRuntimeConfig,
+  type AdvanceTimeOptions,
 } from '@pixsim7/game.engine';
-import { SceneId as toSceneId, SessionId as toSessionId } from '@pixsim7/shared.types';
-import type { SessionFlags } from '@pixsim7/shared.types';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { GameSessionDTO, GameWorldDetail } from '@lib/registries';
 
-
 import { useWorldConfigSync } from '@/hooks/useWorldConfigSync';
 import { useGameStateStore } from '@/stores/gameStateStore';
 
-import {
-  createGameSession,
-  getGameWorld,
-  updateGameSession,
-  advanceGameWorldTime,
-} from '../../api/game';
-import { loadWorldSession, saveWorldSession } from '../session';
+import { getGameWorld } from '../../api/game';
 
-import { gameHooksRegistry, type GameTickContext, type GameEvent } from './gameHooks';
+import { gameHooksRegistry, type GameEvent } from './gameHooks';
 import { gameRuntimeApiClient, gameRuntimeStorage } from './runtimeApiAdapter';
-import {
-  isTurnBasedMode,
-  getTurnDelta,
-  getCurrentTurnNumber,
-  createTurnAdvanceFlags,
-  secondsToWorldTime,
-} from './timeHelpers';
 import type { GameRuntimeState, GameRuntimeOptions, WorldTimeDisplay } from './types';
 
-/**
- * Options for advanceTime/advanceTurn
- */
-export interface AdvanceTimeOptions {
-  /** Context origin for hooks: 'game' or 'simulation' */
-  origin?: 'game' | 'simulation';
-  /** Additional context for simulation mode */
-  simulationContext?: {
-    selectedNpcIds: number[];
-  };
-  /** If true, skip running hooks */
-  skipHooks?: boolean;
-}
+// Re-export AdvanceTimeOptions from engine for consumers
+export type { AdvanceTimeOptions } from '@pixsim7/game.engine';
 
 /**
  * Return type for the useGameRuntime hook
@@ -107,6 +87,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
     const config: GameRuntimeConfig = {
       apiClient: gameRuntimeApiClient,
       storageProvider: gameRuntimeStorage,
+      pluginRegistry: gameHooksRegistry,
       debug: import.meta.env?.DEV ?? false,
     };
     runtimeRef.current = createGameRuntime(config);
@@ -149,8 +130,8 @@ export function useGameRuntime(): UseGameRuntimeReturn {
     });
 
     const unsubTime = runtime.on('worldTimeAdvanced', (event) => {
-      // Update session's world_time in local state
-      setSession((prev) => (prev ? { ...prev, world_time: event.newTime } : null));
+      // Update world in local state
+      setWorld((prev) => (prev ? { ...prev, world_time: event.newTime } : null));
     });
 
     const unsubError = runtime.on('error', (event) => {
@@ -220,86 +201,32 @@ export function useGameRuntime(): UseGameRuntimeReturn {
     [world, session, storeEnterRoom]
   );
 
-  // Load a world by ID
-  const loadWorld = useCallback(async (worldId: number): Promise<GameWorldDetail> => {
-    const w = await getGameWorld(worldId);
-    setWorld(w);
-    return w;
-  }, []);
-
-  // Ensure a session exists for a world
+  // Ensure a session exists for a world (delegates to runtime)
   const ensureSession = useCallback(
     async (worldId: number, options: GameRuntimeOptions = {}): Promise<GameSessionDTO> => {
       setIsLoading(true);
       setError(null);
 
       try {
-        // Load world first
-        const w = await loadWorld(worldId);
-
-        // Check for existing session in localStorage
-        const stored = loadWorldSession();
-        if (stored?.gameSessionId && stored.worldId === worldId) {
-          try {
-            await runtime.loadSession(stored.gameSessionId, false);
-            const existing = runtime.getSession();
-            if (existing) {
-              setSession(existing as GameSessionDTO);
-              // Sync store with room mode
-              if (options.initialLocationId) {
-                setLocationId(options.initialLocationId);
-                storeEnterRoom(worldId, existing.id, `location:${options.initialLocationId}`);
-              }
-              return existing as GameSessionDTO;
-            }
-          } catch {
-            // Session no longer valid, create new
-          }
-        }
-
-        // Build session flags
-        const sessionKind =
-          options.sessionKind === 'simulation' ? 'scene' : options.sessionKind ?? 'world';
-        const worldMode = options.worldMode ?? (isTurnBasedMode(null, w) ? 'turn_based' : 'real_time');
-
-        const flags: SessionFlags = {
-          sessionKind,
-          world: {
-            id: String(worldId),
-            mode: worldMode,
-            currentLocationId: options.initialLocationId,
-            turnDeltaSeconds: options.turnDeltaSeconds,
-            turnNumber: 0,
-          },
-          ...options.initialFlags,
-        };
-
-        // Create new session (scene_id=1 as placeholder for world sessions)
-        const newSession = await createGameSession(toSceneId(1), flags);
-        setSession(newSession);
-
-        // Sync world_time from world to session
-        if (newSession.world_time !== w.world_time) {
-          const result = await updateGameSession(toSessionId(newSession.id), { world_time: w.world_time });
-          if (result.session) {
-            setSession(result.session);
-          }
-        }
-
-        // Persist
-        saveWorldSession({
-          worldTimeSeconds: w.world_time,
-          gameSessionId: newSession.id,
-          worldId: worldId,
+        const sess = await runtime.ensureSessionForWorld(worldId, {
+          sessionKind: options.sessionKind,
+          worldMode: options.worldMode,
+          turnDeltaSeconds: options.turnDeltaSeconds,
+          initialLocationId: options.initialLocationId,
+          initialFlags: options.initialFlags,
         });
 
-        // Sync store
+        // Sync React state from runtime
+        const w = runtime.getWorld();
+        if (w) setWorld(w as GameWorldDetail);
+
+        // Sync store with room mode (React-specific)
         if (options.initialLocationId) {
           setLocationId(options.initialLocationId);
-          storeEnterRoom(worldId, newSession.id, options.initialLocationId);
+          storeEnterRoom(worldId, sess.id, `location:${options.initialLocationId}`);
         }
 
-        return newSession;
+        return sess as GameSessionDTO;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
@@ -308,7 +235,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         setIsLoading(false);
       }
     },
-    [loadWorld, runtime, storeEnterRoom]
+    [runtime, storeEnterRoom]
   );
 
   // Attach to an existing session
@@ -358,24 +285,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
     clearContext();
   }, [clearContext]);
 
-  // Build hook context helper
-  const buildTickContext = useCallback(
-    (deltaSeconds: number, newWorldTime: number, options?: AdvanceTimeOptions): GameTickContext => ({
-      worldId: world!.id,
-      world: world!,
-      worldTimeSeconds: newWorldTime,
-      deltaSeconds,
-      session,
-      locationId,
-      isTurnBased: isTurnBasedMode(session?.flags, world),
-      turnNumber: getCurrentTurnNumber(session?.flags),
-      origin: options?.origin ?? 'game',
-      simulationContext: options?.simulationContext,
-    }),
-    [world, session, locationId]
-  );
-
-  // Advance world time
+  // Advance world time (delegates to runtime)
   const advanceTime = useCallback(
     async (deltaSeconds: number, options?: AdvanceTimeOptions): Promise<GameEvent[]> => {
       if (!world) {
@@ -387,47 +297,10 @@ export function useGameRuntime(): UseGameRuntimeReturn {
       setError(null);
 
       try {
-        // Build context for hooks (with predicted new time)
-        const predictedNewTime = (world.world_time ?? 0) + deltaSeconds;
-        const tickContext = buildTickContext(deltaSeconds, predictedNewTime, options);
-
-        // Run beforeTick hooks
-        if (!options?.skipHooks) {
-          await gameHooksRegistry.runBeforeTick(tickContext);
-        }
-
-        // Advance world time via API
-        const updatedWorld = await advanceGameWorldTime(world.id, deltaSeconds);
-        setWorld(updatedWorld);
-
-        // Sync session world_time
-        if (session) {
-          const result = await updateGameSession(toSessionId(session.id), {
-            world_time: updatedWorld.world_time,
-          });
-          if (result.session) {
-            setSession(result.session);
-          }
-        }
-
-        // Persist
-        saveWorldSession({
-          worldTimeSeconds: updatedWorld.world_time,
-          gameSessionId: session?.id,
-          worldId: world.id,
+        const events = await runtime.advanceTimeWithHooks(deltaSeconds, {
+          ...options,
+          locationId,
         });
-
-        // Run onTick hooks and collect events
-        let events: GameEvent[] = [];
-        if (!options?.skipHooks) {
-          // Update context with actual new time
-          const finalContext = buildTickContext(deltaSeconds, updatedWorld.world_time, options);
-          events = await gameHooksRegistry.runOnTick(finalContext);
-
-          // Run afterTick hooks
-          await gameHooksRegistry.runAfterTick(finalContext, events);
-        }
-
         setLastTickEvents(events);
         return events;
       } catch (err) {
@@ -438,10 +311,10 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         setIsLoading(false);
       }
     },
-    [world, session, buildTickContext]
+    [world, runtime, locationId]
   );
 
-  // Advance one turn (turn-based mode)
+  // Advance one turn (delegates to runtime)
   const advanceTurn = useCallback(
     async (options?: AdvanceTimeOptions): Promise<GameEvent[]> => {
       if (!world) {
@@ -449,72 +322,14 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         return [];
       }
 
-      const delta = getTurnDelta(session?.flags, world);
-
       setIsLoading(true);
       setError(null);
 
       try {
-        // Build context for hooks (with predicted new time)
-        const predictedNewTime = (world.world_time ?? 0) + delta;
-        const tickContext = buildTickContext(delta, predictedNewTime, options);
-
-        // Run beforeTick hooks
-        if (!options?.skipHooks) {
-          await gameHooksRegistry.runBeforeTick(tickContext);
-        }
-
-        // Advance world time via API
-        const updatedWorld = await advanceGameWorldTime(world.id, delta);
-        setWorld(updatedWorld);
-
-        // Update session with new world_time and turn number
-        if (session && isTurnBasedMode(session.flags, world)) {
-          const updatedFlags = createTurnAdvanceFlags(
-            session.flags as SessionFlags,
-            updatedWorld.world_time,
-            locationId
-          );
-
-          const result = await updateGameSession(toSessionId(session.id), {
-            world_time: updatedWorld.world_time,
-            flags: updatedFlags,
-          });
-
-          if (result.session) {
-            setSession(result.session);
-          }
-        } else if (session) {
-          // Real-time mode: just update world_time
-          const result = await updateGameSession(toSessionId(session.id), {
-            world_time: updatedWorld.world_time,
-          });
-          if (result.session) {
-            setSession(result.session);
-          }
-        }
-
-        // Persist
-        saveWorldSession({
-          worldTimeSeconds: updatedWorld.world_time,
-          gameSessionId: session?.id,
-          worldId: world.id,
+        const events = await runtime.advanceTurnWithHooks({
+          ...options,
+          locationId,
         });
-
-        // Run onTick hooks and collect events
-        let events: GameEvent[] = [];
-        if (!options?.skipHooks) {
-          // Update context with actual new time and incremented turn
-          const finalContext: GameTickContext = {
-            ...buildTickContext(delta, updatedWorld.world_time, options),
-            turnNumber: getCurrentTurnNumber(session?.flags) + 1,
-          };
-          events = await gameHooksRegistry.runOnTick(finalContext);
-
-          // Run afterTick hooks
-          await gameHooksRegistry.runAfterTick(finalContext, events);
-        }
-
         setLastTickEvents(events);
         return events;
       } catch (err) {
@@ -525,7 +340,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
         setIsLoading(false);
       }
     },
-    [world, session, locationId, buildTickContext]
+    [world, runtime, locationId]
   );
 
   // Mode transition: enter room

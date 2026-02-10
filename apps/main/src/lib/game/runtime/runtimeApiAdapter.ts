@@ -12,7 +12,7 @@
  */
 
 import type { GameApiClient, SessionStorage } from '@pixsim7/game.engine';
-import { SessionId as toSessionId } from '@pixsim7/shared.types';
+import { SessionId as toSessionId, SceneId as toSceneId } from '@pixsim7/shared.types';
 
 import type {
   GameSessionDTO,
@@ -27,18 +27,17 @@ import type {
 
 import {
   getGameSession,
+  createGameSession,
   updateGameSession,
   getGameWorld,
   advanceGameWorldTime,
   resolveTemplate,
   resolveTemplateBatch,
 } from '../../api/game';
-
 import {
   listInteractions as backendListInteractions,
   executeInteraction as backendExecuteInteraction,
 } from '../../api/interactions';
-
 import { interactionRegistry, type InteractionContext as PluginContext } from '../interactions';
 
 /**
@@ -138,6 +137,13 @@ async function getClientSideInteractions(
 export const gameRuntimeApiClient: GameApiClient = {
   async fetchSession(sessionId: number): Promise<GameSessionDTO> {
     return await getGameSession(toSessionId(sessionId));
+  },
+
+  async createSession(
+    sceneId: number,
+    flags?: Record<string, unknown>
+  ): Promise<GameSessionDTO> {
+    return await createGameSession(toSceneId(sceneId), flags);
   },
 
   async updateSession(

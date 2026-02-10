@@ -12,6 +12,7 @@ import type {
   InteractionParticipant,
   InteractionTarget,
   TemplateKind,
+  SessionFlags,
 } from '@pixsim7/shared.types';
 import { Ref } from '@pixsim7/shared.ref.core';
 import { createTemplateRefKey } from '@pixsim7/core.links';
@@ -27,13 +28,24 @@ import type {
   WorldTimeAdvancedEvent,
   InteractionExecutedEvent,
   RuntimeErrorEvent,
+  EnsureSessionOptions,
+  AdvanceTimeOptions,
+  TickCompletedEvent,
 } from './types';
+import type { GameTickContext, GameEvent } from '../plugins/types';
 import type { NpcRelationshipState } from '../core/types';
 import {
   getAdapterBySource,
   type StatSource,
 } from '../session/statAdapters';
 import { getNpcRelationshipState } from '../session/state';
+import {
+  isTurnBasedMode,
+  getTurnDelta,
+  getCurrentTurnNumber,
+  createTurnAdvanceFlags,
+} from '../world/turnHelpers';
+import { loadWorldSession, saveWorldSession } from '../session/storage';
 
 type TemplateResolution = {
   runtimeId: number | null;
@@ -692,6 +704,285 @@ export class GameRuntime implements IGameRuntime {
       this.emitError(error as Error, 'advanceWorldTime');
       throw error;
     }
+  }
+
+  // ============================================
+  // Orchestration Methods (tick lifecycle + session ensure)
+  // ============================================
+
+  /**
+   * Ensure a session exists for a world.
+   * Loads world, checks storage for existing session, creates if needed.
+   */
+  async ensureSessionForWorld(
+    worldId: number,
+    options: EnsureSessionOptions = {}
+  ): Promise<GameSessionDTO> {
+    this.checkDisposed();
+    this.log(`Ensuring session for world ${worldId}...`);
+
+    try {
+      // Load world
+      const world = await this.config.apiClient.getWorld(worldId);
+      this.world = world;
+
+      // Check storage for existing session
+      const stored = loadWorldSession();
+      if (stored?.gameSessionId && stored.worldId === worldId) {
+        try {
+          await this.loadSession(stored.gameSessionId, false);
+          const existing = this.getSession();
+          if (existing) {
+            this.log(`Restored existing session ${existing.id} for world ${worldId}`);
+            return existing as GameSessionDTO;
+          }
+        } catch {
+          // Session no longer valid, create new
+          this.log('Stored session invalid, creating new');
+        }
+      }
+
+      // Build session flags
+      const sessionKind =
+        options.sessionKind === 'simulation' ? 'scene' : options.sessionKind ?? 'world';
+      const worldMode = options.worldMode ?? (isTurnBasedMode(null, world) ? 'turn_based' : 'real_time');
+
+      const flags: Record<string, unknown> = {
+        sessionKind,
+        world: {
+          id: String(worldId),
+          mode: worldMode,
+          currentLocationId: options.initialLocationId,
+          turnDeltaSeconds: options.turnDeltaSeconds,
+          turnNumber: 0,
+        },
+        ...options.initialFlags,
+      };
+
+      // Create new session
+      const newSession = await this.config.apiClient.createSession(1, flags);
+      this.session = newSession;
+
+      // Sync world_time if needed
+      if (newSession.world_time !== world.world_time) {
+        const synced = await this.config.apiClient.updateSession(newSession.id, {
+          world_time: world.world_time,
+        });
+        this.session = synced;
+      }
+
+      // Persist
+      saveWorldSession({
+        worldTimeSeconds: world.world_time,
+        gameSessionId: this.session.id,
+        worldId,
+      });
+
+      // Emit session loaded event
+      this.events.emit('sessionLoaded', {
+        session: this.session,
+        world: this.world,
+      });
+
+      this.log(`Created session ${this.session.id} for world ${worldId}`);
+      return this.session;
+    } catch (error) {
+      this.emitError(error as Error, 'ensureSessionForWorld');
+      throw error;
+    }
+  }
+
+  /**
+   * Advance world time with full plugin hook lifecycle.
+   * Runs beforeTick → advanceWorldTime → sync session → onTick → afterTick.
+   */
+  async advanceTimeWithHooks(
+    deltaSeconds: number,
+    options: AdvanceTimeOptions = {}
+  ): Promise<GameEvent[]> {
+    this.checkDisposed();
+
+    if (!this.world) {
+      throw new Error('No world loaded');
+    }
+
+    this.log(`Advancing time by ${deltaSeconds}s with hooks`);
+
+    try {
+      const previousTime = this.world.world_time ?? 0;
+      const predictedNewTime = previousTime + deltaSeconds;
+      const registry = this.config.pluginRegistry;
+
+      // Build tick context
+      const tickContext = this.buildTickContext(deltaSeconds, predictedNewTime, options);
+
+      // Run beforeTick hooks
+      if (registry && !options.skipHooks) {
+        await registry.runBeforeTick(tickContext);
+      }
+
+      // Advance world time via API (updates this.world internally)
+      await this.advanceWorldTime(deltaSeconds);
+
+      // Sync session world_time
+      if (this.session) {
+        const updated = await this.config.apiClient.updateSession(this.session.id, {
+          world_time: this.world!.world_time,
+        });
+        const previousSession = this.session;
+        this.session = updated;
+        this.emitSessionUpdated(previousSession, this.session, { worldTime: true });
+      }
+
+      // Persist
+      saveWorldSession({
+        worldTimeSeconds: this.world!.world_time,
+        gameSessionId: this.session?.id,
+        worldId: this.world!.id,
+      });
+
+      // Run onTick + afterTick hooks
+      let events: GameEvent[] = [];
+      if (registry && !options.skipHooks) {
+        const finalContext = this.buildTickContext(deltaSeconds, this.world!.world_time, options);
+        events = await registry.runOnTick(finalContext);
+        await registry.runAfterTick(finalContext, events);
+      }
+
+      // Emit tickCompleted event
+      const tickEvent: TickCompletedEvent = {
+        deltaSeconds,
+        previousTime,
+        newTime: this.world!.world_time,
+        events,
+      };
+      this.events.emit('tickCompleted', tickEvent);
+
+      return events;
+    } catch (error) {
+      this.emitError(error as Error, 'advanceTimeWithHooks');
+      throw error;
+    }
+  }
+
+  /**
+   * Advance one turn with full plugin hook lifecycle (turn-based mode).
+   * Calculates delta from session/world config, runs full hook lifecycle,
+   * and updates turn number in session flags.
+   */
+  async advanceTurnWithHooks(
+    options: AdvanceTimeOptions = {}
+  ): Promise<GameEvent[]> {
+    this.checkDisposed();
+
+    if (!this.world) {
+      throw new Error('No world loaded');
+    }
+
+    const delta = getTurnDelta(this.session?.flags as Record<string, unknown> | undefined, this.world);
+    this.log(`Advancing turn by ${delta}s with hooks`);
+
+    try {
+      const previousTime = this.world.world_time ?? 0;
+      const predictedNewTime = previousTime + delta;
+      const registry = this.config.pluginRegistry;
+
+      // Build tick context
+      const tickContext = this.buildTickContext(delta, predictedNewTime, options);
+
+      // Run beforeTick hooks
+      if (registry && !options.skipHooks) {
+        await registry.runBeforeTick(tickContext);
+      }
+
+      // Advance world time via API (updates this.world internally)
+      await this.advanceWorldTime(delta);
+
+      // Update session with new world_time and turn flags
+      if (this.session && isTurnBasedMode(this.session.flags as Record<string, unknown>, this.world)) {
+        const updatedFlags = createTurnAdvanceFlags(
+          this.session.flags as SessionFlags,
+          this.world!.world_time,
+          options.locationId
+        );
+
+        const updated = await this.config.apiClient.updateSession(this.session.id, {
+          world_time: this.world!.world_time,
+          flags: updatedFlags,
+        });
+        const previousSession = this.session;
+        this.session = updated;
+        this.emitSessionUpdated(previousSession, this.session, { worldTime: true, flags: true });
+      } else if (this.session) {
+        // Real-time mode: just update world_time
+        const updated = await this.config.apiClient.updateSession(this.session.id, {
+          world_time: this.world!.world_time,
+        });
+        const previousSession = this.session;
+        this.session = updated;
+        this.emitSessionUpdated(previousSession, this.session, { worldTime: true });
+      }
+
+      // Persist
+      saveWorldSession({
+        worldTimeSeconds: this.world!.world_time,
+        gameSessionId: this.session?.id,
+        worldId: this.world!.id,
+      });
+
+      // Run onTick + afterTick hooks
+      let events: GameEvent[] = [];
+      if (registry && !options.skipHooks) {
+        const finalContext: GameTickContext = {
+          ...this.buildTickContext(delta, this.world!.world_time, options),
+          turnNumber: getCurrentTurnNumber(this.session?.flags as Record<string, unknown> | undefined),
+        };
+        events = await registry.runOnTick(finalContext);
+        await registry.runAfterTick(finalContext, events);
+      }
+
+      // Emit tickCompleted event
+      const tickEvent: TickCompletedEvent = {
+        deltaSeconds: delta,
+        previousTime,
+        newTime: this.world!.world_time,
+        events,
+        turnNumber: getCurrentTurnNumber(this.session?.flags as Record<string, unknown> | undefined),
+      };
+      this.events.emit('tickCompleted', tickEvent);
+
+      return events;
+    } catch (error) {
+      this.emitError(error as Error, 'advanceTurnWithHooks');
+      throw error;
+    }
+  }
+
+  /**
+   * Build a GameTickContext for plugin hooks
+   */
+  private buildTickContext(
+    deltaSeconds: number,
+    worldTimeSeconds: number,
+    options: AdvanceTimeOptions = {}
+  ): GameTickContext {
+    return {
+      worldId: this.world!.id,
+      world: this.world!,
+      worldTimeSeconds,
+      deltaSeconds,
+      session: this.session,
+      locationId: options.locationId ?? null,
+      isTurnBased: isTurnBasedMode(
+        this.session?.flags as Record<string, unknown> | undefined,
+        this.world
+      ),
+      turnNumber: getCurrentTurnNumber(
+        this.session?.flags as Record<string, unknown> | undefined
+      ),
+      origin: options.origin ?? 'game',
+      simulationContext: options.simulationContext,
+    };
   }
 
   /**

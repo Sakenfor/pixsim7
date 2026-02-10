@@ -553,8 +553,11 @@ export type {
   NpcRelationshipChangedEvent,
   WorldTimeAdvancedEvent,
   InteractionExecutedEvent,
+  TickCompletedEvent,
   RuntimeErrorEvent,
   GameRuntimeEvents,
+  EnsureSessionOptions,
+  AdvanceTimeOptions,
   GameRuntime as IGameRuntime,
   GameInputIntent,
   GameController as IGameController,
@@ -582,3 +585,5 @@ export * from './interactions/cooldownUtils';
 export * from './interactions/configSchema';
 export * from './interactions/socialMechanics';
 export * from './interactions/plugins';
+export * from './interactions/presets';
+export * from './interactions/genericFactory';
