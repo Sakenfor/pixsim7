@@ -2,9 +2,8 @@
 Tests for EmbeddingService
 
 Focused tests for error semantics, dimension validation, and batch resilience.
-All tests are pure-unit: no database, no real providers — everything is mocked.
+All tests are pure-unit: no database, no real providers - everything is mocked.
 """
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -19,11 +18,11 @@ try:
         EmbeddingDimensionError,
         validate_embeddings,
         EXPECTED_DIMENSIONS,
-        _build_embed_text,
     )
     IMPORTS_AVAILABLE = True
 except ImportError:
     IMPORTS_AVAILABLE = False
+    EXPECTED_DIMENSIONS = 768
 
 
 # ===== Helpers =====
@@ -69,6 +68,12 @@ class TestValidateEmbeddings:
         embs = [_good_embedding()]
         assert validate_embeddings(embs, expected_count=1) == embs
 
+    def test_int_values_are_normalized_to_float(self):
+        embs = [[1] * EXPECTED_DIMENSIONS]
+        validated = validate_embeddings(embs, expected_count=1)
+        assert isinstance(validated[0][0], float)
+        assert validated[0][0] == 1.0
+
     def test_wrong_count_raises(self):
         with pytest.raises(EmbeddingDimensionError, match="Expected 2.*got 1"):
             validate_embeddings([_good_embedding()], expected_count=2)
@@ -81,6 +86,18 @@ class TestValidateEmbeddings:
     def test_non_list_raises(self):
         with pytest.raises(EmbeddingDimensionError, match="str.*expected list"):
             validate_embeddings(["not-a-vector"], expected_count=1)
+
+    def test_non_numeric_value_raises(self):
+        bad = _good_embedding()
+        bad[-1] = "x"
+        with pytest.raises(EmbeddingDimensionError, match="expected finite number"):
+            validate_embeddings([bad], expected_count=1)
+
+    def test_non_finite_value_raises(self):
+        bad = _good_embedding()
+        bad[-1] = float("nan")
+        with pytest.raises(EmbeddingDimensionError, match="non-finite"):
+            validate_embeddings([bad], expected_count=1)
 
     def test_multiple_valid(self):
         embs = [_good_embedding(), _good_embedding()]
@@ -204,6 +221,38 @@ class TestBatchEmbeddingResilience:
         db.rollback.assert_called_once()
         # commit called once for the successful batch
         assert db.commit.call_count == 1
+
+
+# ===== Batch mode: commit failure should fail-fast =====
+
+@pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
+class TestBatchEmbeddingCommitFailure:
+
+    @pytest.mark.asyncio
+    async def test_commit_failure_raises_and_rolls_back(self):
+        block = _make_block(id=uuid4(), block_id="block_a", embedding=None)
+
+        db = AsyncMock()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+
+        chunk_result = MagicMock()
+        chunk_result.scalars.return_value.all.return_value = [block]
+
+        db.execute = AsyncMock(side_effect=[count_result, chunk_result])
+        db.commit = AsyncMock(side_effect=RuntimeError("commit failed"))
+        db.rollback = AsyncMock()
+
+        fake_provider = AsyncMock()
+        fake_provider.embed_texts = AsyncMock(return_value=[_good_embedding()])
+
+        service = EmbeddingService(db)
+        with patch.object(service, '_resolve_model_id', return_value="openai:text-embedding-3-small"), \
+             patch.object(service, '_get_provider', return_value=fake_provider):
+            with pytest.raises(RuntimeError, match="commit failed"):
+                await service.embed_blocks_batch()
+
+        db.rollback.assert_called_once()
 
 
 # ===== EmbeddingModelError for unknown model =====

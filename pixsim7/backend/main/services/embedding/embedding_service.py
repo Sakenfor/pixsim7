@@ -8,6 +8,7 @@ Provides:
 - find_similar_by_text: Find blocks similar to arbitrary text
 """
 import logging
+import math
 from typing import Optional
 from uuid import UUID
 
@@ -56,10 +57,15 @@ def validate_embeddings(embeddings: list, expected_count: int) -> list[list[floa
 
     Raises EmbeddingDimensionError on any validation failure.
     """
+    if not isinstance(embeddings, (list, tuple)):
+        raise EmbeddingDimensionError(
+            f"Embeddings payload is {type(embeddings).__name__}, expected list"
+        )
     if len(embeddings) != expected_count:
         raise EmbeddingDimensionError(
             f"Expected {expected_count} embeddings, got {len(embeddings)}"
         )
+    normalized_embeddings: list[list[float]] = []
     for i, emb in enumerate(embeddings):
         if not isinstance(emb, (list, tuple)):
             raise EmbeddingDimensionError(
@@ -69,7 +75,20 @@ def validate_embeddings(embeddings: list, expected_count: int) -> list[list[floa
             raise EmbeddingDimensionError(
                 f"Embedding [{i}] has {len(emb)} dimensions, expected {EXPECTED_DIMENSIONS}"
             )
-    return embeddings
+        normalized: list[float] = []
+        for j, value in enumerate(emb):
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise EmbeddingDimensionError(
+                    f"Embedding [{i}][{j}] is {type(value).__name__}, expected finite number"
+                )
+            as_float = float(value)
+            if not math.isfinite(as_float):
+                raise EmbeddingDimensionError(
+                    f"Embedding [{i}][{j}] is non-finite ({as_float})"
+                )
+            normalized.append(as_float)
+        normalized_embeddings.append(normalized)
+    return normalized_embeddings
 
 
 def _build_embed_text(block: PromptBlock) -> str:
@@ -193,8 +212,9 @@ class EmbeddingService:
         Batch embed blocks that need embeddings.
 
         Uses keyset pagination to avoid loading all candidates into memory.
-        Each DB chunk is embedded and committed independently; a failed chunk
-        is rolled back and skipped without aborting the whole run.
+        Each DB chunk is embedded and committed independently.
+        Provider/validation failures are rolled back and skipped;
+        database commit failures are rolled back and raised (fail-fast).
 
         Args:
             model_id: Embedding model to use
@@ -268,7 +288,12 @@ class EmbeddingService:
                 block.embedding_model = model_id
                 embedded_count += 1
 
-            await self.db.commit()
+            try:
+                await self.db.commit()
+            except Exception:
+                logger.exception("Batch commit failed (cursor=%s)", last_id)
+                await self.db.rollback()
+                raise
             logger.info("Embedded batch of %d blocks (cursor=%s)", len(batch), last_id)
 
         return {
