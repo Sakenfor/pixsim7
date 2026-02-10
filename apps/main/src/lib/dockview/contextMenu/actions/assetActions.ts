@@ -462,7 +462,7 @@ const compareWithSelectedAction: MenuAction = {
   id: 'asset:compare-with-selected',
   label: 'Compare with Selected',
   icon: 'columns',
-  category: 'view',
+  category: 'selection',
   requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => {
     const assets = resolveAssets(ctx);
@@ -531,7 +531,7 @@ const viewAssetDetailsAction: MenuAction = {
   id: 'asset:view-details',
   label: 'View Details',
   icon: 'info',
-  category: 'info',
+  category: 'asset',
   requiredCapabilities: [CAP_ASSET],
   visible: (ctx) => resolveAssets(ctx).length === 1,
   execute: (ctx) => {
@@ -601,27 +601,107 @@ const debugFixAction: MenuAction = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Composite Submenus
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generate submenu - groups all generation shortcuts, send-to-generator,
+ * and queue management into a single submenu.
+ */
+const generateSubmenuAction: MenuAction = {
+  id: 'asset:generate',
+  label: 'Generate',
+  icon: 'sparkles',
+  category: 'generation',
+  hideWhenEmpty: true,
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return false;
+    const hasGenWidget = ctx.capabilities?.[CAP_GENERATION_WIDGET] !== undefined;
+    return hasGenWidget || removeFromQueueAction.visible?.(ctx) === true;
+  },
+  children: (ctx) => {
+    const items: MenuAction[] = [];
+    const hasGenWidget = ctx.capabilities?.[CAP_GENERATION_WIDGET] !== undefined;
+
+    // Send to Generator (nested submenu)
+    if (hasGenWidget && sendToGeneratorAction.visible?.(ctx) !== false) {
+      items.push({ ...sendToGeneratorAction, category: undefined, requiredCapabilities: undefined });
+    }
+
+    // Generation shortcuts (Image→Video, Extend, Transition)
+    const shortcuts = [imageToVideoAction, videoExtendAction, addToTransitionAction]
+      .filter(a => hasGenWidget && a.visible?.(ctx) !== false)
+      .map(a => ({ ...a, category: undefined, requiredCapabilities: undefined }));
+    if (shortcuts.length > 0) {
+      if (items.length > 0) {
+        items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Shortcuts' };
+      }
+      items.push(...shortcuts);
+    }
+
+    // Remove from Inputs
+    if (removeFromQueueAction.visible?.(ctx) !== false) {
+      if (items.length > 0) {
+        items[items.length - 1] = { ...items[items.length - 1], divider: true, sectionLabel: 'Queue' };
+      }
+      items.push({ ...removeFromQueueAction, category: undefined, requiredCapabilities: undefined });
+    }
+
+    if (items.length === 0) {
+      return [{
+        id: 'asset:generate:empty',
+        label: 'No generation actions',
+        disabled: () => true,
+        execute: () => {},
+      }];
+    }
+
+    return items;
+  },
+  execute: () => {},
+};
+
+/**
+ * Copy submenu - groups clipboard actions.
+ */
+const copySubmenuAction: MenuAction = {
+  id: 'asset:copy',
+  label: 'Copy',
+  icon: 'copy',
+  category: 'clipboard',
+  hideWhenEmpty: true,
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length === 1,
+  children: (ctx) => {
+    const items: MenuAction[] = [];
+    if (copyAssetUrlAction.visible?.(ctx) !== false) {
+      items.push({ ...copyAssetUrlAction, category: undefined, requiredCapabilities: undefined });
+    }
+    if (copyAssetIdAction.visible?.(ctx) !== false) {
+      items.push({ ...copyAssetIdAction, category: undefined, requiredCapabilities: undefined });
+    }
+    return items;
+  },
+  execute: () => {},
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export All Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const assetActions: MenuAction[] = [
   // Primary actions
   openAssetInViewerAction,
-  sendToGeneratorAction,
-  // Generation shortcuts
-  imageToVideoAction,
-  videoExtendAction,
-  addToTransitionAction,
-  // Queue management
-  removeFromQueueAction,
+  viewAssetDetailsAction,
   // Selection & comparison
   selectAssetAction,
   compareWithSelectedAction,
-  // Info
-  viewAssetDetailsAction,
+  // Generate submenu
+  generateSubmenuAction,
+  // Copy submenu
+  copySubmenuAction,
   // Debug & fixes
   debugFixAction,
-  // Clipboard
-  copyAssetUrlAction,
-  copyAssetIdAction,
 ];

@@ -93,6 +93,8 @@ export interface WorkspaceState {
   floatingPanels: FloatingPanelState[];
   /** Currently active preset ID per scope */
   activePresetByScope: Partial<Record<PresetScope, string | null>>;
+  /** User-pinned panels shown as quick-add shortcuts in context menu */
+  pinnedQuickAddPanels: string[];
 }
 
 export interface WorkspaceActions {
@@ -122,6 +124,10 @@ export interface WorkspaceActions {
   setPresetGraphEditor: (presetId: string, graphEditorId: string) => void;
   /** Set active preset ID for a scope (UI state only, layout handled by SmartDockview) */
   setActivePreset: (scope: PresetScope, presetId: string | null) => void;
+  /** Toggle a panel's pinned state for quick-add shortcuts */
+  toggleQuickAddPin: (panelId: string) => void;
+  /** Check if a panel is pinned for quick-add */
+  isPinnedQuickAdd: (panelId: string) => boolean;
   /** Reset all state */
   reset: () => void;
   // Floating panel actions
@@ -245,7 +251,7 @@ const defaultPresets: LayoutPreset[] = [
 
 ];
 
-const STORAGE_KEY = "workspace_v5"; // v5: removed layoutByScope (layouts now in localStorage via SmartDockview)
+const STORAGE_KEY = "workspace_v6"; // v6: added pinnedQuickAddPanels
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
@@ -255,6 +261,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       presets: defaultPresets,
       fullscreenPanel: null,
       floatingPanels: [],
+      pinnedQuickAddPanels: ['gallery', 'inspector'],
       activePresetByScope: {
         workspace: "default",
         "control-center": "control-center-default",
@@ -378,12 +385,26 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }));
       },
 
+      toggleQuickAddPin: (panelId) => {
+        const current = get().pinnedQuickAddPanels;
+        if (current.includes(panelId)) {
+          set({ pinnedQuickAddPanels: current.filter((id) => id !== panelId) });
+        } else {
+          set({ pinnedQuickAddPanels: [...current, panelId] });
+        }
+      },
+
+      isPinnedQuickAdd: (panelId) => {
+        return get().pinnedQuickAddPanels.includes(panelId);
+      },
+
       reset: () =>
         set({
           closedPanels: [],
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
+          pinnedQuickAddPanels: ['gallery', 'inspector'],
           activePresetByScope: {
         workspace: "default",
         "control-center": "control-center-default",
@@ -520,13 +541,20 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => createBackendStorage("workspace")),
-      version: 5, // Bumped: removed layoutByScope (now in localStorage via SmartDockview)
+      version: 6, // v6: added pinnedQuickAddPanels
+      migrate: (persistedState: any, version: number) => {
+        if (version < 6) {
+          persistedState.pinnedQuickAddPanels = ['gallery', 'inspector'];
+        }
+        return persistedState;
+      },
       partialize: (state) => ({
         closedPanels: state.closedPanels,
         isLocked: state.isLocked,
         presets: state.presets,
         fullscreenPanel: state.fullscreenPanel,
         floatingPanels: state.floatingPanels,
+        pinnedQuickAddPanels: state.pinnedQuickAddPanels,
         activePresetByScope: state.activePresetByScope,
       }) as Partial<WorkspaceState & WorkspaceActions>,
       onRehydrateStorage: () => (state) => {

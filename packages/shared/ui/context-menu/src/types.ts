@@ -13,6 +13,15 @@ export type {
 } from '@pixsim7/shared.ui.panels';
 
 /**
+ * Interface for tracking recently used context menu actions.
+ * Injected into ContextMenuRegistry to surface recent actions at menu top.
+ */
+export interface ContextMenuHistoryProvider {
+  getRecentForContext(contextType: string, limit?: number): string[];
+  recordUsage(actionId: string, contextType: string): void;
+}
+
+/**
  * Interface for injecting capability actions into the context menu registry.
  */
 export interface CapabilityActionSource {

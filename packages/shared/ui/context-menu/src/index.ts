@@ -10,6 +10,7 @@ export { BaseRegistry, type Identifiable } from './BaseRegistry';
 // Types
 export type {
   ContextMenuContext,
+  ContextMenuHistoryProvider,
   MenuActionContextBase,
   MenuActionBase,
   MenuItem,

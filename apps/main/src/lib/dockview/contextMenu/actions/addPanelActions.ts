@@ -8,6 +8,8 @@
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
 import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
 import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
@@ -163,7 +165,70 @@ export const addPanelAction: MenuAction = {
 };
 
 /**
+ * Get quick-add actions dynamically from the user's pinned panels.
+ */
+export function getQuickAddActions(ctx: MenuActionContext): MenuAction[] {
+  const pinnedIds = useWorkspaceStore.getState().pinnedQuickAddPanels;
+  if (!pinnedIds.length || !ctx.panelRegistry) return [];
+
+  const allPanels = ctx.panelRegistry.getPublicPanels
+    ? ctx.panelRegistry.getPublicPanels()
+    : ctx.panelRegistry.getAll();
+
+  const panelMap = new Map(allPanels.map(p => [p.id, p]));
+
+  return pinnedIds
+    .map((panelId) => {
+      const panel = panelMap.get(panelId);
+      if (!panel) return null;
+      return {
+        id: `panel:quick-add:${panelId}`,
+        label: `Add ${panel.title}`,
+        icon: panel.icon,
+        category: 'quick-add',
+        availableIn: ['background'] as const,
+        visible: (c: MenuActionContext) => {
+          const { api, host } = resolveCurrentDockview(c);
+          return !!api && !(host?.isPanelOpen(panelId, false) ?? isPanelOpen(api, panelId, false));
+        },
+        execute: (c: MenuActionContext) => addPanel(c, panelId, !!panel.supportsMultipleInstances),
+      } satisfies MenuAction;
+    })
+    .filter((a): a is MenuAction => a !== null);
+}
+
+/**
+ * Get "Edit Quick Add" submenu with toggleable pin items.
+ */
+export function getEditQuickAddActions(ctx: MenuActionContext): MenuAction {
+  return {
+    id: 'panel:edit-quick-add',
+    label: 'Edit Quick Add',
+    icon: 'pin',
+    availableIn: ['background', 'tab', 'panel-content'],
+    children: () => {
+      const allPanels = ctx.panelRegistry?.getPublicPanels
+        ? ctx.panelRegistry.getPublicPanels()
+        : ctx.panelRegistry?.getAll() ?? [];
+      const store = useWorkspaceStore.getState();
+
+      return allPanels.map((panel) => ({
+        id: `panel:edit-quick-add:${panel.id}`,
+        label: `${store.isPinnedQuickAdd(panel.id) ? '✓ ' : ''}${panel.title}`,
+        icon: panel.icon,
+        availableIn: ['background', 'tab', 'panel-content'] as const,
+        execute: () => {
+          useWorkspaceStore.getState().toggleQuickAddPin(panel.id);
+        },
+      }));
+    },
+    execute: () => {},
+  };
+}
+
+/**
  * Quick add common panels (shown at top level for convenience)
+ * @deprecated Use getQuickAddActions() for dynamic pinned panels
  */
 export const quickAddActions: MenuAction[] = [
   {

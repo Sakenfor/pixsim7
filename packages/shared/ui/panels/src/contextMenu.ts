@@ -155,6 +155,12 @@ export interface MenuActionBase<TContext = MenuActionContextBase> {
   /** Show divider after this item */
   divider?: boolean;
 
+  /** Label for section divider (renders as labeled divider instead of plain line) */
+  sectionLabel?: string;
+
+  /** Hide this submenu when all children are disabled or empty */
+  hideWhenEmpty?: boolean;
+
   /** Contexts where this action is available (explicit list) */
   availableIn?: ContextMenuContext[];
 
@@ -191,6 +197,8 @@ export interface MenuItem {
   variant?: "default" | "danger" | "success";
   shortcut?: string;
   divider?: boolean;
+  sectionLabel?: string;
+  hideWhenEmpty?: boolean;
   disabled?: boolean | string;
   children?: MenuItem[];
   onClick?: () => void;

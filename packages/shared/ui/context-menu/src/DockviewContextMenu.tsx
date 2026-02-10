@@ -254,7 +254,13 @@ function MenuItemComponent({ item, onClose, depth = 0, renderIcon }: MenuItemCom
       </div>
 
       {item.divider && (
-        <DropdownDivider />
+        item.sectionLabel
+          ? <div className="flex items-center gap-2 px-3 py-1 text-[10px] text-neutral-500 uppercase tracking-wider select-none">
+              <div className="flex-1 border-t border-neutral-700/50" />
+              <span>{item.sectionLabel}</span>
+              <div className="flex-1 border-t border-neutral-700/50" />
+            </div>
+          : <DropdownDivider />
       )}
 
       {hasChildren && showChildren && submenuPos && (

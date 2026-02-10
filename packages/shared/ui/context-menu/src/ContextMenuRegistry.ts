@@ -12,6 +12,7 @@ import { BaseRegistry } from './BaseRegistry';
 import { toMenuActions, type ToMenuActionOptions } from './actionAdapters';
 import type {
   ContextMenuContext,
+  ContextMenuHistoryProvider,
   MenuActionBase,
   MenuActionContextBase,
   MenuItem,
@@ -19,15 +20,29 @@ import type {
   CapabilityActionLike,
 } from './types';
 
+const CATEGORY_LABELS: Record<string, string> = {
+  'panel': 'Panel',
+  'panels': 'Panels',
+  'generation': 'Generate',
+  'preset': 'Presets',
+  'clipboard': 'Copy',
+  'debug': 'Debug',
+};
+
 const CATEGORY_PRIORITY: Record<string, number> = {
   'asset': 5,
+  'selection': 7,
+  'view': 8,
   'generation': 10,
   'panel': 15,
   'quick-add': 18,
   'add': 20,
+  'panels': 20,
   'layout': 25,
   'preset': 30,
+  'clipboard': 35,
   'connect': 40,
+  'debug': 90,
   'zzz': 100,
 };
 
@@ -95,17 +110,38 @@ function toMenuActionFromCapability(
   };
 }
 
-function getCategoryPriority(category: string | undefined): number {
-  if (!category) return 50;
-  return CATEGORY_PRIORITY[category] ?? 50;
-}
-
 export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
   private includeCapabilityActions = true;
   private capabilityFilteringEnabled = true;
   private capabilityActionIds = new Set<string>();
   private capabilityOverrides = new Map<string, ToMenuActionOptions>();
   private capabilitySource: CapabilityActionSource | null = null;
+  private contextCategoryPriority = new Map<string, Record<string, number>>();
+  private historyProvider: ContextMenuHistoryProvider | null = null;
+
+  /**
+   * Set category priority overrides for a specific context type.
+   * Categories not in the overrides map fall back to the global CATEGORY_PRIORITY.
+   */
+  setContextCategoryPriority(contextType: string, priorities: Record<string, number>): void {
+    this.contextCategoryPriority.set(contextType, priorities);
+  }
+
+  /**
+   * Set a history provider to track and surface recently used actions.
+   */
+  setHistoryProvider(provider: ContextMenuHistoryProvider): void {
+    this.historyProvider = provider;
+  }
+
+  private getCategoryPriority(category: string | undefined, contextType?: string): number {
+    if (!category) return 50;
+    if (contextType) {
+      const overrides = this.contextCategoryPriority.get(contextType);
+      if (overrides?.[category] !== undefined) return overrides[category];
+    }
+    return CATEGORY_PRIORITY[category] ?? 50;
+  }
 
   /**
    * Inject the capability action source.
@@ -165,8 +201,8 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       .filter(action => this.isActionAvailableInContext(action, contextType, ctx))
       .filter(action => !action.visible || action.visible(ctx))
       .sort((a, b) => {
-        const priorityA = getCategoryPriority(a.category);
-        const priorityB = getCategoryPriority(b.category);
+        const priorityA = this.getCategoryPriority(a.category, contextType);
+        const priorityB = this.getCategoryPriority(b.category, contextType);
         if (priorityA !== priorityB) return priorityA - priorityB;
         return a.label.localeCompare(b.label);
       });
@@ -186,12 +222,14 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
 
       const shouldAddDivider = i > 0 && lastCategory !== currentCategory;
 
-      const menuItem = this.actionToMenuItem(action, ctx);
+      const menuItem = this.actionToMenuItem(action, ctx, contextType);
 
       if (shouldAddDivider && items.length > 0 && !items[items.length - 1].divider) {
+        const label = currentCategory ? CATEGORY_LABELS[currentCategory] : undefined;
         items[items.length - 1] = {
           ...items[items.length - 1],
           divider: true,
+          sectionLabel: label ?? items[items.length - 1].sectionLabel,
         };
       }
 
@@ -199,7 +237,51 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       lastCategory = currentCategory;
     }
 
-    return items;
+    // Filter out submenus marked hideWhenEmpty whose children are all disabled/empty
+    const filtered = items.filter(item => {
+      if (!item.hideWhenEmpty || !item.children) return true;
+      return item.children.some(child => !child.disabled);
+    });
+
+    // Prepend recently used actions
+    if (this.historyProvider && filtered.length > 0) {
+      const recentIds = this.historyProvider.getRecentForContext(contextType, 3);
+      if (recentIds.length > 0) {
+        const recentItems: MenuItem[] = [];
+        for (const id of recentIds) {
+          // Find matching top-level leaf item (skip submenu parents)
+          const match = filtered.find(item => item.id === id && !item.children && !item.disabled);
+          if (match) {
+            recentItems.push({
+              ...match,
+              id: `recent:${match.id}`,
+              divider: false,
+              sectionLabel: undefined,
+            });
+          }
+        }
+        if (recentItems.length > 0) {
+          // Add "Recent" section label on last recent item's divider
+          recentItems[recentItems.length - 1] = {
+            ...recentItems[recentItems.length - 1],
+            divider: true,
+            sectionLabel: 'Recent',
+          };
+          filtered.unshift(...recentItems);
+        }
+      }
+    }
+
+    // Clean up orphaned trailing dividers
+    for (let i = filtered.length - 1; i >= 0; i--) {
+      if (filtered[i].divider) {
+        if (i === filtered.length - 1) {
+          filtered[i] = { ...filtered[i], divider: false };
+        }
+      }
+    }
+
+    return filtered;
   }
 
   /**
@@ -249,7 +331,11 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
     return false;
   }
 
-  private actionToMenuItem(action: MenuActionBase, ctx: MenuActionContextBase): MenuItem {
+  private actionToMenuItem(
+    action: MenuActionBase,
+    ctx: MenuActionContextBase,
+    contextType?: string,
+  ): MenuItem {
     let disabled: boolean | string | undefined;
     if (action.disabled) {
       disabled = action.disabled(ctx);
@@ -260,8 +346,11 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       const childActions = typeof action.children === 'function'
         ? action.children(ctx)
         : action.children;
-      children = childActions.map(child => this.actionToMenuItem(child, ctx));
+      children = childActions.map(child => this.actionToMenuItem(child, ctx, contextType));
     }
+
+    const isLeaf = !action.children;
+    const historyProvider = this.historyProvider;
 
     return {
       id: action.id,
@@ -271,9 +360,16 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
       variant: action.variant,
       shortcut: action.shortcut,
       divider: action.divider,
+      sectionLabel: action.sectionLabel,
+      hideWhenEmpty: action.hideWhenEmpty,
       disabled,
       children,
-      onClick: () => action.execute(ctx),
+      onClick: () => {
+        if (isLeaf && historyProvider && contextType) {
+          historyProvider.recordUsage(action.id, contextType);
+        }
+        action.execute(ctx);
+      },
     };
   }
 
