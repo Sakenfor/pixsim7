@@ -10,19 +10,18 @@
  */
 
 import {
+  deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
+  supportsContentRating as checkContentRatingWithHelper,
+} from '@pixsim7/game.engine';
+import {
   clampContentRating,
   getContentRatingIndex,
 } from '@pixsim7/shared.content.rating';
+import type { IntimacyBand, IntimacyGatingConfig } from '@pixsim7/shared.types';
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
 
 import type { SimulatedRelationshipState } from './gateChecking';
-import {
-  deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
-  supportsContentRating as checkContentRatingWithHelper,
-  type IntimacyBand,
-  type IntimacyGatingConfig,
-} from './intimacyGating';
 
 /**
  * Intimacy level to band mapping

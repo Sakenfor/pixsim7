@@ -1,28 +1,25 @@
 /**
  * Intimacy Gating System
  *
- * Centralized config-driven gating logic for intimacy and content ratings.
- * Uses world-configurable values from the WorldConfig system.
+ * Pure gating logic for intimacy-related interactions and content ratings.
+ * Config-driven, uses DEFAULT_INTIMACY_GATING from @pixsim7/shared.types.
  *
- * Types and defaults are imported from @pixsim7/shared.types (single source of truth).
- * This file contains the business logic functions that operate on those types.
- *
- * @see packages/shared/types/src/worldConfig.ts - Canonical schemas & defaults
- * @see claude-tasks/109-intimacy-and-content-gating-stat-integration.md
+ * Moved from apps/main/src/features/intimacy/lib/intimacyGating.ts
+ * to make it available to headless consumers (CLI, tests, simulations).
  */
 
-import { parseIntimacyGating } from '@pixsim7/core.world';
 import {
   type IntimacyBand,
   type ContentRating,
   type IntimacyGatingConfig,
+  DEFAULT_INTIMACY_GATING,
 } from '@pixsim7/shared.types';
 
-// Re-export types for consumers that import from this file
+// Re-export types for consumers
 export type { IntimacyBand, ContentRating, IntimacyGatingConfig };
 
 /**
- * Relationship state with metrics (local type for function signatures)
+ * Relationship state with metrics (structural type for function signatures)
  */
 export interface RelationshipState {
   affinity?: number;
@@ -58,23 +55,50 @@ export interface InteractionGatingResult {
   minimumLevel?: string;
 }
 
-/**
- * Get effective intimacy gating config
- *
- * @deprecated Use parseIntimacyGating directly from @pixsim7/core.world
- */
-export const getIntimacyGatingConfig = parseIntimacyGating;
+// ============================================================================
+// Internal Helpers
+// ============================================================================
 
 /**
- * Derive intimacy band from relationship metrics
- *
- * Uses configured thresholds instead of hardcoded values
+ * Resolve a partial gating config into a full config by merging with defaults.
+ * Unlike parseIntimacyGating from @pixsim7/core.world, this does NOT use Zod
+ * validation — it's intended for typed TS data, not raw backend responses.
+ */
+function resolveGatingConfig(
+  config?: Partial<IntimacyGatingConfig>
+): IntimacyGatingConfig {
+  if (!config) return DEFAULT_INTIMACY_GATING;
+  return {
+    ...DEFAULT_INTIMACY_GATING,
+    ...config,
+    intimacyBands: {
+      ...DEFAULT_INTIMACY_GATING.intimacyBands,
+      ...config.intimacyBands,
+    },
+    contentRatings: {
+      ...DEFAULT_INTIMACY_GATING.contentRatings,
+      ...config.contentRatings,
+    },
+    interactions: {
+      ...DEFAULT_INTIMACY_GATING.interactions,
+      ...config.interactions,
+    },
+  };
+}
+
+// ============================================================================
+// Intimacy Band Derivation
+// ============================================================================
+
+/**
+ * Derive intimacy band from relationship metrics.
+ * Uses configured thresholds instead of hardcoded values.
  */
 export function deriveIntimacyBand(
   state: RelationshipState,
   config?: Partial<IntimacyGatingConfig>
 ): IntimacyBand {
-  const effectiveConfig = parseIntimacyGating(config);
+  const effectiveConfig = resolveGatingConfig(config);
   const chemistry = state.chemistry || 0;
   const affinity = state.affinity || 0;
 
@@ -111,26 +135,20 @@ export function deriveIntimacyBand(
   return 'none';
 }
 
+// ============================================================================
+// Content Rating Gating
+// ============================================================================
+
 /**
- * Check if relationship state supports a content rating
- *
- * Returns whether the rating is supported and why/what's needed
+ * Check if relationship state supports a content rating.
+ * Returns whether the rating is supported and why/what's needed.
  */
 export function supportsContentRating(
   state: RelationshipState,
   rating: ContentRating,
   config?: Partial<IntimacyGatingConfig>
-): {
-  supported: boolean;
-  reason?: string;
-  suggestedMinimums?: {
-    chemistry?: number;
-    affinity?: number;
-    intimacyLevel?: string;
-    intimacyBand?: IntimacyBand;
-  };
-} {
-  const effectiveConfig = parseIntimacyGating(config);
+): ContentGatingResult {
+  const effectiveConfig = resolveGatingConfig(config);
 
   // SFW is always supported
   if (rating === 'sfw') {
@@ -196,8 +214,6 @@ export function supportsContentRating(
 
   // Check level requirement
   if (requirements.minimumLevel && (!intimacyLevel || intimacyLevel !== requirements.minimumLevel)) {
-    // For now, just check if level matches
-    // Could be enhanced to check level progression order
     return {
       supported: false,
       reason: `${rating} content requires intimacy level: ${requirements.minimumLevel} (current: ${intimacyLevel || 'none'})`,
@@ -213,9 +229,8 @@ export function supportsContentRating(
 }
 
 /**
- * Get minimum requirements for a content rating
- *
- * Useful for showing users what they need to unlock
+ * Get minimum requirements for a content rating.
+ * Useful for showing users what they need to unlock.
  */
 export function getContentRatingRequirements(
   rating: ContentRating,
@@ -226,7 +241,7 @@ export function getContentRatingRequirements(
   minimumAffinity?: number;
   minimumLevel?: string;
 } {
-  const effectiveConfig = parseIntimacyGating(config);
+  const effectiveConfig = resolveGatingConfig(config);
 
   if (rating === 'sfw') {
     return {}; // No requirements
@@ -245,21 +260,19 @@ export function getContentRatingRequirements(
   };
 }
 
+// ============================================================================
+// Interaction Gating
+// ============================================================================
+
 /**
- * Check if seduction interaction is available
- *
- * Checks both metrics and intimacy level appropriateness
+ * Check if seduction interaction is available.
+ * Checks both metrics and intimacy level appropriateness.
  */
 export function canAttemptSeduction(
   state: RelationshipState,
   config?: Partial<IntimacyGatingConfig>
-): {
-  allowed: boolean;
-  reason?: string;
-  minimumAffinity?: number;
-  minimumChemistry?: number;
-} {
-  const effectiveConfig = parseIntimacyGating(config);
+): InteractionGatingResult {
+  const effectiveConfig = resolveGatingConfig(config);
   const seductionConfig = effectiveConfig.interactions?.seduction;
 
   if (!seductionConfig) {
@@ -309,18 +322,13 @@ export function canAttemptSeduction(
 }
 
 /**
- * Check if sensual touch interaction is available
+ * Check if sensual touch interaction is available.
  */
 export function canAttemptSensualTouch(
   state: RelationshipState,
   config?: Partial<IntimacyGatingConfig>
-): {
-  allowed: boolean;
-  reason?: string;
-  minimumAffinity?: number;
-  minimumLevel?: string;
-} {
-  const effectiveConfig = parseIntimacyGating(config);
+): InteractionGatingResult {
+  const effectiveConfig = resolveGatingConfig(config);
   const touchConfig = effectiveConfig.interactions?.sensualTouch;
 
   if (!touchConfig) {

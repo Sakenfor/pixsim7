@@ -7,3 +7,5 @@
 
 export { talkPlugin, type TalkConfig } from './talk';
 export { giveItemPlugin, type GiveItemConfig } from './giveItem';
+export { persuadePlugin, type PersuadeConfig } from './persuade';
+export { sensualizePlugin, type SensualizeConfig } from './sensualize';

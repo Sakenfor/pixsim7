@@ -9,11 +9,14 @@
  * import { interactionRegistry } from '@lib/registries';
  */
 
+import {
+  giveItemPlugin as giveItemInteraction,
+  persuadePlugin,
+  sensualizePlugin,
+  talkPlugin,
+} from '@pixsim7/game.engine';
+
 import { loadPluginInteractions } from './dynamicLoader';
-import { giveItemInteraction } from './giveItem';
-import { persuadePlugin } from './persuade';
-import { sensualizePlugin } from './sensualize';
-import { talkPlugin } from './talk';
 import { interactionRegistry } from './types';
 
 // Register bundled interactions (always available)
@@ -58,10 +61,10 @@ export type {
 
 // Export specific configs for type safety
 // Note: PickpocketConfig is in @pixsim7/plugins.stealth/types
-export type { TalkConfig } from './talk';
-export type { GiveItemConfig } from './giveItem';
-export type { PersuadeConfig } from './persuade';
-export type { SensualizeConfig } from './sensualize';
+export type { TalkConfig } from '@pixsim7/game.engine';
+export type { GiveItemConfig } from '@pixsim7/game.engine';
+export type { PersuadeConfig } from '@pixsim7/game.engine';
+export type { SensualizeConfig } from '@pixsim7/game.engine';
 
 // Export dynamic loader utilities
 export {

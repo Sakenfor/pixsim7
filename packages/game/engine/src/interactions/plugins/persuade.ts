@@ -10,22 +10,24 @@
  * - Configurable consequences for success/failure
  * - Consent checks for seduction (respects NPC boundaries)
  * - Integrates with session state and relationship system
+ *
+ * Moved from apps/main/src/lib/game/interactions/persuade.ts
  */
+import type { NpcRelationshipState } from '../../core/types';
+import type { IntimacyGatingConfig } from '@pixsim7/shared.types';
 import {
-  type NpcRelationshipState,
   advanceIntimacyLevel,
   calculatePersuadeChance as calculatePersuadeChanceCore,
   calculateSeduceChance as calculateSeduceChanceCore,
-} from '@pixsim7/game.engine';
-
-import { canAttemptSeduction, type IntimacyGatingConfig } from '@features/intimacy';
+} from '../socialMechanics';
+import { canAttemptSeduction } from '../intimacyGating';
 
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
   InteractionContext,
   InteractionResult,
-} from './types';
+} from '../registry';
 
 /**
  * Persuade/Seduce interaction config

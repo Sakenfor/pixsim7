@@ -34,20 +34,23 @@ export { SocialContextPanel, SocialContextBadge } from './components/SocialConte
 // Library - Gating & Validation
 // ============================================================================
 
-// Types from shared package (re-exported via intimacyGating for backwards compat)
+// Gating logic from engine + types from shared
 export {
   deriveIntimacyBand,
   supportsContentRating,
   canAttemptSeduction,
   canAttemptSensualTouch,
   getContentRatingRequirements,
-  type IntimacyBand,
-  type ContentRating,
-  type IntimacyGatingConfig,
-  type RelationshipState,
+  type IntimacyRelationshipState as RelationshipState,
   type ContentGatingResult,
   type InteractionGatingResult,
-} from './lib/intimacyGating';
+} from '@pixsim7/game.engine';
+
+export type {
+  IntimacyBand,
+  ContentRating,
+  IntimacyGatingConfig,
+} from '@pixsim7/shared.types';
 
 // Direct exports from shared types for callers that want the source
 export {

@@ -196,6 +196,31 @@ export type {
   ScenePlaybackPhase,
 } from './interactions/hotspot';
 
+// Intimacy Gating (pure gating logic for interactions and content ratings)
+export {
+  deriveIntimacyBand,
+  supportsContentRating,
+  getContentRatingRequirements,
+  canAttemptSeduction,
+  canAttemptSensualTouch,
+} from './interactions/intimacyGating';
+
+export type {
+  RelationshipState as IntimacyRelationshipState,
+  ContentGatingResult,
+  InteractionGatingResult,
+} from './interactions/intimacyGating';
+
+// Interaction Executor (orchestration for slot interactions)
+export {
+  executeSlotInteractions,
+} from './interactions/executor';
+
+export type {
+  SlotInteractionConfig,
+  SlotExecutionCallbacks,
+} from './interactions/executor';
+
 // Menu Builder (Phase 17.4)
 export {
   buildInteractionMenu,

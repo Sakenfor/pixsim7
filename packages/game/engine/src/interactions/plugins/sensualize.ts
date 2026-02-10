@@ -1,12 +1,22 @@
-import { canAttemptSensualTouch, type IntimacyGatingConfig } from '@features/intimacy';
-import type { NpcRelationshipState } from '@pixsim7/game.engine';
+/**
+ * Sensual Touch Interaction Plugin
+ *
+ * Launches an interactive gizmo-based minigame where the player uses
+ * various touch tools on NPC zones. Success depends on NPC preferences,
+ * relationship level, and player technique.
+ *
+ * Moved from apps/main/src/lib/game/interactions/sensualize.ts
+ */
+import type { NpcRelationshipState } from '../../core/types';
+import type { IntimacyGatingConfig } from '@pixsim7/shared.types';
+import { canAttemptSensualTouch } from '../intimacyGating';
 
 import type {
   InteractionPlugin,
   BaseInteractionConfig,
   InteractionContext,
   InteractionResult,
-} from './types';
+} from '../registry';
 
 /**
  * Sensual Touch interaction config
@@ -23,10 +33,6 @@ export interface SensualizeConfig extends BaseInteractionConfig {
 
 /**
  * Sensual Touch interaction plugin
- *
- * Launches an interactive gizmo-based minigame where the player uses
- * various touch tools on NPC zones. Success depends on NPC preferences,
- * relationship level, and player technique.
  */
 export const sensualizePlugin: InteractionPlugin<SensualizeConfig> = {
   id: 'sensualize',
