@@ -1,10 +1,12 @@
-import React from 'react';
-import clsx from 'clsx';
 import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
+import React from 'react';
+
 import { ThemedIcon } from '@lib/icons';
-import { useGenerationsStore } from '../stores/generationsStore';
+
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import type { GenerationStatus } from '../models';
+import { useGenerationsStore } from '../stores/generationsStore';
 
 const STATUS_BADGE: Record<GenerationStatus | 'default', string> = {
   pending:
@@ -50,7 +52,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
     <ExpandableButtonGroup
       trigger={
         <button
-          className="text-xs px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors flex items-center gap-1"
+          className="text-xs px-1.5 py-0.5 rounded hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30 transition-colors flex items-center gap-1"
           title="Recent generations"
         >
           <ThemedIcon name="listPlus" size={12} variant="default" />
@@ -69,7 +71,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
 
         {isLoading && !hasFetched ? (
           <div className="flex items-center justify-center py-4">
-            <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         ) : !hasHistory ? (
           <div className="text-xs text-neutral-500 dark:text-neutral-400 py-4 text-center">

@@ -78,7 +78,7 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
       className={`
         relative w-[200px] rounded-lg border-2 shadow-lg bg-white dark:bg-neutral-800
         transition-[border-color,box-shadow] duration-200
-        ${selected ? 'border-blue-500 ring-2 ring-blue-300 dark:ring-blue-700' : 'border-neutral-300 dark:border-neutral-600'}
+        ${selected ? 'border-accent ring-2 ring-accent/50 dark:ring-accent/40' : 'border-neutral-300 dark:border-neutral-600'}
       `}
     >
       {/* Start Node Badge */}
@@ -118,7 +118,7 @@ export const SceneNode = memo(({ id, data, selected }: NodeProps<SceneNodeData>)
             onChange={(e) => setEditLabel(e.target.value)}
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
-            className="w-full px-1 py-0.5 text-sm font-semibold bg-white dark:bg-neutral-700 border border-blue-500 rounded outline-none"
+            className="w-full px-1 py-0.5 text-sm font-semibold bg-white dark:bg-neutral-700 border border-accent rounded outline-none"
             autoFocus
             onClick={(e) => e.stopPropagation()}
           />

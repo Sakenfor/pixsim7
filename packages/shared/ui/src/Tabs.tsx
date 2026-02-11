@@ -90,10 +90,10 @@ export function Tabs({ tabs, value, onChange, className }: TabsProps) {
             onKeyDown={e => handleKeyDown(e, index)}
             className={clsx(
               'whitespace-nowrap px-4 py-2.5 text-sm font-medium transition-colors',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2',
+              'focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2',
               'border-b-2 -mb-[1px]',
               isActive
-                ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                ? 'border-accent text-accent'
                 : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200 hover:border-neutral-300 dark:hover:border-neutral-600'
             )}
           >
@@ -104,7 +104,7 @@ export function Tabs({ tabs, value, onChange, className }: TabsProps) {
                   className={clsx(
                     'inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs',
                     isActive
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      ? 'bg-accent-subtle text-accent'
                       : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400'
                   )}
                 >

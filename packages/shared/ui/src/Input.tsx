@@ -29,7 +29,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         disabled={disabled}
         className={clsx(
           'w-full rounded border bg-white dark:bg-neutral-900 outline-none transition-colors',
-          'focus:ring-2 focus:ring-blue-500/40',
+          'focus:ring-2 focus:ring-accent/40',
           // Size variants
           size === 'sm' && 'text-xs px-2 py-1.5',
           size === 'md' && 'text-sm px-3 py-2',

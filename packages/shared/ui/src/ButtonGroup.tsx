@@ -15,12 +15,59 @@ export interface ButtonGroupItem {
   onAuxClick?: (e: React.MouseEvent) => void;
   title?: string;
   disabled?: boolean;
+  /** Small badge rendered at top-right corner of the button (e.g. mode indicator) */
+  badge?: React.ReactNode;
   /** Content to show on hover (expands in opposite direction of layout) */
   expandContent?: React.ReactNode;
   /** Delay before showing expand content (ms) */
   expandDelay?: number;
   /** Delay before hiding expand content (ms) - allows time to move mouse to expanded content */
   collapseDelay?: number;
+}
+
+// ============================================================================
+// ActionHintBadge — small corner badge for action buttons
+// ============================================================================
+
+export interface ActionHintBadgeProps {
+  /** Icon node to render inside the badge (optional — omit for a plain dot) */
+  icon?: React.ReactNode;
+  /** Background color class. Default: 'bg-accent-muted' */
+  colorClass?: string;
+  /** Border color class. Default: 'border-accent-hover' */
+  borderClass?: string;
+  className?: string;
+}
+
+/**
+ * Tiny badge indicator for action buttons.
+ * Render inside a `relative` container — positions itself at top-right.
+ *
+ * @example
+ * // Dot-only
+ * <ActionHintBadge />
+ * // With icon
+ * <ActionHintBadge icon={<Icon name="refresh-cw" size={7} color="#fff" />} />
+ */
+export function ActionHintBadge({
+  icon,
+  colorClass = 'bg-accent-muted',
+  borderClass = 'border-accent-hover',
+  className,
+}: ActionHintBadgeProps) {
+  return (
+    <span
+      className={clsx(
+        'absolute -top-0.5 -right-0.5 rounded-full border flex items-center justify-center pointer-events-none',
+        icon ? 'w-2.5 h-2.5' : 'w-1.5 h-1.5',
+        colorClass,
+        borderClass,
+        className,
+      )}
+    >
+      {icon}
+    </span>
+  );
 }
 
 export type ButtonGroupLayout = 'pill' | 'stack' | 'inline';
@@ -32,11 +79,11 @@ export interface ButtonGroupProps {
   layout?: ButtonGroupLayout;
   /** Size variant */
   size?: ButtonGroupSize;
-  /** Background color class (full class, e.g., 'bg-blue-500') */
+  /** Background color class (full class, e.g., 'bg-accent') */
   colorClass?: string;
-  /** Hover color class (full class, e.g., 'hover:bg-blue-600') */
+  /** Hover color class (full class, e.g., 'hover:bg-accent-hover') */
   hoverClass?: string;
-  /** Divider color class (full class, e.g., 'bg-blue-400/50') */
+  /** Divider color class (full class, e.g., 'bg-accent-muted/50') */
   dividerClass?: string;
   /** Additional className for the container */
   className?: string;
@@ -134,9 +181,9 @@ export function ButtonGroup({
   items,
   layout = 'pill',
   size = 'md',
-  colorClass = 'bg-blue-500',
-  hoverClass = 'hover:bg-blue-600',
-  dividerClass = 'bg-blue-400/50',
+  colorClass = 'bg-accent',
+  hoverClass = 'hover:bg-accent-hover',
+  dividerClass = 'bg-accent-muted/50',
   className,
   expandOffset = 6,
   showLabels = false,
@@ -179,24 +226,27 @@ export function ButtonGroup({
                 showLabels={showLabels}
               />
             ) : (
-              <button
-                onClick={item.onClick}
-                onAuxClick={item.onAuxClick}
-                disabled={item.disabled}
-                className={clsx(
-                  sizeClass,
-                  'text-white transition-colors flex items-center gap-1.5',
-                  hoverClass,
-                  isFirst && config.firstRounding,
-                  isLast && config.lastRounding,
-                  item.disabled && 'opacity-50 cursor-not-allowed'
-                )}
-                title={item.title}
-                type="button"
-              >
-                {item.icon}
-                {showLabels && item.label && <span>{item.label}</span>}
-              </button>
+              <div className="relative">
+                <button
+                  onClick={item.onClick}
+                  onAuxClick={item.onAuxClick}
+                  disabled={item.disabled}
+                  className={clsx(
+                    sizeClass,
+                    'text-white transition-colors flex items-center gap-1.5',
+                    hoverClass,
+                    isFirst && config.firstRounding,
+                    isLast && config.lastRounding,
+                    item.disabled && 'opacity-50 cursor-not-allowed'
+                  )}
+                  title={item.title}
+                  type="button"
+                >
+                  {item.icon}
+                  {showLabels && item.label && <span>{item.label}</span>}
+                </button>
+                {item.badge}
+              </div>
             )}
           </React.Fragment>
         );
@@ -272,6 +322,7 @@ function ExpandableItem({
         {item.icon}
         {showLabels && item.label && <span>{item.label}</span>}
       </button>
+      {item.badge}
 
       {/* Expand content */}
       {isExpanded && item.expandContent && (

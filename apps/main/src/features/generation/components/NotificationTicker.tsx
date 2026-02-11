@@ -216,7 +216,7 @@ export function NotificationTicker() {
         onClick={() => setExpanded(!expanded)}
         className={clsx(
           'text-xs px-1.5 py-0.5 rounded transition-colors relative',
-          'hover:bg-blue-100 dark:hover:bg-blue-900/30',
+          'hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30',
           activeCount > 0 && 'animate-pulse'
         )}
         title={expanded ? 'Collapse notifications' : 'Expand notifications'}

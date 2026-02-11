@@ -128,7 +128,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
           // Show warning border and ring when over limit
           isOverLimit
             ? 'border-red-500 dark:border-red-500 focus:ring-2 focus:ring-red-500/40'
-            : 'border-neutral-300 dark:border-neutral-700 focus:ring-2 focus:ring-blue-500/40'
+            : 'border-neutral-300 dark:border-neutral-700 focus:ring-2 focus:ring-accent/40'
         )}
       />
       {showCounter && (

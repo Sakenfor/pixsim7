@@ -12,8 +12,8 @@ export interface ProgressBarProps {
 
 const colorMap: Record<string, { bg: string; bar: string }> = {
   blue: {
-    bg: 'bg-blue-100 dark:bg-blue-900/20',
-    bar: 'bg-blue-500 dark:bg-blue-600',
+    bg: 'bg-accent-subtle',
+    bar: 'bg-accent',
   },
   green: {
     bg: 'bg-green-100 dark:bg-green-900/20',

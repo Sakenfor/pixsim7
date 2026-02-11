@@ -53,19 +53,19 @@ export function CuratorGallerySurface() {
     <div className="flex items-center gap-2 text-xs">
       <button
         onClick={() => controller.setViewMode('grid')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        className={`px-2 py-1 rounded ${controller.viewMode === 'grid' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         Grid
       </button>
       <button
         onClick={() => controller.setViewMode('list')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        className={`px-2 py-1 rounded ${controller.viewMode === 'list' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         List
       </button>
       <button
         onClick={() => controller.setViewMode('compact')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'compact' ? 'bg-blue-500 text-white' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        className={`px-2 py-1 rounded ${controller.viewMode === 'compact' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         Compact
       </button>
@@ -77,13 +77,13 @@ export function CuratorGallerySurface() {
     controller.selectedAssetIds.size > 0 || controller.collections.size > 0 ? (
       <div className="space-y-4">
         {controller.selectedAssetIds.size > 0 && (
-          <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
+          <div className="p-4 bg-accent-subtle border-2 border-accent rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-blue-900 dark:text-blue-100">
+                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
                   {controller.selectedAssetIds.size} asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} selected
                 </h3>
-                <p className="text-sm text-blue-700 dark:text-blue-300">
+                <p className="text-sm text-neutral-700 dark:text-neutral-300">
                   Use bulk operations or create a collection
                 </p>
               </div>
@@ -134,7 +134,7 @@ export function CuratorGallerySurface() {
           <div
             key={asset.id}
             className={`flex items-center gap-3 p-2 bg-white dark:bg-neutral-800 rounded border cursor-pointer ${
-              isSelected ? 'border-blue-500 ring-2 ring-blue-500' : 'border-neutral-200 dark:border-neutral-700'
+              isSelected ? 'border-accent ring-2 ring-accent' : 'border-neutral-200 dark:border-neutral-700'
             }`}
             onClick={() => controller.toggleAssetSelection(asset.id)}
           >
@@ -160,7 +160,7 @@ export function CuratorGallerySurface() {
               )}
             </div>
             {isSelected && (
-              <div className="flex-shrink-0 w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center">
+              <div className="flex-shrink-0 w-6 h-6 bg-accent text-accent-text rounded-full flex items-center justify-center">
                 ✓
               </div>
             )}

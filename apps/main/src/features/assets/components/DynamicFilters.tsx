@@ -226,7 +226,7 @@ export function DynamicFilters({
                   className="w-4 h-4 text-neutral-200"
                 />
                 {selectedCount > 0 && (
-                  <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-blue-500 text-gray-950">
+                  <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-accent text-accent-text">
                     {selectedCount}
                   </span>
                 )}
@@ -407,7 +407,7 @@ function FilterControl({
               }}
               className={`px-2 py-0.5 text-[10px] uppercase tracking-wide border rounded ${
                 active
-                  ? 'bg-blue-600/40 border-blue-400 text-blue-100'
+                  ? 'bg-accent/40 border-accent-muted text-accent-text'
                   : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
               }`}
             >
@@ -437,7 +437,7 @@ function FilterControl({
               onChange={(e) => onChange(e.target.value || undefined)}
               className={`
                 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm
-                focus:outline-none focus:border-blue-500
+                focus:outline-none focus:border-accent
                 ${uiConfig.icon ? 'pl-8' : ''}
                 ${compact ? 'w-32' : 'w-48'}
               `}
@@ -475,7 +475,7 @@ function FilterControl({
                       }
                       onChange(Array.from(next));
                     }}
-                    className="accent-blue-500"
+                    className="accent-accent"
                   />
                   <span>
                     {opt.label || opt.value}
@@ -493,7 +493,7 @@ function FilterControl({
         <label
           className={`
             flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer
-            ${value ? 'bg-blue-600/30 border-blue-500' : 'bg-gray-800 border-gray-700'}
+            ${value ? 'bg-accent/30 border-accent' : 'bg-gray-800 border-gray-700'}
             border text-sm
           `}
         >
@@ -519,7 +519,7 @@ function FilterControl({
             value={(value as string) || ''}
             onChange={(e) => onChange(e.target.value || undefined)}
             className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-32
-                       focus:outline-none focus:border-blue-500"
+                       focus:outline-none focus:border-accent"
             title={displayLabel}
           />
           {renderMatchModeToggle()}

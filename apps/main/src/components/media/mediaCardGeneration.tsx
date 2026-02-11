@@ -6,7 +6,7 @@
  * Split from mediaCardWidgets.tsx for better separation of concerns.
  */
 
-import { ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 import { getAsset } from '@lib/api/assets';
@@ -107,6 +107,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const scopedOperationType = useSessionStore((s) => s.operationType);
   const scopedAddInput = useInputStore((s) => s.addInput);
   const scopedAddInputs = useInputStore((s) => s.addInputs);
+  const isReplaceMode = useInputStore((s) => s.inputModeByOperation?.[scopedOperationType] === 'replace');
 
   // For widget open/close, use capability if available
   // If no widget context, inputs are still added - user can manually open generation UI
@@ -613,9 +614,14 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       icon: <Icon name="zap" size={14} />,
       onClick: handleSmartAction,
       onAuxClick: handleMiddleClick,
-      title: supportsSlots
-        ? `${smartActionLabel}${targetInfo}\nHover: slot picker\nMiddle-click: replace slot 1`
-        : `${smartActionLabel}${targetInfo}`,
+      title: isReplaceMode
+        ? `Replace current input${targetInfo}`
+        : supportsSlots
+          ? `${smartActionLabel}${targetInfo}\nHover: slot picker\nMiddle-click: replace slot 1`
+          : `${smartActionLabel}${targetInfo}`,
+      badge: isReplaceMode ? (
+        <ActionHintBadge icon={<Icon name="refresh-cw" size={7} color="#fff" />} />
+      ) : undefined,
       expandContent: supportsSlots ? (
         <SlotPickerGrid
           asset={inputAsset}
@@ -665,7 +671,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       title: 'Regenerate (run same generation again)',
       disabled: isRegenerating,
       expandContent: (
-        <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
+        <div className="flex flex-col overflow-hidden rounded-full bg-accent/95 backdrop-blur-sm shadow-2xl">
           <button
             onClick={handleLoadToQuickGen}
             className="w-36 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2"
@@ -830,7 +836,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
       icon: 'zap',
       variant: 'button',
       label: 'Generate',
-      className: 'bg-blue-500 hover:bg-blue-600 text-white',
+      className: 'bg-accent hover:bg-accent-hover text-accent-text',
     },
     triggerType: 'click',
     placement: 'top-right',

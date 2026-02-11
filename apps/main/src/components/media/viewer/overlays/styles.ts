@@ -8,7 +8,7 @@
 export const TOOLBAR_BUTTON_BASE = 'px-2 py-1 text-xs rounded transition-colors';
 
 /** Active/selected button state */
-export const TOOLBAR_BUTTON_ACTIVE = 'bg-blue-600 text-white';
+export const TOOLBAR_BUTTON_ACTIVE = 'bg-accent text-accent-text';
 
 /** Inactive/default button state */
 export const TOOLBAR_BUTTON_INACTIVE = 'bg-neutral-700 hover:bg-neutral-600 text-neutral-200';

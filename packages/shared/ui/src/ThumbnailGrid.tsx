@@ -107,7 +107,7 @@ export function ThumbnailGrid({
               'relative rounded overflow-hidden',
               !thumbSize && sizeClasses[size],
               isActive
-                ? 'ring-2 ring-blue-500'
+                ? 'ring-2 ring-accent'
                 : 'hover:ring-2 hover:ring-white/50'
             )}
             style={thumbSize ? { width: thumbSize, height: thumbSize } : undefined}

@@ -30,8 +30,8 @@ export function ResizeDivider({
       className={clsx(
         'flex-shrink-0 group transition-colors select-none',
         isVertical ? 'w-2 cursor-col-resize' : 'h-2 cursor-row-resize',
-        'hover:bg-blue-500/20',
-        isDragging && 'bg-blue-500/30',
+        'hover:bg-accent/20',
+        isDragging && 'bg-accent/30',
         className,
       )}
       title="Drag to resize"
@@ -40,9 +40,9 @@ export function ResizeDivider({
         className={clsx(
           'transition-all',
           isVertical
-            ? 'w-0.5 h-full mx-auto bg-neutral-200 dark:bg-neutral-700 group-hover:bg-blue-500 group-hover:w-1'
-            : 'h-0.5 w-full my-auto bg-neutral-200 dark:bg-neutral-700 group-hover:bg-blue-500 group-hover:h-1',
-          isDragging && 'bg-blue-500 w-1',
+            ? 'w-0.5 h-full mx-auto bg-neutral-200 dark:bg-neutral-700 group-hover:bg-accent group-hover:w-1'
+            : 'h-0.5 w-full my-auto bg-neutral-200 dark:bg-neutral-700 group-hover:bg-accent group-hover:h-1',
+          isDragging && 'bg-accent w-1',
         )}
       />
     </div>

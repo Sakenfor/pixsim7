@@ -93,7 +93,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           onClick={() => setActiveTab('plugins')}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === 'plugins'
-              ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+              ? 'border-b-2 border-accent text-accent'
               : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
           }`}
         >
@@ -103,7 +103,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           onClick={() => setActiveTab('workspace-panels')}
           className={`px-4 py-2 font-medium transition-colors ${
             activeTab === 'workspace-panels'
-              ? 'border-b-2 border-blue-500 text-blue-600 dark:text-blue-400'
+              ? 'border-b-2 border-accent text-accent'
               : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
           }`}
         >
@@ -153,14 +153,14 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           placeholder="Search plugins..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-[200px] px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
         {/* Family filter */}
         <select
           value={familyFilter}
           onChange={(e) => setFamilyFilter(e.target.value as UnifiedPluginFamily | 'all')}
-          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
         >
           <option value="all">All Families</option>
           {families.map((family) => (
@@ -175,7 +175,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
-            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
           >
             <option value="all">All Categories</option>
             {categories.map((category) => (
@@ -191,7 +191,7 @@ export function PluginBrowser({ onSelectPlugin, selectedPluginId }: PluginBrowse
           <select
             value={featureFilter}
             onChange={(e) => setFeatureFilter(e.target.value)}
-            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
             title="Filter by feature (consumed or provided)"
           >
             <option value="all">All Features</option>
@@ -278,14 +278,14 @@ function WorkspacePanelsBrowser({
           placeholder="Search workspace panels..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 min-w-[200px] px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 min-w-[200px] px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-accent"
         />
 
         {/* Category filter */}
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
         >
           <option value="all">All Categories</option>
           <option value="core">Core</option>
@@ -299,7 +299,7 @@ function WorkspacePanelsBrowser({
         <select
           value={originFilter}
           onChange={(e) => setOriginFilter(e.target.value as typeof originFilter)}
-          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-md bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-accent"
         >
           <option value="all">All Origins</option>
           <option value="builtin">Built-in</option>
@@ -445,7 +445,7 @@ function PluginListItem({
     <div
       className={`rounded-lg border transition-colors ${
         selected
-          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+          ? 'border-accent bg-accent-subtle'
           : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800'
       }`}
     >

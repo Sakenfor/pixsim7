@@ -9,7 +9,9 @@
  */
 
 import React, { useState } from 'react';
+
 import type { IntimacySceneConfig, RelationshipProgressionArc } from '@lib/registries';
+
 import type { SimulatedRelationshipState } from '../lib/gateChecking';
 import {
   downloadScenesAsFile,
@@ -25,7 +27,6 @@ import {
   listSavedArcs,
   deleteArcFromLocalStorage,
   saveSimulatedState,
-  loadSimulatedState,
   listSavedStates,
   deleteSimulatedState,
 } from '../lib/saveLoad';
@@ -98,14 +99,14 @@ export function SceneSaveLoadControls({ scene, onLoad, disabled = false }: Scene
         <button
           onClick={handleSaveToFile}
           disabled={disabled}
-          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
         >
           💾 Save to File
         </button>
         <button
           onClick={handleLoadFromFile}
           disabled={disabled}
-          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-accent text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           📂 Load from File
         </button>
@@ -209,7 +210,7 @@ function SceneLoadDialog({
                     <div className="flex gap-2">
                       <button
                         onClick={() => onLoad(scene)}
-                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                        className="px-3 py-1 text-sm bg-accent text-accent-text rounded hover:bg-accent-hover"
                       >
                         Load
                       </button>
@@ -307,14 +308,14 @@ export function ArcSaveLoadControls({ arc, onLoad, disabled = false }: ArcSaveLo
         <button
           onClick={handleSaveToFile}
           disabled={disabled}
-          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed"
         >
           💾 Save to File
         </button>
         <button
           onClick={handleLoadFromFile}
           disabled={disabled}
-          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 px-3 py-2 text-sm font-medium rounded-lg border border-accent text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           📂 Load from File
         </button>
@@ -418,7 +419,7 @@ function ArcLoadDialog({
                     <div className="flex gap-2">
                       <button
                         onClick={() => onLoad(arc)}
-                        className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                        className="px-3 py-1 text-sm bg-accent text-accent-text rounded hover:bg-accent-hover"
                       >
                         Load
                       </button>
@@ -538,7 +539,7 @@ export function StateSaveLoadControls({ state, onLoad, disabled = false }: State
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleSave}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  className="flex-1 px-4 py-2 bg-accent text-accent-text rounded hover:bg-accent-hover"
                 >
                   Save
                 </button>
@@ -627,7 +628,7 @@ function StateLoadDialog({
                   <div className="flex gap-2">
                     <button
                       onClick={() => onLoad(save.state)}
-                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      className="px-3 py-1 text-sm bg-accent text-accent-text rounded hover:bg-accent-hover"
                     >
                       Load
                     </button>

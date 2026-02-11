@@ -33,7 +33,7 @@ export const Select = React.forwardRef<HTMLSelectElement, SelectProps>(
         disabled={disabled}
         className={clsx(
           'w-full rounded border outline-none transition-colors',
-          'focus:ring-2 focus:ring-blue-500/40',
+          'focus:ring-2 focus:ring-accent/40',
           // Background colors
           transparent
             ? 'bg-transparent'

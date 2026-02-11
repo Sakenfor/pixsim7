@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import clsx from 'clsx';
 
 /**
@@ -51,6 +52,16 @@ export interface DropdownProps {
    * Additional CSS classes
    */
   className?: string;
+  /**
+   * When true, render the dropdown into a portal on document.body
+   * so it escapes overflow: hidden containers.
+   */
+  portal?: boolean;
+  /**
+   * Ref to the trigger element — excluded from click-outside detection
+   * so toggling the trigger doesn't immediately re-close the portal'd dropdown.
+   */
+  triggerRef?: React.RefObject<HTMLElement | null>;
 }
 
 export function Dropdown({
@@ -63,6 +74,8 @@ export function Dropdown({
   minWidth = '150px',
   closeOnOutsideClick = true,
   className,
+  portal = false,
+  triggerRef,
 }: DropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -71,7 +84,11 @@ export function Dropdown({
     if (!isOpen || !closeOnOutsideClick) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        !(triggerRef?.current && triggerRef.current.contains(target))
+      ) {
         onClose();
       }
     };
@@ -85,7 +102,7 @@ export function Dropdown({
       clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, triggerRef]);
 
   if (!isOpen) return null;
 
@@ -102,7 +119,7 @@ export function Dropdown({
   const positionClass =
     positionMode === 'absolute' ? positionClasses[position] : undefined;
 
-  return (
+  const dropdown = (
     <div
       ref={dropdownRef}
       className={clsx(
@@ -120,6 +137,12 @@ export function Dropdown({
       <div className="p-2 space-y-1">{children}</div>
     </div>
   );
+
+  if (portal) {
+    return createPortal(dropdown, document.body);
+  }
+
+  return dropdown;
 }
 
 /**
@@ -168,7 +191,7 @@ export function DropdownItem({
   const variantClasses = {
     default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700',
     danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20',
-    primary: 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20',
+    primary: 'text-accent hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/20',
     success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20',
   };
 

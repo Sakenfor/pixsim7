@@ -140,7 +140,7 @@ export function SlotPickerContent({
   const slots = Array.from({ length: visibleSlots }, (_, i) => i);
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-full bg-blue-600/95 backdrop-blur-sm shadow-2xl">
+    <div className="flex flex-col overflow-hidden rounded-full bg-accent/95 backdrop-blur-sm shadow-2xl">
       {slots.map((slotIndex, idx) => {
         const inputItem = inputBySlot.get(slotIndex);
         const isFilled = !!inputItem;
@@ -150,7 +150,7 @@ export function SlotPickerContent({
         return (
           <React.Fragment key={slotIndex}>
             {/* Divider between slots */}
-            {!isFirst && <div className="h-px bg-blue-400/50" />}
+            {!isFirst && <div className="h-px bg-accent-muted/50" />}
             <button
               onClick={() => onSelectSlot(asset, slotIndex)}
               className={`
@@ -225,7 +225,7 @@ export function SlotPickerGrid({
 
   return (
     <div
-      className="grid gap-px overflow-hidden rounded-lg bg-blue-600/95 backdrop-blur-sm shadow-2xl"
+      className="grid gap-px overflow-hidden rounded-lg bg-accent/95 backdrop-blur-sm shadow-2xl"
       style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}
     >
       {slots.map((slotIndex) => {

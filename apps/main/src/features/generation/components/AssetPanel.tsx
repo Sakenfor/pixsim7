@@ -8,11 +8,12 @@
 import { resolveMediaTypes } from '@pixsim7/shared.assets.core';
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { Dropdown } from '@pixsim7/shared.ui';
+import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
 
 import { useDockviewId } from '@lib/dockview';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
-import { ThemedIcon, Icon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 
 import { getAssetDisplayUrls } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared';
@@ -66,8 +67,8 @@ export function AssetPanel(props: QuickGenPanelProps) {
     s.floatingPanels.some((panel) => panel.id === 'quickgen-history'),
   );
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
-  const settingsPopoverRef = useRef<HTMLDivElement>(null);
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
 
   const {
     removeInput: ctxRemoveInput,
@@ -89,6 +90,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const storeCycleInputs = useInputStore(s => s.cycleInputs);
   const armedSlotIndex = useInputStore(s => s.armedSlotByOperation?.[operationType]);
   const setArmedSlot = useInputStore(s => s.setArmedSlot);
+  const setInputMode = useInputStore(s => s.setInputMode);
 
   // History store subscriptions
   const historyMode = useGenerationHistoryStore((s) => s.historyMode);
@@ -151,6 +153,11 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const resolvedDisplayMode = displayMode ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
   const resolvedGridColumns = Math.max(2, Math.min(6, Number(gridColumns ?? QUICKGEN_ASSET_DEFAULTS.gridColumns)));
+
+  // Sync input mode: carousel replaces current item, other modes append
+  useEffect(() => {
+    setInputMode(operationType, resolvedDisplayMode === 'carousel' ? 'replace' : 'append');
+  }, [resolvedDisplayMode, operationType, setInputMode]);
 
   const globalDisplayMode =
     (assetGlobalSettings?.displayMode as string | undefined) ?? QUICKGEN_ASSET_DEFAULTS.displayMode;
@@ -420,31 +427,21 @@ export function AssetPanel(props: QuickGenPanelProps) {
     );
   }, [isHistoryPanelOpen, operationType, scopeInstanceId, instanceId, ctx?.sourceLabel, updateFloatingPanelContext]);
 
-  useEffect(() => {
-    if (!showSettingsPopover) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        settingsPopoverRef.current &&
-        !settingsPopoverRef.current.contains(event.target as Node) &&
-        settingsTriggerRef.current &&
-        !settingsTriggerRef.current.contains(event.target as Node)
-      ) {
-        setShowSettingsPopover(false);
-      }
+  // Sync anchor rect for settings dropdown while open
+  useLayoutEffect(() => {
+    if (!showSettingsPopover || !settingsTriggerRef.current) {
+      setAnchorRect(null);
+      return;
+    }
+    const update = () => {
+      setAnchorRect(settingsTriggerRef.current?.getBoundingClientRect() ?? null);
     };
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setShowSettingsPopover(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleKeyDown);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
     };
   }, [showSettingsPopover]);
 
@@ -483,17 +480,30 @@ export function AssetPanel(props: QuickGenPanelProps) {
       title="Asset panel settings"
       type="button"
     >
-      <ThemedIcon name="settings" size={10} variant="default" />
+      <Icon name="settings" size={11} className="text-current" />
       {assetHasInstanceOverrides && (
         <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
       )}
     </button>
   );
 
-  const settingsPopover = showSettingsPopover && (
-    <div
-      ref={settingsPopoverRef}
-      className="absolute right-2 top-full mt-1 w-48 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-lg p-2 z-50"
+  const settingsPopover = (
+    <Dropdown
+      isOpen={showSettingsPopover}
+      onClose={() => setShowSettingsPopover(false)}
+      portal
+      positionMode="fixed"
+      triggerRef={settingsTriggerRef}
+      anchorPosition={
+        anchorRect
+          ? {
+              x: Math.max(8, Math.min(anchorRect.right - 192, window.innerWidth - 192 - 8)),
+              y: anchorRect.bottom + 4,
+            }
+          : { x: 0, y: 0 }
+      }
+      minWidth="192px"
+      className="rounded-lg bg-white dark:bg-neutral-900"
     >
       <div className="text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-2">
         Display
@@ -537,7 +547,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
           </button>
         )}
       </div>
-    </div>
+    </Dropdown>
   );
 
   const limitLabel = maxAssetItems && operationMeta?.multiAssetMode !== 'single' ? (
@@ -557,14 +567,25 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   // Header bar with history and settings buttons grouped on right
   const headerBar = (
-    <div className="relative flex items-center justify-between gap-1 px-2 py-1 shrink-0">
-      {limitLabel ?? <div />}
-      <div className="flex items-center gap-1">
-        {historyButton}
-        {settingsButton}
+    <>
+      <div className="relative flex items-center justify-between gap-1 px-2 py-1 shrink-0">
+        {limitLabel ?? <div />}
+        <div className="flex items-center gap-1">
+          {resolvedDisplayMode === 'carousel' && operationInputs.length > 0 && (
+            <div
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-accent/20 text-accent"
+              title="Carousel mode: adding an asset replaces the currently viewed one"
+            >
+              <Icon name="refresh-cw" size={9} />
+              <span>Replace</span>
+            </div>
+          )}
+          {historyButton}
+          {settingsButton}
+        </div>
       </div>
       {settingsPopover}
-    </div>
+    </>
   );
 
   if (!hasAsset) {
@@ -610,7 +631,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                   <div
                     key={`empty-${idx}`}
                     className={`${wrapperClasses} ${isClamped ? 'opacity-40' : ''} border border-dashed ${
-                      isArmed ? 'border-blue-500 ring-2 ring-blue-500/60' : 'border-neutral-300 dark:border-neutral-700'
+                      isArmed ? 'border-accent ring-2 ring-accent/60' : 'border-neutral-300 dark:border-neutral-700'
                     } rounded-md flex items-center justify-center`}
                     onClick={() => {
                       if (isClamped) return;
@@ -685,7 +706,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     showPlayOverlay={showPlayOverlay}
                     clickToPlay={clickToPlay}
                     disableMotion={isSelected}
-                    className={`${isSelected ? 'ring-2 ring-blue-500' : ''} ${isClamped ? 'grayscale' : ''}`}
+                    className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? 'grayscale' : ''}`}
                   />
                   <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
                     {idx + 1}

@@ -129,7 +129,7 @@ export function ConfirmModal({
   const confirmButtonClass =
     variant === 'danger'
       ? 'bg-red-600 hover:bg-red-700 text-white'
-      : 'bg-blue-600 hover:bg-blue-700 text-white';
+      : 'bg-accent hover:bg-accent-hover text-accent-text';
 
   return (
     <Modal isOpen={isOpen} onClose={onCancel} title={title} size="sm" showClose={false}>
@@ -208,7 +208,7 @@ export function PromptModal({
           defaultValue={defaultValue}
           placeholder={placeholder}
           onKeyDown={handleKeyDown}
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-accent"
         />
         <div className="flex gap-3 justify-end">
           <button
@@ -219,7 +219,7 @@ export function PromptModal({
           </button>
           <button
             onClick={handleConfirm}
-            className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+            className="px-4 py-2 rounded bg-accent hover:bg-accent-hover text-accent-text transition-colors"
           >
             {confirmText}
           </button>

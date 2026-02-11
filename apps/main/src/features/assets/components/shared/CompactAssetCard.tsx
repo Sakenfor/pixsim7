@@ -238,7 +238,7 @@ export function CompactAssetCard({
         {/* Locked frame indicator - visible when not hovering */}
         {isVideo && hasLockedFrame && !isHovering && (
           <div className="absolute top-1 left-1 z-10">
-            <div className="px-1.5 py-0.5 bg-blue-600/90 text-white text-[9px] rounded whitespace-nowrap flex items-center gap-1">
+            <div className="px-1.5 py-0.5 bg-accent/90 text-accent-text text-[9px] rounded whitespace-nowrap flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-white" />
               {lockedTimestamp?.toFixed(1)}s
             </div>
@@ -359,7 +359,7 @@ export function CompactAssetCard({
                   style={{ width: 80, height: 80, transition: 'none', animation: 'none' }}
                   className={`relative rounded-md overflow-hidden ${
                     idx === (currentIndex ?? 1) - 1
-                      ? 'ring-2 ring-blue-500'
+                      ? 'ring-2 ring-accent'
                       : 'hover:ring-1 hover:ring-white/50'
                   }`}
                 >
