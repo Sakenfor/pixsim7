@@ -42,6 +42,11 @@ export interface GameRuntimeState {
  */
 export interface GameRuntimeOptions {
   /**
+   * Scene ID used when creating a new session.
+   * If omitted, runtime will use world metadata hints and then fallback.
+   */
+  sceneId?: number;
+  /**
    * Session kind: 'world' for life-sim, 'scene' for single-scene, 'simulation' for playground
    * @default 'world'
    */

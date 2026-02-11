@@ -11,8 +11,19 @@
  *    - Interaction has underlyingPluginId for client-side UI handling
  */
 
-import type { GameApiClient, SessionStorage } from '@pixsim7/game.engine';
-import { SessionId as toSessionId, SceneId as toSceneId } from '@pixsim7/shared.types';
+import {
+  createSessionHelpers,
+  interactionRegistry,
+  type GameApiClient,
+  type SessionStorage,
+  type InteractionContext as EngineInteractionContext,
+  type NpcSlotAssignment,
+} from '@pixsim7/game.engine';
+import {
+  SessionId as toSessionId,
+  SceneId as toSceneId,
+  type SessionUpdatePayload,
+} from '@pixsim7/shared.types';
 
 import type {
   GameSessionDTO,
@@ -30,6 +41,9 @@ import {
   createGameSession,
   updateGameSession,
   getGameWorld,
+  getGameScene,
+  attemptPickpocket,
+  attemptSensualTouch,
   advanceGameWorldTime,
   resolveTemplate,
   resolveTemplateBatch,
@@ -38,23 +52,101 @@ import {
   listInteractions as backendListInteractions,
   executeInteraction as backendExecuteInteraction,
 } from '../../api/interactions';
-import { interactionRegistry, type InteractionContext as PluginContext } from '../interactions';
+
+const FALLBACK_SLOT: NpcSlotAssignment = {
+  slot: {
+    id: 'runtime-fallback',
+    x: 0,
+    y: 0,
+    interactions: {},
+  },
+  npcId: null,
+};
+
+function toWorldTime(seconds: number | undefined): { day: number; hour: number } {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds ?? 0)) : 0;
+  return {
+    day: Math.floor(safeSeconds / 86400) + 1,
+    hour: Math.floor((safeSeconds % 86400) / 3600),
+  };
+}
+
+function getTargetNpcId(req: { target?: { id?: number | string } }): number | null {
+  const id = req.target?.id;
+  if (typeof id === 'number') return id;
+  if (typeof id === 'string') {
+    const parsed = Number(id);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+async function loadSessionSafely(sessionId: number): Promise<GameSessionDTO | null> {
+  try {
+    return await getGameSession(toSessionId(sessionId));
+  } catch {
+    return null;
+  }
+}
 
 /**
- * Build client-side plugin context from request
+ * Build engine InteractionContext for fallback plugin execution.
  */
 function buildPluginContext(
-  req: ExecuteInteractionRequest,
-  session?: GameSessionDTO | null
-): PluginContext {
+  req: Pick<ListInteractionsRequest, 'worldId' | 'sessionId' | 'target' | 'participants' | 'primaryRole' | 'locationId'>,
+  session: GameSessionDTO | null
+): EngineInteractionContext {
+  const npcId = getTargetNpcId(req);
+  const assignment: NpcSlotAssignment = {
+    ...FALLBACK_SLOT,
+    npcId,
+  };
+
+  const sessionApi = {
+    updateSession: async (sessionId: number, updates: SessionUpdatePayload) => {
+      return await updateGameSession(toSessionId(sessionId), updates);
+    },
+  };
+
+  const sessionHelpers = createSessionHelpers(session, undefined, sessionApi);
+
   return {
-    sessionId: req.sessionId,
-    worldId: req.worldId,
-    worldTime: session?.world_time ?? 0,
-    npcId: req.target?.id as number | undefined,
-    locationId: undefined, // Could be passed in context
-    flags: session?.flags ?? {},
-    stats: session?.stats ?? {},
+    state: {
+      assignment,
+      gameSession: session,
+      sessionFlags: (session?.flags as Record<string, unknown>) ?? {},
+      relationships: (session?.stats?.relationships as Record<string, unknown>) ?? {},
+      worldId: req.worldId ?? null,
+      worldTime: toWorldTime(session?.world_time),
+      locationId: req.locationId ?? 0,
+      locationNpcs: [],
+    },
+    api: {
+      getSession: async (id: number) => await getGameSession(toSessionId(id)),
+      updateSession: async (id: number, updates: Partial<GameSessionDTO>) => {
+        const response = await updateGameSession(toSessionId(id), {
+          world_time: updates.world_time,
+          flags: updates.flags,
+          stats: updates.stats as Record<string, Record<string, unknown>> | undefined,
+        });
+        if (response.session) return response.session;
+        if (response.serverSession) return response.serverSession;
+        throw new Error('Session update failed');
+      },
+      attemptPickpocket,
+      attemptSensualTouch,
+      getScene: async (id: number) => await getGameScene(toSceneId(id)),
+    },
+    session: sessionHelpers,
+    onSceneOpen: async () => {
+      throw new Error('Scene opening requires UI context and is unavailable in runtime fallback');
+    },
+    onError: (msg: string) => {
+      console.warn('[GameRuntime] Plugin fallback error:', msg);
+    },
+    onSuccess: (msg: string) => {
+      console.info('[GameRuntime] Plugin fallback success:', msg);
+    },
   };
 }
 
@@ -72,7 +164,18 @@ async function tryClientSideExecution(
       return null;
     }
 
-    const context = buildPluginContext(req, session);
+    const resolvedSession = session ?? (await loadSessionSafely(req.sessionId));
+    const context = buildPluginContext(
+      {
+        worldId: req.worldId,
+        sessionId: req.sessionId,
+        target: req.target,
+        participants: req.participants,
+        primaryRole: req.primaryRole,
+        locationId: typeof req.context?.locationId === 'number' ? req.context.locationId : undefined,
+      },
+      resolvedSession
+    );
     const config = req.context ?? {};
 
     // Execute via plugin
@@ -95,6 +198,7 @@ async function tryClientSideExecution(
 async function getClientSideInteractions(
   req: ListInteractionsRequest
 ): Promise<InteractionInstance[]> {
+  const session = await loadSessionSafely(req.sessionId);
   const plugins = interactionRegistry.getAll();
   const interactions: InteractionInstance[] = [];
 
@@ -105,9 +209,11 @@ async function getClientSideInteractions(
         worldId: req.worldId,
         sessionId: req.sessionId,
         target: req.target,
-        interactionId: plugin.id,
+        participants: req.participants,
+        primaryRole: req.primaryRole,
+        locationId: req.locationId,
       },
-      null
+      session
     );
 
     const available = plugin.isAvailable ? plugin.isAvailable(context) : true;
@@ -115,7 +221,7 @@ async function getClientSideInteractions(
     interactions.push({
       id: `client:${plugin.id}`,
       definitionId: plugin.id,
-      target: req.target,
+      target: req.target ?? {},
       participants: req.participants,
       primaryRole: req.primaryRole,
       worldId: req.worldId,
@@ -124,7 +230,6 @@ async function getClientSideInteractions(
       label: plugin.name,
       icon: plugin.icon,
       available,
-      priority: plugin.priority ?? 0,
     });
   }
 

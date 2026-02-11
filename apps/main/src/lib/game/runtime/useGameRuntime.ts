@@ -209,6 +209,7 @@ export function useGameRuntime(): UseGameRuntimeReturn {
 
       try {
         const sess = await runtime.ensureSessionForWorld(worldId, {
+          sceneId: options.sceneId,
           sessionKind: options.sessionKind,
           worldMode: options.worldMode,
           turnDeltaSeconds: options.turnDeltaSeconds,
