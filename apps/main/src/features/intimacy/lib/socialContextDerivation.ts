@@ -1,119 +1,32 @@
 /**
  * Social Context Derivation for Intimacy Scene Previews
  *
- * Maps SimulatedRelationshipState to GenerationSocialContext for preview purposes.
- * This allows designers to see what social context would be generated for different
- * relationship states without requiring a live game session.
+ * App-layer adapter: maps engine types to app-specific GenerationSocialContext.
+ * Pure logic lives in @pixsim7/game.engine.
  *
- * @see packages/game/engine/src/relationships/socialContext.ts - Runtime version
- * @see docs/INTIMACY_SCENE_COMPOSER.md - Phase 3 documentation
+ * @see packages/game/engine/src/intimacy/socialContextDerivation.ts
  */
 
 import {
-  deriveIntimacyBand as deriveIntimacyBandFromGatingHelper,
-  supportsContentRating as checkContentRatingWithHelper,
+  deriveSocialContext as deriveSocialContextEngine,
+  getEffectiveContentRating as getEffectiveContentRatingEngine,
+  supportsContentRatingForState as supportsContentRatingEngine,
+  INTIMACY_BAND_MAP,
 } from '@pixsim7/game.engine';
-import {
-  clampContentRating,
-  getContentRatingIndex,
-} from '@pixsim7/shared.content.rating';
 import type { IntimacyBand, IntimacyGatingConfig } from '@pixsim7/shared.types';
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
 
 import type { SimulatedRelationshipState } from './gateChecking';
 
-/**
- * Intimacy level to band mapping
- * Simplified version of the game engine mapping for preview purposes
- */
-const INTIMACY_BAND_MAP: Record<string, 'none' | 'light' | 'deep' | 'intense'> = {
-  // No intimacy
-  '': 'none',
-  'null': 'none',
-  'stranger': 'none',
-
-  // Light romantic interest
-  'light_flirt': 'light',
-  'flirting': 'light',
-
-  // Established romantic connection
-  'deep_flirt': 'deep',
-  'intimate': 'deep',
-  'romantic': 'deep',
-
-  // Deep intimacy
-  'very_intimate': 'intense',
-  'lover': 'intense',
-};
-
-/**
- * Derive intimacy band from relationship metrics
- *
- * Now uses the shared intimacy gating helper for config-driven thresholds.
- * Falls back to defaults that match the original hardcoded behavior.
- *
- * @param metrics - Relationship metrics (affinity, chemistry, etc.)
- * @param config - Optional gating config override
- */
-function deriveIntimacyBandFromMetrics(
-  metrics: {
-    affinity?: number;
-    trust?: number;
-    chemistry?: number;
-    tension?: number;
-  },
-  config?: Partial<IntimacyGatingConfig>
-): 'none' | 'light' | 'deep' | 'intense' {
-  // Use shared helper with default config (matches original behavior)
-  return deriveIntimacyBandFromGatingHelper(metrics, config);
-}
-
-/**
- * Derive content rating from intimacy band and scene configuration
- */
-function deriveContentRating(
-  intimacyBand: 'none' | 'light' | 'deep' | 'intense',
-  sceneConfig?: IntimacySceneConfig
-): 'sfw' | 'romantic' | 'mature_implied' | 'restricted' {
-  // If scene has explicit rating, use that
-  if (sceneConfig?.contentRating) {
-    return sceneConfig.contentRating;
-  }
-
-  // Otherwise derive from intimacy band
-  switch (intimacyBand) {
-    case 'intense':
-      return 'mature_implied';
-    case 'deep':
-      return 'romantic';
-    case 'light':
-      return 'romantic';
-    case 'none':
-    default:
-      return 'sfw';
-  }
-}
+// Re-export pure constants & helpers
+export { INTIMACY_BAND_MAP };
 
 /**
  * Build GenerationSocialContext from SimulatedRelationshipState
  *
- * This is a preview-oriented version of buildGenerationSocialContext from game engine.
- * It allows designers to see what social context would be generated for different
- * relationship states in the intimacy scene composer.
- *
- * @param state - Simulated relationship state from the state editor
- * @param sceneConfig - Optional scene configuration to override rating/NPCs
- * @param worldMaxRating - World's maximum content rating (optional)
- * @param userMaxRating - User's maximum content rating (optional)
- * @returns GenerationSocialContext for preview purposes
- *
- * @example
- * ```ts
- * const context = deriveSocialContext(simulatedState, sceneConfig);
- * // { intimacyLevelId: 'intimate', relationshipTierId: 'close_friend',
- * //   intimacyBand: 'deep', contentRating: 'mature_implied' }
- * ```
+ * Delegates to engine and casts the result to the app-specific
+ * GenerationSocialContext type.
  */
 export function deriveSocialContext(
   state: SimulatedRelationshipState,
@@ -121,107 +34,29 @@ export function deriveSocialContext(
   worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
   userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
 ): GenerationSocialContext {
-  // Map intimacy level to band
-  const intimacyBand = state.intimacyLevel
-    ? INTIMACY_BAND_MAP[state.intimacyLevel] || deriveIntimacyBandFromMetrics(state.metrics)
-    : deriveIntimacyBandFromMetrics(state.metrics);
-
-  // Derive content rating
-  let contentRating = deriveContentRating(intimacyBand, sceneConfig);
-
-  // Apply world/user constraints
-  if (worldMaxRating) {
-    contentRating = clampContentRating(contentRating, worldMaxRating);
-  }
-  if (userMaxRating) {
-    contentRating = clampContentRating(contentRating, userMaxRating);
-  }
-
-  // Build relationship values from metrics
-  const relationshipValues = {
-    affinity: state.metrics.affinity,
-    trust: state.metrics.trust,
-    chemistry: state.metrics.chemistry,
-    tension: state.metrics.tension,
-  };
-
-  // Build social context
-  const context: GenerationSocialContext = {
-    intimacyLevelId: state.intimacyLevel || undefined,
-    relationshipTierId: state.tier || undefined,
-    intimacyBand,
-    contentRating,
+  const result = deriveSocialContextEngine(state, {
+    explicitContentRating: sceneConfig?.contentRating,
     worldMaxRating,
     userMaxRating,
-    relationshipValues,
-  };
+    npcIds: sceneConfig?.npcIds,
+  });
 
-  // Add NPC IDs from scene config if available
-  if (sceneConfig?.npcIds && sceneConfig.npcIds.length > 0) {
-    context.npcIds = sceneConfig.npcIds;
-  }
-
-  return context;
+  return result as GenerationSocialContext;
 }
 
 /**
  * Get effective content rating after applying constraints
- *
- * Useful for showing designers what rating will actually be used
- * versus what was requested.
  */
 export function getEffectiveContentRating(
   requestedRating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
   worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
   userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
-): {
-  effectiveRating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted';
-  wasClamped: boolean;
-  clampedBy?: 'world' | 'user' | 'both';
-} {
-  let effectiveRating = requestedRating;
-  let wasClamped = false;
-  let clampedBy: 'world' | 'user' | 'both' | undefined;
-
-  const requestedIndex = getContentRatingIndex(requestedRating);
-
-  // Check world constraint
-  if (worldMaxRating) {
-    const worldIndex = getContentRatingIndex(worldMaxRating);
-    if (requestedIndex > worldIndex) {
-      effectiveRating = worldMaxRating;
-      wasClamped = true;
-      clampedBy = 'world';
-    }
-  }
-
-  // Check user constraint (more restrictive)
-  if (userMaxRating) {
-    const userIndex = getContentRatingIndex(userMaxRating);
-    const currentIndex = getContentRatingIndex(effectiveRating);
-    if (currentIndex > userIndex) {
-      effectiveRating = userMaxRating;
-      if (wasClamped && clampedBy === 'world') {
-        clampedBy = 'both';
-      } else {
-        wasClamped = true;
-        clampedBy = 'user';
-      }
-    }
-  }
-
-  return { effectiveRating, wasClamped, clampedBy };
+) {
+  return getEffectiveContentRatingEngine(requestedRating, worldMaxRating, userMaxRating);
 }
 
 /**
  * Check if a relationship state supports a given content rating
- *
- * Now uses the shared intimacy gating helper for config-driven checks.
- * Useful for validation and warnings in the UI.
- *
- * @param state - Simulated relationship state
- * @param rating - Content rating to check
- * @param config - Optional gating config override
  */
 export function supportsContentRating(
   state: SimulatedRelationshipState,
@@ -237,16 +72,5 @@ export function supportsContentRating(
     intimacyBand?: IntimacyBand;
   };
 } {
-  // Build relationship state for the helper
-  const relState = {
-    affinity: state.metrics.affinity,
-    trust: state.metrics.trust,
-    chemistry: state.metrics.chemistry,
-    tension: state.metrics.tension,
-    levelId: state.intimacyLevel,
-    relationshipTierId: state.tier,
-  };
-
-  // Use shared helper
-  return checkContentRatingWithHelper(relState, rating, config);
+  return supportsContentRatingEngine(state, rating, config);
 }

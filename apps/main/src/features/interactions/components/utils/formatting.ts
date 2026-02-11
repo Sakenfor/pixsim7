@@ -1,129 +1,79 @@
 /**
  * Interaction UI Formatting Helpers
  *
- * UI-specific formatting utilities for displaying interactions.
- * These are presentation helpers, not business logic.
+ * Pure formatting helpers re-exported from @pixsim7/game.engine,
+ * plus UI-specific icon mappers that stay in the app layer.
  */
 
 import type { InteractionSurface } from '@lib/registries';
 
+// Pure formatting — from engine
+export {
+  formatRelativeTime,
+  formatRelationshipChanges,
+  formatTimeRemaining,
+} from '@pixsim7/game.engine';
+
 /**
- * Get emoji icon for interaction surface type
+ * Get emoji icon for interaction surface type (UI-only)
  */
 export function getSurfaceIcon(surface: InteractionSurface): string {
   switch (surface) {
     case 'dialogue':
-      return '💬';
+      return '\u{1F4AC}';
     case 'scene':
-      return '🎬';
+      return '\u{1F3AC}';
     case 'inline':
-      return '⚡';
+      return '\u{26A1}';
     case 'notification':
-      return '📬';
+      return '\u{1F4EC}';
     case 'menu':
-      return '📋';
+      return '\u{1F4CB}';
     default:
-      return '•';
+      return '\u{2022}';
   }
 }
 
 /**
- * Get icon for interaction chain status
+ * Get icon for interaction chain status (UI-only)
  */
 export function getStatusIcon(status: string): string {
   switch (status) {
     case 'locked':
-      return '🔒';
+      return '\u{1F512}';
     case 'available':
-      return '⭐';
+      return '\u{2B50}';
     case 'in_progress':
-      return '⏳';
+      return '\u{23F3}';
     case 'completed':
-      return '✅';
+      return '\u{2705}';
     case 'failed':
-      return '❌';
+      return '\u{274C}';
     default:
-      return '•';
+      return '\u{2022}';
   }
 }
 
 /**
- * Get icon for interaction chain category
+ * Get icon for interaction chain category (UI-only)
  */
 export function getCategoryIcon(category?: string): string {
-  if (!category) return '📋';
+  if (!category) return '\u{1F4CB}';
 
   switch (category) {
     case 'romance':
-      return '💕';
+      return '\u{1F495}';
     case 'friendship':
-      return '🤝';
+      return '\u{1F91D}';
     case 'rivalry':
-      return '⚔️';
+      return '\u{2694}\u{FE0F}';
     case 'mystery':
-      return '🔍';
+      return '\u{1F50D}';
     case 'adventure':
-      return '🗺️';
+      return '\u{1F5FA}\u{FE0F}';
     case 'quest':
-      return '⚡';
+      return '\u{26A1}';
     default:
-      return '📋';
+      return '\u{1F4CB}';
   }
-}
-
-/**
- * Format timestamp as relative time (e.g., "2 hours ago")
- */
-export function formatRelativeTime(timestamp: number): string {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  if (seconds > 0) return `${seconds}s ago`;
-  return 'just now';
-}
-
-/**
- * Format relationship changes for display
- */
-export function formatRelationshipChanges(deltas?: {
-  trust?: number;
-  affection?: number;
-  respect?: number;
-  attraction?: number;
-}): string | null {
-  if (!deltas) return null;
-
-  const changes: string[] = [];
-  if (deltas.trust) changes.push(`Trust ${deltas.trust > 0 ? '+' : ''}${deltas.trust}`);
-  if (deltas.affection) changes.push(`Affection ${deltas.affection > 0 ? '+' : ''}${deltas.affection}`);
-  if (deltas.respect) changes.push(`Respect ${deltas.respect > 0 ? '+' : ''}${deltas.respect}`);
-  if (deltas.attraction) changes.push(`Attraction ${deltas.attraction > 0 ? '+' : ''}${deltas.attraction}`);
-
-  return changes.length > 0 ? changes.join(', ') : null;
-}
-
-/**
- * Format time remaining in seconds (e.g., "2h 30m" or "5m")
- */
-export function formatTimeRemaining(seconds: number | undefined): string | null {
-  if (!seconds || seconds <= 0) return null;
-
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m`;
-  }
-  return `${secs}s`;
 }

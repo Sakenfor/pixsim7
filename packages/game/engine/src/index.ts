@@ -653,3 +653,7 @@ export * from './interactions/socialMechanics';
 export * from './interactions/plugins';
 export * from './interactions/presets';
 export * from './interactions/genericFactory';
+export * from './interactions/formatting';
+
+// ===== Intimacy =====
+export * from './intimacy';
