@@ -114,7 +114,7 @@ class AssetSearchRequest(BaseModel):
 
     prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
 
-    group_by: AssetGroupBy | None = Field(None, description="Group key to filter assets by (source, generation, prompt)")
+    group_by: AssetGroupBy | None = Field(None, description="Group key to filter assets by (source, generation, prompt, sibling)")
     group_key: str | None = Field(
         None,
         description="Group value to filter assets by (use 'ungrouped' or 'other')",
@@ -325,157 +325,52 @@ async def list_asset_groups(
             preview_limit=request.preview_limit,
         )
 
-        meta_map: dict[str, AssetGroupMeta] = {}
         group_keys = [
             group.key
             for group in groups
             if group.key and group.key not in {"ungrouped", "other"}
         ]
 
-        if group_keys:
-            if group_by == "source":
-                from sqlalchemy import select
-                from pixsim7.backend.main.domain import Asset
+        meta_payloads = await asset_service.build_group_meta_payloads(
+            user=user,
+            group_by=group_by,
+            group_keys=group_keys,
+            filters=request.filters,
+            sync_status=request.sync_status,
+            provider_status=request.provider_status,
+            tag=request.tag,
+            q=request.q,
+            include_archived=request.include_archived,
+            searchable=request.searchable,
+            created_from=request.created_from,
+            created_to=request.created_to,
+            min_width=request.min_width,
+            max_width=request.max_width,
+            min_height=request.min_height,
+            max_height=request.max_height,
+            content_domain=request.content_domain,
+            content_category=request.content_category,
+            content_rating=request.content_rating,
+            source_generation_id=request.source_generation_id,
+            source_asset_id=request.source_asset_id,
+            prompt_version_id=request.prompt_version_id,
+            operation_type=request.operation_type,
+            has_parent=request.has_parent,
+            has_children=request.has_children,
+            group_path=request.group_path,
+        )
 
-                source_ids: list[int] = []
-                for key in group_keys:
-                    try:
-                        source_ids.append(int(key))
-                    except (TypeError, ValueError):
-                        continue
-                if source_ids:
-                    result = await db.execute(select(Asset).where(Asset.id.in_(source_ids)))
-                    for asset in result.scalars().all():
-                        asset_response = AssetResponse.model_validate(asset)
-                        media_type = (
-                            asset_response.media_type.value
-                            if hasattr(asset_response.media_type, "value")
-                            else str(asset_response.media_type)
-                        )
-                        meta_map[str(asset.id)] = AssetGroupSourceMeta(
-                            asset_id=asset.id,
-                            media_type=media_type,
-                            created_at=asset.created_at,
-                            description=asset.description,
-                            thumbnail_url=asset_response.thumbnail_url,
-                            preview_url=asset_response.preview_url,
-                            remote_url=asset_response.remote_url,
-                            width=asset_response.width,
-                            height=asset_response.height,
-                        )
-            elif group_by == "generation":
-                from sqlalchemy import select
-                from pixsim7.backend.main.domain import Generation
-
-                generation_ids: list[int] = []
-                for key in group_keys:
-                    try:
-                        generation_ids.append(int(key))
-                    except (TypeError, ValueError):
-                        continue
-                if generation_ids:
-                    result = await db.execute(
-                        select(Generation).where(Generation.id.in_(generation_ids))
-                    )
-                    for generation in result.scalars().all():
-                        operation_type = (
-                            generation.operation_type.value
-                            if hasattr(generation.operation_type, "value")
-                            else str(generation.operation_type)
-                        )
-                        status_value = (
-                            generation.status.value
-                            if hasattr(generation.status, "value")
-                            else str(generation.status)
-                        )
-                        meta_map[str(generation.id)] = AssetGroupGenerationMeta(
-                            generation_id=generation.id,
-                            provider_id=generation.provider_id,
-                            operation_type=operation_type,
-                            status=status_value,
-                            created_at=generation.created_at,
-                            final_prompt=generation.final_prompt,
-                            prompt_version_id=generation.prompt_version_id,
-                        )
-            elif group_by == "prompt":
-                from sqlalchemy import select
-                from pixsim7.backend.main.domain import PromptVersion, PromptFamily
-
-                prompt_ids: list[UUID] = []
-                for key in group_keys:
-                    try:
-                        prompt_ids.append(UUID(key))
-                    except (TypeError, ValueError):
-                        continue
-                if prompt_ids:
-                    result = await db.execute(
-                        select(PromptVersion, PromptFamily)
-                        .outerjoin(PromptFamily, PromptFamily.id == PromptVersion.family_id)
-                        .where(PromptVersion.id.in_(prompt_ids))
-                    )
-                    for version, family in result.all():
-                        meta_map[str(version.id)] = AssetGroupPromptMeta(
-                            prompt_version_id=version.id,
-                            prompt_text=version.prompt_text,
-                            commit_message=version.commit_message,
-                            author=version.author,
-                            version_number=version.version_number,
-                            family_id=version.family_id,
-                            family_title=family.title if family else None,
-                            family_slug=family.slug if family else None,
-                            created_at=version.created_at,
-                            tags=list(version.tags or []),
-                        )
-            elif group_by == "sibling":
-                from sqlalchemy import select, func
-                from pixsim7.backend.main.domain.generation.models import Generation
-
-                # group keys are reproducible_hash strings
-                hash_keys = [k for k in group_keys if k]
-                if hash_keys:
-                    # Get the latest generation for each hash
-                    ranked = (
-                        select(
-                            Generation,
-                            func.row_number()
-                            .over(
-                                partition_by=Generation.reproducible_hash,
-                                order_by=Generation.created_at.desc(),
-                            )
-                            .label("rn"),
-                        )
-                        .where(Generation.reproducible_hash.in_(hash_keys))
-                        .subquery()
-                    )
-                    result = await db.execute(
-                        select(Generation)
-                        .join(ranked, Generation.id == ranked.c.id)
-                        .where(ranked.c.rn == 1)
-                    )
-                    for generation in result.scalars().all():
-                        operation_type = (
-                            generation.operation_type.value
-                            if hasattr(generation.operation_type, "value")
-                            else str(generation.operation_type)
-                        )
-                        status_value = (
-                            generation.status.value
-                            if hasattr(generation.status, "value")
-                            else str(generation.status)
-                        )
-                        prompt_snippet = None
-                        if generation.final_prompt:
-                            text = generation.final_prompt.strip()
-                            prompt_snippet = text[:80] + ("..." if len(text) > 80 else "")
-                        meta_map[generation.reproducible_hash] = AssetGroupSiblingMeta(
-                            hash=generation.reproducible_hash,
-                            generation_id=generation.id,
-                            provider_id=generation.provider_id,
-                            operation_type=operation_type,
-                            status=status_value,
-                            created_at=generation.created_at,
-                            prompt_snippet=prompt_snippet,
-                        )
+        meta_map: dict[str, AssetGroupMeta] = {}
+        for key, payload in meta_payloads.items():
+            kind = payload.get("kind")
+            if kind == "source":
+                meta_map[key] = AssetGroupSourceMeta.model_validate(payload)
+            elif kind == "generation":
+                meta_map[key] = AssetGroupGenerationMeta.model_validate(payload)
+            elif kind == "prompt":
+                meta_map[key] = AssetGroupPromptMeta.model_validate(payload)
+            elif kind == "sibling":
+                meta_map[key] = AssetGroupSiblingMeta.model_validate(payload)
 
         response_groups: list[AssetGroupSummary] = []
         for group in groups:

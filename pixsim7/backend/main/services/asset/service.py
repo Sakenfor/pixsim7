@@ -58,6 +58,12 @@ class AssetService:
     async def list_asset_groups(self, *args, **kwargs):
         return await self._core.list_asset_groups(*args, **kwargs)
 
+    def build_scoped_asset_ids_subquery(self, *args, **kwargs):
+        return self._core.build_scoped_asset_ids_subquery(*args, **kwargs)
+
+    async def build_group_meta_payloads(self, *args, **kwargs):
+        return await self._core.build_group_meta_payloads(*args, **kwargs)
+
     async def delete_asset(self, *args, **kwargs):
         return await self._core.delete_asset(*args, **kwargs)
 

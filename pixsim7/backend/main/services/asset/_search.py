@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional, Any, List
 from dataclasses import dataclass
 from datetime import datetime
+from uuid import UUID
 
 from sqlalchemy import select, func, and_, or_
 
@@ -505,6 +506,323 @@ class AssetSearchMixin:
         if tag_joined:
             return query.with_only_columns(Asset.id).distinct().subquery()
         return query.with_only_columns(Asset.id).subquery()
+
+    def build_scoped_asset_ids_subquery(
+        self,
+        *,
+        user: User,
+        filters: Optional[dict[str, Any]] = None,
+        sync_status: Optional[SyncStatus] = None,
+        provider_status: Optional[str] = None,
+        tag: Optional[str | list[str]] = None,
+        q: Optional[str] = None,
+        include_archived: bool = False,
+        searchable: Optional[bool] = True,
+        created_from: Optional[datetime] = None,
+        created_to: Optional[datetime] = None,
+        min_width: Optional[int] = None,
+        max_width: Optional[int] = None,
+        min_height: Optional[int] = None,
+        max_height: Optional[int] = None,
+        content_domain: Optional[Any] = None,
+        content_category: Optional[str] = None,
+        content_rating: Optional[str] = None,
+        source_generation_id: Optional[int] = None,
+        source_asset_id: Optional[int] = None,
+        prompt_version_id: Optional[Any] = None,
+        operation_type: Optional[Any] = None,
+        has_parent: Optional[bool] = None,
+        has_children: Optional[bool] = None,
+        group_path: Optional[list[dict[str, Any]]] = None,
+    ):
+        """
+        Public wrapper for the canonical user-scoped asset-id subquery.
+
+        Use this when follow-up queries (metadata, aggregations, joins to other
+        tables) must be guaranteed to operate on the exact same visible asset set.
+        """
+        return self._build_filtered_asset_id_subquery(
+            user=user,
+            filters=filters,
+            sync_status=sync_status,
+            provider_status=provider_status,
+            tag=tag,
+            q=q,
+            include_archived=include_archived,
+            searchable=searchable,
+            created_from=created_from,
+            created_to=created_to,
+            min_width=min_width,
+            max_width=max_width,
+            min_height=min_height,
+            max_height=max_height,
+            content_domain=content_domain,
+            content_category=content_category,
+            content_rating=content_rating,
+            source_generation_id=source_generation_id,
+            source_asset_id=source_asset_id,
+            prompt_version_id=prompt_version_id,
+            operation_type=operation_type,
+            has_parent=has_parent,
+            has_children=has_children,
+            group_path=group_path,
+        )
+
+    async def build_group_meta_payloads(
+        self,
+        *,
+        user: User,
+        group_by: str,
+        group_keys: list[str],
+        filters: Optional[dict[str, Any]] = None,
+        sync_status: Optional[SyncStatus] = None,
+        provider_status: Optional[str] = None,
+        tag: Optional[str | list[str]] = None,
+        q: Optional[str] = None,
+        include_archived: bool = False,
+        searchable: Optional[bool] = True,
+        created_from: Optional[datetime] = None,
+        created_to: Optional[datetime] = None,
+        min_width: Optional[int] = None,
+        max_width: Optional[int] = None,
+        min_height: Optional[int] = None,
+        max_height: Optional[int] = None,
+        content_domain: Optional[Any] = None,
+        content_category: Optional[str] = None,
+        content_rating: Optional[str] = None,
+        source_generation_id: Optional[int] = None,
+        source_asset_id: Optional[int] = None,
+        prompt_version_id: Optional[Any] = None,
+        operation_type: Optional[Any] = None,
+        has_parent: Optional[bool] = None,
+        has_children: Optional[bool] = None,
+        group_path: Optional[list[dict[str, Any]]] = None,
+    ) -> dict[str, dict[str, Any]]:
+        """
+        Build metadata payloads for grouped results using the canonical scoped asset set.
+
+        Every metadata query is anchored to the same user/filter visibility scope
+        as list/group queries to avoid accidental cross-user lookups.
+        """
+        if not group_keys:
+            return {}
+
+        from pixsim7.backend.main.domain import Asset
+
+        meta_map: dict[str, dict[str, Any]] = {}
+        scoped_asset_ids = self.build_scoped_asset_ids_subquery(
+            user=user,
+            filters=filters,
+            sync_status=sync_status,
+            provider_status=provider_status,
+            tag=tag,
+            q=q,
+            include_archived=include_archived,
+            searchable=searchable,
+            created_from=created_from,
+            created_to=created_to,
+            min_width=min_width,
+            max_width=max_width,
+            min_height=min_height,
+            max_height=max_height,
+            content_domain=content_domain,
+            content_category=content_category,
+            content_rating=content_rating,
+            source_generation_id=source_generation_id,
+            source_asset_id=source_asset_id,
+            prompt_version_id=prompt_version_id,
+            operation_type=operation_type,
+            has_parent=has_parent,
+            has_children=has_children,
+            group_path=group_path,
+        )
+
+        if group_by == "source":
+            from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
+
+            source_ids: list[int] = []
+            for key in group_keys:
+                try:
+                    source_ids.append(int(key))
+                except (TypeError, ValueError):
+                    continue
+
+            if source_ids:
+                result = await self.db.execute(
+                    select(Asset)
+                    .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
+                    .where(Asset.id.in_(source_ids))
+                )
+                for asset in result.scalars().all():
+                    asset_response = AssetResponse.model_validate(asset)
+                    media_type = (
+                        asset_response.media_type.value
+                        if hasattr(asset_response.media_type, "value")
+                        else str(asset_response.media_type)
+                    )
+                    meta_map[str(asset.id)] = {
+                        "kind": "source",
+                        "asset_id": asset.id,
+                        "media_type": media_type,
+                        "created_at": asset.created_at,
+                        "description": asset.description,
+                        "thumbnail_url": asset_response.thumbnail_url,
+                        "preview_url": asset_response.preview_url,
+                        "remote_url": asset_response.remote_url,
+                        "width": asset_response.width,
+                        "height": asset_response.height,
+                    }
+
+        elif group_by == "generation":
+            from pixsim7.backend.main.domain.generation.models import Generation
+
+            generation_ids: list[int] = []
+            for key in group_keys:
+                try:
+                    generation_ids.append(int(key))
+                except (TypeError, ValueError):
+                    continue
+
+            if generation_ids:
+                scoped_generation_ids = (
+                    select(Asset.source_generation_id.label("generation_id"))
+                    .select_from(Asset)
+                    .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
+                    .where(Asset.source_generation_id.isnot(None))
+                    .distinct()
+                    .subquery()
+                )
+                result = await self.db.execute(
+                    select(Generation).where(
+                        Generation.id.in_(generation_ids),
+                        Generation.id.in_(select(scoped_generation_ids.c.generation_id)),
+                    )
+                )
+                for generation in result.scalars().all():
+                    operation_type_value = (
+                        generation.operation_type.value
+                        if hasattr(generation.operation_type, "value")
+                        else str(generation.operation_type)
+                    )
+                    status_value = (
+                        generation.status.value
+                        if hasattr(generation.status, "value")
+                        else str(generation.status)
+                    )
+                    meta_map[str(generation.id)] = {
+                        "kind": "generation",
+                        "generation_id": generation.id,
+                        "provider_id": generation.provider_id,
+                        "operation_type": operation_type_value,
+                        "status": status_value,
+                        "created_at": generation.created_at,
+                        "final_prompt": generation.final_prompt,
+                        "prompt_version_id": generation.prompt_version_id,
+                    }
+
+        elif group_by == "prompt":
+            from pixsim7.backend.main.domain import PromptVersion, PromptFamily
+            from pixsim7.backend.main.domain.generation.models import Generation
+
+            prompt_ids: list[UUID] = []
+            for key in group_keys:
+                try:
+                    prompt_ids.append(UUID(key))
+                except (TypeError, ValueError):
+                    continue
+
+            if prompt_ids:
+                scoped_prompt_ids = (
+                    select(Generation.prompt_version_id.label("prompt_version_id"))
+                    .select_from(Generation)
+                    .join(Asset, Asset.source_generation_id == Generation.id)
+                    .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
+                    .where(Generation.prompt_version_id.isnot(None))
+                    .distinct()
+                    .subquery()
+                )
+                result = await self.db.execute(
+                    select(PromptVersion, PromptFamily)
+                    .outerjoin(PromptFamily, PromptFamily.id == PromptVersion.family_id)
+                    .where(
+                        PromptVersion.id.in_(prompt_ids),
+                        PromptVersion.id.in_(select(scoped_prompt_ids.c.prompt_version_id)),
+                    )
+                )
+                for version, family in result.all():
+                    meta_map[str(version.id)] = {
+                        "kind": "prompt",
+                        "prompt_version_id": version.id,
+                        "prompt_text": version.prompt_text,
+                        "commit_message": version.commit_message,
+                        "author": version.author,
+                        "version_number": version.version_number,
+                        "family_id": version.family_id,
+                        "family_title": family.title if family else None,
+                        "family_slug": family.slug if family else None,
+                        "created_at": version.created_at,
+                        "tags": list(version.tags or []),
+                    }
+
+        elif group_by == "sibling":
+            from pixsim7.backend.main.domain.generation.models import Generation
+
+            hash_keys = [k for k in group_keys if k]
+            if hash_keys:
+                ranked = (
+                    select(
+                        Generation.reproducible_hash.label("hash"),
+                        Generation.id.label("generation_id"),
+                        func.row_number()
+                        .over(
+                            partition_by=Generation.reproducible_hash,
+                            order_by=[
+                                Asset.created_at.desc(),
+                                Asset.id.desc(),
+                                Generation.created_at.desc(),
+                                Generation.id.desc(),
+                            ],
+                        )
+                        .label("rn"),
+                    )
+                    .select_from(Asset)
+                    .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
+                    .join(Generation, Generation.id == Asset.source_generation_id)
+                    .where(Generation.reproducible_hash.in_(hash_keys))
+                    .subquery()
+                )
+                result = await self.db.execute(
+                    select(Generation)
+                    .join(ranked, Generation.id == ranked.c.generation_id)
+                    .where(ranked.c.rn == 1)
+                )
+                for generation in result.scalars().all():
+                    operation_type_value = (
+                        generation.operation_type.value
+                        if hasattr(generation.operation_type, "value")
+                        else str(generation.operation_type)
+                    )
+                    status_value = (
+                        generation.status.value
+                        if hasattr(generation.status, "value")
+                        else str(generation.status)
+                    )
+                    prompt_snippet = None
+                    if generation.final_prompt:
+                        text = generation.final_prompt.strip()
+                        prompt_snippet = text[:80] + ("..." if len(text) > 80 else "")
+                    meta_map[generation.reproducible_hash] = {
+                        "kind": "sibling",
+                        "hash": generation.reproducible_hash,
+                        "generation_id": generation.id,
+                        "provider_id": generation.provider_id,
+                        "operation_type": operation_type_value,
+                        "status": status_value,
+                        "created_at": generation.created_at,
+                        "prompt_snippet": prompt_snippet,
+                    }
+
+        return meta_map
 
     async def find_assets_by_face_and_action(
         self,
