@@ -2,6 +2,8 @@
  * PromptPanel - Text input for generation prompt.
  * Split from QuickGeneratePanels.tsx.
  */
+import { useCallback } from 'react';
+
 import { useDockviewId } from '@lib/dockview';
 import { getDurationOptions } from '@lib/generation-ui';
 
@@ -91,7 +93,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const promptValue = hasTransitionPrompt
     ? transitionPrompts?.[transitionIndex] ?? ''
     : prompt;
-  const handlePromptChange = (value: string) => {
+  const handlePromptChange = useCallback((value: string) => {
     if (!hasTransitionPrompt) {
       setPrompt(value);
       return;
@@ -104,7 +106,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
       next[transitionIndex] = value;
       return next;
     });
-  };
+  }, [hasTransitionPrompt, setPrompt, setTransitionPrompts, transitionCount, transitionIndex]);
 
   useProvideCapability<PromptBoxContext>(
     CAP_PROMPT_BOX,

@@ -7,7 +7,7 @@ import {
   ensurePromptBlocks,
 } from '@pixsim7/core.prompt';
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
-import { FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownItem, DropdownDivider, FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import {
   ArrowDown,
@@ -16,6 +16,7 @@ import {
   ChevronUp,
   ClipboardPaste,
   Folder,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Search,
@@ -127,6 +128,8 @@ export function PromptComposer({
   const [showVariants, setShowVariants] = useState(false);
   const [showPackHints, setShowPackHints] = useState(false);
   const [showBlockBuilder, setShowBlockBuilder] = useState(false);
+  const [showBlockTools, setShowBlockTools] = useState(false);
+  const [blockToolsAnchor, setBlockToolsAnchor] = useState<{ x: number; y: number } | undefined>();
 
   const [analyzingBlocks, setAnalyzingBlocks] = useState(false);
   const [fetchingVariants, setFetchingVariants] = useState(false);
@@ -142,6 +145,14 @@ export function PromptComposer({
   const parseRequestIdRef = useRef(0);
   const expandAllRef = useRef<(() => void) | null>(null);
   const collapseAllRef = useRef<(() => void) | null>(null);
+  const blockToolsTriggerRef = useRef<HTMLButtonElement>(null);
+
+  // Stable refs for callbacks — prevents identity cascade
+  // (onChange/value changing → updateBlocks changing → seedBlocksFromPrompt changing → effect re-firing)
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const valueRef = useRef(value);
+  valueRef.current = value;
 
   const roleOptions = useMemo(() => {
     const roles = new Set<string>(BASE_PROMPT_ROLES);
@@ -165,11 +176,12 @@ export function PromptComposer({
       setBlocks(nextBlocks);
       const composed = composePrompt(nextBlocks);
       lastComposedRef.current = composed;
-      if (composed !== value) {
-        onChange(composed);
+      lastParsedRef.current = composed.trim();
+      if (composed !== valueRef.current) {
+        onChangeRef.current(composed);
       }
     },
-    [onChange, value]
+    [] // stable — uses refs for onChange/value
   );
 
   const seedBlocksFromPrompt = useCallback(
@@ -235,12 +247,13 @@ export function PromptComposer({
 
       const composed = composePrompt(blocks);
       lastComposedRef.current = composed;
-      if (composed !== value) {
-        onChange(composed);
+      lastParsedRef.current = composed.trim();
+      if (composed !== valueRef.current) {
+        onChangeRef.current(composed);
       }
       setMode('text');
     },
-    [blocks, mode, onChange, value]
+    [blocks, mode]
   );
 
   useEffect(() => {
@@ -446,72 +459,18 @@ export function PromptComposer({
         </button>
 
         {mode === 'blocks' && (
-          <button
-            type="button"
-            disabled={disabled || isParsing}
-            onClick={() => seedBlocksFromPrompt(value, { force: true })}
-            title="Re-parse blocks"
-            aria-label="Re-parse blocks"
-            className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
-            <RefreshCw size={14} className={clsx(isParsing && 'animate-spin')} />
-          </button>
-        )}
-
-        {mode === 'blocks' && (
-          <button
-            type="button"
-            disabled={disabled || analyzingBlocks}
-            onClick={handleAnalyzeBlocks}
-            title="Analyze prompt blocks"
-            aria-label="Analyze prompt blocks"
-            className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-          >
-            {analyzingBlocks ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
-          </button>
-        )}
-
-        {mode === 'blocks' && (
-          <button
-            type="button"
-            disabled={disabled || fetchingVariants}
-            onClick={handleSuggestVariants}
-            title="Suggest prompt variants"
-            aria-label="Suggest prompt variants"
-            className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-          >
-            {fetchingVariants ? <RefreshCw size={12} className="animate-spin" /> : <Wand2 size={12} />}
-          </button>
-        )}
-
-        {mode === 'blocks' && (
-          <button
-            type="button"
-            disabled={disabled || fetchingPacks}
-            onClick={handlePackHints}
-            title="Discover pack hints"
-            aria-label="Discover pack hints"
-            className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-          >
-            {fetchingPacks ? <RefreshCw size={12} className="animate-spin" /> : <Folder size={12} />}
-          </button>
-        )}
-
-        {mode === 'blocks' && (
-          <button
-            type="button"
-            disabled={disabled || !blockAnalysis || blockAnalysis.candidates.length === 0}
-            onClick={() => setShowBlockBuilder(true)}
-            title="Open block builder"
-            aria-label="Open block builder"
-            className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-          >
-            <Plus size={12} />
-          </button>
-        )}
-
-        {mode === 'blocks' && (
           <>
+            <button
+              type="button"
+              disabled={disabled || isParsing}
+              onClick={() => seedBlocksFromPrompt(value, { force: true })}
+              title="Re-parse blocks"
+              aria-label="Re-parse blocks"
+              className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            >
+              <RefreshCw size={14} className={clsx(isParsing && 'animate-spin')} />
+            </button>
+
             <button
               type="button"
               disabled={disabled}
@@ -532,13 +491,77 @@ export function PromptComposer({
             >
               <ChevronUp size={12} />
             </button>
-          </>
-        )}
 
-        {mode === 'blocks' && (
-          <span className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
-            {blocks.length} block{blocks.length === 1 ? '' : 's'}
-          </span>
+            <div className="relative">
+              <button
+                ref={blockToolsTriggerRef}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  setShowBlockTools((prev) => {
+                    if (!prev && blockToolsTriggerRef.current) {
+                      const rect = blockToolsTriggerRef.current.getBoundingClientRect();
+                      setBlockToolsAnchor({ x: rect.left, y: rect.bottom + 4 });
+                    }
+                    return !prev;
+                  });
+                }}
+                title="Block tools"
+                aria-label="Block tools"
+                className={clsx(
+                  'p-1 rounded transition-colors',
+                  showBlockTools
+                    ? 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                )}
+              >
+                <MoreHorizontal size={14} />
+              </button>
+              <Dropdown
+                isOpen={showBlockTools}
+                onClose={() => setShowBlockTools(false)}
+                triggerRef={blockToolsTriggerRef}
+                positionMode="fixed"
+                anchorPosition={blockToolsAnchor}
+                minWidth="180px"
+                portal
+              >
+                <DropdownItem
+                  icon={analyzingBlocks ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
+                  disabled={disabled || analyzingBlocks}
+                  onClick={() => { handleAnalyzeBlocks(); setShowBlockTools(false); }}
+                >
+                  Analyze blocks
+                </DropdownItem>
+                <DropdownItem
+                  icon={fetchingVariants ? <RefreshCw size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                  disabled={disabled || fetchingVariants}
+                  onClick={() => { handleSuggestVariants(); setShowBlockTools(false); }}
+                >
+                  Suggest variants
+                </DropdownItem>
+                <DropdownItem
+                  icon={fetchingPacks ? <RefreshCw size={12} className="animate-spin" /> : <Folder size={12} />}
+                  disabled={disabled || fetchingPacks}
+                  onClick={() => { handlePackHints(); setShowBlockTools(false); }}
+                >
+                  Discover packs
+                </DropdownItem>
+                <DropdownDivider />
+                <DropdownItem
+                  icon={<Plus size={12} />}
+                  disabled={disabled || !blockAnalysis || blockAnalysis.candidates.length === 0}
+                  onClick={() => { setShowBlockBuilder(true); setShowBlockTools(false); }}
+                >
+                  Block builder
+                </DropdownItem>
+              </Dropdown>
+            </div>
+
+            <span className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
+              {blocks.length} block{blocks.length === 1 ? '' : 's'}
+            </span>
+          </>
         )}
       </div>
 
