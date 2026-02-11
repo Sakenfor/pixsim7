@@ -182,6 +182,4 @@ export {
 
 export {
   deriveSocialContext,
-  getEffectiveContentRating,
-  supportsContentRating as supportsSocialContentRating,
 } from './lib/socialContextDerivation';

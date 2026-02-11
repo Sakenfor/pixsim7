@@ -9,11 +9,8 @@
 
 import {
   deriveSocialContext as deriveSocialContextEngine,
-  getEffectiveContentRating as getEffectiveContentRatingEngine,
-  supportsContentRatingForState as supportsContentRatingEngine,
   INTIMACY_BAND_MAP,
 } from '@pixsim7/game.engine';
-import type { IntimacyBand, IntimacyGatingConfig } from '@pixsim7/shared.types';
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
 
@@ -42,35 +39,4 @@ export function deriveSocialContext(
   });
 
   return result as GenerationSocialContext;
-}
-
-/**
- * Get effective content rating after applying constraints
- */
-export function getEffectiveContentRating(
-  requestedRating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
-  worldMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
-  userMaxRating?: 'sfw' | 'romantic' | 'mature_implied' | 'restricted'
-) {
-  return getEffectiveContentRatingEngine(requestedRating, worldMaxRating, userMaxRating);
-}
-
-/**
- * Check if a relationship state supports a given content rating
- */
-export function supportsContentRating(
-  state: SimulatedRelationshipState,
-  rating: 'sfw' | 'romantic' | 'mature_implied' | 'restricted',
-  config?: Partial<IntimacyGatingConfig>
-): {
-  supported: boolean;
-  reason?: string;
-  suggestedMinimums?: {
-    chemistry?: number;
-    affinity?: number;
-    intimacyLevel?: string;
-    intimacyBand?: IntimacyBand;
-  };
-} {
-  return supportsContentRatingEngine(state, rating, config);
 }
