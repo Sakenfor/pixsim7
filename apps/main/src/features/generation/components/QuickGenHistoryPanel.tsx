@@ -1,5 +1,5 @@
 
-import { useHoverExpand } from '@pixsim7/shared.ui';
+import { ActionHintBadge, useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -64,6 +64,7 @@ interface HistoryItemProps {
   onRemove: () => void;
   inputScopeId?: string;
   maxSlots?: number;
+  isReplaceMode?: boolean;
 }
 
 function HistoryItem({
@@ -76,6 +77,7 @@ function HistoryItem({
   onRemove,
   inputScopeId,
   maxSlots,
+  isReplaceMode,
 }: HistoryItemProps) {
   const asset = useMemo(() => assetFromHistoryEntry(entry), [entry]);
   const showSlotPicker = isMultiAssetOperation(operationType);
@@ -167,11 +169,14 @@ function HistoryItem({
               e.stopPropagation();
               onSelect();
             }}
-            className="w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-700 flex items-center justify-center transition-colors text-white"
-            title={showSlotPicker ? 'Add to input (hover for slot picker)' : 'Add to input'}
+            className="relative w-7 h-7 rounded-full bg-blue-600 hover:bg-blue-700 flex items-center justify-center transition-colors text-white"
+            title={isReplaceMode ? 'Replace current input' : showSlotPicker ? 'Add to input (hover for slot picker)' : 'Add to input'}
             type="button"
           >
             <Icon name="zap" size={12} className="text-white" color="#fff" />
+            {isReplaceMode && (
+              <ActionHintBadge icon={<Icon name="refresh-cw" size={7} color="#fff" />} />
+            )}
           </button>
         </div>
 
@@ -189,7 +194,7 @@ function HistoryItem({
         </button>
       </div>
     ),
-    [entry.pinned, showSlotPicker, stableHandlers, onTogglePin, onSelect, onRemove],
+    [entry.pinned, showSlotPicker, stableHandlers, onTogglePin, onSelect, onRemove, isReplaceMode],
   );
 
   return (
@@ -239,6 +244,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
   const [historyOperation, setHistoryOperation] = useState<OperationType>(operationType);
   const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
   const addInput = useInputStore((s) => s.addInput);
+  const isReplaceMode = useInputStore((s) => s.inputModeByOperation?.[operationType] === 'replace');
 
   // Resolve max slots for slot picker
   const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
@@ -473,6 +479,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}
                       inputScopeId={scopeId}
                       maxSlots={maxSlots}
+                      isReplaceMode={isReplaceMode}
                     />
                   ))}
                 </div>
@@ -501,6 +508,7 @@ function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
                       onRemove={() => removeFromHistory(historyOperation, entry.assetId)}
                       inputScopeId={scopeId}
                       maxSlots={maxSlots}
+                      isReplaceMode={isReplaceMode}
                     />
                   ))}
                 </div>

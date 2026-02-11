@@ -35,7 +35,9 @@ export interface AddInputOptions {
 export interface GenerationInputsState {
   inputsByOperation: Partial<Record<OperationType, OperationInputs>>;
   armedSlotByOperation: Partial<Record<OperationType, number>>;
+  inputModeByOperation: Partial<Record<OperationType, 'append' | 'replace'>>;
 
+  setInputMode: (operationType: OperationType, mode: 'append' | 'replace') => void;
   addInput: (options: AddInputOptions) => void;
   addInputs: (options: { assets: AssetModel[]; operationType: OperationType }) => void;
   removeInput: (operationType: OperationType, inputId: string) => void;
@@ -136,6 +138,16 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
       (set, get) => ({
         inputsByOperation: {},
         armedSlotByOperation: {},
+        inputModeByOperation: {},
+
+        setInputMode: (operationType, mode) => {
+          set((state) => ({
+            inputModeByOperation: {
+              ...state.inputModeByOperation,
+              [operationType]: mode,
+            },
+          }));
+        },
 
         addInput: ({ asset, operationType, slotIndex }) => {
           set((state) => {
@@ -155,12 +167,19 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
             const shouldAllowDuplicates = allowDuplicates(operationType);
             let nextItems = normalizeInputItems([...existing.items]);
             const preferredSlot = state.armedSlotByOperation?.[operationType];
-            const targetSlotIndex =
-              typeof slotIndex === 'number' && Number.isFinite(slotIndex)
-                ? Math.max(0, Math.floor(slotIndex))
-                : typeof preferredSlot === 'number' && Number.isFinite(preferredSlot)
-                  ? Math.max(0, Math.floor(preferredSlot))
-                  : getNextSlotIndex(nextItems);
+            const inputMode = state.inputModeByOperation?.[operationType];
+            let targetSlotIndex: number;
+            if (typeof slotIndex === 'number' && Number.isFinite(slotIndex)) {
+              targetSlotIndex = Math.max(0, Math.floor(slotIndex));
+            } else if (typeof preferredSlot === 'number' && Number.isFinite(preferredSlot)) {
+              targetSlotIndex = Math.max(0, Math.floor(preferredSlot));
+            } else if (inputMode === 'replace' && existing.items.length > 0) {
+              const currentIdx = Math.max(0, existing.currentIndex - 1);
+              const currentItem = existing.items[currentIdx];
+              targetSlotIndex = currentItem ? getSlotIndex(currentItem, 0) : getNextSlotIndex(nextItems);
+            } else {
+              targetSlotIndex = getNextSlotIndex(nextItems);
+            }
 
             const nextItem = createInputItem(asset, targetSlotIndex);
 
@@ -199,6 +218,13 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
 
         addInputs: ({ assets, operationType }) => {
           if (!assets || assets.length === 0) return;
+
+          // In replace mode with a single asset, delegate to addInput for replace logic
+          const inputMode = get().inputModeByOperation?.[operationType];
+          if (inputMode === 'replace' && assets.length === 1) {
+            get().addInput({ asset: assets[0], operationType });
+            return;
+          }
 
           set((state) => {
             if (isSingleOperation(operationType)) {

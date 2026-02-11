@@ -392,12 +392,12 @@ export function PromptComposer({
     try {
       const text = await navigator.clipboard.readText();
       if (!text) return;
-      const trimmed = maxChars != null ? text.slice(0, maxChars) : text;
-      onChange(trimmed);
+      // Allow pasting full text even if over limit — truncation happens at generation time
+      onChange(text);
     } catch {
       // Clipboard access denied or unavailable
     }
-  }, [onChange, maxChars]);
+  }, [onChange]);
 
   const composedPrompt = useMemo(() => composePrompt(blocks), [blocks]);
   const remaining = typeof maxChars === 'number' ? maxChars - composedPrompt.length : null;

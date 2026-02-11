@@ -8,8 +8,11 @@ import { useGenerationsStore, createPendingGeneration } from '@features/generati
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { useQuickGenerateBindings } from '@features/prompts';
+import { providerCapabilityRegistry } from '@features/providers';
 
 import { getFallbackOperation } from '@/types/operations';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+
 
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
@@ -184,6 +187,10 @@ export function useQuickGenerateController() {
     operationInputs: any[],
     currentInput: any,
   ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
+    // Resolve prompt limit so buildGenerationRequest can clamp the prompt
+    const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
+    const maxChars = resolvePromptLimitForModel(providerId, dynamicParams?.model as string | undefined, opSpec?.parameters);
+
     const buildResult = buildGenerationRequest({
       operationType,
       prompt,
@@ -193,6 +200,7 @@ export function useQuickGenerateController() {
       transitionDurations: bindings.transitionDurations,
       activeAsset: bindings.lastSelectedAsset,
       currentInput,
+      maxChars,
     });
 
     if (buildResult.error || !buildResult.params) {

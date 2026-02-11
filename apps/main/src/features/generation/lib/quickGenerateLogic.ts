@@ -18,6 +18,8 @@ export interface QuickGenerateContext {
   transitionDurations?: number[];
   activeAsset?: SelectedAsset;
   currentInput?: InputItem;
+  /** Max prompt chars — prompt is clamped to this limit before sending to API */
+  maxChars?: number;
 }
 
 export interface BuildGenerationResult {
@@ -57,6 +59,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     prompts,
     activeAsset,
     currentInput,
+    maxChars,
   } = context;
 
   const trimmedPrompt = prompt.trim();
@@ -321,8 +324,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     }
   }
 
+  // Clamp to provider/model limit before sending to API
+  const clampedPrompt = maxChars != null ? trimmedPrompt.slice(0, maxChars) : trimmedPrompt;
+
   const params: Record<string, any> = {
-    prompt: trimmedPrompt,
+    prompt: clampedPrompt,
     ...dynamicParams,
   };
 
@@ -431,7 +437,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
 
   return {
     params: normalizedParams,
-    finalPrompt: trimmedPrompt,
+    finalPrompt: clampedPrompt,
   };
 }
 
