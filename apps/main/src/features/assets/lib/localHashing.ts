@@ -70,7 +70,7 @@ export async function checkHashesAgainstBackend(
   const uniqueHashes = Array.from(new Set(hashes.filter(Boolean)));
   if (uniqueHashes.length === 0) return new Set();
 
-  const base = options?.backendUrl ?? import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+  const base = options?.backendUrl ?? (import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000');
   const token = options?.token ?? authService.getStoredToken();
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
   if (token) {
