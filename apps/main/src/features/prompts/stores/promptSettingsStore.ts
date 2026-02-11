@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
-  semanticEnabled: true,
+  semanticEnabled: false,
   semanticThreshold: 0.65,
   semanticLimit: 5,
   semanticModelId: null,

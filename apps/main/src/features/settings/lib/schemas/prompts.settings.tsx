@@ -14,6 +14,7 @@ import { useEffect, useState } from 'react';
 
 import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers';
 import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
+import { pixsimClient } from '@lib/api/client';
 
 import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
@@ -184,6 +185,125 @@ const appearanceTab: SettingTab = {
   ],
 };
 
+/**
+ * Custom component for embedding model selection (fetches from API)
+ */
+interface EmbeddingModel {
+  id: string;
+  label: string;
+}
+
+const FALLBACK_EMBEDDING_MODELS: EmbeddingModel[] = [
+  { id: 'openai:text-embedding-3-small', label: 'Text Embedding 3 Small' },
+];
+
+function EmbeddingModelSelector({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string | null;
+  onChange: (value: string | null) => void;
+  disabled?: boolean;
+}) {
+  const [models, setModels] = useState<EmbeddingModel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    pixsimClient
+      .get<{ id: string; label: string }[]>('/dev/ai-models/capabilities/embedding')
+      .then((res) => {
+        setModels(res.map((m) => ({ id: m.id, label: m.label })));
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch embedding models:', err);
+        setModels(FALLBACK_EMBEDDING_MODELS);
+        setLoading(false);
+      });
+  }, []);
+
+  return (
+    <select
+      value={value ?? ''}
+      onChange={(e) => onChange(e.target.value || null)}
+      disabled={disabled || loading}
+      className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed max-w-[200px]"
+    >
+      <option value="">Auto (server default)</option>
+      {loading ? (
+        <option disabled>Loading...</option>
+      ) : (
+        models.map((model) => (
+          <option key={model.id} value={model.id}>
+            {model.label} ({model.id})
+          </option>
+        ))
+      )}
+    </select>
+  );
+}
+
+const semanticTab: SettingTab = {
+  id: 'semantic',
+  label: 'Semantic Suggestions',
+  icon: 'search',
+  groups: [
+    {
+      id: 'semantic-suggestions',
+      title: 'Semantic Suggestions',
+      description:
+        'When in Blocks mode, suggest reusable prompt blocks by embedding the prompt text and querying similar blocks via pgvector.',
+      fields: [
+        {
+          id: 'semanticEnabled',
+          type: 'toggle',
+          label: 'Enable semantic suggestions',
+          description:
+            'Automatically suggest similar action blocks when composing prompts in Blocks mode',
+          defaultValue: false,
+        },
+        {
+          id: 'semanticModelId',
+          type: 'custom',
+          label: 'Embedding Model',
+          description: 'Which embedding model to use for similarity search',
+          component: EmbeddingModelSelector,
+          defaultValue: null,
+          disabled: (values) => !values.semanticEnabled,
+        },
+        {
+          id: 'semanticThreshold',
+          type: 'range',
+          label: 'Similarity threshold',
+          description:
+            'Minimum cosine similarity score to consider a block relevant (higher = stricter)',
+          min: 0.1,
+          max: 1.0,
+          step: 0.05,
+          defaultValue: 0.65,
+          format: (v: number) => v.toFixed(2),
+          disabled: (values) => !values.semanticEnabled,
+        },
+        {
+          id: 'semanticLimit',
+          type: 'select',
+          label: 'Max suggestions',
+          description: 'Maximum number of similar blocks to suggest',
+          options: [
+            { value: '3', label: '3' },
+            { value: '5', label: '5' },
+            { value: '10', label: '10' },
+            { value: '15', label: '15' },
+          ],
+          defaultValue: '5',
+          disabled: (values) => !values.semanticEnabled,
+        },
+      ],
+    },
+  ],
+};
+
 function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
   const {
     autoAnalyze,
@@ -192,12 +312,20 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     extractionThreshold,
     defaultCurationStatus,
     promptRoleColors,
+    semanticEnabled,
+    semanticModelId,
+    semanticThreshold,
+    semanticLimit,
     setAutoAnalyze,
     setDefaultAnalyzer,
     setAutoExtractBlocks,
     setExtractionThreshold,
     setDefaultCurationStatus,
     setPromptRoleColor,
+    setSemanticEnabled,
+    setSemanticModelId,
+    setSemanticThreshold,
+    setSemanticLimit,
   } = usePromptSettingsStore();
 
   return {
@@ -212,6 +340,10 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
         case 'autoExtractBlocks': return autoExtractBlocks;
         case 'extractionThreshold': return extractionThreshold.toString();
         case 'defaultCurationStatus': return defaultCurationStatus;
+        case 'semanticEnabled': return semanticEnabled;
+        case 'semanticModelId': return semanticModelId;
+        case 'semanticThreshold': return semanticThreshold;
+        case 'semanticLimit': return semanticLimit.toString();
         default: return undefined;
       }
     },
@@ -227,6 +359,10 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
         case 'autoExtractBlocks': setAutoExtractBlocks(value); break;
         case 'extractionThreshold': setExtractionThreshold(parseInt(value, 10)); break;
         case 'defaultCurationStatus': setDefaultCurationStatus(value); break;
+        case 'semanticEnabled': setSemanticEnabled(value); break;
+        case 'semanticModelId': setSemanticModelId(value); break;
+        case 'semanticThreshold': setSemanticThreshold(value); break;
+        case 'semanticLimit': setSemanticLimit(parseInt(value, 10)); break;
       }
     },
     getAll: () => ({
@@ -236,6 +372,10 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       extractionThreshold: extractionThreshold.toString(),
       defaultCurationStatus,
       promptRoleColors,
+      semanticEnabled,
+      semanticModelId,
+      semanticThreshold,
+      semanticLimit: semanticLimit.toString(),
     }),
   };
 }
@@ -264,9 +404,16 @@ export function registerPromptSettings(): () => void {
     useStore: usePromptSettingsStoreAdapter,
   });
 
+  const unregister4 = settingsSchemaRegistry.register({
+    categoryId: 'prompts',
+    tab: semanticTab,
+    useStore: usePromptSettingsStoreAdapter,
+  });
+
   return () => {
     unregister1();
     unregister2();
     unregister3();
+    unregister4();
   };
 }
