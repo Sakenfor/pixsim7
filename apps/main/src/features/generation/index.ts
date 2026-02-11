@@ -46,6 +46,10 @@ export { useRecentGenerations } from './hooks/useRecentGenerations';
 export { useGenerationScopeStores, GenerationScopeProvider } from './hooks/useGenerationScope';
 export { useGenerationPresets } from './hooks/useGenerationPresets';
 export type { UseGenerationPresetsResult } from './hooks/useGenerationPresets';
+export { useProvideGenerationWidget } from './hooks/useProvideGenerationWidget';
+export type { UseProvideGenerationWidgetConfig } from './hooks/useProvideGenerationWidget';
+export { useQuickGenPanelLayout } from './hooks/useQuickGenPanelLayout';
+export type { UseQuickGenPanelLayoutConfig } from './hooks/useQuickGenPanelLayout';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';

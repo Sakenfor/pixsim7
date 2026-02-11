@@ -10,7 +10,6 @@ export default definePanel({
   tags: ['generation', 'prompt', 'blocks', 'quickgen', 'control-center'],
   icon: 'grid',
   description: 'Prompt companion blocks for quick generation',
-  availableIn: ['control-center'],
   settingScopes: ['generation'],
   supportsCompactMode: false,
   supportsMultipleInstances: false,

@@ -11,7 +11,6 @@ export default definePanel({
   tags: ['generation', 'settings', 'quickgen', 'control-center'],
   icon: 'settings',
   description: 'Generation settings and Go button for quick workflows',
-  availableIn: ['control-center'],
   settingScopes: ['generation'],
   componentSettings: [QUICKGEN_SETTINGS_COMPONENT_ID],
   supportsCompactMode: false,

@@ -209,7 +209,7 @@ export function ControlCenterDock() {
             ref={panelHostRef}
             dockId="control-center"
             allowedPanels={allowedPanelIds}
-            storageKey="dockview:control-center:v5"
+            storageKey="dockview:control-center:v6"
             panelManagerId="controlCenter"
             minPanelsForTabs={2}
             onReady={handleReady}

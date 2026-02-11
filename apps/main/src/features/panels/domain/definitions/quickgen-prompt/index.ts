@@ -11,7 +11,6 @@ export default definePanel({
   tags: ['generation', 'prompt', 'quickgen', 'control-center'],
   icon: 'edit',
   description: 'Prompt editor for quick generation workflows',
-  availableIn: ['control-center'],
   settingScopes: ['generation'],
   componentSettings: [QUICKGEN_PROMPT_COMPONENT_ID],
   supportsCompactMode: false,

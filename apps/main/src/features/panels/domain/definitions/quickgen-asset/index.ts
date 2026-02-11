@@ -10,7 +10,6 @@ export default definePanel({
   tags: ['generation', 'queue', 'asset', 'quickgen', 'control-center'],
   icon: 'image',
   description: 'Asset input panel for quick generation workflows',
-  availableIn: ['control-center'],
   settingScopes: ['generation'],
   supportsCompactMode: true,
   supportsMultipleInstances: false,

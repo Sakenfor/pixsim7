@@ -36,6 +36,7 @@ export const controlCenterModule: Module = {
       description: 'Quick asset generation',
       tags: ['generate', 'create', 'ai'],
       scopes: ['generation'],
+      availableIn: ['control-center'],
     },
     {
       id: 'cc-providers',

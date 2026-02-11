@@ -14,23 +14,19 @@
  */
 
 import { Ref } from '@pixsim7/shared.types';
-import type { DockviewApi } from 'dockview-core';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
-import { createSafeApi } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 
 import type { ViewerAsset } from '@features/assets';
 import {
   CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_WIDGET,
   useProvideCapability,
   useCapability,
   CAP_GENERATION_SOURCE,
   type GenerationContextSummary,
   type GenerationSourceMode,
   type GenerationSourceContext,
-  type GenerationWidgetContext,
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
@@ -38,19 +34,16 @@ import {
   GenerationSourceToggle,
   ViewerAssetInputProvider,
   QuickGenPanelHost,
-  QUICKGEN_PRESETS,
-  QUICKGEN_PANEL_IDS,
-  useGenerationScopeStores,
+  useProvideGenerationWidget,
+  useQuickGenPanelLayout,
   useGenerationSettingsStore,
 } from '@features/generation';
-import { useQuickGenerateController } from '@features/prompts';
 
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+import type { OperationType } from '@/types/operations';
 
 
 
 const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
-const VIEWER_WIDGET_ID = 'generation-widget:viewerQuickGenerate';
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
@@ -135,18 +128,6 @@ function ViewerQuickGenerateChrome({
   const loading = sourceContext?.loading ?? false;
   const sourceGeneration = sourceContext?.sourceGeneration;
 
-  // Control Center controller (reads from current scope)
-  const controller = useQuickGenerateController();
-  const { setOperationType, setDynamicParams } = controller;
-
-  // Check if auto-switch is enabled (defaults to true)
-  const autoSwitchEnabled = useGenerationSettingsStore(
-    (s) => s.params.autoSwitchOperationType ?? true
-  );
-
-  const { useInputStore, id: scopeId } = useGenerationScopeStores();
-  const scopedAddInput = useInputStore((s) => s.addInput);
-  const scopedAddInputs = useInputStore((s) => s.addInputs);
   const setOpen = useCallback(
     (open: boolean) => {
       if (!open) {
@@ -155,44 +136,20 @@ function ViewerQuickGenerateChrome({
     },
     [onCollapse],
   );
-  const generationWidgetValue = useMemo<GenerationWidgetContext>(
-    () => ({
-      isOpen: true,
-      setOpen,
-      scopeId,
-      operationType: controller.operationType,
-      setOperationType: controller.setOperationType,
-      generate: controller.generate,
-      addInput: scopedAddInput,
-      addInputs: scopedAddInputs,
-      widgetId: 'viewerQuickGenerate',
-    }),
-    [
-      setOpen,
-      scopeId,
-      controller.operationType,
-      controller.setOperationType,
-      controller.generate,
-      scopedAddInput,
-      scopedAddInputs,
-    ],
-  );
-  const generationWidgetProvider = useMemo(
-    () => ({
-      id: VIEWER_WIDGET_ID,
-      label: 'Viewer Quick Generate',
-      priority: 45,
-      exposeToContextMenu: true,
-      isAvailable: () => true,
-      getValue: () => generationWidgetValue,
-    }),
-    [generationWidgetValue],
-  );
 
-  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
-  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
-    scope: 'root',
+  // Centralized widget provision: controller + scoped stores + CAP_GENERATION_WIDGET
+  const { setOperationType, setDynamicParams } = useProvideGenerationWidget({
+    widgetId: 'viewerQuickGenerate',
+    label: 'Viewer Quick Generate',
+    priority: 45,
+    isOpen: true,
+    setOpen,
   });
+
+  // Check if auto-switch is enabled (defaults to true)
+  const autoSwitchEnabled = useGenerationSettingsStore(
+    (s) => s.params.autoSwitchOperationType ?? true
+  );
 
   // Auto-set operation type based on asset type (when in user mode and enabled)
   useEffect(() => {
@@ -262,85 +219,9 @@ function ViewerQuickGenerateChrome({
   );
 }
 
-function ViewerQuickGeneratePanels() {
-  const { useSessionStore } = useGenerationScopeStores();
-  const operationType = useSessionStore((s) => s.operationType);
-  const metadata = OPERATION_METADATA[operationType];
-  const supportsInputs = (metadata?.acceptsInput?.length ?? 0) > 0;
-  const panels = supportsInputs ? QUICKGEN_PRESETS.full : QUICKGEN_PRESETS.promptSettings;
-  const layoutVersion = operationType === 'video_transition' ? 'v7' : 'v6';
-  const storageKey = supportsInputs
-    ? `viewer-quickgen-layout-${layoutVersion}:${operationType}:with-asset`
-    : `viewer-quickgen-layout-${layoutVersion}:${operationType}:no-asset`;
-  const defaultLayout = useCallback((api: DockviewApi) => {
-    if (operationType !== 'video_transition') return;
-
-    const safe = createSafeApi(api);
-    const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
-    const hasPrompt = panels.includes(QUICKGEN_PANEL_IDS.prompt);
-    const hasSettings = panels.includes(QUICKGEN_PANEL_IDS.settings);
-
-    const getTitle = (panelId: string) => {
-      switch (panelId) {
-        case QUICKGEN_PANEL_IDS.asset:
-          return 'Asset';
-        case QUICKGEN_PANEL_IDS.prompt:
-          return 'Prompt';
-        case QUICKGEN_PANEL_IDS.settings:
-          return 'Settings';
-        default:
-          return panelId;
-      }
-    };
-
-    const firstPanel = hasAsset ? QUICKGEN_PANEL_IDS.asset : QUICKGEN_PANEL_IDS.prompt;
-    safe.addPanel({ id: firstPanel, component: firstPanel, title: getTitle(firstPanel) });
-
-    if (hasAsset && hasPrompt) {
-      safe.addPanel({
-        id: QUICKGEN_PANEL_IDS.prompt,
-        component: QUICKGEN_PANEL_IDS.prompt,
-        title: getTitle(QUICKGEN_PANEL_IDS.prompt),
-        position: { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.asset },
-      });
-    }
-
-    if (hasSettings) {
-      safe.addPanel({
-        id: QUICKGEN_PANEL_IDS.settings,
-        component: QUICKGEN_PANEL_IDS.settings,
-        title: getTitle(QUICKGEN_PANEL_IDS.settings),
-        position: { direction: 'right', referencePanel: QUICKGEN_PANEL_IDS.prompt },
-      });
-    }
-  }, [operationType, panels]);
-
-  const resolvePanelPosition = useCallback((panelId: string, api: DockviewApi) => {
-    if (operationType !== 'video_transition') return undefined;
-    if (panelId === QUICKGEN_PANEL_IDS.prompt && api.getPanel(QUICKGEN_PANEL_IDS.asset)) {
-      return { direction: 'below', referencePanel: QUICKGEN_PANEL_IDS.asset };
-    }
-    return undefined;
-  }, [operationType]);
-
-  return (
-    <QuickGenPanelHost
-      key={storageKey}
-      panels={panels}
-      storageKey={storageKey}
-      panelManagerId="viewerQuickGenerate"
-      context={{ targetProviderId: VIEWER_WIDGET_ID, sourceLabel: 'Viewer' }}
-      defaultLayout={operationType === 'video_transition' ? defaultLayout : undefined}
-      resolvePanelPosition={resolvePanelPosition}
-      className="h-[360px] min-h-[280px] mt-2"
-      minPanelsForTabs={2}
-    />
-  );
-}
-
 /**
  * Inner component for the expanded quick generate content.
- * Rendered inside the viewer scope to access scoped stores.
+ * Rendered inside GenerationScopeProvider to access scoped stores.
  */
 function ViewerQuickGenerateContent({
   asset,
@@ -349,7 +230,6 @@ function ViewerQuickGenerateContent({
   controlCenterOpen,
   mode,
   onModeChange,
-  scopeId,
 }: {
   asset: ViewerAsset;
   alwaysExpanded: boolean;
@@ -357,10 +237,17 @@ function ViewerQuickGenerateContent({
   controlCenterOpen: boolean;
   mode: GenerationSourceMode;
   onModeChange: (mode: GenerationSourceMode) => void;
-  scopeId: string;
 }) {
+  // Centralized panel layout: panels, defaultLayout, resolvePanelPosition
+  const layout = useQuickGenPanelLayout({ showBlocks: false });
+
+  const layoutVersion = layout.operationType === 'video_transition' ? 'v7' : 'v6';
+  const storageKey = layout.supportsInputs
+    ? `viewer-quickgen-layout-${layoutVersion}:${layout.operationType}:with-asset`
+    : `viewer-quickgen-layout-${layoutVersion}:${layout.operationType}:no-asset`;
+
   return (
-    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
+    <>
       <ViewerQuickGenerateChrome
         asset={asset}
         alwaysExpanded={alwaysExpanded}
@@ -369,8 +256,18 @@ function ViewerQuickGenerateContent({
         mode={mode}
         onModeChange={onModeChange}
       />
-      <ViewerQuickGeneratePanels />
-    </GenerationScopeProvider>
+      <QuickGenPanelHost
+        key={storageKey}
+        panels={layout.panels}
+        storageKey={storageKey}
+        panelManagerId="viewerQuickGenerate"
+        context={{ targetProviderId: 'generation-widget:viewerQuickGenerate', sourceLabel: 'Viewer' }}
+        defaultLayout={layout.defaultLayout}
+        resolvePanelPosition={layout.resolvePanelPosition}
+        className="h-[360px] min-h-[280px] mt-2"
+        minPanelsForTabs={2}
+      />
+    </>
   );
 }
 
@@ -413,14 +310,15 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
 
   // Expanded state - show panel host with viewer scope
   return (
-    <ViewerQuickGenerateContent
-      asset={asset}
-      alwaysExpanded={alwaysExpanded}
-      onCollapse={() => setIsExpanded(false)}
-      controlCenterOpen={controlCenterOpen}
-      mode={mode}
-      onModeChange={setMode}
-      scopeId={scopeId}
-    />
+    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
+      <ViewerQuickGenerateContent
+        asset={asset}
+        alwaysExpanded={alwaysExpanded}
+        onCollapse={() => setIsExpanded(false)}
+        controlCenterOpen={controlCenterOpen}
+        mode={mode}
+        onModeChange={setMode}
+      />
+    </GenerationScopeProvider>
   );
 }

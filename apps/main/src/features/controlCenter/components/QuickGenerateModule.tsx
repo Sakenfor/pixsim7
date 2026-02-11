@@ -6,18 +6,19 @@ import { getDockviewPanels, useDockviewId } from '@lib/dockview';
 
 import {
   CAP_GENERATION_CONTEXT,
-  CAP_GENERATION_WIDGET,
   useProvideCapability,
   type GenerationContextSummary,
-  type GenerationWidgetContext,
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
   useGenerationWebSocket,
   useGenerationWorkbench,
-  useGenerationScopeStores,
+  useProvideGenerationWidget,
+  useQuickGenPanelLayout,
+  QuickGenPanelHost,
   GenerationWorkbench,
   GenerationScopeProvider,
+  type QuickGenPanelHostRef,
 } from '@features/generation';
 import {
   ScopeModeSelect,
@@ -29,18 +30,13 @@ import {
   GENERATION_SCOPE_ID,
   type PanelSettingsScopeMode,
 } from '@features/panels';
-import { useQuickGenerateController } from '@features/prompts';
 import type { PanelId } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
-import { QuickGenerateDockview, type QuickGenerateDockviewRef } from './QuickGenerateDockview';
-
-
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
 const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
-const CONTROL_CENTER_WIDGET_ID = 'generation-widget:controlCenter';
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
 
@@ -79,17 +75,12 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
       })),
     [],
   );
-  const quickgenScopes = usePanelInstanceSettingsStore((state) =>
-    quickgenInstances.map(({ instanceId }) => state.instances[instanceId]?.scopes),
+  const needsScopeSync = usePanelInstanceSettingsStore((state) =>
+    quickgenInstances.some(({ instanceId }) => {
+      const scopes = state.instances[instanceId]?.scopes;
+      return getScopeMode(scopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode) !== scopeMode;
+    }),
   );
-  const quickgenScopeModes = useMemo(
-    () =>
-      quickgenScopes.map((scopes) =>
-        getScopeMode(scopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode),
-      ),
-    [quickgenScopes, generationScopeDefinition],
-  );
-  const needsScopeSync = quickgenScopeModes.some((mode) => mode !== scopeMode);
 
   useEffect(() => {
     if (!needsScopeSync) return;
@@ -134,29 +125,40 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
 }
 
 function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: QuickGenerateModuleInnerProps) {
+  // Get control center state for open/close (needed before widget hook)
+  const ccIsOpen = useControlCenterStore(s => s.isOpen);
+  const ccSetOpen = useControlCenterStore(s => s.setOpen);
+
+  // Centralized widget provision: controller + scoped stores + CAP_GENERATION_WIDGET
   const {
     operationType,
     providerId,
     generating,
     setProvider,
-    setOperationType,
     error,
     generationId,
     operationInputs,
     generate,
-  } = useQuickGenerateController();
+    widgetProviderId,
+  } = useProvideGenerationWidget({
+    widgetId: 'controlCenter',
+    label: 'Control Center',
+    priority: 50,
+    isOpen: ccIsOpen,
+    setOpen: ccSetOpen,
+  });
+
+  // Centralized panel layout: panels, defaultLayout, resolvePanelPosition
+  const layout = useQuickGenPanelLayout({ showBlocks: true });
 
   // Use the shared generation workbench hook for settings management
   const workbench = useGenerationWorkbench({ operationType });
 
-  // Get scoped input store for all input operations
-  const { useInputStore, id: scopeId } = useGenerationScopeStores();
   const operationMetadata = OPERATION_METADATA[operationType];
   const isMultiAssetOp = operationMetadata?.multiAssetMode !== 'single';
-  const supportsInputs = (operationMetadata?.acceptsInput?.length ?? 0) > 0;
 
   // Dockview wrapper ref for layout reset
-  const dockviewRef = useRef<QuickGenerateDockviewRef>(null);
+  const dockviewRef = useRef<QuickGenPanelHostRef>(null);
   const dockviewApiRef = useRef<DockviewApi | null>(null);
 
   const generationContextValue = useMemo<GenerationContextSummary>(
@@ -190,50 +192,6 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   useProvideCapability(CAP_GENERATION_CONTEXT, generationContextProvider, [generationContextValue], {
     scope: 'root',
   });
-
-  // Get scoped input store actions for the widget capability
-  const scopedAddInput = useInputStore(s => s.addInput);
-  const scopedAddInputs = useInputStore(s => s.addInputs);
-
-  // Get control center state for open/close
-  const ccIsOpen = useControlCenterStore(s => s.isOpen);
-  const ccSetOpen = useControlCenterStore(s => s.setOpen);
-
-  // Provide CAP_GENERATION_WIDGET for media cards to target this widget
-  const generationWidgetValue = useMemo<GenerationWidgetContext>(
-    () => ({
-      isOpen: ccIsOpen,
-      setOpen: ccSetOpen,
-      scopeId,
-      operationType,
-      setOperationType,
-      generate,
-      addInput: scopedAddInput,
-      addInputs: scopedAddInputs,
-      widgetId: 'controlCenter',
-    }),
-    [ccIsOpen, ccSetOpen, scopeId, operationType, setOperationType, generate, scopedAddInput, scopedAddInputs],
-  );
-
-  const generationWidgetProvider = useMemo(
-    () => ({
-      id: CONTROL_CENTER_WIDGET_ID,
-      label: 'Control Center',
-      priority: 50,
-      exposeToContextMenu: true,
-      isAvailable: () => true,
-      getValue: () => generationWidgetValue,
-    }),
-    [generationWidgetValue],
-  );
-
-  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
-  useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
-    scope: 'root',
-  });
-
-  // Always show asset panel for operations that accept input (for inputs + drag-drop)
-  const showAssetPanelInLayout = supportsInputs;
 
   // Get quality options filtered by model (for image operations)
   const getQualityOptionsForModel = useMemo(() => {
@@ -272,9 +230,18 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
   }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
 
   const panelContext = useMemo(
-    () => ({ targetProviderId: CONTROL_CENTER_WIDGET_ID, sourceLabel: 'Control Center' }),
-    [],
+    () => ({ targetProviderId: widgetProviderId, sourceLabel: 'Control Center' }),
+    [widgetProviderId],
   );
+
+  // Compute storage key for panel layout persistence
+  const storageKey = useMemo(() => {
+    const layoutVersion = operationType === 'video_transition' ? 'v6' : 'v5';
+    const baseKey = layout.supportsInputs
+      ? `dockview:quickgen:${layoutVersion}:with-asset`
+      : `dockview:quickgen:${layoutVersion}:no-asset`;
+    return operationType ? `${baseKey}:${operationType}` : baseKey;
+  }, [layout.supportsInputs, operationType]);
 
   // Listen to global panel layout reset trigger
   const panelLayoutResetTrigger = useControlCenterStore(s => s.panelLayoutResetTrigger);
@@ -330,16 +297,19 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
       {scopeControl}
       <div className="flex-1 min-h-0">
         <div
-          key={`dockview-${operationType}-${showAssetPanelInLayout ? 'with-asset' : 'no-asset'}`}
+          key={`dockview-${operationType}-${layout.supportsInputs ? 'with-asset' : 'no-asset'}`}
           className="h-full relative"
         >
-          <QuickGenerateDockview
+          <QuickGenPanelHost
             ref={dockviewRef}
+            panels={layout.panels}
+            storageKey={storageKey}
             context={panelContext}
-            showAssetPanel={showAssetPanelInLayout}
-            operationType={operationType}
-            onReady={handleDockviewReady}
             panelManagerId={QUICKGEN_PANEL_MANAGER_ID}
+            defaultLayout={layout.defaultLayout}
+            resolvePanelPosition={layout.resolvePanelPosition}
+            onReady={handleDockviewReady}
+            minPanelsForTabs={2}
           />
         </div>
       </div>
