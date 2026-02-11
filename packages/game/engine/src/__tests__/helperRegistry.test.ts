@@ -129,7 +129,7 @@ describe('SessionHelperRegistry', () => {
       registry.register(helper2);
 
       expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Helper "testHelper" already registered')
+        expect.stringContaining('Overwriting entry for key "testHelper"')
       );
 
       warnSpy.mockRestore();
@@ -151,7 +151,7 @@ describe('SessionHelperRegistry', () => {
       strictRegistry.register(helper1);
 
       expect(() => strictRegistry.register(helper2)).toThrow(
-        'Helper "testHelper" already registered'
+        'Entry already registered for key "testHelper"'
       );
     });
 

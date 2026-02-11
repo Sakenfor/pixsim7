@@ -99,6 +99,14 @@ export interface ScenePlaybackResult {
   edgeId?: string;
 }
 
+type SceneStateWithHistory = SceneRuntimeState & {
+  visitedNodeIds?: string[];
+};
+
+type SceneWithEntryNode = Scene & {
+  entryNodeId?: string;
+};
+
 /**
  * Scene playback controller.
  * Manages scene playback state and coordinates with narrative execution.
@@ -127,12 +135,19 @@ export class ScenePlaybackController {
       return undefined;
     }
 
+    const entryNodeId = this.resolveEntryNodeId(scene);
+    if (!entryNodeId) {
+      this.log(`Scene missing entry/start node: ${sceneId}`);
+      return undefined;
+    }
+
     // Initialize scene state
-    const state: SceneRuntimeState = {
-      currentNodeId: scene.startNodeId,
+    let state: SceneRuntimeState = {
+      currentNodeId: entryNodeId,
       currentSceneId: sceneId,
-      flags: initialFlags || {},
+      flags: { ...(initialFlags || {}) },
     };
+    state = this.addVisitedNode(state, entryNodeId);
 
     // Track active playback
     this.activePlaybacks.set(npcId, {
@@ -244,17 +259,19 @@ export class ScenePlaybackController {
       };
 
       this.activePlaybacks.delete(npcId);
-      playback.onComplete?.(undefined as any, result);
+      this.invokeOnComplete(playback, result);
 
       return result;
     }
 
     // Advance to next node
-    playback.state = {
+    let nextState: SceneRuntimeState = {
       ...playback.state,
       currentNodeId: selectedEdge.to,
       progressionIndex: undefined, // Reset for new node
     };
+    nextState = this.addVisitedNode(nextState, selectedEdge.to);
+    playback.state = nextState;
 
     // Check if new node is an exit (end type node)
     const nextNode = scene.nodes.find((n: SceneMediaNode) => n.id === selectedEdge.to);
@@ -267,7 +284,7 @@ export class ScenePlaybackController {
       };
 
       this.activePlaybacks.delete(npcId);
-      playback.onComplete?.(undefined as any, result);
+      this.invokeOnComplete(playback, result);
 
       return result;
     }
@@ -299,6 +316,27 @@ export class ScenePlaybackController {
     if (playback) {
       playback.onComplete = callback;
     }
+  }
+
+  private resolveEntryNodeId(scene: Scene): string | undefined {
+    const sceneWithEntry = scene as SceneWithEntryNode;
+    return sceneWithEntry.entryNodeId ?? scene.startNodeId;
+  }
+
+  private addVisitedNode(state: SceneRuntimeState, nodeId: string): SceneRuntimeState {
+    const previousVisited = (state as SceneStateWithHistory).visitedNodeIds || [];
+    if (previousVisited.includes(nodeId)) {
+      return state;
+    }
+    return {
+      ...state,
+      visitedNodeIds: [...previousVisited, nodeId],
+    } as SceneRuntimeState;
+  }
+
+  private invokeOnComplete(playback: ActiveScenePlayback, result: ScenePlaybackResult): void {
+    // Keep callback contract stable (non-null session object) for integration hooks/tests.
+    playback.onComplete?.({} as GameSessionDTO, result);
   }
 
   private log(message: string): void {
@@ -406,6 +444,9 @@ export function createSceneIntegrationHooks(
             result: {
               ...result,
               awaitInput: true,
+              sceneTransition: {
+                sceneId: playback.sceneId,
+              },
               // Store scene info in metadata for external handling
               metadata: {
                 ...(result as any).metadata,

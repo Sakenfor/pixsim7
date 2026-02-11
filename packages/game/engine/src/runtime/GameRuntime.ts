@@ -513,10 +513,14 @@ export class GameRuntime implements IGameRuntime {
         throw new Error(`Failed to load session ${sessionId}`);
       }
 
-      // Load world if requested (requires a world to be already set or inferred from session)
-      let world: GameWorldDetail | null = null;
-      // For now, skip world loading as GameSessionDTO doesn't have world_id
-      // This would need to be determined by the caller or from scene metadata
+      // Preserve existing world unless/until we can reliably infer world_id from session.
+      // This prevents ensureSessionForWorld() from losing the already-loaded world state
+      // when it restores an existing session.
+      let world: GameWorldDetail | null = this.world;
+      if (loadWorld) {
+        // For now, skip world loading as GameSessionDTO doesn't expose world_id.
+        // Keep current world in memory if one is already available.
+      }
 
       // Update internal state
       this.session = session;
@@ -734,6 +738,8 @@ export class GameRuntime implements IGameRuntime {
           await this.loadSession(stored.gameSessionId, false);
           const existing = this.getSession();
           if (existing) {
+            // loadSession() does not infer world from session yet; retain the already loaded world.
+            this.world = world;
             this.log(`Restored existing session ${existing.id} for world ${worldId}`);
             return existing as GameSessionDTO;
           }
@@ -760,8 +766,10 @@ export class GameRuntime implements IGameRuntime {
         ...options.initialFlags,
       };
 
+      const sceneId = this.resolveSceneIdForNewSession(world, options);
+
       // Create new session
-      const newSession = await this.config.apiClient.createSession(1, flags);
+      const newSession = await this.config.apiClient.createSession(sceneId, flags);
       this.session = newSession;
 
       // Sync world_time if needed
@@ -791,6 +799,55 @@ export class GameRuntime implements IGameRuntime {
       this.emitError(error as Error, 'ensureSessionForWorld');
       throw error;
     }
+  }
+
+  private resolveSceneIdForNewSession(
+    world: GameWorldDetail,
+    options: EnsureSessionOptions
+  ): number {
+    const toPositiveInt = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return Math.floor(value);
+      }
+      if (typeof value === 'string' && value.trim().length > 0) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          return Math.floor(parsed);
+        }
+      }
+      return null;
+    };
+
+    const explicit = toPositiveInt(options.sceneId);
+    if (explicit !== null) return explicit;
+
+    const flagsSceneId = toPositiveInt(
+      options.initialFlags?.['sceneId'] ?? options.initialFlags?.['scene_id']
+    );
+    if (flagsSceneId !== null) return flagsSceneId;
+
+    const meta = world.meta as Record<string, unknown> | null | undefined;
+    if (meta) {
+      const metaCandidates = [
+        'defaultSceneId',
+        'default_scene_id',
+        'startSceneId',
+        'start_scene_id',
+        'sceneId',
+        'scene_id',
+      ];
+      for (const key of metaCandidates) {
+        const value = toPositiveInt(meta[key]);
+        if (value !== null) {
+          return value;
+        }
+      }
+    }
+
+    this.log(
+      `No sceneId provided/inferred for world ${world.id}; using fallback sceneId=1`
+    );
+    return 1;
   }
 
   /**

@@ -100,8 +100,8 @@ export interface NodeHandlerResult {
   }>;
   /** Scene transition (for scene nodes) */
   sceneTransition?: {
-    sceneId: number;
-    nodeId?: number;
+    sceneId: string | number;
+    nodeId?: string | number;
   };
   /** Effects that were applied */
   appliedEffects?: any;

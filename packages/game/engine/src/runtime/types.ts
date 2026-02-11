@@ -284,6 +284,8 @@ export interface TickCompletedEvent {
  * Options for ensureSessionForWorld
  */
 export interface EnsureSessionOptions {
+  /** Optional scene ID to bind newly created sessions to */
+  sceneId?: number;
   sessionKind?: 'world' | 'scene' | 'simulation';
   worldMode?: string;
   turnDeltaSeconds?: number;

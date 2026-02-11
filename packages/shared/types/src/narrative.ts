@@ -289,10 +289,10 @@ export interface SceneTransitionNode extends NarrativeNodeBase {
   mode: 'transition' | 'intent';
 
   /** Target scene ID (for mode: 'transition') */
-  sceneId?: number;
+  sceneId?: string | number;
 
   /** Target node ID within scene (optional) */
-  nodeId?: number;
+  nodeId?: string | number;
 
   /** Scene intent to set (for mode: 'intent') */
   intent?: string;
@@ -616,8 +616,8 @@ export interface NarrativeStepResult {
 
   /** Scene transition initiated */
   sceneTransition?: {
-    sceneId: number;
-    nodeId?: number;
+    sceneId: string | number;
+    nodeId?: string | number;
   };
 
   /** Did the program finish? */
@@ -693,4 +693,3 @@ export interface ValidationResult {
   errors: ValidationError[];
   warnings: ValidationError[];
 }
-

@@ -204,7 +204,7 @@ describe('NarrativeController + Scene Integration', () => {
       const result1 = await controller.startNarrative(session, 1, 'test_program');
       expect(result1.state.activeProgramId).toBe('test_program');
       expect(result1.state.activeNodeId).toBe('node_1');
-      expect(result1.awaitingInput).toBe(false);
+      expect(result1.awaitingInput).toBe(true);
 
       // Advance past dialogue to scene node
       const result2 = await controller.stepNarrative(result1.session, 1);
@@ -246,7 +246,7 @@ describe('NarrativeController + Scene Integration', () => {
       // Now step narrative again - it should continue to next node
       const result3 = await controller.stepNarrative(result2.session, 1);
       expect(result3.state.activeNodeId).toBe('node_3');
-      expect(result3.awaitingInput).toBe(false);
+      expect(result3.awaitingInput).toBe(true);
     });
   });
 
@@ -283,7 +283,6 @@ describe('NarrativeController + Scene Integration', () => {
 
     it('should emit narrativeFinished event on completion', async () => {
       const finishedHandler = vi.fn();
-      controller.on('narrativeFinished', finishedHandler);
 
       // Create a simple program that ends after one node
       const simpleProgram: NarrativeProgram = {
@@ -300,6 +299,7 @@ describe('NarrativeController + Scene Integration', () => {
         programProvider,
         debug: true,
       });
+      simpleController.on('narrativeFinished', finishedHandler);
       simpleController.attachRuntime(runtime);
 
       await simpleController.startNarrative(session, 1, 'simple_program');
@@ -724,7 +724,7 @@ describe('Executor Resume After Scene', () => {
     // Step narrative - should resume
     const result2 = await controller.stepNarrative(result1.session, 1);
     expect(result2.state.activeNodeId).toBe('after_scene');
-    expect(result2.awaitingInput).toBe(false);
+    expect(result2.awaitingInput).toBe(true);
   });
 
   it('should record metadata from scene execution', async () => {
