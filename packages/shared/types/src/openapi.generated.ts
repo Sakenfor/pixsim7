@@ -12518,7 +12518,7 @@ export interface components {
          * AssetGroupBy
          * @enum {string}
          */
-        readonly AssetGroupBy: "source" | "generation" | "prompt";
+        readonly AssetGroupBy: "source" | "generation" | "prompt" | "sibling";
         /** AssetGroupGenerationMeta */
         readonly AssetGroupGenerationMeta: {
             /**
@@ -12757,6 +12757,32 @@ export interface components {
              */
             readonly tag?: string | readonly string[] | null;
         };
+        /** AssetGroupSiblingMeta */
+        readonly AssetGroupSiblingMeta: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Generation Id */
+            readonly generation_id: number;
+            /** Hash */
+            readonly hash: string;
+            /**
+             * Kind
+             * @default sibling
+             * @constant
+             */
+            readonly kind: "sibling";
+            /** Operation Type */
+            readonly operation_type: string;
+            /** Prompt Snippet */
+            readonly prompt_snippet?: string | null;
+            /** Provider Id */
+            readonly provider_id: string;
+            /** Status */
+            readonly status?: string | null;
+        };
         /** AssetGroupSourceMeta */
         readonly AssetGroupSourceMeta: {
             /** Asset Id */
@@ -12799,7 +12825,7 @@ export interface components {
              */
             readonly latest_created_at: string;
             /** Meta */
-            readonly meta?: components["schemas"]["AssetGroupSourceMeta"] | components["schemas"]["AssetGroupGenerationMeta"] | components["schemas"]["AssetGroupPromptMeta"] | null;
+            readonly meta?: components["schemas"]["AssetGroupSourceMeta"] | components["schemas"]["AssetGroupGenerationMeta"] | components["schemas"]["AssetGroupPromptMeta"] | components["schemas"]["AssetGroupSiblingMeta"] | null;
             /** Preview Assets */
             readonly preview_assets?: readonly components["schemas"]["AssetResponse"][];
         };
@@ -12941,7 +12967,7 @@ export interface components {
              * @description Filter key/value pairs (registry-defined)
              */
             readonly filters?: Record<string, unknown>;
-            /** @description Group key to filter assets by (source, generation, prompt) */
+            /** @description Group key to filter assets by (source, generation, prompt, sibling) */
             readonly group_by?: components["schemas"]["AssetGroupBy"] | null;
             /**
              * Group Filter

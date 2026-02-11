@@ -1,5 +1,6 @@
 import type { DockviewReadyEvent, DockviewApi } from "dockview-core";
 import { useRef, useEffect, useMemo, useCallback } from "react";
+import { useShallow } from "zustand/react/shallow";
 
 
 import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
@@ -23,9 +24,8 @@ function WorkspaceWatermark() {
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
-  const floatingPanelIds = useWorkspaceStore((s) =>
-    new Set(s.floatingPanels.map((p) => p.id))
-  );
+  const floatingPanelIdList = useWorkspaceStore(useShallow((s) => s.floatingPanels.map((p) => p.id)));
+  const floatingPanelIds = useMemo(() => new Set(floatingPanelIdList), [floatingPanelIdList]);
 
   // Wrap createDefaultLayout to pass floating panel IDs
   const defaultLayoutWithFloatingCheck = useCallback(

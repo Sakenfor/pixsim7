@@ -290,7 +290,7 @@ export function Game2D() {
             if (Number.isFinite(wId)) {
               effectiveWorldId = wId;
             }
-          } else if (ws.length > 0) {
+          } else if (ws && ws.length > 0) {
             effectiveWorldId = ws[0].id;
           }
 

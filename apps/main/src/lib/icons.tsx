@@ -507,7 +507,7 @@ export function Icon({
   }
 
   const shouldUseTheme =
-    typeof className !== 'string' || className.trim().length === 0 || className.trim() === 'text-current';
+    typeof className !== 'string' || className.trim().length === 0;
   const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
   const resolvedClassName = shouldUseTheme
     ? (variant === 'default' ? '' : iconVariants[variant] ?? iconVariants.default)
