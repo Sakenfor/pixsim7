@@ -36,14 +36,14 @@ import {
   QuickGenPanelHost,
   useProvideGenerationWidget,
   useQuickGenPanelLayout,
+  useQuickGenScopeSync,
   useGenerationSettingsStore,
 } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
 
-
-
-const VIEWER_SCOPE_ID = 'viewerQuickGenerate';
+const VIEWER_PANEL_MANAGER_ID = 'viewerQuickGenerate';
+const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
@@ -285,8 +285,11 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     }
   }, [asset.id, asset.sourceGenerationId, mode]);
 
-  // Always use isolated viewer scope - mode only affects initial values, not scope
-  const scopeId = VIEWER_SCOPE_ID;
+  // Scope sync — keeps all viewer quickgen panels in lockstep
+  const { scopeInstanceId, scopeLabel } = useQuickGenScopeSync({
+    panelManagerId: VIEWER_PANEL_MANAGER_ID,
+    panelIds: VIEWER_PANEL_IDS,
+  });
 
   const shouldHide = controlCenterOpen && !alwaysExpanded;
 
@@ -310,7 +313,7 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
 
   // Expanded state - show panel host with viewer scope
   return (
-    <GenerationScopeProvider scopeId={scopeId} label="Viewer Generation">
+    <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
       <ViewerQuickGenerateContent
         asset={asset}
         alwaysExpanded={alwaysExpanded}

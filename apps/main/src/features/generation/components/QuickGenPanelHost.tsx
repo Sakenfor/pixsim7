@@ -215,7 +215,6 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         panels={panels}
         storageKey={storageKey}
         context={context}
-        defaultPanelScopes={['generation']}
         panelManagerId={panelManagerId}
         defaultLayout={createDefaultLayout}
         minPanelsForTabs={minPanelsForTabs}

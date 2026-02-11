@@ -2,7 +2,7 @@ import { Ref } from '@pixsim7/shared.ref.core';
 import type { DockviewApi, IDockviewPanelProps } from 'dockview-core';
 import { useMemo, useEffect, useRef, useCallback } from 'react';
 
-import { getDockviewPanels, useDockviewId } from '@lib/dockview';
+import { getDockviewPanels } from '@lib/dockview';
 
 import {
   CAP_GENERATION_CONTEXT,
@@ -15,116 +15,40 @@ import {
   useGenerationWorkbench,
   useProvideGenerationWidget,
   useQuickGenPanelLayout,
+  useQuickGenScopeSync,
   QuickGenPanelHost,
   GenerationWorkbench,
   GenerationScopeProvider,
   type QuickGenPanelHostRef,
 } from '@features/generation';
-import {
-  ScopeModeSelect,
-  getInstanceId,
-  getScopeMode,
-  panelSettingsScopeRegistry,
-  resolveScopeInstanceId,
-  usePanelInstanceSettingsStore,
-  GENERATION_SCOPE_ID,
-  type PanelSettingsScopeMode,
-} from '@features/panels';
-import type { PanelId } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
 const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
-const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
-
-interface QuickGenerateModuleInnerProps {
-  scopeMode: PanelSettingsScopeMode;
-  onScopeChange: (next: PanelSettingsScopeMode) => void;
-  scopeLabel: string;
-}
 
 export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   // Connect to WebSocket for real-time updates
   useGenerationWebSocket();
-  const dockviewId = useDockviewId();
-  const resolvedPanelId = (props.panelId ?? props.api?.id ?? 'cc-generate') as PanelId;
-  // Use fallback dockviewId to ensure stable storage keys even if context isn't ready yet
-  const stableDockviewId = dockviewId ?? QUICKGEN_PANEL_MANAGER_ID;
-  const panelInstanceId = useMemo(
-    () => getInstanceId(stableDockviewId, resolvedPanelId),
-    [stableDockviewId, resolvedPanelId],
-  );
-  const generationScopeDefinition =
-    panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID) ?? GENERATION_SCOPE_FALLBACK;
-  const instanceScopes = usePanelInstanceSettingsStore(
-    (state) => state.instances[panelInstanceId]?.scopes,
-  );
-  const scopeMode = useMemo(
-    () => getScopeMode(instanceScopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode),
-    [instanceScopes, generationScopeDefinition],
-  );
-  const setScope = usePanelInstanceSettingsStore((state) => state.setScope);
-  const quickgenInstances = useMemo(
-    () =>
-      QUICKGEN_PANEL_IDS.map((panelId) => ({
-        panelId: panelId as PanelId,
-        instanceId: getInstanceId(QUICKGEN_PANEL_MANAGER_ID, panelId),
-      })),
-    [],
-  );
-  const needsScopeSync = usePanelInstanceSettingsStore((state) =>
-    quickgenInstances.some(({ instanceId }) => {
-      const scopes = state.instances[instanceId]?.scopes;
-      return getScopeMode(scopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode) !== scopeMode;
-    }),
-  );
 
-  useEffect(() => {
-    if (!needsScopeSync) return;
-    quickgenInstances.forEach(({ instanceId, panelId }) => {
-      setScope(instanceId, panelId, GENERATION_SCOPE_ID, scopeMode);
-    });
-  }, [needsScopeSync, quickgenInstances, setScope, scopeMode]);
+  const resolvedPanelId = props.panelId ?? props.api?.id ?? 'cc-generate';
 
-  const handleScopeChange = useCallback(
-    (next: PanelSettingsScopeMode) => {
-      setScope(panelInstanceId, resolvedPanelId, GENERATION_SCOPE_ID, next);
-      quickgenInstances.forEach(({ instanceId, panelId }) => {
-        setScope(instanceId, panelId, GENERATION_SCOPE_ID, next);
-      });
-    },
-    [panelInstanceId, resolvedPanelId, quickgenInstances, setScope],
-  );
-
-  const scopeInstanceId = useMemo(() => {
-    if (generationScopeDefinition.resolveScopeId) {
-      return resolveScopeInstanceId(generationScopeDefinition, scopeMode, {
-        instanceId: panelInstanceId,
-        panelId: resolvedPanelId,
-        dockviewId: stableDockviewId,
-      });
-    }
-
-    return scopeMode === 'global' ? 'global' : panelInstanceId;
-  }, [generationScopeDefinition, scopeMode, panelInstanceId, resolvedPanelId, stableDockviewId]);
-
-  const scopeLabel = generationScopeDefinition.label ?? 'Generation Settings';
+  const { scopeInstanceId, scopeLabel } = useQuickGenScopeSync({
+    panelManagerId: QUICKGEN_PANEL_MANAGER_ID,
+    panelIds: QUICKGEN_PANEL_IDS,
+    hostPanelId: resolvedPanelId,
+  });
 
   return (
     <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
-      <QuickGenerateModuleInner
-        scopeMode={scopeMode}
-        onScopeChange={handleScopeChange}
-        scopeLabel={scopeLabel}
-      />
+      <QuickGenerateModuleInner />
     </GenerationScopeProvider>
   );
 }
 
-function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: QuickGenerateModuleInnerProps) {
+function QuickGenerateModuleInner() {
   // Get control center state for open/close (needed before widget hook)
   const ccIsOpen = useControlCenterStore(s => s.isOpen);
   const ccSetOpen = useControlCenterStore(s => s.setOpen);
@@ -278,23 +202,8 @@ function QuickGenerateModuleInner({ scopeMode, onScopeChange, scopeLabel }: Quic
     prevInputLengthRef.current = currentLength;
   }, [operationInputs.length]);
 
-  // Render the main content area based on operation type and input mode
-  const scopeControl = (
-    <div className="flex items-center justify-between rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-900/40 px-2 py-1">
-      <div className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-        {scopeLabel}
-      </div>
-      <ScopeModeSelect
-        value={scopeMode}
-        onChange={onScopeChange}
-        ariaLabel="Generation scope mode"
-      />
-    </div>
-  );
-
   const renderContent = () => (
-    <div className="h-full flex flex-col gap-2">
-      {scopeControl}
+    <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0">
         <div
           key={`dockview-${operationType}-${layout.supportsInputs ? 'with-asset' : 'no-asset'}`}

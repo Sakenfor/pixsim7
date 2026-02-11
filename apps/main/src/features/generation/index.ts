@@ -50,6 +50,8 @@ export { useProvideGenerationWidget } from './hooks/useProvideGenerationWidget';
 export type { UseProvideGenerationWidgetConfig } from './hooks/useProvideGenerationWidget';
 export { useQuickGenPanelLayout } from './hooks/useQuickGenPanelLayout';
 export type { UseQuickGenPanelLayoutConfig } from './hooks/useQuickGenPanelLayout';
+export { useQuickGenScopeSync } from './hooks/useQuickGenScopeSync';
+export type { UseQuickGenScopeSyncConfig, UseQuickGenScopeSyncResult } from './hooks/useQuickGenScopeSync';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
