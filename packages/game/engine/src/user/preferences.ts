@@ -2,10 +2,13 @@
  * User UI Preferences Module
  *
  * Manages per-browser user preferences for accessibility and personalization.
- * Preferences are stored in localStorage and override world themes.
+ * Preferences are stored via the injected KVStorage and override world themes.
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
  */
 
 import type { UserUiPreferences } from '@pixsim7/shared.types';
+import { getKVStorage } from '../core/storageConfig';
 
 const STORAGE_KEY = 'pixsim7:userUiPreferences';
 
@@ -20,11 +23,13 @@ const DEFAULT_PREFERENCES: UserUiPreferences = {
 };
 
 /**
- * Load user preferences from localStorage
+ * Load user preferences from storage
  */
 export function loadUserPreferences(): UserUiPreferences {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storage = getKVStorage();
+    if (!storage) return DEFAULT_PREFERENCES;
+    const stored = storage.getItem(STORAGE_KEY);
     if (!stored) {
       return DEFAULT_PREFERENCES;
     }
@@ -41,11 +46,13 @@ export function loadUserPreferences(): UserUiPreferences {
 }
 
 /**
- * Save user preferences to localStorage
+ * Save user preferences to storage
  */
 export function saveUserPreferences(preferences: UserUiPreferences): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    const storage = getKVStorage();
+    if (!storage) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify(preferences));
   } catch (err) {
     console.error('Failed to save user UI preferences', err);
   }
@@ -68,7 +75,9 @@ export function updateUserPreferences(updates: Partial<UserUiPreferences>): User
  * Reset user preferences to defaults
  */
 export function resetUserPreferences(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = getKVStorage();
+  if (!storage) return;
+  storage.removeItem(STORAGE_KEY);
 }
 
 /**
@@ -80,21 +89,31 @@ export function isHighContrastEnabled(): boolean {
 }
 
 /**
- * Check if user has reduced motion enabled
+ * Check if user has reduced motion enabled.
+ *
+ * @param matchMedia - Optional media query function for system preference detection.
+ *   Pass `window.matchMedia` in browser contexts.  Omit in headless/test environments.
  */
-export function isReducedMotionEnabled(): boolean {
+export function isReducedMotionEnabled(
+  matchMedia?: (query: string) => { matches: boolean },
+): boolean {
   const prefs = loadUserPreferences();
   // Check both user preference and system preference
   return (
     prefs.prefersReducedMotion === true ||
-    (typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    (matchMedia != null && matchMedia('(prefers-reduced-motion: reduce)').matches)
   );
 }
 
 /**
- * Get the effective color scheme (considering user preference and system preference)
+ * Get the effective color scheme (considering user preference and system preference).
+ *
+ * @param matchMedia - Optional media query function for system preference detection.
+ *   Pass `window.matchMedia` in browser contexts.  Omit in headless/test environments.
  */
-export function getEffectiveColorScheme(): 'light' | 'dark' {
+export function getEffectiveColorScheme(
+  matchMedia?: (query: string) => { matches: boolean },
+): 'light' | 'dark' {
   const prefs = loadUserPreferences();
 
   if (prefs.colorScheme === 'light' || prefs.colorScheme === 'dark') {
@@ -102,7 +121,7 @@ export function getEffectiveColorScheme(): 'light' | 'dark' {
   }
 
   // Auto: use system preference
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+  if (matchMedia != null && matchMedia('(prefers-color-scheme: dark)').matches) {
     return 'dark';
   }
 

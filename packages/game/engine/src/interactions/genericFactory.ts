@@ -3,11 +3,13 @@
  *
  * Creates InteractionPlugin instances from frontend interaction manifests.
  * The factory is pure — it turns a manifest schema into a plugin object.
- * The execute implementation uses fetch() to call the manifest's API endpoint.
+ * The execute implementation calls the manifest's API endpoint via an
+ * injected fetch function (no global fetch dependency).
  */
 
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 
+import type { FetchFn } from '../core/types';
 import type { JsonSchema } from './configSchema';
 import { jsonSchemaToConfigFields } from './configSchema';
 import type {
@@ -53,16 +55,25 @@ export interface FrontendInteractionManifest {
 // Factory
 // ============================================================================
 
+export interface GenericInteractionOptions {
+  /** Base URL prepended to manifest.apiEndpoint (default: '/api/v1') */
+  baseUrl?: string;
+  /** Fetch function for HTTP calls. Must be provided by the host environment. */
+  fetch: FetchFn;
+}
+
 /**
  * Create a generic interaction plugin from a manifest.
  *
  * 1. Uses the manifest's configSchema for form generation
- * 2. Calls the manifest's apiEndpoint to execute
+ * 2. Calls the manifest's apiEndpoint via the injected `fetch`
  * 3. Uses the manifest's capabilities for UI hints
  */
 export function createGenericInteraction<
   TConfig extends BaseInteractionConfig = BaseInteractionConfig,
->(manifest: FrontendInteractionManifest): InteractionPlugin<TConfig> {
+>(manifest: FrontendInteractionManifest, options: GenericInteractionOptions): InteractionPlugin<TConfig> {
+  const fetchFn = options.fetch;
+  const baseUrl = options.baseUrl ?? '/api/v1';
   const configFields = jsonSchemaToConfigFields(manifest.configSchema);
 
   const defaultConfig = {
@@ -111,7 +122,7 @@ export function createGenericInteraction<
         );
         Object.assign(requestPayload, configPayload);
 
-        const response = await fetch(`/api/v1${manifest.apiEndpoint}`, {
+        const response = await fetchFn(`${baseUrl}${manifest.apiEndpoint}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestPayload),

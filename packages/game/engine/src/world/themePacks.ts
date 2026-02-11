@@ -3,10 +3,14 @@
  *
  * Support for bundling and sharing multiple theme presets as packs.
  * Packs can be exported to/imported from JSON files for easy sharing.
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
+ * File download is injected via a callback — no direct DOM access.
  */
 
 import type { WorldUiTheme } from '@pixsim7/shared.types';
 import type { WorldUiThemePreset } from './worldUiThemePresets';
+import { getKVStorage } from '../core/storageConfig';
 
 /**
  * A collection of theme presets bundled together
@@ -228,11 +232,13 @@ export const BUILT_IN_THEME_PACKS: ThemePack[] = [
 const STORAGE_KEY = 'pixsim7:themePacks';
 
 /**
- * Load custom theme packs from localStorage
+ * Load custom theme packs from storage
  */
 export function loadCustomPacks(): ThemePack[] {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storage = getKVStorage();
+    if (!storage) return [];
+    const stored = storage.getItem(STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored);
     return Array.isArray(parsed) ? parsed : [];
@@ -243,11 +249,13 @@ export function loadCustomPacks(): ThemePack[] {
 }
 
 /**
- * Save custom theme packs to localStorage
+ * Save custom theme packs to storage
  */
 function saveCustomPacks(packs: ThemePack[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(packs));
+    const storage = getKVStorage();
+    if (!storage) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify(packs));
   } catch (err) {
     console.error('Failed to save custom theme packs', err);
   }
@@ -367,20 +375,36 @@ export function importThemePack(jsonString: string): ThemePack | undefined {
 }
 
 /**
- * Download a theme pack as a JSON file
+ * Callback that triggers a file download from a JSON string.
+ *
+ * Browser environments should provide a DOM-based implementation:
+ * ```ts
+ * (filename, json) => {
+ *   const blob = new Blob([json], { type: 'application/json' });
+ *   const url = URL.createObjectURL(blob);
+ *   const a = document.createElement('a');
+ *   a.href = url;
+ *   a.download = filename;
+ *   document.body.appendChild(a);
+ *   a.click();
+ *   document.body.removeChild(a);
+ *   URL.revokeObjectURL(url);
+ * }
+ * ```
  */
-export function downloadThemePack(pack: ThemePack): void {
-  const json = exportThemePack(pack);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+export type DownloadFileFn = (filename: string, json: string) => void;
 
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${pack.id}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+/**
+ * Download a theme pack as a JSON file.
+ *
+ * @param pack - Theme pack to export
+ * @param downloadFile - Callback that performs the actual file download.
+ *   The engine does not access the DOM directly; the host environment
+ *   must provide a browser-specific or platform-specific implementation.
+ */
+export function downloadThemePack(pack: ThemePack, downloadFile: DownloadFileFn): void {
+  const json = exportThemePack(pack);
+  downloadFile(`${pack.id}.json`, json);
 }
 
 /**
@@ -413,5 +437,7 @@ export function createThemePackFromThemes(
  * Clear all custom theme packs (for testing/reset)
  */
 export function clearCustomPacks(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = getKVStorage();
+  if (!storage) return;
+  storage.removeItem(STORAGE_KEY);
 }

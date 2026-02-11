@@ -2,10 +2,13 @@
  * User Content Preferences Module
  *
  * Manages per-browser user content preferences for generation filtering.
- * Preferences are stored in localStorage and globally constrain all generation.
+ * Preferences are stored via the injected KVStorage and globally constrain all generation.
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
  */
 
 import type { UserContentPreferences } from '@pixsim7/shared.types';
+import { getKVStorage } from '../core/storageConfig';
 
 const STORAGE_KEY = 'pixsim7:userContentPreferences';
 
@@ -19,7 +22,7 @@ const DEFAULT_CONTENT_PREFERENCES: UserContentPreferences = {
 };
 
 /**
- * Load user content preferences from localStorage
+ * Load user content preferences from storage
  *
  * @returns User content preferences or defaults
  *
@@ -31,7 +34,9 @@ const DEFAULT_CONTENT_PREFERENCES: UserContentPreferences = {
  */
 export function loadUserContentPreferences(): UserContentPreferences {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storage = getKVStorage();
+    if (!storage) return DEFAULT_CONTENT_PREFERENCES;
+    const stored = storage.getItem(STORAGE_KEY);
     if (!stored) {
       return DEFAULT_CONTENT_PREFERENCES;
     }
@@ -48,7 +53,7 @@ export function loadUserContentPreferences(): UserContentPreferences {
 }
 
 /**
- * Save user content preferences to localStorage
+ * Save user content preferences to storage
  *
  * @param preferences - Content preferences to save
  *
@@ -62,7 +67,9 @@ export function loadUserContentPreferences(): UserContentPreferences {
  */
 export function saveUserContentPreferences(preferences: UserContentPreferences): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+    const storage = getKVStorage();
+    if (!storage) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify(preferences));
   } catch (err) {
     console.error('Failed to save user content preferences', err);
   }
@@ -104,7 +111,9 @@ export function updateUserContentPreferences(
  * ```
  */
 export function resetUserContentPreferences(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = getKVStorage();
+  if (!storage) return;
+  storage.removeItem(STORAGE_KEY);
 }
 
 /**

@@ -3,9 +3,12 @@
  *
  * Allow themes to automatically change based on world state
  * (time of day, arc progression, relationship levels, etc.)
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
  */
 
 import type { GameWorldDetail, GameSessionDTO, WorldUiTheme } from '@pixsim7/shared.types';
+import { getKVStorage } from '../core/storageConfig';
 
 /**
  * Condition type for theme rules
@@ -182,9 +185,9 @@ function evaluateCondition(
 
     case 'turnNumber': {
       if (!session || !session.flags) return false;
-      const world = (session.flags as any).world;
-      if (!world || typeof world !== 'object') return false;
-      const turnNumber = (world as any).turnNumber || 0;
+      const worldFlags = (session.flags as any).world;
+      if (!worldFlags || typeof worldFlags !== 'object') return false;
+      const turnNumber = (worldFlags as any).turnNumber || 0;
       const meetsMin = turnNumber >= condition.minTurn;
       const meetsMax = condition.maxTurn === undefined || turnNumber <= condition.maxTurn;
       return meetsMin && meetsMax;
@@ -275,11 +278,13 @@ export function applyDynamicThemeRule(
 const STORAGE_KEY = 'pixsim7:dynamicThemeRules';
 
 /**
- * Load user's dynamic theme rules from localStorage
+ * Load user's dynamic theme rules from storage
  */
 export function loadDynamicThemeRules(): DynamicThemeRule[] {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storage = getKVStorage();
+    if (!storage) return [...DYNAMIC_THEME_RULE_PRESETS];
+    const stored = storage.getItem(STORAGE_KEY);
     if (!stored) return [...DYNAMIC_THEME_RULE_PRESETS];
 
     const parsed = JSON.parse(stored);
@@ -291,11 +296,13 @@ export function loadDynamicThemeRules(): DynamicThemeRule[] {
 }
 
 /**
- * Save dynamic theme rules to localStorage
+ * Save dynamic theme rules to storage
  */
 export function saveDynamicThemeRules(rules: DynamicThemeRule[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
+    const storage = getKVStorage();
+    if (!storage) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify(rules));
   } catch (err) {
     console.error('Failed to save dynamic theme rules', err);
   }
