@@ -189,6 +189,14 @@ const relationshipsAdapter: SessionStatAdapter = {
       storagePatch.flags = relPatch.flags;
     }
 
+    // Preserve explicit level/tier writes when requested by caller.
+    if (relPatch.levelId !== undefined) {
+      storagePatch.levelId = relPatch.levelId;
+    }
+    if (relPatch.tierId !== undefined) {
+      storagePatch.tierId = relPatch.tierId;
+    }
+
     return storagePatch;
   },
 };

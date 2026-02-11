@@ -132,8 +132,10 @@ export function setNpcRelationshipState(
   // Apply flag patches
   if (patch.flags !== undefined) current.flags = patch.flags;
 
-  // Note: Don't set tierId/levelId here - backend is authoritative
-  // They will be recomputed by backend on next session update
+  // Apply explicit level/tier patches when provided.
+  // Backend remains authoritative and may normalize/override these values.
+  if (patch.levelId !== undefined) current.levelId = patch.levelId;
+  if (patch.tierId !== undefined) current.tierId = patch.tierId;
 
   relationships[npcKey] = current;
   return newSession;

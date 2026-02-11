@@ -51,9 +51,14 @@ const BASE_RETRY_DELAY_MS = 100;
 /**
  * Simple logger for session operations
  */
+const processEnv = (
+  globalThis as { process?: { env?: { NODE_ENV?: string } } }
+)?.process?.env;
+const isDevelopment = processEnv?.NODE_ENV === 'development';
+
 const logger = {
   info: (msg: string, data?: any) => {
-    if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development') {
+    if (isDevelopment) {
       console.log(`[SessionAdapter] ${msg}`, data ?? '');
     }
   },
