@@ -81,6 +81,7 @@
 import './ContextSettings';
 import './GenerationSettings';
 import './IconSettings';
+import './ThemeSettings';
 import './LibrarySettings';
 import './NodesSettings';
 import './PromptsSettings';

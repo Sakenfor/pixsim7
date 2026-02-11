@@ -16,6 +16,7 @@ import { ContextHubRootProviders } from '@features/contextHub/components/Context
 import { ControlCenterManager } from '@features/controlCenter';
 import { useInitializePanelSystem } from '@features/panels';
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
+import { useApplyTheme } from '@features/theme';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
@@ -54,6 +55,8 @@ function App() {
 
   // Initialize theme (applies saved theme or system preference)
   useTheme();
+  // Apply accent color theme class to <html>
+  useApplyTheme();
 
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
