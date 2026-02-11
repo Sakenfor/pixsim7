@@ -4,6 +4,10 @@
  * Aggregates entity completeness into a project-level view.
  * A "project" is conceptually one world — the manifest describes
  * what content it contains and how ready it is for play.
+ *
+ * Entity-level checks come from the CompletenessRegistry — each feature
+ * registers its own providers.  Cross-entity checks live here because
+ * they span multiple entity types.
  */
 
 import type {
@@ -14,9 +18,9 @@ import type {
   SceneAuthoringInput,
   CompletenessCheck,
 } from './types';
-import { checkNpcBatchCompleteness } from './npcCompleteness';
-import { checkLocationBatchCompleteness } from './locationCompleteness';
-import { checkSceneBatchCompleteness } from './sceneCompleteness';
+import type { CompletenessRegistry } from './registry';
+import { completenessRegistry } from './registry';
+import { registerAllBuiltins } from './builtins';
 
 // ---------------------------------------------------------------------------
 // Manifest type
@@ -62,7 +66,16 @@ export interface ProjectManifestInput {
   scenes: SceneAuthoringInput[];
   /** Set to true to include per-entity detail in the manifest */
   includeEntityDetail?: boolean;
+  /**
+   * Registry to pull check providers from.
+   * Defaults to the shared singleton (with built-ins auto-registered).
+   */
+  registry?: CompletenessRegistry;
 }
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
 
 function aggregate(results: EntityCompleteness[]): AggregateCompleteness {
   const total = results.length;
@@ -79,6 +92,27 @@ function aggregate(results: EntityCompleteness[]): AggregateCompleteness {
   };
 }
 
+/** Run a registry's providers against every item in `items` for `entityType`. */
+function runBatch<T extends { id: number | string; name?: string }>(
+  registry: CompletenessRegistry,
+  entityType: 'npc' | 'location' | 'scene',
+  items: T[],
+  nameAccessor: (item: T) => string,
+): EntityCompleteness[] {
+  return items.map((item) => {
+    const checks = registry.runChecks(entityType, item);
+    const passed = checks.filter((c) => c.status === 'complete').length;
+    const total = checks.length;
+    return {
+      entityType,
+      entityId: item.id,
+      entityName: nameAccessor(item),
+      checks,
+      score: total === 0 ? 1 : passed / total,
+    };
+  });
+}
+
 /**
  * Cross-entity checks that look at relationships between NPCs, locations,
  * and scenes rather than individual entity readiness.
@@ -86,7 +120,7 @@ function aggregate(results: EntityCompleteness[]): AggregateCompleteness {
 function runCrossChecks(
   npcs: NpcAuthoringInput[],
   locations: LocationAuthoringInput[],
-  _scenes: SceneAuthoringInput[],
+  scenes: SceneAuthoringInput[],
 ): CompletenessCheck[] {
   const checks: CompletenessCheck[] = [];
   const locationIds = new Set(locations.map((l) => String(l.id)));
@@ -155,23 +189,48 @@ function runCrossChecks(
   checks.push({
     id: 'cross.hasScenes',
     label: 'Has at least one scene',
-    status: _scenes.length > 0 ? 'complete' : 'incomplete',
-    detail: _scenes.length === 0 ? 'Add a scene with dialogue or narrative content' : undefined,
+    status: scenes.length > 0 ? 'complete' : 'incomplete',
+    detail: scenes.length === 0 ? 'Add a scene with dialogue or narrative content' : undefined,
   });
 
   return checks;
 }
 
+// ---------------------------------------------------------------------------
+// Ensure built-ins are registered on first use
+// ---------------------------------------------------------------------------
+
+let builtinsRegistered = false;
+
+function ensureBuiltins(registry: CompletenessRegistry): void {
+  if (registry === completenessRegistry && !builtinsRegistered) {
+    registerAllBuiltins(registry);
+    builtinsRegistered = true;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
  * Build a full project manifest from raw content data.
  *
- * This is the main entry point — pass in all your NPCs, locations, and scenes
- * and get back a comprehensive health report.
+ * Uses check providers from the registry. If no custom registry is supplied,
+ * the default singleton (with built-in checks) is used.
  */
 export function buildProjectManifest(input: ProjectManifestInput): ProjectManifest {
-  const npcResults = checkNpcBatchCompleteness(input.npcs);
-  const locationResults = checkLocationBatchCompleteness(input.locations);
-  const sceneResults = checkSceneBatchCompleteness(input.scenes);
+  const registry = input.registry ?? completenessRegistry;
+  ensureBuiltins(registry);
+
+  const npcResults = runBatch(registry, 'npc', input.npcs, (n) => n.name);
+  const locationResults = runBatch(registry, 'location', input.locations, (l) => l.name);
+  const sceneResults = runBatch(
+    registry,
+    'scene',
+    input.scenes.map((s) => ({ ...s, name: s.title })),
+    (s) => s.name,
+  );
 
   const totalHotspots = input.locations.reduce(
     (sum, l) => sum + (l.hotspots?.length ?? 0),

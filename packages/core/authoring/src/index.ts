@@ -1,34 +1,39 @@
 /**
  * @pixsim7/core.authoring
  *
- * Game authoring primitives: project manifest, entity completeness checks,
- * and project presets. Framework-agnostic — no React, no API calls.
+ * Game authoring primitives: completeness registry, project manifest,
+ * entity check providers, and project presets.
  *
- * ## Quick start
+ * ## Architecture
+ *
+ * Each feature/package registers its own check providers into the
+ * `completenessRegistry`.  Built-in providers ship with this package
+ * and are auto-registered on first use.
  *
  * ```typescript
- * import {
- *   buildProjectManifest,
- *   computeProjectReadiness,
- *   getProjectPresetList,
- * } from '@pixsim7/core.authoring';
+ * import { completenessRegistry, buildProjectManifest } from '@pixsim7/core.authoring';
  *
- * const manifest = buildProjectManifest({
- *   worldId: 1,
- *   worldName: 'My Game',
- *   npcs: [...],
- *   locations: [...],
- *   scenes: [...],
- *   includeEntityDetail: true,
- * });
+ * // Features register domain-specific checks
+ * completenessRegistry.register('npc', 'myFeature.dialogue', (npc) => [
+ *   { id: 'npc.hasGreeting', label: 'Has greeting', status: npc.meta?.greetingId ? 'complete' : 'incomplete' },
+ * ]);
  *
- * console.log(manifest.counts);              // { npcs: 3, locations: 5, ... }
- * console.log(manifest.npcCompleteness);     // { totalEntities: 3, fullyComplete: 1, ... }
- * console.log(computeProjectReadiness(manifest)); // 0.72
+ * // Build manifest runs all registered providers
+ * const manifest = buildProjectManifest({ npcs, locations, scenes });
  * ```
  */
 
+// ---------------------------------------------------------------------------
+// Registry (the protocol)
+// ---------------------------------------------------------------------------
+
+export type { CheckProvider, CompletenessRegistry } from './registry';
+export { completenessRegistry, createCompletenessRegistry } from './registry';
+
+// ---------------------------------------------------------------------------
 // Types
+// ---------------------------------------------------------------------------
+
 export type {
   CompletenessCheck,
   EntityCompleteness,
@@ -38,25 +43,51 @@ export type {
   SceneAuthoringInput,
 } from './types';
 
-// NPC completeness
+// ---------------------------------------------------------------------------
+// Built-in registration
+// ---------------------------------------------------------------------------
+
+export { registerAllBuiltins } from './builtins';
+export { registerBuiltinNpcChecks } from './npcCompleteness';
+export { registerBuiltinLocationChecks } from './locationCompleteness';
+export { registerBuiltinSceneChecks } from './sceneCompleteness';
+
+// ---------------------------------------------------------------------------
+// Built-in check providers (for replacement / composition)
+// ---------------------------------------------------------------------------
+
 export {
-  checkNpcCompleteness,
-  checkNpcBatchCompleteness,
+  checkNpcIdentity,
+  checkNpcPortrait,
+  checkNpcExpressions,
+  checkNpcSchedule,
+  checkNpcHomeLocation,
+  checkNpcPreferences,
+  checkNpcPersonality,
 } from './npcCompleteness';
 
-// Location completeness
 export {
-  checkLocationCompleteness,
-  checkLocationBatchCompleteness,
+  checkLocationIdentity,
+  checkLocationBackground,
+  checkLocationHotspots,
+  checkLocationNavigation,
+  checkLocationNpcSlots,
 } from './locationCompleteness';
 
-// Scene completeness
 export {
-  checkSceneCompleteness,
-  checkSceneBatchCompleteness,
+  checkSceneIdentity,
+  checkSceneStartNode,
+  checkSceneNodes,
+  checkSceneEndNode,
+  checkSceneReachability,
+  checkSceneDeadEnds,
+  checkSceneContent,
 } from './sceneCompleteness';
 
+// ---------------------------------------------------------------------------
 // Project manifest & health
+// ---------------------------------------------------------------------------
+
 export type {
   ProjectManifest,
   ProjectManifestInput,
@@ -66,7 +97,10 @@ export {
   computeProjectReadiness,
 } from './projectManifest';
 
+// ---------------------------------------------------------------------------
 // Project defaults & presets
+// ---------------------------------------------------------------------------
+
 export type {
   ProjectPreset,
   ProjectScaffold,

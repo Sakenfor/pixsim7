@@ -1,15 +1,16 @@
 /**
- * Location Completeness Checks
+ * Location Completeness Checks — Built-in providers
  *
- * Evaluates how "ready for play" a location is by checking for
- * required authoring data: background asset, hotspots, navigation, NPC slots.
+ * Each provider inspects one aspect of a location.
+ * `registerBuiltinLocationChecks` adds them all to a registry.
  */
 
-import type {
-  CompletenessCheck,
-  EntityCompleteness,
-  LocationAuthoringInput,
-} from './types';
+import type { CompletenessCheck, LocationAuthoringInput } from './types';
+import type { CheckProvider, CompletenessRegistry } from './registry';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function check(
   id: string,
@@ -33,29 +34,27 @@ function warn(
   return { id, label, status: 'warning', detail };
 }
 
-/**
- * Run all completeness checks for a single location.
- */
-export function checkLocationCompleteness(loc: LocationAuthoringInput): EntityCompleteness {
+// ---------------------------------------------------------------------------
+// Individual providers
+// ---------------------------------------------------------------------------
+
+export const checkLocationIdentity: CheckProvider<LocationAuthoringInput> = (loc) => [
+  check('loc.hasName', 'Has a name', loc.name.trim().length > 0, 'Location needs a name'),
+];
+
+export const checkLocationBackground: CheckProvider<LocationAuthoringInput> = (loc) => [
+  check(
+    'loc.hasBackground',
+    'Has a background asset',
+    loc.assetId != null,
+    'Assign a background image or 3D model so the location is visually represented',
+  ),
+];
+
+export const checkLocationHotspots: CheckProvider<LocationAuthoringInput> = (loc) => {
   const checks: CompletenessCheck[] = [];
-
-  // --- Identity ---
-  checks.push(
-    check('loc.hasName', 'Has a name', loc.name.trim().length > 0, 'Location needs a name'),
-  );
-
-  // --- Background ---
-  checks.push(
-    check(
-      'loc.hasBackground',
-      'Has a background asset',
-      loc.assetId != null,
-      'Assign a background image or 3D model so the location is visually represented',
-    ),
-  );
-
-  // --- Hotspots ---
   const hotspots = loc.hotspots ?? [];
+
   checks.push(
     check(
       'loc.hasHotspots',
@@ -65,35 +64,6 @@ export function checkLocationCompleteness(loc: LocationAuthoringInput): EntityCo
     ),
   );
 
-  // --- Navigation ---
-  const navHotspots = hotspots.filter((h) => h.action?.type === 'change_location');
-  checks.push(
-    check(
-      'loc.hasNavigation',
-      'Has navigation to other locations',
-      navHotspots.length > 0,
-      'Add at least one hotspot that navigates to another location so the player can move around',
-    ),
-  );
-
-  // --- NPC slots (2D) ---
-  const slotCount = loc.npcSlots2d?.length ?? 0;
-  if (slotCount === 0) {
-    // Only warn — not all games use 2D NPC slots
-    checks.push(
-      warn(
-        'loc.noNpcSlots',
-        'No NPC placement slots',
-        'Define NPC slots if this location should show NPCs in 2D view',
-      ),
-    );
-  } else {
-    checks.push(
-      check('loc.hasNpcSlots', 'Has NPC placement slots', true),
-    );
-  }
-
-  // --- Hotspot validity ---
   const actionsWithoutType = hotspots.filter((h) => h.action == null);
   if (actionsWithoutType.length > 0) {
     checks.push(
@@ -105,23 +75,44 @@ export function checkLocationCompleteness(loc: LocationAuthoringInput): EntityCo
     );
   }
 
-  const passed = checks.filter((c) => c.status === 'complete').length;
-  const total = checks.length;
+  return checks;
+};
 
-  return {
-    entityType: 'location',
-    entityId: loc.id,
-    entityName: loc.name,
-    checks,
-    score: total === 0 ? 1 : passed / total,
-  };
-}
+export const checkLocationNavigation: CheckProvider<LocationAuthoringInput> = (loc) => {
+  const navHotspots = (loc.hotspots ?? []).filter((h) => h.action?.type === 'change_location');
+  return [
+    check(
+      'loc.hasNavigation',
+      'Has navigation to other locations',
+      navHotspots.length > 0,
+      'Add at least one hotspot that navigates to another location so the player can move around',
+    ),
+  ];
+};
 
-/**
- * Run completeness checks for a batch of locations.
- */
-export function checkLocationBatchCompleteness(
-  locations: LocationAuthoringInput[],
-): EntityCompleteness[] {
-  return locations.map(checkLocationCompleteness);
+export const checkLocationNpcSlots: CheckProvider<LocationAuthoringInput> = (loc) => {
+  const slotCount = loc.npcSlots2d?.length ?? 0;
+  if (slotCount === 0) {
+    return [
+      warn(
+        'loc.noNpcSlots',
+        'No NPC placement slots',
+        'Define NPC slots if this location should show NPCs in 2D view',
+      ),
+    ];
+  }
+  return [check('loc.hasNpcSlots', 'Has NPC placement slots', true)];
+};
+
+// ---------------------------------------------------------------------------
+// Registration
+// ---------------------------------------------------------------------------
+
+/** Register all built-in location check providers into a registry. */
+export function registerBuiltinLocationChecks(registry: CompletenessRegistry): void {
+  registry.register('location', 'core.identity', checkLocationIdentity);
+  registry.register('location', 'core.background', checkLocationBackground);
+  registry.register('location', 'core.hotspots', checkLocationHotspots);
+  registry.register('location', 'core.navigation', checkLocationNavigation);
+  registry.register('location', 'core.npcSlots', checkLocationNpcSlots);
 }
