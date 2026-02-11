@@ -4,16 +4,20 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { AssetSearchRequest } from '@lib/api/assets';
 import { BACKEND_BASE } from '@lib/api/client';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { getGeneration, createGeneration } from '@lib/api/generations';
+import { getGeneration } from '@lib/api/generations';
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 
 import { useMediaGenerationActions } from '@features/generation';
+import { generateAsset } from '@features/generation/lib/api';
+import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
+import { providerCapabilityRegistry } from '@features/providers';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { useFilterPersistence } from '@/hooks/useFilterPersistence';
 import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
+import type { OperationType } from '@/types/operations';
 
 import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
@@ -27,6 +31,102 @@ import { useAssets, type AssetModel } from './useAssets';
 
 
 const SESSION_KEY = 'assets_filters';
+
+function stripSeedFromValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripSeedFromValue(entry));
+  }
+  if (value && typeof value === 'object') {
+    const next: Record<string, unknown> = {};
+    Object.entries(value as Record<string, unknown>).forEach(([key, entry]) => {
+      if (key === 'seed') {
+        return;
+      }
+      next[key] = stripSeedFromValue(entry);
+    });
+    return next;
+  }
+  return value;
+}
+
+function stripSeedFromParams(params: Record<string, unknown>): Record<string, unknown> {
+  const stripped = stripSeedFromValue(params);
+  if (!stripped || typeof stripped !== 'object' || Array.isArray(stripped)) {
+    return {};
+  }
+  return stripped as Record<string, unknown>;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeGenerationParamsCandidate(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  if (!record) return {};
+
+  const generationConfig = asRecord(record.generation_config ?? record.generationConfig) ?? {};
+  const root: Record<string, unknown> = {};
+
+  Object.entries(record).forEach(([key, entry]) => {
+    if (key === 'generation_config' || key === 'generationConfig') {
+      return;
+    }
+    root[key] = entry;
+  });
+
+  // Back-compat for older records that only stored request fields under generation_config.
+  return {
+    ...generationConfig,
+    ...root,
+  };
+}
+
+function pickGenerationParams(original: Record<string, unknown>): Record<string, unknown> {
+  const candidates = [
+    (original as any).canonical_params,
+    (original as any).canonicalParams,
+    (original as any).raw_params,
+    (original as any).rawParams,
+    (original as any).params,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeGenerationParamsCandidate(candidate);
+    if (Object.keys(normalized).length > 0) {
+      return normalized;
+    }
+  }
+
+  return {};
+}
+
+function paramsIncludeSeed(params: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(params, 'seed');
+}
+
+async function operationSupportsSeedParam(
+  providerId: string | undefined,
+  operationType: OperationType,
+): Promise<boolean> {
+  if (!providerId) return false;
+
+  try {
+    await providerCapabilityRegistry.fetchCapabilities();
+  } catch {
+    // Best effort. If fetch fails, fall back to currently cached specs.
+  }
+
+  const spec = providerCapabilityRegistry.getOperationSpec(providerId, operationType);
+  const parameters = Array.isArray((spec as { parameters?: Array<{ name?: string }> } | null)?.parameters)
+    ? (spec as { parameters?: Array<{ name?: string }> }).parameters!
+    : [];
+
+  return parameters.some((param) => param?.name === 'seed');
+}
 
 /**
  * Hook: useAssetsController
@@ -220,14 +320,29 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     try {
       // Fetch the original generation
       const original = await getGeneration(generationId);
+      const sourceParams = pickGenerationParams(original as unknown as Record<string, unknown>);
+      const cleanedParams = stripSeedFromParams(sourceParams);
 
-      // Create a new generation with the same parameters
-      await createGeneration({
-        operation_type: original.operation_type,
-        provider_id: original.provider_id,
-        params: original.params,
-        prompt: original.prompt,
-        source_asset_ids: original.source_asset_ids,
+      const shouldRandomizeSeed =
+        paramsIncludeSeed(sourceParams)
+        || await operationSupportsSeedParam(
+          original.provider_id,
+          original.operation_type as OperationType,
+        );
+      if (shouldRandomizeSeed) {
+        cleanedParams.seed = nextRandomGenerationSeed();
+      }
+
+      const promptFromParams = typeof cleanedParams.prompt === 'string' ? cleanedParams.prompt : '';
+      const prompt = (original.final_prompt && original.final_prompt.trim() !== '')
+        ? original.final_prompt
+        : promptFromParams;
+
+      await generateAsset({
+        prompt,
+        providerId: original.provider_id,
+        operationType: original.operation_type as OperationType,
+        extraParams: cleanedParams,
       });
 
       // Refresh to show the new generation

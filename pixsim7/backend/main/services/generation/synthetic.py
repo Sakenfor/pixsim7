@@ -270,10 +270,14 @@ class SyntheticGenerationService:
             create_mode=create_mode,
         )
 
-        # Compute reproducible hash
+        # Compute seed-agnostic sibling hash.
         reproducible_hash = None
         if inputs:
-            reproducible_hash = Generation.compute_hash(canonical_params, inputs)
+            reproducible_hash = Generation.compute_hash(
+                canonical_params,
+                inputs,
+                include_seed=False,
+            )
         else:
             logger.debug(
                 "synthetic_generation_skip_hash",
@@ -457,7 +461,7 @@ async def find_sibling_assets(
     """
     Find assets that are variations of the same generation request.
 
-    Siblings share the same reproducible_hash (same inputs + params).
+    Siblings share the same reproducible_hash (same inputs + params, seed ignored).
 
     Scoped by user_id to prevent privacy leak - hash collisions
     could otherwise surface other users' assets.

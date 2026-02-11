@@ -79,8 +79,14 @@ function buildGenerationConfig(
   for (const [key, value] of Object.entries(merged)) {
     if (value === undefined) continue;
     if (CANONICAL_CONFIG_KEYS.has(key)) continue;
-    // Omit seed when falsy (0, null, '') — let the provider randomize
-    if (key === 'seed' && !value) continue;
+    // Omit seed only when truly unset/blank.
+    // Keep numeric 0 for providers that interpret seed=0 as randomized.
+    if (
+      key === 'seed'
+      && (value === undefined || value === null || (typeof value === 'string' && value.trim() === ''))
+    ) {
+      continue;
+    }
     providerSettings[key] = value;
   }
 

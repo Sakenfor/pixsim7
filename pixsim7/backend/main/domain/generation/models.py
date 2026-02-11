@@ -259,16 +259,50 @@ class Generation(SQLModel, table=True):
         }
 
     @staticmethod
-    def compute_hash(canonical_params: Dict[str, Any], inputs: List[Dict[str, Any]]) -> str:
+    def _normalize_for_hash(value: Any, *, include_seed: bool) -> Any:
+        """
+        Normalize nested structures before hashing.
+
+        When include_seed is False, removes any key named "seed" (case-insensitive)
+        at any depth so variant seeds can still belong to the same sibling family.
+        """
+        if isinstance(value, dict):
+            normalized: Dict[str, Any] = {}
+            for key, entry in value.items():
+                if (
+                    not include_seed
+                    and isinstance(key, str)
+                    and key.lower() == "seed"
+                ):
+                    continue
+                normalized[key] = Generation._normalize_for_hash(entry, include_seed=include_seed)
+            return normalized
+        if isinstance(value, list):
+            return [Generation._normalize_for_hash(entry, include_seed=include_seed) for entry in value]
+        return value
+
+    @staticmethod
+    def compute_hash(
+        canonical_params: Dict[str, Any],
+        inputs: List[Dict[str, Any]],
+        *,
+        include_seed: bool = True,
+    ) -> str:
         """
         Compute stable SHA256 over canonical params + inputs.
 
-        Ensures dict keys order doesn't affect hash by dumping with sort_keys.
-        This is the same logic from GenerationArtifact.compute_hash.
+        Ensures dict key order does not affect the hash by dumping with sort_keys.
+        Set include_seed=False to derive seed-agnostic sibling grouping hashes.
         """
         data = {
-            "canonical_params": canonical_params,
-            "inputs": inputs,
+            "canonical_params": Generation._normalize_for_hash(
+                canonical_params,
+                include_seed=include_seed,
+            ),
+            "inputs": Generation._normalize_for_hash(
+                inputs,
+                include_seed=include_seed,
+            ),
         }
         raw = json.dumps(data, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()

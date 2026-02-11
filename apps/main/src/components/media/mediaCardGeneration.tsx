@@ -34,9 +34,10 @@ import {
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
 import { createPendingGeneration } from '@features/generation/models';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
-import { useOperationSpec, useProviderIdForModel } from '@features/providers';
+import { providerCapabilityRegistry, useOperationSpec, useProviderIdForModel } from '@features/providers';
 
 import { OPERATION_METADATA, getFallbackOperation, type OperationType } from '@/types/operations';
 
@@ -85,6 +86,66 @@ function stripSeedFromParams(params: Record<string, unknown>): Record<string, un
     return {};
   }
   return stripped as Record<string, unknown>;
+}
+
+function paramsIncludeSeed(params: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(params, 'seed');
+}
+
+async function operationSupportsSeedParam(
+  providerId: string | undefined,
+  operationType: OperationType,
+): Promise<boolean> {
+  if (!providerId) return false;
+
+  try {
+    await providerCapabilityRegistry.fetchCapabilities();
+  } catch {
+    // Best effort. If fetch fails, fall back to whatever is currently cached.
+  }
+
+  const spec = providerCapabilityRegistry.getOperationSpec(providerId, operationType);
+  const parameters = Array.isArray((spec as { parameters?: Array<{ name?: string }> } | null)?.parameters)
+    ? (spec as { parameters?: Array<{ name?: string }> }).parameters!
+    : [];
+
+  return parameters.some((param) => param?.name === 'seed');
+}
+
+function hasAssetInputs(params: Record<string, unknown>): boolean {
+  const asRecord = params as Record<string, unknown>;
+
+  const compositionAssets = asRecord.composition_assets ?? asRecord.compositionAssets;
+  if (Array.isArray(compositionAssets) && compositionAssets.length > 0) {
+    return true;
+  }
+
+  const sourceAssetIds = asRecord.source_asset_ids ?? asRecord.sourceAssetIds;
+  if (Array.isArray(sourceAssetIds) && sourceAssetIds.length > 0) {
+    return true;
+  }
+
+  const imageUrls = asRecord.image_urls ?? asRecord.imageUrls;
+  if (Array.isArray(imageUrls) && imageUrls.length > 0) {
+    return true;
+  }
+
+  const singleInputCandidates = [
+    asRecord.source_asset_id,
+    asRecord.sourceAssetId,
+    asRecord.image_url,
+    asRecord.imageUrl,
+    asRecord.video_url,
+    asRecord.videoUrl,
+    asRecord.original_video_id,
+    asRecord.originalVideoId,
+  ];
+
+  return singleInputCandidates.some((value) => {
+    if (typeof value === 'number') return Number.isFinite(value);
+    if (typeof value === 'string') return value.trim() !== '';
+    return false;
+  });
 }
 
 /**
@@ -264,8 +325,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       successMessage: string;
     }) => {
       const { operationType: requestedOperationType, providerId, prompt, params, successMessage } = options;
-      const compositionAssets = (params as { composition_assets?: unknown[] }).composition_assets;
-      const hasAssetInput = Array.isArray(compositionAssets) && compositionAssets.length > 0;
+      const hasAssetInput = hasAssetInputs(params);
       const effectiveOperationType = getFallbackOperation(requestedOperationType, hasAssetInput);
 
       const result = await generateAsset({
@@ -456,6 +516,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       } = parseGenerationRecord(genRecord, operationType);
 
       const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
+      const parsedParams = params as Record<string, unknown>;
+      const shouldRandomizeSeed =
+        paramsIncludeSeed(parsedParams)
+        || await operationSupportsSeedParam(providerId, resolvedOperationType);
+      if (shouldRandomizeSeed) {
+        sourceParams.seed = nextRandomGenerationSeed();
+      }
       await submitDirectGeneration({
         operationType: resolvedOperationType,
         providerId,

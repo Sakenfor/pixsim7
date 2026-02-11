@@ -468,8 +468,19 @@ class GenerationCreationService:
         # Derive inputs from params
         inputs = self._extract_inputs(params, operation_type, validate_vocabs=validate_vocabs)
 
-        # Compute reproducible hash
-        reproducible_hash = Generation.compute_hash(canonical_params, inputs)
+        # Compute both hashes:
+        # - dedup_hash includes seed (avoid collapsing explicit seed variations)
+        # - reproducible_hash ignores seed (sibling grouping across variations)
+        dedup_hash = Generation.compute_hash(
+            canonical_params,
+            inputs,
+            include_seed=True,
+        )
+        reproducible_hash = Generation.compute_hash(
+            canonical_params,
+            inputs,
+            include_seed=False,
+        )
 
         # === PHASE 6: Caching & Deduplication ===
         # Initialize debug logger from user preferences
@@ -478,8 +489,8 @@ class GenerationCreationService:
         # Skip dedup if force_new is True (for creating variations/versions)
         if not force_new:
             # Check for duplicate generation by hash
-            debug.generation(f"Looking up hash: {reproducible_hash[:16]}...")
-            existing_generation_id = await self.cache.find_by_hash(reproducible_hash)
+            debug.generation(f"Looking up dedup hash: {dedup_hash[:16]}...")
+            existing_generation_id = await self.cache.find_by_hash(dedup_hash)
             debug.generation(f"Hash lookup result: {existing_generation_id}")
             if existing_generation_id:
                 result = await self.db.execute(
@@ -640,7 +651,7 @@ class GenerationCreationService:
         await self.users.increment_job_count(user)
 
         # === PHASE 6: Store hash for deduplication ===
-        await self.cache.store_hash(reproducible_hash, generation.id)
+        await self.cache.store_hash(dedup_hash, generation.id)
 
         # === PHASE 6: Cache generation if strategy permits ===
         if cache_key:

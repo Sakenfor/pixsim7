@@ -974,7 +974,7 @@ async def get_asset_siblings(
     """
     Find sibling assets - variations generated from the same inputs.
 
-    Siblings share the same reproducible_hash (same prompt + same input assets).
+    Siblings share the same reproducible_hash (same prompt + same input assets, seed ignored).
     Useful for finding all variations of a generation attempt.
 
     Returns only assets owned by the current user for privacy.
