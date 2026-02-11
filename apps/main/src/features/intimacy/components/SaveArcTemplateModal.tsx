@@ -10,7 +10,7 @@ import React, { useState } from 'react';
 import type { RelationshipProgressionArc } from '@lib/registries';
 
 import { saveArcAsTemplate, type ArcTemplate } from '../lib/templates';
-import { validateArcForTemplate } from '../lib/templateValidation';
+import { validateArcForTemplate } from '@pixsim7/game.engine';
 
 export interface SaveArcTemplateModalProps {
   arc: RelationshipProgressionArc;

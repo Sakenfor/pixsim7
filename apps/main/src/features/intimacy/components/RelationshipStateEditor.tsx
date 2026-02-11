@@ -10,8 +10,7 @@
 
 import React from 'react';
 
-import type { SimulatedRelationshipState } from '../lib/gateChecking';
-import { createStateFromTier } from '../lib/gateChecking';
+import { createStateFromTier, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 
 interface RelationshipStateEditorProps {
   /** Current simulated state */

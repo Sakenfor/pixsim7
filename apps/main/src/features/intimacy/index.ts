@@ -61,19 +61,14 @@ export { parseIntimacyGating } from '@pixsim7/core.world';
 export {
   checkGate,
   checkAllGates,
-  type GateCheckResult,
-} from './lib/gateChecking';
-
-export {
   validateSceneTemplate,
   validateArcTemplate,
-  type ValidationResult,
-} from './lib/templateValidation';
-
-export {
   validateIntimacyScene,
   validateProgressionArc,
-} from './lib/validation';
+  type TemplateValidationResult as ValidationResult,
+} from '@pixsim7/game.engine';
+
+export type { GateCheckResult } from '@pixsim7/shared.types';
 
 // ============================================================================
 // Library - Templates & Playtesting
@@ -109,7 +104,7 @@ export {
   type PlaytestSession,
   type PlaytestStep,
   type PlaytestAnalysis,
-} from './lib/playtesting';
+} from '@pixsim7/game.engine';
 
 // ============================================================================
 // Library - Analytics & Preview

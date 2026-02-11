@@ -12,7 +12,7 @@ import React, { useState } from 'react';
 
 import type { IntimacySceneConfig, RelationshipProgressionArc } from '@lib/registries';
 
-import type { SimulatedRelationshipState } from '../lib/gateChecking';
+import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 import {
   downloadScenesAsFile,
   uploadScenesFromFile,

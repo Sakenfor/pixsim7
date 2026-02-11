@@ -10,8 +10,7 @@
 
 import React, { useMemo } from 'react';
 import type { RelationshipGate } from '@lib/registries';
-import type { SimulatedRelationshipState } from '../lib/gateChecking';
-import { checkAllGates } from '../lib/gateChecking';
+import { checkAllGates, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 import { RelationshipGateVisualizer } from './RelationshipGateVisualizer';
 
 interface GatePreviewPanelProps {

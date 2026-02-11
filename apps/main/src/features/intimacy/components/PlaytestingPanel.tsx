@@ -20,12 +20,13 @@ import {
   exportPlaytestSession,
   getPlaytestPreset,
   getPlaytestPresetList,
+  createDefaultState,
+  createStateFromTier,
   type PlaytestSession,
   type PlaytestConfig,
   type PlaytestPresetKey,
-} from '../lib/playtesting';
+} from '@pixsim7/game.engine';
 import { RelationshipStateEditor } from './RelationshipStateEditor';
-import { createDefaultState, createStateFromTier } from '../lib/gateChecking';
 
 interface PlaytestingPanelProps {
   /** Arc to playtest */

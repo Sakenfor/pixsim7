@@ -13,7 +13,7 @@ import React, { useState } from 'react';
 
 import type { IntimacySceneConfig } from '@lib/registries';
 
-import type { SimulatedRelationshipState } from '../lib/gateChecking';
+import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 import type { IntimacyPreviewResult } from '../lib/generationPreview';
 import { startIntimacyPreview, getPreviewStatus } from '../lib/generationPreview';
 import { deriveSocialContext } from '../lib/socialContextDerivation';

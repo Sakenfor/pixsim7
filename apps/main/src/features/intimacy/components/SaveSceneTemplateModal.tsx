@@ -13,7 +13,7 @@ import React, { useMemo, useState } from 'react';
 import type { IntimacySceneConfig } from '@lib/registries';
 
 import { saveSceneAsTemplate, type SceneTemplate } from '../lib/templates';
-import { validateSceneForTemplate } from '../lib/templateValidation';
+import { validateSceneForTemplate } from '@pixsim7/game.engine';
 
 export interface SaveSceneTemplateModalProps {
   scene: IntimacySceneConfig;

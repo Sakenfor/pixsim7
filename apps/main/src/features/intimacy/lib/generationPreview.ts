@@ -21,7 +21,7 @@ import type {
 import { fromGenerationResponse, type GenerationModel } from '@features/generation';
 
 
-import type { SimulatedRelationshipState } from './gateChecking';
+import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 import { deriveSocialContext } from './socialContextDerivation';
 
 /**

@@ -17,7 +17,7 @@ import type { IntimacyBand, IntimacyGatingConfig } from '@pixsim7/shared.types';
 
 import type { GenerationSocialContext, IntimacySceneConfig } from '@lib/registries';
 
-import type { SimulatedRelationshipState } from './gateChecking';
+import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 
 // Re-export pure constants & helpers
 export { INTIMACY_BAND_MAP };

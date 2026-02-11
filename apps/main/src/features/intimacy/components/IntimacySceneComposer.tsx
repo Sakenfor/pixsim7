@@ -21,8 +21,7 @@ import type {
 
 import { useGenerationWorkbench } from '@features/generation';
 
-import { createDefaultState, type SimulatedRelationshipState } from '../lib/gateChecking';
-import { validateIntimacyScene } from '../lib/validation';
+import { createDefaultState, validateIntimacyScene, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 
 import { GatePreviewPanel } from './GatePreviewPanel';
 import { GenerationPreviewPanel } from './GenerationPreviewPanel';

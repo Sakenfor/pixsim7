@@ -17,8 +17,7 @@ import type {
   ProgressionArcState,
 } from '@lib/registries';
 
-import { checkGate, createDefaultState, type SimulatedRelationshipState } from '../lib/gateChecking';
-import { validateProgressionArc } from '../lib/validation';
+import { checkGate, createDefaultState, validateProgressionArc, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 
 import { PlaytestingPanel } from './PlaytestingPanel';
 import { RelationshipGateBadge } from './RelationshipGateVisualizer';
