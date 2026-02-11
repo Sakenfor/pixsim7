@@ -5,18 +5,23 @@
  * Manages folder state, asset filtering, previews, uploads, and viewer navigation.
  */
 
-import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import type { SourceIdentity } from '@pixsim7/shared.sources.core';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
 import { uploadAsset } from '@lib/api/upload';
-import { authService } from '@lib/auth';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import { useAuthStore } from '@/stores/authStore';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '@/types/localSources';
 
+import {
+  checkHashesAgainstBackend,
+  computeLocalAssetScopeSignature,
+  computeStableSignature,
+  ensureLocalAssetSha256,
+  hasValidStoredHash,
+} from '../lib/localHashing';
 import {
   useLocalFolders,
   getLocalThumbnailBlob,
@@ -88,9 +93,12 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Track blob URLs for cleanup when they're no longer needed
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
 
-  // Track which folders have had SHA computed and checked against backend
+  // Track which selected folder scopes have completed local SHA computation
   const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
   const hashCheckInProgressRef = useRef<Set<string>>(new Set());
+  const backendHashCheckedRef = useRef<Set<string>>(new Set());
+  const backendExistingHashesRef = useRef<Set<string>>(new Set());
+  const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
 
   // Background hashing progress
   const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
@@ -180,18 +188,16 @@ export function useLocalFoldersController(): LocalFoldersController {
     return viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
   }, [viewMode, selectedFolderPath, filteredAssets, assetList]);
 
-  // Compute SHA and check against backend when folder is selected
+  // Compute SHA for selected folder scope when folder is selected.
+  // Backend existence checks are handled globally so this work is not tied
+  // to a specific tree selection.
   useEffect(() => {
     if (!selectedFolderPath || !crypto.subtle) return;
 
     if (filteredAssets.length === 0) return;
 
     const scopeKey = selectedFolderPath;
-    const maxLastModified = filteredAssets.reduce(
-      (max, asset) => Math.max(max, asset.lastModified ?? 0),
-      0
-    );
-    const scopeSignature = `${filteredAssets.length}:${maxLastModified}`;
+    const scopeSignature = computeLocalAssetScopeSignature(filteredAssets);
 
     // Skip if already checked or in progress for the same scope signature
     if (hashCheckInProgressRef.current.has(scopeKey)) return;
@@ -200,7 +206,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     // Get assets that need hashing
     const assetsToHash = filteredAssets.filter(asset => {
       // Skip if already has valid hash
-      if (asset.sha256 && asset.sha256_file_size === asset.size && asset.sha256_last_modified === asset.lastModified) {
+      if (hasValidStoredHash(asset)) {
         return false;
       }
       // Skip if already marked as success (uploaded)
@@ -208,16 +214,8 @@ export function useLocalFoldersController(): LocalFoldersController {
       return true;
     });
 
-    // Also get assets that have hash but weren't checked yet
-    const assetsWithHash = filteredAssets.filter(asset =>
-      asset.sha256 &&
-      asset.sha256_file_size === asset.size &&
-      asset.sha256_last_modified === asset.lastModified &&
-      asset.last_upload_status !== 'success'
-    );
-
     // If nothing to do, mark as checked for this scope signature.
-    if (assetsToHash.length === 0 && assetsWithHash.length === 0) {
+    if (assetsToHash.length === 0) {
       hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
       return;
     }
@@ -225,18 +223,9 @@ export function useLocalFoldersController(): LocalFoldersController {
     // Mark as in progress
     hashCheckInProgressRef.current.add(scopeKey);
 
-    // Background hash computation and check
-    const computeAndCheck = async () => {
+    // Background hash computation for this selected scope.
+    const computeHashes = async () => {
       try {
-        const hashesWithKeys: { sha256: string; assetKey: string }[] = [];
-
-        // Add existing hashes
-        for (const asset of assetsWithHash) {
-          if (asset.sha256) {
-            hashesWithKeys.push({ sha256: asset.sha256, assetKey: asset.key });
-          }
-        }
-
         // Compute hashes for assets that need it (in chunks to avoid blocking UI)
         const CHUNK_SIZE = 5;
         for (let i = 0; i < assetsToHash.length; i += CHUNK_SIZE) {
@@ -247,9 +236,7 @@ export function useLocalFoldersController(): LocalFoldersController {
               const file = await getFileForAsset(asset);
               if (!file) return;
 
-              const sha256 = await computeFileSha256(file);
-              await updateAssetHash(asset.key, sha256, file);
-              hashesWithKeys.push({ sha256, assetKey: asset.key });
+              await ensureLocalAssetSha256(asset, file, updateAssetHash);
             } catch (e) {
               console.warn('Failed to hash asset:', asset.name, e);
             }
@@ -258,64 +245,125 @@ export function useLocalFoldersController(): LocalFoldersController {
           // Yield to main thread between chunks
           await new Promise(resolve => setTimeout(resolve, 0));
         }
-
-        // Call batch API to check which hashes exist
-        if (hashesWithKeys.length > 0) {
-          const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-          const token = authService.getStoredToken();
-          const headers: HeadersInit = { 'Content-Type': 'application/json' };
-          if (token) {
-            headers['Authorization'] = `Bearer ${token}`;
-          }
-
-          try {
-            const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/check-by-hash-batch`, {
-              method: 'POST',
-              headers,
-              body: JSON.stringify({ hashes: hashesWithKeys.map(h => h.sha256) }),
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              const foundHashes = new Set(
-                (data.results || [])
-                  .filter((r: { exists: boolean }) => r.exists)
-                  .map((r: { sha256: string }) => r.sha256)
-              );
-
-              // Update status for assets that exist in system
-              for (const { sha256, assetKey } of hashesWithKeys) {
-                if (foundHashes.has(sha256)) {
-                  await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-                  setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
-                  setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
-                }
-              }
-            }
-          } catch (e) {
-            console.warn('Failed to check hashes against backend:', e);
-          }
-        }
       } finally {
         hashCheckInProgressRef.current.delete(scopeKey);
         hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
       }
     };
 
-    void computeAndCheck();
-  }, [selectedFolderPath, filteredAssets, getFileForAsset, updateAssetHash, updateAssetUploadStatus]);
+    void computeHashes();
+  }, [selectedFolderPath, filteredAssets, getFileForAsset, updateAssetHash]);
+
+  // Global backend existence check for all hashed assets.
+  // This decouples "already in library" detection from selected subfolder state.
+  const backendHashCheckTrigger = useMemo(() => {
+    const tokens: string[] = [];
+    for (const asset of Object.values(assetsRecord)) {
+      if (!hasValidStoredHash(asset)) continue;
+      if (asset.last_upload_status === 'success') continue;
+      if (!asset.sha256) continue;
+      tokens.push(`${asset.key}|${asset.sha256}`);
+    }
+    return computeStableSignature(tokens);
+  }, [assetsRecord]);
+
+  useEffect(() => {
+    const candidates = Object.values(assetsRecord).filter(asset => (
+      hasValidStoredHash(asset) &&
+      asset.last_upload_status !== 'success' &&
+      !!asset.sha256
+    ));
+    if (candidates.length === 0) return;
+
+    const hashToAssetKeys = new Map<string, string[]>();
+    for (const asset of candidates) {
+      const sha256 = asset.sha256!;
+      const keys = hashToAssetKeys.get(sha256) || [];
+      keys.push(asset.key);
+      hashToAssetKeys.set(sha256, keys);
+    }
+
+    const syncKnownExisting = async () => {
+      for (const [sha256, assetKeys] of hashToAssetKeys) {
+        if (!backendExistingHashesRef.current.has(sha256)) continue;
+        for (const assetKey of assetKeys) {
+          await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+          setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
+          setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+        }
+      }
+    };
+
+    const checkRemaining = async () => {
+      const hashesToQuery = Array.from(hashToAssetKeys.keys()).filter((sha256) => (
+        !backendExistingHashesRef.current.has(sha256) &&
+        !backendHashCheckedRef.current.has(sha256) &&
+        !backendHashCheckInProgressRef.current.has(sha256)
+      ));
+      if (hashesToQuery.length === 0) return;
+
+      for (const sha256 of hashesToQuery) {
+        backendHashCheckInProgressRef.current.add(sha256);
+      }
+
+      try {
+        const foundHashes = await checkHashesAgainstBackend(hashesToQuery);
+
+        for (const sha256 of hashesToQuery) {
+          backendHashCheckedRef.current.add(sha256);
+          if (foundHashes.has(sha256)) {
+            backendExistingHashesRef.current.add(sha256);
+          }
+        }
+
+        for (const sha256 of foundHashes) {
+          const assetKeys = hashToAssetKeys.get(sha256);
+          if (!assetKeys) continue;
+          for (const assetKey of assetKeys) {
+            await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+            setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
+            setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to check hashes against backend:', e);
+      } finally {
+        for (const sha256 of hashesToQuery) {
+          backendHashCheckInProgressRef.current.delete(sha256);
+        }
+      }
+    };
+
+    void (async () => {
+      await syncKnownExisting();
+      await checkRemaining();
+    })();
+  }, [assetsRecord, backendHashCheckTrigger, updateAssetUploadStatus]);
 
   // Background SHA computation for ALL assets after folder load.
+  // Use a signature that tracks file identity/metadata changes (but not sha fields)
+  // so hash writes don't continuously retrigger this effect.
+  const backgroundHashTrigger = useMemo(() => {
+    return computeStableSignature(
+      Object.values(assetsRecord).map(
+        asset => `${asset.key}|${asset.size ?? -1}|${asset.lastModified ?? -1}|${asset.last_upload_status ?? ''}`
+      )
+    );
+  }, [assetsRecord]);
+  const backgroundHashAssetCount = useMemo(
+    () => Object.keys(assetsRecord).length,
+    [assetsRecord]
+  );
+
   // Reads/writes via useLocalFolders.getState() to avoid triggering React renders
   // during the hashing loop (which caused "Maximum update depth exceeded").
-  const assetCount = assetList.length;
   useEffect(() => {
-    if (!crypto.subtle || assetCount === 0) return;
+    if (!crypto.subtle || backgroundHashAssetCount === 0) return;
 
     // Snapshot assets that need hashing from the store directly
     const storeAssets = Object.values(useLocalFolders.getState().assets);
     const needsHash = storeAssets.filter(asset => {
-      if (asset.sha256 && asset.sha256_file_size === asset.size && asset.sha256_last_modified === asset.lastModified) {
+      if (hasValidStoredHash(asset)) {
         return false;
       }
       if (asset.last_upload_status === 'success') return false;
@@ -346,8 +394,7 @@ export function useLocalFoldersController(): LocalFoldersController {
             const { getFileForAsset: getFile, updateAssetHash: updateHash } = useLocalFolders.getState();
             const file = await getFile(asset);
             if (!file) continue;
-            const sha256 = await computeFileSha256(file);
-            await updateHash(asset.key, sha256, file);
+            await ensureLocalAssetSha256(asset, file, updateHash);
           } catch (e) {
             console.warn('Background hash failed:', asset.name, e);
           }
@@ -371,7 +418,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
     return () => { bgHashRunIdRef.current++; };
      
-  }, [assetCount]);
+  }, [backgroundHashTrigger, backgroundHashAssetCount]);
 
   // Load preview for an asset
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -406,14 +453,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
         if (crypto.subtle) {
           try {
-            let sha256 = asset.sha256;
-            const needsHash = !sha256
-              || asset.sha256_file_size !== file.size
-              || asset.sha256_last_modified !== file.lastModified;
-            if (needsHash) {
-              sha256 = await computeFileSha256(file);
-              await updateAssetHash(asset.key, sha256, file);
-            }
+            const sha256 = await ensureLocalAssetSha256(asset, file, updateAssetHash);
             if (sha256 && asset.last_upload_status !== 'success') {
               const record = await getUploadRecordByHash(sha256);
               if (record?.status === 'success') {
@@ -516,14 +556,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       let sha256: string | undefined;
       if (crypto.subtle) {
         try {
-          sha256 = asset.sha256;
-          const needsHash = !sha256
-            || asset.sha256_file_size !== file.size
-            || asset.sha256_last_modified !== file.lastModified;
-          if (needsHash) {
-            sha256 = await computeFileSha256(file);
-            await updateAssetHash(asset.key, sha256, file);
-          }
+          sha256 = await ensureLocalAssetSha256(asset, file, updateAssetHash);
         } catch (hashError) {
           console.warn('Failed to compute hash before upload', asset.name, hashError);
         }

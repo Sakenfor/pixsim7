@@ -5,11 +5,10 @@
  * Displays folder count, asset count, hash coverage.
  */
 
-import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
 import { Button } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback, useEffect } from 'react';
 
-import { authService } from '@lib/auth';
+import { checkHashesAgainstBackend, ensureLocalAssetSha256 } from '@features/assets/lib/localHashing';
 
 import { useLocalFolders } from '@/features/assets/stores/localFoldersStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -74,8 +73,7 @@ export function LocalFoldersStatus() {
       try {
         const file = await getFileForAsset(asset);
         if (file && crypto.subtle) {
-          const sha256 = await computeFileSha256(file);
-          await updateAssetHash(asset.key, sha256, file);
+          const sha256 = await ensureLocalAssetSha256(asset, file, updateAssetHash);
           computedHashes.push({ sha256, assetKey: asset.key });
         }
       } catch (e) {
@@ -88,33 +86,13 @@ export function LocalFoldersStatus() {
     // Check computed hashes against backend
     if (computedHashes.length > 0) {
       try {
-        const base = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-        const token = authService.getStoredToken();
-        const headers: HeadersInit = { 'Content-Type': 'application/json' };
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
+        const foundHashes = await checkHashesAgainstBackend(computedHashes.map(h => h.sha256));
 
-        const res = await fetch(`${base.replace(/\/$/, '')}/api/v1/assets/check-by-hash-batch`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ hashes: computedHashes.map(h => h.sha256) }),
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          const foundHashes = new Set(
-            (data.results || [])
-              .filter((r: { exists: boolean }) => r.exists)
-              .map((r: { sha256: string }) => r.sha256)
-          );
-
-          // Update status for assets that exist in system
-          const updateAssetUploadStatus = useLocalFolders.getState().updateAssetUploadStatus;
-          for (const { sha256, assetKey } of computedHashes) {
-            if (foundHashes.has(sha256)) {
-              await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-            }
+        // Update status for assets that exist in system
+        const updateAssetUploadStatus = useLocalFolders.getState().updateAssetUploadStatus;
+        for (const { sha256, assetKey } of computedHashes) {
+          if (foundHashes.has(sha256)) {
+            await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
           }
         }
       } catch (e) {

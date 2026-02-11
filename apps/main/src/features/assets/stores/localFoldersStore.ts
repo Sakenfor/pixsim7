@@ -809,8 +809,25 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const merged = items.map((item) => {
       const existing = currentAssets[item.key];
       if (!existing) return item;
+
+      // Preserve hash metadata only when file metadata still matches.
+      // This prevents dropping hashes on every refresh while avoiding stale hashes.
+      const canReuseHash = (
+        typeof item.size === 'number' &&
+        typeof item.lastModified === 'number' &&
+        !!existing.sha256 &&
+        existing.sha256_file_size === item.size &&
+        existing.sha256_last_modified === item.lastModified
+      );
+
       return {
         ...item,
+        ...(canReuseHash ? {
+          sha256: existing.sha256,
+          sha256_computed_at: existing.sha256_computed_at,
+          sha256_file_size: existing.sha256_file_size,
+          sha256_last_modified: existing.sha256_last_modified,
+        } : {}),
         last_upload_status: existing.last_upload_status,
         last_upload_note: existing.last_upload_note,
         last_upload_at: existing.last_upload_at,
