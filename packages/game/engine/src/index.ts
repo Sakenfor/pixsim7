@@ -15,7 +15,16 @@ export type {
   StorageProvider,
   AuthProvider,
   NpcPersonaProvider,
+  KVStorage,
+  FetchFn,
 } from './core/types';
+
+// KVStorage configuration (call once at app startup)
+export {
+  configureKVStorage,
+  getKVStorage,
+  resetKVStorage,
+} from './core/storageConfig';
 
 // Re-export BrainState types from shared.types
 export type {
@@ -385,7 +394,7 @@ export {
   BUILT_IN_THEME_PACKS,
 } from './world/themePacks';
 
-export type { ThemePack } from './world/themePacks';
+export type { ThemePack, DownloadFileFn } from './world/themePacks';
 
 export {
   findMatchingRule,

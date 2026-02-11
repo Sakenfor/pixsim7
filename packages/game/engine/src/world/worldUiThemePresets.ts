@@ -1,12 +1,15 @@
 /**
  * World UI Theme Presets Store
  *
- * Frontend-only storage for theme presets with localStorage persistence.
+ * Frontend-only storage for theme presets with persistence via injected KVStorage.
  * Built-in presets are immutable; custom presets can be created/deleted.
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
  */
 
 import type { WorldUiTheme } from '@pixsim7/shared.types';
 import { THEME_PRESETS } from './worldUiConfig';
+import { getKVStorage } from '../core/storageConfig';
 
 const STORAGE_KEY = 'pixsim7:worldUiThemePresets';
 
@@ -49,11 +52,13 @@ function getBuiltInPresets(): WorldUiThemePreset[] {
 }
 
 /**
- * Load custom presets from localStorage
+ * Load custom presets from storage
  */
 function loadCustomPresets(): WorldUiThemePreset[] {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const storage = getKVStorage();
+    if (!storage) return [];
+    const stored = storage.getItem(STORAGE_KEY);
     if (!stored) return [];
     const parsed = JSON.parse(stored);
     return Array.isArray(parsed) ? parsed : [];
@@ -64,11 +69,13 @@ function loadCustomPresets(): WorldUiThemePreset[] {
 }
 
 /**
- * Save custom presets to localStorage
+ * Save custom presets to storage
  */
 function saveCustomPresets(presets: WorldUiThemePreset[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+    const storage = getKVStorage();
+    if (!storage) return;
+    storage.setItem(STORAGE_KEY, JSON.stringify(presets));
   } catch (err) {
     console.error('Failed to save custom theme presets', err);
   }
@@ -201,5 +208,7 @@ export function generateThemeId(name: string): string {
  * Clear all custom theme presets (for testing/reset)
  */
 export function clearCustomPresets(): void {
-  localStorage.removeItem(STORAGE_KEY);
+  const storage = getKVStorage();
+  if (!storage) return;
+  storage.removeItem(STORAGE_KEY);
 }

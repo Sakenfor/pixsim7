@@ -71,6 +71,30 @@ export interface StorageProvider {
 }
 
 /**
+ * Generic key-value storage interface.
+ *
+ * Matches the localStorage API shape so browser implementations can
+ * pass `localStorage` directly.  Other environments (Node, tests,
+ * React Native) provide their own adapter.
+ *
+ * Used by preference, theme, and session modules that need simple
+ * string persistence without coupling to the browser.
+ */
+export interface KVStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+/**
+ * Fetch function type for HTTP calls.
+ *
+ * Matches the global `fetch` signature so callers can pass
+ * `globalThis.fetch`, a test stub, or a framework-specific wrapper.
+ */
+export type FetchFn = typeof globalThis.fetch;
+
+/**
  * Authentication provider interface
  */
 export interface AuthProvider {

@@ -5,9 +5,12 @@
  * across browser sessions. Handles world time, session IDs, and world selection.
  *
  * Extracted from apps/main/src/lib/game/session.ts
+ *
+ * Storage is injected via `configureKVStorage()` — no direct `localStorage` access.
  */
 
 import type { SessionFlags, WorldMode } from '@pixsim7/shared.types';
+import { getKVStorage } from '../core/storageConfig';
 
 /**
  * Persisted world session state
@@ -36,9 +39,10 @@ const STORAGE_KEY = 'pixsim7.worldSession.v1';
  * @returns Session state or null if not found/invalid
  */
 export function loadWorldSession(): WorldSessionState | null {
-  if (typeof window === 'undefined') return null;
+  const storage = getKVStorage();
+  if (!storage) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = storage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (typeof parsed.worldTimeSeconds !== 'number') return null;
@@ -60,9 +64,10 @@ export function loadWorldSession(): WorldSessionState | null {
  * @param state - Session state to persist
  */
 export function saveWorldSession(state: WorldSessionState): void {
-  if (typeof window === 'undefined') return;
+  const storage = getKVStorage();
+  if (!storage) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    storage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
     // ignore storage errors in editor/preview contexts
   }
@@ -72,9 +77,10 @@ export function saveWorldSession(state: WorldSessionState): void {
  * Clear world session state from local storage
  */
 export function clearWorldSession(): void {
-  if (typeof window === 'undefined') return;
+  const storage = getKVStorage();
+  if (!storage) return;
   try {
-    window.localStorage.removeItem(STORAGE_KEY);
+    storage.removeItem(STORAGE_KEY);
   } catch {
     // ignore storage errors
   }

@@ -25,13 +25,23 @@ import type {
 
 interface MetricPreviewConfig {
   baseUrl: string;
-  fetch: typeof fetch;
+  /** Must be provided via configureMetricPreviewApi() before calling preview functions. */
+  fetch: typeof fetch | null;
 }
 
 let config: MetricPreviewConfig = {
   baseUrl: '/api/v1',
-  fetch: globalThis.fetch,
+  fetch: null,
 };
+
+function requireFetch(): typeof fetch {
+  if (!config.fetch) {
+    throw new Error(
+      'MetricPreviewApi: fetch not configured. Call configureMetricPreviewApi({ fetch }) at startup.',
+    );
+  }
+  return config.fetch;
+}
 
 /**
  * Configure the metric preview API client
@@ -55,7 +65,7 @@ export function configureMetricPreviewApi(options: Partial<MetricPreviewConfig>)
 export function resetMetricPreviewApiConfig(): void {
   config = {
     baseUrl: '/api/v1',
-    fetch: globalThis.fetch,
+    fetch: null,
   };
 }
 
@@ -136,7 +146,7 @@ export async function previewNpcMood(
 ): Promise<NpcMoodPreviewResponse> {
   const url = `${config.baseUrl}/game/npc/preview-mood`;
 
-  const response = await config.fetch(url, {
+  const response = await requireFetch()(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -193,7 +203,7 @@ export async function previewUnifiedMood(args: {
 }): Promise<UnifiedMoodState> {
   const url = `${config.baseUrl}/game/npc/preview-unified-mood`;
 
-  const response = await config.fetch(url, {
+  const response = await requireFetch()(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -295,7 +305,7 @@ export async function previewReputationBand(
 ): Promise<ReputationBandPreviewResponse> {
   const url = `${config.baseUrl}/game/reputation/preview-reputation`;
 
-  const response = await config.fetch(url, {
+  const response = await requireFetch()(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

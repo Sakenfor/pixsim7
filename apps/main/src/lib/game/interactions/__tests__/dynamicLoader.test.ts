@@ -246,7 +246,7 @@ describe('createGenericInteraction', () => {
   };
 
   it('should create a valid InteractionPlugin', () => {
-    const plugin = createGenericInteraction(mockManifest);
+    const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
     expect(plugin.id).toBe('test-interaction');
     expect(plugin.name).toBe('Test Interaction');
@@ -260,14 +260,14 @@ describe('createGenericInteraction', () => {
   });
 
   it('should include enabled flag in defaultConfig', () => {
-    const plugin = createGenericInteraction(mockManifest);
+    const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
     expect(plugin.defaultConfig).toHaveProperty('enabled', true);
     expect(plugin.defaultConfig).toHaveProperty('successChance', 0.5);
   });
 
   it('should generate configFields from schema', () => {
-    const plugin = createGenericInteraction(mockManifest);
+    const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
     expect(plugin.configFields).toHaveLength(1);
     expect(plugin.configFields[0].key).toBe('successChance');
@@ -275,20 +275,20 @@ describe('createGenericInteraction', () => {
   });
 
   it('should have an execute function', () => {
-    const plugin = createGenericInteraction(mockManifest);
+    const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
     expect(typeof plugin.execute).toBe('function');
   });
 
   it('should have a validate function', () => {
-    const plugin = createGenericInteraction(mockManifest);
+    const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
     expect(typeof plugin.validate).toBe('function');
   });
 
   describe('validate function', () => {
     it('should return null for valid config', () => {
-      const plugin = createGenericInteraction(mockManifest);
+      const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
       const result = plugin.validate?.({
         enabled: true,
@@ -299,7 +299,7 @@ describe('createGenericInteraction', () => {
     });
 
     it('should return error for value below minimum', () => {
-      const plugin = createGenericInteraction(mockManifest);
+      const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
       const result = plugin.validate?.({
         enabled: true,
@@ -310,7 +310,7 @@ describe('createGenericInteraction', () => {
     });
 
     it('should return error for value above maximum', () => {
-      const plugin = createGenericInteraction(mockManifest);
+      const plugin = createGenericInteraction(mockManifest, { fetch: globalThis.fetch });
 
       const result = plugin.validate?.({
         enabled: true,

@@ -111,7 +111,7 @@ export async function loadPluginInteractions(): Promise<number> {
         }
 
         // Create and register the interaction
-        const plugin = createGenericInteraction(interactionManifest);
+        const plugin = createGenericInteraction(interactionManifest, { fetch: globalThis.fetch });
         await registerPluginDefinition({
           id: plugin.id,
           family: 'interaction',
