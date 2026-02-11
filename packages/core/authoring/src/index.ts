@@ -1,30 +1,44 @@
 /**
  * @pixsim7/core.authoring
  *
- * Game authoring primitives: completeness registry, project manifest,
- * entity check providers, and project presets.
+ * Game authoring primitives: entity schemas with field-level completeness,
+ * project manifest, and project presets.
  *
  * ## Architecture
  *
- * Each feature/package registers its own check providers into the
- * `completenessRegistry`.  Built-in providers ship with this package
- * and are auto-registered on first use.
+ * Entity schemas define checkable fields — the check lives where the field
+ * is defined, no separate registration step:
  *
  * ```typescript
- * import { completenessRegistry, buildProjectManifest } from '@pixsim7/core.authoring';
+ * import { npcSchema, field } from '@pixsim7/core.authoring';
  *
- * // Features register domain-specific checks
- * completenessRegistry.register('npc', 'myFeature.dialogue', (npc) => [
- *   { id: 'npc.hasGreeting', label: 'Has greeting', status: npc.meta?.greetingId ? 'complete' : 'incomplete' },
- * ]);
+ * // Features extend the schema in-place
+ * npcSchema.add('greetingDialogue', field.custom(
+ *   'Has greeting dialogue',
+ *   (npc) => npc.meta?.greetingDialogueId != null,
+ *   'Add a greeting dialogue',
+ * ));
  *
- * // Build manifest runs all registered providers
+ * // Build manifest uses schemas directly
  * const manifest = buildProjectManifest({ npcs, locations, scenes });
  * ```
  */
 
 // ---------------------------------------------------------------------------
-// Registry (the protocol)
+// Entity Schema — field builders (the core primitive)
+// ---------------------------------------------------------------------------
+
+export { entity, field, FieldDef, EntitySchema } from './entitySchema';
+export type { Infer } from './entitySchema';
+
+// ---------------------------------------------------------------------------
+// Entity schemas
+// ---------------------------------------------------------------------------
+
+export { npcSchema } from './npcCompleteness';
+
+// ---------------------------------------------------------------------------
+// Registry (still used by location/scene during migration)
 // ---------------------------------------------------------------------------
 
 export type { CheckProvider, CompletenessRegistry } from './registry';
@@ -44,7 +58,7 @@ export type {
 } from './types';
 
 // ---------------------------------------------------------------------------
-// Built-in registration
+// Built-in registration (location/scene — will migrate to schemas)
 // ---------------------------------------------------------------------------
 
 export { registerAllBuiltins } from './builtins';
@@ -53,18 +67,8 @@ export { registerBuiltinLocationChecks } from './locationCompleteness';
 export { registerBuiltinSceneChecks } from './sceneCompleteness';
 
 // ---------------------------------------------------------------------------
-// Built-in check providers (for replacement / composition)
+// Location check providers (registry pattern — migration pending)
 // ---------------------------------------------------------------------------
-
-export {
-  checkNpcIdentity,
-  checkNpcPortrait,
-  checkNpcExpressions,
-  checkNpcSchedule,
-  checkNpcHomeLocation,
-  checkNpcPreferences,
-  checkNpcPersonality,
-} from './npcCompleteness';
 
 export {
   checkLocationIdentity,
@@ -73,6 +77,10 @@ export {
   checkLocationNavigation,
   checkLocationNpcSlots,
 } from './locationCompleteness';
+
+// ---------------------------------------------------------------------------
+// Scene check providers (registry pattern — migration pending)
+// ---------------------------------------------------------------------------
 
 export {
   checkSceneIdentity,

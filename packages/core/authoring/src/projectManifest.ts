@@ -5,9 +5,9 @@
  * A "project" is conceptually one world — the manifest describes
  * what content it contains and how ready it is for play.
  *
- * Entity-level checks come from the CompletenessRegistry — each feature
- * registers its own providers.  Cross-entity checks live here because
- * they span multiple entity types.
+ * NPC checks come from the `npcSchema` (field-builder pattern).
+ * Location/scene checks still use the CompletenessRegistry during migration.
+ * Cross-entity checks live here because they span multiple entity types.
  */
 
 import type {
@@ -21,6 +21,7 @@ import type {
 import type { CompletenessRegistry } from './registry';
 import { completenessRegistry } from './registry';
 import { registerAllBuiltins } from './builtins';
+import { npcSchema } from './npcCompleteness';
 
 // ---------------------------------------------------------------------------
 // Manifest type
@@ -92,15 +93,15 @@ function aggregate(results: EntityCompleteness[]): AggregateCompleteness {
   };
 }
 
-/** Run a registry's providers against every item in `items` for `entityType`. */
-function runBatch<T extends { id: number | string; name?: string }>(
-  registry: CompletenessRegistry,
+/** Run a checker function against every item and collect results. */
+function runBatch<T extends { id: number | string }>(
+  checker: (item: T) => CompletenessCheck[],
   entityType: 'npc' | 'location' | 'scene',
   items: T[],
   nameAccessor: (item: T) => string,
 ): EntityCompleteness[] {
   return items.map((item) => {
-    const checks = registry.runChecks(entityType, item);
+    const checks = checker(item);
     const passed = checks.filter((c) => c.status === 'complete').length;
     const total = checks.length;
     return {
@@ -220,13 +221,23 @@ function ensureBuiltins(registry: CompletenessRegistry): void {
  * the default singleton (with built-in checks) is used.
  */
 export function buildProjectManifest(input: ProjectManifestInput): ProjectManifest {
+  // Location/scene still use the registry during migration
   const registry = input.registry ?? completenessRegistry;
   ensureBuiltins(registry);
 
-  const npcResults = runBatch(registry, 'npc', input.npcs, (n) => n.name);
-  const locationResults = runBatch(registry, 'location', input.locations, (l) => l.name);
+  // NPC: uses schema directly — no registry
+  const npcResults = runBatch(
+    (npc) => npcSchema.check(npc),
+    'npc', input.npcs, (n) => n.name,
+  );
+
+  // Location & scene: registry (will migrate to schemas later)
+  const locationResults = runBatch(
+    (loc) => registry.runChecks('location', loc),
+    'location', input.locations, (l) => l.name,
+  );
   const sceneResults = runBatch(
-    registry,
+    (s) => registry.runChecks('scene', s),
     'scene',
     input.scenes.map((s) => ({ ...s, name: s.title })),
     (s) => s.name,
