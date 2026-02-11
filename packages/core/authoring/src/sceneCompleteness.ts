@@ -1,158 +1,149 @@
 /**
- * Scene Completeness Checks — Built-in providers
+ * Scene Entity Schema
  *
- * Each provider inspects one structural aspect of a scene.
- * `registerBuiltinSceneChecks` adds them all to a registry.
+ * Field-level scene completeness.
  */
 
-import type { CompletenessCheck, SceneAuthoringInput } from './types';
-import type { CheckProvider, CompletenessRegistry } from './registry';
+import { entity, field } from './entitySchema';
+import type { EntitySchema } from './entitySchema';
+import type { SceneAuthoringInput } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function check(
-  id: string,
-  label: string,
-  passes: boolean,
-  detail?: string,
-): CompletenessCheck {
-  return {
-    id,
-    label,
-    status: passes ? 'complete' : 'incomplete',
-    detail: passes ? undefined : detail,
-  };
+function hasReachabilityContext(scene: SceneAuthoringInput): boolean {
+  return scene.startNodeId != null && (scene.nodes?.length ?? 0) > 0;
 }
 
-function warn(
-  id: string,
-  label: string,
-  detail: string,
-): CompletenessCheck {
-  return { id, label, status: 'warning', detail };
-}
+function countUnreachableNodes(scene: SceneAuthoringInput): number {
+  if (!hasReachabilityContext(scene)) return 0;
 
-// ---------------------------------------------------------------------------
-// Individual providers
-// ---------------------------------------------------------------------------
-
-export const checkSceneIdentity: CheckProvider<SceneAuthoringInput> = (scene) => [
-  check('scene.hasTitle', 'Has a title', (scene.title ?? '').trim().length > 0, 'Scene needs a title'),
-];
-
-export const checkSceneStartNode: CheckProvider<SceneAuthoringInput> = (scene) => [
-  check('scene.hasStartNode', 'Has a start node', scene.startNodeId != null, 'Define an entry node for the scene'),
-];
-
-export const checkSceneNodes: CheckProvider<SceneAuthoringInput> = (scene) => [
-  check('scene.hasNodes', 'Has at least one node', (scene.nodes?.length ?? 0) > 0, 'Add at least one node'),
-];
-
-export const checkSceneEndNode: CheckProvider<SceneAuthoringInput> = (scene) => {
-  const endNodes = (scene.nodes ?? []).filter((n) => n.nodeType === 'end');
-  return [
-    check(
-      'scene.hasEndNode',
-      'Has at least one end node',
-      endNodes.length > 0,
-      'Add an end node so the scene can conclude',
-    ),
-  ];
-};
-
-export const checkSceneReachability: CheckProvider<SceneAuthoringInput> = (scene) => {
   const nodes = scene.nodes ?? [];
   const edges = scene.edges ?? [];
-  if (scene.startNodeId == null || nodes.length === 0) return [];
 
-  const adj = new Map<string, string[]>();
-  for (const e of edges) {
-    const from = String(e.from_node_id);
-    const to = String(e.to_node_id);
-    if (!adj.has(from)) adj.set(from, []);
-    adj.get(from)!.push(to);
+  const adjacency = new Map<string, string[]>();
+  for (const edge of edges) {
+    const from = String(edge.from_node_id);
+    const to = String(edge.to_node_id);
+    if (!adjacency.has(from)) adjacency.set(from, []);
+    adjacency.get(from)!.push(to);
   }
 
   const visited = new Set<string>();
   const queue = [String(scene.startNodeId)];
   while (queue.length > 0) {
-    const cur = queue.shift()!;
-    if (visited.has(cur)) continue;
-    visited.add(cur);
-    for (const next of adj.get(cur) ?? []) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    for (const next of adjacency.get(current) ?? []) {
       if (!visited.has(next)) queue.push(next);
     }
   }
 
-  const unreachable = nodes.filter((n) => !visited.has(String(n.id)));
-  if (unreachable.length > 0) {
-    return [
-      warn(
-        'scene.unreachableNodes',
-        'Unreachable nodes',
-        `${unreachable.length} node(s) cannot be reached from the start node`,
-      ),
-    ];
-  }
-  return [check('scene.allReachable', 'All nodes reachable', true)];
-};
+  return nodes.filter((node) => !visited.has(String(node.id))).length;
+}
 
-export const checkSceneDeadEnds: CheckProvider<SceneAuthoringInput> = (scene) => {
+function countDeadEnds(scene: SceneAuthoringInput): number {
+  if (!hasReachabilityContext(scene)) return 0;
+
   const nodes = scene.nodes ?? [];
   const edges = scene.edges ?? [];
-  if (scene.startNodeId == null || nodes.length === 0) return [];
 
   const outDegree = new Map<string, number>();
-  for (const e of edges) {
-    const from = String(e.from_node_id);
+  for (const edge of edges) {
+    const from = String(edge.from_node_id);
     outDegree.set(from, (outDegree.get(from) ?? 0) + 1);
   }
 
-  const deadEnds = nodes.filter(
-    (n) => n.nodeType !== 'end' && (outDegree.get(String(n.id)) ?? 0) === 0,
-  );
-  if (deadEnds.length > 0) {
-    return [
-      warn(
-        'scene.deadEndNodes',
-        'Dead-end nodes',
-        `${deadEnds.length} non-end node(s) have no outgoing edges`,
-      ),
-    ];
-  }
-  return [];
-};
-
-export const checkSceneContent: CheckProvider<SceneAuthoringInput> = (scene) => {
-  const nodes = scene.nodes ?? [];
-  const contentless = nodes.filter(
-    (n) => n.nodeType !== 'end' && n.nodeType !== 'condition' && !n.hasContent,
-  );
-  if (contentless.length > 0) {
-    return [
-      warn(
-        'scene.contentlessNodes',
-        'Nodes without content',
-        `${contentless.length} node(s) have no asset or generation config`,
-      ),
-    ];
-  }
-  return [];
-};
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
-
-/** Register all built-in scene check providers into a registry. */
-export function registerBuiltinSceneChecks(registry: CompletenessRegistry): void {
-  registry.register('scene', 'core.identity', checkSceneIdentity);
-  registry.register('scene', 'core.startNode', checkSceneStartNode);
-  registry.register('scene', 'core.nodes', checkSceneNodes);
-  registry.register('scene', 'core.endNode', checkSceneEndNode);
-  registry.register('scene', 'core.reachability', checkSceneReachability);
-  registry.register('scene', 'core.deadEnds', checkSceneDeadEnds);
-  registry.register('scene', 'core.content', checkSceneContent);
+  return nodes.filter(
+    (node) => node.nodeType !== 'end' && (outDegree.get(String(node.id)) ?? 0) === 0,
+  ).length;
 }
+
+function countContentlessNodes(scene: SceneAuthoringInput): number {
+  const nodes = scene.nodes ?? [];
+  return nodes.filter(
+    (node) => node.nodeType !== 'end' && node.nodeType !== 'condition' && !node.hasContent,
+  ).length;
+}
+
+// ---------------------------------------------------------------------------
+// Schema factory
+// ---------------------------------------------------------------------------
+
+export function createSceneSchema(): EntitySchema<SceneAuthoringInput> {
+  return entity<SceneAuthoringInput>('scene', {
+    // ---- Identity ---------------------------------------------------------
+    title: field
+      .string<SceneAuthoringInput>('Has a title', 'Scene needs a title')
+      .id('scene.hasTitle'),
+
+    // ---- Core structure ---------------------------------------------------
+    startNodeId: field
+      .ref<SceneAuthoringInput>('Has a start node', 'Define an entry node for the scene')
+      .id('scene.hasStartNode'),
+
+    nodes: field
+      .array<SceneAuthoringInput>('Has at least one node', 'Add at least one node')
+      .id('scene.hasNodes'),
+
+    endNode: field
+      .custom<SceneAuthoringInput>(
+        'Has at least one end node',
+        (scene) => (scene.nodes ?? []).some((node) => node.nodeType === 'end'),
+        'Add an end node so the scene can conclude',
+      )
+      .id('scene.hasEndNode'),
+
+    // ---- Reachability -----------------------------------------------------
+    allReachable: field
+      .custom<SceneAuthoringInput>(
+        'All nodes reachable',
+        (scene) => {
+          if (!hasReachabilityContext(scene)) return 'skip';
+          return countUnreachableNodes(scene) === 0 ? true : 'skip';
+        },
+      )
+      .id('scene.allReachable'),
+
+    unreachableNodes: field
+      .custom<SceneAuthoringInput>(
+        'Unreachable nodes',
+        (scene) => {
+          if (!hasReachabilityContext(scene)) return 'skip';
+          return countUnreachableNodes(scene) > 0 ? false : 'skip';
+        },
+        (scene) =>
+          `${countUnreachableNodes(scene)} node(s) cannot be reached from the start node`,
+      )
+      .warn()
+      .id('scene.unreachableNodes'),
+
+    deadEndNodes: field
+      .custom<SceneAuthoringInput>(
+        'Dead-end nodes',
+        (scene) => {
+          if (!hasReachabilityContext(scene)) return 'skip';
+          return countDeadEnds(scene) > 0 ? false : 'skip';
+        },
+        (scene) => `${countDeadEnds(scene)} non-end node(s) have no outgoing edges`,
+      )
+      .warn()
+      .id('scene.deadEndNodes'),
+
+    // ---- Content coverage -------------------------------------------------
+    contentlessNodes: field
+      .custom<SceneAuthoringInput>(
+        'Nodes without content',
+        (scene) => (countContentlessNodes(scene) > 0 ? false : 'skip'),
+        (scene) =>
+          `${countContentlessNodes(scene)} node(s) have no asset or generation config`,
+      )
+      .warn()
+      .id('scene.contentlessNodes'),
+  });
+}
+
+// Shared singleton for simple use-cases.
+export const sceneSchema = createSceneSchema();

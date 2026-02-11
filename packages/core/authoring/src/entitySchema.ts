@@ -1,5 +1,5 @@
 /**
- * Entity Schema — Field-level completeness, defined where the field lives.
+ * Entity Schema - field-level completeness, defined where the field lives.
  *
  * Instead of registering check functions separately, you declare
  * checkable fields directly in the entity definition:
@@ -14,15 +14,16 @@
  *   schedule:        field.custom('Has a schedule', npc => ..., 'Define a schedule'),
  * });
  *
- * // Run checks — no registry, no registration
  * const checks = npcSchema.check(someNpc);
  *
- * // Features extend in-place
+ * // Features can extend in-place (mutable)
  * npcSchema.add('greetingDialogue', field.ref('Has greeting', 'Add a greeting'));
- * ```
  *
- * Inspired by the Ref pattern: one definition carries both type semantics
- * and runtime behavior.
+ * // Or build an isolated schema (immutable-style)
+ * const pluginSchema = npcSchema.extended({
+ *   greetingDialogue: field.ref('Has greeting', 'Add a greeting'),
+ * });
+ * ```
  *
  * @module entitySchema
  */
@@ -35,25 +36,47 @@ import type { CompletenessCheck } from './types';
 
 type FieldType = 'string' | 'ref' | 'array' | 'custom';
 type Severity = 'required' | 'recommended';
+export type FieldResult = boolean | 'skip';
+export type FieldDetail<T = unknown> = string | ((entity: T) => string | undefined);
 
 /**
  * A field definition produced by the `field` builders.
  *
- * Carries the check metadata for one entity field.  Call `.warn()` to
+ * Carries the check metadata for one entity field. Call `.warn()` to
  * downgrade from hard requirement to recommendation.
  */
-export class FieldDef {
+export class FieldDef<T = unknown> {
   constructor(
     /** @internal */ readonly _fieldType: FieldType,
     /** @internal */ readonly _label: string,
-    /** @internal */ readonly _detail: string | undefined,
-    /** @internal */ readonly _test: ((entity: any) => boolean) | undefined,
+    /** @internal */ readonly _detail: FieldDetail<T> | undefined,
+    /** @internal */ readonly _test: ((entity: T) => FieldResult) | undefined,
     /** @internal */ readonly _severity: Severity = 'required',
+    /** @internal */ readonly _id: string | undefined = undefined,
   ) {}
 
   /** Mark this check as a warning rather than a hard requirement. */
-  warn(): FieldDef {
-    return new FieldDef(this._fieldType, this._label, this._detail, this._test, 'recommended');
+  warn(): FieldDef<T> {
+    return new FieldDef(
+      this._fieldType,
+      this._label,
+      this._detail,
+      this._test,
+      'recommended',
+      this._id,
+    );
+  }
+
+  /** Set a stable check id (otherwise defaults to `<entityType>.<fieldName>`). */
+  id(checkId: string): FieldDef<T> {
+    return new FieldDef(
+      this._fieldType,
+      this._label,
+      this._detail,
+      this._test,
+      this._severity,
+      checkId,
+    );
   }
 }
 
@@ -65,45 +88,53 @@ export class FieldDef {
  * Field builders for entity schemas.
  *
  * Each builder auto-generates a sensible test based on the field type:
- * - `field.string` → non-empty after trim
- * - `field.ref`    → not null/undefined
- * - `field.array`  → length > 0
- * - `field.custom`  → your test function
+ * - `field.string` -> non-empty after trim
+ * - `field.ref`    -> not null/undefined
+ * - `field.array`  -> length > 0
+ * - `field.custom` -> your test function
  *
  * All default to `required` severity. Chain `.warn()` for recommendations.
  */
 export const field = {
-  /** String field — passes when non-empty after trim. */
-  string(label: string, detail?: string): FieldDef {
-    return new FieldDef('string', label, detail, undefined, 'required');
+  /** String field - passes when non-empty after trim. */
+  string<T = unknown>(label: string, detail?: FieldDetail<T>): FieldDef<T> {
+    return new FieldDef<T>('string', label, detail, undefined, 'required');
   },
 
-  /** Reference/FK field — passes when not null/undefined. */
-  ref(label: string, detail?: string): FieldDef {
-    return new FieldDef('ref', label, detail, undefined, 'required');
+  /** Reference/FK field - passes when not null/undefined. */
+  ref<T = unknown>(label: string, detail?: FieldDetail<T>): FieldDef<T> {
+    return new FieldDef<T>('ref', label, detail, undefined, 'required');
   },
 
-  /** Array field — passes when length > 0. */
-  array(label: string, detail?: string): FieldDef {
-    return new FieldDef('array', label, detail, undefined, 'required');
+  /** Array field - passes when length > 0. */
+  array<T = unknown>(label: string, detail?: FieldDetail<T>): FieldDef<T> {
+    return new FieldDef<T>('array', label, detail, undefined, 'required');
   },
 
-  /** Custom check — you provide the test function over the whole entity. */
-  custom(label: string, test: (entity: any) => boolean, detail?: string): FieldDef {
-    return new FieldDef('custom', label, detail, test, 'required');
+  /**
+   * Custom check - you provide the test function over the whole entity.
+   *
+   * Return `'skip'` when the check is not applicable for that entity.
+   */
+  custom<T = unknown>(
+    label: string,
+    test: (entity: T) => FieldResult,
+    detail?: FieldDetail<T>,
+  ): FieldDef<T> {
+    return new FieldDef<T>('custom', label, detail, test, 'required');
   },
 } as const;
 
 // ---------------------------------------------------------------------------
-// Resolved field (internal — after binding to a key)
+// Resolved field (internal - after binding to a key)
 // ---------------------------------------------------------------------------
 
-interface ResolvedField {
+interface ResolvedField<T> {
   id: string;
   label: string;
-  detail: string | undefined;
+  detail: FieldDetail<T> | undefined;
   severity: Severity;
-  test: (entity: any) => boolean;
+  test: (entity: T) => FieldResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,15 +145,14 @@ interface ResolvedField {
  * An entity schema: the single source of truth for an entity type's
  * checkable fields.
  *
- * Created via the `entity()` factory. Features extend with `.add()`.
- * The manifest builder calls `.check()` directly — no registry needed.
+ * Created via the `entity()` factory.
  */
 export class EntitySchema<T = unknown> {
   readonly entityType: string;
   /** @internal */
-  private _fields: Map<string, ResolvedField>;
+  private _fields: Map<string, ResolvedField<T>>;
 
-  constructor(entityType: string, fields: Record<string, FieldDef>) {
+  constructor(entityType: string, fields: Record<string, FieldDef<T>>) {
     this.entityType = entityType;
     this._fields = new Map();
     for (const [key, def] of Object.entries(fields)) {
@@ -136,21 +166,27 @@ export class EntitySchema<T = unknown> {
   check(entity: T): CompletenessCheck[] {
     const checks: CompletenessCheck[] = [];
     for (const f of this._fields.values()) {
-      const passes = f.test(entity);
+      const outcome = f.test(entity);
+      if (outcome === 'skip') continue;
+      const passes = outcome;
       checks.push({
         id: f.id,
         label: f.label,
         status: passes ? 'complete' : f.severity === 'required' ? 'incomplete' : 'warning',
-        detail: passes ? undefined : f.detail,
+        detail: passes
+          ? undefined
+          : typeof f.detail === 'function'
+            ? f.detail(entity)
+            : f.detail,
       });
     }
     return checks;
   }
 
-  // ---- Extension API (for features) --------------------------------------
+  // ---- Mutable extension API ---------------------------------------------
 
   /** Add a checkable field. Replaces if the key already exists. */
-  add(fieldName: string, def: FieldDef): this {
+  add(fieldName: string, def: FieldDef<T>): this {
     this._fields.set(fieldName, this._resolve(fieldName, def));
     return this;
   }
@@ -161,35 +197,66 @@ export class EntitySchema<T = unknown> {
     return this;
   }
 
-  /** Whether a field is registered. */
+  /** Whether a field is defined. */
   has(fieldName: string): boolean {
     return this._fields.has(fieldName);
   }
 
-  /** All registered field names. */
+  /** All defined field names. */
   get fieldNames(): string[] {
     return [...this._fields.keys()];
+  }
+
+  // ---- Immutable-style composition API -----------------------------------
+
+  /** Clone this schema so extensions can avoid mutating shared singletons. */
+  clone(): EntitySchema<T> {
+    const clone = new EntitySchema<T>(this.entityType, {});
+    clone._fields = new Map(this._fields);
+    return clone;
+  }
+
+  /** Return a new schema with additional/replaced fields. */
+  extended(fields: Record<string, FieldDef<T>>): EntitySchema<T> {
+    const next = this.clone();
+    for (const [key, def] of Object.entries(fields)) {
+      next.add(key, def);
+    }
+    return next;
+  }
+
+  /** Return a new schema with one field removed. */
+  without(fieldName: string): EntitySchema<T> {
+    const next = this.clone();
+    next.remove(fieldName);
+    return next;
   }
 
   // ---- Internal -----------------------------------------------------------
 
   /** @internal */
-  private _resolve(key: string, def: FieldDef): ResolvedField {
-    const id = `${this.entityType}.${key}`;
-    let test: (entity: any) => boolean;
+  private _resolve(key: string, def: FieldDef<T>): ResolvedField<T> {
+    const id = def._id ?? `${this.entityType}.${key}`;
+    let test: (entity: T) => FieldResult;
 
     if (def._test) {
       test = def._test;
     } else {
       switch (def._fieldType) {
         case 'string':
-          test = (e) => ((e[key] as string) ?? '').trim().length > 0;
+          test = (e) => {
+            const value = (e as Record<string, unknown>)[key];
+            return typeof value === 'string' && value.trim().length > 0;
+          };
           break;
         case 'ref':
-          test = (e) => e[key] != null;
+          test = (e) => (e as Record<string, unknown>)[key] != null;
           break;
         case 'array':
-          test = (e) => (e[key]?.length ?? 0) > 0;
+          test = (e) => {
+            const value = (e as Record<string, unknown>)[key];
+            return Array.isArray(value) && value.length > 0;
+          };
           break;
         default:
           test = () => true;
@@ -215,7 +282,7 @@ export class EntitySchema<T = unknown> {
  */
 export function entity<T = unknown>(
   entityType: string,
-  fields: Record<string, FieldDef>,
+  fields: Record<string, FieldDef<T>>,
 ): EntitySchema<T> {
   return new EntitySchema<T>(entityType, fields);
 }

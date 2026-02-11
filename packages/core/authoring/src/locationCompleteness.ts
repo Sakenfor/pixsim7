@@ -1,118 +1,82 @@
 /**
- * Location Completeness Checks — Built-in providers
+ * Location Entity Schema
  *
- * Each provider inspects one aspect of a location.
- * `registerBuiltinLocationChecks` adds them all to a registry.
+ * Field-level location completeness.
  */
 
-import type { CompletenessCheck, LocationAuthoringInput } from './types';
-import type { CheckProvider, CompletenessRegistry } from './registry';
+import { entity, field } from './entitySchema';
+import type { EntitySchema } from './entitySchema';
+import type { LocationAuthoringInput } from './types';
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Schema factory
 // ---------------------------------------------------------------------------
 
-function check(
-  id: string,
-  label: string,
-  passes: boolean,
-  detail?: string,
-): CompletenessCheck {
-  return {
-    id,
-    label,
-    status: passes ? 'complete' : 'incomplete',
-    detail: passes ? undefined : detail,
-  };
-}
+export function createLocationSchema(): EntitySchema<LocationAuthoringInput> {
+  return entity<LocationAuthoringInput>('location', {
+    // ---- Identity ---------------------------------------------------------
+    name: field
+      .string<LocationAuthoringInput>('Has a name', 'Location needs a name')
+      .id('loc.hasName'),
 
-function warn(
-  id: string,
-  label: string,
-  detail: string,
-): CompletenessCheck {
-  return { id, label, status: 'warning', detail };
-}
+    // ---- Background -------------------------------------------------------
+    assetId: field
+      .ref<LocationAuthoringInput>(
+        'Has a background asset',
+        'Assign a background image or 3D model so the location is visually represented',
+      )
+      .id('loc.hasBackground'),
 
-// ---------------------------------------------------------------------------
-// Individual providers
-// ---------------------------------------------------------------------------
+    // ---- Hotspots ---------------------------------------------------------
+    hotspots: field
+      .array<LocationAuthoringInput>(
+        'Has interactive hotspots',
+        'Add at least one hotspot for player interaction',
+      )
+      .id('loc.hasHotspots'),
 
-export const checkLocationIdentity: CheckProvider<LocationAuthoringInput> = (loc) => [
-  check('loc.hasName', 'Has a name', loc.name.trim().length > 0, 'Location needs a name'),
-];
-
-export const checkLocationBackground: CheckProvider<LocationAuthoringInput> = (loc) => [
-  check(
-    'loc.hasBackground',
-    'Has a background asset',
-    loc.assetId != null,
-    'Assign a background image or 3D model so the location is visually represented',
-  ),
-];
-
-export const checkLocationHotspots: CheckProvider<LocationAuthoringInput> = (loc) => {
-  const checks: CompletenessCheck[] = [];
-  const hotspots = loc.hotspots ?? [];
-
-  checks.push(
-    check(
-      'loc.hasHotspots',
-      'Has interactive hotspots',
-      hotspots.length > 0,
-      'Add at least one hotspot for player interaction',
-    ),
-  );
-
-  const actionsWithoutType = hotspots.filter((h) => h.action == null);
-  if (actionsWithoutType.length > 0) {
-    checks.push(
-      warn(
-        'loc.orphanedHotspots',
+    orphanedHotspots: field
+      .custom<LocationAuthoringInput>(
         'Hotspots without actions',
-        `${actionsWithoutType.length} hotspot(s) have no action configured`,
-      ),
-    );
-  }
+        (loc) => {
+          const orphaned = (loc.hotspots ?? []).filter((h) => h.action == null).length;
+          return orphaned > 0 ? false : 'skip';
+        },
+        (loc) => {
+          const orphaned = (loc.hotspots ?? []).filter((h) => h.action == null).length;
+          return `${orphaned} hotspot(s) have no action configured`;
+        },
+      )
+      .warn()
+      .id('loc.orphanedHotspots'),
 
-  return checks;
-};
+    // ---- Navigation -------------------------------------------------------
+    navigation: field
+      .custom<LocationAuthoringInput>(
+        'Has navigation to other locations',
+        (loc) => (loc.hotspots ?? []).some((h) => h.action?.type === 'change_location'),
+        'Add at least one hotspot that navigates to another location so the player can move around',
+      )
+      .id('loc.hasNavigation'),
 
-export const checkLocationNavigation: CheckProvider<LocationAuthoringInput> = (loc) => {
-  const navHotspots = (loc.hotspots ?? []).filter((h) => h.action?.type === 'change_location');
-  return [
-    check(
-      'loc.hasNavigation',
-      'Has navigation to other locations',
-      navHotspots.length > 0,
-      'Add at least one hotspot that navigates to another location so the player can move around',
-    ),
-  ];
-};
+    // ---- NPC slots (2D) ---------------------------------------------------
+    hasNpcSlots: field
+      .custom<LocationAuthoringInput>(
+        'Has NPC placement slots',
+        (loc) => ((loc.npcSlots2d?.length ?? 0) > 0 ? true : 'skip'),
+      )
+      .id('loc.hasNpcSlots'),
 
-export const checkLocationNpcSlots: CheckProvider<LocationAuthoringInput> = (loc) => {
-  const slotCount = loc.npcSlots2d?.length ?? 0;
-  if (slotCount === 0) {
-    return [
-      warn(
-        'loc.noNpcSlots',
+    noNpcSlots: field
+      .custom<LocationAuthoringInput>(
         'No NPC placement slots',
+        (loc) => ((loc.npcSlots2d?.length ?? 0) === 0 ? false : 'skip'),
         'Define NPC slots if this location should show NPCs in 2D view',
-      ),
-    ];
-  }
-  return [check('loc.hasNpcSlots', 'Has NPC placement slots', true)];
-};
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
-
-/** Register all built-in location check providers into a registry. */
-export function registerBuiltinLocationChecks(registry: CompletenessRegistry): void {
-  registry.register('location', 'core.identity', checkLocationIdentity);
-  registry.register('location', 'core.background', checkLocationBackground);
-  registry.register('location', 'core.hotspots', checkLocationHotspots);
-  registry.register('location', 'core.navigation', checkLocationNavigation);
-  registry.register('location', 'core.npcSlots', checkLocationNpcSlots);
+      )
+      .warn()
+      .id('loc.noNpcSlots'),
+  });
 }
+
+// Shared singleton for simple use-cases.
+export const locationSchema = createLocationSchema();

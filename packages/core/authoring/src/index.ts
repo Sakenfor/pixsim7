@@ -1,51 +1,27 @@
 /**
  * @pixsim7/core.authoring
  *
- * Game authoring primitives: entity schemas with field-level completeness,
- * project manifest, and project presets.
- *
- * ## Architecture
- *
- * Entity schemas define checkable fields — the check lives where the field
- * is defined, no separate registration step:
- *
- * ```typescript
- * import { npcSchema, field } from '@pixsim7/core.authoring';
- *
- * // Features extend the schema in-place
- * npcSchema.add('greetingDialogue', field.custom(
- *   'Has greeting dialogue',
- *   (npc) => npc.meta?.greetingDialogueId != null,
- *   'Add a greeting dialogue',
- * ));
- *
- * // Build manifest uses schemas directly
- * const manifest = buildProjectManifest({ npcs, locations, scenes });
- * ```
+ * Game authoring primitives: schema-driven completeness, project manifest,
+ * and project presets.
  */
 
 // ---------------------------------------------------------------------------
-// Entity Schema — field builders (the core primitive)
+// Entity schema primitives
 // ---------------------------------------------------------------------------
 
 export { entity, field, FieldDef, EntitySchema } from './entitySchema';
-export type { Infer } from './entitySchema';
+export type { Infer, FieldResult, FieldDetail } from './entitySchema';
 
 // ---------------------------------------------------------------------------
 // Entity schemas
 // ---------------------------------------------------------------------------
 
-export { npcSchema } from './npcCompleteness';
+export { npcSchema, createNpcSchema } from './npcCompleteness';
+export { locationSchema, createLocationSchema } from './locationCompleteness';
+export { sceneSchema, createSceneSchema } from './sceneCompleteness';
 
 // ---------------------------------------------------------------------------
-// Registry (still used by location/scene during migration)
-// ---------------------------------------------------------------------------
-
-export type { CheckProvider, CompletenessRegistry } from './registry';
-export { completenessRegistry, createCompletenessRegistry } from './registry';
-
-// ---------------------------------------------------------------------------
-// Types
+// Core types
 // ---------------------------------------------------------------------------
 
 export type {
@@ -58,61 +34,17 @@ export type {
 } from './types';
 
 // ---------------------------------------------------------------------------
-// Built-in registration (location/scene — will migrate to schemas)
+// Project manifest and readiness
 // ---------------------------------------------------------------------------
 
-export { registerAllBuiltins } from './builtins';
-export { registerBuiltinNpcChecks } from './npcCompleteness';
-export { registerBuiltinLocationChecks } from './locationCompleteness';
-export { registerBuiltinSceneChecks } from './sceneCompleteness';
+export type { ProjectManifest, ProjectManifestInput } from './projectManifest';
+export { buildProjectManifest, computeProjectReadiness } from './projectManifest';
 
 // ---------------------------------------------------------------------------
-// Location check providers (registry pattern — migration pending)
+// Project defaults and presets
 // ---------------------------------------------------------------------------
 
-export {
-  checkLocationIdentity,
-  checkLocationBackground,
-  checkLocationHotspots,
-  checkLocationNavigation,
-  checkLocationNpcSlots,
-} from './locationCompleteness';
-
-// ---------------------------------------------------------------------------
-// Scene check providers (registry pattern — migration pending)
-// ---------------------------------------------------------------------------
-
-export {
-  checkSceneIdentity,
-  checkSceneStartNode,
-  checkSceneNodes,
-  checkSceneEndNode,
-  checkSceneReachability,
-  checkSceneDeadEnds,
-  checkSceneContent,
-} from './sceneCompleteness';
-
-// ---------------------------------------------------------------------------
-// Project manifest & health
-// ---------------------------------------------------------------------------
-
-export type {
-  ProjectManifest,
-  ProjectManifestInput,
-} from './projectManifest';
-export {
-  buildProjectManifest,
-  computeProjectReadiness,
-} from './projectManifest';
-
-// ---------------------------------------------------------------------------
-// Project defaults & presets
-// ---------------------------------------------------------------------------
-
-export type {
-  ProjectPreset,
-  ProjectScaffold,
-} from './projectDefaults';
+export type { ProjectPreset, ProjectScaffold } from './projectDefaults';
 export {
   PROJECT_PRESETS,
   getProjectPreset,

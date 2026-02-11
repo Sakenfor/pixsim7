@@ -1,12 +1,11 @@
 /**
- * Project Manifest & Health
+ * Project Manifest and Health
  *
  * Aggregates entity completeness into a project-level view.
- * A "project" is conceptually one world — the manifest describes
+ * A "project" is conceptually one world - the manifest describes
  * what content it contains and how ready it is for play.
  *
- * NPC checks come from the `npcSchema` (field-builder pattern).
- * Location/scene checks still use the CompletenessRegistry during migration.
+ * Entity checks come from schemas (`npcSchema`, `locationSchema`, `sceneSchema`).
  * Cross-entity checks live here because they span multiple entity types.
  */
 
@@ -18,10 +17,10 @@ import type {
   SceneAuthoringInput,
   CompletenessCheck,
 } from './types';
-import type { CompletenessRegistry } from './registry';
-import { completenessRegistry } from './registry';
-import { registerAllBuiltins } from './builtins';
+import type { EntitySchema } from './entitySchema';
 import { npcSchema } from './npcCompleteness';
+import { locationSchema } from './locationCompleteness';
+import { sceneSchema } from './sceneCompleteness';
 
 // ---------------------------------------------------------------------------
 // Manifest type
@@ -29,7 +28,7 @@ import { npcSchema } from './npcCompleteness';
 
 /** High-level content inventory for a project/world. */
 export interface ProjectManifest {
-  /** World / project identifier (optional — content can be worldless) */
+  /** World / project identifier (optional - content can be worldless) */
   worldId?: number | string | null;
   worldName?: string;
 
@@ -47,7 +46,7 @@ export interface ProjectManifest {
   /** Cross-entity structural checks (e.g. NPCs reference valid locations) */
   crossChecks: CompletenessCheck[];
 
-  /** Per-entity detail (optional — can be large) */
+  /** Per-entity detail (optional - can be large) */
   entities?: {
     npcs: EntityCompleteness[];
     locations: EntityCompleteness[];
@@ -67,11 +66,12 @@ export interface ProjectManifestInput {
   scenes: SceneAuthoringInput[];
   /** Set to true to include per-entity detail in the manifest */
   includeEntityDetail?: boolean;
-  /**
-   * Registry to pull check providers from.
-   * Defaults to the shared singleton (with built-ins auto-registered).
-   */
-  registry?: CompletenessRegistry;
+  /** Optional NPC schema override (useful for per-call feature composition). */
+  npcSchema?: EntitySchema<NpcAuthoringInput>;
+  /** Optional location schema override (useful for per-call feature composition). */
+  locationSchema?: EntitySchema<LocationAuthoringInput>;
+  /** Optional scene schema override (useful for per-call feature composition). */
+  sceneSchema?: EntitySchema<SceneAuthoringInput>;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,49 +198,38 @@ function runCrossChecks(
 }
 
 // ---------------------------------------------------------------------------
-// Ensure built-ins are registered on first use
-// ---------------------------------------------------------------------------
-
-let builtinsRegistered = false;
-
-function ensureBuiltins(registry: CompletenessRegistry): void {
-  if (registry === completenessRegistry && !builtinsRegistered) {
-    registerAllBuiltins(registry);
-    builtinsRegistered = true;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
  * Build a full project manifest from raw content data.
  *
- * Uses check providers from the registry. If no custom registry is supplied,
- * the default singleton (with built-in checks) is used.
+ * Uses entity schemas directly.
  */
 export function buildProjectManifest(input: ProjectManifestInput): ProjectManifest {
-  // Location/scene still use the registry during migration
-  const registry = input.registry ?? completenessRegistry;
-  ensureBuiltins(registry);
+  const resolvedNpcSchema = input.npcSchema ?? npcSchema;
+  const resolvedLocationSchema = input.locationSchema ?? locationSchema;
+  const resolvedSceneSchema = input.sceneSchema ?? sceneSchema;
 
-  // NPC: uses schema directly — no registry
   const npcResults = runBatch(
-    (npc) => npcSchema.check(npc),
-    'npc', input.npcs, (n) => n.name,
+    (npc) => resolvedNpcSchema.check(npc),
+    'npc',
+    input.npcs,
+    (n) => n.name,
   );
 
-  // Location & scene: registry (will migrate to schemas later)
   const locationResults = runBatch(
-    (loc) => registry.runChecks('location', loc),
-    'location', input.locations, (l) => l.name,
+    (loc) => resolvedLocationSchema.check(loc),
+    'location',
+    input.locations,
+    (l) => l.name,
   );
+
   const sceneResults = runBatch(
-    (s) => registry.runChecks('scene', s),
+    (scene) => resolvedSceneSchema.check(scene),
     'scene',
-    input.scenes.map((s) => ({ ...s, name: s.title })),
-    (s) => s.name,
+    input.scenes,
+    (scene) => scene.title,
   );
 
   const totalHotspots = input.locations.reduce(
@@ -268,7 +257,7 @@ export function buildProjectManifest(input: ProjectManifestInput): ProjectManife
 }
 
 /**
- * Compute a single 0–1 readiness score for the whole project.
+ * Compute a single 0-1 readiness score for the whole project.
  *
  * Weights: entity completeness (60%), cross-checks (40%).
  */
