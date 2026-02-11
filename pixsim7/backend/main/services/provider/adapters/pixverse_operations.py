@@ -76,7 +76,7 @@ def _build_generation_options(params: Dict[str, Any]) -> "GenerationOptions":
         model=params.get("model", "v5"),
         quality=params.get("quality", "360p"),
         duration=int(params.get("duration", 5)) if params.get("duration") else 5,
-        seed=params.get("seed"),
+        seed=_coerce_optional_seed(params),
         aspect_ratio=params.get("aspect_ratio"),
         motion_mode=params.get("motion_mode"),
         negative_prompt=params.get("negative_prompt"),
@@ -88,6 +88,30 @@ def _build_generation_options(params: Dict[str, Any]) -> "GenerationOptions":
         off_peak=params.get("off_peak"),
         credit_change=params.get("credit_change"),
     )
+
+
+def _coerce_optional_seed(params: Dict[str, Any]) -> Optional[int]:
+    """
+    Normalize optional seed values.
+
+    Returns:
+      - int value when seed is explicitly provided
+      - None when seed is omitted/blank/invalid (provider chooses random seed)
+    """
+    seed = params.get("seed")
+    if seed is None:
+        return None
+    if isinstance(seed, str) and seed.strip() == "":
+        return None
+    try:
+        return int(seed)
+    except (TypeError, ValueError):
+        logger.warning(
+            "pixverse_invalid_seed_ignored",
+            seed=seed,
+            msg="Ignoring invalid seed value; provider will randomize",
+        )
+        return None
 
 
 def _extract_pixverse_error_code(error: Exception) -> Optional[int]:
@@ -396,16 +420,21 @@ class PixverseOperationsMixin:
         """Generate text-to-image (Pixverse image API without input images)."""
         # Use pixverse-py image operations via client.api._image_ops
         # This requires a JWT (Web API) session.
+        seed = _coerce_optional_seed(params)
+        payload = {
+            "prompt": params.get("prompt", ""),
+            "image_urls": [],  # No input images for text-to-image
+            "account": client.pool.get_next(),
+            "model": params.get("model") or None,
+            "quality": params.get("quality") or "720p",
+            "aspect_ratio": params.get("aspect_ratio") or "16:9",
+            "create_count": 1,
+        }
+        if seed is not None:
+            payload["seed"] = seed
         try:
             image = await client.api._image_ops.create_image(  # type: ignore[attr-defined]
-                prompt=params.get("prompt", ""),
-                image_urls=[],  # No input images for text-to-image
-                account=client.pool.get_next(),
-                model=params.get("model") or None,
-                quality=params.get("quality") or "720p",
-                aspect_ratio=params.get("aspect_ratio") or "16:9",
-                seed=int(params.get("seed", 0)),
-                create_count=1,
+                **payload,
             )
         except Exception as exc:  # Let upstream handler classify
             raise exc
@@ -471,16 +500,21 @@ class PixverseOperationsMixin:
 
         # Use pixverse-py image operations via client.api._image_ops
         # This requires a JWT (Web API) session.
+        seed = _coerce_optional_seed(params)
+        payload = {
+            "prompt": params.get("prompt", ""),
+            "image_urls": image_urls,
+            "account": client.pool.get_next(),
+            "model": params.get("model") or None,
+            "quality": params.get("quality") or "720p",
+            "aspect_ratio": params.get("aspect_ratio") or "9:16",
+            "create_count": 1,
+        }
+        if seed is not None:
+            payload["seed"] = seed
         try:
             image = await client.api._image_ops.create_image(  # type: ignore[attr-defined]
-                prompt=params.get("prompt", ""),
-                image_urls=image_urls,
-                account=client.pool.get_next(),
-                model=params.get("model") or None,
-                quality=params.get("quality") or "720p",
-                aspect_ratio=params.get("aspect_ratio") or "9:16",
-                seed=int(params.get("seed", 0)),
-                create_count=1,
+                **payload,
             )
         except Exception as exc:  # Let upstream handler classify
             raise exc
@@ -760,12 +794,17 @@ class PixverseOperationsMixin:
         )
 
         # Call pixverse-py fusion method with proper format
+        seed = _coerce_optional_seed(params)
+        fusion_kwargs = {
+            "prompt": prompt,
+            "image_references": image_references,
+            "quality": params.get("quality", "360p"),
+            "duration": int(params.get("duration", 5)),
+        }
+        if seed is not None:
+            fusion_kwargs["seed"] = seed
         video = await client.fusion(
-            prompt=prompt,
-            image_references=image_references,
-            quality=params.get("quality", "360p"),
-            duration=int(params.get("duration", 5)),
-            seed=int(params.get("seed", 0)),
+            **fusion_kwargs,
         )
 
         return video

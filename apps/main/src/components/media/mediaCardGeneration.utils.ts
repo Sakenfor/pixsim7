@@ -81,6 +81,53 @@ function pickString(...values: unknown[]): string {
   return '';
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function normalizeGenerationParamsCandidate(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  if (!record) return {};
+
+  const generationConfig = asRecord(record.generation_config ?? record.generationConfig) ?? {};
+  const root: Record<string, unknown> = {};
+  Object.entries(record).forEach(([key, entry]) => {
+    if (key === 'generation_config' || key === 'generationConfig') {
+      return;
+    }
+    root[key] = entry;
+  });
+
+  // Older generations may only have values nested under generation_config.
+  // Merge nested -> root so canonical top-level values still win.
+  return {
+    ...generationConfig,
+    ...root,
+  };
+}
+
+function pickGenerationParams(genRecord: Record<string, unknown>): Record<string, unknown> {
+  const candidates = [
+    (genRecord as any).canonical_params,
+    (genRecord as any).canonicalParams,
+    (genRecord as any).raw_params,
+    (genRecord as any).rawParams,
+    (genRecord as any).params,
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeGenerationParamsCandidate(candidate);
+    if (Object.keys(normalized).length > 0) {
+      return normalized;
+    }
+  }
+
+  return {};
+}
+
 function extractGenerationPrompt(
   generation: Record<string, unknown>,
   params: Record<string, unknown>,
@@ -114,13 +161,7 @@ export function parseGenerationRecord(
   providerId: string;
   prompt: string;
 } {
-  const params =
-    (genRecord as any).params ??
-    (genRecord as any).canonical_params ??
-    (genRecord as any).raw_params ??
-    (genRecord as any).canonicalParams ??
-    (genRecord as any).rawParams ??
-    {};
+  const params = pickGenerationParams(genRecord);
 
   const candidateOperation =
     (genRecord as any).operation_type ??
