@@ -2257,7 +2257,7 @@ export interface paths {
          * Get Asset Siblings
          * @description Find sibling assets - variations generated from the same inputs.
          *
-         *     Siblings share the same reproducible_hash (same prompt + same input assets).
+         *     Siblings share the same reproducible_hash (same prompt + same input assets, seed ignored).
          *     Useful for finding all variations of a generation attempt.
          *
          *     Returns only assets owned by the current user for privacy.
@@ -7961,6 +7961,33 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/worlds/{world_id}/project/export": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Export World Project
+         * @description Export a world as a versioned project bundle.
+         *
+         *     Core export includes:
+         *     - world/meta (+ world_time)
+         *     - locations + hotspots
+         *     - NPCs + schedules + expressions
+         *     - scenes + nodes + edges
+         *     - items
+         */
+        readonly get: operations["export_world_project_api_v1_game_worlds__world_id__project_export_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/worlds/{world_id}/scheduler/config": {
         readonly parameters: {
             readonly query?: never;
@@ -8119,6 +8146,29 @@ export interface paths {
         readonly get: operations["validate_all_world_schemas_api_v1_game_worlds_debug_validate_schemas_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/projects/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Import World Project
+         * @description Import a project bundle as a new world owned by the current user.
+         *
+         *     Current mode support:
+         *     - create_new_world
+         */
+        readonly post: operations["import_world_project_api_v1_game_worlds_projects_import_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -13695,6 +13745,186 @@ export interface components {
              */
             readonly tags: readonly string[];
         };
+        /** BundleHotspotData */
+        readonly BundleHotspotData: {
+            /** Action */
+            readonly action?: Record<string, unknown> | null;
+            /** Hotspot Id */
+            readonly hotspot_id: string;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Scene Source Id */
+            readonly scene_source_id?: number | null;
+            /** Scope */
+            readonly scope: string;
+            /** Source Id */
+            readonly source_id: number;
+            /** Target */
+            readonly target?: Record<string, unknown> | null;
+        };
+        /** BundleItemData */
+        readonly BundleItemData: {
+            /** Description */
+            readonly description?: string | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /** Source Id */
+            readonly source_id: number;
+            /** Stats */
+            readonly stats?: Record<string, unknown>;
+            /** Stats Metadata */
+            readonly stats_metadata?: Record<string, unknown>;
+        };
+        /** BundleLocationData */
+        readonly BundleLocationData: {
+            /** Asset Id */
+            readonly asset_id?: number | null;
+            /** Default Spawn */
+            readonly default_spawn?: string | null;
+            /** Hotspots */
+            readonly hotspots?: readonly components["schemas"]["BundleHotspotData"][];
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Name */
+            readonly name: string;
+            /** Source Id */
+            readonly source_id: number;
+            /** Stats */
+            readonly stats?: Record<string, unknown>;
+            /**
+             * X
+             * @default 0
+             */
+            readonly x: number;
+            /**
+             * Y
+             * @default 0
+             */
+            readonly y: number;
+        };
+        /** BundleNpcData */
+        readonly BundleNpcData: {
+            /** Expressions */
+            readonly expressions?: readonly components["schemas"]["BundleNpcExpressionData"][];
+            /** Home Location Source Id */
+            readonly home_location_source_id?: number | null;
+            /** Name */
+            readonly name: string;
+            /** Personality */
+            readonly personality?: Record<string, unknown> | null;
+            /** Schedules */
+            readonly schedules?: readonly components["schemas"]["BundleNpcScheduleData"][];
+            /** Source Id */
+            readonly source_id: number;
+            /** Stats */
+            readonly stats?: Record<string, unknown>;
+        };
+        /** BundleNpcExpressionData */
+        readonly BundleNpcExpressionData: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Crop */
+            readonly crop?: Record<string, unknown> | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Source Id */
+            readonly source_id: number;
+            /** State */
+            readonly state: string;
+        };
+        /** BundleNpcScheduleData */
+        readonly BundleNpcScheduleData: {
+            /** Day Of Week */
+            readonly day_of_week: number;
+            /** End Time */
+            readonly end_time: number;
+            /** Location Source Id */
+            readonly location_source_id: number;
+            /** Rule */
+            readonly rule?: Record<string, unknown> | null;
+            /** Source Id */
+            readonly source_id: number;
+            /** Start Time */
+            readonly start_time: number;
+        };
+        /** BundleSceneData */
+        readonly BundleSceneData: {
+            /** Description */
+            readonly description?: string | null;
+            /** Edges */
+            readonly edges?: readonly components["schemas"]["BundleSceneEdgeData"][];
+            /** Entry Node Source Id */
+            readonly entry_node_source_id?: number | null;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Nodes */
+            readonly nodes?: readonly components["schemas"]["BundleSceneNodeData"][];
+            /** Source Id */
+            readonly source_id: number;
+            /** Title */
+            readonly title: string;
+        };
+        /** BundleSceneEdgeData */
+        readonly BundleSceneEdgeData: {
+            /** Choice Label */
+            readonly choice_label: string;
+            /** Conditions */
+            readonly conditions?: Record<string, unknown> | null;
+            /** Cooldown Sec */
+            readonly cooldown_sec?: number | null;
+            /** Effects */
+            readonly effects?: Record<string, unknown> | null;
+            /** From Node Source Id */
+            readonly from_node_source_id: number;
+            /** Reveal At Sec */
+            readonly reveal_at_sec?: number | null;
+            /** Source Id */
+            readonly source_id: number;
+            /** To Node Source Id */
+            readonly to_node_source_id: number;
+            /**
+             * Weight
+             * @default 1
+             */
+            readonly weight: number;
+        };
+        /** BundleSceneNodeData */
+        readonly BundleSceneNodeData: {
+            /** Asset Id */
+            readonly asset_id: number;
+            /** Label */
+            readonly label?: string | null;
+            /**
+             * Loopable
+             * @default false
+             */
+            readonly loopable: boolean;
+            /** Meta */
+            readonly meta?: Record<string, unknown> | null;
+            /** Reveal Choices At Sec */
+            readonly reveal_choices_at_sec?: number | null;
+            /**
+             * Skippable
+             * @default false
+             */
+            readonly skippable: boolean;
+            /** Source Id */
+            readonly source_id: number;
+        };
+        /** BundleWorldData */
+        readonly BundleWorldData: {
+            /** Meta */
+            readonly meta?: Record<string, unknown>;
+            /** Name */
+            readonly name: string;
+            /**
+             * World Time
+             * @default 0
+             */
+            readonly world_time: number;
+        };
         /**
          * CacheInvalidationRequest
          * @description Request to invalidate cache entries
@@ -16238,6 +16468,90 @@ export interface components {
             /** Total */
             readonly total: number;
         };
+        /** GameProjectBundle */
+        readonly "GameProjectBundle-Input": {
+            readonly core: components["schemas"]["GameProjectCoreBundle-Input"];
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            readonly exported_at?: string;
+            /** Extensions */
+            readonly extensions?: Record<string, unknown>;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+        } & {
+            readonly [key: string]: unknown;
+        };
+        /** GameProjectBundle */
+        readonly "GameProjectBundle-Output": {
+            readonly core: components["schemas"]["GameProjectCoreBundle-Output"];
+            /**
+             * Exported At
+             * Format: date-time
+             */
+            readonly exported_at?: string;
+            /** Extensions */
+            readonly extensions?: Record<string, unknown>;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+        } & {
+            readonly [key: string]: unknown;
+        };
+        /** GameProjectCoreBundle */
+        readonly "GameProjectCoreBundle-Input": {
+            /** Items */
+            readonly items?: readonly components["schemas"]["BundleItemData"][];
+            /** Locations */
+            readonly locations?: readonly components["schemas"]["BundleLocationData"][];
+            /** Npcs */
+            readonly npcs?: readonly components["schemas"]["BundleNpcData"][];
+            /** Scenes */
+            readonly scenes?: readonly components["schemas"]["BundleSceneData"][];
+            readonly world: components["schemas"]["BundleWorldData"];
+        };
+        /** GameProjectCoreBundle */
+        readonly "GameProjectCoreBundle-Output": {
+            /** Items */
+            readonly items?: readonly components["schemas"]["BundleItemData"][];
+            /** Locations */
+            readonly locations?: readonly components["schemas"]["BundleLocationData"][];
+            /** Npcs */
+            readonly npcs?: readonly components["schemas"]["BundleNpcData"][];
+            /** Scenes */
+            readonly scenes?: readonly components["schemas"]["BundleSceneData"][];
+            readonly world: components["schemas"]["BundleWorldData"];
+        };
+        /** GameProjectImportRequest */
+        readonly GameProjectImportRequest: {
+            readonly bundle: components["schemas"]["GameProjectBundle-Input"];
+            /** @default create_new_world */
+            readonly mode: components["schemas"]["ProjectImportMode"];
+            /** World Name Override */
+            readonly world_name_override?: string | null;
+        };
+        /** GameProjectImportResponse */
+        readonly GameProjectImportResponse: {
+            readonly counts: components["schemas"]["ProjectImportCounts"];
+            readonly id_maps: components["schemas"]["ProjectImportIdMaps"];
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+            /** Warnings */
+            readonly warnings?: readonly string[];
+            /** World Id */
+            readonly world_id: number;
+            /** World Name */
+            readonly world_name: string;
+        };
         /** GameScene */
         readonly GameScene: {
             /**
@@ -18573,6 +18887,82 @@ export interface components {
             /** Status */
             readonly status: string;
         };
+        /** ProjectImportCounts */
+        readonly ProjectImportCounts: {
+            /**
+             * Edges
+             * @default 0
+             */
+            readonly edges: number;
+            /**
+             * Expressions
+             * @default 0
+             */
+            readonly expressions: number;
+            /**
+             * Hotspots
+             * @default 0
+             */
+            readonly hotspots: number;
+            /**
+             * Items
+             * @default 0
+             */
+            readonly items: number;
+            /**
+             * Locations
+             * @default 0
+             */
+            readonly locations: number;
+            /**
+             * Nodes
+             * @default 0
+             */
+            readonly nodes: number;
+            /**
+             * Npcs
+             * @default 0
+             */
+            readonly npcs: number;
+            /**
+             * Scenes
+             * @default 0
+             */
+            readonly scenes: number;
+            /**
+             * Schedules
+             * @default 0
+             */
+            readonly schedules: number;
+        };
+        /** ProjectImportIdMaps */
+        readonly ProjectImportIdMaps: {
+            /** Items */
+            readonly items?: {
+                readonly [key: string]: number;
+            };
+            /** Locations */
+            readonly locations?: {
+                readonly [key: string]: number;
+            };
+            /** Nodes */
+            readonly nodes?: {
+                readonly [key: string]: number;
+            };
+            /** Npcs */
+            readonly npcs?: {
+                readonly [key: string]: number;
+            };
+            /** Scenes */
+            readonly scenes?: {
+                readonly [key: string]: number;
+            };
+        };
+        /**
+         * ProjectImportMode
+         * @constant
+         */
+        readonly ProjectImportMode: "create_new_world";
         /**
          * PromptBlockCandidate
          * @description Normalized prompt block candidate.
@@ -35484,6 +35874,39 @@ export interface operations {
             };
         };
     };
+    readonly export_world_project_api_v1_game_worlds__world_id__project_export_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly world_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameProjectBundle-Output"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_scheduler_config_api_v1_game_worlds__world_id__scheduler_config_get: {
         readonly parameters: {
             readonly query?: never;
@@ -35712,6 +36135,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BatchValidationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly import_world_project_api_v1_game_worlds_projects_import_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["GameProjectImportRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GameProjectImportResponse"];
                 };
             };
             /** @description Validation Error */

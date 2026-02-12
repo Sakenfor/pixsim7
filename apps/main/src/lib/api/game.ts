@@ -3,8 +3,8 @@
  *
  * Wraps the shared domain client with app-specific helpers and additional endpoints.
  */
-import { IDs, ApiComponents } from '@pixsim7/shared.types';
 import { createGameApi } from '@pixsim7/shared.api.client/domains';
+import { IDs, ApiComponents } from '@pixsim7/shared.types';
 
 import type {
   Scene,
@@ -44,6 +44,45 @@ export type PaginatedWorldsResponse = ApiComponents['schemas']['PaginatedWorldsR
 export type WorldConfigResponse = ApiComponents['schemas']['WorldConfigResponse'];
 export type InventoryStatsResponse = ApiComponents['schemas']['InventoryStatsResponse'];
 export type MessageResponse = ApiComponents['schemas']['MessageResponse'];
+
+// Project bundle import/export
+export interface GameProjectBundle {
+  schema_version: number;
+  exported_at: string;
+  core: {
+    world: Record<string, unknown>;
+    locations: unknown[];
+    npcs: unknown[];
+    scenes: unknown[];
+    items: unknown[];
+  };
+  extensions?: Record<string, unknown>;
+}
+
+export interface GameProjectImportResponse {
+  schema_version: number;
+  world_id: number;
+  world_name: string;
+  counts: {
+    locations: number;
+    hotspots: number;
+    npcs: number;
+    schedules: number;
+    expressions: number;
+    scenes: number;
+    nodes: number;
+    edges: number;
+    items: number;
+  };
+  id_maps: {
+    locations: Record<string, number>;
+    npcs: Record<string, number>;
+    scenes: Record<string, number>;
+    nodes: Record<string, number>;
+    items: Record<string, number>;
+  };
+  warnings: string[];
+}
 
 // Re-export types for backward compatibility
 export type {
@@ -279,6 +318,21 @@ export async function updateGameWorldMeta(
   meta: Record<string, unknown>,
 ): Promise<GameWorldDetail> {
   return gameApi.updateWorldMeta(worldId, meta);
+}
+
+export async function exportWorldProject(worldId: number): Promise<GameProjectBundle> {
+  return pixsimClient.get<GameProjectBundle>(`/game/worlds/${worldId}/project/export`);
+}
+
+export async function importWorldProject(
+  bundle: GameProjectBundle,
+  opts?: { world_name_override?: string }
+): Promise<GameProjectImportResponse> {
+  return pixsimClient.post<GameProjectImportResponse>('/game/worlds/projects/import', {
+    bundle,
+    mode: 'create_new_world',
+    ...(opts?.world_name_override ? { world_name_override: opts.world_name_override } : {}),
+  });
 }
 
 // =============================================================================

@@ -13,6 +13,12 @@ from pixsim7.backend.main.domain.game.schemas import (
     CURRENT_SCHEMA_VERSION,
     auto_migrate_schema,
 )
+from pixsim7.backend.main.domain.game.schemas.project_bundle import (
+    GameProjectBundle,
+    GameProjectImportRequest,
+    GameProjectImportResponse,
+)
+from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 
 
 router = APIRouter()
@@ -221,6 +227,54 @@ async def update_world_meta(
 
     # Get current world time
     return await _build_world_detail(updated_world, game_world_service)
+
+
+@router.get("/{world_id}/project/export", response_model=GameProjectBundle)
+async def export_world_project(
+    world_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> GameProjectBundle:
+    """
+    Export a world as a versioned project bundle.
+
+    Core export includes:
+    - world/meta (+ world_time)
+    - locations + hotspots
+    - NPCs + schedules + expressions
+    - scenes + nodes + edges
+    - items
+    """
+    await _get_owned_world(world_id, user, game_world_service)
+    bundle_service = GameProjectBundleService(game_world_service.db)
+    try:
+        return await bundle_service.export_world_bundle(world_id)
+    except ValueError as e:
+        if str(e) == "world_not_found":
+            raise HTTPException(status_code=404, detail="World not found")
+        raise
+
+
+@router.post("/projects/import", response_model=GameProjectImportResponse, status_code=201)
+async def import_world_project(
+    req: GameProjectImportRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> GameProjectImportResponse:
+    """
+    Import a project bundle as a new world owned by the current user.
+
+    Current mode support:
+    - create_new_world
+    """
+    bundle_service = GameProjectBundleService(game_world_service.db)
+    try:
+        return await bundle_service.import_bundle(req, owner_user_id=user.id)
+    except ValueError as e:
+        msg = str(e)
+        if msg in {"unsupported_import_mode", "world_name_required"}:
+            raise HTTPException(status_code=400, detail=msg)
+        raise
 
 
 def generate_migration_suggestions(errors: List[str]) -> List[str]:

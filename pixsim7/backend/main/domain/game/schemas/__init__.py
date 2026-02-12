@@ -97,6 +97,28 @@ from .simulation import (
     get_default_world_scheduler_config,
 )
 
+# Project bundle schemas
+from .project_bundle import (
+    PROJECT_BUNDLE_SCHEMA_VERSION,
+    ProjectImportMode,
+    BundleWorldData,
+    BundleHotspotData,
+    BundleLocationData,
+    BundleNpcScheduleData,
+    BundleNpcExpressionData,
+    BundleNpcData,
+    BundleSceneNodeData,
+    BundleSceneEdgeData,
+    BundleSceneData,
+    BundleItemData,
+    GameProjectCoreBundle,
+    GameProjectBundle,
+    GameProjectImportRequest,
+    ProjectImportCounts,
+    ProjectImportIdMaps,
+    GameProjectImportResponse,
+)
+
 __all__ = [
     # Relationship schemas + helpers
     "detect_tier_overlaps",
@@ -173,4 +195,24 @@ __all__ = [
     "TurnConfigSchema",
     "GameProfileSchema",
     "get_default_world_scheduler_config",
+
+    # Project bundle schemas
+    "PROJECT_BUNDLE_SCHEMA_VERSION",
+    "ProjectImportMode",
+    "BundleWorldData",
+    "BundleHotspotData",
+    "BundleLocationData",
+    "BundleNpcScheduleData",
+    "BundleNpcExpressionData",
+    "BundleNpcData",
+    "BundleSceneNodeData",
+    "BundleSceneEdgeData",
+    "BundleSceneData",
+    "BundleItemData",
+    "GameProjectCoreBundle",
+    "GameProjectBundle",
+    "GameProjectImportRequest",
+    "ProjectImportCounts",
+    "ProjectImportIdMaps",
+    "GameProjectImportResponse",
 ]
