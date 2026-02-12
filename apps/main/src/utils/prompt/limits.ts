@@ -1,11 +1,16 @@
-import { DEFAULT_PROMPT_MAX_CHARS } from '../../config/prompt';
 import { providerCapabilityRegistry } from '@features/providers';
+
+import { DEFAULT_PROMPT_MAX_CHARS } from '../../config/prompt';
 
 /**
  * Parameter spec shape (subset of what backend returns)
+ *
+ * The backend OperationParameterSpec uses `max` for upper bounds.
+ * Some specs may also expose `max_length` or per-model overrides in metadata.
  */
 interface ParamSpec {
   name: string;
+  max?: number;
   max_length?: number;
   metadata?: {
     per_model_max_length?: Record<string, number>;
@@ -50,21 +55,24 @@ export function resolvePromptLimitForModel(
   model?: string,
   paramSpecs?: ParamSpec[]
 ): number {
-  // Try to find model-specific limit from paramSpecs
-  if (paramSpecs && model) {
+  // Try to find limit from paramSpecs
+  if (paramSpecs) {
     const promptSpec = paramSpecs.find((p) => p.name === 'prompt');
-    if (promptSpec?.metadata?.per_model_max_length) {
+
+    // Check for per-model override first
+    if (model && promptSpec?.metadata?.per_model_max_length) {
       const modelLower = model.toLowerCase();
-      // Check for exact match or prefix match
       for (const [key, limit] of Object.entries(promptSpec.metadata.per_model_max_length)) {
         if (key.toLowerCase() === modelLower || modelLower.startsWith(key.toLowerCase())) {
           return limit;
         }
       }
     }
-    // Fall back to base max_length from spec
-    if (promptSpec?.max_length) {
-      return promptSpec.max_length;
+
+    // Fall back to base limit from spec (check both `max` and `max_length`)
+    const specLimit = promptSpec?.max_length ?? promptSpec?.max;
+    if (specLimit) {
+      return specLimit;
     }
   }
 
