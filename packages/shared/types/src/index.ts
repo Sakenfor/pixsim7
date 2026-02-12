@@ -192,7 +192,7 @@ export * from './compositionPackages'
 // Region Label Utilities
 // ===================
 
-export * from './region-utils'
+export * from './regionHelpers'
 
 // ===================
 // World Configuration Schemas

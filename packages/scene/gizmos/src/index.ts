@@ -147,7 +147,7 @@ export {
   getZoneColorByEffectiveness,
   validateZone,
   validateSegmentZones,
-} from './zoneUtils';
+} from './zoneHelpers';
 
 // Zone Tracking Utilities
 export {
@@ -163,7 +163,7 @@ export {
   validateZoneTracking,
   getZoneTrackingStats,
   getTrackingCompleteness,
-} from './zoneTrackingUtils';
+} from './zoneTrackingHelpers';
 
 // =============================================================================
 // Surface Profile System

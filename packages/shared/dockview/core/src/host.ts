@@ -6,8 +6,8 @@
 
 import type { DockviewApi } from 'dockview-core';
 import type { PanelLookup } from './types';
-import { addPanel, focusPanel, isPanelOpen, togglePanel, removePanel } from './panelUtils';
-import type { AddPanelOptions } from './panelUtils';
+import { addPanel, focusPanel, isPanelOpen, togglePanel, removePanel } from './panelHelpers';
+import type { AddPanelOptions } from './panelHelpers';
 
 export interface DockviewHost {
   /** Unique identifier for this dockview instance */

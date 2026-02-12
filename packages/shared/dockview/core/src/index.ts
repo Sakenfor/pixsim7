@@ -45,8 +45,8 @@ export {
   removePanel,
   togglePanel,
   ensurePanels,
-} from './panelUtils';
-export type { AddPanelOptions, EnsurePanelsOptions } from './panelUtils';
+} from './panelHelpers';
+export type { AddPanelOptions, EnsurePanelsOptions } from './panelHelpers';
 
 // Layout persistence
 export {
