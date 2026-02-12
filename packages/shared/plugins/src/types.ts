@@ -65,6 +65,23 @@ export interface PluginCapabilityHints {
   opensDialogue?: boolean;
 }
 
+/** Human-readable labels for capability hint keys */
+export const CAPABILITY_LABELS: Record<keyof PluginCapabilityHints, string> = {
+  modifiesSession: 'Modifies Session',
+  modifiesInventory: 'Modifies Inventory',
+  modifiesRelationships: 'Modifies Relationships',
+  addsUIOverlay: 'Adds UI Overlay',
+  addsNodeTypes: 'Adds Node Types',
+  addsGalleryTools: 'Adds Gallery Tools',
+  providerId: 'Provider ID',
+  triggersEvents: 'Triggers Events',
+  hasRisk: 'Has Risk',
+  requiresItems: 'Requires Items',
+  consumesItems: 'Consumes Items',
+  canBeDetected: 'Can Be Detected',
+  opensDialogue: 'Opens Dialogue',
+};
+
 /**
  * Core metadata that all plugins should have
  */
@@ -95,6 +112,9 @@ export interface PluginMetadata {
 
   /** Optional author */
   author?: string;
+
+  /** Optional icon identifier (e.g. emoji, icon name, or URL — each plugin sets its own) */
+  icon?: string;
 
   /** Tags for filtering/searching */
   tags?: string[];

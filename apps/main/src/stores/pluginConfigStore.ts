@@ -112,7 +112,7 @@ const usePluginConfigStoreInternal = create<PluginConfigStoreState>()(
  * Create the plugin config store API
  */
 function createPluginConfigStore() {
-  const { subscribe, set, update } = {
+  const { subscribe } = {
     subscribe: (callback: (state: PluginConfigMap) => void) => {
       return usePluginConfigStoreInternal.subscribe((state) => callback(state.configs));
     },
@@ -189,6 +189,12 @@ function createPluginConfigStore() {
     },
   };
 }
+
+/**
+ * Zustand hook for reactive access to plugin config state in React components.
+ * Use this when you need to subscribe to per-plugin config changes.
+ */
+export { usePluginConfigStoreInternal };
 
 /**
  * Global plugin config store instance

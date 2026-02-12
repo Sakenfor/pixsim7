@@ -5,17 +5,29 @@
  * Allows users to view plugin details and toggle activation state.
  */
 
-import type { PluginMetadata, PluginFamily } from '@pixsim7/shared.plugins';
+import type {
+  PluginFamily,
+  PluginCapabilityHints,
+  ExtendedPluginMetadata,
+} from '@pixsim7/shared.plugins';
+import { CAPABILITY_LABELS } from '@pixsim7/shared.plugins';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
 import { useState, useSyncExternalStore, useMemo, useCallback, useRef } from 'react';
 
-import { pluginCatalog, pluginActivationManager } from '@lib/plugins';
+import { Icon } from '@lib/icons';
+import { pluginCatalog, pluginActivationManager, pluginSettingsRegistry } from '@lib/plugins';
+import type { SettingGroup, SettingStoreAdapter } from '@lib/settingsSchema/types';
+
+import { SettingFieldRenderer } from '@features/settings/components/shared/SettingFieldRenderer';
+
+
+import { usePluginConfigStoreInternal } from '@/stores/pluginConfigStore';
 
 // ===== Hooks =====
 
 function useCatalogPlugins() {
   const versionRef = useRef(0);
-  const snapshotRef = useRef<{ version: number; value: PluginMetadata[] }>({
+  const snapshotRef = useRef<{ version: number; value: ExtendedPluginMetadata[] }>({
     version: -1,
     value: [],
   });
@@ -45,6 +57,49 @@ function useCatalogPlugins() {
   return plugins;
 }
 
+function usePluginSettingsSchema(pluginId: string): SettingGroup[] | undefined {
+  const versionRef = useRef(0);
+  const snapshotRef = useRef<{ version: number; value: SettingGroup[] | undefined }>({
+    version: -1,
+    value: undefined,
+  });
+
+  const subscribe = useCallback((onStoreChange: () => void) => {
+    return pluginSettingsRegistry.subscribe(() => {
+      versionRef.current += 1;
+      onStoreChange();
+    });
+  }, []);
+
+  const getSnapshot = useCallback(() => {
+    if (snapshotRef.current.version !== versionRef.current) {
+      snapshotRef.current = {
+        version: versionRef.current,
+        value: pluginSettingsRegistry.get(pluginId),
+      };
+    }
+    return snapshotRef.current.value;
+   
+  }, [pluginId]);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+const EMPTY_CONFIG: Record<string, any> = {};
+
+function usePluginConfigStoreAdapter(pluginId: string): SettingStoreAdapter {
+  const configs = usePluginConfigStoreInternal(
+    useCallback((s: { configs: Record<string, Record<string, any>> }) => s.configs[pluginId] ?? EMPTY_CONFIG, [pluginId]),
+  );
+  const setConfig = usePluginConfigStoreInternal(s => s.setConfig);
+
+  return useMemo(() => ({
+    get: (fieldId: string) => configs[fieldId],
+    set: (fieldId: string, value: any) => setConfig(pluginId, { [fieldId]: value }),
+    getAll: () => configs,
+  }), [configs, setConfig, pluginId]);
+}
+
 // ===== Families for display grouping =====
 
 const FAMILY_LABELS: Partial<Record<PluginFamily, string>> = {
@@ -66,6 +121,59 @@ const FAMILY_LABELS: Partial<Record<PluginFamily, string>> = {
   'panel-group': 'Panel Groups',
   'dev-tool': 'Dev Tools',
 };
+
+// ===== Family metadata field labels =====
+
+const FAMILY_FIELD_LABELS: Partial<Record<string, string>> = {
+  sceneViewId: 'Scene View ID',
+  surfaces: 'Surfaces',
+  default: 'Default',
+  controlCenterId: 'Control Center ID',
+  displayName: 'Display Name',
+  preview: 'Preview',
+  features: 'Features',
+  scope: 'Scope',
+  userCreatable: 'User Creatable',
+  preloadPriority: 'Preload Priority',
+  nodeType: 'Node Type',
+  storeId: 'Store ID',
+  supportsMultiScene: 'Multi-Scene',
+  supportsWorldContext: 'World Context',
+  supportsPlayback: 'Playback',
+  panelId: 'Panel ID',
+  supportsCompactMode: 'Compact Mode',
+  supportsMultipleInstances: 'Multiple Instances',
+  widgetId: 'Widget ID',
+  dockviewId: 'Dockview ID',
+  presetScope: 'Preset Scope',
+  panelScope: 'Panel Scope',
+  storageKey: 'Storage Key',
+  allowedPanels: 'Allowed Panels',
+  defaultPanels: 'Default Panels',
+  gizmoSurfaceId: 'Gizmo Surface ID',
+  supportsContexts: 'Supported Contexts',
+  groupId: 'Group ID',
+  slots: 'Slots',
+  presets: 'Presets',
+  defaultScopes: 'Default Scopes',
+  hasOverlays: 'Has Overlays',
+  hasMenuItems: 'Has Menu Items',
+  pluginType: 'Plugin Type',
+  bundleFamily: 'Bundle Family',
+  providerId: 'Provider ID',
+  operations: 'Operations',
+  priority: 'Priority',
+  category: 'Category',
+  icon: 'Icon',
+};
+
+/** Keys from PluginMetadata that should not be shown in family metadata */
+const BASE_METADATA_KEYS = new Set([
+  'id', 'name', 'family', 'origin', 'activationState', 'canDisable',
+  'version', 'description', 'author', 'icon', 'tags', 'capabilities',
+  'providesFeatures', 'consumesFeatures', 'consumesActions', 'consumesState',
+  'experimental', 'deprecated', 'deprecationMessage', 'replaces', 'configurable',
+]);
 
 // ===== Component =====
 
@@ -159,6 +267,7 @@ export function PluginManagerUI() {
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium truncate">
+                      {plugin.icon && <Icon name={plugin.icon as string} size={14} className="mr-1.5" />}
                       {plugin.name}
                     </span>
                     <Badge
@@ -181,7 +290,7 @@ export function PluginManagerUI() {
         </Panel>
 
         {/* Plugin Details */}
-        <Panel className="lg:col-span-2 space-y-3">
+        <Panel className="lg:col-span-2 space-y-3 max-h-[75vh] overflow-y-auto">
           {selected ? (
             <PluginDetails plugin={selected} />
           ) : (
@@ -195,7 +304,17 @@ export function PluginManagerUI() {
   );
 }
 
-function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
+// ===== Detail Sections =====
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
+      {children}
+    </h3>
+  );
+}
+
+function PluginDetails({ plugin }: { plugin: ExtendedPluginMetadata }) {
   const canToggle = pluginCatalog.canDisable(plugin.id);
   const isActive = plugin.activationState === 'active';
 
@@ -206,7 +325,10 @@ function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
   return (
     <>
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">{plugin.name}</h2>
+        <h2 className="text-lg font-semibold">
+          {plugin.icon && <Icon name={plugin.icon as string} size={16} className="mr-2" />}
+          {plugin.name}
+        </h2>
         {canToggle && (
           <Button
             size="sm"
@@ -221,63 +343,47 @@ function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
       <div className="space-y-3">
         {plugin.description && (
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Description
-            </h3>
+            <SectionHeading>Description</SectionHeading>
             <p className="text-sm">{plugin.description}</p>
           </div>
         )}
 
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Family
-            </h3>
+            <SectionHeading>Family</SectionHeading>
             <p>{FAMILY_LABELS[plugin.family] ?? plugin.family}</p>
           </div>
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Origin
-            </h3>
+            <SectionHeading>Origin</SectionHeading>
             <p className="capitalize">{plugin.origin}</p>
           </div>
           {plugin.version && (
             <div>
-              <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-                Version
-              </h3>
+              <SectionHeading>Version</SectionHeading>
               <p>{plugin.version}</p>
             </div>
           )}
           {plugin.author && (
             <div>
-              <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-                Author
-              </h3>
+              <SectionHeading>Author</SectionHeading>
               <p>{plugin.author}</p>
             </div>
           )}
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              State
-            </h3>
+            <SectionHeading>State</SectionHeading>
             <Badge color={isActive ? 'green' : 'gray'}>
               {plugin.activationState}
             </Badge>
           </div>
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Can Disable
-            </h3>
+            <SectionHeading>Can Disable</SectionHeading>
             <p>{canToggle ? 'Yes' : 'No (required)'}</p>
           </div>
         </div>
 
         {plugin.tags && plugin.tags.length > 0 && (
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Tags
-            </h3>
+            <SectionHeading>Tags</SectionHeading>
             <div className="flex flex-wrap gap-1">
               {plugin.tags.map(tag => (
                 <Badge key={tag} color="blue" className="text-xs">
@@ -290,9 +396,7 @@ function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
 
         {plugin.providesFeatures && plugin.providesFeatures.length > 0 && (
           <div>
-            <h3 className="text-xs font-semibold text-neutral-600 dark:text-neutral-400 mb-1">
-              Provides
-            </h3>
+            <SectionHeading>Provides</SectionHeading>
             <div className="flex flex-wrap gap-1">
               {plugin.providesFeatures.map(f => (
                 <Badge key={f} color="green" className="text-xs">
@@ -302,6 +406,15 @@ function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
             </div>
           </div>
         )}
+
+        {/* Capabilities */}
+        <CapabilitiesSection capabilities={plugin.capabilities} />
+
+        {/* Dependencies */}
+        <DependenciesSection plugin={plugin} />
+
+        {/* Family-specific metadata */}
+        <FamilyMetadataSection plugin={plugin} />
 
         {plugin.experimental && (
           <Badge color="yellow" className="text-xs">Experimental</Badge>
@@ -314,7 +427,161 @@ function PluginDetails({ plugin }: { plugin: PluginMetadata }) {
             </p>
           </div>
         )}
+
+        {/* Inline settings */}
+        <PluginSettingsSection pluginId={plugin.id} />
       </div>
     </>
+  );
+}
+
+function CapabilitiesSection({ capabilities }: { capabilities?: PluginCapabilityHints }) {
+  if (!capabilities) return null;
+
+  const entries = Object.entries(capabilities).filter(
+    ([key, value]) => value !== undefined && value !== false && key !== 'providerId',
+  ) as [keyof PluginCapabilityHints, boolean | string][];
+
+  if (entries.length === 0) return null;
+
+  return (
+    <div>
+      <SectionHeading>Capabilities</SectionHeading>
+      <div className="flex flex-wrap gap-1">
+        {entries.map(([key, value]) => {
+          if (typeof value === 'string') return null;
+          return (
+            <Badge
+              key={key}
+              color={key === 'hasRisk' ? 'yellow' : 'purple'}
+              className="text-xs"
+            >
+              {CAPABILITY_LABELS[key] ?? key}
+            </Badge>
+          );
+        })}
+      </div>
+      {capabilities.providerId && (
+        <p className="text-xs text-neutral-500 mt-1">
+          Provider: <span className="font-mono">{capabilities.providerId}</span>
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DependenciesSection({ plugin }: { plugin: ExtendedPluginMetadata }) {
+  const { consumesFeatures, consumesActions, consumesState, replaces } = plugin;
+  const hasAny =
+    (consumesFeatures && consumesFeatures.length > 0) ||
+    (consumesActions && consumesActions.length > 0) ||
+    (consumesState && consumesState.length > 0) ||
+    replaces;
+
+  if (!hasAny) return null;
+
+  return (
+    <div>
+      <SectionHeading>Dependencies</SectionHeading>
+      <div className="space-y-1.5 text-xs">
+        {consumesFeatures && consumesFeatures.length > 0 && (
+          <div>
+            <span className="text-neutral-500">Consumes features: </span>
+            <span className="font-mono">{consumesFeatures.join(', ')}</span>
+          </div>
+        )}
+        {consumesActions && consumesActions.length > 0 && (
+          <div>
+            <span className="text-neutral-500">Consumes actions: </span>
+            <span className="font-mono">{consumesActions.join(', ')}</span>
+          </div>
+        )}
+        {consumesState && consumesState.length > 0 && (
+          <div>
+            <span className="text-neutral-500">Consumes state: </span>
+            <span className="font-mono">{consumesState.join(', ')}</span>
+          </div>
+        )}
+        {replaces && (
+          <div>
+            <span className="text-neutral-500">Replaces: </span>
+            <span className="font-mono">{replaces}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FamilyMetadataSection({ plugin }: { plugin: ExtendedPluginMetadata }) {
+  // Extract family-specific fields by filtering out base PluginMetadata keys
+  const extensionEntries = Object.entries(plugin).filter(
+    ([key, value]) => !BASE_METADATA_KEYS.has(key) && value !== undefined,
+  );
+
+  if (extensionEntries.length === 0) return null;
+
+  return (
+    <div>
+      <SectionHeading>{FAMILY_LABELS[plugin.family] ?? plugin.family} Details</SectionHeading>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        {extensionEntries.map(([key, value]) => (
+          <div key={key}>
+            <span className="text-neutral-500">{FAMILY_FIELD_LABELS[key] ?? key}: </span>
+            <span className="font-mono">{formatMetadataValue(value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatMetadataValue(value: unknown): string {
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return String(value);
+}
+
+function PluginSettingsSection({ pluginId }: { pluginId: string }) {
+  const schema = usePluginSettingsSchema(pluginId);
+  const store = usePluginConfigStoreAdapter(pluginId);
+
+  if (!schema || schema.length === 0) return null;
+
+  const allValues = store.getAll();
+
+  return (
+    <div className="border-t border-neutral-200 dark:border-neutral-700 pt-3">
+      <SectionHeading>Settings</SectionHeading>
+      <div className="space-y-4">
+        {schema.map(group => {
+          if (group.showWhen && !group.showWhen(allValues)) return null;
+          return (
+            <div key={group.id} className="space-y-2">
+              {group.title && (
+                <p className="text-[11px] font-semibold text-neutral-700 dark:text-neutral-300">
+                  {group.title}
+                </p>
+              )}
+              {group.description && (
+                <p className="text-[10px] text-neutral-500">{group.description}</p>
+              )}
+              <div className="space-y-2">
+                {group.fields.map(field => (
+                  <SettingFieldRenderer
+                    key={field.id}
+                    field={field}
+                    value={store.get(field.id)}
+                    onChange={(v) => store.set(field.id, v)}
+                    allValues={allValues}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
