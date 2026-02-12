@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 
+import { Icons } from '@lib/icons';
+
 import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
@@ -131,6 +133,8 @@ type TreeNodeViewProps = {
   compactMode?: boolean;
   selectedFolderPath?: string;
   onFolderSelect?: (path: string) => void;
+  onRemoveFolder?: (folderId: string) => void;
+  onRefreshFolder?: (folderId: string) => void;
 };
 
 function TreeNodeView({
@@ -144,7 +148,9 @@ function TreeNodeView({
   providerId,
   compactMode,
   selectedFolderPath,
-  onFolderSelect
+  onFolderSelect,
+  onRemoveFolder,
+  onRefreshFolder,
 }: TreeNodeViewProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
   const resolvedPreview = useLocalAssetPreview(node.asset, previews);
@@ -152,6 +158,7 @@ function TreeNodeView({
   if (node.type === 'folder') {
     const hasChildren = node.children && node.children.length > 0;
     const isSelected = compactMode && selectedFolderPath === node.path;
+    const isRootFolder = level === 0;
 
     const handleClick = () => {
       if (compactMode && onFolderSelect) {
@@ -163,7 +170,7 @@ function TreeNodeView({
     return (
       <div className="select-none">
         <div
-          className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition-colors ${
+          className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition-colors group/folder ${
             isSelected
               ? 'bg-blue-100 dark:bg-blue-900/30 border-l-2 border-blue-500'
               : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
@@ -181,6 +188,24 @@ function TreeNodeView({
           <span className="text-xs text-neutral-500 ml-auto flex-shrink-0">
             {node.count}
           </span>
+          {isRootFolder && (
+            <span className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity flex-shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); onRefreshFolder?.(node.path); }}
+                className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                title="Refresh folder"
+              >
+                <Icons.refreshCw size={12} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemoveFolder?.(node.path); }}
+                className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-neutral-400 hover:text-red-500 transition-colors"
+                title="Remove folder"
+              >
+                <Icons.x size={12} />
+              </button>
+            </span>
+          )}
         </div>
 
         {expanded && hasChildren && (
@@ -199,6 +224,8 @@ function TreeNodeView({
                 compactMode={compactMode}
                 selectedFolderPath={selectedFolderPath}
                 onFolderSelect={onFolderSelect}
+                onRemoveFolder={onRemoveFolder}
+                onRefreshFolder={onRefreshFolder}
               />
             ))}
           </div>
@@ -300,6 +327,8 @@ type TreeFolderViewProps = {
   onFolderSelect?: (path: string) => void; // Callback when folder is clicked
   // Optional explicit folder order (folderId list) to keep roots aligned with LocalFolders store
   folderOrder?: string[];
+  onRemoveFolder?: (folderId: string) => void;
+  onRefreshFolder?: (folderId: string) => void;
 };
 
 export function TreeFolderView({
@@ -314,7 +343,9 @@ export function TreeFolderView({
   compactMode,
   selectedFolderPath,
   onFolderSelect,
-  folderOrder
+  folderOrder,
+  onRemoveFolder,
+  onRefreshFolder,
 }: TreeFolderViewProps) {
   const tree = useMemo(
     () => buildTree(assets, folderNames, folderOrder),
@@ -346,6 +377,8 @@ export function TreeFolderView({
             compactMode={compactMode}
             selectedFolderPath={selectedFolderPath}
             onFolderSelect={onFolderSelect}
+            onRemoveFolder={onRemoveFolder}
+            onRefreshFolder={onRefreshFolder}
           />
         ))}
       </div>
