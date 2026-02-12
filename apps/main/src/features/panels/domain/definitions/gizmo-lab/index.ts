@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { GizmoLab } from '@/routes/GizmoLab';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'gizmo-lab',
@@ -11,4 +12,15 @@ export default definePanel({
   description: 'Gizmo testing laboratory',
   supportsCompactMode: false,
   supportsMultipleInstances: false,
+  orchestration: {
+    type: 'dockview-container',
+    defaultZone: 'center',
+    canChangeZone: true,
+    dockview: {
+      hasDockview: true,
+      subPanelsCanBreakout: true,
+      persistLayout: true,
+      storageKey: 'gizmo-lab-dockview-layout:v1',
+    },
+  },
 });

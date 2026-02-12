@@ -136,6 +136,7 @@
       "@pixsim7/shared.modules.core": ["../../packages/shared/modules/core/src"],
       "@pixsim7/shared.ui.dockview": ["../../packages/shared/ui/dockview/src"],
       "@pixsim7/shared.ui.panels": ["../../packages/shared/ui/panels/src"],
+      "@pixsim7/shared.detection.core": ["../../packages/shared/detection/core/src"],
       "@pixsim7/shared.devtools.core": ["../../packages/shared/devtools/core/src"],
       "@pixsim7/shared.gating.core": ["../../packages/shared/gating/core/src"],
       "@pixsim7/shared.models.core": ["../../packages/shared/models/core/src"],

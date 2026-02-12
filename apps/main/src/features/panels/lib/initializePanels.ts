@@ -79,9 +79,11 @@ async function registerPanelGroups(): Promise<void> {
 
   // Import panel group definitions
   const quickgenGroup = await import("../domain/groups/quickgen");
+  const gizmoLabGroup = await import("../domain/groups/gizmo-lab");
 
   // Register each group with both registries
   await registerPanelGroup(quickgenGroup.default);
+  await registerPanelGroup(gizmoLabGroup.default);
 
   console.log(
     `[initializePanels] Registered ${panelGroupRegistry.getAll().length} panel groups`
