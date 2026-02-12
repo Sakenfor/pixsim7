@@ -91,7 +91,8 @@ export const useProjectSessionStore = create<ProjectSessionStore>()(
         }));
       },
 
-      setDirty: (dirty) => set({ dirty }),
+      setDirty: (dirty) =>
+        set((state) => (state.dirty === dirty ? state : { dirty })),
 
       reset: () => set({ ...initialState }),
     }),

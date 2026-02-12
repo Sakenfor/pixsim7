@@ -3,8 +3,10 @@ import { useMemo, useRef, useState, type ChangeEvent } from 'react';
 
 import type { GameProjectBundle } from '@lib/api';
 import {
+  clearAuthoringProjectBundleDirtyState,
   exportWorldProjectWithExtensions,
   importWorldProjectWithExtensions,
+  isAnyAuthoringProjectBundleContributorDirty,
   projectBundleExtensionRegistry,
   type ImportWorldProjectWithExtensionsResult,
   type ProjectBundleExtensionExportReport,
@@ -51,6 +53,12 @@ function downloadJson(filename: string, payload: unknown): void {
 function formatTimestamp(value: number | null): string {
   if (!value) return 'Never';
   return new Date(value).toLocaleString();
+}
+
+function confirmDiscardUnsavedAuthoringChanges(): boolean {
+  return window.confirm(
+    'You have unsaved authoring changes. Importing a project may overwrite them. Continue?',
+  );
 }
 
 export function ProjectPanel() {
@@ -103,6 +111,7 @@ export function ProjectPanel() {
         },
         extensionReport,
       });
+      clearAuthoringProjectBundleDirtyState();
       recordExport({
         sourceFileName: filename,
         schemaVersion: bundle.schema_version ?? null,
@@ -141,6 +150,7 @@ export function ProjectPanel() {
         coreWarnings: response.warnings,
         extensionReport,
       });
+      clearAuthoringProjectBundleDirtyState();
       recordImport({
         sourceFileName: file.name,
         schemaVersion: bundle.schema_version ?? null,
@@ -200,7 +210,14 @@ export function ProjectPanel() {
           <Button
             size="sm"
             variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              const hasUnsavedChanges =
+                dirty || isAnyAuthoringProjectBundleContributorDirty();
+              if (hasUnsavedChanges && !confirmDiscardUnsavedAuthoringChanges()) {
+                return;
+              }
+              fileInputRef.current?.click();
+            }}
             disabled={busy}
           >
             Import Project

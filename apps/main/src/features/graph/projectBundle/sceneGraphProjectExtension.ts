@@ -1,16 +1,20 @@
 import {
-  projectBundleExtensionRegistry,
-  registerProjectBundleExtension,
-  type ProjectBundleExtensionHandler,
+  hasAuthoringProjectBundleContributor,
+  registerAuthoringProjectBundleContributor,
+  type AuthoringProjectBundleContributor,
   type ProjectBundleExtensionImportOutcome,
 } from '@lib/game/projectBundle';
 
-import { useGraphStore } from '@features/graph/stores/graphStore';
+import { useGraphStore, type GraphState } from '@features/graph/stores/graphStore';
 
 import type { DraftScene, SceneMetadata } from '@domain/sceneBuilder';
 
 export const SCENE_GRAPH_PROJECT_EXTENSION_KEY = 'authoring.scene_graph';
 const SCENE_GRAPH_PROJECT_EXTENSION_VERSION = 1;
+const SCENE_GRAPH_EMPTY_SCENES_WARNING =
+  'authoring.scene_graph payload was present but had no scenes';
+const SCENE_GRAPH_INVALID_PAYLOAD_WARNING =
+  'authoring.scene_graph payload is invalid and was ignored';
 
 interface SceneGraphProjectExtensionPayloadV1 {
   version: number;
@@ -25,6 +29,44 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function serializeSceneGraphState(
+  state: Pick<GraphState, 'scenes' | 'sceneMetadata' | 'currentSceneId'>,
+): string {
+  return JSON.stringify({
+    scenes: state.scenes,
+    sceneMetadata: state.sceneMetadata || {},
+    currentSceneId: state.currentSceneId ?? null,
+  });
+}
+
+let sceneGraphBaseline = serializeSceneGraphState(useGraphStore.getState());
+
+function markSceneGraphBaseline(): void {
+  sceneGraphBaseline = serializeSceneGraphState(useGraphStore.getState());
+}
+
+function isSceneGraphDirtyFromState(
+  state: Pick<GraphState, 'scenes' | 'sceneMetadata' | 'currentSceneId'>,
+): boolean {
+  return serializeSceneGraphState(state) !== sceneGraphBaseline;
+}
+
+function subscribeSceneGraphDirty(
+  listener: (dirty: boolean) => void,
+): () => void {
+  return useGraphStore.subscribe((state, previousState) => {
+    if (
+      state.scenes === previousState.scenes &&
+      state.sceneMetadata === previousState.sceneMetadata &&
+      state.currentSceneId === previousState.currentSceneId
+    ) {
+      return;
+    }
+
+    listener(isSceneGraphDirtyFromState(state));
+  });
 }
 
 function parseSceneGraphPayload(raw: unknown): SceneGraphProjectExtensionPayloadV1 | null {
@@ -63,7 +105,7 @@ function parseSceneGraphPayload(raw: unknown): SceneGraphProjectExtensionPayload
 function restoreSceneGraph(payload: SceneGraphProjectExtensionPayloadV1): ProjectBundleExtensionImportOutcome {
   if (Object.keys(payload.scenes).length === 0) {
     return {
-      warnings: ['authoring.scene_graph payload was present but had no scenes'],
+      warnings: [SCENE_GRAPH_EMPTY_SCENES_WARNING],
     };
   }
 
@@ -82,7 +124,7 @@ function restoreSceneGraph(payload: SceneGraphProjectExtensionPayloadV1): Projec
   return {};
 }
 
-const sceneGraphProjectExtensionHandler: ProjectBundleExtensionHandler<unknown> = {
+const sceneGraphProjectContributor: AuthoringProjectBundleContributor<unknown> = {
   key: SCENE_GRAPH_PROJECT_EXTENSION_KEY,
 
   export: () => {
@@ -106,17 +148,31 @@ const sceneGraphProjectExtensionHandler: ProjectBundleExtensionHandler<unknown> 
     const parsed = parseSceneGraphPayload(payload);
     if (!parsed) {
       return {
-        warnings: ['authoring.scene_graph payload is invalid and was ignored'],
+        warnings: [SCENE_GRAPH_INVALID_PAYLOAD_WARNING],
       };
     }
 
-    return restoreSceneGraph(parsed);
+    const outcome = restoreSceneGraph(parsed);
+    if (Object.keys(parsed.scenes).length > 0) {
+      markSceneGraphBaseline();
+    }
+    return outcome;
   },
+
+  getDirtyState: () => isSceneGraphDirtyFromState(useGraphStore.getState()),
+
+  clearDirtyState: () => {
+    markSceneGraphBaseline();
+  },
+
+  subscribeDirtyState: (listener) => subscribeSceneGraphDirty(listener),
 };
 
 export function registerSceneGraphProjectBundleExtension(): void {
-  if (projectBundleExtensionRegistry.has(SCENE_GRAPH_PROJECT_EXTENSION_KEY)) {
+  if (hasAuthoringProjectBundleContributor(SCENE_GRAPH_PROJECT_EXTENSION_KEY)) {
     return;
   }
-  registerProjectBundleExtension(sceneGraphProjectExtensionHandler);
+
+  markSceneGraphBaseline();
+  registerAuthoringProjectBundleContributor(sceneGraphProjectContributor);
 }

@@ -28,6 +28,23 @@ export interface ProjectBundleExtensionHandler<TPayload = unknown> {
     | void;
 }
 
+export interface AuthoringProjectBundleContributor<TPayload = unknown> {
+  key: string;
+  export?: (
+    context: ProjectBundleExportContext,
+  ) => Promise<TPayload | null | undefined> | TPayload | null | undefined;
+  import?: (
+    payload: TPayload,
+    context: ProjectBundleImportContext,
+  ) =>
+    | Promise<ProjectBundleExtensionImportOutcome | void>
+    | ProjectBundleExtensionImportOutcome
+    | void;
+  getDirtyState?: () => boolean;
+  clearDirtyState?: () => void;
+  subscribeDirtyState?: (listener: (dirty: boolean) => void) => (() => void) | void;
+}
+
 export interface ProjectBundleExtensionExportReport {
   included: string[];
   skipped: string[];

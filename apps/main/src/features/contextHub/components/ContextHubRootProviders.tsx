@@ -1,7 +1,11 @@
 import { Ref } from "@pixsim7/shared.types";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useEditorContext } from "@lib/context";
+import {
+  isAnyAuthoringProjectBundleContributorDirty,
+  subscribeAuthoringProjectBundleDirtyState,
+} from "@lib/game/projectBundle";
 
 import {
   CAP_SCENE_CONTEXT,
@@ -29,6 +33,28 @@ export function ContextHubRootProviders() {
   const lastImportedAt = useProjectSessionStore((state) => state.lastImportedAt);
   const lastExportedAt = useProjectSessionStore((state) => state.lastExportedAt);
   const lastOperation = useProjectSessionStore((state) => state.lastOperation);
+  const setDirty = useProjectSessionStore((state) => state.setDirty);
+
+  useEffect(() => {
+    setDirty(isAnyAuthoringProjectBundleContributorDirty());
+
+    return subscribeAuthoringProjectBundleDirtyState((nextDirty) => {
+      useProjectSessionStore.getState().setDirty(nextDirty);
+    });
+  }, [setDirty]);
+
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!useProjectSessionStore.getState().dirty) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
 
   const sceneValue = useMemo<SceneContextSummary>(
     () => {
