@@ -11,7 +11,7 @@ import { useResolveComponentSettings } from '@features/panels/lib/instanceSettin
 import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
 import type { PanelId } from '@features/workspace';
 
-import { resolveSchemaValues } from '../lib/core/schemaUtils';
+import { resolveSchemaValues } from '../lib/core/schemaHelpers';
 
 import { PanelSchemaRenderer } from './PanelSchemaRenderers';
 

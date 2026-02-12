@@ -10,7 +10,7 @@ export {
   exportArcGraph,
   importArcGraph,
   validateArcGraph as validateArcGraphBasic,
-} from './utils';
+} from './helpers';
 export {
   validateArcGraph,
   validateArcGraphReferences,

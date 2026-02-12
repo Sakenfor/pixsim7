@@ -22,7 +22,7 @@ export {
   inspectorModeToRuntime,
   runtimeToInspectorMode,
   type Model3DModeDetail,
-} from './lib/modeUtils';
+} from './lib/modeHelpers';
 
 // Store
 export {

@@ -70,7 +70,7 @@ export {
   placementToUnifiedConfig,
   overlayPositionToPlacement,
   createDefaultPlacement,
-} from './placementUtils';
+} from './placementHelpers';
 
 // Define helper
 export { defineWidget } from './defineWidget';

@@ -22,7 +22,7 @@ import { useGenerationInputStore } from '@features/generation/stores/generationI
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 import { OPERATION_METADATA, type OperationType, type MediaType } from '@/types/operations';
 
-import { EMPTY_INPUTS } from './mediaCardGeneration.utils';
+import { EMPTY_INPUTS } from './mediaCardGenerationHelpers';
 
 
 /**

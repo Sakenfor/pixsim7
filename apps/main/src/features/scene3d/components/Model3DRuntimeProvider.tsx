@@ -43,7 +43,7 @@ import {
 } from '@pixsim7/game.react';
 import { type ReactNode } from 'react';
 
-import type { Model3DModeDetail } from '../lib/modeUtils';
+import type { Model3DModeDetail } from '../lib/modeHelpers';
 
 /**
  * Props for Model3DRuntimeProvider

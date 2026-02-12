@@ -45,7 +45,7 @@ import type { MediaCardProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 // Re-export from split modules for backward compatibility
-export { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGeneration.utils';
+export { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGenerationHelpers';
 export {
   getSmartActionLabel,
   resolveMaxSlotsFromSpecs,
@@ -55,7 +55,7 @@ export {
   type SlotPickerContentProps,
 } from './SlotPicker';
 
-import { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGeneration.utils';
+import { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGenerationHelpers';
 import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
 
 type GenerationButtonGroupContentProps = {

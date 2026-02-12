@@ -9,7 +9,7 @@
  * import { PresetList, ActionBuilder, ActionType } from '@features/automation';
  *
  * // Or import specific modules
- * import { getActionMeta } from '@features/automation/components/actionUtils';
+ * import { getActionMeta } from '@features/automation/components/actionHelpers';
  * import type { AndroidDevice } from '@features/automation/types';
  * ```
  */
@@ -82,6 +82,6 @@ export {
   getConditionResult,
   getActionTestStatus,
   type ActionTestStatus,
-} from './components/actionUtils';
+} from './components/actionHelpers';
 // Lib - Automation Core
 export * from './lib/core';

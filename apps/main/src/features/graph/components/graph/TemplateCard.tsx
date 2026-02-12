@@ -8,7 +8,7 @@ import {
 } from '../../lib/editor/graphTemplates';
 import type { GraphTemplate } from '../../lib/editor/graphTemplates';
 
-import { getSourceBadge } from './templatePaletteUtils';
+import { getSourceBadge } from './templatePaletteHelpers';
 
 export interface TemplateCardProps {
   template: GraphTemplate;

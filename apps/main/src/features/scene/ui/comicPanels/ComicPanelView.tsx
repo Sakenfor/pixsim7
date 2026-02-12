@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import type { SceneMetaComicPanel, ComicPanelRequestContext } from './types';
-import { extractNumericAssetId, ensureAssetRef } from './utils';
+import { extractNumericAssetId, ensureAssetRef } from './helpers';
 import { useAssetProvider } from '@lib/assetProvider';
 import type { AssetRequest } from '@pixsim7/shared.types';
 

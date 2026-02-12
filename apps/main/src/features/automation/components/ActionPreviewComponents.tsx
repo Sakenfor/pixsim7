@@ -4,7 +4,7 @@ import { automationService } from '@features/automation';
 
 import { type ActionDefinition, ActionType, type AppActionPreset } from '../types';
 
-import { getActionMeta, getActionSummary } from './actionUtils';
+import { getActionMeta, getActionSummary } from './actionHelpers';
 
 // Cache for preset previews to avoid repeated fetches
 const presetCache = new Map<number, AppActionPreset>();

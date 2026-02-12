@@ -15,7 +15,7 @@ import {
   getActionSummary,
   getConditionResult,
   getActionTestStatus,
-} from './actionUtils';
+} from './actionHelpers';
 
 interface ActionBuilderProps {
   actions: ActionDefinition[];

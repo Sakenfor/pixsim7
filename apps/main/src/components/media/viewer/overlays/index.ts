@@ -24,5 +24,5 @@ export {
   getToolbarButtonClass,
   getToolbarButtonClassWithDisabled,
 } from './styles';
-export { findActiveRegion, getRegionPixelDimensions } from './utils';
+export { findActiveRegion, getRegionPixelDimensions } from './helpers';
 export { useRegionStoreSelectors, type RegionStoreSelectors } from './useRegionStore';

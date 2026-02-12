@@ -25,4 +25,4 @@ export {
 export {
   ensureAssetRef,
   extractNumericAssetId,
-} from './utils';
+} from './helpers';

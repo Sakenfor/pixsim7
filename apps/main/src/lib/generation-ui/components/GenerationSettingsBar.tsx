@@ -4,7 +4,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { useCostHints, useCostEstimate, useProviderIdForModel } from '@features/providers';
 
 import type { ParamSpec } from '../types';
-import { getDurationOptions, COMMON_ASPECT_RATIOS } from '../utils/parameterUtils';
+import { getDurationOptions, COMMON_ASPECT_RATIOS } from '../utils/parameterHelpers';
 
 
 /**

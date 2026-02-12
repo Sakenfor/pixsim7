@@ -1,7 +1,7 @@
 import type { SceneMetaComicPanel } from './types';
 import type { ComicPanelSceneMeta, ComicPanelSession } from './types';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { ensureAssetRef } from './utils';
+import { ensureAssetRef } from './helpers';
 
 /**
  * Determine which comic panels should currently be displayed.

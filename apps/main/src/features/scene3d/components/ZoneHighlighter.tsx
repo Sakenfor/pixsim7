@@ -9,7 +9,7 @@ import { useThree } from '@react-three/fiber';
 import { useEffect, useState, useMemo } from 'react';
 import * as THREE from 'three';
 
-import { ZONE_PREFIX, createZoneHighlightMaterial } from '@lib/models/zoneUtils';
+import { ZONE_PREFIX, createZoneHighlightMaterial } from '@lib/models/zoneHelpers';
 
 import { useModel3DStore } from '../stores/model3DStore';
 

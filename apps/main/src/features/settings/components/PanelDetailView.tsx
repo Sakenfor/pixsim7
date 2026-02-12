@@ -19,7 +19,7 @@ import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
 import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
 import type { PanelId } from '@features/workspace';
 
-import { resolveSchemaValues } from '../lib/core/schemaUtils';
+import { resolveSchemaValues } from '../lib/core/schemaHelpers';
 
 import { PanelSchemaRenderer } from './PanelSchemaRenderers';
 import { ComponentSettingsCard, InstanceComponentSettingsCard } from './PanelSettingsCards';

@@ -10,7 +10,7 @@ import { useFrame } from '@react-three/fiber';
 import { useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 
-import { parseModelForZones } from '@lib/models/zoneUtils';
+import { parseModelForZones } from '@lib/models/zoneHelpers';
 
 import { useModel3DStore } from '../stores/model3DStore';
 

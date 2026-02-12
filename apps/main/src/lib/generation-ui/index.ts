@@ -32,7 +32,7 @@ export {
   COMMON_ASPECT_RATIOS,
   type DurationOptionConfig,
   type ArrayParamLimitConfig,
-} from './utils/parameterUtils';
+} from './utils/parameterHelpers';
 
 // Parameter Icons
 export {

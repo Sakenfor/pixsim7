@@ -12,7 +12,7 @@ import type { GraphTemplate } from '../../lib/editor/graphTemplates';
 import { useTemplateStore } from '../../stores/templatesStore';
 
 import { TemplateCard } from './TemplateCard';
-import { TEMPLATE_CATEGORIES, exportTemplate, isValidTemplateJSON } from './templatePaletteUtils';
+import { TEMPLATE_CATEGORIES, exportTemplate, isValidTemplateJSON } from './templatePaletteHelpers';
 
 interface GraphTemplatePaletteProps {
   /** Callback when a template is selected to be inserted */
