@@ -143,6 +143,15 @@ const defaultPanelConfigs: Partial<Record<PanelId, PanelConfig>> = {
     description: "Browse and manage project assets",
     icon: "🖼️",
   },
+  project: {
+    id: "project",
+    enabled: true,
+    settings: {},
+    category: "workspace",
+    tags: ["project", "import", "export", "bundle"],
+    description: "Project-level save/load for world bundles",
+    icon: "ðŸ’¾",
+  },
   scene: {
     id: "scene",
     enabled: true,

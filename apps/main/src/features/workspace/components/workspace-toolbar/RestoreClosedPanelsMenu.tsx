@@ -2,6 +2,7 @@ import type { PanelId } from "../../stores/workspaceStore";
 
 const PANEL_NAMES: Partial<Record<PanelId, string>> = {
   gallery: "Gallery",
+  project: "Project",
   scene: "Scene Builder",
   graph: "Graph",
   inspector: "Inspector",

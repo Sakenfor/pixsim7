@@ -3,6 +3,7 @@ import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoR
 import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
 import { registerPluginRenderers } from '@features/graph/lib/editor/pluginRenderers';
 import { preloadHighPriorityRenderers } from '@features/graph/lib/editor/rendererBootstrap';
+import { registerSceneGraphProjectBundleExtension } from '@features/graph/projectBundle/sceneGraphProjectExtension';
 
 import type { Module } from '@app/modules/types';
 
@@ -26,6 +27,9 @@ export const graphSystemModule: Module = {
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
   async initialize() {
+    // Register scene graph authoring as a project-bundle extension handler.
+    registerSceneGraphProjectBundleExtension();
+
     // Register builtin node types
     // TODO: Implement registerBuiltinNodeTypes() and registerArcNodeTypes()
     // registerBuiltinNodeTypes();

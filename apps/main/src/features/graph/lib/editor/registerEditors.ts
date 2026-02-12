@@ -23,8 +23,10 @@ import { ArcGraphPanel } from '@features/graph';
 import type { GraphEditorComponent } from './types';
 
 // Use lazy import to break circular dependency
-const GraphPanelWithProvider = lazy(() =>
-  import('@/components/legacy/GraphPanel').then(m => ({ default: m.GraphPanelWithProvider }))
+const SceneGraphPanelWithProvider = lazy(() =>
+  import('@features/graph/components/scene-graph-v2/SceneGraphPanel').then(m => ({
+    default: m.SceneGraphPanelWithProvider,
+  }))
 );
 
 /**
@@ -32,7 +34,7 @@ const GraphPanelWithProvider = lazy(() =>
  * Should be called during app initialization
  */
 export async function registerGraphEditors(): Promise<void> {
-  // Register Scene Graph Editor (Legacy/Core)
+  // Register Scene Graph Editor (Core)
   // Core Flow View: The canonical logic/flow editor for designing scenes, nodes, choices, transitions
   if (!graphEditorSelectors.has('scene-graph-v2')) {
     await registerPluginDefinition({
@@ -47,7 +49,7 @@ export async function registerGraphEditors(): Promise<void> {
         description: 'Multi-scene node editor for runtime scenes (Core Flow View)',
         icon: 'dY"?',
         category: 'core',
-        component: GraphPanelWithProvider as GraphEditorComponent,
+        component: SceneGraphPanelWithProvider as GraphEditorComponent,
         storeId: 'scene-graph-v2',
         supportsMultiScene: true,
         supportsWorldContext: true,

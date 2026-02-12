@@ -5,16 +5,11 @@ import type { GraphTemplate } from '@features/graph';
 import { captureTemplate, applyTemplate } from '@features/graph';
 import { graphClipboard } from '@features/graph';
 
-import type { DraftSceneNode } from '@domain/sceneBuilder';
+import type { DraftScene, DraftEdgeMeta, DraftSceneNode } from '@domain/sceneBuilder';
 
-/** Parameters accepted by the useGraphPanelHandlers hook. */
-export interface GraphPanelHandlersParams {
-  currentScene: {
-    title: string;
-    nodes: DraftSceneNode[];
-    edges: { id: string; from: string; to: string; meta?: Record<string, unknown> }[];
-    startNodeId?: string;
-  } | undefined;
+/** Parameters accepted by the useSceneGraphPanelHandlers hook. */
+export interface SceneGraphPanelHandlersParams {
+  currentScene: DraftScene | null | undefined;
   currentSceneId: string | null;
   worldId: number | null | undefined;
   selectedNodeIds: string[];
@@ -22,7 +17,7 @@ export interface GraphPanelHandlersParams {
   // Store actions
   exportScene: (sceneId: string) => string | null;
   importScene: (json: string) => string | null;
-  getCurrentScene: () => GraphPanelHandlersParams['currentScene'] | undefined;
+  getCurrentScene: () => SceneGraphPanelHandlersParams['currentScene'];
   addTemplate: (template: GraphTemplate, worldId?: number | null) => Promise<void>;
   recordUsage: (data: {
     templateId: string;
@@ -32,11 +27,11 @@ export interface GraphPanelHandlersParams {
     edgeCount: number;
   }) => void;
   addNode: (node: DraftSceneNode) => void;
-  connectNodes: (from: string, to: string, meta?: Record<string, unknown>) => void;
+  connectNodes: (from: string, to: string, meta?: DraftEdgeMeta) => void;
   setSelectedNodeIds: (ids: string[]) => void;
 }
 
-export function useGraphPanelHandlers(params: GraphPanelHandlersParams) {
+export function useSceneGraphPanelHandlers(params: SceneGraphPanelHandlersParams) {
   const {
     currentScene,
     currentSceneId,
@@ -362,7 +357,7 @@ export function useGraphPanelHandlers(params: GraphPanelHandlersParams) {
             setSelectedNodeIds(pasted.nodes.map((n) => n.id));
           } catch (error) {
             toast.error('Failed to paste nodes');
-            console.error('[GraphPanel] Paste error:', error);
+            console.error('[SceneGraphPanel] Paste error:', error);
           }
         }
         return;
@@ -398,7 +393,7 @@ export function useGraphPanelHandlers(params: GraphPanelHandlersParams) {
             setSelectedNodeIds(pasted.nodes.map((n) => n.id));
           } catch (error) {
             toast.error('Failed to duplicate nodes');
-            console.error('[GraphPanel] Duplicate error:', error);
+            console.error('[SceneGraphPanel] Duplicate error:', error);
           }
         }
         return;

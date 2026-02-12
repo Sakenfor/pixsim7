@@ -41,6 +41,7 @@ export type { PlaybackEvent } from './lib/core';
 // ============================================================================
 
 export { useWorldContextStore } from './stores/worldContextStore';
+export { useProjectSessionStore } from './stores/projectSessionStore';
 
 // ============================================================================
 // Plugin SDK - Stable Exports for Scene View Plugins

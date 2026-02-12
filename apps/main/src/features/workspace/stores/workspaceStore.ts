@@ -13,6 +13,7 @@ export type PanelId =
   | "assetViewer"
   | "controlCenter"
   | "gallery"
+  | "project"
   | "scene"
   | "graph"
   | "inspector"

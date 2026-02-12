@@ -1,19 +1,34 @@
+import { Ref } from "@pixsim7/shared.types";
 import { useMemo } from "react";
+
 import { useEditorContext } from "@lib/context";
+
 import {
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
+  CAP_PROJECT_CONTEXT,
   CAP_EDITOR_CONTEXT,
   useProvideCapability,
   type EditorContextSnapshot,
+  type ProjectContextSummary,
   type SceneContextSummary,
   type WorldContextSummary,
 } from "@features/contextHub";
+import { useProjectSessionStore } from "@features/scene";
+
 import { ContextHubCapabilityBridge } from "./ContextHubCapabilityBridge";
-import { Ref } from "@pixsim7/shared.types";
 
 export function ContextHubRootProviders() {
   const editorContext = useEditorContext();
+  const sourceFileName = useProjectSessionStore((state) => state.sourceFileName);
+  const schemaVersion = useProjectSessionStore((state) => state.schemaVersion);
+  const extensionKeys = useProjectSessionStore((state) => state.extensionKeys);
+  const extensionWarnings = useProjectSessionStore((state) => state.extensionWarnings);
+  const coreWarnings = useProjectSessionStore((state) => state.coreWarnings);
+  const dirty = useProjectSessionStore((state) => state.dirty);
+  const lastImportedAt = useProjectSessionStore((state) => state.lastImportedAt);
+  const lastExportedAt = useProjectSessionStore((state) => state.lastExportedAt);
+  const lastOperation = useProjectSessionStore((state) => state.lastOperation);
 
   const sceneValue = useMemo<SceneContextSummary>(
     () => {
@@ -68,6 +83,52 @@ export function ContextHubRootProviders() {
     scope: "root",
   });
   useProvideCapability(CAP_WORLD_CONTEXT, worldProvider, [worldValue], {
+    scope: "root",
+  });
+
+  const projectValue = useMemo<ProjectContextSummary>(
+    () => ({
+      worldId: editorContext.world.id,
+      sourceFileName,
+      schemaVersion,
+      extensionKeys,
+      extensionWarnings,
+      coreWarnings,
+      dirty,
+      lastImportedAt,
+      lastExportedAt,
+      lastOperation,
+    }),
+    [
+      editorContext.world.id,
+      sourceFileName,
+      schemaVersion,
+      extensionKeys,
+      extensionWarnings,
+      coreWarnings,
+      dirty,
+      lastImportedAt,
+      lastExportedAt,
+      lastOperation,
+    ],
+  );
+
+  const projectProvider = useMemo(
+    () => ({
+      id: "projectSession",
+      label: "Project Session",
+      priority: 20,
+      exposeToContextMenu: true,
+      isAvailable: () =>
+        projectValue.worldId != null ||
+        projectValue.lastImportedAt != null ||
+        projectValue.lastExportedAt != null,
+      getValue: () => projectValue,
+    }),
+    [projectValue],
+  );
+
+  useProvideCapability(CAP_PROJECT_CONTEXT, projectProvider, [projectValue], {
     scope: "root",
   });
 

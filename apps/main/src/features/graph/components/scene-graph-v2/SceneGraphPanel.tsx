@@ -1,3 +1,4 @@
+import { Button, useToast } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import ReactFlow, {
   type Node,
@@ -11,34 +12,40 @@ import ReactFlow, {
   type NodeChange,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { Button, useToast } from '@pixsim7/shared.ui';
 import { ReactFlowProvider } from 'reactflow';
 
 import { previewBridge } from '@lib/preview-bridge';
 import { nodeTypeRegistry } from '@lib/registries';
 import { logEvent } from '@lib/utils/logging';
 
-import { useGraphStore, type GraphState, NodePalette, type NodeType } from '@features/graph';
+import {
+  useGraphStore,
+  type GraphState,
+  NodePalette,
+  type NodeType,
+  ValidationProvider,
+} from '@features/graph';
 import { useSelectionStore } from '@features/graph';
 import { GraphTemplatePalette, TemplateWizardPalette } from '@features/graph';
 import { useTemplateStore } from '@features/graph' // templatesStore';
 import { useTemplateAnalyticsStore } from '@features/graph' // templateAnalyticsStore';
+import { EdgeEffectsPanel } from '@features/panels/components/tools/EdgeEffectsPanel';
+import { ValidationPanel } from '@features/panels/components/tools/ValidationPanel';
 import { useWorldContextStore } from '@features/scene';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
+import { Breadcrumbs } from '@/components/navigation/Breadcrumbs';
 
 import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 import { toFlowNodes, toFlowEdges, extractPositionUpdates } from '@domain/sceneBuilder/graphSync';
 import { validateConnection, getValidationMessage } from '@domain/sceneBuilder/portValidation';
 
-import { EdgeEffectsPanel } from '../../features/panels/components/tools/EdgeEffectsPanel';
-import { ValidationPanel } from '../../features/panels/components/tools/ValidationPanel';
-import { Breadcrumbs } from '../navigation/Breadcrumbs';
 
-import { defaultEdgeOptions, nodeTypes } from './graphPanelConfig';
-import { useGraphPanelHandlers } from './useGraphPanelHandlers';
 
-export function GraphPanel() {
+import { defaultEdgeOptions, nodeTypes } from './sceneGraphPanelConfig';
+import { useSceneGraphPanelHandlers } from './useSceneGraphPanelHandlers';
+
+export function SceneGraphPanel() {
   const toast = useToast();
   const { selectedNodeId, selectedNodeIds, setSelectedNodeId, setSelectedNodeIds } = useSelectionStore();
   const { worldId } = useWorldContextStore();
@@ -75,7 +82,7 @@ export function GraphPanel() {
     handleSaveAsTemplate,
     handleInsertTemplate,
     handleWizardComplete,
-  } = useGraphPanelHandlers({
+  } = useSceneGraphPanelHandlers({
     currentScene,
     currentSceneId,
     worldId,
@@ -593,13 +600,11 @@ export function GraphPanel() {
 
 // Wrap with ReactFlowProvider for useReactFlow hook
 
-import { ValidationProvider } from '@features/graph';
-
-export function GraphPanelWithProvider() {
+export function SceneGraphPanelWithProvider() {
   return (
     <ReactFlowProvider>
       <ValidationProvider>
-        <GraphPanel />
+        <SceneGraphPanel />
       </ValidationProvider>
     </ReactFlowProvider>
   );

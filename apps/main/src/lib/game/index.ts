@@ -23,3 +23,6 @@ export * from './customHelpers';
 
 // Runtime
 export * from './runtime';
+
+// Project bundles
+export * from './projectBundle';

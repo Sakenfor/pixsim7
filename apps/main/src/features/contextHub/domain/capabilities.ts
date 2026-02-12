@@ -12,6 +12,7 @@ import {
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
+  CAP_PROJECT_CONTEXT,
   CAP_GENERATION_CONTEXT,
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
@@ -31,6 +32,7 @@ export {
   CAP_ASSET_SELECTION,
   CAP_SCENE_CONTEXT,
   CAP_WORLD_CONTEXT,
+  CAP_PROJECT_CONTEXT,
   CAP_GENERATION_CONTEXT,
   CAP_PROMPT_BOX,
   CAP_ASSET_INPUT,
@@ -73,6 +75,13 @@ registerCapabilityDescriptor({
   key: CAP_WORLD_CONTEXT,
   label: "World Context",
   description: "Active world metadata for the editor.",
+  kind: "context",
+  source: "contextHub",
+});
+registerCapabilityDescriptor({
+  key: CAP_PROJECT_CONTEXT,
+  label: "Project Context",
+  description: "Active project/session metadata for import/export state.",
   kind: "context",
   source: "contextHub",
 });
@@ -150,6 +159,19 @@ export type SceneContextSummary = EntityScopedCapability<{
 export interface WorldContextSummary {
   worldId?: number | null;
   name?: string | null;
+}
+
+export interface ProjectContextSummary {
+  worldId?: number | null;
+  sourceFileName?: string | null;
+  schemaVersion?: number | null;
+  extensionKeys?: string[];
+  extensionWarnings?: string[];
+  coreWarnings?: string[];
+  dirty?: boolean;
+  lastImportedAt?: number | null;
+  lastExportedAt?: number | null;
+  lastOperation?: "import" | "export" | null;
 }
 
 export type GenerationContextSummary = EntityScopedCapability<{

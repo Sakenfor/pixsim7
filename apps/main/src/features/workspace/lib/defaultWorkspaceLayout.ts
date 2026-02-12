@@ -5,7 +5,7 @@ import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { type PanelDefinition } from "@features/panels";
 
-const defaultWorkspacePanels: string[] = ["gallery", "health", "graph", "inspector", "game"];
+const defaultWorkspacePanels: string[] = ["gallery", "health", "project", "graph", "inspector", "game"];
 
 function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
   const fromResolved = panelDefs?.find((p) => p.id === panelId)?.title;
@@ -35,6 +35,7 @@ export function createDefaultLayout(
   // Gallery stack on the left
   addPanel("gallery", { direction: "left" });
   addPanel("health", { direction: "below", referencePanel: "gallery" });
+  addPanel("project", { direction: "below", referencePanel: "health" });
 
   // Graph + inspector on the right
   addPanel("graph", { direction: "right" });
