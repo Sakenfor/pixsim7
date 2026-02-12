@@ -238,8 +238,10 @@ function HistoryItem({
 
 function QuickGenHistoryPanelContent(props: QuickGenHistoryPanelProps) {
   const controller = useQuickGenerateController();
+  // Prefer the live controller operationType (reactive via scoped session store)
+  // so the panel tracks operation changes in quick gen automatically.
   const operationType =
-    props.operationType ?? props.context?.operationType ?? controller.operationType;
+    controller.operationType ?? props.operationType ?? props.context?.operationType;
   const sourceLabel = props.sourceLabel ?? props.context?.sourceLabel ?? 'History';
   const [historyOperation, setHistoryOperation] = useState<OperationType>(operationType);
   const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();

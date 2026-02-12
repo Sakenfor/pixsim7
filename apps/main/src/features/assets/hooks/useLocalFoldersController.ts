@@ -100,9 +100,8 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
 
-  // Background hashing progress
+  // Hashing progress (for selected folder scope)
   const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
-  const bgHashRunIdRef = useRef(0);
 
   // Upload state (persisted provider)
   const [providerId, setProviderId] = usePersistentState<string | undefined>(
@@ -306,23 +305,27 @@ export function useLocalFoldersController(): LocalFoldersController {
         backendHashCheckInProgressRef.current.add(sha256);
       }
 
+      const BATCH_SIZE = 500;
       try {
-        const foundHashes = await checkHashesAgainstBackend(hashesToQuery);
+        for (let i = 0; i < hashesToQuery.length; i += BATCH_SIZE) {
+          const batch = hashesToQuery.slice(i, i + BATCH_SIZE);
+          const foundHashes = await checkHashesAgainstBackend(batch);
 
-        for (const sha256 of hashesToQuery) {
-          backendHashCheckedRef.current.add(sha256);
-          if (foundHashes.has(sha256)) {
-            backendExistingHashesRef.current.add(sha256);
+          for (const sha256 of batch) {
+            backendHashCheckedRef.current.add(sha256);
+            if (foundHashes.has(sha256)) {
+              backendExistingHashesRef.current.add(sha256);
+            }
           }
-        }
 
-        for (const sha256 of foundHashes) {
-          const assetKeys = hashToAssetKeys.get(sha256);
-          if (!assetKeys) continue;
-          for (const assetKey of assetKeys) {
-            await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
-            setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
-            setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+          for (const sha256 of foundHashes) {
+            const assetKeys = hashToAssetKeys.get(sha256);
+            if (!assetKeys) continue;
+            for (const assetKey of assetKeys) {
+              await updateAssetUploadStatus(assetKey, 'success', 'Already in library');
+              setUploadStatus(s => ({ ...s, [assetKey]: 'success' }));
+              setUploadNotes(n => ({ ...n, [assetKey]: 'Already in library' }));
+            }
           }
         }
       } catch (e) {
