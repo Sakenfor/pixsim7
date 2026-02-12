@@ -1,4 +1,12 @@
 import type { CapabilityProvider } from "@pixsim7/shared.capabilities.core";
+import {
+  getAppActionCapabilityKey,
+  getAppStateCapabilityKey,
+} from "@pixsim7/shared.capabilities.core/bridge";
+import {
+  registerCapabilityDescriptor,
+  unregisterCapabilityDescriptor,
+} from "@pixsim7/shared.capabilities.core/descriptor";
 import { useEffect, useMemo, useRef } from "react";
 
 import {
@@ -8,14 +16,6 @@ import {
   useStates,
 } from "@lib/capabilities";
 
-import {
-  getAppActionCapabilityKey,
-  getAppStateCapabilityKey,
-} from "../domain/appCapabilityBridge";
-import {
-  registerCapabilityDescriptor,
-  unregisterCapabilityDescriptor,
-} from "../domain/descriptorRegistry";
 import { useContextHubState, getRootHub } from "../hooks/contextHubContext";
 
 type ProviderDisposer = () => void;

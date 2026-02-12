@@ -2,6 +2,7 @@
   "name": "@pixsim7/shared.capabilities.core",
   "version": "0.0.1",
   "private": true,
+  "type": "module",
   "description": "Core capability registry - pure TypeScript, no React/DOM dependencies",
   "main": "src/index.ts",
   "module": "src/index.ts",
@@ -9,32 +10,26 @@
   "exports": {
     ".": {
       "import": "./src/index.ts",
-      "require": "./src/index.ts",
       "types": "./src/index.ts"
     },
     "./provider": {
       "import": "./src/provider/index.ts",
-      "require": "./src/provider/index.ts",
       "types": "./src/provider/index.ts"
     },
     "./app": {
       "import": "./src/app/index.ts",
-      "require": "./src/app/index.ts",
       "types": "./src/app/index.ts"
     },
     "./descriptor": {
       "import": "./src/descriptor/index.ts",
-      "require": "./src/descriptor/index.ts",
       "types": "./src/descriptor/index.ts"
     },
     "./contract": {
       "import": "./src/contract/index.ts",
-      "require": "./src/contract/index.ts",
       "types": "./src/contract/index.ts"
     },
     "./bridge": {
       "import": "./src/bridge/index.ts",
-      "require": "./src/bridge/index.ts",
       "types": "./src/bridge/index.ts"
     }
   },

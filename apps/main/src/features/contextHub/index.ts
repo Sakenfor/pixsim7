@@ -23,7 +23,7 @@ export {
   APP_STATE_KEY_PREFIX,
   getAppActionCapabilityKey,
   getAppStateCapabilityKey,
-} from "./domain/appCapabilityBridge";
+} from "@pixsim7/shared.capabilities.core/bridge";
 export type {
   AssetSelection,
   SceneContextSummary,
@@ -39,7 +39,11 @@ export type {
   GenerationSourceMode,
   GenerationSourceContext,
 } from "./domain/capabilities";
-export type { CapabilityDescriptor, CapabilityDescriptorKind, CapabilityDescriptorSource } from "./domain/descriptorRegistry";
+export type {
+  CapabilityDescriptor,
+  CapabilityDescriptorKind,
+  CapabilityDescriptorSource,
+} from "@pixsim7/shared.capabilities.core/descriptor";
 export {
   getCapabilityDescriptor,
   getCapabilityDescriptors,
@@ -49,17 +53,17 @@ export {
   unregisterCapabilityDescriptor,
   clearCapabilityDescriptors,
   setDescriptorWarnOnOverwrite,
-} from "./domain/descriptorRegistry";
+} from "@pixsim7/shared.capabilities.core/descriptor";
 export type {
   CapabilityContract,
   CapabilityCompatibilityResult,
-} from "./domain/contracts";
+} from "@pixsim7/shared.capabilities.core/contract";
 export {
   getCapabilityContract,
   getCapabilityContracts,
   registerCapabilityContract,
   unregisterCapabilityContract,
-} from "./domain/contracts";
+} from "@pixsim7/shared.capabilities.core/contract";
 export { useContextHubOverridesStore } from "./stores/contextHubOverridesStore";
 export { useContextHubSettingsStore } from "./stores/contextHubSettingsStore";
 export type {

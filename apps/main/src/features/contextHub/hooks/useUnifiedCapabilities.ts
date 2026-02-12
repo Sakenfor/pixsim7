@@ -1,4 +1,12 @@
 import type { CapabilityKey } from "@pixsim7/shared.capabilities.core";
+import {
+  getAppActionCapabilityKey,
+  getAppStateCapabilityKey,
+} from "@pixsim7/shared.capabilities.core/bridge";
+import {
+  getCapabilityDescriptors,
+  type CapabilityDescriptor,
+} from "@pixsim7/shared.capabilities.core/descriptor";
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 import type {
@@ -9,11 +17,6 @@ import type {
 } from "@lib/capabilities";
 import { useActions, useFeatures, useRoutes, useStates } from "@lib/capabilities";
 
-import { getAppActionCapabilityKey, getAppStateCapabilityKey } from "../domain/appCapabilityBridge";
-import {
-  getCapabilityDescriptors,
-  type CapabilityDescriptor,
-} from "../domain/descriptorRegistry";
 
 import { useContextHubState, getRegistryChain } from "./contextHubContext";
 

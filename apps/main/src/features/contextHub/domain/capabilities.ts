@@ -1,3 +1,5 @@
+import { registerCapabilityContract } from "@pixsim7/shared.capabilities.core/contract";
+import { registerCapabilityDescriptor } from "@pixsim7/shared.capabilities.core/descriptor";
 import type { AssetRef, GenerationRef, LocationRef, SceneIdRef } from "@pixsim7/shared.types";
 
 import type { AssetModel, ViewerAsset } from "@features/assets";
@@ -22,9 +24,7 @@ import {
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
 } from "./capabilityKeys";
-import { registerCapabilityContract } from "./contracts";
 import { assetInputContract } from "./contracts/assetInput";
-import { registerCapabilityDescriptor } from "./descriptorRegistry";
 
 export {
   CAP_ASSET,

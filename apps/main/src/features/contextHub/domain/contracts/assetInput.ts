@@ -1,11 +1,13 @@
 import { resolveMediaTypes } from "@pixsim7/shared.assets.core";
+import type {
+  CapabilityCompatibilityResult,
+  CapabilityContract,
+} from "@pixsim7/shared.capabilities.core/contract";
 import type { AssetRef } from "@pixsim7/shared.types";
 
 import type { ViewerAsset } from "@features/assets";
 
 import { CAP_ASSET_INPUT } from "../capabilityKeys";
-
-import type { CapabilityCompatibilityResult, CapabilityContract } from "./index";
 
 export type AssetInputSelection = {
   count: number;

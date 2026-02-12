@@ -9,9 +9,8 @@
  */
 
 import type { CapabilityKey, CapabilityProvider } from "@pixsim7/shared.capabilities.core";
+import { registerCapabilityDescriptor } from "@pixsim7/shared.capabilities.core/descriptor";
 import type { SceneIdRef } from '@pixsim7/shared.types';
-
-import { registerCapabilityDescriptor } from '@features/contextHub/domain/descriptorRegistry';
 
 // ============================================================================
 // Capability Key
