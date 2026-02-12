@@ -27,6 +27,7 @@ import { MediaCard } from '@/components/media/MediaCard';
 import type { AssetFilters } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
+import { toggleFavoriteTag } from '../lib/favoriteTag';
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
@@ -641,6 +642,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             <MediaCard
               {...mediaCardPropsFromAsset(a)}
               onOpen={undefined}
+              onToggleFavorite={() => toggleFavoriteTag(a)}
               actions={controller.getAssetActions(a)}
               contextMenuAsset={a}
               contextMenuSelection={selectedAssets}
@@ -772,6 +774,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             <MediaCard
               {...mediaCardPropsFromAsset(a)}
               onOpen={() => openGalleryAsset(a, controller.assets)}
+              onToggleFavorite={() => toggleFavoriteTag(a)}
               actions={actions}
               contextMenuAsset={a}
               contextMenuSelection={selectedAssets}

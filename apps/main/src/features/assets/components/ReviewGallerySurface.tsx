@@ -17,6 +17,8 @@ import { MediaCard } from '@/components/media/MediaCard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 
+import { toggleFavoriteTag } from '../lib/favoriteTag';
+
 import { AssetDetailModal } from './AssetDetailModal';
 import { GallerySurfaceShell, mediaCardPropsFromAsset } from './shared';
 
@@ -210,6 +212,7 @@ export function ReviewGallerySurface() {
           >
             <MediaCard
               {...mediaCardPropsFromAsset(asset)}
+              onToggleFavorite={() => toggleFavoriteTag(asset)}
               actions={{
                 ...controller.getAssetActions(asset),
                 onApprove: () => handleAccept(assetId),

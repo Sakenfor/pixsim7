@@ -69,6 +69,9 @@ export interface MediaCardOverlayData {
   generationError?: string;
   /** ID of the generation that created this asset (for regenerate) */
   sourceGenerationId?: number;
+  // Favorite state
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 /**
@@ -429,6 +432,28 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
 }
 
 /**
+ * Create favorite toggle widget (top-right, below status)
+ * Always visible — heart icon that toggles the user:favorite tag.
+ */
+export function createFavoriteWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
+  return createBadgeWidget({
+    id: 'favorite-toggle',
+    position: { anchor: 'top-right', offset: { x: -8, y: 44 } },
+    visibility: { trigger: 'always' },
+    variant: 'icon',
+    icon: 'heart',
+    color: 'gray',
+    shape: 'circle',
+    tooltip: props.isFavorite ? 'Remove from favorites' : 'Add to favorites',
+    onClick: () => props.onToggleFavorite?.(),
+    className: props.isFavorite
+      ? '!bg-red-500/90 !text-white backdrop-blur-sm'
+      : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-red-500 backdrop-blur-sm',
+    priority: 18,
+  });
+}
+
+/**
  * Create quick add button (+) widget
  * @deprecated Use createGenerationButtonGroup which now includes quick generate
  */
@@ -457,6 +482,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
   const widgets = [
     createPrimaryIconWidget(props),
     createStatusWidget(props),
+    createFavoriteWidget(props),
     createQueueStatusWidget(props),
     createSelectionStatusWidget(props),
     // Note: Generation status widget is opt-in via customWidgets or overlay config

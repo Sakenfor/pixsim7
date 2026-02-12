@@ -36,6 +36,27 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number }> = {
   source_url: { icon: 'external-link', order: 7 },
 };
 
+/** Group filter options by namespace parsed from "namespace:name" values. */
+function groupOptionsByNamespace(
+  options: FilterOptionValue[],
+): Map<string, FilterOptionValue[]> {
+  const groups = new Map<string, FilterOptionValue[]>();
+
+  for (const opt of options) {
+    const colonIdx = opt.value.indexOf(':');
+    const namespace = colonIdx > 0 ? opt.value.substring(0, colonIdx) : 'other';
+
+    let group = groups.get(namespace);
+    if (!group) {
+      group = [];
+      groups.set(namespace, group);
+    }
+    group.push(opt);
+  }
+
+  return groups;
+}
+
 interface DynamicFiltersProps {
   filters: AssetFilters;
   onFiltersChange: (filters: AssetFilters) => void;
@@ -447,7 +468,66 @@ function FilterControl({
         </div>
       );
 
-    case 'enum':
+    case 'enum': {
+      const shouldGroup = (key === 'tag' || key === 'analysis_tags') && options.length > 0;
+
+      const renderOption = (opt: FilterOptionValue, stripNamespace: boolean) => {
+        const optValue = String(opt.value);
+        const isSelected = selectedValues.includes(optValue);
+        const displayLabel = stripNamespace
+          ? (opt.label || opt.value.split(':').slice(1).join(':') || opt.value)
+          : (opt.label || opt.value);
+        return (
+          <label
+            key={opt.value}
+            className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer"
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {
+                const next = new Set(selectedValues);
+                if (next.has(optValue)) {
+                  next.delete(optValue);
+                } else {
+                  next.add(optValue);
+                }
+                onChange(Array.from(next));
+              }}
+              className="accent-accent"
+            />
+            <span>
+              {displayLabel}
+              {opt.count !== undefined ? ` (${opt.count})` : ''}
+            </span>
+          </label>
+        );
+      };
+
+      if (shouldGroup) {
+        const grouped = groupOptionsByNamespace(options);
+        const groups = Array.from(grouped.entries());
+        const showHeaders = groups.length > 1;
+
+        return (
+          <div className="space-y-2">
+            {renderMatchModeToggle()}
+            <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+              {groups.map(([namespace, nsOptions]) => (
+                <div key={namespace}>
+                  {showHeaders && (
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1 py-1 sticky top-0 bg-gray-900/95">
+                      {namespace}
+                    </div>
+                  )}
+                  {nsOptions.map((opt) => renderOption(opt, showHeaders))}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="space-y-2">
           {renderMatchModeToggle()}
@@ -455,38 +535,11 @@ function FilterControl({
             {options.length === 0 && (
               <div className="text-xs text-gray-400">No options available.</div>
             )}
-            {options.map((opt) => {
-              const optValue = String(opt.value);
-              const isSelected = selectedValues.includes(optValue);
-              return (
-                <label
-                  key={opt.value}
-                  className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer"
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => {
-                      const next = new Set(selectedValues);
-                      if (next.has(optValue)) {
-                        next.delete(optValue);
-                      } else {
-                        next.add(optValue);
-                      }
-                      onChange(Array.from(next));
-                    }}
-                    className="accent-accent"
-                  />
-                  <span>
-                    {opt.label || opt.value}
-                    {opt.count !== undefined ? ` (${opt.count})` : ''}
-                  </span>
-                </label>
-              );
-            })}
+            {options.map((opt) => renderOption(opt, false))}
           </div>
         </div>
       );
+    }
 
     case 'boolean':
       return (

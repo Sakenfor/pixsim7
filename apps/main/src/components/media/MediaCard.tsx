@@ -146,6 +146,11 @@ export interface MediaCardProps {
    * Can be overridden for custom behavior.
    */
   presetCapabilities?: import('@lib/ui/overlay').PresetCapabilities;
+
+  /** Whether this asset is favorited (has user:favorite tag) */
+  isFavorite?: boolean;
+  /** Callback to toggle the favorite tag */
+  onToggleFavorite?: () => void;
 }
 
 export function MediaCard(props: MediaCardProps) {
@@ -447,6 +452,9 @@ export function MediaCard(props: MediaCardProps) {
     generationError: props.generationError,
     // Source generation (for regenerate button)
     sourceGenerationId: props.sourceGenerationId,
+    // Favorite state
+    isFavorite: props.isFavorite,
+    onToggleFavorite: props.onToggleFavorite,
   };
 
   return (

@@ -50,6 +50,8 @@ export { useAssetsController } from './hooks/useAssetsController';
 
 export { useAssetViewer } from './hooks/useAssetViewer';
 
+export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
+
 export { useFilterMetadata } from './hooks/useFilterMetadata';
 
 export { useLocalFoldersController } from './hooks/useLocalFoldersController';

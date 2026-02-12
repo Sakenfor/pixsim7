@@ -112,6 +112,21 @@ async def setup_database_and_seed() -> None:
             msg="Continuing startup without default presets"
         )
 
+    # Default tag seeding is OPTIONAL
+    try:
+        from pixsim7.backend.main.seeds.default_tags import seed_default_tags
+        async with get_async_session() as db:
+            count = await seed_default_tags(db)
+            if count:
+                logger.info("default_tags_seeded", count=count)
+    except Exception as e:
+        logger.warning(
+            "tag_seed_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing startup without default tags"
+        )
+
     # Built-in plugin seeding is OPTIONAL
     try:
         from pixsim7.backend.main.services.plugin.plugin_service import PluginCatalogService

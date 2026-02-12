@@ -16,6 +16,8 @@ import { GalleryToolsPanel, useCuratorGalleryController } from '@features/galler
 
 import { MediaCard } from '@/components/media/MediaCard';
 
+import { toggleFavoriteTag } from '../lib/favoriteTag';
+
 import {
   GallerySurfaceShell,
   AssetGrid,
@@ -141,6 +143,7 @@ export function CuratorGallerySurface() {
             <div className="w-16 h-16 flex-shrink-0">
               <MediaCard
                 {...mediaCardPropsFromAsset(asset)}
+                onToggleFavorite={() => toggleFavoriteTag(asset)}
                 contextMenuAsset={asset}
               />
             </div>
@@ -183,6 +186,7 @@ export function CuratorGallerySurface() {
           >
             <MediaCard
               {...mediaCardPropsFromAsset(asset)}
+              onToggleFavorite={() => toggleFavoriteTag(asset)}
               contextMenuAsset={asset}
               contextMenuSelection={controller.selectedAssets}
             />

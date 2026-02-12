@@ -67,6 +67,12 @@ export const uploadAssetToProvider = assetsApi.uploadAssetToProvider;
 export const enrichAsset = assetsApi.enrichAsset;
 
 /**
+ * Assign or remove tags from an asset.
+ * Auto-creates tags if they don't exist.
+ */
+export const assignTags = assetsApi.assignTags;
+
+/**
  * Download an asset to the user's device.
  * Uses the asset's remote_url or falls back to the file endpoint.
  */

@@ -7,6 +7,7 @@
 
 import type { MediaCardProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
 
+import { FAVORITE_TAG_SLUG } from '../../lib/favoriteTag';
 import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
 
 /**
@@ -31,6 +32,7 @@ export type AssetMediaCardProps = Pick<
   | 'status'
   | 'providerStatus'
   | 'sourceGenerationId'
+  | 'isFavorite'
 >;
 
 /**
@@ -65,6 +67,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
     status: asset.syncStatus,
     providerStatus: asset.providerStatus ?? undefined,
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
+    isFavorite: asset.tags?.some((t) => t.slug === FAVORITE_TAG_SLUG) ?? false,
   };
 }
 

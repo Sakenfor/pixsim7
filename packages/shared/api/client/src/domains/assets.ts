@@ -227,6 +227,17 @@ export function createAssetsApi(client: PixSimApiClient) {
     },
 
     /**
+     * Assign or remove tags from an asset.
+     * Auto-creates tags if they don't exist.
+     */
+    async assignTags(
+      assetId: number,
+      request: { add?: string[]; remove?: string[] },
+    ): Promise<AssetResponse> {
+      return client.post<AssetResponse>(`/assets/${assetId}/tags/assign`, request);
+    },
+
+    /**
      * Enrich an asset by fetching metadata from the provider.
      * Creates a synthetic Generation record with prompt/params.
      */
