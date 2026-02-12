@@ -269,8 +269,27 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
             {/* Hashing progress indicator */}
             {controller.hashingProgress && (
               <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded-lg text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
-                <div className="w-2.5 h-2.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
-                <span>Hashing {controller.hashingProgress.done}/{controller.hashingProgress.total}</span>
+                {!controller.hashingPaused && (
+                  <div className="w-2.5 h-2.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
+                )}
+                <span className="flex-1">
+                  {controller.hashingPaused ? 'Paused' : 'Hashing'}{' '}
+                  {controller.hashingProgress.done}/{controller.hashingProgress.total}
+                </span>
+                <button
+                  onClick={controller.hashingPaused ? controller.resumeHashing : controller.pauseHashing}
+                  className="hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+                  title={controller.hashingPaused ? 'Resume' : 'Pause'}
+                >
+                  {controller.hashingPaused ? <Icons.play size={12} /> : <Icons.pause size={12} />}
+                </button>
+                <button
+                  onClick={controller.cancelHashing}
+                  className="hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+                  title="Cancel"
+                >
+                  <Icons.x size={12} />
+                </button>
               </div>
             )}
 

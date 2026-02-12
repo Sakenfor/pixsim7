@@ -100,8 +100,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
 
-  // Hashing progress (for selected folder scope)
+  // Background hashing progress & controls
   const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
+  const bgHashRunIdRef = useRef(0);
+  const bgHashPausedRef = useRef(false);
+  const [hashingPaused, setHashingPaused] = useState(false);
 
   // Upload state (persisted provider)
   const [providerId, setProviderId] = usePersistentState<string | undefined>(
@@ -388,6 +391,12 @@ export function useLocalFoldersController(): LocalFoldersController {
       for (let i = 0; i < needsHash.length; i += CHUNK_SIZE) {
         if (bgHashRunIdRef.current !== runId) return;
 
+        // Wait while paused
+        while (bgHashPausedRef.current) {
+          if (bgHashRunIdRef.current !== runId) return;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
         const chunk = needsHash.slice(i, i + CHUNK_SIZE);
 
         // Process each asset sequentially within a chunk to limit concurrent store writes
@@ -422,6 +431,23 @@ export function useLocalFoldersController(): LocalFoldersController {
     return () => { bgHashRunIdRef.current++; };
      
   }, [backgroundHashTrigger, backgroundHashAssetCount]);
+
+  const pauseHashing = useCallback(() => {
+    bgHashPausedRef.current = true;
+    setHashingPaused(true);
+  }, []);
+
+  const resumeHashing = useCallback(() => {
+    bgHashPausedRef.current = false;
+    setHashingPaused(false);
+  }, []);
+
+  const cancelHashing = useCallback(() => {
+    bgHashRunIdRef.current++;
+    bgHashPausedRef.current = false;
+    setHashingPaused(false);
+    setHashingProgress(null);
+  }, []);
 
   // Load preview for an asset
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -674,5 +700,9 @@ export function useLocalFoldersController(): LocalFoldersController {
     error: error ?? null,
     getFileForAsset,
     hashingProgress,
+    hashingPaused,
+    pauseHashing,
+    resumeHashing,
+    cancelHashing,
   };
 }

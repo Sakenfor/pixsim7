@@ -57,6 +57,10 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
 
   // Background SHA hashing progress (null when idle)
   hashingProgress: { total: number; done: number } | null;
+  hashingPaused: boolean;
+  pauseHashing: () => void;
+  resumeHashing: () => void;
+  cancelHashing: () => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
   /** Combined list of real folders + missing folder placeholders */
