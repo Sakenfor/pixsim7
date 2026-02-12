@@ -13,6 +13,7 @@ import { Button, Panel } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { Icon } from '@lib/icons';
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
@@ -404,7 +405,7 @@ export function WidgetBuilderRoute() {
                     : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-300 dark:hover:bg-neutral-600'
                 }`}
               >
-                <span className="mr-2">{config.icon}</span>
+                <Icon name={config.icon} size={16} className="mr-2" />
                 {config.name}
               </button>
             ))}
@@ -428,7 +429,7 @@ export function WidgetBuilderRoute() {
                       : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
                   }`}
                 >
-                  <span className="mr-1">{config.icon}</span>
+                  <Icon name={config.icon} size={14} className="mr-1" />
                   {config.name}
                 </button>
               ))}
@@ -461,7 +462,7 @@ export function WidgetBuilderRoute() {
           ) : (
             <Panel className="h-full flex items-center justify-center">
               <div className="text-center">
-                <div className="text-6xl mb-4">{overlayConfig.icon}</div>
+                <div className="mb-4"><Icon name={overlayConfig.icon} size={48} /></div>
                 <h2 className="text-xl font-bold mb-2">{overlayConfig.name}</h2>
                 <p className="text-neutral-500">Presets coming soon</p>
               </div>

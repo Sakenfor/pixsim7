@@ -6,7 +6,10 @@
  */
 
 import { useEffect, useState } from 'react';
+
+import { Icon } from '@lib/icons';
 import { galleryToolSelectors } from '@lib/plugins/catalogSelectors';
+
 import type { GalleryToolContext, GalleryToolPlugin } from '@features/gallery/lib/core/types';
 
 interface GalleryToolsPanelProps {
@@ -69,7 +72,7 @@ export function GalleryToolsPanel({ context, surfaceId }: GalleryToolsPanelProps
                 className="w-full px-4 py-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  {tool.icon && <span className="text-xl">{tool.icon}</span>}
+                  {tool.icon && <Icon name={tool.icon} size={20} />}
                   <div className="text-left">
                     <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200">
                       {tool.name}
@@ -142,7 +145,7 @@ export function CompactGalleryToolsPanel({ context, surfaceId }: GalleryToolsPan
             }`}
             title={tool.description}
           >
-            {tool.icon} {tool.name}
+            {tool.icon && <Icon name={tool.icon} size={14} />} {tool.name}
           </button>
         ))}
       </div>

@@ -11,6 +11,7 @@ import {
 } from '@pixsim7/game.engine';
 import React, { useState, useEffect } from 'react';
 
+import { Icon } from '@lib/icons';
 import type { InteractionInstance, InteractionSurfaceExtended } from '@lib/registries';
 import './InteractionMenu.css';
 
@@ -259,7 +260,7 @@ export function InlineInteractionHint({
     <div className="interaction-hint-inline">
       <kbd>{keyHint}</kbd>
       <span className="interaction-hint-label">{primary.label}</span>
-      {primary.icon && <span className="interaction-hint-icon">{primary.icon}</span>}
+      {primary.icon && <Icon name={primary.icon as string} size={16} className="interaction-hint-icon" />}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import type {
   RouteCapability,
   ActionCapability,
 } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 import { DocViewer } from './DocViewer';
 
@@ -83,7 +84,7 @@ export function FeaturesView({
                     }`}
                   >
                     <div className="flex items-center gap-2">
-                      {feature.icon && <span>{feature.icon}</span>}
+                      {feature.icon && <Icon name={feature.icon} size={16} />}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">
                           {feature.name}
@@ -114,7 +115,7 @@ export function FeaturesView({
             <div>
               <div className="flex items-center gap-3 mb-2">
                 {selectedFeature.icon && (
-                  <span className="text-3xl">{selectedFeature.icon}</span>
+                  <Icon name={selectedFeature.icon} size={30} />
                 )}
                 <div>
                   <h2 className="text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
@@ -202,7 +203,7 @@ export function FeaturesView({
                       className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-700"
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        {route.icon && <span>{route.icon}</span>}
+                        {route.icon && <Icon name={route.icon} size={16} />}
                         <code className="text-sm font-mono text-blue-600 dark:text-blue-400">
                           {route.path}
                         </code>
@@ -244,7 +245,7 @@ export function FeaturesView({
                       className="p-3 bg-neutral-50 dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-700"
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        {action.icon && <span>{action.icon}</span>}
+                        {action.icon && <Icon name={action.icon} size={16} />}
                         <code className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
                           {action.id}
                         </code>

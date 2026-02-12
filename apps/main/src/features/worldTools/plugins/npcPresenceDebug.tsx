@@ -7,6 +7,8 @@
 import { getEnabledInteractions, getInteractionMetadata } from '@pixsim7/game.engine';
 import { Badge } from '@pixsim7/shared.ui';
 
+import { Icon } from '@lib/icons';
+
 import type { WorldToolPlugin } from '../lib/types';
 
 export const npcPresenceDebugTool: WorldToolPlugin = {
@@ -91,7 +93,7 @@ export const npcPresenceDebugTool: WorldToolPlugin = {
                           const metadata = getInteractionMetadata(interactionId);
                           return (
                             <Badge key={interactionId} color={metadata.color}>
-                              {metadata.icon && `${metadata.icon} `}{metadata.name}
+                              <span className="inline-flex items-center gap-1">{metadata.icon && <Icon name={metadata.icon} size={12} />}{metadata.name}</span>
                             </Badge>
                           );
                         })}

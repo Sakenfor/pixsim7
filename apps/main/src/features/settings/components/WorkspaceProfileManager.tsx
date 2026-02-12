@@ -7,6 +7,8 @@
 
 import { useState, useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { resolveWorkspaceDockview, useWorkspaceStore, useWorkspacePresets, type LayoutPreset } from '@features/workspace';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
@@ -152,7 +154,7 @@ function ProfileCard({
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
-          {preset.icon && <span className="text-2xl">{preset.icon}</span>}
+          {preset.icon && <Icon name={preset.icon} size={24} />}
           <div>
             <h3 className="font-semibold text-sm flex items-center gap-2">
               {preset.name}

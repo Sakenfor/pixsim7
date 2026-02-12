@@ -22,6 +22,8 @@ import type {
 } from '@pixsim7/shared.types';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { useSurfaceDimensionStore } from '@features/gizmos/stores/surfaceDimensionStore';
 
 import './GenericSurfaceGizmo.css';
@@ -546,7 +548,7 @@ export const GenericSurfaceGizmo: React.FC<GenericSurfaceGizmoProps> = ({
               return (
                 <div key={id} className={`dimension-bar ${isDominant ? 'dominant' : ''}`}>
                   <div className="dimension-label">
-                    <span className="dimension-icon">{config?.icon || '\u25CF'}</span>
+                    <span className="dimension-icon"><Icon name={config?.icon || '\u25CF'} size={14} /></span>
                     <span className="dimension-name">{config?.name || id}</span>
                   </div>
                   <div className="dimension-meter">
@@ -574,7 +576,7 @@ export const GenericSurfaceGizmo: React.FC<GenericSurfaceGizmoProps> = ({
       {/* Instrument info */}
       {activeInstrument && (
         <div className="instrument-info">
-          <span className="instrument-icon">{activeInstrument.visual.icon || '\u{1F91A}'}</span>
+          <span className="instrument-icon"><Icon name={activeInstrument.visual.icon || '\u{1F91A}'} size={16} /></span>
           <span className="instrument-name">{activeInstrument.label || activeInstrument.id}</span>
         </div>
       )}

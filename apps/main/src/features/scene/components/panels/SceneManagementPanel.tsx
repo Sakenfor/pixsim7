@@ -8,10 +8,15 @@
  */
 
 import { useState, useMemo } from 'react';
-import { SceneLibraryPanel } from './SceneLibraryPanel';
-import { SceneCollectionPanel } from './SceneCollectionPanel';
-import { ScenePlaybackPanel } from './ScenePlaybackPanel';
+
+import { Icon } from '@lib/icons';
+
 import { useGraphStore } from '@features/graph';
+
+import { SceneCollectionPanel } from './SceneCollectionPanel';
+import { SceneLibraryPanel } from './SceneLibraryPanel';
+import { ScenePlaybackPanel } from './ScenePlaybackPanel';
+
 
 type TabId = 'library' | 'collections' | 'playback';
 
@@ -86,7 +91,7 @@ export function SceneManagementPanel({
               `}
               title={tab.description}
             >
-              <span className="mr-2">{tab.icon}</span>
+              <Icon name={tab.icon} size={16} className="mr-2" />
               {tab.label}
             </button>
           ))}

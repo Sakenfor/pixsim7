@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { automationService } from '@features/automation';
 
 import { type ActionDefinition, ActionType, type AppActionPreset } from '../types';
@@ -53,7 +55,7 @@ export function ActionPreviewItem({ action, depth = 0 }: { action: ActionDefinit
         className="flex items-center gap-1 text-gray-300"
         style={{ paddingLeft: `${depth * 12}px` }}
       >
-        <span>{meta.icon}</span>
+        <Icon name={meta.icon} size={16} />
         <span className="truncate">{meta.label}</span>
         {/* Show condition for IF actions, or summary for non-nested actions */}
         {isConditional ? (

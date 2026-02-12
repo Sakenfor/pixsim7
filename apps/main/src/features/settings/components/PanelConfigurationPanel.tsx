@@ -11,6 +11,7 @@
 
 import { useState, useMemo } from 'react';
 
+import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 
@@ -144,7 +145,7 @@ export function PanelConfigurationPanel() {
                     `}
                   >
                     <div className="flex items-start gap-2">
-                      {panel.icon && <span className="text-lg">{panel.icon}</span>}
+                      {panel.icon && <Icon name={panel.icon as string} size={18} />}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-xs truncate">{panel.id}</div>
                         <div className="flex gap-1 mt-1 flex-wrap">
@@ -227,7 +228,7 @@ function PanelDetailView({
       <div className="border-b border-neutral-200 dark:border-neutral-700 p-6">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-3">
-            {panel.icon && <span className="text-3xl">{panel.icon}</span>}
+            {panel.icon && <Icon name={panel.icon as string} size={30} />}
             <div>
               <h2 className="text-xl font-bold">{panel.id}</h2>
               <div className="flex gap-2 mt-2">

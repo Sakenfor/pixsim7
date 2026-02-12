@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import type { NodeTypeDefinition, NodeTypeRegistry } from '../../lib/nodeTypes/registry';
 import { sceneNodeTypeRegistry } from '../../lib/nodeTypes/sceneRegistry';
 
@@ -117,7 +119,7 @@ export function NodePalette({
             onDragEnd={handleDragEnd}
             title={nodeDef.description}
           >
-            <span className="mr-1">{nodeDef.icon}</span>
+            <Icon name={nodeDef.icon} size={14} className="mr-1" />
             {nodeDef.label}
           </button>
         ))}
@@ -159,7 +161,7 @@ export function NodePalette({
                 onDragEnd={handleDragEnd}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xl">{nodeDef.icon}</span>
+                  <Icon name={nodeDef.icon} size={20} />
                   <span className="font-semibold text-sm">{nodeDef.label}</span>
                 </div>
                 <div className="text-xs opacity-80">{nodeDef.description}</div>

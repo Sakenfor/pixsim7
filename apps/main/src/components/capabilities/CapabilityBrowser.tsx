@@ -6,6 +6,7 @@
  */
 
 import { useState } from 'react';
+
 import {
   useFeatures,
   useActions,
@@ -16,6 +17,7 @@ import {
   type RouteCapability,
   type StateCapability,
 } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 type CapabilityView = 'features' | 'actions' | 'routes' | 'states';
 
@@ -190,7 +192,7 @@ function FeaturesView({
             }`}
           >
             <div className="flex items-start gap-3">
-              <span className="text-2xl">{feature.icon}</span>
+              <Icon name={feature.icon} size={24} />
               <div className="flex-1">
                 <div className="font-medium text-neutral-900 dark:text-neutral-100">
                   {feature.name}
@@ -222,7 +224,7 @@ function FeaturesView({
         {selectedFeature ? (
           <div className="sticky top-0">
             <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 uppercase mb-3">
-              {selectedFeature.icon} {selectedFeature.name}
+              <Icon name={selectedFeature.icon} size={16} /> {selectedFeature.name}
             </h3>
 
             {/* Routes */}
@@ -238,7 +240,7 @@ function FeaturesView({
                       className="p-3 rounded-md bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
                     >
                       <div className="flex items-center gap-2">
-                        {route.icon && <span>{route.icon}</span>}
+                        {route.icon && <Icon name={route.icon} size={16} />}
                         <code className="text-sm font-mono text-blue-600 dark:text-blue-400">
                           {route.path}
                         </code>
@@ -266,7 +268,7 @@ function FeaturesView({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          {action.icon && <span>{action.icon}</span>}
+                          {action.icon && <Icon name={action.icon} size={16} />}
                           <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                             {action.name}
                           </span>
@@ -332,7 +334,7 @@ function ActionsView({ actions }: { actions: ActionCapability[] }) {
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 flex-1">
-                {action.icon && <span className="text-xl">{action.icon}</span>}
+                {action.icon && <Icon name={action.icon} size={20} />}
                 <div className="flex-1">
                   <div className="font-medium text-neutral-900 dark:text-neutral-100">
                     {action.name}
@@ -386,7 +388,7 @@ function RoutesView({ routes }: { routes: RouteCapability[] }) {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  {route.icon && <span className="text-xl">{route.icon}</span>}
+                  {route.icon && <Icon name={route.icon} size={20} />}
                   <code className="text-sm font-mono font-medium text-blue-600 dark:text-blue-400">
                     {route.path}
                   </code>

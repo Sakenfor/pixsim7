@@ -8,6 +8,7 @@
 import { useState, useRef, useEffect } from 'react';
 
 import { useFeatures, useActions, useStates } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 interface CapabilityAutocompleteProps {
   value: string;
@@ -261,7 +262,7 @@ export function CapabilityAutocomplete({
               }`}
             >
               <div className="flex items-start gap-2">
-                {suggestion.icon && <span className="text-lg">{suggestion.icon}</span>}
+                {suggestion.icon && <Icon name={suggestion.icon} size={18} />}
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
                     {suggestion.label}

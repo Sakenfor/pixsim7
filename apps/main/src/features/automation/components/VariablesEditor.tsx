@@ -1,11 +1,15 @@
+import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import {
   type PresetVariable,
   type ElementSelector,
   VariableType,
   MatchMode,
 } from '../types';
-import { Button, Panel } from '@pixsim7/shared.ui';
+
 
 interface VariablesEditorProps {
   variables: PresetVariable[];
@@ -83,7 +87,7 @@ export function VariablesEditor({ variables, onChange }: VariablesEditorProps) {
               onClick={() => addVariable(type as VariableType)}
               title={`Add ${meta.label}`}
             >
-              {meta.icon}
+              <Icon name={meta.icon} size={14} />
             </Button>
           ))}
         </div>
@@ -110,7 +114,7 @@ export function VariablesEditor({ variables, onChange }: VariablesEditorProps) {
               >
                 {/* Header */}
                 <div className="flex items-center gap-2 p-2">
-                  <span className="text-sm">{meta.icon}</span>
+                  <Icon name={meta.icon} size={14} />
                   <code className="flex-1 text-sm font-mono text-purple-600 dark:text-purple-400">
                     ${variable.name}
                   </code>

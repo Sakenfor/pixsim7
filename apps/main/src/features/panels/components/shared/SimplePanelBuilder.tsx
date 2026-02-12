@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 
+import { Icon } from "@lib/icons";
 import { widgetRegistry } from "@lib/ui/composer";
 import {
   createComposition,
@@ -263,7 +264,7 @@ export function SimplePanelBuilder() {
                   className="w-full text-left p-3 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 hover:border-blue-500 dark:hover:border-blue-500 transition-colors"
                 >
                   <div className="flex items-center gap-2 mb-1">
-                    {widget.icon && <span>{widget.icon}</span>}
+                    {widget.icon && <Icon name={widget.icon} size={16} />}
                     <span className="text-sm font-medium">{widget.title}</span>
                   </div>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400">

@@ -19,6 +19,8 @@ import {
 } from '@pixsim7/scene.gizmos';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { useInteractionStatsStore } from '@features/gizmos/stores/interactionStatsStore';
 
 import { useStatsDecay } from '@/hooks/useStatsDecay';
@@ -498,7 +500,7 @@ export const BodyMapGizmo: React.FC<BodyMapGizmoProps> = ({
             return (
               <div key={statId} className={`stat-bar ${isDominant ? 'dominant' : ''}`}>
                 <div className="stat-label">
-                  <span className="stat-icon">{config?.icon || '●'}</span>
+                  <span className="stat-icon"><Icon name={config?.icon || '●'} size={14} /></span>
                   <span className="stat-name">{config?.name || statId}</span>
                 </div>
                 <div className="stat-meter">

@@ -4,8 +4,10 @@
  * Displays and allows selection of overlay configuration presets
  */
 
+import { Panel } from '@pixsim7/shared.ui';
 import React from 'react';
-import { Panel, Button } from '@pixsim7/shared.ui';
+
+import { Icon } from '@lib/icons';
 
 export interface PresetSelectorProps {
   presets: Array<{
@@ -44,7 +46,7 @@ export function PresetSelector({
             `}
           >
             <div className="font-medium">
-              {preset.icon && <span className="mr-1">{preset.icon}</span>}
+              {preset.icon && <Icon name={preset.icon} size={14} className="mr-1" />}
               {preset.name}
             </div>
           </button>

@@ -5,6 +5,8 @@
  */
 
 import { useMemo, useState } from 'react';
+
+import { Icon } from '@lib/icons';
 import type {
   UnifiedPluginDescriptor,
   UnifiedPluginFamily,
@@ -126,7 +128,7 @@ function PluginCard({ plugin }: { plugin: UnifiedPluginDescriptor }) {
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-start gap-3">
-          {plugin.icon && <span className="text-xl">{plugin.icon}</span>}
+          {plugin.icon && <Icon name={plugin.icon} size={20} />}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="font-medium text-neutral-900 dark:text-neutral-100">

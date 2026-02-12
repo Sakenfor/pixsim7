@@ -2,6 +2,7 @@ import { useToast } from '@pixsim7/shared.ui';
 import { useState, useEffect } from 'react';
 import type { ComponentType } from 'react';
 
+import { Icon } from '@lib/icons';
 import { nodeEditorRegistry } from '@lib/nodeEditorRegistry';
 import { nodeTypeRegistry } from '@lib/registries';
 
@@ -166,7 +167,7 @@ export function InspectorPanel() {
         <div className="space-y-2">
           {/* Node info with icon */}
           <div className="flex items-center gap-2">
-            {nodeTypeDef?.icon && <span className="text-2xl">{nodeTypeDef.icon}</span>}
+            {nodeTypeDef?.icon && <Icon name={nodeTypeDef.icon} size={24} />}
             <div className="flex-1">
               <div className="text-sm font-medium">{nodeTypeDef?.name ?? selectedNode.type}</div>
               {nodeTypeDef?.description && (

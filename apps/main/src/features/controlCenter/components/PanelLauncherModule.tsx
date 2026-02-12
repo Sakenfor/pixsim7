@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 
 import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
+import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { resolveWorkspaceDockview, useWorkspaceStore, type PanelId } from '@features/workspace';
@@ -129,8 +130,8 @@ export function PanelLauncherModule() {
                     )}
 
                     {/* Icon */}
-                    <div className="text-2xl mb-1 text-center">
-                      {panel.icon}
+                    <div className="mb-1 text-center">
+                      <Icon name={panel.icon as string} size={24} />
                     </div>
 
                     {/* Title */}

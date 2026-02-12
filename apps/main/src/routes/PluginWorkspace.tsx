@@ -8,10 +8,18 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { PluginBrowser } from '../components/plugins/PluginBrowser';
-import { CapabilityBrowser } from '../components/capabilities/CapabilityBrowser';
+
+import { Icon } from '@lib/icons';
+
 import { CapabilityAutocomplete } from '../components/capabilities/CapabilityAutocomplete';
-import type { UnifiedPluginDescriptor } from '../lib/plugins/types';
+import { CapabilityBrowser } from '../components/capabilities/CapabilityBrowser';
+import { PluginBrowser } from '../components/plugins/PluginBrowser';
+import {
+  InteractionTestHarness,
+  NodeTypeTestHarness,
+  GalleryToolTestHarness,
+  WorldToolTestHarness,
+} from '../components/plugins/PluginTestHarnesses';
 import {
   loadProjects,
   updateProject,
@@ -28,7 +36,6 @@ import {
   disableUiPluginProject,
   enableUiPluginProject,
   uninstallUiPluginProject,
-  exportProject,
   importProject,
   downloadProjectAsJSON,
   type UIPluginProject,
@@ -37,12 +44,7 @@ import {
   type GalleryToolPluginProject,
   type WorldToolPluginProject,
 } from '../lib/plugins/projects';
-import {
-  InteractionTestHarness,
-  NodeTypeTestHarness,
-  GalleryToolTestHarness,
-  WorldToolTestHarness,
-} from '../components/plugins/PluginTestHarnesses';
+import type { UnifiedPluginDescriptor } from '../lib/plugins/types';
 
 type TabView = 'installed' | 'projects' | 'capabilities';
 
@@ -254,7 +256,7 @@ export function PluginWorkspaceRoute() {
                         onClick={() => handleCreateProject(config)}
                         className="w-full px-4 py-3 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-3"
                       >
-                        <span className="text-2xl">{config.icon}</span>
+                        <Icon name={config.icon} size={24} />
                         <div className="flex-1">
                           <div className="font-medium text-neutral-900 dark:text-neutral-100">
                             {config.label}
@@ -367,7 +369,7 @@ function ProjectCard({
       onClick={onClick}
     >
       <div className="flex items-start gap-2">
-        <span className="text-xl">{config?.icon || '📦'}</span>
+        <Icon name={config?.icon || '📦'} size={20} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
@@ -439,7 +441,7 @@ function ProjectEditor({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-3xl">{config?.icon || '📦'}</span>
+          <Icon name={config?.icon || '📦'} size={30} />
           <div>
             <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
               {project.label}

@@ -8,7 +8,6 @@
  */
 
 import clsx from 'clsx';
-import { Target, Layers } from 'lucide-react';
 import { useMemo, useEffect, useState } from 'react';
 
 import {
@@ -19,6 +18,7 @@ import {
   getParamIcon,
   isVisualParam,
 } from '@lib/generation-ui';
+import { Icon } from '@lib/icons';
 
 import {
   CAP_GENERATION_WIDGET,
@@ -251,7 +251,7 @@ export function GenerationSettingsPanel({
                 )}
                 title={isTargeted ? 'Targeted for quick add' : 'Target this quick generate for quick add'}
               >
-                <Target size={12} />
+                <Icon name="target" size={12} />
               </button>
             )}
           </div>
@@ -382,7 +382,7 @@ export function GenerationSettingsPanel({
         <div className="flex items-center justify-between gap-2 text-[10px]">
           {/* Burst count input */}
           <div className="flex items-center gap-1">
-            <Layers size={12} className="text-neutral-500" />
+            <Icon name="layers" size={12} className="text-neutral-500" />
             <input
               type="number"
               min={1}

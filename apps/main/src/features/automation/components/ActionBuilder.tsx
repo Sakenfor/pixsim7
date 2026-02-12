@@ -1,6 +1,8 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useId } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { type ActionDefinition, type PresetVariable, type AutomationExecution, ActionType } from '../types';
 
 import { getDefaultParams } from './actionBuilderDefaults';
@@ -517,7 +519,7 @@ export function ActionBuilder({
                   ) : (
                     /* When collapsed: show icon + label + comment */
                     <div className={`font-medium flex items-center gap-2 ${isEnabled ? colors.text : 'text-gray-500 dark:text-gray-400 line-through'}`}>
-                      <span className="text-base">{meta.icon}</span>
+                      <Icon name={meta.icon} size={16} />
                       <span>{meta.label}</span>
                       {action.comment && (
                         <span className="text-gray-500 dark:text-gray-400 font-normal text-sm">

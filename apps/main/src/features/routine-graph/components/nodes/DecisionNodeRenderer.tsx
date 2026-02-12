@@ -5,9 +5,10 @@
  * NPC state (energy, mood, relationships, etc.).
  */
 
-import { GitBranch, Zap } from 'lucide-react';
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
+
+import { Icon } from '@lib/icons';
 
 import type { RoutineNode } from '../../types';
 import { getNodeTypeColor } from '../../types';
@@ -52,7 +53,7 @@ function DecisionNodeRenderer({ data, selected }: NodeProps<DecisionNodeData>) {
         className="flex items-center gap-2 px-3 py-2 rounded-t-md"
         style={{ backgroundColor: `${color}20` }}
       >
-        <GitBranch size={14} style={{ color }} />
+        <Icon name="git-branch" size={14} style={{ color }} />
         <span className="text-xs font-semibold" style={{ color }}>
           Decision
         </span>
@@ -77,7 +78,7 @@ function DecisionNodeRenderer({ data, selected }: NodeProps<DecisionNodeData>) {
                   key={i}
                   className="flex items-center gap-1 text-[11px] text-amber-700 dark:text-amber-300"
                 >
-                  <Zap size={10} />
+                  <Icon name="zap" size={10} />
                   <span>{formatCondition(c)}</span>
                 </div>
               ))}

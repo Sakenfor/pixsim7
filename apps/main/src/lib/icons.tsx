@@ -113,6 +113,24 @@ import {
   MoreVertical,
   Scroll,
   History,
+  Paintbrush,
+  MessageSquare,
+  Blocks,
+  ScanSearch,
+  Activity,
+  Undo2,
+  Redo2,
+  Wand2,
+  Pencil,
+  MoreHorizontal,
+  ClipboardPaste,
+  ArrowRightLeft,
+  ArrowUpDown,
+  ZoomIn,
+  Gauge,
+  Film,
+  ArrowDown,
+  ArrowUp,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -287,8 +305,16 @@ export const Icons = {
   chevronDown: ChevronDown,
   arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
+  arrowDown: ArrowDown,
+  arrowUp: ArrowUp,
   'arrow-left': ArrowLeft,
   'arrow-right': ArrowRight,
+  'arrow-down': ArrowDown,
+  'arrow-up': ArrowUp,
+  arrowRightLeft: ArrowRightLeft,
+  'arrow-right-left': ArrowRightLeft,
+  arrowUpDown: ArrowUpDown,
+  'arrow-up-down': ArrowUpDown,
   moveLeft: MoveLeft,
   moveRight: MoveRight,
   move: MoveRight, // Generic move alias
@@ -303,6 +329,34 @@ export const Icons = {
   square: Square,
   quest: Scroll,
   '📦': Package,  // Emoji alias
+
+  // Prompts & Analysis
+  prompt: MessageSquare,
+  prompts: MessageSquare,
+  analysis: ScanSearch,
+  blocks: Blocks,
+  paintbrush: Paintbrush,
+
+  // Additional
+  activity: Activity,
+  undo2: Undo2,
+  'undo-2': Undo2,
+  undo: Undo2,
+  redo2: Redo2,
+  'redo-2': Redo2,
+  redo: Redo2,
+  wand2: Wand2,
+  'wand-2': Wand2,
+  wand: Wand2,
+  pencil: Pencil,
+  moreHorizontal: MoreHorizontal,
+  'more-horizontal': MoreHorizontal,
+  clipboardPaste: ClipboardPaste,
+  'clipboard-paste': ClipboardPaste,
+  zoomIn: ZoomIn,
+  'zoom-in': ZoomIn,
+  gauge: Gauge,
+  film: Film,
 } as const;
 
 export type IconName = keyof typeof Icons;

@@ -1,3 +1,4 @@
+import { Icon } from '@lib/icons';
 import { arcNodeTypeRegistry } from '@lib/registries';
 
 import type { QuestNodeData } from '@features/graph/models/arcGraph';
@@ -16,7 +17,7 @@ export function QuestNodeRenderer({ node }: ArcNodeRendererProps) {
       {/* Node Type Badge with Icon */}
       <div className="flex items-center gap-2">
         {typeDef?.icon && (
-          <span className="text-2xl">{typeDef.icon}</span>
+          <Icon name={typeDef.icon} size={24} />
         )}
         <div className="flex-1">
           <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200">

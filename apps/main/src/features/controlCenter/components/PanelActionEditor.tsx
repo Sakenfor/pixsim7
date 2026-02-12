@@ -1,8 +1,11 @@
-import { useState, useCallback } from 'react';
 import type { CubeFace } from '@pixsim7/pixcubes';
-import type { PanelAction, PanelActionsConfig } from '@features/panels';
 import { useToast } from '@pixsim7/shared.ui';
 import { clsx } from 'clsx';
+import { useState, useCallback } from 'react';
+
+import { Icon } from '@lib/icons';
+
+import type { PanelAction, PanelActionsConfig } from '@features/panels';
 
 interface EditingAction extends PanelAction {
   face?: CubeFace;
@@ -29,7 +32,7 @@ export function PanelActionEditor({
   const [panelName, setPanelName] = useState(initialConfig?.panelName || '');
   const [actions, setActions] = useState<EditingAction[]>(initialConfig?.actions || []);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [selectedFace, setSelectedFace] = useState<CubeFace | null>(null);
+  const [, setSelectedFace] = useState<CubeFace | null>(null);
   const [previewRotation, setPreviewRotation] = useState({ x: -20, y: 20, z: 0 });
   const toast = useToast();
 
@@ -89,6 +92,7 @@ export function PanelActionEditor({
     const config: PanelActionsConfig = {
       panelId,
       panelName,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       actions: actions.map(({ face, ...action }) => action),
       defaultFaces: actions.reduce((acc, action) => {
         if (action.face) {
@@ -160,7 +164,7 @@ ${actionsCode}
     if (action.face) {
       acc[action.face] = (
         <div className="text-sm flex flex-col items-center gap-1">
-          <div className="text-2xl">{action.icon}</div>
+          <div><Icon name={action.icon} size={24} /></div>
           <div className="text-[10px] text-white/90 font-medium">{action.label}</div>
         </div>
       );
@@ -320,7 +324,7 @@ ${actionsCode}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-2xl">{action.icon}</span>
+                        <Icon name={action.icon} size={24} />
                         <span className="text-sm text-white font-medium">
                           {action.label}
                         </span>

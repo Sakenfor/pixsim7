@@ -77,7 +77,7 @@ export function AddPanelDropdown({
                     }
                   >
                     {panel.icon && (
-                      <span className="text-sm">{panel.icon}</span>
+                      <Icon name={panel.icon as string} size={14} />
                     )}
                     <span className="flex-1">{panel.title}</span>
                     {alreadyExists && (

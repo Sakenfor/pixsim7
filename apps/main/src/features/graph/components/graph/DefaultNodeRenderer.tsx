@@ -1,3 +1,4 @@
+import { Icon } from '@lib/icons';
 import { arcNodeTypeRegistry, sceneNodeTypeRegistry } from '@lib/registries';
 
 import type { NodeRendererProps } from '../../lib/editor/nodeRendererRegistry';
@@ -20,7 +21,7 @@ export function DefaultNodeRenderer({ node }: NodeRendererProps<unknown>) {
       {/* Node Type Badge with Icon */}
       <div className="flex items-center gap-2">
         {typeDef?.icon && (
-          <span className="text-2xl">{typeDef.icon}</span>
+          <Icon name={typeDef.icon} size={24} />
         )}
         <div className="flex-1">
           <div className="flex items-center gap-2 text-xs">

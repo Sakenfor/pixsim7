@@ -9,9 +9,11 @@
  * @see claude-tasks/12-intimacy-scene-composer-and-progression-editor.md
  */
 
+import { createDefaultState, validateIntimacyScene, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 import React, { useState } from 'react';
 
 import { GenerationSettingsBar } from '@lib/generation-ui';
+import { Icon } from '@lib/icons';
 import type {
   IntimacySceneConfig,
   IntimacySceneType,
@@ -21,7 +23,6 @@ import type {
 
 import { useGenerationWorkbench } from '@features/generation';
 
-import { createDefaultState, validateIntimacyScene, type SimulatedRelationshipState } from '@pixsim7/game.engine';
 
 import { GatePreviewPanel } from './GatePreviewPanel';
 import { GenerationPreviewPanel } from './GenerationPreviewPanel';
@@ -239,7 +240,7 @@ export function IntimacySceneComposer({
                 : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100'
             }`}
           >
-            <span className="mr-1">{tab.icon}</span>
+            <Icon name={tab.icon} size={14} className="mr-1" />
             {tab.label}
             {tab.badge !== undefined && (
               <span className="ml-2 px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded-full">

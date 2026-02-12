@@ -6,8 +6,11 @@
  * Replaces hard-coded inspector panels.
  */
 
-import { useEffect, useState } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import type { BrainToolContext, BrainToolPlugin } from '@features/brainTools/lib/types';
 
 interface BrainToolsPanelProps {
@@ -84,7 +87,7 @@ export function BrainToolsPanel({ context, tools }: BrainToolsPanelProps) {
             onClick={() => setActiveTool(tool.id)}
             title={tool.description}
           >
-            {tool.icon && <span className="mr-1">{tool.icon}</span>}
+            {tool.icon && <Icon name={tool.icon} size={14} className="mr-1" />}
             {tool.name}
           </Button>
         ))}
@@ -95,7 +98,7 @@ export function BrainToolsPanel({ context, tools }: BrainToolsPanelProps) {
         <Panel className="p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {activeToolData.icon && <span className="text-xl">{activeToolData.icon}</span>}
+              {activeToolData.icon && <Icon name={activeToolData.icon} size={20} />}
               <div>
                 <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
                   {activeToolData.name}
@@ -183,7 +186,7 @@ export function CompactBrainToolsPanel({ context, tools }: BrainToolsPanelProps)
             }`}
             title={tool.description}
           >
-            {tool.icon && <span className="mr-1">{tool.icon}</span>}
+            {tool.icon && <Icon name={tool.icon} size={14} className="mr-1" />}
             {tool.name}
           </button>
         ))}

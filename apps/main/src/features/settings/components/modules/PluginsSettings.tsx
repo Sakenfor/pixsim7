@@ -6,7 +6,11 @@
  * with new scene views, tools, and UI components.
  */
 import { useEffect } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
+
 import { settingsRegistry } from '../../lib/core/registry';
 
 // Family display names and descriptions
@@ -128,7 +132,7 @@ export function PluginsSettings() {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         {plugin.icon && (
-                          <span className="text-base">{plugin.icon}</span>
+                          <Icon name={plugin.icon} size={16} />
                         )}
                         <div className="text-[11px] font-semibold text-neutral-800 dark:text-neutral-100">
                           {plugin.name}

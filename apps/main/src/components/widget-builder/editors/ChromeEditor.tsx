@@ -9,6 +9,7 @@ import { Panel } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import { useUndoRedo } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
 import {
   widgetRegistry,
   chromeWidgets,
@@ -85,7 +86,7 @@ export function ChromeEditor({ instances: initialInstances, onInstancesChange }:
         <div className="space-y-1">
           {availableWidgets.map((widget) => (
             <div key={widget.id} className="flex items-center gap-2">
-              <span className="w-6 text-center">{widget.icon || '◻️'}</span>
+              <span className="w-6 text-center"><Icon name={widget.icon || '◻️'} size={16} /></span>
               <span className="flex-1 text-sm">{widget.title}</span>
               <div className="flex gap-1">
                 {['left', 'center', 'right'].map((area) => (
@@ -121,7 +122,7 @@ export function ChromeEditor({ instances: initialInstances, onInstancesChange }:
                   : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
               }`}
             >
-              <span>{def?.icon || '◻️'}</span>
+              <Icon name={def?.icon || '◻️'} size={16} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm truncate">{def?.title}</div>
                 <div className="text-xs text-neutral-500">{instance.placement.area}</div>
@@ -164,7 +165,7 @@ export function ChromeEditor({ instances: initialInstances, onInstancesChange }:
                         : 'bg-neutral-700 hover:bg-neutral-600'
                     }`}
                   >
-                    <span className="mr-1">{def?.icon}</span>
+                    {def?.icon && <Icon name={def.icon} size={14} className="mr-1" />}
                     <span className="text-sm">{def?.title}</span>
                   </div>
                 );

@@ -5,7 +5,10 @@
  */
 
 import { useState, useEffect } from 'react';
+
+import { Icon } from '@lib/icons';
 import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
 import type { GallerySurfaceId } from '../lib/core/surfaceRegistry';
 
 interface GallerySurfaceSwitcherProps {
@@ -87,7 +90,7 @@ export function GallerySurfaceSwitcher({
             }`}
             title={surface.description}
           >
-            {surface.icon && <span className="mr-1">{surface.icon}</span>}
+            {surface.icon && <Icon name={surface.icon} size={14} className="mr-1" />}
             {surface.label}
           </button>
         ))}

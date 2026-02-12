@@ -5,7 +5,9 @@
  * Each harness simulates the context and allows testing plugin code.
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+
+import { Icon } from '@lib/icons';
 import type {
   InteractionPluginProject,
   NodeTypePluginProject,
@@ -214,7 +216,7 @@ export function NodeTypeTestHarness({ project }: { project: NodeTypePluginProjec
       {/* Node Metadata */}
       <div className="p-4 rounded-lg bg-neutral-100 dark:bg-neutral-800 space-y-2">
         <div className="flex items-center gap-2">
-          <span className="text-2xl">{project.metadata.icon}</span>
+          <Icon name={project.metadata.icon} size={24} />
           <div>
             <h4 className="font-medium text-neutral-900 dark:text-neutral-100">
               {project.metadata.name}

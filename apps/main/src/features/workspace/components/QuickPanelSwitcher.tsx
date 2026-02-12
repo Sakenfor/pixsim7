@@ -7,6 +7,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 
+import { Icon } from "@lib/icons";
+
 import { usePanelConfigStore } from "@features/panels";
 
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
@@ -131,7 +133,7 @@ export function QuickPanelSwitcher() {
                       onClick={() => handleOpenPanel(panel.id)}
                       className="w-full px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors flex items-center gap-2"
                     >
-                      {panel.icon && <span>{panel.icon}</span>}
+                      {panel.icon && <Icon name={panel.icon as string} size={16} />}
                       <div className="flex-1">
                         <div className="text-sm font-medium">{panel.id}</div>
                         {panel.description && (
@@ -179,7 +181,7 @@ export function QuickPanelSwitcher() {
                       className="w-full px-3 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors flex items-center gap-2"
                     >
                       {preset.icon && (
-                        <span className="text-lg">{preset.icon}</span>
+                        <Icon name={preset.icon} size={18} />
                       )}
                       <div className="flex-1">
                         <div className="text-sm font-medium flex items-center gap-2">

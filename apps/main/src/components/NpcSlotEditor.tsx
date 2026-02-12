@@ -2,6 +2,7 @@ import { Button, Panel, Badge, Input, Select } from '@pixsim7/shared.ui';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 
 
+
 import type { GameLocationDetail, GameWorldDetail, NpcSlot2d } from '@lib/api/game';
 import { getNpcSlots, setNpcSlots, saveGameLocationMeta } from '@lib/api/game';
 import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
@@ -13,6 +14,7 @@ import {
   type PresetWithScope,
   type SuggestionContext,
 } from '@lib/game/interactions/presets';
+import { Icon } from '@lib/icons';
 import { interactionRegistry } from '@lib/registries';
 
 import { getAsset, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
@@ -510,8 +512,8 @@ export function NpcSlotEditor({ location, world, onLocationUpdate }: NpcSlotEdit
                           }}
                           className="rounded"
                         />
-                        <span className="text-xs font-medium">
-                          {plugin.icon && `${plugin.icon} `}
+                        <span className="text-xs font-medium flex items-center gap-1">
+                          {plugin.icon && <Icon name={plugin.icon} size={14} />}
                           {plugin.name}
                         </span>
                       </label>

@@ -11,6 +11,8 @@ import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useState, useRef, useEffect } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
 import { NotificationTicker, ContentModerationWarning } from '@features/generation';
@@ -187,7 +189,7 @@ export function DockToolbar({
                 title={item.label}
                 aria-label={`Navigate to ${item.label}`}
               >
-                {item.icon}
+                <Icon name={item.icon} size={16} />
               </button>
             ))}
           </div>

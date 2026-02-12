@@ -1,6 +1,7 @@
 import { Button, Panel, Input, Select, Badge } from '@pixsim7/shared.ui';
 import { useState, useMemo, useRef } from 'react';
 
+
 import type { GameWorldDetail } from '@lib/api/game';
 import { saveGameWorldMeta } from '@lib/api/game';
 import { InteractionConfigForm } from '@lib/game/interactions/InteractionConfigForm';
@@ -14,6 +15,7 @@ import {
   type PresetWithScope,
   type ConflictResolution,
 } from '@lib/game/interactions/presets';
+import { Icon } from '@lib/icons';
 import { interactionRegistry } from '@lib/registries';
 
 interface InteractionPresetEditorProps {
@@ -455,8 +457,8 @@ export function InteractionPresetEditor({
                     }}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="font-medium">
-                        {plugin?.icon && `${plugin.icon} `}
+                      <span className="font-medium flex items-center gap-1">
+                        {plugin?.icon && <Icon name={plugin.icon} size={14} />}
                         {preset.name}
                       </span>
                       <Badge

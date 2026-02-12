@@ -1,6 +1,8 @@
 import { Button } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 import type { TemplateWizard, WizardField, WizardValues } from '../../lib/editor/templateWizards';
@@ -178,7 +180,7 @@ export function TemplateWizardDialog({
         {/* Header */}
         <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex items-center gap-2 mb-1">
-            {wizard.icon && <span className="text-2xl">{wizard.icon}</span>}
+            {wizard.icon && <Icon name={wizard.icon} size={24} />}
             <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
               {wizard.name}
             </h2>

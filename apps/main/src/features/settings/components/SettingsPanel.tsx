@@ -5,7 +5,11 @@
  * Modules register themselves and provide their own UI components.
  */
 import { useState, useEffect, Suspense, type ReactNode } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import { settingsRegistry, type SettingsModule } from '@features/settings';
+
 import { useSettingsUiStore } from '../stores/settingsUiStore';
 
 // Import modules to trigger registration
@@ -74,7 +78,7 @@ function SidebarModuleItem({
             <ChevronIcon expanded={isExpanded} />
           </span>
         )}
-        {module.icon && <span className="text-sm flex-shrink-0">{module.icon}</span>}
+        {module.icon && <Icon name={module.icon as string} size={14} className="flex-shrink-0" />}
         <span className="font-medium truncate">{module.label}</span>
       </button>
 
@@ -91,7 +95,7 @@ function SidebarModuleItem({
                   : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
               }`}
             >
-              {sub.icon && <span className="text-xs flex-shrink-0">{sub.icon}</span>}
+              {sub.icon && <Icon name={sub.icon as string} size={12} className="flex-shrink-0" />}
               <span className="truncate">{sub.label}</span>
             </button>
           ))}
@@ -145,7 +149,7 @@ function SettingsContent({
       {/* Content header */}
       <div className="flex-shrink-0 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
         <div className="flex items-center gap-2">
-          {icon && <span className="text-lg">{icon}</span>}
+          {icon && <Icon name={icon as string} size={18} />}
           <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
             {title}
           </h2>

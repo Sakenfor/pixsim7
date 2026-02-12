@@ -6,7 +6,9 @@
  */
 
 import { useState } from 'react';
+
 import { useFeatures, useActions, useStates } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 interface CapabilityReferenceEditorProps {
   references: string[];
@@ -79,7 +81,7 @@ export function CapabilityReferenceEditor({
                 key={ref}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700"
               >
-                {item?.icon && <span className="text-sm">{item.icon}</span>}
+                {item?.icon && <Icon name={item.icon} size={14} />}
                 <code className="text-xs text-blue-900 dark:text-blue-100">{ref}</code>
                 <button
                   onClick={() => removeReference(ref)}
@@ -119,7 +121,7 @@ export function CapabilityReferenceEditor({
                 className="w-full text-left px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
               >
                 <div className="flex items-center gap-2">
-                  {suggestion.icon && <span>{suggestion.icon}</span>}
+                  {suggestion.icon && <Icon name={suggestion.icon} size={16} />}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                       {suggestion.label}

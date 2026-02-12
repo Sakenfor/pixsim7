@@ -9,6 +9,7 @@ import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 import { useState, useMemo, useEffect, useRef } from 'react';
 
 import { useDevToolContext } from '@lib/dev/devtools/devToolContext';
+import { Icon } from '@lib/icons';
 import { devToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useWorkspaceStore } from '@features/workspace';
@@ -149,7 +150,7 @@ export function DevToolQuickAccess() {
                     <div className="flex items-start gap-3">
                       {/* Icon */}
                       {tool.icon && (
-                        <div className="text-2xl flex-shrink-0">{tool.icon}</div>
+                        <div className="flex-shrink-0"><Icon name={tool.icon} size={24} /></div>
                       )}
 
                       {/* Content */}

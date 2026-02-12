@@ -5,8 +5,11 @@
  * (e.g., 'default', 'minimal', 'streamer', 'debug').
  */
 
-import { useState, useEffect } from 'react';
 import { Button, Select, Panel } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import {
   getAvailableProfiles,
   getActiveProfileId,
@@ -90,7 +93,7 @@ export function HudProfileSwitcher({
               `}
             >
               <div className="flex items-start gap-3">
-                <span className="text-2xl">{profile.icon}</span>
+                <Icon name={profile.icon} size={24} />
                 <div className="flex-1">
                   <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200">
                     {profile.name}

@@ -5,9 +5,10 @@
  * and available activities during that period.
  */
 
-import { Clock } from 'lucide-react';
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
+
+import { Icon } from '@lib/icons';
 
 import type { RoutineNode } from '../../types';
 import { formatTimeRange, getNodeTypeColor } from '../../types';
@@ -37,7 +38,7 @@ function TimeSlotNodeRenderer({ data, selected }: NodeProps<TimeSlotNodeData>) {
         className="flex items-center gap-2 px-3 py-2 rounded-t-md"
         style={{ backgroundColor: `${color}20` }}
       >
-        <Clock size={14} style={{ color }} />
+        <Icon name="clock" size={14} style={{ color }} />
         <span className="text-xs font-semibold" style={{ color }}>
           Time Slot
         </span>
@@ -53,7 +54,7 @@ function TimeSlotNodeRenderer({ data, selected }: NodeProps<TimeSlotNodeData>) {
         {/* Time Range */}
         {timeRange && (
           <div className="flex items-center gap-1.5 text-xs text-neutral-600 dark:text-neutral-400">
-            <Clock size={12} />
+            <Icon name="clock" size={12} />
             <span>{formatTimeRange(timeRange)}</span>
           </div>
         )}

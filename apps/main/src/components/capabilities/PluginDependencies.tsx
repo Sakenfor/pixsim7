@@ -5,8 +5,9 @@
  * Helps developers understand plugin integration points.
  */
 
-import type { UnifiedPluginDescriptor } from '@lib/plugins/types';
 import { useFeature, useAction } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
+import type { UnifiedPluginDescriptor } from '@lib/plugins/types';
 
 interface PluginDependenciesProps {
   plugin: UnifiedPluginDescriptor;
@@ -101,6 +102,7 @@ interface DependencySectionProps {
 
 function DependencySection({
   title,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   icon,
   description,
   items,
@@ -177,7 +179,7 @@ function FeatureItem({ id }: { id: string }) {
   return (
     <div className="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
       <div className="flex items-start gap-2">
-        {feature.icon && <span className="text-lg">{feature.icon}</span>}
+        {feature.icon && <Icon name={feature.icon} size={18} />}
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
             {feature.name}
@@ -234,7 +236,7 @@ function ActionItem({ id }: { id: string }) {
   return (
     <div className="p-3 rounded bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
       <div className="flex items-start gap-2">
-        {action.icon && <span className="text-lg">{action.icon}</span>}
+        {action.icon && <Icon name={action.icon} size={18} />}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">
             <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100">

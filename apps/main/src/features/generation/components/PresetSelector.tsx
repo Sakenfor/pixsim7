@@ -10,8 +10,9 @@
  */
 
 import clsx from 'clsx';
-import { Save, Trash2, ChevronDown, Archive, Pencil, X, Check } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import { useGenerationPresets } from '../hooks/useGenerationPresets';
 import { useGenerationScopeStores } from '../hooks/useGenerationScope';
@@ -128,12 +129,12 @@ export function PresetSelector({
         )}
         title="Input Sets - Save and load prompt + inputs + settings"
       >
-        <Archive size={12} className={presetLoading ? 'animate-spin' : ''} />
+        <Icon name="archive" size={12} className={presetLoading ? 'animate-spin' : ''} />
         <span className="max-w-[60px] truncate">
           {presetLoading ? 'Loading...' : lastUsedPreset?.name ?? 'Sets'}
         </span>
         {!presetLoading && (
-          <ChevronDown size={10} className={clsx('transition-transform', isOpen && 'rotate-180')} />
+          <Icon name="chevronDown" size={10} className={clsx('transition-transform', isOpen && 'rotate-180')} />
         )}
       </button>
 
@@ -165,7 +166,7 @@ export function PresetSelector({
                   disabled={!newPresetName.trim()}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-green-600 disabled:opacity-50"
                 >
-                  <Check size={12} />
+                  <Icon name="check" size={12} />
                 </button>
                 <button
                   type="button"
@@ -175,7 +176,7 @@ export function PresetSelector({
                   }}
                   className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500"
                 >
-                  <X size={12} />
+                  <Icon name="x" size={12} />
                 </button>
               </div>
             ) : (
@@ -184,7 +185,7 @@ export function PresetSelector({
                 onClick={() => setIsSaving(true)}
                 className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
               >
-                <Save size={12} />
+                <Icon name="save" size={12} />
                 Save current as input set
               </button>
             )}
@@ -228,7 +229,7 @@ export function PresetSelector({
                         disabled={!editName.trim()}
                         className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 text-green-600 disabled:opacity-50"
                       >
-                        <Check size={10} />
+                        <Icon name="check" size={10} />
                       </button>
                       <button
                         type="button"
@@ -238,7 +239,7 @@ export function PresetSelector({
                         }}
                         className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-500"
                       >
-                        <X size={10} />
+                        <Icon name="x" size={10} />
                       </button>
                     </div>
                   ) : (
@@ -251,7 +252,7 @@ export function PresetSelector({
                           className="p-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-600 text-neutral-500"
                           title="Rename"
                         >
-                          <Pencil size={10} />
+                          <Icon name="pencil" size={10} />
                         </button>
                         {!preset.isDefault && (
                           <button
@@ -260,7 +261,7 @@ export function PresetSelector({
                             className="p-0.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
                             title="Delete"
                           >
-                            <Trash2 size={10} />
+                            <Icon name="trash2" size={10} />
                           </button>
                         )}
                       </div>

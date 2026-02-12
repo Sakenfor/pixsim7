@@ -1,5 +1,8 @@
-import { type AppActionPreset } from '../types';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
+
+import { Icon } from '@lib/icons';
+
+import { type AppActionPreset } from '../types';
 
 interface PresetCardProps {
   preset: AppActionPreset;
@@ -60,7 +63,7 @@ export function PresetCard({ preset, onEdit, onDelete, onRun, onCopy }: PresetCa
         className={`absolute -top-2 -left-2 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-sm border ${typeInfo.bgColor} ${typeInfo.borderColor}`}
         title={typeInfo.label}
       >
-        {typeInfo.icon}
+        <Icon name={typeInfo.icon} size={14} />
       </div>
 
       {/* Header */}

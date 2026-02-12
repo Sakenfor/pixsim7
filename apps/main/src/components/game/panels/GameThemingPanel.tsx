@@ -9,8 +9,11 @@
  */
 
 import { useState } from 'react';
-import { SessionOverridePanel } from './SessionOverridePanel';
+
+import { Icon } from '@lib/icons';
+
 import { DynamicThemeRulesPanel } from './DynamicThemeRulesPanel';
+import { SessionOverridePanel } from './SessionOverridePanel';
 import { ThemePacksPanel } from './ThemePacksPanel';
 import { UserPreferencesPanel } from './UserPreferencesPanel';
 
@@ -68,7 +71,7 @@ export function GameThemingPanel({
               `}
               title={tab.description}
             >
-              <span className="mr-2">{tab.icon}</span>
+              <Icon name={tab.icon} size={16} className="mr-2" />
               {tab.label}
             </button>
           ))}

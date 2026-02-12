@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 
+import { Icon } from '@lib/icons';
 import { addWidget } from '@lib/ui/composer';
 import { blockWidgets } from '@lib/widgets';
 import type { WidgetDefinition } from '@lib/widgets';
@@ -180,7 +181,7 @@ export function HudWidgetLibrary({ layoutId, selectedRegion }: HudWidgetLibraryP
             >
               <div className="flex items-start justify-between mb-1">
                 <div className="font-medium text-sm text-neutral-900 dark:text-neutral-100">
-                  {widget.icon && <span className="mr-1">{widget.icon}</span>}
+                  {widget.icon && <Icon name={widget.icon} size={14} className="mr-1" />}
                   {widget.title}
                 </div>
                 <span className="text-xs px-2 py-0.5 bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400 rounded">

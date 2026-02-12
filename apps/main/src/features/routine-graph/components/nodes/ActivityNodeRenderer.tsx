@@ -5,9 +5,10 @@
  * available regardless of time/conditions.
  */
 
-import { Activity } from 'lucide-react';
 import { memo } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
+
+import { Icon } from '@lib/icons';
 
 import type { RoutineNode } from '../../types';
 import { getNodeTypeColor } from '../../types';
@@ -36,7 +37,7 @@ function ActivityNodeRenderer({ data, selected }: NodeProps<ActivityNodeData>) {
         className="flex items-center gap-2 px-3 py-2 rounded-t-md"
         style={{ backgroundColor: `${color}20` }}
       >
-        <Activity size={14} style={{ color }} />
+        <Icon name="activity" size={14} style={{ color }} />
         <span className="text-xs font-semibold" style={{ color }}>
           Activity
         </span>

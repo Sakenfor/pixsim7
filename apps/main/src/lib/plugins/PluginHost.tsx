@@ -9,6 +9,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback, Component, type ReactNode, type ErrorInfo } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import type { GameSessionDTO, GameWorldDetail, GameLocationDetail, NpcPresenceDTO } from '../api/game';
 
 import { pluginManager } from './PluginManager';
@@ -219,7 +221,7 @@ export function PluginHostProvider({ children, gameState }: PluginHostProviderPr
                   }
                 }}
               >
-                {item.icon && <span>{item.icon}</span>}
+                {item.icon && <Icon name={item.icon} size={16} />}
                 <span>{item.label}</span>
               </button>
             ))}

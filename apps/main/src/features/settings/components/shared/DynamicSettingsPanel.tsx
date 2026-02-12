@@ -6,10 +6,15 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import { useAuthStore } from '@/stores/authStore';
+
 import { settingsSchemaRegistry } from '../../lib/core';
-import { SettingFieldRenderer } from './SettingFieldRenderer';
 import type { SettingGroup, SettingTab } from '../../lib/core/types';
+
+import { SettingFieldRenderer } from './SettingFieldRenderer';
 
 interface DynamicSettingsPanelProps {
   categoryId: string;
@@ -142,7 +147,7 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
                     : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >
-                {tab.icon && <span className="text-sm">{tab.icon}</span>}
+                {tab.icon && <Icon name={tab.icon as string} size={14} />}
                 <span className="truncate">{tab.label}</span>
               </button>
             ))}

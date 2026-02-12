@@ -22,6 +22,7 @@ import {
   fromHudToolPlacements,
   toHudToolPlacements,
 } from '@lib/gameplay-ui-core';
+import { Icon } from '@lib/icons';
 import { worldToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { HudToolPlacement, HudRegion, WorldUiConfig } from '@features/worldTools';
@@ -862,7 +863,7 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
                 <tr key={placement.toolId} className="hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      {placement.icon && <span className="text-lg">{placement.icon}</span>}
+                      {placement.icon && <Icon name={placement.icon as string} size={18} />}
                       <div>
                         <div className="font-medium text-neutral-800 dark:text-neutral-200">
                           {placement.name}
@@ -1307,7 +1308,7 @@ export function HudEditor({ worldDetail, onSave, onClose }: HudLayoutEditorProps
                       <span className="text-neutral-400 dark:text-neutral-500">
                         {index + 1}.
                       </span>
-                    {tool.icon && <span>{tool.icon}</span>}
+                    {tool.icon && <Icon name={tool.icon as string} size={16} />}
                       <span>{tool.name}</span>
                     </div>
                   ))}

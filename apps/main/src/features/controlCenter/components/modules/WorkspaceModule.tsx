@@ -10,6 +10,8 @@
 
 import { useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import { usePanelConfigStore } from '@features/panels';
 import { resolveWorkspaceDockview, useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
 
@@ -98,7 +100,7 @@ export function WorkspaceModule() {
               className="px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left"
               title={`Open ${panel.title}`}
             >
-              <span className="mr-1">{panel.icon}</span>
+              <Icon name={panel.icon as string} size={14} className="mr-1" />
               {panel.title}
             </button>
           ))}
@@ -121,7 +123,7 @@ export function WorkspaceModule() {
                   className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left flex items-center justify-between"
                 >
                   <span>
-                    <span className="mr-1">{panel.icon}</span>
+                    <Icon name={panel.icon as string} size={14} className="mr-1" />
                     {panel.title}
                   </span>
                   <span className="text-[10px] text-neutral-500">Restore</span>

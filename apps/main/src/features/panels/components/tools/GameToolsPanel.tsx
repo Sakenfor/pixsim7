@@ -5,6 +5,7 @@ import {
   type EditorPrimaryView,
   type EditorMode,
 } from "@lib/context";
+import { Icon } from "@lib/icons";
 import { panelSelectors, worldToolSelectors } from "@lib/plugins/catalogSelectors";
 import { pluginCatalog } from "@lib/plugins/pluginSystem";
 import { interactionRegistry } from "@lib/registries";
@@ -227,9 +228,7 @@ export function GameToolsPanel() {
                             )}
                           </div>
                           {tool.icon && (
-                            <span className="text-neutral-400 dark:text-neutral-500 text-xs">
-                              {tool.icon}
-                            </span>
+                            <Icon name={tool.icon} size={16} />
                           )}
                         </div>
                       ))}
@@ -309,9 +308,7 @@ export function GameToolsPanel() {
                             )}
                           </div>
                           {plugin.icon && (
-                            <span className="text-neutral-400 dark:text-neutral-500 text-xs">
-                              {plugin.icon}
-                            </span>
+                            <Icon name={plugin.icon} size={16} />
                           )}
                         </div>
                       ))}

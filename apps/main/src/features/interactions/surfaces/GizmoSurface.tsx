@@ -15,6 +15,8 @@ import type {
 import React, { useCallback, useState, useMemo } from 'react';
 
 import { executeInteraction } from '@lib/api/interactions';
+import { Icon } from '@lib/icons';
+
 
 import { GenericSurfaceGizmo } from '@features/gizmos/lib/core/components/GenericSurfaceGizmo';
 
@@ -140,7 +142,7 @@ export function GizmoSurface({
       {/* Header */}
       <div className="gizmo-surface-header">
         <div className="gizmo-surface-title">
-          <span className="gizmo-surface-icon">{interaction.icon || '\u{1F3AE}'}</span>
+          <span className="gizmo-surface-icon"><Icon name={interaction.icon || '\u{1F3AE}'} size={16} /></span>
           <span className="gizmo-surface-label">{interaction.label}</span>
         </div>
         {onCancel && (

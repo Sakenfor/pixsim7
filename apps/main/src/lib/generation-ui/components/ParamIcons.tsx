@@ -8,19 +8,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import {
-  Star,
-  Zap,
-  Clock,
-  Camera,
-  RotateCcw,
-  Film,
-  Sparkles,
-  ArrowRightLeft,
-  ArrowUpDown,
-  ZoomIn,
-  Gauge,
-} from 'lucide-react';
+import { Icons } from '@lib/icons';
 
 // ============================================================================
 // Icon Configuration
@@ -33,22 +21,22 @@ import {
 export const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> = {
   quality: {
     // Quality levels
-    low: <Star size={14} />,
+    low: <Icons.star size={14} />,
     medium: (
       <div className="flex gap-0.5">
-        <Star size={11} fill="currentColor" />
-        <Star size={11} fill="currentColor" />
+        <Icons.star size={11} fill="currentColor" />
+        <Icons.star size={11} fill="currentColor" />
       </div>
     ),
     high: (
       <div className="flex gap-0.5">
-        <Star size={10} fill="currentColor" />
-        <Star size={10} fill="currentColor" />
-        <Star size={10} fill="currentColor" />
+        <Icons.star size={10} fill="currentColor" />
+        <Icons.star size={10} fill="currentColor" />
+        <Icons.star size={10} fill="currentColor" />
       </div>
     ),
-    ultra: <Sparkles size={14} />,
-    max: <Sparkles size={14} />,
+    ultra: <Icons.sparkles size={14} />,
+    max: <Icons.sparkles size={14} />,
     // Resolution levels
     '720p': <span className="text-[9px] font-bold">HD</span>,
     hd: <span className="text-[9px] font-bold">HD</span>,
@@ -58,25 +46,25 @@ export const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> 
     '8k': <span className="text-[9px] font-bold">8K</span>,
   },
   motion_mode: {
-    slow: <Clock size={14} />,
-    normal: <Gauge size={14} />,
-    medium: <Gauge size={14} />,
-    fast: <Zap size={14} />,
-    dynamic: <Sparkles size={14} />,
-    cinematic: <Film size={14} />,
+    slow: <Icons.clock size={14} />,
+    normal: <Icons.gauge size={14} />,
+    medium: <Icons.gauge size={14} />,
+    fast: <Icons.zap size={14} />,
+    dynamic: <Icons.sparkles size={14} />,
+    cinematic: <Icons.film size={14} />,
   },
   camera_movement: {
-    static: <Camera size={14} />,
-    none: <Camera size={14} />,
-    pan: <ArrowRightLeft size={14} />,
-    horizontal: <ArrowRightLeft size={14} />,
-    tilt: <ArrowUpDown size={14} />,
-    vertical: <ArrowUpDown size={14} />,
-    zoom: <ZoomIn size={14} />,
-    orbit: <RotateCcw size={14} />,
-    rotate: <RotateCcw size={14} />,
-    dolly: <Film size={14} />,
-    track: <Film size={14} />,
+    static: <Icons.camera size={14} />,
+    none: <Icons.camera size={14} />,
+    pan: <Icons.arrowRightLeft size={14} />,
+    horizontal: <Icons.arrowRightLeft size={14} />,
+    tilt: <Icons.arrowUpDown size={14} />,
+    vertical: <Icons.arrowUpDown size={14} />,
+    zoom: <Icons.zoomIn size={14} />,
+    orbit: <Icons.rotateCcw size={14} />,
+    rotate: <Icons.rotateCcw size={14} />,
+    dolly: <Icons.film size={14} />,
+    track: <Icons.film size={14} />,
   },
 };
 

@@ -11,6 +11,7 @@
  */
 
 import { useState } from 'react';
+
 import {
   useStateValue,
   useExecuteAction,
@@ -21,6 +22,7 @@ import {
   useAllowedActions,
   useRegisterCapabilities,
 } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 /**
  * Example 1: Reactive State Value
@@ -91,7 +93,7 @@ export function CapabilitySearchExample() {
       <div className="space-y-1 max-h-48 overflow-y-auto">
         {results.map((result) => (
           <div key={result.id} className="p-2 bg-white rounded text-sm">
-            <span className="font-medium">{result.icon} {result.name}</span>
+            <span className="font-medium flex items-center gap-1">{result.icon && <Icon name={result.icon} size={14} />} {result.name}</span>
             <span className="ml-2 text-xs text-gray-500">{result.type}</span>
             {result.description && (
               <p className="text-xs text-gray-600 mt-1">{result.description}</p>
@@ -144,7 +146,7 @@ export function CommandPaletteExample() {
           >
             <div className="flex items-center justify-between">
               <span className="font-medium">
-                {command.icon} {command.name}
+                {command.icon && <Icon name={command.icon} size={14} />} {command.name}
               </span>
               {command.shortcut && (
                 <kbd className="text-xs bg-gray-200 px-2 py-1 rounded">

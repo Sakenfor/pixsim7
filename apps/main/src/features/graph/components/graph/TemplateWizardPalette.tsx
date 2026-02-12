@@ -1,5 +1,7 @@
 import { useState } from 'react';
 
+import { Icon } from '@lib/icons';
+
 import type { DraftSceneNode, DraftEdge } from '@domain/sceneBuilder';
 
 import { builtinWizards, type TemplateWizard } from '../../lib/editor/templateWizards';
@@ -192,7 +194,7 @@ function WizardCard({
     >
       <div className="flex items-start gap-3">
         {wizard.icon && (
-          <div className="text-2xl flex-shrink-0">{wizard.icon}</div>
+          <div className="flex-shrink-0"><Icon name={wizard.icon} size={24} /></div>
         )}
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm text-neutral-900 dark:text-neutral-100 mb-1">

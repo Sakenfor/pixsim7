@@ -6,6 +6,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+
+import { Icon } from '@lib/icons';
 import { pluginManager } from '@lib/plugins';
 import type { PluginOverlay, PluginMenuItem, PluginNotification } from '@lib/plugins/types';
 
@@ -100,7 +102,7 @@ export function PluginOverlays() {
                 className="w-full text-left px-3 py-1 text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors flex items-center gap-2"
                 onClick={item.onClick}
               >
-                {item.icon && <span>{item.icon}</span>}
+                {item.icon && <Icon name={item.icon} size={16} />}
                 <span>{item.label}</span>
               </button>
             ))}

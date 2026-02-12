@@ -9,6 +9,7 @@ import { Panel } from '@pixsim7/shared.ui';
 import { useState } from 'react';
 
 import { useUndoRedo } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
 import {
   widgetRegistry,
   blockWidgets,
@@ -84,7 +85,7 @@ export function BlockEditor({ instances: initialInstances, onInstancesChange }: 
               onClick={() => handleAddWidget(widget)}
               className="w-full px-3 py-2 text-left text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
             >
-              <span>{widget.icon || '◻️'}</span>
+              <Icon name={widget.icon || '◻️'} size={16} />
               <span>{widget.title}</span>
             </button>
           ))}
@@ -110,7 +111,7 @@ export function BlockEditor({ instances: initialInstances, onInstancesChange }: 
                     : 'hover:bg-neutral-100 dark:hover:bg-neutral-700'
                 }`}
               >
-                <span>{def?.icon || '◻️'}</span>
+                <Icon name={def?.icon || '◻️'} size={16} />
                 <span className="flex-1 text-sm truncate">{def?.title || instance.widgetId}</span>
                 <button
                   onClick={(e) => {

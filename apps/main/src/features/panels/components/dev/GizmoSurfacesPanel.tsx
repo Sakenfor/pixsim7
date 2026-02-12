@@ -8,6 +8,7 @@
 import { Panel, Button, Badge } from "@pixsim7/shared.ui";
 import { useMemo, useState } from "react";
 
+import { Icon } from "@lib/icons";
 import { gizmoSurfaceSelectors } from "@lib/plugins/catalogSelectors";
 
 import type {
@@ -238,7 +239,7 @@ function SurfaceCard({ surface }: { surface: GizmoSurfaceDefinition }) {
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <div className="flex items-center gap-2">
-              {surface.icon && <span className="text-lg">{surface.icon}</span>}
+              {surface.icon && <Icon name={surface.icon} size={18} />}
               <div>
                 <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                   {surface.label}

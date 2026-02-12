@@ -7,8 +7,12 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useHudLayoutStore } from '../stores/hudLayoutStore';
+
+import { Icon } from '@lib/icons';
+
 import type { WorldHudLayout } from '@features/hud';
+
+import { useHudLayoutStore } from '../stores/hudLayoutStore';
 
 export interface HudLayoutSwitcherProps {
   worldId: number | string;
@@ -82,7 +86,7 @@ export function HudLayoutSwitcher({
                 onClick={() => handleApplyPreset(preset.id)}
                 className="w-full text-left px-3 py-2 text-xs text-neutral-900 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-700"
               >
-                {preset.icon} {preset.name}
+                <span className="inline-flex items-center gap-1"><Icon name={preset.icon} size={14} /> {preset.name}</span>
               </button>
             ))}
           </div>

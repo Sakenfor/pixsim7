@@ -6,6 +6,7 @@
  * Part of Task 50 Phase 50.4 - Decentralized Panel Settings System
  */
 
+import { Icon } from '@lib/icons';
 import { mediaCardPresets } from '@lib/ui/overlay';
 
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '@features/assets/lib/groupBy';
@@ -55,7 +56,7 @@ function OverlayPresetsSection({ settings, helpers }: PanelSettingsProps<Gallery
               title={preset.configuration.description}
             >
               <div className="flex items-center gap-2">
-                {preset.icon && <span className="text-lg">{preset.icon}</span>}
+                {preset.icon && <Icon name={preset.icon} size={18} />}
                 <span className="font-medium">{preset.name}</span>
               </div>
               {preset.configuration.description && (

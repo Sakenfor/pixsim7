@@ -10,6 +10,7 @@ import { Button, Select, Panel } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
+import { Icon } from '@lib/icons';
 import type { OverlayConfiguration } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
@@ -342,7 +343,7 @@ export function OverlayConfig() {
                   }
                 `}
               >
-                <span className="mr-2">{config.icon}</span>
+                <Icon name={config.icon} size={16} className="mr-2" />
                 {config.name}
               </button>
             ))}
@@ -352,7 +353,7 @@ export function OverlayConfig() {
         {/* Current component description */}
         <div className="flex items-center gap-4 pt-4 pb-4 border-b border-neutral-200 dark:border-neutral-700">
           <div className="text-sm text-neutral-600 dark:text-neutral-400">
-            <span className="mr-2">{componentConfig.icon}</span>
+            <Icon name={componentConfig.icon} size={16} className="mr-2" />
             {componentConfig.description}
           </div>
         </div>
@@ -432,7 +433,7 @@ export function OverlayConfig() {
         ) : (
           <Panel className="h-full flex items-center justify-center">
             <div className="text-center">
-              <div className="text-6xl mb-4">{componentConfig.icon}</div>
+              <div className="mb-4"><Icon name={componentConfig.icon} size={48} /></div>
               <h2 className="text-xl font-bold mb-2">{componentConfig.name} - Coming Soon</h2>
               <p className="text-neutral-600 dark:text-neutral-400">
                 Presets and configuration for this component are not yet available.

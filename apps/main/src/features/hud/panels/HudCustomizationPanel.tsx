@@ -5,17 +5,20 @@
  * Shows view mode switcher and per-tool visibility toggles.
  */
 
-import { useState, useEffect } from 'react';
 import { Panel, Button, Select, Modal } from '@pixsim7/shared.ui';
+import { useState, useEffect } from 'react';
+
 import type { GameWorldDetail } from '@lib/api/game';
-import type { WorldToolPlugin } from '@features/worldTools/lib/types';
+import { Icon } from '@lib/icons';
+
+import { getLayoutVariantNames, switchLayoutVariant } from '@features/worldTools/lib/hudLayoutVariants';
 import {
   getPlayerPreferences,
   toggleToolVisibility,
   setViewModeOverride,
   clearPlayerPreferences,
 } from '@features/worldTools/lib/playerHudPreferences';
-import { getLayoutVariantNames, switchLayoutVariant } from '@features/worldTools/lib/hudLayoutVariants';
+import type { WorldToolPlugin } from '@features/worldTools/lib/types';
 
 interface HudCustomizationPanelProps {
   worldDetail: GameWorldDetail;
@@ -172,7 +175,7 @@ export function HudCustomizationPanel({
                 className="flex items-center justify-between p-2 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800/50"
               >
                 <div className="flex items-center gap-2">
-                  {tool.icon && <span className="text-lg">{tool.icon}</span>}
+                  {tool.icon && <Icon name={tool.icon as string} size={18} />}
                   <div>
                     <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                       {tool.name}

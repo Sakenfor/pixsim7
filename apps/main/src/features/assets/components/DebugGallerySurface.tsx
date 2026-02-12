@@ -6,6 +6,7 @@
 
 import { useState } from 'react';
 
+import { Icon } from '@lib/icons';
 import { gallerySurfaceSelectors, galleryToolSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssets } from '../hooks/useAssets';
@@ -107,7 +108,7 @@ export function DebugGallerySurface() {
                 {surfaces.map(surface => (
                   <tr key={surface.id} className="border-t border-neutral-200 dark:border-neutral-700">
                     <td className="p-3 font-mono text-xs">{surface.id}</td>
-                    <td className="p-3">{surface.icon} {surface.label}</td>
+                    <td className="p-3"><span className="inline-flex items-center gap-1">{surface.icon && <Icon name={surface.icon} size={14} />} {surface.label}</span></td>
                     <td className="p-3">{surface.category}</td>
                     <td className="p-3 font-mono text-xs">{surface.routePath || '-'}</td>
                     <td className="p-3">{surface.supportsSelection ? '✓' : '✗'}</td>
@@ -154,7 +155,7 @@ export function DebugGallerySurface() {
                 {tools.map(tool => (
                   <tr key={tool.id} className="border-t border-neutral-200 dark:border-neutral-700">
                     <td className="p-3 font-mono text-xs">{tool.id}</td>
-                    <td className="p-3">{tool.icon} {tool.name}</td>
+                    <td className="p-3"><span className="inline-flex items-center gap-1">{tool.icon && <Icon name={tool.icon} size={14} />} {tool.name}</span></td>
                     <td className="p-3">{tool.category || '-'}</td>
                     <td className="p-3 font-mono text-xs">
                       {tool.supportedSurfaces?.join(', ') || 'assets-default'}

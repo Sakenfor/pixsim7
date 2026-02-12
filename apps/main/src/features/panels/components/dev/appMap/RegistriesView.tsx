@@ -8,8 +8,10 @@
 import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig } from '@pixsim7/game.engine';
 import { useState, useMemo, useSyncExternalStore } from 'react';
 
-// Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 import type { Identifiable } from '@lib/core/BaseRegistry';
+import { Icon } from '@lib/icons';
+
+// Catalog selectors (source of truth for gallery/world/brain/gizmo families)
 import {
   brainToolSelectors,
   galleryToolSelectors,
@@ -183,7 +185,7 @@ export function RegistriesView() {
             {/* Header */}
             <div className="p-4 border-b border-neutral-200 dark:border-neutral-700">
               <div className="flex items-center gap-3 mb-2">
-                <span className="text-2xl">{selectedRegistry.icon}</span>
+                <Icon name={selectedRegistry.icon} size={24} />
                 <div>
                   <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
                     {selectedRegistry.name}
@@ -246,7 +248,7 @@ function RegistryListItem({
       }`}
     >
       <div className="flex items-center gap-3">
-        <span className="text-xl">{registry.icon}</span>
+        <Icon name={registry.icon} size={20} />
         <div className="flex-1 min-w-0">
           <div className="font-medium text-neutral-900 dark:text-neutral-100 truncate">
             {registry.name}
@@ -352,7 +354,7 @@ function GalleryToolItem({ tool }: { tool: GalleryToolPlugin }) {
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {tool.icon && <span className="text-lg">{tool.icon}</span>}
+          {tool.icon && <Icon name={tool.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {tool.name}
@@ -400,7 +402,7 @@ function BrainToolItem({ tool }: { tool: BrainToolPlugin }) {
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {tool.icon && <span className="text-lg">{tool.icon}</span>}
+          {tool.icon && <Icon name={tool.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {tool.name}
@@ -444,7 +446,7 @@ function WorldToolItem({ tool }: { tool: WorldToolPlugin }) {
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {tool.icon && <span className="text-lg">{tool.icon}</span>}
+          {tool.icon && <Icon name={tool.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {tool.name}
@@ -543,7 +545,7 @@ function GallerySurfaceItem({ surface }: { surface: GallerySurfaceDefinition }) 
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {surface.icon && <span className="text-lg">{surface.icon}</span>}
+          {surface.icon && <Icon name={surface.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {surface.label}
@@ -599,7 +601,7 @@ function GizmoSurfaceItem({ surface }: { surface: GizmoSurfaceDefinition }) {
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {surface.icon && <span className="text-lg">{surface.icon}</span>}
+          {surface.icon && <Icon name={surface.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {surface.label}
@@ -668,7 +670,7 @@ function InteractionPluginItem({ plugin }: { plugin: InteractionPlugin<BaseInter
         className="w-full p-3 bg-neutral-50 dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          {plugin.icon && <span className="text-lg">{plugin.icon}</span>}
+          {plugin.icon && <Icon name={plugin.icon} size={18} />}
           <div className="flex-1 min-w-0">
             <div className="font-medium text-neutral-900 dark:text-neutral-100">
               {plugin.name}

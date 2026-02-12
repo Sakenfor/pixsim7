@@ -9,6 +9,7 @@
 import { Panel } from '@pixsim7/shared.ui';
 import { useState, useMemo } from 'react';
 
+import { Icon } from '@lib/icons';
 import {
   useBrowsableFamilies,
   type BrowsableFamilyConfig,
@@ -100,7 +101,7 @@ export function BrowseExisting() {
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span>{family.icon}</span>
+                    <Icon name={family.icon} size={16} />
                     <span className="font-medium">{family.label}</span>
                     <span className="ml-auto text-xs text-neutral-500">{count}</span>
                   </div>
@@ -135,7 +136,7 @@ export function BrowseExisting() {
   const preview = selectedFamily ? (
     <Panel className="h-full overflow-hidden flex flex-col">
       <div className="flex items-center gap-2 mb-4">
-        <span className="text-xl">{selectedFamily.icon}</span>
+        <Icon name={selectedFamily.icon} size={20} />
         <div>
           <h3 className="text-sm font-semibold">{selectedFamily.label}</h3>
           <p className="text-xs text-neutral-500">{selectedFamily.description}</p>

@@ -8,6 +8,7 @@
 import type { DevToolId } from '@pixsim7/shared.devtools.core';
 import { useMemo } from 'react';
 
+import { Icon } from '@lib/icons';
 import { devToolSelectors } from '@lib/plugins/catalogSelectors';
 
 export interface DevToolHostProps {
@@ -90,7 +91,7 @@ export function DevToolFloatingPanel({ toolId, context, onClose }: DevToolFloati
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
         <div className="flex items-center gap-2">
-          {tool?.icon && <span className="text-xl">{tool.icon}</span>}
+          {tool?.icon && <Icon name={tool.icon} size={20} />}
           <h2 className="font-semibold">{tool?.label || toolId}</h2>
         </div>
         {onClose && (

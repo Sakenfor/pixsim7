@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import {
   type FeatureCapability,
   type RouteCapability,
   type ActionCapability,
   useStates,
 } from "@lib/capabilities";
+import { Icon } from "@lib/icons";
 
 interface CapabilityTestingPanelProps {
   features: FeatureCapability[];
@@ -22,6 +24,7 @@ interface CapabilityTestingPanelProps {
  * - Feature state inspection
  */
 export function CapabilityTestingPanel({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   features,
   routes,
   actions,
@@ -144,7 +147,7 @@ function RouteTester({ routes, onNavigate }: RouteTesterProps) {
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                {route.icon && <span className="text-lg">{route.icon}</span>}
+                {route.icon && <Icon name={route.icon} size={18} />}
                 <div>
                   <div className="font-medium text-neutral-900 dark:text-neutral-100">
                     {route.name}
@@ -238,7 +241,7 @@ function ActionTester({ actions, onInvokeAction }: ActionTesterProps) {
           >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                {action.icon && <span className="text-lg">{action.icon}</span>}
+                {action.icon && <Icon name={action.icon} size={18} />}
                 <div>
                   <div className="font-medium text-neutral-900 dark:text-neutral-100">
                     {action.name}

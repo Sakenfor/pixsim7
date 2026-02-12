@@ -6,6 +6,9 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import type { WidgetInstance, WidgetDefinition, HeaderArea } from '../types';
 import {
   useWidgetPlacementStore,
@@ -114,7 +117,7 @@ function AddWidgetMenu({
                 className="w-full px-3 py-1.5 text-left text-sm hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
                 onClick={() => handleAddWidget(widget)}
               >
-                {widget.icon && <span className="w-4">{widget.icon}</span>}
+                {widget.icon && <Icon name={widget.icon} size={16} />}
                 <span>{widget.title}</span>
               </button>
             ))}

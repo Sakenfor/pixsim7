@@ -6,6 +6,8 @@
  * Manage HUD layouts: select, create, delete, apply presets
  */
 
+import { Icon } from '@lib/icons';
+
 import { useHudLayoutStore } from '../stores/hudLayoutStore';
 
 export interface HudLayoutManagerProps {
@@ -91,7 +93,7 @@ export function HudLayoutManager({
               onClick={() => handleApplyPreset(preset.id)}
               className="w-full text-left px-4 py-2 text-sm text-neutral-900 dark:text-neutral-100 hover:bg-neutral-100 dark:hover:bg-neutral-700"
             >
-              <div className="font-medium">{preset.icon} {preset.name}</div>
+              <div className="font-medium flex items-center gap-1"><Icon name={preset.icon} size={14} /> {preset.name}</div>
               <div className="text-xs text-neutral-600 dark:text-neutral-400">{preset.description}</div>
             </button>
           ))}

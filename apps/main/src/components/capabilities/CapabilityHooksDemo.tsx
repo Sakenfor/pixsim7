@@ -7,6 +7,7 @@
  */
 
 import { useFeatures, useFeatureRoutes, useActions } from '@lib/capabilities';
+import { Icon } from '@lib/icons';
 
 /**
  * Example component showing how to use capability hooks
@@ -29,7 +30,7 @@ export function CapabilityHooksDemo() {
           {features.map((feature) => (
             <div key={feature.id} className="p-3 bg-gray-100 rounded">
               <div className="flex items-center gap-2">
-                {feature.icon && <span>{feature.icon}</span>}
+                {feature.icon && <Icon name={feature.icon} size={16} />}
                 <span className="font-medium">{feature.name}</span>
                 <span className="text-xs text-gray-500">{feature.category}</span>
               </div>
@@ -45,7 +46,7 @@ export function CapabilityHooksDemo() {
           {actions.map((action) => (
             <div key={action.id} className="p-3 bg-blue-50 rounded">
               <div className="flex items-center gap-2">
-                {action.icon && <span>{action.icon}</span>}
+                {action.icon && <Icon name={action.icon} size={16} />}
                 <span className="font-medium">{action.name}</span>
                 {action.shortcut && (
                   <kbd className="text-xs bg-gray-200 px-2 py-1 rounded">
@@ -69,7 +70,7 @@ export function CapabilityHooksDemo() {
           {sceneBuilderRoutes.map((route) => (
             <div key={route.path} className="p-3 bg-green-50 rounded">
               <div className="flex items-center gap-2">
-                {route.icon && <span>{route.icon}</span>}
+                {route.icon && <Icon name={route.icon} size={16} />}
                 <span className="font-medium">{route.name}</span>
                 <code className="text-xs bg-gray-200 px-2 py-1 rounded">
                   {route.path}
@@ -122,7 +123,7 @@ export function FeatureNavigator({ featureId }: { featureId: string }) {
           href={route.path}
           className="block p-2 hover:bg-gray-100 rounded"
         >
-          {route.icon && <span className="mr-2">{route.icon}</span>}
+          {route.icon && <Icon name={route.icon} size={16} className="mr-2" />}
           {route.name}
         </a>
       ))}
@@ -156,7 +157,7 @@ export function QuickActions() {
           disabled={action.enabled && !action.enabled()}
           className="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
         >
-          {action.icon && <span className="mr-1">{action.icon}</span>}
+          {action.icon && <Icon name={action.icon} size={14} className="mr-1" />}
           {action.name}
         </button>
       ))}

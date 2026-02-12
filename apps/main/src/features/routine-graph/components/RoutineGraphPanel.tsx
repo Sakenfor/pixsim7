@@ -7,9 +7,10 @@
  */
 
 import { findNode } from '@pixsim7/shared.graph.utilities';
-import { Undo2, Redo2 } from 'lucide-react';
 import { useCallback } from 'react';
 import { ReactFlowProvider } from 'reactflow';
+
+import { Icon } from '@lib/icons';
 
 
 import {
@@ -287,7 +288,7 @@ function UndoRedoToolbar() {
         className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed"
         title="Undo (Ctrl+Z)"
       >
-        <Undo2 size={14} />
+        <Icon name="undo" size={14} />
       </button>
       <button
         onClick={() => redo?.()}
@@ -295,7 +296,7 @@ function UndoRedoToolbar() {
         className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 disabled:opacity-30 disabled:cursor-not-allowed"
         title="Redo (Ctrl+Shift+Z)"
       >
-        <Redo2 size={14} />
+        <Icon name="redo" size={14} />
       </button>
     </div>
   );

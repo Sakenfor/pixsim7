@@ -2,6 +2,7 @@ import { memo, useState } from 'react';
 import { Handle, Position, type NodeProps } from 'reactflow';
 import { useShallow } from 'zustand/react/shallow';
 
+import { Icon } from '@lib/icons';
 import { logEvent } from '@lib/utils/logging';
 
 import type { NodeGroupData } from '@domain/sceneBuilder';
@@ -95,7 +96,7 @@ export const NodeGroup = memo(({ id, data, selected }: NodeProps<NodeGroupNodeDa
         <div className="flex items-center gap-3">
           {/* Icon & Collapse Arrow */}
           <div className="flex items-center gap-2">
-            <span className="text-xl">{groupNode.icon || '📁'}</span>
+            <Icon name={groupNode.icon || '📁'} size={20} />
             <span className="text-sm">
               {groupNode.collapsed ? '▶' : '▼'}
             </span>

@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ActionType, MatchMode, VariableType, type PresetVariable, type AppActionPreset } from '../types';
+
+import { Icon } from '@lib/icons';
+
 import { automationService } from '../lib/core';
+import { ActionType, MatchMode, VariableType, type PresetVariable, type AppActionPreset } from '../types';
 
 interface ActionParamsEditorProps {
   actionType: ActionType;
@@ -304,7 +307,7 @@ function SwipeParams({
                       : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
                 >
-                  <span className="mr-1">{opt.icon}</span>
+                  <Icon name={opt.icon} size={14} className="mr-1" />
                   {opt.label}
                 </button>
               ))}
@@ -421,6 +424,7 @@ export function ActionParamsEditor({ actionType, params, onChange, variables = [
   };
 
   const clearVariable = () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _variable, ...rest } = params;
     onChange(rest);
   };

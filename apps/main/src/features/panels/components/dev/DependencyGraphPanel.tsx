@@ -1,4 +1,7 @@
 import React, { useMemo } from "react";
+
+import { Icon } from "@lib/icons";
+
 import ReactFlow, {
   type Node,
   type Edge,
@@ -9,6 +12,7 @@ import ReactFlow, {
   useEdgesState,
   type NodeTypes,
 } from "reactflow";
+
 import "reactflow/dist/style.css";
 import { type FeatureCapability } from "@lib/capabilities";
 import { type UnifiedPluginDescriptor } from "@lib/plugins/types";
@@ -156,7 +160,7 @@ function FeatureNode({ data }: { data: FeatureNodeData }) {
   return (
     <div className="px-4 py-3 rounded-lg border-2 border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-lg min-w-[200px]">
       <div className="flex items-center gap-2 mb-1">
-        {data.icon && <span className="text-lg">{data.icon}</span>}
+        {data.icon && <Icon name={data.icon} size={18} />}
         <div className="font-semibold text-blue-900 dark:text-blue-100">
           {data.label}
         </div>
@@ -189,7 +193,7 @@ function PluginNode({ data }: { data: PluginNodeData }) {
   return (
     <div className="px-4 py-3 rounded-lg border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20 shadow-lg min-w-[200px]">
       <div className="flex items-center gap-2 mb-1">
-        {data.icon && <span className="text-lg">{data.icon}</span>}
+        {data.icon && <Icon name={data.icon} size={18} />}
         <div className="font-semibold text-purple-900 dark:text-purple-100">
           {data.label}
         </div>

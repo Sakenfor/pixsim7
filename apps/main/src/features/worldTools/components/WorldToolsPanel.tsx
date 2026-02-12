@@ -6,8 +6,11 @@
  * Replaces hard-coded tool panels like RelationshipDashboard, QuestLog, etc.
  */
 
-import { useEffect, useState } from 'react';
 import { Panel, Button } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
+
+import { Icon } from '@lib/icons';
+
 import type { WorldToolContext, WorldToolPlugin } from '../lib/types';
 
 interface WorldToolsPanelProps {
@@ -47,7 +50,7 @@ export function WorldToolsPanel({ context, tools }: WorldToolsPanelProps) {
             onClick={() => setActiveTool(activeTool === tool.id ? null : tool.id)}
             title={tool.description}
           >
-            {tool.icon && <span className="mr-1">{tool.icon}</span>}
+            {tool.icon && <Icon name={tool.icon as string} size={14} className="mr-1" />}
             {tool.name}
           </Button>
         ))}
@@ -58,7 +61,7 @@ export function WorldToolsPanel({ context, tools }: WorldToolsPanelProps) {
         <Panel className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              {activeToolData.icon && <span className="text-xl">{activeToolData.icon}</span>}
+              {activeToolData.icon && <Icon name={activeToolData.icon as string} size={20} />}
               <div>
                 <h2 className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
                   {activeToolData.name}
@@ -128,7 +131,7 @@ export function CompactWorldToolsPanel({ context, tools }: WorldToolsPanelProps)
             }`}
             title={tool.description}
           >
-            {tool.icon && <span className="mr-1">{tool.icon}</span>}
+            {tool.icon && <Icon name={tool.icon as string} size={14} className="mr-1" />}
             {tool.name}
           </button>
         ))}
@@ -183,7 +186,7 @@ export function GridWorldToolsPanel({ context, tools }: WorldToolsPanelProps) {
                 className="w-full px-4 py-3 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors flex items-center justify-between"
               >
                 <div className="flex items-center gap-2">
-                  {tool.icon && <span className="text-xl">{tool.icon}</span>}
+                  {tool.icon && <Icon name={tool.icon as string} size={20} />}
                   <div className="text-left">
                     <div className="font-semibold text-sm text-neutral-800 dark:text-neutral-200">
                       {tool.name}
