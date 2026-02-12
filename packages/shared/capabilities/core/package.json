@@ -21,11 +21,27 @@
       "import": "./src/app/index.ts",
       "require": "./src/app/index.ts",
       "types": "./src/app/index.ts"
+    },
+    "./descriptor": {
+      "import": "./src/descriptor/index.ts",
+      "require": "./src/descriptor/index.ts",
+      "types": "./src/descriptor/index.ts"
+    },
+    "./contract": {
+      "import": "./src/contract/index.ts",
+      "require": "./src/contract/index.ts",
+      "types": "./src/contract/index.ts"
+    },
+    "./bridge": {
+      "import": "./src/bridge/index.ts",
+      "require": "./src/bridge/index.ts",
+      "types": "./src/bridge/index.ts"
     }
   },
   "files": ["src", "dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@pixsim7/shared.helpers.core": "workspace:*",
@@ -33,6 +49,7 @@
   },
   "peerDependencies": {},
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^3.0.0"
   }
 }
