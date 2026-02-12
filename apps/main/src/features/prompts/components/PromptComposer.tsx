@@ -9,22 +9,9 @@ import {
 import type { PromptBlockCandidate } from '@pixsim7/shared.types/prompt';
 import { Dropdown, DropdownItem, DropdownDivider, FoldGroup, GroupedFold, PromptInput } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import {
-  ArrowDown,
-  ArrowUp,
-  ChevronDown,
-  ChevronUp,
-  ClipboardPaste,
-  Folder,
-  MoreHorizontal,
-  Plus,
-  RefreshCw,
-  Search,
-  Sparkles,
-  Trash2,
-  Wand2,
-} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import { Icon } from '@lib/icons';
 
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
@@ -38,6 +25,8 @@ import {
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
+
+import { InlineBlocksEditor } from './InlineBlocksEditor';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -116,7 +105,12 @@ export function PromptComposer({
 }: PromptComposerProps) {
   const api = useApi();
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
+  const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
+  const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
   const [mode, setMode] = useState<PromptComposerMode>('text');
+  const [showLayoutMenu, setShowLayoutMenu] = useState(false);
+  const layoutTriggerRef = useRef<HTMLButtonElement>(null);
+  const [layoutMenuAnchor, setLayoutMenuAnchor] = useState<{ x: number; y: number } | undefined>();
   const [blocks, setBlocks] = useState<PromptBlockItem[]>([
     { id: 'block-0', role: DEFAULT_PROMPT_ROLE, text: '' },
   ]);
@@ -446,6 +440,61 @@ export function PromptComposer({
           >
             Blocks
           </button>
+          <div className="relative">
+            <button
+              ref={layoutTriggerRef}
+              type="button"
+              disabled={disabled}
+              onClick={() => {
+                setShowLayoutMenu((prev) => {
+                  if (!prev && layoutTriggerRef.current) {
+                    const rect = layoutTriggerRef.current.getBoundingClientRect();
+                    setLayoutMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
+                  }
+                  return !prev;
+                });
+              }}
+              title="Block layout"
+              className={clsx(
+                'px-1 py-1 text-xs border-l border-neutral-300 dark:border-neutral-700 transition-colors',
+                mode === 'blocks'
+                  ? 'bg-blue-500 text-white hover:bg-blue-600'
+                  : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+              )}
+            >
+              <Icon name="chevronDown" size={10} />
+            </button>
+            <Dropdown
+              isOpen={showLayoutMenu}
+              onClose={() => setShowLayoutMenu(false)}
+              triggerRef={layoutTriggerRef}
+              positionMode="fixed"
+              anchorPosition={layoutMenuAnchor}
+              minWidth="130px"
+              portal
+            >
+              <DropdownItem
+                icon={blocksLayout === 'stacked' ? <Icon name="check" size={12} /> : <span className="w-3" />}
+                onClick={() => {
+                  setBlocksLayout('stacked');
+                  if (mode !== 'blocks') handleModeChange('blocks');
+                  setShowLayoutMenu(false);
+                }}
+              >
+                Stacked
+              </DropdownItem>
+              <DropdownItem
+                icon={blocksLayout === 'inline' ? <Icon name="check" size={12} /> : <span className="w-3" />}
+                onClick={() => {
+                  setBlocksLayout('inline');
+                  if (mode !== 'blocks') handleModeChange('blocks');
+                  setShowLayoutMenu(false);
+                }}
+              >
+                Inline
+              </DropdownItem>
+            </Dropdown>
+          </div>
         </div>
 
         <button
@@ -455,7 +504,7 @@ export function PromptComposer({
           title="Paste from clipboard"
           className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
         >
-          <ClipboardPaste size={14} />
+          <Icon name="clipboard-paste" size={14} />
         </button>
 
         {mode === 'blocks' && (
@@ -468,29 +517,33 @@ export function PromptComposer({
               aria-label="Re-parse blocks"
               className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
             >
-              <RefreshCw size={14} className={clsx(isParsing && 'animate-spin')} />
+              <Icon name="refresh" size={14} className={clsx(isParsing && 'animate-spin')} />
             </button>
 
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => expandAllRef.current?.()}
-              title="Expand all blocks"
-              aria-label="Expand all blocks"
-              className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-            >
-              <ChevronDown size={12} />
-            </button>
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => collapseAllRef.current?.()}
-              title="Collapse all blocks"
-              aria-label="Collapse all blocks"
-              className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-            >
-              <ChevronUp size={12} />
-            </button>
+            {blocksLayout === 'stacked' && (
+              <>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => expandAllRef.current?.()}
+                  title="Expand all blocks"
+                  aria-label="Expand all blocks"
+                  className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+                >
+                  <Icon name="chevronDown" size={12} />
+                </button>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => collapseAllRef.current?.()}
+                  title="Collapse all blocks"
+                  aria-label="Collapse all blocks"
+                  className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+                >
+                  <Icon name="chevronUp" size={12} />
+                </button>
+              </>
+            )}
 
             <div className="relative">
               <button
@@ -515,7 +568,7 @@ export function PromptComposer({
                     : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 )}
               >
-                <MoreHorizontal size={14} />
+                <Icon name="more-horizontal" size={14} />
               </button>
               <Dropdown
                 isOpen={showBlockTools}
@@ -527,21 +580,21 @@ export function PromptComposer({
                 portal
               >
                 <DropdownItem
-                  icon={analyzingBlocks ? <RefreshCw size={12} className="animate-spin" /> : <Search size={12} />}
+                  icon={analyzingBlocks ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="search" size={12} />}
                   disabled={disabled || analyzingBlocks}
                   onClick={() => { handleAnalyzeBlocks(); setShowBlockTools(false); }}
                 >
                   Analyze blocks
                 </DropdownItem>
                 <DropdownItem
-                  icon={fetchingVariants ? <RefreshCw size={12} className="animate-spin" /> : <Wand2 size={12} />}
+                  icon={fetchingVariants ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="wand" size={12} />}
                   disabled={disabled || fetchingVariants}
                   onClick={() => { handleSuggestVariants(); setShowBlockTools(false); }}
                 >
                   Suggest variants
                 </DropdownItem>
                 <DropdownItem
-                  icon={fetchingPacks ? <RefreshCw size={12} className="animate-spin" /> : <Folder size={12} />}
+                  icon={fetchingPacks ? <Icon name="refresh" size={12} className="animate-spin" /> : <Icon name="folder" size={12} />}
                   disabled={disabled || fetchingPacks}
                   onClick={() => { handlePackHints(); setShowBlockTools(false); }}
                 >
@@ -549,7 +602,7 @@ export function PromptComposer({
                 </DropdownItem>
                 <DropdownDivider />
                 <DropdownItem
-                  icon={<Plus size={12} />}
+                  icon={<Icon name="plus" size={12} />}
                   disabled={disabled || !blockAnalysis || blockAnalysis.candidates.length === 0}
                   onClick={() => { setShowBlockBuilder(true); setShowBlockTools(false); }}
                 >
@@ -593,10 +646,11 @@ export function PromptComposer({
           {(semanticLoading || semanticMatches.length > 0) && (
             <div className="flex items-center gap-1 overflow-x-auto">
               <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400 flex-shrink-0">
-                <Sparkles size={12} />
+                <Icon name="sparkles" size={12} />
               </span>
               {semanticLoading && (
-                <RefreshCw
+                <Icon
+                  name="refresh"
                   size={12}
                   className="text-neutral-500 dark:text-neutral-400 animate-spin flex-shrink-0"
                 />
@@ -620,150 +674,164 @@ export function PromptComposer({
             </div>
           )}
 
-          <FoldGroup
-            renderControls={({ expandAll, collapseAll }) => {
-              expandAllRef.current = expandAll;
-              collapseAllRef.current = collapseAll;
-              return null;
-            }}
-          >
-            <div className="flex flex-col gap-2">
-              {blocks.map((block, index) => {
-                const summaryText = block.text.trim()
-                  ? truncate(block.text.trim(), 60)
-                  : 'Empty block';
-                const badgeColor = getPromptRoleBadgeClass(block.role, promptRoleColors);
+          {blocksLayout === 'inline' ? (
+            <InlineBlocksEditor
+              blocks={blocks}
+              disabled={disabled}
+              promptRoleColors={promptRoleColors}
+              roleOptions={roleOptions}
+              onUpdateBlocks={updateBlocks}
+              onAddBlock={addBlock}
+              onRemoveBlock={removeBlock}
+            />
+          ) : (
+            <>
+              <FoldGroup
+                renderControls={({ expandAll, collapseAll }) => {
+                  expandAllRef.current = expandAll;
+                  collapseAllRef.current = collapseAll;
+                  return null;
+                }}
+              >
+                <div className="flex flex-col gap-2">
+                  {blocks.map((block, index) => {
+                    const summaryText = block.text.trim()
+                      ? truncate(block.text.trim(), 60)
+                      : 'Empty block';
+                    const badgeColor = getPromptRoleBadgeClass(block.role, promptRoleColors);
 
-                return (
-                  <GroupedFold
-                    key={block.id}
-                    id={block.id}
-                    indicator="chevron"
-                    showIndicatorWhenOpen
-                    summaryClassName="not-italic"
-                    contentClassName="block"
-                    summary={
-                      <span className="flex items-center gap-2">
-                        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300">
-                          <span className={clsx('w-1.5 h-1.5 rounded-full', badgeColor)} />
-                          {getPromptRoleLabel(block.role)}
-                        </span>
-                        <span className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
-                          {summaryText}
-                        </span>
-                      </span>
-                    }
-                  >
-                    <div className="mt-1 flex items-stretch gap-2">
-                      <div className={clsx('w-1 rounded-full opacity-70 shrink-0', badgeColor)} />
-                      <div className="flex-1 min-w-0 pr-1 space-y-1.5">
-                        <div className="flex items-center gap-2">
-                          <label
-                            className={clsx(
-                              'relative inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border',
-                              'border-neutral-200 dark:border-neutral-700',
-                              'text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-900/60',
-                              disabled && 'opacity-60'
-                            )}
-                            title="Change role"
-                          >
-                            <span className={clsx('w-1.5 h-1.5 rounded-full', badgeColor)} />
-                            <span>{getPromptRoleLabel(block.role)}</span>
-                            <ChevronDown size={11} className="text-neutral-400 dark:text-neutral-500" />
-                            <select
-                              value={block.role}
+                    return (
+                      <GroupedFold
+                        key={block.id}
+                        id={block.id}
+                        indicator="chevron"
+                        showIndicatorWhenOpen
+                        summaryClassName="not-italic"
+                        contentClassName="block"
+                        summary={
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300">
+                              <span className={clsx('w-1.5 h-1.5 rounded-full', badgeColor)} />
+                              {getPromptRoleLabel(block.role)}
+                            </span>
+                            <span className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
+                              {summaryText}
+                            </span>
+                          </span>
+                        }
+                      >
+                        <div className="mt-1 flex items-stretch gap-2">
+                          <div className={clsx('w-1 rounded-full opacity-70 shrink-0', badgeColor)} />
+                          <div className="flex-1 min-w-0 pr-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <label
+                                className={clsx(
+                                  'relative inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border',
+                                  'border-neutral-200 dark:border-neutral-700',
+                                  'text-neutral-600 dark:text-neutral-300 bg-neutral-50 dark:bg-neutral-900/60',
+                                  disabled && 'opacity-60'
+                                )}
+                                title="Change role"
+                              >
+                                <span className={clsx('w-1.5 h-1.5 rounded-full', badgeColor)} />
+                                <span>{getPromptRoleLabel(block.role)}</span>
+                                <Icon name="chevronDown" size={11} className="text-neutral-400 dark:text-neutral-500" />
+                                <select
+                                  value={block.role}
+                                  disabled={disabled}
+                                  onChange={(e) => {
+                                    const nextRole = e.target.value || DEFAULT_PROMPT_ROLE;
+                                    const nextBlocks = blocks.map((item) =>
+                                      item.id === block.id ? { ...item, role: nextRole } : item
+                                    );
+                                    updateBlocks(nextBlocks);
+                                  }}
+                                  aria-label="Change block role"
+                                  className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                >
+                                  {roleOptions.map((role) => (
+                                    <option key={role} value={role}>
+                                      {getPromptRoleLabel(role)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+
+                              <div className="ml-auto flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={disabled || index === 0}
+                                  onClick={() => moveBlock(index, 'up')}
+                                  title="Move block up"
+                                  aria-label="Move block up"
+                                  className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+                                >
+                                  <Icon name="arrowUp" size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={disabled || index === blocks.length - 1}
+                                  onClick={() => moveBlock(index, 'down')}
+                                  title="Move block down"
+                                  aria-label="Move block down"
+                                  className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
+                                >
+                                  <Icon name="arrowDown" size={12} />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={disabled}
+                                  onClick={() => removeBlock(block.id)}
+                                  title="Remove block"
+                                  aria-label="Remove block"
+                                  className="p-1 rounded text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40"
+                                >
+                                  <Icon name="trash2" size={12} />
+                                </button>
+                              </div>
+                            </div>
+
+                            <textarea
+                              value={block.text}
                               disabled={disabled}
                               onChange={(e) => {
-                                const nextRole = e.target.value || DEFAULT_PROMPT_ROLE;
+                                const nextText = e.target.value;
                                 const nextBlocks = blocks.map((item) =>
-                                  item.id === block.id ? { ...item, role: nextRole } : item
+                                  item.id === block.id ? { ...item, text: nextText } : item
                                 );
                                 updateBlocks(nextBlocks);
                               }}
-                              aria-label="Change block role"
-                              className="absolute inset-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                            >
-                              {roleOptions.map((role) => (
-                                <option key={role} value={role}>
-                                  {getPromptRoleLabel(role)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-
-                          <div className="ml-auto flex items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={disabled || index === 0}
-                              onClick={() => moveBlock(index, 'up')}
-                              title="Move block up"
-                              aria-label="Move block up"
-                              className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-                            >
-                              <ArrowUp size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={disabled || index === blocks.length - 1}
-                              onClick={() => moveBlock(index, 'down')}
-                              title="Move block down"
-                              aria-label="Move block down"
-                              className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-40"
-                            >
-                              <ArrowDown size={12} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={disabled}
-                              onClick={() => removeBlock(block.id)}
-                              title="Remove block"
-                              aria-label="Remove block"
-                              className="p-1 rounded text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-40"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                              placeholder="Block text..."
+                              className={clsx(
+                                'w-full rounded-md border px-2 py-1.5 text-sm bg-transparent outline-none',
+                                'border-neutral-200/80 dark:border-neutral-700/80',
+                                'focus:ring-2 focus:ring-blue-500/35',
+                                'resize-y min-h-[64px]'
+                              )}
+                            />
                           </div>
                         </div>
+                      </GroupedFold>
+                    );
+                  })}
+                </div>
+              </FoldGroup>
 
-                        <textarea
-                          value={block.text}
-                          disabled={disabled}
-                          onChange={(e) => {
-                            const nextText = e.target.value;
-                            const nextBlocks = blocks.map((item) =>
-                              item.id === block.id ? { ...item, text: nextText } : item
-                            );
-                            updateBlocks(nextBlocks);
-                          }}
-                          placeholder="Block text..."
-                          className={clsx(
-                            'w-full rounded-md border px-2 py-1.5 text-sm bg-transparent outline-none',
-                            'border-neutral-200/80 dark:border-neutral-700/80',
-                            'focus:ring-2 focus:ring-blue-500/35',
-                            'resize-y min-h-[64px]'
-                          )}
-                        />
-                      </div>
-                    </div>
-                  </GroupedFold>
-                );
-              })}
-            </div>
-          </FoldGroup>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={addBlock}
-              className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
-            >
-              Add block
-            </button>
-            <div className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
-              Blocks render as paragraphs
-            </div>
-          </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={addBlock}
+                  className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-200"
+                >
+                  Add block
+                </button>
+                <div className="ml-auto text-[10px] text-neutral-500 dark:text-neutral-400">
+                  Blocks render as paragraphs
+                </div>
+              </div>
+            </>
+          )}
 
           {showCounter && typeof maxChars === 'number' && (
             <div className="text-xs flex justify-between items-center">

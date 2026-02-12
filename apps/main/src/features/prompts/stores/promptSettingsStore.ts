@@ -22,6 +22,9 @@ export interface PromptSettings {
   // Prompt role appearance
   promptRoleColors: Record<string, string>;
 
+  // Block layout mode
+  blocksLayout: 'stacked' | 'inline';
+
   // Semantic action-block suggestions
   semanticEnabled: boolean;
   semanticThreshold: number;
@@ -38,6 +41,7 @@ interface PromptSettingsStore extends PromptSettings {
   setDefaultCurationStatus: (value: PromptSettings['defaultCurationStatus']) => void;
   setPromptRoleColor: (roleId: string, color: string) => void;
   setPromptRoleColors: (colors: Record<string, string>) => void;
+  setBlocksLayout: (value: PromptSettings['blocksLayout']) => void;
   setSemanticEnabled: (value: boolean) => void;
   setSemanticThreshold: (value: number) => void;
   setSemanticLimit: (value: number) => void;
@@ -52,6 +56,7 @@ const DEFAULT_SETTINGS: PromptSettings = {
   extractionThreshold: 2,
   defaultCurationStatus: 'raw',
   promptRoleColors: { ...PROMPT_ROLE_COLORS },
+  blocksLayout: 'stacked',
   semanticEnabled: false,
   semanticThreshold: 0.65,
   semanticLimit: 5,
@@ -76,6 +81,7 @@ export const usePromptSettingsStore = create<PromptSettingsStore>()(
           },
         })),
       setPromptRoleColors: (colors) => set({ promptRoleColors: { ...colors } }),
+      setBlocksLayout: (value) => set({ blocksLayout: value }),
       setSemanticEnabled: (value) => set({ semanticEnabled: value }),
       setSemanticThreshold: (value) => set({ semanticThreshold: value }),
       setSemanticLimit: (value) => set({ semanticLimit: value }),
