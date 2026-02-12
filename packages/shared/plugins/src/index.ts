@@ -18,10 +18,13 @@ export type {
   ExtendedPluginMetadata,
 } from './types';
 
+export { CAPABILITY_LABELS } from './types';
+
 // Plugin catalog
 export { PluginCatalog, createPluginCatalog } from './catalog';
 
 // Activation manager
+export type { PluginActivationManagerOptions } from './activation';
 export { PluginActivationManager, createPluginActivationManager } from './activation';
 
 // Widget Builder registry

@@ -40,28 +40,20 @@ export {
   type BrowsableColumn,
 } from './browsableFamilies';
 
+// Plugin settings registry
+export { pluginSettingsRegistry } from './pluginSettingsRegistry';
+
 // Types and mapping helpers
 export type * from './types';
 export {
   // Origin/family normalization
-  normalizeOrigin,
-  toLegacyOrigin,
   bundleFamilyToUnified,
-  unifiedFamilyToBundleFamily,
   isBundleFamily,
   BUNDLE_FAMILIES,
-  // Mapping helpers
-  fromPluginManifest,
-  fromBackendPlugin,
+  normalizeOrigin,
+  unifiedFamilyToBundleFamily,
+  // Converters
   fromPluginSystemMetadata,
-  fromLegacyPluginMeta,
-  fromInteractionPlugin,
-  fromHelperDefinition,
-  fromBackendFeaturePlugin,
-  fromSceneViewManifest,
-  fromControlCenterManifest,
-  toBackendPluginCreate,
   // Validation
   validateFamilyMetadata,
-  legacyKindToUnifiedFamily,
 } from './types';

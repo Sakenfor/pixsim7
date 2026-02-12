@@ -15,12 +15,18 @@ import type { PluginCatalog } from './catalog';
  * consistently regardless of the underlying storage mechanism
  * (pluginConfigStore, PluginManager, etc.)
  */
+export interface PluginActivationManagerOptions {
+  onStateChange?: (id: string, state: ActivationState) => void;
+}
+
 export class PluginActivationManager {
   private catalog: PluginCatalog;
   private listeners = new Map<string, Set<(state: ActivationState) => void>>();
+  private onStateChange?: (id: string, state: ActivationState) => void;
 
-  constructor(catalog: PluginCatalog) {
+  constructor(catalog: PluginCatalog, options?: PluginActivationManagerOptions) {
     this.catalog = catalog;
+    this.onStateChange = options?.onStateChange;
   }
 
   /**
@@ -41,6 +47,9 @@ export class PluginActivationManager {
     try {
       // Update catalog
       this.catalog.setActivationState(id, 'active');
+
+      // Persist state change
+      this.onStateChange?.(id, 'active');
 
       // Notify listeners
       this.notifyListeners(id, 'active');
@@ -74,6 +83,9 @@ export class PluginActivationManager {
     try {
       // Update catalog
       this.catalog.setActivationState(id, 'inactive');
+
+      // Persist state change
+      this.onStateChange?.(id, 'inactive');
 
       // Notify listeners
       this.notifyListeners(id, 'inactive');
@@ -142,6 +154,9 @@ export class PluginActivationManager {
 /**
  * Create a new plugin activation manager
  */
-export function createPluginActivationManager(catalog: PluginCatalog): PluginActivationManager {
-  return new PluginActivationManager(catalog);
+export function createPluginActivationManager(
+  catalog: PluginCatalog,
+  options?: PluginActivationManagerOptions,
+): PluginActivationManager {
+  return new PluginActivationManager(catalog, options);
 }

@@ -6,6 +6,7 @@ import type { DevToolDefinition } from '@lib/dev/devtools';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
 import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
 import { nodeTypeRegistry, type SceneNodeTypeDefinition } from '@lib/registries';
+import type { SettingGroup } from '@lib/settingsSchema/types';
 
 import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
@@ -16,6 +17,7 @@ import type { GraphEditorDefinition } from '@features/graph/lib/editor/types';
 import type { PanelDefinition, PanelGroupDefinition } from '@features/panels';
 import type { GenerationUIPlugin } from '@features/providers';
 import type { WorldToolPlugin } from '@features/worldTools';
+
 
 
 import { controlCenterRegistry, type ControlCenterPlugin, type ControlCenterPluginManifest } from './controlCenterPlugin';
@@ -92,6 +94,12 @@ export interface PluginFamilyAdapter<F extends PluginFamily = PluginFamily> {
   register: (plugin: PluginTypeMap[F], context: PluginRegistrationContext) => void | Promise<void>;
   unregister?: (id: string, context: PluginRegistrationContext) => void | Promise<void>;
   buildMetadata: (plugin: PluginTypeMap[F], context: PluginRegistrationContext) => ExtendedPluginMetadata<F>;
+  /** Optional: extract settings schema from a plugin for automatic registration */
+  getSettingsSchema?: (plugin: PluginTypeMap[F]) => SettingGroup[] | undefined;
+  /** Called when the plugin is activated */
+  onActivate?: (id: string, plugin: PluginTypeMap[F]) => void | Promise<void>;
+  /** Called when the plugin is deactivated */
+  onDeactivate?: (id: string, plugin: PluginTypeMap[F]) => void | Promise<void>;
 }
 
 // ============================================================================

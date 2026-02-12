@@ -20,6 +20,7 @@ export type {
   PluginMetadata,
   PluginMetadataExtensions,
   ExtendedPluginMetadata,
+  PluginActivationManagerOptions,
 } from '@pixsim7/shared.plugins';
 
 export {
@@ -38,6 +39,8 @@ import {
   PluginCatalog,
   PluginActivationManager,
 } from '@pixsim7/shared.plugins';
+
+import { setPluginConfig } from '@/stores/pluginConfigStore';
 
 // ============================================================================
 // Discovery Configuration (Vite-specific)
@@ -259,5 +262,25 @@ export class PluginDiscovery {
 /** Global plugin catalog */
 export const pluginCatalog = new PluginCatalog();
 
-/** Global activation manager */
-export const pluginActivationManager = new PluginActivationManager(pluginCatalog);
+/** Global activation manager — persists state changes and calls adapter lifecycle hooks */
+export const pluginActivationManager = new PluginActivationManager(pluginCatalog, {
+  onStateChange: async (id, state) => {
+    // Persist to pluginConfigStore
+    setPluginConfig(id, { enabled: state === 'active' });
+
+    // Call adapter lifecycle hooks
+    const metadata = pluginCatalog.get(id);
+    if (metadata) {
+      const { familyAdapters } = await import('./familyAdapters');
+      const adapter = familyAdapters[metadata.family];
+      const plugin = pluginCatalog.getPlugin(id);
+      if (plugin && adapter) {
+        if (state === 'active') {
+          adapter.onActivate?.(id, plugin);
+        } else {
+          adapter.onDeactivate?.(id, plugin);
+        }
+      }
+    }
+  },
+});

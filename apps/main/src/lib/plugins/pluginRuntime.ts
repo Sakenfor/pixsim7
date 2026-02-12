@@ -1,4 +1,5 @@
 import { familyAdapters, type PluginRegistrationContext, type PluginTypeMap } from './familyAdapters';
+import { pluginSettingsRegistry } from './pluginSettingsRegistry';
 import type {
   ActivationState,
   PluginFamily,
@@ -47,6 +48,15 @@ export async function registerPluginDefinition<F extends PluginFamily>(definitio
   if (validation.warnings.length > 0) {
     console.warn(`[PluginRuntime] Plugin ${metadata.id} has validation warnings:`, validation.warnings);
   }
+
+  // Auto-register settings schema (from adapter or from plugin object itself)
+  const pluginObj = definition.plugin as Record<string, unknown>;
+  const schema = adapter.getSettingsSchema?.(definition.plugin)
+    ?? (Array.isArray(pluginObj.settingsSchema) ? pluginObj.settingsSchema as import('@lib/settingsSchema/types').SettingGroup[] : undefined);
+  if (schema) {
+    pluginSettingsRegistry.register(metadata.id, schema);
+  }
+
   await adapter.register(definition.plugin, context);
 }
 
