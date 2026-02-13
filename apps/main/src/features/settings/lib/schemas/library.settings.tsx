@@ -43,15 +43,19 @@ async function updateServerSetting(
 // =============================================================================
 // Tab: Browser
 // =============================================================================
-const browserTab: SettingTab = {
-  id: 'browser',
-  label: 'Browser',
-  icon: '🌐',
+const displayTab: SettingTab = {
+  id: 'display',
+  label: 'Display',
+  icon: '🖼️',
   groups: [
+    // ------------------------------------------------------------------
+    // Per-source display settings — each source type gets its own group.
+    // Add new groups here when adding sources (e.g. Google Drive).
+    // ------------------------------------------------------------------
     {
-      id: 'gallery-quality',
-      title: 'Gallery Quality',
-      description: 'Control image quality in gallery views.',
+      id: 'gallery',
+      title: 'Gallery',
+      description: 'Thumbnail quality and loading for remote/cloud provider assets.',
       fields: [
         {
           id: 'qualityMode',
@@ -75,15 +79,37 @@ const browserTab: SettingTab = {
       ],
     },
     {
-      id: 'local-performance',
-      title: 'Performance',
-      description: 'Local browser settings that affect memory and disk usage.',
+      id: 'local-folders',
+      title: 'Local Folders',
+      description: 'Thumbnail loading for assets browsed from local folders.',
+      fields: [
+        {
+          id: 'lf_previewMode',
+          type: 'select',
+          label: 'Preview Mode',
+          description: 'Thumbnails are cached and use less memory. Original shows the file directly (fastest first load). Gallery Settings follows the Gallery source settings above.',
+          defaultValue: 'thumbnail',
+          options: [
+            { value: 'thumbnail', label: 'Generate Thumbnails (400px, cached)' },
+            { value: 'original', label: 'Original Images (fastest, more memory)' },
+            { value: 'gallery-settings', label: 'Use Gallery Settings' },
+          ],
+        },
+      ],
+    },
+    // ------------------------------------------------------------------
+    // Shared settings that apply across all sources
+    // ------------------------------------------------------------------
+    {
+      id: 'caching',
+      title: 'Caching',
+      description: 'Browser-level cache behavior for all media sources.',
       fields: [
         {
           id: 'preventDiskCache',
           type: 'toggle',
-          label: 'Prevent Disk Cache for Thumbnails',
-          description: 'Keeps thumbnails in memory only. Reduces Chrome cache on C: drive but uses more RAM.',
+          label: 'Prevent Disk Cache',
+          description: 'Keep thumbnails in memory only. Reduces Chrome cache on disk but uses more RAM.',
           defaultValue: false,
         },
       ],
@@ -140,11 +166,29 @@ const downloadsTab: SettingTab = {
           defaultValue: true,
         },
         {
+          id: 'thumbnail_quality',
+          type: 'number',
+          label: 'Thumbnail JPEG Quality',
+          description: 'Compression quality for generated thumbnails (1-100). Lower uses less disk space.',
+          defaultValue: 85,
+          min: 60,
+          max: 100,
+        },
+        {
           id: 'generate_previews',
           type: 'toggle',
           label: 'Generate Previews',
           description: 'Create higher-quality preview images (800x800) for better gallery display.',
           defaultValue: true,
+        },
+        {
+          id: 'preview_quality',
+          type: 'number',
+          label: 'Preview JPEG Quality',
+          description: 'Compression quality for generated previews (1-100). Higher preserves more detail.',
+          defaultValue: 92,
+          min: 70,
+          max: 100,
         },
       ],
     },
@@ -211,31 +255,6 @@ const storageTab: SettingTab = {
   icon: '💾',
   groups: [
     {
-      id: 'quality',
-      title: 'Image Quality',
-      description: 'Control JPEG quality settings for thumbnails and previews.',
-      fields: [
-        {
-          id: 'thumbnail_quality',
-          type: 'number',
-          label: 'Thumbnail Quality',
-          description: 'JPEG quality for thumbnails (1-100). Lower uses less disk space.',
-          defaultValue: 85,
-          min: 60,
-          max: 100,
-        },
-        {
-          id: 'preview_quality',
-          type: 'number',
-          label: 'Preview Quality',
-          description: 'JPEG quality for previews (1-100). Higher preserves more detail.',
-          defaultValue: 92,
-          min: 70,
-          max: 100,
-        },
-      ],
-    },
-    {
       id: 'cache-control',
       title: 'Cache Control',
       description: 'Configure how media is cached by browsers.',
@@ -269,16 +288,16 @@ const storageTab: SettingTab = {
 };
 
 // =============================================================================
-// Tab: Local Folders
+// Tab: Hashing
 // =============================================================================
-const localFoldersTab: SettingTab = {
-  id: 'local-folders',
-  label: 'Local Folders',
-  icon: '📁',
+const hashingTab: SettingTab = {
+  id: 'hashing',
+  label: 'Hashing',
+  icon: '#️⃣',
   groups: [
     {
-      id: 'hashing',
-      title: 'Hashing',
+      id: 'local-folder-hashing',
+      title: 'Local Folders',
       description: 'Control when and how file hashes (SHA-256) are computed for local assets.',
       fields: [
         {
@@ -398,9 +417,11 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   const lf_autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
   const lf_autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
   const lf_hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
+  const lf_previewMode = useLocalFolderSettingsStore((s) => s.previewMode);
   const setLfAutoHashOnSelect = useLocalFolderSettingsStore((s) => s.setAutoHashOnSelect);
   const setLfAutoCheckBackend = useLocalFolderSettingsStore((s) => s.setAutoCheckBackend);
   const setLfHashChunkSize = useLocalFolderSettingsStore((s) => s.setHashChunkSize);
+  const setLfPreviewMode = useLocalFolderSettingsStore((s) => s.setPreviewMode);
 
   // Media settings (server)
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
@@ -442,6 +463,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       if (fieldId === 'lf_autoHashOnSelect') return lf_autoHashOnSelect;
       if (fieldId === 'lf_autoCheckBackend') return lf_autoCheckBackend;
       if (fieldId === 'lf_hashChunkSize') return lf_hashChunkSize;
+      if (fieldId === 'lf_previewMode') return lf_previewMode;
 
       // Server settings
       if (serverSettings && fieldId in serverSettings) {
@@ -491,6 +513,10 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
         setLfHashChunkSize(value);
         return;
       }
+      if (fieldId === 'lf_previewMode') {
+        setLfPreviewMode(value);
+        return;
+      }
 
       // Server settings - update optimistically and sync to backend
       if (serverSettings && fieldId in serverSettings) {
@@ -521,6 +547,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       lf_autoHashOnSelect,
       lf_autoCheckBackend,
       lf_hashChunkSize,
+      lf_previewMode,
       ...(serverSettings ?? {}),
     }),
   };
@@ -538,7 +565,7 @@ export function registerLibrarySettings(): () => void {
       icon: '📚',
       order: 35, // Same position as old Assets
     },
-    tab: browserTab,
+    tab: displayTab,
     useStore: useLibrarySettingsStoreAdapter,
   });
 
@@ -556,7 +583,7 @@ export function registerLibrarySettings(): () => void {
 
   const unregister4 = settingsSchemaRegistry.register({
     categoryId: 'library',
-    tab: localFoldersTab,
+    tab: hashingTab,
     useStore: useLibrarySettingsStoreAdapter,
   });
 

@@ -5,6 +5,7 @@
  * Manages folder state, asset filtering, previews, uploads, and viewer navigation.
  */
 
+import { useAuthStore } from '@pixsim7/shared.auth.core';
 import type { SourceIdentity } from '@pixsim7/shared.sources.core';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
@@ -12,16 +13,16 @@ import { uploadAsset } from '@lib/api/upload';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
-import { useAuthStore } from '@/stores/authStore';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '@/types/localSources';
 
+import { setHashWorkerPoolSize } from '../lib/hashWorkerManager';
 import {
   checkHashesAgainstBackend,
   computeLocalAssetScopeSignature,
-  computeStableSignature,
   ensureLocalAssetSha256,
   hasValidStoredHash,
 } from '../lib/localHashing';
+import { useAssetViewerStore } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import {
   useLocalFolders,
@@ -53,6 +54,32 @@ const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
   type: 'local',
 };
 
+const PREVIEW_LOAD_CONCURRENCY = 4;
+
+function isAssetDirectlyInFolderPath(asset: LocalAsset, folderPath: string): boolean {
+  // Root folder selected: path is just folderId
+  if (folderPath === asset.folderId) {
+    // Only show files directly under the root folder here.
+    // Files inside subfolders are shown when those subfolders are selected
+    // in the tree, to avoid rendering thousands of items at once.
+    return !asset.relativePath.includes('/');
+  }
+
+  // For subfolders, ensure this asset belongs to the same root folder
+  if (!folderPath.startsWith(asset.folderId + '/')) {
+    return false;
+  }
+
+  // Compute the selected folder path relative to the root folder
+  const selectedRelPath = folderPath.slice(asset.folderId.length + 1);
+  const assetDir = asset.relativePath.includes('/')
+    ? asset.relativePath.split('/').slice(0, -1).join('/')
+    : '';
+
+  // Only include files whose immediate parent folder matches the selected folder
+  return assetDir === selectedRelPath;
+}
+
 export function useLocalFoldersController(): LocalFoldersController {
   // Wire up localFoldersStore
   const {
@@ -69,6 +96,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     error,
     getFileForAsset,
     updateAssetHash,
+    updateAssetHashesBatch,
     setUploadRecordByHash,
     updateAssetUploadStatus,
     missingFolderNames,
@@ -82,13 +110,14 @@ export function useLocalFoldersController(): LocalFoldersController {
   const hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
   const providerId = useLocalFolderSettingsStore((s) => s.providerId);
   const setProviderId = useLocalFolderSettingsStore((s) => s.setProviderId);
+  const previewMode = useLocalFolderSettingsStore((s) => s.previewMode);
 
   // View state (persisted)
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
     'ps7_localFolders_viewMode',
     'tree',
   );
-  const [selectedFolderPath, setSelectedFolderPath] = usePersistentState<string | null>(
+  const [selectedFolderPath, setSelectedFolderPathState] = usePersistentState<string | null>(
     'ps7_localFolders_selectedFolderPath',
     null,
   );
@@ -99,6 +128,8 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Track blob URLs for cleanup when they're no longer needed
   const blobUrlsRef = useRef<Map<string, string>>(new Map());
+  const previewActiveLoadsRef = useRef(0);
+  const previewWaitersRef = useRef<Array<() => void>>([]);
 
   // Track which selected folder scopes have completed local SHA computation
   const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
@@ -110,6 +141,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
   const bgHashRunIdRef = useRef(0);
   const bgHashPausedRef = useRef(false);
+  const hashProgressLastUiUpdateRef = useRef(0);
   const [hashingPaused, setHashingPaused] = useState(false);
 
   // Upload state
@@ -155,30 +187,32 @@ export function useLocalFoldersController(): LocalFoldersController {
   const filteredAssets = useMemo(() => {
     if (viewMode !== 'tree' || !selectedFolderPath) return assetList;
 
-    return assetList.filter(asset => {
-      // Root folder selected: path is just folderId
-      if (selectedFolderPath === asset.folderId) {
-        // Only show files directly under the root folder here.
-        // Files inside subfolders are shown when those subfolders are selected
-        // in the tree, to avoid rendering thousands of items at once.
-        return !asset.relativePath.includes('/');
-      }
-
-      // For subfolders, ensure this asset belongs to the same root folder
-      if (!selectedFolderPath.startsWith(asset.folderId + '/')) {
-        return false;
-      }
-
-      // Compute the selected folder path relative to the root folder
-      const selectedRelPath = selectedFolderPath.slice(asset.folderId.length + 1);
-      const assetDir = asset.relativePath.includes('/')
-        ? asset.relativePath.split('/').slice(0, -1).join('/')
-        : '';
-
-      // Only include files whose immediate parent folder matches the selected folder
-      return assetDir === selectedRelPath;
-    });
+    return assetList.filter(asset => isAssetDirectlyInFolderPath(asset, selectedFolderPath));
   }, [assetList, selectedFolderPath, viewMode]);
+
+  // Stable signature that excludes hash metadata fields so hashing updates
+  // don't restart the hashing run effect.
+  const filteredAssetsScopeSignature = useMemo(
+    () => computeLocalAssetScopeSignature(filteredAssets),
+    [filteredAssets],
+  );
+  const filteredAssetsRef = useRef(filteredAssets);
+  filteredAssetsRef.current = filteredAssets;
+
+  // Keep previous folder selection if a clicked folder has no directly viewable media.
+  const setSelectedFolderPath = useCallback((nextPath: string | null) => {
+    if (!nextPath) {
+      setSelectedFolderPathState(nextPath);
+      return;
+    }
+
+    const hasViewableAssets = assetList.some(asset => isAssetDirectlyInFolderPath(asset, nextPath));
+    if (!hasViewableAssets) {
+      return;
+    }
+
+    setSelectedFolderPathState(nextPath);
+  }, [assetList, setSelectedFolderPathState]);
 
   // Viewer items list (depends on view mode)
   const viewerItems = useMemo(() => {
@@ -189,25 +223,33 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Only hashes assets in the currently visible folder — not all assets globally.
   // Respects autoHashOnSelect setting; when disabled, hashing only happens on upload/preview.
   useEffect(() => {
-    if (!autoHashOnSelect || !selectedFolderPath || !crypto.subtle) return;
+    if (!autoHashOnSelect || !selectedFolderPath || !crypto.subtle) {
+      setHashingProgress(null);
+      return;
+    }
 
-    if (filteredAssets.length === 0) {
+    const currentFilteredAssets = filteredAssetsRef.current;
+    if (currentFilteredAssets.length === 0) {
       setHashingProgress(null);
       return;
     }
 
     const scopeKey = selectedFolderPath;
-    const scopeSignature = computeLocalAssetScopeSignature(filteredAssets);
+    const scopeSignature = filteredAssetsScopeSignature;
 
     // Skip if already checked for the same scope signature
     if (hashCheckedFoldersRef.current.get(scopeKey) === scopeSignature) return;
 
     // Get assets that need hashing
-    const assetsToHash = filteredAssets.filter(asset => {
-      if (hasValidStoredHash(asset)) return false;
-      if (asset.last_upload_status === 'success') return false;
-      return true;
-    });
+    const assetsToHash = currentFilteredAssets
+      .filter(asset => {
+        if (hasValidStoredHash(asset)) return false;
+        if (asset.last_upload_status === 'success') return false;
+        return true;
+      })
+      // Hash smaller files first so visible progress moves quickly instead of
+      // spending the entire first interval on a single huge file.
+      .sort((a, b) => (a.size ?? Number.MAX_SAFE_INTEGER) - (b.size ?? Number.MAX_SAFE_INTEGER));
 
     // If nothing to do, mark as checked for this scope signature.
     if (assetsToHash.length === 0) {
@@ -218,16 +260,27 @@ export function useLocalFoldersController(): LocalFoldersController {
 
     const runId = ++bgHashRunIdRef.current;
     bgHashPausedRef.current = false;
+    hashProgressLastUiUpdateRef.current = 0;
     setHashingPaused(false);
     setHashingProgress({ total: assetsToHash.length, done: 0 });
 
-    const chunkSize = hashChunkSize;
+    const hashConcurrency = Math.max(1, Math.trunc(hashChunkSize));
+    setHashWorkerPoolSize(hashConcurrency);
 
     const computeHashes = async () => {
       let done = 0;
+      const pendingHashUpdates: Array<{ assetKey: string; sha256: string; file: File }> = [];
 
-      try {
-        for (let i = 0; i < assetsToHash.length; i += chunkSize) {
+      const flushHashUpdates = async () => {
+        if (pendingHashUpdates.length === 0) return;
+        const updates = pendingHashUpdates.splice(0, pendingHashUpdates.length);
+        await updateAssetHashesBatch(updates);
+      };
+
+      let nextIndex = 0;
+
+      const runWorker = async () => {
+        while (true) {
           if (bgHashRunIdRef.current !== runId) return;
 
           // Wait while paused
@@ -236,27 +289,60 @@ export function useLocalFoldersController(): LocalFoldersController {
             await new Promise(resolve => setTimeout(resolve, 200));
           }
 
-          const chunk = assetsToHash.slice(i, i + chunkSize);
+          const current = nextIndex;
+          nextIndex += 1;
+          if (current >= assetsToHash.length) {
+            return;
+          }
 
-          for (const asset of chunk) {
-            if (bgHashRunIdRef.current !== runId) return;
-            try {
-              const { getFileForAsset: getFile, updateAssetHash: updateHash } = useLocalFolders.getState();
-              const file = await getFile(asset);
-              if (!file) continue;
-              await ensureLocalAssetSha256(asset, file, updateHash);
-            } catch (e) {
-              console.warn('Failed to hash asset:', asset.name, e);
+          const asset = assetsToHash[current];
+
+          try {
+            const file = await getFileForAsset(asset);
+            if (file) {
+              await ensureLocalAssetSha256(
+                asset,
+                file,
+                async (assetKey, sha256, fileForHash) => {
+                  pendingHashUpdates.push({ assetKey, sha256, file: fileForHash });
+                },
+              );
+            }
+          } catch (e) {
+            console.warn('Failed to hash asset:', asset.name, e);
+          } finally {
+            done += 1;
+            if (bgHashRunIdRef.current === runId) {
+              const now = performance.now();
+              const shouldUpdateUi = (
+                done === assetsToHash.length ||
+                hashProgressLastUiUpdateRef.current === 0 ||
+                now - hashProgressLastUiUpdateRef.current >= 100
+              );
+              if (shouldUpdateUi) {
+                hashProgressLastUiUpdateRef.current = now;
+                setHashingProgress({ total: assetsToHash.length, done });
+              }
             }
           }
 
-          done += chunk.length;
-          if (bgHashRunIdRef.current === runId) {
-            setHashingProgress({ total: assetsToHash.length, done });
+          // Apply hash updates in small batches to avoid per-file state churn.
+          if (pendingHashUpdates.length >= Math.max(8, hashConcurrency * 4)) {
+            await flushHashUpdates();
           }
 
-          await new Promise(resolve => setTimeout(resolve, 50));
+          // Yield periodically so UI remains responsive during long runs.
+          await new Promise(resolve => setTimeout(resolve, 0));
         }
+      };
+
+      try {
+        const workers = Array.from(
+          { length: Math.min(hashConcurrency, assetsToHash.length) },
+          () => runWorker()
+        );
+        await Promise.all(workers);
+        await flushHashUpdates();
       } finally {
         if (bgHashRunIdRef.current === runId) {
           hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
@@ -267,24 +353,15 @@ export function useLocalFoldersController(): LocalFoldersController {
 
     void computeHashes();
 
-    return () => { bgHashRunIdRef.current++; };
-  }, [selectedFolderPath, filteredAssets, autoHashOnSelect, hashChunkSize]);
-
-  // Global backend existence check for all hashed assets.
-  // This decouples "already in library" detection from selected subfolder state.
-  const backendHashCheckTrigger = useMemo(() => {
-    const tokens: string[] = [];
-    for (const asset of Object.values(assetsRecord)) {
-      if (!hasValidStoredHash(asset)) continue;
-      if (asset.last_upload_status === 'success') continue;
-      if (!asset.sha256) continue;
-      tokens.push(`${asset.key}|${asset.sha256}`);
-    }
-    return computeStableSignature(tokens);
-  }, [assetsRecord]);
+    return () => { bgHashRunIdRef.current = runId + 1; };
+  }, [selectedFolderPath, filteredAssetsScopeSignature, autoHashOnSelect, hashChunkSize, getFileForAsset, updateAssetHashesBatch]);
 
   useEffect(() => {
     if (!autoCheckBackend) return;
+    if (hashingProgress && hashingProgress.done < hashingProgress.total) {
+      // Hashing mutates many assets rapidly; defer backend checks until hash run settles.
+      return;
+    }
 
     const candidates = Object.values(assetsRecord).filter(asset => (
       hasValidStoredHash(asset) &&
@@ -360,7 +437,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       await syncKnownExisting();
       await checkRemaining();
     })();
-  }, [assetsRecord, backendHashCheckTrigger, updateAssetUploadStatus, autoCheckBackend]);
+  }, [assetsRecord, updateAssetUploadStatus, autoCheckBackend, hashingProgress]);
 
   const pauseHashing = useCallback(() => {
     bgHashPausedRef.current = true;
@@ -379,9 +456,43 @@ export function useLocalFoldersController(): LocalFoldersController {
     setHashingProgress(null);
   }, []);
 
+  const acquirePreviewSlot = useCallback(async () => {
+    if (previewActiveLoadsRef.current < PREVIEW_LOAD_CONCURRENCY) {
+      previewActiveLoadsRef.current += 1;
+      return;
+    }
+
+    await new Promise<void>((resolve) => {
+      previewWaitersRef.current.push(resolve);
+    });
+    previewActiveLoadsRef.current += 1;
+  }, []);
+
+  const releasePreviewSlot = useCallback(() => {
+    previewActiveLoadsRef.current = Math.max(0, previewActiveLoadsRef.current - 1);
+    const next = previewWaitersRef.current.shift();
+    if (next) next();
+  }, []);
+
   // Ref-based lookup for assets so loadPreview doesn't depend on assetsRecord state
   const assetsRecordRef = useRef(assetsRecord);
   assetsRecordRef.current = assetsRecord;
+
+  // Ref for previewMode so loadPreview callback stays stable
+  const previewModeRef = useRef(previewMode);
+  previewModeRef.current = previewMode;
+
+  // Resolve whether to use original file directly (skip thumbnail generation).
+  // For images only — videos always need a generated thumbnail frame.
+  const shouldUseOriginal = useCallback((asset: LocalAsset): boolean => {
+    const mode = previewModeRef.current;
+    if (mode === 'original') return asset.kind === 'image';
+    if (mode === 'gallery-settings') {
+      const { preferOriginal } = useAssetViewerStore.getState().settings;
+      return preferOriginal && asset.kind === 'image';
+    }
+    return false; // 'thumbnail' mode
+  }, []);
 
   // Load preview for an asset.
   // Uses refs for guards instead of `previews` state so the callback identity stays stable.
@@ -397,51 +508,62 @@ export function useLocalFoldersController(): LocalFoldersController {
     // Mark as loading
     loadingPreviewsRef.current.add(asset.key);
 
-    // Try cached thumbnail blob first (persisted in IndexedDB)
     let url: string | undefined;
+    let acquiredSlot = false;
     try {
-      const cached = await getLocalThumbnailBlob(asset);
-      if (cached) {
-        url = URL.createObjectURL(cached);
-      }
-    } catch {
-      // ignore cache errors and fall back to direct file read
-    }
+      // "Original" mode for images: skip thumbnails entirely, show the file directly
+      if (shouldUseOriginal(asset)) {
+        await acquirePreviewSlot();
+        acquiredSlot = true;
 
-    // If no cached thumbnail, create from file and store
-    if (!url) {
-      try {
         const file = await getFileForAsset(asset);
-        if (!file) {
-          loadingPreviewsRef.current.delete(asset.key);
-          return;
+        if (file) {
+          url = URL.createObjectURL(file);
+        }
+      } else {
+        // Thumbnail mode: try cached thumbnail blob first (persisted in IndexedDB)
+        try {
+          const cached = await getLocalThumbnailBlob(asset);
+          if (cached) {
+            url = URL.createObjectURL(cached);
+          }
+        } catch {
+          // ignore cache errors and fall back to direct file read
         }
 
-        // Generate a smaller thumbnail for images and videos
-        const thumbnail = await generateThumbnail(file);
-        if (thumbnail) {
+        // If no cached thumbnail, create from file and store.
+        // Limit concurrent decode work to keep local folder scrolling responsive.
+        if (!url) {
+          await acquirePreviewSlot();
+          acquiredSlot = true;
+
+          const file = await getFileForAsset(asset);
+          if (!file) return;
+
+          const thumbnail = await generateThumbnail(file);
+          if (!thumbnail) {
+            console.warn('Failed to generate thumbnail for', asset.name);
+            return;
+          }
+
           url = URL.createObjectURL(thumbnail);
           // Cache the smaller thumbnail for future sessions
           void setLocalThumbnailBlob(asset, thumbnail);
-        } else {
-          // Skip preview if thumbnail generation fails - don't load full file to avoid memory issues
-          console.warn('Failed to generate thumbnail for', asset.name);
-          loadingPreviewsRef.current.delete(asset.key);
-          return;
         }
-      } catch {
-        loadingPreviewsRef.current.delete(asset.key);
-        return;
       }
-    }
 
-    if (url) {
-      // Track the blob URL for later cleanup
-      blobUrlsRef.current.set(asset.key, url);
-      setPreviews(p => ({ ...p, [asset.key]: url }));
+      if (url) {
+        // Track the blob URL for later cleanup
+        blobUrlsRef.current.set(asset.key, url);
+        setPreviews(p => ({ ...p, [asset.key]: url }));
+      }
+    } finally {
+      if (acquiredSlot) {
+        releasePreviewSlot();
+      }
+      loadingPreviewsRef.current.delete(asset.key);
     }
-    loadingPreviewsRef.current.delete(asset.key);
-  }, [getFileForAsset]);
+  }, [acquirePreviewSlot, getFileForAsset, releasePreviewSlot, shouldUseOriginal]);
 
   // Revoke blob URLs for assets that are no longer visible (called by UI)
   const revokePreview = useCallback((assetKey: string) => {
@@ -459,11 +581,12 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Cleanup all blob URLs on unmount
   useEffect(() => {
+    const blobUrls = blobUrlsRef.current;
     return () => {
-      blobUrlsRef.current.forEach((url) => {
+      blobUrls.forEach((url) => {
         URL.revokeObjectURL(url);
       });
-      blobUrlsRef.current.clear();
+      blobUrls.clear();
     };
   }, []);
 
@@ -539,8 +662,8 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       // Task 104: Persist upload success to cache
       await updateAssetUploadStatus(asset.key, 'success', note);
-    } catch (e: any) {
-      const errorMsg = e?.message || 'Upload failed';
+    } catch (e: unknown) {
+      const errorMsg = e instanceof Error ? e.message : 'Upload failed';
 
       setUploadStatus(s => ({ ...s, [asset.key]: 'error' }));
       setUploadNotes(n => ({ ...n, [asset.key]: errorMsg }));

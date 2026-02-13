@@ -1,17 +1,27 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+/**
+ * How local folder image previews are loaded in the gallery.
+ * - 'thumbnail': Generate 400px cached thumbnails (default, lower memory)
+ * - 'original': Show original files directly via blob URL (fastest load, more memory)
+ * - 'gallery-settings': Follow the main Gallery Quality settings (qualityMode / preferOriginal)
+ */
+export type LocalPreviewMode = 'thumbnail' | 'original' | 'gallery-settings';
+
 export interface LocalFolderSettingsState {
   /** Auto-hash assets when selecting a folder in the tree */
   autoHashOnSelect: boolean;
   /** Auto-check hashes against backend for "already in library" detection */
   autoCheckBackend: boolean;
-  /** Number of files to hash concurrently per chunk */
+  /** Number of files to process per hashing batch before yielding */
   hashChunkSize: number;
   /** Selected provider ID for uploads */
   providerId: string | undefined;
   /** Favorite folder paths (persisted) */
   favoriteFolders: string[];
+  /** How local image previews are loaded */
+  previewMode: LocalPreviewMode;
 
   setAutoHashOnSelect: (value: boolean) => void;
   setAutoCheckBackend: (value: boolean) => void;
@@ -19,6 +29,7 @@ export interface LocalFolderSettingsState {
   setProviderId: (value: string | undefined) => void;
   toggleFavoriteFolder: (path: string) => void;
   isFavoriteFolder: (path: string) => boolean;
+  setPreviewMode: (value: LocalPreviewMode) => void;
 }
 
 export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
@@ -29,11 +40,13 @@ export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
       hashChunkSize: 3,
       providerId: undefined,
       favoriteFolders: [],
+      previewMode: 'thumbnail',
 
       setAutoHashOnSelect: (value) => set({ autoHashOnSelect: value }),
       setAutoCheckBackend: (value) => set({ autoCheckBackend: value }),
       setHashChunkSize: (value) => set({ hashChunkSize: value }),
       setProviderId: (value) => set({ providerId: value }),
+      setPreviewMode: (value) => set({ previewMode: value }),
       toggleFavoriteFolder: (path) => {
         const current = get().favoriteFolders;
         const next = current.includes(path)
@@ -51,6 +64,7 @@ export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
         hashChunkSize: state.hashChunkSize,
         providerId: state.providerId,
         favoriteFolders: state.favoriteFolders,
+        previewMode: state.previewMode,
       }),
     }
   )
