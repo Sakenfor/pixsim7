@@ -6,7 +6,12 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
+import { useHoverExpand } from '@pixsim7/shared.ui';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+
 import { createBindingFromValue } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 import {
   createBadgeWidget,
@@ -22,6 +27,9 @@ import {
   type UploadWidgetSettings,
   type TooltipWidgetSettings,
 } from '@lib/widgets';
+
+import { applyQuickTag } from '@features/assets/lib/quickTag';
+import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardProps } from './MediaCard';
@@ -454,6 +462,126 @@ export function createFavoriteWidget(props: MediaCardProps): OverlayWidget<Media
 }
 
 /**
+ * Render component for the quick tag widget.
+ * Extracted as a named component so React hooks are valid.
+ */
+function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
+  const { defaultTag, recentTags, setDefaultTag, addRecentTag } = useQuickTagStore();
+  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 200, collapseDelay: 150 });
+  const [inputValue, setInputValue] = useState('');
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  useEffect(() => {
+    if (isExpanded && triggerRef.current) {
+      setTriggerRect(triggerRef.current.getBoundingClientRect());
+    }
+  }, [isExpanded]);
+
+  const handleClick = () => {
+    if (defaultTag) {
+      applyQuickTag(data.id, defaultTag);
+    }
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && inputValue.trim()) {
+      const slug = inputValue.trim();
+      addRecentTag(slug);
+      setDefaultTag(slug);
+      setInputValue('');
+    }
+  };
+
+  return (
+    <div className="relative" {...handlers}>
+      <button
+        ref={triggerRef}
+        onClick={handleClick}
+        className={`
+          p-1.5 rounded-full transition-colors
+          ${defaultTag
+            ? '!bg-blue-500/90 !text-white backdrop-blur-sm'
+            : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-blue-500 backdrop-blur-sm'}
+        `}
+        title={defaultTag ? `Quick tag: ${defaultTag}` : 'Set a default tag'}
+      >
+        <Icon name="tag" size={14} />
+      </button>
+
+      {isExpanded && triggerRect && createPortal(
+        <div
+          className="fixed min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50"
+          style={{
+            top: triggerRect.bottom + 4,
+            left: triggerRect.right,
+            transform: 'translateX(-100%)',
+          }}
+          {...handlers}
+        >
+          {/* Current default */}
+          {defaultTag && (
+            <div className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium border-b border-neutral-100 dark:border-neutral-700">
+              Default: {defaultTag}
+            </div>
+          )}
+
+          {/* Recent tags */}
+          {recentTags.length > 0 && (
+            <div className="py-1">
+              {recentTags.map((slug) => (
+                <button
+                  key={slug}
+                  onClick={() => setDefaultTag(slug)}
+                  className={`
+                    w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
+                    hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
+                    ${slug === defaultTag ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-neutral-700 dark:text-neutral-300'}
+                  `}
+                >
+                  <Icon name="tag" size={12} className="shrink-0" />
+                  <span className="truncate">{slug}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Text input */}
+          <div className="px-2 py-1.5 border-t border-neutral-100 dark:border-neutral-700">
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              placeholder="New tag slug…"
+              className="w-full px-2 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/**
+ * Create quick tag widget (top-right, below favorite)
+ * Click applies the default tag; hover expands a panel to pick/set defaults.
+ */
+export function createQuickTagWidget(): OverlayWidget<MediaCardOverlayData> {
+  return {
+    id: 'quick-tag',
+    type: 'custom',
+    position: { anchor: 'top-right', offset: { x: -8, y: 80 } },
+    visibility: { trigger: 'always' },
+    priority: 17,
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => <QuickTagWidgetContent data={data} />,
+  };
+}
+
+/**
  * Create quick add button (+) widget
  * @deprecated Use createGenerationButtonGroup which now includes quick generate
  */
@@ -483,6 +611,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWid
     createPrimaryIconWidget(props),
     createStatusWidget(props),
     createFavoriteWidget(props),
+    createQuickTagWidget(),
     createQueueStatusWidget(props),
     createSelectionStatusWidget(props),
     // Note: Generation status widget is opt-in via customWidgets or overlay config

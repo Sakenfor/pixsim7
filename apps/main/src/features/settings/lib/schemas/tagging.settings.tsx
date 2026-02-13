@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Tags Settings Schema
  *
@@ -10,6 +11,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+
+import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 
 import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferences';
 import type { AutoTagsPreferences, AnalyzerPreferences } from '@/lib/api/userPreferences';
@@ -70,6 +73,20 @@ const DEFAULT_ANALYZER: AnalyzerPreferences = {
 // Tab: General
 // =============================================================================
 
+// Custom component for clearing recent quick tags
+function ClearRecentTagsButton({ onChange }: { value: any; onChange: (value: any) => void }) {
+  const recentCount = useQuickTagStore((s) => s.recentTags.length);
+  return (
+    <button
+      onClick={() => onChange(true)}
+      disabled={recentCount === 0}
+      className="px-3 py-1.5 text-xs font-medium rounded bg-neutral-100 dark:bg-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+    >
+      Clear recents ({recentCount})
+    </button>
+  );
+}
+
 const generalTab: SettingTab = {
   id: 'general',
   label: 'General',
@@ -125,6 +142,37 @@ const generalTab: SettingTab = {
             { value: 'style', label: 'style (visual style)' },
             { value: 'project', label: 'project (project organization)' },
           ],
+        },
+      ],
+    },
+    {
+      id: 'quick-tag',
+      title: 'Quick Tag',
+      description: 'One-click tagging from the gallery card tag button.',
+      fields: [
+        {
+          id: 'quick_tag.default_tag',
+          type: 'text',
+          label: 'Default Tag',
+          description: 'Tag slug applied when clicking the tag button on a card (e.g., "user:hero-shots").',
+          defaultValue: '',
+          placeholder: 'e.g., user:hero-shots',
+        },
+        {
+          id: 'quick_tag.max_recent_tags',
+          type: 'number',
+          label: 'Max Recent Tags',
+          description: 'How many recently used tags to keep in the hover menu.',
+          defaultValue: 8,
+          min: 1,
+          max: 20,
+        },
+        {
+          id: 'quick_tag.clear_recents',
+          type: 'custom',
+          label: 'Recent Tags',
+          description: 'Clear the list of recently used quick tags.',
+          component: ClearRecentTagsButton,
         },
       ],
     },
@@ -253,6 +301,9 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
       });
   }, []);
 
+  // Quick tag store (local zustand state, not backend)
+  const quickTagState = useQuickTagStore();
+
   const get = useCallback(
     (fieldId: string) => {
       // Parse nested field IDs like "auto_tags.include_provider" or "tags.click_action"
@@ -266,9 +317,14 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
       if (section === 'analyzer' && key) {
         return state.analyzer[key as keyof AnalyzerPreferences];
       }
+      if (section === 'quick_tag' && key) {
+        if (key === 'default_tag') return quickTagState.defaultTag ?? '';
+        if (key === 'max_recent_tags') return quickTagState.maxRecentTags;
+        if (key === 'clear_recents') return null; // custom button, no stored value
+      }
       return undefined;
     },
-    [state]
+    [state, quickTagState]
   );
 
   const set = useCallback(
@@ -293,6 +349,11 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
         updatePreferenceKey('analyzer', newAnalyzer).catch((err) => {
           console.error('Failed to save analyzer:', err);
         });
+      } else if (section === 'quick_tag' && key) {
+        const store = useQuickTagStore.getState();
+        if (key === 'default_tag') store.setDefaultTag(value || null);
+        if (key === 'max_recent_tags') store.setMaxRecentTags(value);
+        if (key === 'clear_recents') store.clearRecentTags();
       }
     },
     [state]
@@ -310,8 +371,11 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
     for (const [k, v] of Object.entries(state.analyzer)) {
       result[`analyzer.${k}`] = v;
     }
+    // Quick tag fields
+    result['quick_tag.default_tag'] = quickTagState.defaultTag ?? '';
+    result['quick_tag.max_recent_tags'] = quickTagState.maxRecentTags;
     return result;
-  }, [state]);
+  }, [state, quickTagState]);
 
   return { get, set, getAll };
 }
