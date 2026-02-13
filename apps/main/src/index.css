@@ -353,6 +353,87 @@ button:focus-visible {
   transition: none !important;
 }
 
+/* CompactAssetCard - container-query scaling for overlays */
+.compact-card-container {
+  container-type: inline-size;
+}
+
+/* Scale down overlays when card is small (< 80px) */
+@container (max-width: 79px) {
+  .compact-card-remove {
+    width: 12px;
+    height: 12px;
+    top: 2px;
+    right: 2px;
+  }
+  .compact-card-remove svg {
+    width: 6px;
+    height: 6px;
+  }
+  .compact-card-status {
+    width: 14px;
+    height: 14px;
+    top: 2px;
+    right: 2px;
+  }
+  .compact-card-status svg {
+    width: 8px;
+    height: 8px;
+  }
+  .compact-card-play {
+    width: 18px;
+    height: 18px;
+  }
+  .compact-card-play svg {
+    width: 8px;
+    height: 8px;
+  }
+  .compact-card-lock {
+    font-size: 7px;
+    padding: 1px 3px;
+  }
+  .compact-card-nav {
+    transform: scale(0.7);
+    transform-origin: bottom center;
+  }
+}
+
+/* Default size (80px - 150px) */
+@container (min-width: 80px) and (max-width: 150px) {
+  .compact-card-remove {
+    width: 14px;
+    height: 14px;
+    top: 3px;
+    right: 3px;
+  }
+  .compact-card-remove svg {
+    width: 7px;
+    height: 7px;
+  }
+  .compact-card-status {
+    width: 18px;
+    height: 18px;
+  }
+  .compact-card-status svg {
+    width: 10px;
+    height: 10px;
+  }
+  .compact-card-play {
+    width: 24px;
+    height: 24px;
+  }
+  .compact-card-play svg {
+    width: 10px;
+    height: 10px;
+  }
+  .compact-card-nav {
+    transform: scale(0.85);
+    transform-origin: bottom center;
+  }
+}
+
+/* Large cards (> 150px) keep defaults — no overrides needed */
+
 /* Respect user's reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .user-reduced-motion * {

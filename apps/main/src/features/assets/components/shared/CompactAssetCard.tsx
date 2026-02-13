@@ -203,7 +203,7 @@ export function CompactAssetCard({
       )}
 
       <div
-        className={`relative bg-neutral-100 dark:bg-neutral-800 ${
+        className={`relative bg-neutral-100 dark:bg-neutral-800 compact-card-container ${
           fillHeight ? 'h-full' : (isVideo ? 'aspect-video' : 'aspect-square')
         }`}
       >
@@ -238,7 +238,7 @@ export function CompactAssetCard({
         {/* Locked frame indicator - visible when not hovering */}
         {isVideo && hasLockedFrame && !isHovering && (
           <div className="absolute top-1 left-1 z-10">
-            <div className="px-1.5 py-0.5 bg-accent/90 text-accent-text text-[9px] rounded whitespace-nowrap flex items-center gap-1">
+            <div className="compact-card-lock px-1.5 py-0.5 bg-accent/90 text-accent-text text-[9px] rounded whitespace-nowrap flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-white" />
               {lockedTimestamp?.toFixed(1)}s
             </div>
@@ -247,7 +247,7 @@ export function CompactAssetCard({
 
         {showPlayOverlay && isVideo && !hoverPreviewEnabled && (
           <div className="absolute inset-0 z-[2] flex items-center justify-center pointer-events-none">
-            <div className="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
+            <div className="compact-card-play w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
               <ThemedIcon name="play" size={12} variant="default" className="text-white" />
             </div>
           </div>
@@ -256,17 +256,17 @@ export function CompactAssetCard({
         {/* Status indicator */}
         {isLocalOnly && (
           <div className="absolute right-1.5 top-1.5 z-10">
-            <div className="w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center" title="Local only - not synced to provider">
+            <div className="compact-card-status w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center" title="Local only - not synced to provider">
               <ThemedIcon name="alertTriangle" size={12} variant="default" className="text-white" />
             </div>
           </div>
         )}
 
-        {/* Remove button - top right, tiny */}
+        {/* Remove button - top right, scales with container */}
         {showRemoveButton && onRemove && (
           <button
             onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="absolute right-1 top-1 w-4 h-4 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-20 opacity-70 hover:opacity-100"
+            className="compact-card-remove absolute right-1 top-1 w-4 h-4 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-20 opacity-70 hover:opacity-100"
             title="Remove"
           >
             <ThemedIcon name="close" size={8} variant="default" className="text-white" />
@@ -291,7 +291,7 @@ export function CompactAssetCard({
 
         {/* Navigation pill - bottom center */}
         {currentIndex !== undefined && totalCount !== undefined && totalCount > 1 && (
-          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
+          <div className="compact-card-nav absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-0 bg-black/70 backdrop-blur-sm rounded-full px-1.5 py-0.5 z-20">
             <button
               onClick={(e) => { e.stopPropagation(); onNavigatePrev?.(); }}
               className="text-white/90 hover:text-white transition-colors text-[11px] font-medium px-1"
