@@ -384,6 +384,8 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
                     compactMode={true}
                     selectedFolderPath={controller.selectedFolderPath || undefined}
                     onFolderSelect={controller.setSelectedFolderPath}
+                    onRemoveFolder={controller.removeFolder}
+                    onRefreshFolder={controller.refreshFolder}
                   />
                 )}
               </div>

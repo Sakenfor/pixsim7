@@ -22,6 +22,7 @@ import {
   ensureLocalAssetSha256,
   hasValidStoredHash,
 } from '../lib/localHashing';
+import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import {
   useLocalFolders,
   getLocalThumbnailBlob,
@@ -76,6 +77,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   } = useLocalFolders();
   const userId = useAuthStore((state) => state.user?.id);
 
+  // Local folder settings
+  const autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
+  const autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
+  const hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
+
   // View state (persisted)
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
     'ps7_localFolders_viewMode',
@@ -95,7 +101,6 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Track which selected folder scopes have completed local SHA computation
   const hashCheckedFoldersRef = useRef<Map<string, string>>(new Map());
-  const hashCheckInProgressRef = useRef<Set<string>>(new Set());
   const backendHashCheckedRef = useRef<Set<string>>(new Set());
   const backendExistingHashesRef = useRef<Set<string>>(new Set());
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
@@ -191,27 +196,25 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [viewMode, selectedFolderPath, filteredAssets, assetList]);
 
   // Compute SHA for selected folder scope when folder is selected.
-  // Backend existence checks are handled globally so this work is not tied
-  // to a specific tree selection.
+  // Only hashes assets in the currently visible folder — not all assets globally.
+  // Respects autoHashOnSelect setting; when disabled, hashing only happens on upload/preview.
   useEffect(() => {
-    if (!selectedFolderPath || !crypto.subtle) return;
+    if (!autoHashOnSelect || !selectedFolderPath || !crypto.subtle) return;
 
-    if (filteredAssets.length === 0) return;
+    if (filteredAssets.length === 0) {
+      setHashingProgress(null);
+      return;
+    }
 
     const scopeKey = selectedFolderPath;
     const scopeSignature = computeLocalAssetScopeSignature(filteredAssets);
 
-    // Skip if already checked or in progress for the same scope signature
-    if (hashCheckInProgressRef.current.has(scopeKey)) return;
+    // Skip if already checked for the same scope signature
     if (hashCheckedFoldersRef.current.get(scopeKey) === scopeSignature) return;
 
     // Get assets that need hashing
     const assetsToHash = filteredAssets.filter(asset => {
-      // Skip if already has valid hash
-      if (hasValidStoredHash(asset)) {
-        return false;
-      }
-      // Skip if already marked as success (uploaded)
+      if (hasValidStoredHash(asset)) return false;
       if (asset.last_upload_status === 'success') return false;
       return true;
     });
@@ -219,42 +222,63 @@ export function useLocalFoldersController(): LocalFoldersController {
     // If nothing to do, mark as checked for this scope signature.
     if (assetsToHash.length === 0) {
       hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
+      setHashingProgress(null);
       return;
     }
 
-    // Mark as in progress
-    hashCheckInProgressRef.current.add(scopeKey);
+    const runId = ++bgHashRunIdRef.current;
+    bgHashPausedRef.current = false;
+    setHashingPaused(false);
+    setHashingProgress({ total: assetsToHash.length, done: 0 });
 
-    // Background hash computation for this selected scope.
+    const chunkSize = hashChunkSize;
+
     const computeHashes = async () => {
+      let done = 0;
+
       try {
-        // Compute hashes for assets that need it (in chunks to avoid blocking UI)
-        const CHUNK_SIZE = 5;
-        for (let i = 0; i < assetsToHash.length; i += CHUNK_SIZE) {
-          const chunk = assetsToHash.slice(i, i + CHUNK_SIZE);
+        for (let i = 0; i < assetsToHash.length; i += chunkSize) {
+          if (bgHashRunIdRef.current !== runId) return;
 
-          await Promise.all(chunk.map(async (asset) => {
+          // Wait while paused
+          while (bgHashPausedRef.current) {
+            if (bgHashRunIdRef.current !== runId) return;
+            await new Promise(resolve => setTimeout(resolve, 200));
+          }
+
+          const chunk = assetsToHash.slice(i, i + chunkSize);
+
+          for (const asset of chunk) {
+            if (bgHashRunIdRef.current !== runId) return;
             try {
-              const file = await getFileForAsset(asset);
-              if (!file) return;
-
-              await ensureLocalAssetSha256(asset, file, updateAssetHash);
+              const { getFileForAsset: getFile, updateAssetHash: updateHash } = useLocalFolders.getState();
+              const file = await getFile(asset);
+              if (!file) continue;
+              await ensureLocalAssetSha256(asset, file, updateHash);
             } catch (e) {
               console.warn('Failed to hash asset:', asset.name, e);
             }
-          }));
+          }
 
-          // Yield to main thread between chunks
-          await new Promise(resolve => setTimeout(resolve, 0));
+          done += chunk.length;
+          if (bgHashRunIdRef.current === runId) {
+            setHashingProgress({ total: assetsToHash.length, done });
+          }
+
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
       } finally {
-        hashCheckInProgressRef.current.delete(scopeKey);
-        hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
+        if (bgHashRunIdRef.current === runId) {
+          hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
+          setHashingProgress(null);
+        }
       }
     };
 
     void computeHashes();
-  }, [selectedFolderPath, filteredAssets, getFileForAsset, updateAssetHash]);
+
+    return () => { bgHashRunIdRef.current++; };
+  }, [selectedFolderPath, filteredAssets, autoHashOnSelect, hashChunkSize]);
 
   // Global backend existence check for all hashed assets.
   // This decouples "already in library" detection from selected subfolder state.
@@ -270,6 +294,8 @@ export function useLocalFoldersController(): LocalFoldersController {
   }, [assetsRecord]);
 
   useEffect(() => {
+    if (!autoCheckBackend) return;
+
     const candidates = Object.values(assetsRecord).filter(asset => (
       hasValidStoredHash(asset) &&
       asset.last_upload_status !== 'success' &&
@@ -344,93 +370,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       await syncKnownExisting();
       await checkRemaining();
     })();
-  }, [assetsRecord, backendHashCheckTrigger, updateAssetUploadStatus]);
-
-  // Background SHA computation for ALL assets after folder load.
-  // Use a signature that tracks file identity/metadata changes (but not sha fields)
-  // so hash writes don't continuously retrigger this effect.
-  const backgroundHashTrigger = useMemo(() => {
-    return computeStableSignature(
-      Object.values(assetsRecord).map(
-        asset => `${asset.key}|${asset.size ?? -1}|${asset.lastModified ?? -1}|${asset.last_upload_status ?? ''}`
-      )
-    );
-  }, [assetsRecord]);
-  const backgroundHashAssetCount = useMemo(
-    () => Object.keys(assetsRecord).length,
-    [assetsRecord]
-  );
-
-  // Reads/writes via useLocalFolders.getState() to avoid triggering React renders
-  // during the hashing loop (which caused "Maximum update depth exceeded").
-  useEffect(() => {
-    if (!crypto.subtle || backgroundHashAssetCount === 0) return;
-
-    // Snapshot assets that need hashing from the store directly
-    const storeAssets = Object.values(useLocalFolders.getState().assets);
-    const needsHash = storeAssets.filter(asset => {
-      if (hasValidStoredHash(asset)) {
-        return false;
-      }
-      if (asset.last_upload_status === 'success') return false;
-      return true;
-    });
-
-    if (needsHash.length === 0) {
-      setHashingProgress(null);
-      return;
-    }
-
-    const runId = ++bgHashRunIdRef.current;
-    setHashingProgress({ total: needsHash.length, done: 0 });
-
-    const run = async () => {
-      const CHUNK_SIZE = 3;
-      let done = 0;
-
-      for (let i = 0; i < needsHash.length; i += CHUNK_SIZE) {
-        if (bgHashRunIdRef.current !== runId) return;
-
-        // Wait while paused
-        while (bgHashPausedRef.current) {
-          if (bgHashRunIdRef.current !== runId) return;
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
-
-        const chunk = needsHash.slice(i, i + CHUNK_SIZE);
-
-        // Process each asset sequentially within a chunk to limit concurrent store writes
-        for (const asset of chunk) {
-          if (bgHashRunIdRef.current !== runId) return;
-          try {
-            const { getFileForAsset: getFile, updateAssetHash: updateHash } = useLocalFolders.getState();
-            const file = await getFile(asset);
-            if (!file) continue;
-            await ensureLocalAssetSha256(asset, file, updateHash);
-          } catch (e) {
-            console.warn('Background hash failed:', asset.name, e);
-          }
-        }
-
-        done += chunk.length;
-        if (bgHashRunIdRef.current === runId) {
-          setHashingProgress({ total: needsHash.length, done });
-        }
-
-        // Real delay between chunks to let React process pending updates
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-
-      if (bgHashRunIdRef.current === runId) {
-        setHashingProgress(null);
-      }
-    };
-
-    void run();
-
-    return () => { bgHashRunIdRef.current++; };
-     
-  }, [backgroundHashTrigger, backgroundHashAssetCount]);
+  }, [assetsRecord, backendHashCheckTrigger, updateAssetUploadStatus, autoCheckBackend]);
 
   const pauseHashing = useCallback(() => {
     bgHashPausedRef.current = true;

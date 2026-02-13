@@ -95,6 +95,8 @@ export { useAssetDetailStore } from './stores/assetDetailStore';
 
 export { useAssetSettingsStore } from './stores/assetSettingsStore';
 
+export { useLocalFolderSettingsStore } from './stores/localFolderSettingsStore';
+
 export { useDeleteModalStore } from './stores/deleteModalStore';
 
 export {
