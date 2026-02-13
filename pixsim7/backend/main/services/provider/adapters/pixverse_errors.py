@@ -142,6 +142,14 @@ def handle_pixverse_error(
             err_msg=err_msg or raw_error,
         )
 
+        # Session/authentication errors (account-specific; caller may rotate account)
+        if err_code in {10002, 10003, 10005}:
+            friendly = (
+                "Pixverse session is invalid for this account "
+                f"(ErrCode {err_code}: {err_msg or raw_error})."
+            )
+            raise AuthenticationError("pixverse", friendly)
+
         # Content moderation / safety errors
         # 500063 = prompt/text rejected (not retryable - same prompt = same rejection)
         # 500054 = output content rejected (retryable - AI output varies)
@@ -210,7 +218,14 @@ def handle_pixverse_error(
         raise ProviderError(friendly, error_code="provider_generic")
 
     # Authentication errors (fallback when no structured ErrCode was found)
-    if "auth" in error_msg or "token" in error_msg or "unauthorized" in error_msg:
+    if (
+        "auth" in error_msg
+        or "token" in error_msg
+        or "unauthorized" in error_msg
+        or "logged in elsewhere" in error_msg
+        or "user is not login" in error_msg
+        or "session expired" in error_msg
+    ):
         raise AuthenticationError("pixverse", raw_error)
 
     # Quota errors

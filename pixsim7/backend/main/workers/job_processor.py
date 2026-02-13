@@ -20,6 +20,7 @@ from pixsim7.backend.main.shared.errors import (
     AccountCooldownError,
     AccountExhaustedError,
     ProviderError,
+    ProviderAuthenticationError,
     ProviderQuotaExceededError,
     ProviderContentFilteredError,
     ProviderRateLimitError,
@@ -32,6 +33,7 @@ from pixsim7.backend.main.shared.policies import (
 
 # Expected errors that don't need stack traces - these are business logic, not bugs
 EXPECTED_ERRORS = (
+    ProviderAuthenticationError,
     ProviderContentFilteredError,
     ProviderQuotaExceededError,
     ProviderRateLimitError,
@@ -56,6 +58,10 @@ NON_RETRYABLE_ERROR_PATTERNS = (
     "cannot exceed",  # Generic length limit exceeded
 )
 
+# Cooldown applied when an account fails authentication/session checks.
+# This gives a chance for manual re-auth while allowing other accounts to run.
+AUTH_FAILURE_COOLDOWN_SECONDS = 300
+
 
 def _is_non_retryable_error(error: Exception) -> bool:
     """Check if an error should NOT be retried by ARQ.
@@ -79,6 +85,35 @@ def _is_non_retryable_error(error: Exception) -> bool:
 def _extract_error_code(error: Exception) -> str | None:
     """Extract structured error_code from an exception, if available."""
     return getattr(error, 'error_code', None)
+
+
+def _is_auth_rotation_error(error: Exception) -> bool:
+    """
+    Return True when a provider error should rotate to a different account.
+
+    Covers structured auth errors plus Pixverse session-invalid signals that may
+    surface as generic ProviderError messages.
+    """
+    if isinstance(error, ProviderAuthenticationError):
+        return True
+
+    error_code = _extract_error_code(error)
+    if error_code == "provider_auth":
+        return True
+
+    message = str(error).lower()
+    session_markers = (
+        "10005",
+        "10003",
+        "10002",
+        "logged in elsewhere",
+        "logged_elsewhere",
+        "user is not login",
+        "token is expired",
+        "session expired",
+        "authentication failed for provider",
+    )
+    return any(marker in message for marker in session_markers)
 
 
 def _get_max_tries() -> int:
@@ -515,6 +550,77 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         return {
                             "status": "requeued",
                             "reason": "account_concurrent_limit",
+                            "generation_id": generation_id,
+                        }
+                    except Exception as requeue_err:
+                        gen_logger.error(
+                            "generation_requeue_failed",
+                            error=str(requeue_err),
+                            generation_id=generation.id,
+                        )
+                        # Fall through to mark as failed if requeue fails
+
+                # Session/auth failure on one account - cool it down and retry with another account.
+                elif _is_auth_rotation_error(e):
+                    try:
+                        from datetime import timedelta
+
+                        account.cooldown_until = datetime.now(timezone.utc) + timedelta(
+                            seconds=AUTH_FAILURE_COOLDOWN_SECONDS
+                        )
+                        await db.commit()
+                        gen_logger.info(
+                            "account_cooldown_auth_failure",
+                            account_id=account.id,
+                            cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
+                            error_code=_extract_error_code(e),
+                        )
+                    except Exception as cooldown_err:
+                        gen_logger.warning(
+                            "account_cooldown_failed",
+                            account_id=account.id,
+                            error=str(cooldown_err),
+                        )
+
+                    # Release account reservation
+                    try:
+                        await account_service.release_account(account.id)
+                    except Exception as release_err:
+                        gen_logger.warning("account_release_failed", error=str(release_err))
+
+                    # Ensure next run does not lock onto the same failed account.
+                    cleared_preferred = generation.preferred_account_id == account.id
+                    generation.account_id = None
+                    if cleared_preferred:
+                        generation.preferred_account_id = None
+
+                    # Reset generation to PENDING and re-enqueue for different account.
+                    try:
+                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+                        generation.status = GenStatus.PENDING
+                        generation.started_at = None
+                        await db.commit()
+                        await db.refresh(generation)
+
+                        arq_pool = await get_arq_pool()
+                        await arq_pool.enqueue_job(
+                            "process_generation",
+                            generation_id=generation.id,
+                        )
+
+                        gen_logger.info(
+                            "generation_requeued_auth_failure",
+                            generation_id=generation.id,
+                            failed_account_id=account.id,
+                            cleared_preferred_account=cleared_preferred,
+                            error_code=_extract_error_code(e),
+                        )
+
+                        return {
+                            "status": "requeued",
+                            "reason": "account_auth_failure",
                             "generation_id": generation_id,
                         }
                     except Exception as requeue_err:
