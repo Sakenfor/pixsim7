@@ -1,8 +1,8 @@
-import { computeFileSha256 } from '@pixsim7/shared.helpers.core';
-
 import { authService } from '@lib/auth';
 
 import type { LocalAsset } from '../stores/localFoldersStore';
+
+import { computeFileSha256Worker } from './hashWorkerManager';
 
 const FNV_OFFSET_BASIS = 2166136261;
 const FNV_PRIME = 16777619;
@@ -55,7 +55,7 @@ export async function ensureLocalAssetSha256(
     return asset.sha256;
   }
 
-  const sha256 = await computeFileSha256(file);
+  const sha256 = await computeFileSha256Worker(file);
   await updateAssetHash(asset.key, sha256, file);
   return sha256;
 }
