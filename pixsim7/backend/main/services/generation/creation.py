@@ -301,6 +301,7 @@ class GenerationCreationService:
         author: Optional[str] = None,
         analyzer_id: Optional[str] = None,
         precomputed_analysis: Optional[Dict[str, Any]] = None,
+        user_id: Optional[int] = None,
     ) -> Tuple[PromptVersion, bool]:
         """
         Find existing PromptVersion by hash or create new one with analysis.
@@ -314,6 +315,7 @@ class GenerationCreationService:
                 when providing precomputed_analysis.
             precomputed_analysis: Pre-computed analysis from block composition.
                 If provided, skips analyzer call. Must match analyzer output shape.
+            user_id: Optional user ID for LLM credential resolution
 
         Returns:
             Tuple of (PromptVersion, created) where created is True if new
@@ -326,6 +328,7 @@ class GenerationCreationService:
             analyzer_id=analyzer_id,
             author=author,
             precomputed_analysis=precomputed_analysis,
+            user_id=user_id,
         )
 
     async def create_generation(
@@ -604,6 +607,7 @@ class GenerationCreationService:
                     author=f"user:{user.id}",
                     analyzer_id=None if precomputed_analysis else analyzer_id,
                     precomputed_analysis=precomputed_analysis,
+                    user_id=user.id,
                 )
                 prompt_version_id = prompt_version.id
                 final_prompt = prompt_version.prompt_text

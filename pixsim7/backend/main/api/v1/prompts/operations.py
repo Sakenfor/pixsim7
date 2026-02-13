@@ -533,6 +533,7 @@ async def analyze_prompt(
         model_id=model_id,
         instance_config=instance_config,
         pack_ids=request.pack_ids,
+        user_id=user.id,
     )
 
     return AnalyzePromptResponse(
