@@ -9,6 +9,7 @@ import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/compon
 
 import { useAssetViewer } from '../hooks/useAssetViewer';
 import { useLocalAssetPreview } from '../hooks/useLocalAssetPreview';
+import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
 import { TreeFolderView } from './TreeFolderView';
@@ -21,6 +22,9 @@ interface LocalFoldersPanelProps {
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
+  const favoriteFoldersArr = useLocalFolderSettingsStore((s) => s.favoriteFolders);
+  const toggleFavoriteFolder = useLocalFolderSettingsStore((s) => s.toggleFavoriteFolder);
+  const favoriteFoldersSet = useMemo(() => new Set(favoriteFoldersArr), [favoriteFoldersArr]);
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -386,6 +390,8 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
                     onFolderSelect={controller.setSelectedFolderPath}
                     onRemoveFolder={controller.removeFolder}
                     onRefreshFolder={controller.refreshFolder}
+                    favoriteFolders={favoriteFoldersSet}
+                    onToggleFavorite={toggleFavoriteFolder}
                   />
                 )}
               </div>

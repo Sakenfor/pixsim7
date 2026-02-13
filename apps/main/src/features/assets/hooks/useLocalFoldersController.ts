@@ -69,7 +69,6 @@ export function useLocalFoldersController(): LocalFoldersController {
     error,
     getFileForAsset,
     updateAssetHash,
-    getUploadRecordByHash,
     setUploadRecordByHash,
     updateAssetUploadStatus,
     missingFolderNames,
@@ -81,6 +80,8 @@ export function useLocalFoldersController(): LocalFoldersController {
   const autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
   const autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
   const hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
+  const providerId = useLocalFolderSettingsStore((s) => s.providerId);
+  const setProviderId = useLocalFolderSettingsStore((s) => s.setProviderId);
 
   // View state (persisted)
   const [viewMode, setViewMode] = usePersistentState<ViewMode>(
@@ -111,18 +112,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const bgHashPausedRef = useRef(false);
   const [hashingPaused, setHashingPaused] = useState(false);
 
-  // Upload state (persisted provider)
-  const [providerId, setProviderId] = usePersistentState<string | undefined>(
-    'ps7_localFolders_providerId',
-    undefined,
-    {
-      serializer: (value) => JSON.stringify(value ?? null),
-      deserializer: (str) => {
-        const parsed = JSON.parse(str);
-        return (parsed ?? undefined) as string | undefined;
-      },
-    },
-  );
+  // Upload state
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
 
@@ -389,13 +379,20 @@ export function useLocalFoldersController(): LocalFoldersController {
     setHashingProgress(null);
   }, []);
 
-  // Load preview for an asset
+  // Ref-based lookup for assets so loadPreview doesn't depend on assetsRecord state
+  const assetsRecordRef = useRef(assetsRecord);
+  assetsRecordRef.current = assetsRecord;
+
+  // Load preview for an asset.
+  // Uses refs for guards instead of `previews` state so the callback identity stays stable.
+  // This prevents O(n²) IntersectionObserver churn (every preview load was changing the
+  // callback identity, causing every card's observer to disconnect and reconnect).
   const loadPreview = useCallback(async (keyOrAsset: string | LocalAsset) => {
-    const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
+    const asset = typeof keyOrAsset === 'string' ? assetsRecordRef.current[keyOrAsset] : keyOrAsset;
     if (!asset) return;
 
-    // Check if already loaded or currently loading
-    if (previews[asset.key] || loadingPreviewsRef.current.has(asset.key)) return;
+    // Check if already loaded (via ref) or currently loading
+    if (blobUrlsRef.current.has(asset.key) || loadingPreviewsRef.current.has(asset.key)) return;
 
     // Mark as loading
     loadingPreviewsRef.current.add(asset.key);
@@ -420,21 +417,7 @@ export function useLocalFoldersController(): LocalFoldersController {
           return;
         }
 
-        if (crypto.subtle) {
-          try {
-            const sha256 = await ensureLocalAssetSha256(asset, file, updateAssetHash);
-            if (sha256 && asset.last_upload_status !== 'success') {
-              const record = await getUploadRecordByHash(sha256);
-              if (record?.status === 'success') {
-                await updateAssetUploadStatus(asset.key, 'success', record.note);
-              }
-            }
-          } catch (hashError) {
-            console.warn('Failed to compute hash for local asset', asset.name, hashError);
-          }
-        }
-
-        // Generate a smaller thumbnail for images and videos (much faster to render)
+        // Generate a smaller thumbnail for images and videos
         const thumbnail = await generateThumbnail(file);
         if (thumbnail) {
           url = URL.createObjectURL(thumbnail);
@@ -458,7 +441,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       setPreviews(p => ({ ...p, [asset.key]: url }));
     }
     loadingPreviewsRef.current.delete(asset.key);
-  }, [assetsRecord, previews, getFileForAsset]);
+  }, [getFileForAsset]);
 
   // Revoke blob URLs for assets that are no longer visible (called by UI)
   const revokePreview = useCallback((assetKey: string) => {

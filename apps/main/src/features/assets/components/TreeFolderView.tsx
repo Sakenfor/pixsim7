@@ -135,6 +135,8 @@ type TreeNodeViewProps = {
   onFolderSelect?: (path: string) => void;
   onRemoveFolder?: (folderId: string) => void;
   onRefreshFolder?: (folderId: string) => void;
+  favoriteFolders?: Set<string>;
+  onToggleFavorite?: (path: string) => void;
 };
 
 function TreeNodeView({
@@ -151,6 +153,8 @@ function TreeNodeView({
   onFolderSelect,
   onRemoveFolder,
   onRefreshFolder,
+  favoriteFolders,
+  onToggleFavorite,
 }: TreeNodeViewProps) {
   const [expanded, setExpanded] = useState(false); // Start collapsed
   const resolvedPreview = useLocalAssetPreview(node.asset, previews);
@@ -159,6 +163,7 @@ function TreeNodeView({
     const hasChildren = node.children && node.children.length > 0;
     const isSelected = compactMode && selectedFolderPath === node.path;
     const isRootFolder = level === 0;
+    const isFavorite = favoriteFolders?.has(node.path) ?? false;
 
     const handleClick = () => {
       if (compactMode && onFolderSelect) {
@@ -188,6 +193,17 @@ function TreeNodeView({
           <span className="text-xs text-neutral-500 ml-auto flex-shrink-0">
             {node.count}
           </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(node.path); }}
+            className={`p-0.5 rounded transition-colors flex-shrink-0 ${
+              isFavorite
+                ? 'text-amber-400 hover:text-amber-500'
+                : 'text-neutral-300 dark:text-neutral-600 opacity-0 group-hover/folder:opacity-100 hover:text-amber-400'
+            }`}
+            title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          >
+            <Icons.star size={12} className={isFavorite ? 'fill-current' : ''} />
+          </button>
           {isRootFolder && (
             <span className="flex items-center gap-0.5 opacity-0 group-hover/folder:opacity-100 transition-opacity flex-shrink-0">
               <button
@@ -226,6 +242,8 @@ function TreeNodeView({
                 onFolderSelect={onFolderSelect}
                 onRemoveFolder={onRemoveFolder}
                 onRefreshFolder={onRefreshFolder}
+                favoriteFolders={favoriteFolders}
+                onToggleFavorite={onToggleFavorite}
               />
             ))}
           </div>
@@ -329,6 +347,8 @@ type TreeFolderViewProps = {
   folderOrder?: string[];
   onRemoveFolder?: (folderId: string) => void;
   onRefreshFolder?: (folderId: string) => void;
+  favoriteFolders?: Set<string>;
+  onToggleFavorite?: (path: string) => void;
 };
 
 export function TreeFolderView({
@@ -346,6 +366,8 @@ export function TreeFolderView({
   folderOrder,
   onRemoveFolder,
   onRefreshFolder,
+  favoriteFolders,
+  onToggleFavorite,
 }: TreeFolderViewProps) {
   const tree = useMemo(
     () => buildTree(assets, folderNames, folderOrder),
@@ -379,6 +401,8 @@ export function TreeFolderView({
             onFolderSelect={onFolderSelect}
             onRemoveFolder={onRemoveFolder}
             onRefreshFolder={onRefreshFolder}
+            favoriteFolders={favoriteFolders}
+            onToggleFavorite={onToggleFavorite}
           />
         ))}
       </div>
