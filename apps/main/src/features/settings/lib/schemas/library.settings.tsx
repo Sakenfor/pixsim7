@@ -15,6 +15,7 @@ import { useEffect } from 'react';
 import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
 import { useAssetSettingsStore } from '@features/assets';
 import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
+import { useLocalFolderSettingsStore } from '@features/assets';
 
 import { pixsimClient } from '@/lib/api';
 
@@ -268,17 +269,47 @@ const storageTab: SettingTab = {
 };
 
 // =============================================================================
-// Tab: Maintenance
+// Tab: Local Folders
 // =============================================================================
-const maintenanceTab: SettingTab = {
-  id: 'maintenance',
-  label: 'Maintenance',
-  icon: '🔧',
+const localFoldersTab: SettingTab = {
+  id: 'local-folders',
+  label: 'Local Folders',
+  icon: '📁',
   groups: [
     {
-      id: 'local-folders',
-      title: 'Local Folders',
-      description: 'Assets from your local file system.',
+      id: 'hashing',
+      title: 'Hashing',
+      description: 'Control when and how file hashes (SHA-256) are computed for local assets.',
+      fields: [
+        {
+          id: 'lf_autoHashOnSelect',
+          type: 'toggle',
+          label: 'Auto-Hash on Folder Select',
+          description: 'Automatically start hashing files when you navigate into a folder. Disable to only hash manually or on upload.',
+          defaultValue: true,
+        },
+        {
+          id: 'lf_autoCheckBackend',
+          type: 'toggle',
+          label: 'Auto-Check Library Duplicates',
+          description: 'Automatically check hashed files against your library to detect duplicates ("Already in library").',
+          defaultValue: true,
+        },
+        {
+          id: 'lf_hashChunkSize',
+          type: 'number',
+          label: 'Hash Concurrency',
+          description: 'Number of files to hash simultaneously. Lower values reduce system load.',
+          defaultValue: 3,
+          min: 1,
+          max: 10,
+        },
+      ],
+    },
+    {
+      id: 'local-folders-status',
+      title: 'Status',
+      description: 'Overview of local folder state.',
       fields: [
         {
           id: 'local-folders-widget',
@@ -288,6 +319,17 @@ const maintenanceTab: SettingTab = {
         },
       ],
     },
+  ],
+};
+
+// =============================================================================
+// Tab: Maintenance
+// =============================================================================
+const maintenanceTab: SettingTab = {
+  id: 'maintenance',
+  label: 'Maintenance',
+  icon: '🔧',
+  groups: [
     {
       id: 'sha-hashes',
       title: 'SHA256 Hashes',
@@ -352,6 +394,14 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   const preventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const setPreventDiskCache = useMediaSettingsStore((s) => s.setPreventDiskCache);
 
+  // Local folder settings
+  const lf_autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
+  const lf_autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
+  const lf_hashChunkSize = useLocalFolderSettingsStore((s) => s.hashChunkSize);
+  const setLfAutoHashOnSelect = useLocalFolderSettingsStore((s) => s.setAutoHashOnSelect);
+  const setLfAutoCheckBackend = useLocalFolderSettingsStore((s) => s.setAutoCheckBackend);
+  const setLfHashChunkSize = useLocalFolderSettingsStore((s) => s.setHashChunkSize);
+
   // Media settings (server)
   const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
   const setServerSettings = useMediaSettingsStore((s) => s.setServerSettings);
@@ -388,6 +438,11 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
 
+      // Local folder settings
+      if (fieldId === 'lf_autoHashOnSelect') return lf_autoHashOnSelect;
+      if (fieldId === 'lf_autoCheckBackend') return lf_autoCheckBackend;
+      if (fieldId === 'lf_hashChunkSize') return lf_hashChunkSize;
+
       // Server settings
       if (serverSettings && fieldId in serverSettings) {
         return serverSettings[fieldId as keyof ServerMediaSettings];
@@ -423,6 +478,20 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
         return;
       }
 
+      // Local folder settings
+      if (fieldId === 'lf_autoHashOnSelect') {
+        setLfAutoHashOnSelect(value);
+        return;
+      }
+      if (fieldId === 'lf_autoCheckBackend') {
+        setLfAutoCheckBackend(value);
+        return;
+      }
+      if (fieldId === 'lf_hashChunkSize') {
+        setLfHashChunkSize(value);
+        return;
+      }
+
       // Server settings - update optimistically and sync to backend
       if (serverSettings && fieldId in serverSettings) {
         // Optimistic update
@@ -449,6 +518,9 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       qualityMode,
       preferOriginal,
       preventDiskCache,
+      lf_autoHashOnSelect,
+      lf_autoCheckBackend,
+      lf_hashChunkSize,
       ...(serverSettings ?? {}),
     }),
   };
@@ -484,6 +556,12 @@ export function registerLibrarySettings(): () => void {
 
   const unregister4 = settingsSchemaRegistry.register({
     categoryId: 'library',
+    tab: localFoldersTab,
+    useStore: useLibrarySettingsStoreAdapter,
+  });
+
+  const unregister5 = settingsSchemaRegistry.register({
+    categoryId: 'library',
     tab: maintenanceTab,
     useStore: useLibrarySettingsStoreAdapter,
   });
@@ -493,5 +571,6 @@ export function registerLibrarySettings(): () => void {
     unregister2();
     unregister3();
     unregister4();
+    unregister5();
   };
 }

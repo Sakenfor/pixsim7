@@ -19,7 +19,7 @@ export default definePanel({
       id: 'ui-settings',
       title: 'UI Settings',
       description: 'Dock layout and interaction preferences.',
-      component: createPanelSchemaSettingsSection('panels', 'control-center'),
+      component: createPanelSchemaSettingsSection('workspace', 'control-center'),
     },
   ],
   orchestration: {

@@ -86,7 +86,6 @@ import './LibrarySettings';
 import './NodesSettings';
 import './PromptsSettings';
 import './TaggingSettings';
-import './WidgetsSettings';
 
 // Custom component modules (complex UI that schemas can't express)
 import './GeneralSettings';

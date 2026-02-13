@@ -1,9 +1,11 @@
 /**
- * Widgets Settings Module (Bridge Pattern)
+ * Widgets Settings Component
  *
  * Settings for overlay widget behavior (video scrub, upload, tooltips, etc.).
  * Auto-generates tabs from widgets that have settingsSchema defined.
  * Uses DynamicSettingsPanel with schema from widgets.settings.tsx.
+ *
+ * Registered as a sub-section of the Workspace module (see UnifiedPanelsSettings.tsx).
  *
  * NOTE: Schema registration is deferred to avoid circular dependency with widget registry.
  */
@@ -12,7 +14,6 @@ import { useMemo, useEffect, useRef } from 'react';
 
 import { getWidgetsWithSettings } from '@lib/widgets';
 
-import { settingsRegistry } from '../../lib/core/registry';
 import { registerWidgetSettings } from '../../lib/schemas/widgets.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
@@ -48,17 +49,7 @@ export function WidgetsSettings() {
   const firstWidgetId = widgetsWithSettings[0].id;
   return (
     <div className="flex-1 overflow-auto p-4">
-      <DynamicSettingsPanel categoryId="widgets" tabId={firstWidgetId} />
+      <DynamicSettingsPanel categoryId="workspace" tabId={firstWidgetId} />
     </div>
   );
 }
-
-// Register this module (sub-sections built dynamically inside component to avoid circular deps)
-settingsRegistry.register({
-  id: 'widgets',
-  label: 'Widgets',
-  icon: '🧩',
-  component: WidgetsSettings,
-  order: 25, // After UI (20), before Library (35)
-  // Note: subSections not used here - component handles dynamic widget display
-});

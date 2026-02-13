@@ -1,14 +1,16 @@
 /**
- * Unified Panels Settings Module
+ * Workspace Settings Module
  *
- * Master-detail layout:
- * - Left: List of all panels
- * - Right: All settings for selected panel (UI, interactions, panel-specific, enable/disable)
+ * Combines Panels and Widgets settings under one "Workspace" category.
+ *
+ * Panels: Master-detail layout for panel-specific settings.
+ * Widgets: Auto-generated settings for widgets with settingsSchema.
  */
 
-import { useState } from 'react';
 import { settingsRegistry } from '../../lib/core/registry';
 import { PanelCentricSettings } from '../PanelCentricSettings';
+
+import { WidgetsSettings } from './WidgetsSettings';
 
 export function UnifiedPanelsSettings() {
   return (
@@ -18,11 +20,19 @@ export function UnifiedPanelsSettings() {
   );
 }
 
-// Register unified panels module
+// Register workspace module with Panels as default and Widgets as sub-section
 settingsRegistry.register({
-  id: 'panels',
-  label: 'Panels',
-  icon: '🎨',
+  id: 'workspace',
+  label: 'Workspace',
+  icon: '🖥️',
   component: UnifiedPanelsSettings,
   order: 16,
+  subSections: [
+    {
+      id: 'widgets',
+      label: 'Widgets',
+      icon: '🧩',
+      component: WidgetsSettings,
+    },
+  ],
 });

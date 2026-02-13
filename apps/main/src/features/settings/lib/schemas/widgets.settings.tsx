@@ -28,12 +28,7 @@ export function registerWidgetSettings(): () => void {
   const [firstTab, ...remainingTabs] = tabs;
 
   const unregisterFirst = settingsSchemaRegistry.register({
-    categoryId: 'widgets',
-    category: {
-      label: 'Widgets',
-      icon: '🧩',
-      order: 25, // After UI, before Library
-    },
+    categoryId: 'workspace',
     tab: firstTab,
     useStore,
   });
@@ -41,7 +36,7 @@ export function registerWidgetSettings(): () => void {
 
   for (const tab of remainingTabs) {
     const unregister = settingsSchemaRegistry.register({
-      categoryId: 'widgets',
+      categoryId: 'workspace',
       tab,
       useStore,
     });

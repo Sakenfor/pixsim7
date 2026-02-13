@@ -5,9 +5,10 @@
  * Moved from ui.settings.tsx to consolidate all panel settings in one place.
  */
 
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 import { useAssetViewerStore } from '@features/assets';
 import { useControlCenterStore, type LayoutBehavior, type DockPosition } from '@features/controlCenter/stores/controlCenterStore';
+
+import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 // Asset Viewer (Media Viewer) settings tab
 const assetViewerTab: SettingTab = {
@@ -195,14 +196,14 @@ function usePanelSettingsStore(): SettingStoreAdapter {
 
 /**
  * Register panel-specific settings with the schema registry
- * (under 'panels' category instead of 'ui')
+ * (under 'workspace' category)
  */
 export function registerPanelSettings(): () => void {
   const unregisterAssetViewer = settingsSchemaRegistry.register({
-    categoryId: 'panels',
+    categoryId: 'workspace',
     category: {
-      label: 'Panels',
-      icon: '🎨',
+      label: 'Workspace',
+      icon: '🖥️',
       order: 16,
     },
     tab: assetViewerTab,
@@ -210,7 +211,7 @@ export function registerPanelSettings(): () => void {
   });
 
   const unregisterControlCenter = settingsSchemaRegistry.register({
-    categoryId: 'panels',
+    categoryId: 'workspace',
     tab: controlCenterTab,
     useStore: usePanelSettingsStore,
   });

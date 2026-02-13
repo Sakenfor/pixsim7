@@ -20,7 +20,7 @@ export default definePanel({
       id: 'ui-settings',
       title: 'UI Settings',
       description: 'Viewer defaults and playback behavior.',
-      component: createPanelSchemaSettingsSection('panels', 'asset-viewer'),
+      component: createPanelSchemaSettingsSection('workspace', 'asset-viewer'),
     },
   ],
   orchestration: {
