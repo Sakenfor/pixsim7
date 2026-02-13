@@ -10,7 +10,7 @@
 
 import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources.core';
 
-import type { LocalAsset } from '@features/assets/stores/localFoldersStore';
+import type { LocalAsset } from '@features/assets';
 
 export type LocalSourceId = 'local-fs';
 
@@ -61,6 +61,8 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   pauseHashing: () => void;
   resumeHashing: () => void;
   cancelHashing: () => void;
+  /** Manually trigger hashing for a specific folder path (works even when auto-hash is off) */
+  hashFolder: (path: string) => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
   /** Combined list of real folders + missing folder placeholders */

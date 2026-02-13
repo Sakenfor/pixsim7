@@ -2,11 +2,10 @@
  * Persists directory handles in IndexedDB so each user can add their own folders.
  * Also syncs folder metadata to backend for recovery if IndexedDB is cleared.
  */
+import { useAuthStore } from '@pixsim7/shared.auth.core';
 import { create } from 'zustand';
 
 import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreferences';
-
-import { useAuthStore } from '@/stores/authStore';
 
 import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
 
@@ -21,6 +20,17 @@ const BACKEND_PREF_KEY = 'localFolders';
 
 type DirHandle = FileSystemDirectoryHandle;
 type FileHandle = FileSystemFileHandle;
+type DirPermissionDescriptor = { mode?: 'read' | 'readwrite' };
+type PermissionAwareDirHandle = DirHandle & {
+  queryPermission?: (descriptor?: DirPermissionDescriptor) => Promise<PermissionState> | PermissionState;
+  requestPermission?: (descriptor?: DirPermissionDescriptor) => Promise<PermissionState> | PermissionState;
+};
+
+declare global {
+  interface Window {
+    __debugLocalFolders?: () => Promise<void>;
+  }
+}
 
 /**
  * Local asset representing a file in a user's local folder.
@@ -68,6 +78,7 @@ type LocalFoldersState = {
   loadPersisted: () => Promise<void>;
   getFileForAsset: (asset: LocalAsset) => Promise<File | undefined>;
   updateAssetHash: (assetKey: string, sha256: string, file: File) => Promise<void>;
+  updateAssetHashesBatch: (updates: Array<{ assetKey: string; sha256: string; file: File }>) => Promise<void>;
   getUploadRecordByHash: (sha256: string) => Promise<UploadRecord | undefined>;
   setUploadRecordByHash: (sha256: string, record: UploadRecord) => Promise<void>;
   // Task 104: Update upload history for an asset
@@ -287,7 +298,7 @@ async function idbSet<T>(key: string, value: T): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('kv', 'readwrite');
     const store = tx.objectStore('kv');
-    store.put(value as any, key);
+    store.put(value, key);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
@@ -568,6 +579,33 @@ async function cacheAssets(id: string, assets: LocalAsset[]): Promise<void> {
   }
 }
 
+// Hash metadata updates can happen in large bursts; persist them in short batches
+// to avoid rewriting full folder metadata on every single hashed file.
+const HASH_CACHE_FLUSH_DELAY_MS = 1200;
+const pendingHashCacheFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function scheduleHashCacheFlush(folderId: string): void {
+  const existing = pendingHashCacheFlushTimers.get(folderId);
+  if (existing) {
+    clearTimeout(existing);
+  }
+
+  const timer = setTimeout(() => {
+    pendingHashCacheFlushTimers.delete(folderId);
+    void (async () => {
+      try {
+        const folderAssets = Object.values(useLocalFolders.getState().assets)
+          .filter((asset) => asset.folderId === folderId);
+        await cacheAssets(folderId, folderAssets);
+      } catch (e) {
+        console.warn('Failed to flush hash cache for folder', folderId, e);
+      }
+    })();
+  }, HASH_CACHE_FLUSH_DELAY_MS);
+
+  pendingHashCacheFlushTimers.set(folderId, timer);
+}
+
 /**
  * Debug helper - call from browser console: window.__debugLocalFolders()
  * Shows all IndexedDB entries for local folders across all namespaces.
@@ -601,7 +639,7 @@ async function debugLocalFolders(): Promise<void> {
 
 // Expose to window for debugging
 if (typeof window !== 'undefined') {
-  (window as any).__debugLocalFolders = debugLocalFolders;
+  window.__debugLocalFolders = debugLocalFolders;
 }
 
 export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
@@ -651,13 +689,14 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         const needsPermission: FolderEntry[] = [];
         for (const f of stored) {
           try {
-            const perm = await (f.handle as any).queryPermission?.({ mode: 'read' });
+            const permissionHandle = f.handle as PermissionAwareDirHandle;
+            const perm = await permissionHandle.queryPermission?.({ mode: 'read' });
             if (perm === 'granted') {
               ok.push(f);
             } else {
               // Try to request permission
               try {
-                const requested = await (f.handle as any).requestPermission?.({ mode: 'read' });
+                const requested = await permissionHandle.requestPermission?.({ mode: 'read' });
                 if (requested === 'granted') {
                   ok.push(f);
                 } else {
@@ -737,7 +776,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     set({ adding: true, error: undefined });
     try {
       const persistenceGranted = await requestStoragePersistence();
-      const dir: DirHandle = await (window as any).showDirectoryPicker();
+      const pickerWindow = window as Window & { showDirectoryPicker: () => Promise<DirHandle> };
+      const dir: DirHandle = await pickerWindow.showDirectoryPicker();
       const namespace = getUserNamespace();
       const id = `${dir.name}-${Date.now()}-${namespace}`;
       const entry: FolderEntry = { id, name: dir.name, handle: dir };
@@ -765,8 +805,11 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
 
       // Sync folder list to backend for recovery
       void syncFoldersToBackend(folders);
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') set({ error: e?.message || 'Failed to add folder' });
+    } catch (e: unknown) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        const errorMessage = e instanceof Error ? e.message : 'Failed to add folder';
+        set({ error: errorMessage });
+      }
     } finally {
       set({ adding: false, scanning: null });
     }
@@ -776,6 +819,11 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     const remain = get().folders.filter(f => f.id !== id);
     set({ folders: remain, assets: Object.fromEntries(Object.entries(get().assets).filter(([k]) => !k.startsWith(id + ':'))) });
     await idbSet(getFoldersKey(), remain);
+    const pendingHashFlush = pendingHashCacheFlushTimers.get(id);
+    if (pendingHashFlush) {
+      clearTimeout(pendingHashFlush);
+      pendingHashCacheFlushTimers.delete(id);
+    }
     // Remove cached assets for this folder
     try {
       const db = await openDB();
@@ -861,23 +909,35 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   },
 
   updateAssetHash: async (assetKey: string, sha256: string, file: File) => {
-    const asset = get().assets[assetKey];
-    if (!asset) return;
+    await get().updateAssetHashesBatch([{ assetKey, sha256, file }]);
+  },
 
-    const updated = {
-      ...asset,
-      sha256,
-      sha256_computed_at: Date.now(),
-      sha256_file_size: file.size,
-      sha256_last_modified: file.lastModified,
-    };
+  updateAssetHashesBatch: async (updates) => {
+    if (!updates.length) return;
 
-    set(s => ({
-      assets: { ...s.assets, [assetKey]: updated },
-    }));
+    const currentAssets = get().assets;
+    const nextAssets = { ...currentAssets };
+    const touchedFolders = new Set<string>();
 
-    const folderAssets = Object.values(get().assets).filter(a => a.folderId === updated.folderId);
-    await cacheAssets(updated.folderId, folderAssets);
+    for (const update of updates) {
+      const asset = nextAssets[update.assetKey];
+      if (!asset) continue;
+
+      nextAssets[update.assetKey] = {
+        ...asset,
+        sha256: update.sha256,
+        sha256_computed_at: Date.now(),
+        sha256_file_size: update.file.size,
+        sha256_last_modified: update.file.lastModified,
+      };
+      touchedFolders.add(asset.folderId);
+    }
+
+    set({ assets: nextAssets });
+
+    for (const folderId of touchedFolders) {
+      scheduleHashCacheFlush(folderId);
+    }
   },
 
   getUploadRecordByHash: async (sha256: string) => {

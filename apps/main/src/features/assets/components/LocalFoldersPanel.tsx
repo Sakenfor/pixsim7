@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { Icons } from '@lib/icons';
 
@@ -19,12 +19,70 @@ interface LocalFoldersPanelProps {
   cardSize?: number;
 }
 
+const SIDEBAR_SCROLL_KEY = 'ps7_localFolders_sidebar_scroll_top';
+const FOLDER_TREE_SCROLL_KEY = 'ps7_localFolders_tree_scroll_top';
+const CONTENT_SCROLL_BY_SCOPE_KEY = 'ps7_localFolders_content_scroll_by_scope';
+const ALL_ASSETS_SCROLL_SCOPE = '__all__';
+type ContentScrollByScope = Record<string, number>;
+
+function readStoredScrollTop(key: string): number {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return 0;
+    const value = Number(raw);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeStoredScrollTop(key: string, scrollTop: number): void {
+  try {
+    localStorage.setItem(key, String(Math.max(0, Math.round(scrollTop))));
+  } catch {
+    // Best effort persistence only
+  }
+}
+
+function readStoredContentScrollByScope(): ContentScrollByScope {
+  try {
+    const raw = localStorage.getItem(CONTENT_SCROLL_BY_SCOPE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    const normalized: ContentScrollByScope = {};
+    for (const [scope, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        normalized[scope] = value;
+      }
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredContentScrollByScope(value: ContentScrollByScope): void {
+  try {
+    localStorage.setItem(CONTENT_SCROLL_BY_SCOPE_KEY, JSON.stringify(value));
+  } catch {
+    // Best effort persistence only
+  }
+}
+
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
   const favoriteFoldersArr = useLocalFolderSettingsStore((s) => s.favoriteFolders);
   const toggleFavoriteFolder = useLocalFolderSettingsStore((s) => s.toggleFavoriteFolder);
   const favoriteFoldersSet = useMemo(() => new Set(favoriteFoldersArr), [favoriteFoldersArr]);
+  const sidebarScrollRef = useRef<HTMLDivElement | null>(null);
+  const folderTreeScrollRef = useRef<HTMLDivElement | null>(null);
+  const contentScrollRef = useRef<HTMLDivElement | null>(null);
+  const contentScrollByScopeRef = useRef<ContentScrollByScope | null>(null);
 
   const folderNames = useMemo(() => {
     return controller.folders.reduce((acc, f) => {
@@ -50,6 +108,134 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     }
     return controller.assets;
   }, [controller.selectedFolderPath, controller.filteredAssets, controller.assets]);
+  const controllerPreviews = controller.previews;
+  const controllerGetFileForAsset = controller.getFileForAsset;
+  const controllerUploadOne = controller.uploadOne;
+  const contentScrollScope = controller.selectedFolderPath || ALL_ASSETS_SCROLL_SCOPE;
+
+  const getContentScrollByScope = useCallback((): ContentScrollByScope => {
+    if (!contentScrollByScopeRef.current) {
+      contentScrollByScopeRef.current = readStoredContentScrollByScope();
+    }
+    return contentScrollByScopeRef.current;
+  }, []);
+
+  const persistContentScroll = useCallback((scope: string, scrollTop: number) => {
+    const map = getContentScrollByScope();
+    const nextScrollTop = Math.max(0, Math.round(scrollTop));
+    if ((map[scope] || 0) === nextScrollTop) return;
+    map[scope] = nextScrollTop;
+    writeStoredContentScrollByScope(map);
+  }, [getContentScrollByScope]);
+
+  useEffect(() => {
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+
+    const restore = () => {
+      const saved = readStoredScrollTop(SIDEBAR_SCROLL_KEY);
+      if (saved <= 0) return;
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(saved, maxScroll);
+    };
+
+    const rafId = requestAnimationFrame(restore);
+    let persistTimer: ReturnType<typeof setTimeout> | null = null;
+    const persist = () => {
+      writeStoredScrollTop(SIDEBAR_SCROLL_KEY, el.scrollTop);
+    };
+    const onScroll = () => {
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persistTimer = setTimeout(persist, 120);
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persist();
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [controller.folders.length, controller.missingFolderNames.length]);
+
+  useEffect(() => {
+    const el = folderTreeScrollRef.current;
+    if (!el) return;
+
+    const restore = () => {
+      const saved = readStoredScrollTop(FOLDER_TREE_SCROLL_KEY);
+      if (saved <= 0) return;
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(saved, maxScroll);
+    };
+
+    const rafId = requestAnimationFrame(restore);
+    let persistTimer: ReturnType<typeof setTimeout> | null = null;
+    const persist = () => {
+      writeStoredScrollTop(FOLDER_TREE_SCROLL_KEY, el.scrollTop);
+    };
+    const onScroll = () => {
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persistTimer = setTimeout(persist, 120);
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(rafId);
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persist();
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [controller.folders.length, controller.missingFolderNames.length]);
+
+  useEffect(() => {
+    const el = contentScrollRef.current;
+    if (!el) return;
+
+    const savedByScope = getContentScrollByScope();
+    const saved = savedByScope[contentScrollScope] || 0;
+
+    const restore = () => {
+      if (saved <= 0) return;
+      const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
+      el.scrollTop = Math.min(saved, maxScroll);
+    };
+
+    const restoreTimers: Array<ReturnType<typeof setTimeout>> = [
+      setTimeout(restore, 0),
+      setTimeout(restore, 120),
+      setTimeout(restore, 300),
+    ];
+
+    let persistTimer: ReturnType<typeof setTimeout> | null = null;
+    const persist = () => {
+      persistContentScroll(contentScrollScope, el.scrollTop);
+    };
+    const onScroll = () => {
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persistTimer = setTimeout(persist, 120);
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      restoreTimers.forEach(clearTimeout);
+      if (persistTimer) {
+        clearTimeout(persistTimer);
+      }
+      persist();
+      el.removeEventListener('scroll', onScroll);
+    };
+  }, [contentScrollScope, displayAssets.length, getContentScrollByScope, persistContentScroll]);
 
   // Callbacks for AssetGallery - memoized to prevent re-renders
   const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
@@ -153,24 +339,24 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
   );
   const handleOpen = useCallback(
     async (asset: LocalAsset, resolvedPreviewUrl?: string) => {
-      const previewUrl = resolvedPreviewUrl || controller.previews[asset.key];
+      const previewUrl = resolvedPreviewUrl || controllerPreviews[asset.key];
       // Get full-res file blob URL for the media viewer
       let fullUrl: string | undefined;
       try {
-        const file = await controller.getFileForAsset(asset);
+        const file = await controllerGetFileForAsset(asset);
         if (file) {
           fullUrl = URL.createObjectURL(file);
         }
       } catch {
         // Fall back to preview URL if file access fails
       }
-      openLocalAsset(asset, previewUrl, displayAssets, controller.previews, fullUrl);
+      openLocalAsset(asset, previewUrl, displayAssets, controllerPreviews, fullUrl);
     },
-    [openLocalAsset, displayAssets, controller.previews, controller.getFileForAsset]
+    [openLocalAsset, displayAssets, controllerPreviews, controllerGetFileForAsset]
   );
   const handleUpload = useCallback(
-    (asset: LocalAsset) => controller.uploadOne(asset),
-    [controller.uploadOne]
+    (asset: LocalAsset) => controllerUploadOne(asset),
+    [controllerUploadOne]
   );
 
   // Empty state for no folders
@@ -239,7 +425,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
 
       <div className="flex-1 flex gap-4 min-h-0 px-6">
         {/* Sidebar */}
-        <div className="w-72 flex-shrink-0 space-y-4 overflow-y-auto">
+        <div ref={sidebarScrollRef} className="w-72 flex-shrink-0 space-y-4 overflow-y-auto">
           {/* Add Folder + support/error */}
           <div className="space-y-2">
             <button
@@ -390,8 +576,10 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
                     onFolderSelect={controller.setSelectedFolderPath}
                     onRemoveFolder={controller.removeFolder}
                     onRefreshFolder={controller.refreshFolder}
+                    onHashFolder={controller.hashFolder}
                     favoriteFolders={favoriteFoldersSet}
                     onToggleFavorite={toggleFavoriteFolder}
+                    scrollContainerRef={folderTreeScrollRef}
                   />
                 )}
               </div>
@@ -400,7 +588,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
         </div>
 
         {/* Main content - scrollable */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden pb-6">
+        <div ref={contentScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-6">
           {renderMainContent()}
         </div>
       </div>

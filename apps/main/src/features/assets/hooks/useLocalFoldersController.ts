@@ -121,6 +121,9 @@ export function useLocalFoldersController(): LocalFoldersController {
     'ps7_localFolders_selectedFolderPath',
     null,
   );
+  const [manualHashRequest, setManualHashRequest] = useState<{ path: string; id: number } | null>(null);
+  const manualHashRequestIdRef = useRef(0);
+  const consumedManualHashRequestIdRef = useRef(0);
 
   // Preview state
   const [previews, setPreviews] = useState<Record<string, string>>({});
@@ -196,6 +199,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     () => computeLocalAssetScopeSignature(filteredAssets),
     [filteredAssets],
   );
+  const assetListRef = useRef(assetList);
+  assetListRef.current = assetList;
   const filteredAssetsRef = useRef(filteredAssets);
   filteredAssetsRef.current = filteredAssets;
 
@@ -214,6 +219,11 @@ export function useLocalFoldersController(): LocalFoldersController {
     setSelectedFolderPathState(nextPath);
   }, [assetList, setSelectedFolderPathState]);
 
+  const hashFolder = useCallback((path: string) => {
+    manualHashRequestIdRef.current += 1;
+    setManualHashRequest({ path, id: manualHashRequestIdRef.current });
+  }, []);
+
   // Viewer items list (depends on view mode)
   const viewerItems = useMemo(() => {
     return viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
@@ -223,22 +233,50 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Only hashes assets in the currently visible folder — not all assets globally.
   // Respects autoHashOnSelect setting; when disabled, hashing only happens on upload/preview.
   useEffect(() => {
-    if (!autoHashOnSelect || !selectedFolderPath || !crypto.subtle) {
+    if (!crypto.subtle) {
       setHashingProgress(null);
       return;
     }
 
-    const currentFilteredAssets = filteredAssetsRef.current;
+    const pendingManualHashRequest = (
+      manualHashRequest && manualHashRequest.id > consumedManualHashRequestIdRef.current
+    ) ? manualHashRequest : null;
+    const targetPath = pendingManualHashRequest?.path ?? selectedFolderPath;
+    const manualHashRequestId = pendingManualHashRequest?.id;
+    const isManualHashRun = !!pendingManualHashRequest;
+
+    if (!targetPath) {
+      setHashingProgress(null);
+      return;
+    }
+    if (!autoHashOnSelect && !isManualHashRun) {
+      setHashingProgress(null);
+      return;
+    }
+
+    const currentFilteredAssets = isManualHashRun
+      ? assetListRef.current.filter((asset) => isAssetDirectlyInFolderPath(asset, targetPath))
+      : filteredAssetsRef.current;
     if (currentFilteredAssets.length === 0) {
+      if (manualHashRequestId) {
+        consumedManualHashRequestIdRef.current = manualHashRequestId;
+      }
       setHashingProgress(null);
       return;
     }
 
-    const scopeKey = selectedFolderPath;
-    const scopeSignature = filteredAssetsScopeSignature;
+    const scopeKey = targetPath;
+    const scopeSignature = isManualHashRun
+      ? computeLocalAssetScopeSignature(currentFilteredAssets)
+      : filteredAssetsScopeSignature;
 
     // Skip if already checked for the same scope signature
-    if (hashCheckedFoldersRef.current.get(scopeKey) === scopeSignature) return;
+    if (hashCheckedFoldersRef.current.get(scopeKey) === scopeSignature) {
+      if (manualHashRequestId) {
+        consumedManualHashRequestIdRef.current = manualHashRequestId;
+      }
+      return;
+    }
 
     // Get assets that need hashing
     const assetsToHash = currentFilteredAssets
@@ -254,6 +292,9 @@ export function useLocalFoldersController(): LocalFoldersController {
     // If nothing to do, mark as checked for this scope signature.
     if (assetsToHash.length === 0) {
       hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
+      if (manualHashRequestId) {
+        consumedManualHashRequestIdRef.current = manualHashRequestId;
+      }
       setHashingProgress(null);
       return;
     }
@@ -346,6 +387,9 @@ export function useLocalFoldersController(): LocalFoldersController {
       } finally {
         if (bgHashRunIdRef.current === runId) {
           hashCheckedFoldersRef.current.set(scopeKey, scopeSignature);
+          if (manualHashRequestId) {
+            consumedManualHashRequestIdRef.current = manualHashRequestId;
+          }
           setHashingProgress(null);
         }
       }
@@ -354,7 +398,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     void computeHashes();
 
     return () => { bgHashRunIdRef.current = runId + 1; };
-  }, [selectedFolderPath, filteredAssetsScopeSignature, autoHashOnSelect, hashChunkSize, getFileForAsset, updateAssetHashesBatch]);
+  }, [selectedFolderPath, filteredAssetsScopeSignature, autoHashOnSelect, hashChunkSize, getFileForAsset, updateAssetHashesBatch, manualHashRequest]);
 
   useEffect(() => {
     if (!autoCheckBackend) return;
@@ -750,5 +794,6 @@ export function useLocalFoldersController(): LocalFoldersController {
     pauseHashing,
     resumeHashing,
     cancelHashing,
+    hashFolder,
   };
 }

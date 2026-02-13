@@ -14,7 +14,23 @@ type PendingRequest = {
   reject: (error: Error) => void;
 };
 
-const MAX_POOL_SIZE = 2;
+const MIN_POOL_SIZE = 1;
+const MAX_POOL_SIZE = 8;
+const HASH_REQUEST_TIMEOUT_MS = 45000;
+
+function getDefaultPoolSize(): number {
+  const hardware = typeof navigator !== 'undefined'
+    ? navigator.hardwareConcurrency
+    : undefined;
+  const baseline = Number.isFinite(hardware) ? Math.floor((hardware as number) / 2) : 2;
+  return Math.max(2, Math.min(4, baseline));
+}
+
+function normalizePoolSize(size: number): number {
+  const n = Math.trunc(size);
+  if (!Number.isFinite(n)) return getDefaultPoolSize();
+  return Math.min(MAX_POOL_SIZE, Math.max(MIN_POOL_SIZE, n));
+}
 
 let workers: Worker[] = [];
 let nextWorkerIndex = 0;
@@ -22,6 +38,7 @@ let workerFailed = false;
 let failureWarned = false;
 const pending = new Map<string, PendingRequest>();
 let requestCounter = 0;
+let desiredPoolSize = getDefaultPoolSize();
 
 function createWorker(): Worker | null {
   try {
@@ -70,9 +87,12 @@ function createWorker(): Worker | null {
 
 function ensurePool(): boolean {
   if (workerFailed) return false;
+  if (workers.length !== desiredPoolSize && pending.size === 0) {
+    terminateAll();
+  }
   if (workers.length > 0) return true;
 
-  for (let i = 0; i < MAX_POOL_SIZE; i++) {
+  for (let i = 0; i < desiredPoolSize; i++) {
     const w = createWorker();
     if (!w) return false;
     workers.push(w);
@@ -112,7 +132,24 @@ export async function computeFileSha256Worker(file: File): Promise<string> {
 
   try {
     const sha256 = await new Promise<string>((resolve, reject) => {
-      pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        const req = pending.get(id);
+        if (!req) return;
+        pending.delete(id);
+        reject(new Error(`Hash worker timeout after ${HASH_REQUEST_TIMEOUT_MS}ms`));
+      }, HASH_REQUEST_TIMEOUT_MS);
+
+      pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timeout);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+
       const worker = getNextWorker();
       worker.postMessage({ id, file });
     });
@@ -128,6 +165,18 @@ export async function computeFileSha256Worker(file: File): Promise<string> {
 }
 
 /**
+ * Configure desired worker pool size for hashing.
+ * If workers are idle, pool is recreated immediately; otherwise it is applied
+ * after in-flight requests complete.
+ */
+export function setHashWorkerPoolSize(size: number): void {
+  desiredPoolSize = normalizePoolSize(size);
+  if (pending.size === 0 && workers.length !== desiredPoolSize) {
+    terminateAll();
+  }
+}
+
+/**
  * Terminate all workers. Call on cleanup / unmount if needed.
  */
 export function disposeHashWorkers(): void {
@@ -136,4 +185,5 @@ export function disposeHashWorkers(): void {
   failureWarned = false;
   pending.clear();
   requestCounter = 0;
+  desiredPoolSize = getDefaultPoolSize();
 }

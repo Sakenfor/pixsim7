@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState, type RefObject } from 'react';
 
 import { Icons } from '@lib/icons';
 
@@ -135,6 +135,7 @@ type TreeNodeViewProps = {
   onFolderSelect?: (path: string) => void;
   onRemoveFolder?: (folderId: string) => void;
   onRefreshFolder?: (folderId: string) => void;
+  onHashFolder?: (path: string) => void;
   favoriteFolders?: Set<string>;
   onToggleFavorite?: (path: string) => void;
 };
@@ -153,11 +154,23 @@ function TreeNodeView({
   onFolderSelect,
   onRemoveFolder,
   onRefreshFolder,
+  onHashFolder,
   favoriteFolders,
   onToggleFavorite,
 }: TreeNodeViewProps) {
-  const [expanded, setExpanded] = useState(false); // Start collapsed
+  const shouldAutoExpandForSelection = !!(
+    compactMode &&
+    selectedFolderPath &&
+    (selectedFolderPath === node.path || selectedFolderPath.startsWith(node.path + '/'))
+  );
+  const [expanded, setExpanded] = useState(shouldAutoExpandForSelection);
   const resolvedPreview = useLocalAssetPreview(node.asset, previews);
+
+  useEffect(() => {
+    if (shouldAutoExpandForSelection) {
+      setExpanded(true);
+    }
+  }, [shouldAutoExpandForSelection]);
 
   if (node.type === 'folder') {
     const hasChildren = node.children && node.children.length > 0;
@@ -193,6 +206,13 @@ function TreeNodeView({
           <span className="text-xs text-neutral-500 ml-auto flex-shrink-0">
             {node.count}
           </span>
+          <button
+            onClick={(e) => { e.stopPropagation(); onHashFolder?.(node.path); }}
+            className="p-0.5 rounded transition-colors flex-shrink-0 text-neutral-300 dark:text-neutral-600 opacity-0 group-hover/folder:opacity-100 hover:text-blue-500"
+            title="Hash this folder"
+          >
+            <Icons.hash size={12} />
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onToggleFavorite?.(node.path); }}
             className={`p-0.5 rounded transition-colors flex-shrink-0 ${
@@ -242,6 +262,7 @@ function TreeNodeView({
                 onFolderSelect={onFolderSelect}
                 onRemoveFolder={onRemoveFolder}
                 onRefreshFolder={onRefreshFolder}
+                onHashFolder={onHashFolder}
                 favoriteFolders={favoriteFolders}
                 onToggleFavorite={onToggleFavorite}
               />
@@ -347,8 +368,10 @@ type TreeFolderViewProps = {
   folderOrder?: string[];
   onRemoveFolder?: (folderId: string) => void;
   onRefreshFolder?: (folderId: string) => void;
+  onHashFolder?: (path: string) => void;
   favoriteFolders?: Set<string>;
   onToggleFavorite?: (path: string) => void;
+  scrollContainerRef?: RefObject<HTMLDivElement | null>;
 };
 
 export function TreeFolderView({
@@ -366,8 +389,10 @@ export function TreeFolderView({
   folderOrder,
   onRemoveFolder,
   onRefreshFolder,
+  onHashFolder,
   favoriteFolders,
   onToggleFavorite,
+  scrollContainerRef,
 }: TreeFolderViewProps) {
   const tree = useMemo(
     () => buildTree(assets, folderNames, folderOrder),
@@ -384,7 +409,10 @@ export function TreeFolderView({
 
   return (
     <div className={`border rounded-lg bg-white dark:bg-neutral-900 overflow-hidden ${compactMode ? '' : ''}`}>
-      <div className={`${compactMode ? 'max-h-full' : 'max-h-[70vh]'} overflow-y-auto`}>
+      <div
+        ref={scrollContainerRef}
+        className={`${compactMode ? 'max-h-full' : 'max-h-[70vh]'} overflow-y-auto`}
+      >
         {tree.children.map((child, idx) => (
           <TreeNodeView
             key={child.path || idx}
@@ -401,6 +429,7 @@ export function TreeFolderView({
             onFolderSelect={onFolderSelect}
             onRemoveFolder={onRemoveFolder}
             onRefreshFolder={onRefreshFolder}
+            onHashFolder={onHashFolder}
             favoriteFolders={favoriteFolders}
             onToggleFavorite={onToggleFavorite}
           />
