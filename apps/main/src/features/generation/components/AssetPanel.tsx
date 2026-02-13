@@ -38,7 +38,9 @@ import { useWorkspaceStore } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
+import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
+import { useGenerationsStore } from '../stores/generationsStore';
 
 import { FLEXIBLE_OPERATIONS, EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
 
@@ -66,6 +68,23 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const isHistoryPanelOpen = useWorkspaceStore((s) =>
     s.floatingPanels.some((panel) => panel.id === 'quickgen-history'),
   );
+
+  // Recent generations state
+  const recentGensTriggerRef = useRef<HTMLButtonElement>(null);
+  const isRecentGensOpenerRef = useRef(false);
+  const isRecentGensPanelOpen = useWorkspaceStore((s) =>
+    s.floatingPanels.some((panel) => panel.id === 'recent-generations'),
+  );
+  // Fetch recent generations so the store is populated for the count badge
+  useRecentGenerations({ fetchOnMount: true });
+  const completedGenerationCount = useGenerationsStore((s) => {
+    let count = 0;
+    for (const gen of s.generations.values()) {
+      if (gen.status === 'completed' && gen.assetId != null) count++;
+    }
+    return count;
+  });
+
   const settingsTriggerRef = useRef<HTMLButtonElement>(null);
   const [showSettingsPopover, setShowSettingsPopover] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -427,6 +446,68 @@ export function AssetPanel(props: QuickGenPanelProps) {
     );
   }, [isHistoryPanelOpen, operationType, scopeInstanceId, instanceId, ctx?.sourceLabel, updateFloatingPanelContext]);
 
+  // Reset opener tracking when the recent generations panel closes
+  useEffect(() => {
+    if (!isRecentGensPanelOpen) {
+      isRecentGensOpenerRef.current = false;
+    }
+  }, [isRecentGensPanelOpen]);
+
+  // Recent generations panel toggle handler
+  const handleToggleRecentGenerations = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (isRecentGensPanelOpen) {
+        closeFloatingPanel('recent-generations');
+        isRecentGensOpenerRef.current = false;
+        return;
+      }
+
+      const panelWidth = 360;
+      const panelHeight = 320;
+      let x: number | undefined;
+      let y: number | undefined;
+
+      if (recentGensTriggerRef.current) {
+        const rect = recentGensTriggerRef.current.getBoundingClientRect();
+        const minX = 8;
+        const maxX = window.innerWidth - panelWidth - 8;
+        x = Math.max(minX, Math.min(maxX, rect.left + rect.width / 2 - panelWidth / 2));
+
+        const showAbove =
+          rect.top > window.innerHeight - rect.bottom && rect.top > panelHeight + 8;
+        const desiredY = showAbove ? rect.top - panelHeight - 8 : rect.bottom + 8;
+        const minY = 8;
+        const maxY = window.innerHeight - panelHeight - 8;
+        y = Math.max(minY, Math.min(maxY, desiredY));
+      }
+
+      const resolvedSourceLabel = ctx?.sourceLabel || scopeInstanceId || instanceId || 'Recent';
+      isRecentGensOpenerRef.current = true;
+      openFloatingPanel('recent-generations', {
+        x,
+        y,
+        width: panelWidth,
+        height: panelHeight,
+        context: scopeInstanceId
+          ? { operationType, generationScopeId: scopeInstanceId, sourceLabel: resolvedSourceLabel }
+          : { operationType, sourceLabel: resolvedSourceLabel },
+      });
+    },
+    [isRecentGensPanelOpen, closeFloatingPanel, openFloatingPanel, operationType, scopeInstanceId, instanceId],
+  );
+
+  useEffect(() => {
+    if (!isRecentGensPanelOpen || !isRecentGensOpenerRef.current) return;
+    const resolvedSourceLabel = ctx?.sourceLabel || scopeInstanceId || instanceId || 'Recent';
+    updateFloatingPanelContext(
+      'recent-generations',
+      scopeInstanceId
+        ? { operationType, generationScopeId: scopeInstanceId, sourceLabel: resolvedSourceLabel }
+        : { operationType, sourceLabel: resolvedSourceLabel },
+    );
+  }, [isRecentGensPanelOpen, operationType, scopeInstanceId, instanceId, ctx?.sourceLabel, updateFloatingPanelContext]);
+
   // Sync anchor rect for settings dropdown while open
   useLayoutEffect(() => {
     if (!showSettingsPopover || !settingsTriggerRef.current) {
@@ -469,6 +550,25 @@ export function AssetPanel(props: QuickGenPanelProps) {
     </button>
   );
 
+  const hasCompletedGenerations = completedGenerationCount > 0;
+  const recentGenerationsButton = (
+    <button
+      ref={recentGensTriggerRef}
+      onClick={handleToggleRecentGenerations}
+      className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+        isRecentGensPanelOpen
+          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+          : hasCompletedGenerations
+          ? 'bg-neutral-700 hover:bg-neutral-600 text-white'
+          : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400'
+      }`}
+      title={isRecentGensPanelOpen ? 'Recent generations (open)' : hasCompletedGenerations ? `Recent generations (${completedGenerationCount})` : 'No recent generations'}
+    >
+      <Icon name="sparkles" size={10} />
+      <span>{completedGenerationCount}</span>
+    </button>
+  );
+
   const settingsButton = (
     <button
       ref={settingsTriggerRef}
@@ -476,11 +576,15 @@ export function AssetPanel(props: QuickGenPanelProps) {
         e.stopPropagation();
         setShowSettingsPopover((prev) => !prev);
       }}
-      className="relative flex items-center justify-center w-6 h-5 rounded text-[10px] bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
+      className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
+        showSettingsPopover
+          ? 'bg-amber-600 hover:bg-amber-700 text-white'
+          : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400'
+      }`}
       title="Asset panel settings"
       type="button"
     >
-      <Icon name="settings" size={11} className="text-current" />
+      <Icon name="sliders" size={10} />
       {assetHasInstanceOverrides && (
         <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
       )}
@@ -581,6 +685,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
             </div>
           )}
           {historyButton}
+          {recentGenerationsButton}
           {settingsButton}
         </div>
       </div>
