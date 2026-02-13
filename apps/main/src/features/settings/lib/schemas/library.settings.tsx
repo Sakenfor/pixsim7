@@ -16,6 +16,7 @@ import { useMediaSettingsStore, type ServerMediaSettings } from '@features/asset
 import { useAssetSettingsStore } from '@features/assets';
 import { useAssetViewerStore, type GalleryQualityMode } from '@features/assets';
 import { useLocalFolderSettingsStore } from '@features/assets';
+import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiLayout } from '@features/panels';
 
 import { pixsimClient } from '@/lib/api';
 
@@ -93,6 +94,24 @@ const displayTab: SettingTab = {
             { value: 'thumbnail', label: 'Generate Thumbnails (400px, cached)' },
             { value: 'original', label: 'Original Images (fastest, more memory)' },
             { value: 'gallery-settings', label: 'Use Gallery Settings' },
+          ],
+        },
+      ],
+    },
+    {
+      id: 'gallery-grouping',
+      title: 'Gallery Grouping',
+      description: 'Layout when multiple group axes are selected in multi-mode.',
+      fields: [
+        {
+          id: 'groupMultiLayout',
+          type: 'select',
+          label: 'Multi-Group Layout',
+          description: 'Stack shows hierarchical drill-down. Parallel shows all axes as independent sections.',
+          defaultValue: 'stack',
+          options: [
+            { value: 'stack', label: 'Stack (hierarchical)' },
+            { value: 'parallel', label: 'Parallel (side-by-side)' },
           ],
         },
       ],
@@ -413,6 +432,11 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   const preventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const setPreventDiskCache = useMediaSettingsStore((s) => s.setPreventDiskCache);
 
+  // Gallery panel config settings (grouping layout)
+  const galleryPanelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
+  const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
+  const gallerySettings = (galleryPanelConfig?.settings || {}) as GalleryPanelSettings;
+
   // Local folder settings
   const lf_autoHashOnSelect = useLocalFolderSettingsStore((s) => s.autoHashOnSelect);
   const lf_autoCheckBackend = useLocalFolderSettingsStore((s) => s.autoCheckBackend);
@@ -459,6 +483,9 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
 
+      // Gallery panel config settings
+      if (fieldId === 'groupMultiLayout') return gallerySettings.groupMultiLayout ?? 'stack';
+
       // Local folder settings
       if (fieldId === 'lf_autoHashOnSelect') return lf_autoHashOnSelect;
       if (fieldId === 'lf_autoCheckBackend') return lf_autoCheckBackend;
@@ -497,6 +524,12 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Local media settings
       if (fieldId === 'preventDiskCache') {
         setPreventDiskCache(value);
+        return;
+      }
+
+      // Gallery panel config settings
+      if (fieldId === 'groupMultiLayout') {
+        updatePanelSettings('gallery', { groupMultiLayout: value as GalleryGroupMultiLayout });
         return;
       }
 
@@ -544,6 +577,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       qualityMode,
       preferOriginal,
       preventDiskCache,
+      groupMultiLayout: gallerySettings.groupMultiLayout ?? 'stack',
       lf_autoHashOnSelect,
       lf_autoCheckBackend,
       lf_hashChunkSize,

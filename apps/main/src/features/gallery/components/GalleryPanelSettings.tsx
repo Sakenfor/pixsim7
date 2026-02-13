@@ -10,7 +10,7 @@ import { Icon } from '@lib/icons';
 import { mediaCardPresets } from '@lib/ui/overlay';
 
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '@features/assets/lib/groupBy';
-import type { GalleryGroupBy, GalleryGroupMode, GalleryGroupView, GalleryGroupBySelection } from '@features/panels';
+import type { GalleryGroupBy, GalleryGroupMode, GalleryGroupMultiLayout, GalleryGroupView, GalleryGroupBySelection } from '@features/panels';
 import type { PanelSettingsProps, PanelSettingsSection } from '@features/panels/lib/panelRegistry';
 
 import type { MediaCardBadgeConfig } from '@/components/media/MediaCard';
@@ -26,6 +26,7 @@ export interface GalleryPanelSettings {
   groupView?: GalleryGroupView;
   groupScope?: string[];
   groupMode?: GalleryGroupMode;
+  groupMultiLayout?: GalleryGroupMultiLayout;
 }
 
 /**
@@ -234,6 +235,7 @@ function GenerationActionsSection({ settings, helpers }: PanelSettingsProps<Gall
  */
 function GroupingSection({ settings, helpers }: PanelSettingsProps<GalleryPanelSettings>) {
   const groupMode: GalleryGroupMode = settings.groupMode ?? 'single';
+  const groupMultiLayout: GalleryGroupMultiLayout = settings.groupMultiLayout ?? 'stack';
   const groupBySelection = normalizeGroupBySelection(settings.groupBy ?? (groupMode === 'single' ? 'none' : []));
   const groupView = settings.groupView ?? 'inline';
 
@@ -286,6 +288,21 @@ function GroupingSection({ settings, helpers }: PanelSettingsProps<GalleryPanelS
           <p className="text-xs text-neutral-500 dark:text-neutral-400">
             Multi-mode stacks groupings in the order selected.
           </p>
+          {groupMode === 'multi' && groupBySelection.length > 1 && (
+            <div className="mt-2 flex flex-col gap-1">
+              <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
+                Multi Layout
+              </label>
+              <select
+                value={groupMultiLayout}
+                onChange={(e) => helpers.set('groupMultiLayout', e.target.value as GalleryGroupMultiLayout)}
+                className="px-3 py-2 text-sm border-2 rounded-lg bg-white dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-900"
+              >
+                <option value="stack">Stack (hierarchical drill-down)</option>
+                <option value="parallel">Parallel (side-by-side sections)</option>
+              </select>
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <label className="text-xs font-medium text-neutral-700 dark:text-neutral-300">

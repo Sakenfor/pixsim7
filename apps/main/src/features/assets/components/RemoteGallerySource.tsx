@@ -14,6 +14,7 @@ import {
   usePanelConfigStore,
   type GalleryGroupBy,
   type GalleryGroupMode,
+  type GalleryGroupMultiLayout,
   type GalleryGroupView,
   type GalleryGroupScope,
   type GalleryPanelSettings,
@@ -53,6 +54,116 @@ import { PageJumpPopover } from './PageJumpPopover';
 import { mediaCardPropsFromAsset } from './shared';
 
 
+// ---------------------------------------------------------------------------
+// ParallelGroupSection — renders one axis in parallel mode
+// ---------------------------------------------------------------------------
+function ParallelGroupSection({
+  axis,
+  axisData,
+  axisPage,
+  groupView,
+  cardSize,
+  onOpenGroup,
+  onPageChange,
+}: {
+  axis: GalleryGroupBy;
+  axisData: {
+    groups: AssetGroup[];
+    total: number;
+    limit: number;
+    offset: number;
+    loading: boolean;
+    error: string | null;
+  };
+  axisPage: number;
+  groupView: GalleryGroupView;
+  cardSize: number;
+  onOpenGroup: (key: string) => void;
+  onPageChange: (page: number) => void;
+}) {
+  const totalPages = useMemo(() => {
+    const limit = Math.max(1, axisData.limit || GROUP_PAGE_SIZE);
+    return Math.max(1, Math.ceil(axisData.total / limit));
+  }, [axisData.total, axisData.limit]);
+  const hasMore = axisData.offset + axisData.groups.length < axisData.total;
+  const showFolders = groupView === 'folders';
+  const layoutSettings = { rowGap: 12, columnGap: 12 };
+
+  return (
+    <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-2 bg-neutral-100 dark:bg-neutral-800/80">
+        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+          By {GROUP_BY_LABELS[axis]}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onPageChange(axisPage - 1)}
+            disabled={axisData.loading || axisPage <= 1}
+            className="px-2 py-0.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            &lsaquo;
+          </button>
+          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 px-1">
+            {axisPage}/{totalPages}
+          </span>
+          <button
+            onClick={() => onPageChange(axisPage + 1)}
+            disabled={axisData.loading || !hasMore}
+            className="px-2 py-0.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            &rsaquo;
+          </button>
+          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 ml-1">
+            {axisData.total} groups
+          </span>
+        </div>
+      </div>
+      <div className="p-3">
+        {axisData.loading ? (
+          <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>
+        ) : axisData.error ? (
+          <div className="text-sm text-red-500">{axisData.error}</div>
+        ) : axisData.groups.length > 0 ? (
+          showFolders ? (
+            <div
+              className="grid"
+              style={{
+                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                rowGap: `${layoutSettings.rowGap}px`,
+                columnGap: `${layoutSettings.columnGap}px`,
+              }}
+            >
+              {axisData.groups.map((group) => (
+                <GroupFolderTile
+                  key={group.key}
+                  group={group}
+                  cardSize={cardSize}
+                  onOpen={() => onOpenGroup(group.key)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {axisData.groups.map((group) => (
+                <GroupListRow
+                  key={group.key}
+                  group={group}
+                  cardSize={cardSize}
+                  onOpen={() => onOpenGroup(group.key)}
+                />
+              ))}
+            </div>
+          )
+        ) : (
+          <div className="text-sm text-neutral-500 dark:text-neutral-400">
+            No groups for this axis.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
   cardSize: number;
@@ -70,6 +181,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     (gallerySettings.groupBy ?? DEFAULT_GROUP_BY_STACK) as GalleryGroupBySelection,
   );
   const groupMode = (gallerySettings.groupMode ?? 'single') as GalleryGroupMode;
+  const groupMultiLayout = (gallerySettings.groupMultiLayout ?? 'stack') as GalleryGroupMultiLayout;
   const defaultGroupScope = normalizeGroupScopeSelection(
     (gallerySettings.groupScope ?? DEFAULT_GROUP_SCOPE) as GalleryGroupScope,
   );
@@ -463,7 +575,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       .map((entry) => formatGroupLabel(entry.groupBy, entry.groupKey))
       .join(' / ');
   }, [groupPath]);
-  const showGroupOverview = hasGrouping && groupPath.length < groupByStack.length;
+  const isParallelMode = groupMode === 'multi' && groupMultiLayout === 'parallel' && groupByStack.length > 1;
+  const showParallelGroups = hasGrouping && isParallelMode && groupPath.length === 0;
+  const showGroupOverview = hasGrouping && !showParallelGroups && groupPath.length < groupByStack.length;
   const showGroupFolders = showGroupOverview && groupView === 'folders';
   const visibleAssets = useMemo(() => {
     if (showGroupOverview) return [];
@@ -473,6 +587,122 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
     if (groupByStack.length === 0) return 'Grouping: None';
     return `Grouping: ${groupByStack.map((value) => GROUP_BY_LABELS[value]).join(' > ')}`;
   }, [groupByStack]);
+
+  // ---------------------------------------------------------------------------
+  // Parallel mode state & data fetching
+  // ---------------------------------------------------------------------------
+  type ParallelAxisData = {
+    groups: AssetGroup[];
+    total: number;
+    limit: number;
+    offset: number;
+    loading: boolean;
+    error: string | null;
+  };
+  const [parallelPages, setParallelPages] = useState<Record<string, number>>({});
+  const [parallelData, setParallelData] = useState<Record<string, ParallelAxisData>>({});
+
+  useEffect(() => {
+    if (!isParallelMode || groupPath.length > 0) {
+      setParallelData({});
+      return;
+    }
+
+    let cancelled = false;
+    const axesToFetch = groupByStack;
+
+    // Mark all as loading
+    setParallelData((prev) => {
+      const next = { ...prev };
+      for (const axis of axesToFetch) {
+        next[axis] = { ...(next[axis] ?? { groups: [], total: 0, limit: GROUP_PAGE_SIZE, offset: 0, error: null }), loading: true, error: null };
+      }
+      return next;
+    });
+
+    for (const axis of axesToFetch) {
+      const axisPage = parallelPages[axis] ?? 1;
+      const axisOffset = (axisPage - 1) * GROUP_PAGE_SIZE;
+      const base = buildAssetSearchRequest(controller.filters, {
+        limit: GROUP_PAGE_SIZE,
+        offset: axisOffset,
+      });
+      const request: AssetGroupRequest = {
+        ...base,
+        group_by: axis,
+        group_path: [],
+        group_filter: groupFilter,
+        preview_limit: GROUP_PREVIEW_LIMIT,
+      };
+
+      listAssetGroups(request)
+        .then((result) => {
+          if (cancelled) return;
+          const parsedGroups: AssetGroup[] = result.groups
+            .map((g) => ({
+              key: g.key,
+              label: formatGroupLabel(axis, g.key, g.meta),
+              count: g.count,
+              previewAssets: fromAssetResponses(g.preview_assets || []),
+              latestTimestamp: Date.parse(g.latest_created_at) || 0,
+              meta: g.meta,
+            }))
+            .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+          setParallelData((prev) => ({
+            ...prev,
+            [axis]: {
+              groups: parsedGroups,
+              total: result.total,
+              limit: result.limit,
+              offset: result.offset,
+              loading: false,
+              error: null,
+            },
+          }));
+        })
+        .catch((err) => {
+          if (cancelled) return;
+          setParallelData((prev) => ({
+            ...prev,
+            [axis]: {
+              groups: [],
+              total: 0,
+              limit: GROUP_PAGE_SIZE,
+              offset: 0,
+              loading: false,
+              error: extractErrorMessage(err, 'Failed to load groups'),
+            },
+          }));
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isParallelMode, groupPath.length, groupByStack.join(','), JSON.stringify(controller.filters), JSON.stringify(groupFilter), JSON.stringify(parallelPages)]);
+
+  const goToAxisPage = useCallback((axis: GalleryGroupBy, page: number) => {
+    if (page < 1) return;
+    setParallelPages((prev) => ({ ...prev, [axis]: page }));
+  }, []);
+
+  const openAxisGroup = useCallback(
+    (axis: GalleryGroupBy, key: string) => {
+      const nextPath = [{ groupBy: axis, groupKey: key }];
+      syncGroupInUrl(
+        {
+          groupBy: groupByStack,
+          groupView,
+          groupScope,
+          groupPath: nextPath,
+          groupPage: 1,
+        },
+        false,
+      );
+    },
+    [groupByStack, groupView, groupScope, syncGroupInUrl],
+  );
 
   const openGroup = useCallback(
     (key: string) => {
@@ -806,10 +1036,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             </div>
 
             {/* Page-based pagination controls */}
-            
-            
-            
-            {showGroupOverview ? (
+
+
+
+            {showParallelGroups ? (
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                {groupByStack.length} group axes
+              </span>
+            ) : showGroupOverview ? (
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => goToGroupPage(groupPage - 1)}
@@ -946,6 +1180,29 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                           ))}
                         </div>
                       </div>
+                      {groupMode === 'multi' && groupByStack.length > 1 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                            Layout
+                          </span>
+                          <div className="flex items-center gap-1">
+                            {(['stack', 'parallel'] as GalleryGroupMultiLayout[]).map((layout) => (
+                              <button
+                                key={layout}
+                                type="button"
+                                onClick={() => updatePanelSettings('gallery', { groupMultiLayout: layout })}
+                                className={`px-2 py-1 text-xs rounded border transition-colors ${
+                                  groupMultiLayout === layout
+                                    ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
+                                    : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
+                                }`}
+                              >
+                                {layout === 'stack' ? 'Stack' : 'Parallel'}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="flex flex-wrap gap-2">
                         <button
                           type="button"
@@ -1060,7 +1317,22 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
           </div>
         )}
 
-        {showGroupOverview ? (
+        {showParallelGroups ? (
+          <div className="space-y-4">
+            {groupByStack.map((axis) => (
+              <ParallelGroupSection
+                key={axis}
+                axis={axis}
+                axisData={parallelData[axis] ?? { groups: [], total: 0, limit: GROUP_PAGE_SIZE, offset: 0, loading: true, error: null }}
+                axisPage={parallelPages[axis] ?? 1}
+                groupView={groupView}
+                cardSize={cardSize}
+                onOpenGroup={(key) => openAxisGroup(axis, key)}
+                onPageChange={(page) => goToAxisPage(axis, page)}
+              />
+            ))}
+          </div>
+        ) : showGroupOverview ? (
           groupLoading ? (
             <div className="text-sm text-neutral-500 dark:text-neutral-400">
               Loading groups...
@@ -1123,8 +1395,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
           </div>
         )}
         {/* Bottom pagination controls (duplicate of top for convenience) */}
-        
-        {showGroupOverview ? (
+
+        {showParallelGroups ? null : showGroupOverview ? (
           <div className="pt-4 pb-8 flex justify-center">
             <div className="flex items-center gap-2">
               <button

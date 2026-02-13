@@ -105,6 +105,7 @@ export type GalleryGroupView = "folders" | "inline" | "panel";
 export type GalleryGroupScope = string[];
 export type GalleryGroupMode = "single" | "multi";
 export type GalleryGroupBySelection = GalleryGroupBy | GalleryGroupBy[];
+export type GalleryGroupMultiLayout = "stack" | "parallel";
 
 export interface GalleryPanelSettings {
   overlayPresetId?: string; // e.g. 'media-card-default', 'media-card-minimal', etc.
@@ -113,6 +114,7 @@ export interface GalleryPanelSettings {
   groupView?: GalleryGroupView;
   groupScope?: GalleryGroupScope;
   groupMode?: GalleryGroupMode;
+  groupMultiLayout?: GalleryGroupMultiLayout;
   [key: string]: unknown;
 }
 
@@ -137,6 +139,7 @@ const defaultPanelConfigs: Partial<Record<PanelId, PanelConfig>> = {
       groupView: "inline",
       groupScope: [],
       groupMode: "single",
+      groupMultiLayout: "stack",
     } as GalleryPanelSettings,
     category: "workspace",
     tags: ["assets", "media"],

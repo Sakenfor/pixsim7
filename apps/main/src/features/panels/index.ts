@@ -152,6 +152,7 @@ export {
   type GalleryGroupMode,
   type GalleryGroupView,
   type GalleryGroupScope,
+  type GalleryGroupMultiLayout,
   type GalleryPanelSettings,
   type PanelRegistryOverride,
 } from "./stores/panelConfigStore";
