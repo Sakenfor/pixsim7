@@ -746,12 +746,17 @@ export function useLocalFoldersController(): LocalFoldersController {
           console.warn('Failed to compute hash before upload', asset.name, hashError);
         }
       }
+      const folderName = rawFolders.find(f => f.id === asset.folderId)?.name;
       const data = await uploadAsset({
         file,
         filename: asset.name,
         providerId,
         uploadMethod: 'local',
-        uploadContext: { client: 'web_app', feature: 'local_folders' },
+        uploadContext: {
+          client: 'web_app',
+          feature: 'local_folders',
+          ...(folderName ? { source_folder: folderName } : undefined),
+        },
         sourceFolderId: asset.folderId,
         sourceRelativePath: asset.relativePath,
       });

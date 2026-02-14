@@ -205,7 +205,7 @@ export function CuratorGallerySurface() {
       showSort
       extraSortOptions={[{ value: 'alpha', label: 'A→Z' }]}
       filtersLayout="grid"
-      filtersHeader={<h3 className="text-sm font-semibold">Filters</h3>}
+      filtersHeader={undefined}
       filtersActions={
         <Button variant="secondary" onClick={controller.selectAll} className="text-xs">
           Select All ({controller.assets.length})

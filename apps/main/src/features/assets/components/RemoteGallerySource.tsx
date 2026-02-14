@@ -1020,13 +1020,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
       <div className="flex-shrink-0 space-y-4">
         {controller.error && <div className="text-red-600 text-sm">{controller.error}</div>}
 
-        <div className="bg-neutral-50 dark:bg-neutral-800 p-3 rounded border border-neutral-200 dark:border-neutral-700">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Search */}
             <div className="flex-1 min-w-[200px] max-w-[300px]">
               <input
                 placeholder="Search tags, description..."
-                className="w-full px-2 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
+                className="w-full h-7 px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-200 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:border-accent transition-colors"
                 value={controller.filters.q}
                 onChange={(e) => setFilters({ q: e.target.value })}
               />
@@ -1041,11 +1041,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 {groupByStack.length} group axes
               </span>
             ) : showGroupOverview ? (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => goToGroupPage(groupPage - 1)}
                   disabled={groupLoading || groupPage <= 1}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Previous group page"
                 >
                   &lsaquo;
@@ -1059,7 +1059,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 <button
                   onClick={() => goToGroupPage(groupPage + 1)}
                   disabled={groupLoading || !groupHasMore}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Next group page"
                 >
                   &rsaquo;
@@ -1069,11 +1069,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 </span>
               </div>
             ) : (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-0.5">
                 <button
                   onClick={() => goToPage(controller.currentPage - 1)}
                   disabled={controller.loading || controller.currentPage <= 1}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Previous page"
                 >
                   &lsaquo;
@@ -1088,7 +1088,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 <button
                   onClick={() => goToPage(controller.currentPage + 1)}
                   disabled={controller.loading || !controller.hasMore}
-                  className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Next page"
                 >
                   &rsaquo;
@@ -1107,19 +1107,19 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
                 onClick={() => setGroupMenuOpen((prev) => !prev)}
                 title={groupSummary}
                 aria-label={groupSummary}
-                className={`relative inline-flex h-9 w-9 items-center justify-center rounded border transition-colors ${
+                className={`relative inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
                   hasGrouping
-                    ? 'bg-accent/10 border-accent-muted text-accent'
-                    : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
+                    ? 'bg-accent/10 border-accent/50 text-accent'
+                    : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
                 }`}
               >
                 <Icon
                   name="layers"
-                  size={16}
-                  className={hasGrouping ? 'text-accent' : 'text-neutral-600 dark:text-neutral-300'}
+                  size={14}
+                  className={hasGrouping ? 'text-accent' : ''}
                 />
                 {groupByStack.length > 0 && (
-                  <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-accent text-accent-text">
+                  <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
                     {groupByStack.length}
                   </span>
                 )}
@@ -1260,11 +1260,11 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
             </div>
 
             {/* Divider */}
-            <div className="h-6 w-px bg-neutral-300 dark:bg-neutral-600" />
+            <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700" />
 
             {/* Sort */}
             <select
-              className="px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
+              className="h-7 px-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 focus:outline-none focus:border-accent transition-colors"
               value={controller.filters.sort}
               onChange={(e) => setFilters({ sort: e.target.value as any })}
             >
@@ -1273,16 +1273,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               <option value="alpha">A-Z</option>
             </select>
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <span className="text-xs text-neutral-500 dark:text-neutral-400">Filters</span>
-            <div className="flex-1 min-w-0">
-              <DynamicFilters
-                filters={controller.filters}
-                onFiltersChange={(f) => setFilters(f)}
-                exclude={['q']}
-                showCounts
-              />
-            </div>
+          <div>
+            <DynamicFilters
+              filters={controller.filters}
+              onFiltersChange={(f) => setFilters(f)}
+              exclude={['q']}
+              showCounts
+            />
           </div>
         </div>
 

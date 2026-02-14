@@ -162,7 +162,7 @@ export function DynamicFilters({
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-gray-400">
+      <div className="flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400">
         <Icon name="loader" className="animate-spin w-4 h-4" />
         Loading filters...
       </div>
@@ -194,7 +194,7 @@ export function DynamicFilters({
   }
 
   return (
-    <div className="relative flex flex-nowrap items-start gap-2 w-full overflow-x-auto overflow-y-visible pb-1">
+    <div className="relative flex flex-nowrap items-start gap-1.5 w-full overflow-x-auto overflow-y-visible pb-1">
       {visibleFilters.map((filter) => {
         const isOpen = openFilters.has(filter.key);
         const isHovered = hoveredKey === filter.key;
@@ -205,6 +205,7 @@ export function DynamicFilters({
           : selectedValue
             ? 1
             : 0;
+        const hasSelection = selectedCount > 0;
         const uiConfig = FILTER_UI_CONFIG[filter.key] || {};
         const resolvedIcon = uiConfig.icon ?? 'sliders';
         const displayLabel =
@@ -234,27 +235,29 @@ export function DynamicFilters({
                   return next;
                 })
               }
-              className={`relative z-20 inline-flex items-center gap-2 h-10 px-2 rounded-md border border-gray-700 bg-gray-900/60 text-sm overflow-hidden transition-[max-width,background-color] duration-200 ${
-                isOpen
-                  ? 'max-w-[320px] bg-gray-900/80'
-                  : 'max-w-10 group-hover:max-w-[320px] group-focus-within:max-w-[320px] group-hover:bg-gray-900/80'
-              }`}
+              className={`relative z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs overflow-hidden transition-[max-width,background-color,border-color] duration-200 ${
+                hasSelection
+                  ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
+                  : isOpen
+                    ? 'max-w-[320px] border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
+                    : 'max-w-7 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 group-hover:max-w-[320px] group-focus-within:max-w-[320px] group-hover:border-neutral-300 dark:group-hover:border-neutral-600'
+              } ${hasSelection ? 'max-w-[320px]' : ''}`}
             >
-              <span className="relative">
+              <span className="relative flex-shrink-0">
                 <Icon
                   name={resolvedIcon}
-                  size={16}
-                  className="w-4 h-4 text-neutral-200"
+                  size={14}
+                  className="w-3.5 h-3.5"
                 />
-                {selectedCount > 0 && (
-                  <span className="absolute -top-1 -right-1 text-[9px] px-1 rounded-full bg-accent text-accent-text">
+                {hasSelection && (
+                  <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
                     {selectedCount}
                   </span>
                 )}
               </span>
               <span
-                className={`font-medium text-gray-100 whitespace-nowrap overflow-hidden transition-all duration-200 ${
-                  isOpen
+                className={`font-medium whitespace-nowrap overflow-hidden transition-all duration-200 ${
+                  isOpen || hasSelection
                     ? 'max-w-[240px] opacity-100'
                     : 'max-w-0 opacity-0 group-hover:max-w-[240px] group-hover:opacity-100 group-focus-within:max-w-[240px] group-focus-within:opacity-100'
                 }`}
@@ -426,10 +429,10 @@ function FilterControl({
                 e.stopPropagation();
                 onModeChange(entry);
               }}
-              className={`px-2 py-0.5 text-[10px] uppercase tracking-wide border rounded ${
+              className={`px-2 py-0.5 text-[10px] uppercase tracking-wide border rounded transition-colors ${
                 active
                   ? 'bg-accent/40 border-accent-muted text-accent-text'
-                  : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+                  : 'bg-neutral-100 dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
               }`}
             >
               {entry}
@@ -448,7 +451,7 @@ function FilterControl({
             {uiConfig.icon && (
               <Icon
                 name={uiConfig.icon}
-                className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"
+                className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"
               />
             )}
             <input
@@ -457,7 +460,8 @@ function FilterControl({
               value={(value as string) || ''}
               onChange={(e) => onChange(e.target.value || undefined)}
               className={`
-                bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm
+                bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm
+                text-neutral-800 dark:text-neutral-200
                 focus:outline-none focus:border-accent
                 ${uiConfig.icon ? 'pl-8' : ''}
                 ${compact ? 'w-32' : 'w-48'}
@@ -480,7 +484,7 @@ function FilterControl({
         return (
           <label
             key={opt.value}
-            className="flex items-center gap-2 text-sm text-gray-200 cursor-pointer"
+            className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
           >
             <input
               type="checkbox"
@@ -516,7 +520,7 @@ function FilterControl({
               {groups.map(([namespace, nsOptions]) => (
                 <div key={namespace}>
                   {showHeaders && (
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-1 py-1 sticky top-0 bg-gray-900/95">
+                    <div className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95">
                       {namespace}
                     </div>
                   )}
@@ -533,7 +537,7 @@ function FilterControl({
           {renderMatchModeToggle()}
           <div className="flex flex-col gap-1">
             {options.length === 0 && (
-              <div className="text-xs text-gray-400">No options available.</div>
+              <div className="text-xs text-neutral-500 dark:text-neutral-400">No options available.</div>
             )}
             {options.map((opt) => renderOption(opt, false))}
           </div>
@@ -545,8 +549,8 @@ function FilterControl({
       return (
         <label
           className={`
-            flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer
-            ${value ? 'bg-accent/30 border-accent' : 'bg-gray-800 border-gray-700'}
+            flex items-center gap-2 px-3 py-1.5 rounded cursor-pointer transition-colors
+            ${value ? 'bg-accent/20 border-accent/50 text-neutral-800 dark:text-neutral-100' : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'}
             border text-sm
           `}
         >
@@ -571,8 +575,8 @@ function FilterControl({
             placeholder={compact ? 'Tag...' : `${displayLabel}...`}
             value={(value as string) || ''}
             onChange={(e) => onChange(e.target.value || undefined)}
-            className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-32
-                       focus:outline-none focus:border-accent"
+            className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-1.5 text-sm w-32
+                       text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent"
             title={displayLabel}
           />
           {renderMatchModeToggle()}
