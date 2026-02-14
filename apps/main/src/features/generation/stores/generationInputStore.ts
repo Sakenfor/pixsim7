@@ -49,6 +49,7 @@ export interface GenerationInputsState {
   cycleInputs: (operationType: OperationType, direction?: 'next' | 'prev') => void;
   setInputIndex: (operationType: OperationType, index: number) => void;
   setArmedSlot: (operationType: OperationType, slotIndex?: number | null) => void;
+  reorderInput: (operationType: OperationType, fromSlotIndex: number, toSlotIndex: number) => void;
 
   getCurrentInput: (operationType: OperationType) => InputItem | null;
   getInputs: (operationType: OperationType) => InputItem[];
@@ -152,14 +153,52 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
         addInput: ({ asset, operationType, slotIndex }) => {
           set((state) => {
             if (isSingleOperation(operationType)) {
+              const existing = getOperationInputs(state.inputsByOperation, operationType);
+              const preferredSlot = state.armedSlotByOperation?.[operationType];
+              const hasExplicitSlot =
+                (typeof slotIndex === 'number' && Number.isFinite(slotIndex)) ||
+                (typeof preferredSlot === 'number' && Number.isFinite(preferredSlot));
+
+              let nextItems = [...existing.items];
+              // Deduplicate — if asset already queued, remove old entry
+              nextItems = nextItems.filter((item) => item.asset.id !== asset.id);
+
+              // Determine target slot: explicit slot from picker, or slot 0 (replace primary)
+              let targetSlot: number;
+              if (typeof slotIndex === 'number' && Number.isFinite(slotIndex)) {
+                targetSlot = Math.max(0, Math.floor(slotIndex));
+              } else if (typeof preferredSlot === 'number' && Number.isFinite(preferredSlot)) {
+                targetSlot = Math.max(0, Math.floor(preferredSlot));
+              } else {
+                targetSlot = 0;
+              }
+
+              // Replace any existing item at the target slot
+              nextItems = nextItems.filter((item) => getSlotIndex(item, 0) !== targetSlot);
+              const newItem = createInputItem(asset, targetSlot);
+              nextItems.push(newItem);
+              nextItems = normalizeInputItems(nextItems);
+
+              const nextIndex = normalizeIndex(
+                nextItems.findIndex((item) => item.id === newItem.id) + 1,
+                nextItems.length
+              );
               return {
                 inputsByOperation: {
                   ...state.inputsByOperation,
                   [operationType]: {
-                    items: [createInputItem(asset, 0)],
-                    currentIndex: 1,
+                    items: nextItems,
+                    currentIndex: nextIndex,
                   },
                 },
+                ...(hasExplicitSlot
+                  ? {
+                      armedSlotByOperation: {
+                        ...state.armedSlotByOperation,
+                        [operationType]: undefined,
+                      },
+                    }
+                  : {}),
               };
             }
 
@@ -423,6 +462,31 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
               armedSlotByOperation: {
                 ...state.armedSlotByOperation,
                 [operationType]: nextIndex,
+              },
+            };
+          });
+        },
+
+        reorderInput: (operationType, fromSlotIndex, toSlotIndex) => {
+          if (fromSlotIndex === toSlotIndex) return;
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            if (existing.items.length === 0) return {};
+
+            const nextItems = existing.items.map((item) => {
+              const slot = getSlotIndex(item, 0);
+              if (slot === fromSlotIndex) return { ...item, slotIndex: toSlotIndex };
+              if (slot === toSlotIndex) return { ...item, slotIndex: fromSlotIndex };
+              return item;
+            });
+
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: normalizeInputItems(nextItems),
+                },
               },
             };
           });

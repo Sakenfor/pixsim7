@@ -8,7 +8,7 @@
 import { resolveMediaTypes } from '@pixsim7/shared.assets.core';
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { Dropdown } from '@pixsim7/shared.ui';
+import { Dropdown, useDragReorder } from '@pixsim7/shared.ui';
 import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } from 'react';
 
 import { useDockviewId } from '@lib/dockview';
@@ -110,6 +110,17 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const armedSlotIndex = useInputStore(s => s.armedSlotByOperation?.[operationType]);
   const setArmedSlot = useInputStore(s => s.setArmedSlot);
   const setInputMode = useInputStore(s => s.setInputMode);
+  const storeReorderInput = useInputStore(s => s.reorderInput);
+  const reorderInput = ctx?.reorderInput ?? storeReorderInput;
+
+  // Drag-and-drop for slot reordering (shared hook)
+  const { draggedIndex: draggedSlotIndex, dragOverIndex: dragOverSlotIndex, getDragItemProps, getDropTargetProps } =
+    useDragReorder({
+      onReorder: useCallback(
+        (from: number, to: number) => reorderInput(operationType, from, to),
+        [reorderInput, operationType],
+      ),
+    });
 
   // History store subscriptions
   const historyMode = useGenerationHistoryStore((s) => s.historyMode);
@@ -717,7 +728,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
         {headerBar}
         <div
           ref={containerRef}
-          className={`flex-1 p-2 pt-0 ${isGridMode ? 'overflow-auto' : 'overflow-x-auto'}`}
+          className={`flex-1 p-2 pt-0 ${isGridMode ? 'overflow-auto' : 'overflow-x-auto'} ${draggedSlotIndex !== null ? 'cursor-grabbing' : ''}`}
         >
           <div
             className={isGridMode ? 'grid gap-1.5' : 'flex gap-1.5 h-full'}
@@ -732,16 +743,19 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
               if (!inputItem) {
                 const isArmed = armedSlotIndex === idx;
+                const isDragOver = dragOverSlotIndex === idx;
                 return (
                   <div
                     key={`empty-${idx}`}
                     className={`${wrapperClasses} ${isClamped ? 'opacity-40' : ''} border border-dashed ${
+                      isDragOver ? 'border-accent ring-2 ring-accent/60' :
                       isArmed ? 'border-accent ring-2 ring-accent/60' : 'border-neutral-300 dark:border-neutral-700'
-                    } rounded-md flex items-center justify-center`}
+                    } rounded-md flex items-center justify-center transition-shadow`}
                     onClick={() => {
                       if (isClamped) return;
                       setArmedSlot(operationType, isArmed ? undefined : idx);
                     }}
+                    {...getDropTargetProps(idx)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
@@ -768,10 +782,14 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 );
               }
 
+              const isDragOver = dragOverSlotIndex === idx;
+              const isDragging = draggedSlotIndex === idx;
+
               return (
                 <div
                   key={inputItem.id ?? idx}
-                  className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isClamped ? 'opacity-50' : ''}`}
+                  className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isClamped ? 'opacity-50' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} ${!isClamped ? 'cursor-grab' : ''} transition-shadow`}
+                  {...(isClamped ? getDropTargetProps(idx) : getDragItemProps(idx))}
                   onClick={() => {
                     if (isClamped) return;
                     if (armedSlotIndex !== undefined) {
@@ -858,7 +876,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
         <div className={`relative h-full ${isCurrentClamped ? 'opacity-50' : ''}`}>
           <CompactAssetCard
             asset={currentAsset}
-          showRemoveButton={orderedInputs.length > 0}
+            showRemoveButton={orderedInputs.length > 0}
             onRemove={() => {
               if (currentInputId) {
                 removeInput?.(operationType, currentInputId);
@@ -871,10 +889,12 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     updateLockedTimestamp?.(operationType, currentInputId, timestamp)
                 : undefined
             }
+            onGenerate={controller.generate}
+            generating={controller.generating}
             hideFooter
             fillHeight
             currentIndex={operationInputIndex}
-          totalCount={orderedInputs.length}
+            totalCount={orderedInputs.length}
             onNavigatePrev={() => cycleInputs?.(operationType, 'prev')}
             onNavigateNext={() => cycleInputs?.(operationType, 'next')}
             queueItems={queueItems}

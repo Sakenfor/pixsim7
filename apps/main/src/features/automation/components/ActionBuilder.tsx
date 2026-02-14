@@ -1,5 +1,5 @@
-import { Button } from '@pixsim7/shared.ui';
-import { useState, useId } from 'react';
+import { Button, useDragReorder } from '@pixsim7/shared.ui';
+import { useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
@@ -51,132 +51,62 @@ export function ActionBuilder({
   onCreatePresetFromSelection,
   // onActionDroppedOut,
 }: ActionBuilderProps) {
-  const instanceId = useId(); // Unique ID for this ActionBuilder instance
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [dragOverNested, setDragOverNested] = useState(false); // For drop zone at end
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const isNested = depth > 0;
   const canTest = testAccountId && onTestAction;
   const canBatchSelect = !!onCreatePresetFromSelection;
   const hasBatchSelection = batchSelected.size > 0;
 
-  // Drag and drop handlers
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    // Store action data and source info for cross-level drops
-    const dragData = {
+  // Drag and drop via shared hook (supports cross-instance drops between nested levels)
+  const { draggedIndex, dragOverIndex, getDragItemProps, getDropTargetProps } = useDragReorder<{
+    action: ActionDefinition;
+    sourceDepth: number;
+    sourceIndex: number;
+  }>({
+    onReorder: (fromIndex, toIndex) => {
+      // End-zone drop: move item to end
+      if (toIndex >= actions.length) {
+        const updated = [...actions];
+        const [item] = updated.splice(fromIndex, 1);
+        updated.push(item);
+        onChange(updated);
+        if (selectedIndex === fromIndex) setSelectedIndex(updated.length - 1);
+        return;
+      }
+
+      const updated = [...actions];
+      const [draggedItem] = updated.splice(fromIndex, 1);
+      updated.splice(toIndex, 0, draggedItem);
+      onChange(updated);
+
+      // Update selected index if needed
+      if (selectedIndex === fromIndex) {
+        setSelectedIndex(toIndex);
+      } else if (selectedIndex !== null) {
+        if (fromIndex < selectedIndex && toIndex >= selectedIndex) {
+          setSelectedIndex(selectedIndex - 1);
+        } else if (fromIndex > selectedIndex && toIndex <= selectedIndex) {
+          setSelectedIndex(selectedIndex + 1);
+        }
+      }
+    },
+    serialize: (index) => ({
       action: actions[index],
       sourceDepth: depth,
       sourceIndex: index,
-      sourceInstanceId: instanceId,
-    };
-    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
-    e.dataTransfer.setData('text/plain', String(index));
-    // Add a slight delay to allow the drag image to be captured
-    setTimeout(() => {
-      (e.target as HTMLElement).style.opacity = '0.5';
-    }, 0);
-  };
-
-  const handleDragEnd = (e: React.DragEvent) => {
-    (e.target as HTMLElement).style.opacity = '1';
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-    setDragOverNested(false);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (draggedIndex !== null && draggedIndex !== index) {
-      setDragOverIndex(index);
-    } else if (draggedIndex === null) {
-      // External drag (from different level)
-      setDragOverIndex(index);
-    }
-  };
-
-  const handleDragLeave = () => {
-    setDragOverIndex(null);
-  };
-
-  const handleDrop = (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverIndex(null);
-
-    // Check if this is a cross-instance drop (different ActionBuilder)
-    try {
-      const jsonData = e.dataTransfer.getData('application/json');
-      if (jsonData) {
-        const dragData = JSON.parse(jsonData);
-        // Cross-instance drop: different instance ID OR different depth
-        if (dragData.sourceInstanceId !== instanceId || dragData.sourceDepth !== depth) {
-          // Cross-instance drop - add the action here (copy operation)
-          const updated = [...actions];
-          updated.splice(targetIndex, 0, dragData.action);
-          onChange(updated);
-          return;
-        }
+    }),
+    onExternalDrop: (data, targetIndex) => {
+      if (targetIndex >= actions.length) {
+        onChange([...actions, data.action]);
+      } else {
+        const updated = [...actions];
+        updated.splice(targetIndex, 0, data.action);
+        onChange(updated);
       }
-    } catch {
-      // Not JSON data, fall through to normal handling
-    }
-
-    // Same-instance drop (reorder within this ActionBuilder)
-    if (draggedIndex === null || draggedIndex === targetIndex) {
-      return;
-    }
-
-    const updated = [...actions];
-    const [draggedItem] = updated.splice(draggedIndex, 1);
-    updated.splice(targetIndex, 0, draggedItem);
-    onChange(updated);
-
-    // Update selected index if needed
-    if (selectedIndex === draggedIndex) {
-      setSelectedIndex(targetIndex);
-    } else if (selectedIndex !== null) {
-      if (draggedIndex < selectedIndex && targetIndex >= selectedIndex) {
-        setSelectedIndex(selectedIndex - 1);
-      } else if (draggedIndex > selectedIndex && targetIndex <= selectedIndex) {
-        setSelectedIndex(selectedIndex + 1);
-      }
-    }
-
-    setDraggedIndex(null);
-  };
-
-  // Handle drop at the end of the list (drop zone)
-  const handleDropZoneDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverNested(true);
-  };
-
-  const handleDropZoneDragLeave = () => {
-    setDragOverNested(false);
-  };
-
-  const handleDropZoneDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOverNested(false);
-
-    try {
-      const jsonData = e.dataTransfer.getData('application/json');
-      if (jsonData) {
-        const dragData = JSON.parse(jsonData);
-        // Add action at the end
-        onChange([...actions, dragData.action]);
-      }
-    } catch {
-      // Ignore parse errors
-    }
-  };
+    },
+  });
+  const dragOverNested = dragOverIndex === actions.length;
 
   const addAction = () => {
     const newAction: ActionDefinition = {
@@ -347,16 +277,14 @@ export function ActionBuilder({
 
       {actions.length === 0 ? (
         <div
-          onDragOver={isNested ? handleDropZoneDragOver : undefined}
-          onDragLeave={isNested ? handleDropZoneDragLeave : undefined}
-          onDrop={isNested ? handleDropZoneDrop : undefined}
+          {...(isNested ? getDropTargetProps(0) : {})}
           className={`text-center ${isNested ? "py-3 text-xs" : "py-8"} text-gray-500 dark:text-gray-400 border-2 border-dashed rounded-lg transition-colors ${
-            dragOverNested
+            dragOverIndex === 0 && actions.length === 0
               ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
               : 'border-gray-300 dark:border-gray-600'
           }`}
         >
-          {dragOverNested ? '+ Drop action here' : (isNested ? "No nested actions - drag here to add" : "No actions yet. Click \"Add Action\" to start building your automation.")}
+          {dragOverIndex === 0 && actions.length === 0 ? '+ Drop action here' : (isNested ? "No nested actions - drag here to add" : "No actions yet. Click \"Add Action\" to start building your automation.")}
         </div>
       ) : (
         <div className="space-y-2">
@@ -389,12 +317,7 @@ export function ActionBuilder({
             return (
             <div
               key={index}
-              draggable
-              onDragStart={(e) => handleDragStart(e, index)}
-              onDragEnd={handleDragEnd}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, index)}
+              {...getDragItemProps(index)}
               className={`border-2 rounded-lg ${
                 isBatchSelected
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30'
@@ -784,9 +707,7 @@ export function ActionBuilder({
           {/* Drop zone at the end for cross-level drops */}
           {isNested && (
             <div
-              onDragOver={handleDropZoneDragOver}
-              onDragLeave={handleDropZoneDragLeave}
-              onDrop={handleDropZoneDrop}
+              {...getDropTargetProps(actions.length)}
               className={`border-2 border-dashed rounded p-2 text-center text-xs transition-colors ${
                 dragOverNested
                   ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
