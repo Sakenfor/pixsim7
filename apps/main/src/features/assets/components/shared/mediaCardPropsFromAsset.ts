@@ -1,11 +1,11 @@
 /**
  * MediaCard Props Builder
  *
- * Converts AssetModel to MediaCardProps, eliminating duplication
+ * Converts AssetModel to MediaCardResolvedProps, eliminating duplication
  * across gallery surface components.
  */
 
-import type { MediaCardProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
+import type { MediaCardResolvedProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
 
 import { FAVORITE_TAG_SLUG } from '../../lib/favoriteTag';
 import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
@@ -14,8 +14,8 @@ import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
  * Core MediaCard props derived from an asset.
  * Excludes interactive props like actions, callbacks, and context menu data.
  */
-export type AssetMediaCardProps = Pick<
-  MediaCardProps,
+export type AssetMediaCardResolvedProps = Pick<
+  MediaCardResolvedProps,
   | 'id'
   | 'mediaType'
   | 'providerId'
@@ -32,6 +32,7 @@ export type AssetMediaCardProps = Pick<
   | 'status'
   | 'providerStatus'
   | 'sourceGenerationId'
+  | 'hasGenerationContext'
   | 'isFavorite'
 >;
 
@@ -47,7 +48,7 @@ export type AssetMediaCardProps = Pick<
  * />
  * ```
  */
-export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps {
+export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardResolvedProps {
   const { mainUrl, thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
 
   return {
@@ -67,6 +68,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
     status: asset.syncStatus,
     providerStatus: asset.providerStatus ?? undefined,
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
+    hasGenerationContext: asset.hasGenerationContext ?? false,
     isFavorite: asset.tags?.some((t) => t.slug === FAVORITE_TAG_SLUG) ?? false,
   };
 }
@@ -74,7 +76,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
 /**
  * Options for building complete MediaCard props with interactivity.
  */
-export interface MediaCardPropsOptions {
+export interface MediaCardResolvedPropsOptions {
   /** Asset actions (delete, archive, generation, etc.) */
   actions?: MediaCardActions;
   /** Badge display configuration */
@@ -90,17 +92,17 @@ export interface MediaCardPropsOptions {
  *
  * @example
  * ```tsx
- * <MediaCard {...buildMediaCardProps(asset, {
+ * <MediaCard {...buildMediaCardResolvedProps(asset, {
  *   actions: getAssetActions(asset),
  *   includeContextMenu: true,
  *   selectedAssets,
  * })} />
  * ```
  */
-export function buildMediaCardProps(
+export function buildMediaCardResolvedProps(
   asset: AssetModel,
-  options: MediaCardPropsOptions = {}
-): Partial<MediaCardProps> {
+  options: MediaCardResolvedPropsOptions = {}
+): Partial<MediaCardResolvedProps> {
   const { actions, badgeConfig, includeContextMenu = true, selectedAssets } = options;
 
   return {

@@ -23,7 +23,6 @@ import {
   AssetGrid,
   AssetCardWrapper,
   SelectionIndicator,
-  mediaCardPropsFromAsset,
 } from './shared';
 
 export function CuratorGallerySurface() {
@@ -142,9 +141,8 @@ export function CuratorGallerySurface() {
           >
             <div className="w-16 h-16 flex-shrink-0">
               <MediaCard
-                {...mediaCardPropsFromAsset(asset)}
+                asset={asset}
                 onToggleFavorite={() => toggleFavoriteTag(asset)}
-                contextMenuAsset={asset}
               />
             </div>
             <div className="flex-1 min-w-0">
@@ -185,9 +183,8 @@ export function CuratorGallerySurface() {
             onClick={() => controller.toggleAssetSelection(asset.id)}
           >
             <MediaCard
-              {...mediaCardPropsFromAsset(asset)}
+              asset={asset}
               onToggleFavorite={() => toggleFavoriteTag(asset)}
-              contextMenuAsset={asset}
               contextMenuSelection={controller.selectedAssets}
             />
             {isSelected && <SelectionIndicator />}

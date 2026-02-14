@@ -20,7 +20,7 @@ import { usePersistentSet } from '@/hooks/usePersistentState';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 
 import { AssetDetailModal } from './AssetDetailModal';
-import { GallerySurfaceShell, mediaCardPropsFromAsset } from './shared';
+import { GallerySurfaceShell } from './shared';
 
 export function ReviewGallerySurface() {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
@@ -211,7 +211,7 @@ export function ReviewGallerySurface() {
             onClick={() => setFocusedAssetIndex(index)}
           >
             <MediaCard
-              {...mediaCardPropsFromAsset(asset)}
+              asset={asset}
               onToggleFavorite={() => toggleFavoriteTag(asset)}
               actions={{
                 ...controller.getAssetActions(asset),
@@ -219,7 +219,6 @@ export function ReviewGallerySurface() {
                 onReject: () => handleReject(assetId),
               }}
               overlayPresetId="media-card-review"
-              contextMenuAsset={asset}
               contextMenuSelection={controller.selectedAssets}
             />
 

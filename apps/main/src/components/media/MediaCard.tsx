@@ -34,7 +34,8 @@ import {
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
 
-import { getAssetDisplayUrls, type AssetModel } from '@features/assets';
+import { type AssetModel } from '@features/assets';
+import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
@@ -87,23 +88,10 @@ export interface MediaCardBadgeConfig {
   enableBadgePulse?: boolean;
 }
 
-export interface MediaCardProps {
-  id: number;
-  mediaType: 'video' | 'image' | 'audio' | '3d_model';
-  providerId: string;
-  providerAssetId: string;
-  thumbUrl: string;
-  previewUrl?: string;
-  remoteUrl: string;
-  width?: number;
-  height?: number;
-  durationSec?: number;
-  tags?: Array<{ slug: string; display_name?: string | null }>;
-  description?: string;
-  createdAt: string;
+// ─── Shared runtime props (callbacks, overlay config, generation state) ─────
+
+export interface MediaCardRuntimeProps {
   onOpen?: (id: number) => void;
-  status?: string;
-  providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
   /** Hash status for primary icon ring (local folders duplicate detection) */
   hashStatus?: 'unique' | 'duplicate' | 'hashing';
   onUploadClick?: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
@@ -112,15 +100,12 @@ export interface MediaCardProps {
   uploadNote?: string;
   actions?: MediaCardActions;
   badgeConfig?: MediaCardBadgeConfig;
-  contextMenuAsset?: AssetModel;
   contextMenuSelection?: AssetModel[];
 
   // Generation status (separate from provider status)
   generationStatus?: 'pending' | 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled';
   generationId?: number;
   generationError?: string;
-  /** ID of the generation that created this asset (for regenerate) */
-  sourceGenerationId?: number;
 
   /**
    * Optional overlay configuration to customize or replace default widgets.
@@ -147,22 +132,80 @@ export interface MediaCardProps {
    */
   presetCapabilities?: import('@lib/ui/overlay').PresetCapabilities;
 
-  /** Whether this asset is favorited (has user:favorite tag) */
-  isFavorite?: boolean;
   /** Callback to toggle the favorite tag */
   onToggleFavorite?: () => void;
 }
 
+// ─── Resolved flat shape (runtime + asset-derived) — widget factories use this ─
+
+/**
+ * Full flat props shape used internally after resolving the MediaCardProps union.
+ * Widget factory functions (`createDefaultMediaCardWidgets`, etc.) receive this type.
+ */
+export interface MediaCardResolvedProps extends MediaCardRuntimeProps {
+  id: number;
+  mediaType: 'video' | 'image' | 'audio' | '3d_model';
+  providerId: string;
+  providerAssetId: string;
+  thumbUrl: string;
+  previewUrl?: string;
+  remoteUrl: string;
+  width?: number;
+  height?: number;
+  durationSec?: number;
+  tags?: Array<{ slug: string; display_name?: string | null }>;
+  description?: string;
+  createdAt: string;
+  status?: string;
+  providerStatus?: 'ok' | 'local_only' | 'unknown' | 'flagged';
+  /** Full asset model — required for context menu and capability registration */
+  contextMenuAsset: AssetModel;
+  /** ID of the generation that created this asset (for regenerate) */
+  sourceGenerationId?: number;
+  /** True when asset has generation context (from record or metadata) */
+  hasGenerationContext?: boolean;
+  /** Whether this asset is favorited (has user:favorite tag) */
+  isFavorite?: boolean;
+}
+
+// ─── Asset-first path (new) ────────────────────────────────────────────────
+
+export interface MediaCardAssetProps extends MediaCardRuntimeProps {
+  asset: AssetModel;
+}
+
+// ─── Legacy individual-field path ──────────────────────────────────────────
+
+export interface MediaCardLegacyProps extends MediaCardResolvedProps {
+  asset?: undefined;
+}
+
+// ─── Public union ──────────────────────────────────────────────────────────
+
+export type MediaCardProps = MediaCardAssetProps | MediaCardLegacyProps;
+
+/** Resolve the MediaCardProps union to the flat shape used internally. */
+function resolveMediaCardProps(props: MediaCardProps): MediaCardResolvedProps {
+  if ('asset' in props && props.asset) {
+    const { asset, ...runtime } = props as MediaCardAssetProps;
+    return {
+      ...mediaCardPropsFromAsset(asset),
+      contextMenuAsset: asset,
+      ...runtime,
+    };
+  }
+  return props as MediaCardResolvedProps;
+}
+
 export function MediaCard(props: MediaCardProps) {
+  const resolved = resolveMediaCardProps(props);
   const {
     id,
     mediaType,
     providerId,
-    providerAssetId,
     thumbUrl,
     previewUrl,
     remoteUrl,
-    durationSec,
     tags = [],
     description,
     createdAt,
@@ -175,7 +218,7 @@ export function MediaCard(props: MediaCardProps) {
     height,
     contextMenuAsset,
     contextMenuSelection,
-  } = props;
+  } = resolved;
 
   const contextMenu = useContextMenuOptional();
   const enableMediaCardContextMenu = useContextHubSettingsStore(
@@ -183,28 +226,12 @@ export function MediaCard(props: MediaCardProps) {
   );
 
   // Provide asset capability for context menu actions
-  const assetForCapability = useMemo(() => contextMenuAsset ?? {
-    id,
-    mediaType,
-    providerId,
-    providerAssetId,
-    thumbnailUrl: thumbUrl,
-    previewUrl,
-    remoteUrl,
-    width,
-    height,
-    durationSec,
-    description,
-    createdAt,
-    providerStatus,
-  } as Partial<AssetModel>, [contextMenuAsset, id, mediaType, providerId, providerAssetId, thumbUrl, previewUrl, remoteUrl, width, height, durationSec, description, createdAt, providerStatus]);
-
   const assetProvider = useMemo(() => ({
     id: 'media-card',
-    getValue: () => assetForCapability,
-    isAvailable: () => !!assetForCapability?.id,
+    getValue: () => contextMenuAsset,
+    isAvailable: () => !!contextMenuAsset?.id,
     exposeToContextMenu: true,
-  }), [assetForCapability]);
+  }), [contextMenuAsset]);
   useProvideCapability(CAP_ASSET, assetProvider, [assetProvider]);
   const { thumbSrc, thumbFailed, thumbRetry: retryThumb, videoSrc, usePosterImage } =
     useMediaPreviewSource({
@@ -280,60 +307,23 @@ export function MediaCard(props: MediaCardProps) {
 
   const handleContextMenu = useCallback(
     (event: ReactMouseEvent) => {
-      if (!contextMenu || !enableMediaCardContextMenu) {
+      if (!contextMenu || !enableMediaCardContextMenu || !contextMenuAsset) {
         return;
       }
       event.preventDefault();
       event.stopPropagation();
 
-      const assetPayload: Partial<AssetModel> =
-        contextMenuAsset ?? {
-          id,
-          mediaType,
-          providerId,
-          providerAssetId,
-          thumbnailUrl: thumbUrl,
-          previewUrl,
-          remoteUrl,
-          width,
-          height,
-          durationSec,
-          description,
-          createdAt,
-          providerStatus,
-          syncStatus: props.status as AssetModel['syncStatus'],
-        };
-
       contextMenu.showContextMenu({
         contextType: 'asset-card',
         position: { x: event.clientX, y: event.clientY },
-        assetId: String(id),
+        assetId: String(contextMenuAsset.id),
         data: {
-          asset: assetPayload,
+          asset: contextMenuAsset,
           selection: contextMenuSelection,
         },
       });
     },
-    [
-      contextMenu,
-      enableMediaCardContextMenu,
-      contextMenuAsset,
-      contextMenuSelection,
-      id,
-      mediaType,
-      providerId,
-      providerAssetId,
-      thumbUrl,
-      previewUrl,
-      remoteUrl,
-      width,
-      height,
-      durationSec,
-      description,
-      createdAt,
-      providerStatus,
-      props.status,
-    ],
+    [contextMenu, enableMediaCardContextMenu, contextMenuAsset, contextMenuSelection],
   );
 
   // Build overlay configuration dynamically
@@ -350,7 +340,7 @@ export function MediaCard(props: MediaCardProps) {
     // Get default widgets from factory
     // Pass capabilities so runtime widgets can adapt without hardcoded ID checks
     const defaultWidgets = createDefaultMediaCardWidgets({
-      ...props,
+      ...resolved,
       overlayPresetId: effectivePresetId,
       presetCapabilities: capabilities,
     });
@@ -410,23 +400,11 @@ export function MediaCard(props: MediaCardProps) {
     }
 
     return result;
-  }, [props, customWidgets, customOverlayConfig, overlayPresetId]);
+  }, [resolved, customWidgets, customOverlayConfig, overlayPresetId]);
 
-  const contextMenuVideoUrl = useMemo(() => {
-    if (!contextMenuAsset || mediaType !== 'video') return undefined;
-    const { mainUrl, previewUrl, thumbnailUrl } = getAssetDisplayUrls(contextMenuAsset);
-    return mainUrl || previewUrl || thumbnailUrl;
-  }, [contextMenuAsset, mediaType]);
-
-  // Prepare data for overlay widgets
-  // This object is passed to ALL widget render functions
-  // Widgets can use function-based configs to reactively access this data
-  // Prefer the resolved video source (respects local-vs-remote settings).
-  // Only fall back to the raw contextMenuAsset remoteUrl if we still don't have a source.
+  // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
-    mediaType === 'video'
-      ? videoSrc || contextMenuVideoUrl
-      : undefined;
+    mediaType === 'video' ? videoSrc : undefined;
 
   const overlayData: MediaCardOverlayData = {
     id,
@@ -437,24 +415,25 @@ export function MediaCard(props: MediaCardProps) {
     description,
     createdAt,
     // Upload state (for UploadWidget)
-    uploadState: props.uploadState || 'idle',
-    uploadProgress: props.uploadProgress || 0,
+    uploadState: resolved.uploadState || 'idle',
+    uploadProgress: resolved.uploadProgress || 0,
     // Video state (for VideoScrubWidget, ProgressWidget)
-    remoteUrl: props.remoteUrl || '',
+    remoteUrl: resolved.remoteUrl || '',
     // For video scrub, prefer original CDN URL from asset (no auth needed), fallback to actual videoSrc
     videoSrc: overlayVideoSrc,
-    durationSec: props.durationSec,
+    durationSec: resolved.durationSec,
     // Actions (for MenuWidget callbacks)
-    actions: props.actions,
+    actions: resolved.actions,
     // Generation status (for GenerationStatusWidget)
-    generationStatus: props.generationStatus,
-    generationId: props.generationId,
-    generationError: props.generationError,
+    generationStatus: resolved.generationStatus,
+    generationId: resolved.generationId,
+    generationError: resolved.generationError,
     // Source generation (for regenerate button)
-    sourceGenerationId: props.sourceGenerationId,
+    sourceGenerationId: resolved.sourceGenerationId,
+    hasGenerationContext: resolved.hasGenerationContext,
     // Favorite state
-    isFavorite: props.isFavorite,
-    onToggleFavorite: props.onToggleFavorite,
+    isFavorite: resolved.isFavorite,
+    onToggleFavorite: resolved.onToggleFavorite,
   };
 
   return (

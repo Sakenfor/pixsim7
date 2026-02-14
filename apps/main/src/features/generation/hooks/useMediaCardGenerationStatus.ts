@@ -6,17 +6,21 @@
  * the props and widgets needed.
  */
 import { useMemo } from 'react';
-import { useGenerationsStore, generationsSelectors, isGenerationActive } from '../stores/generationsStore';
-import { mapAssetToGeneration } from '@features/generation/lib/core/generationAssetMapping';
-import { createGenerationStatusWidget } from '@/components/media/mediaCardWidgets';
-import type { MediaCardProps } from '@/components/media/MediaCard';
+
 import type { OverlayWidget } from '@lib/ui/overlay';
+
+import { mapAssetToGeneration } from '@features/generation/lib/core/generationAssetMapping';
+
+import type { MediaCardResolvedProps } from '@/components/media/MediaCard';
+import { createGenerationStatusWidget } from '@/components/media/mediaCardWidgets';
 import type { MediaCardOverlayData } from '@/components/media/mediaCardWidgets';
+
+import { useGenerationsStore, generationsSelectors, isGenerationActive } from '../stores/generationsStore';
 
 export interface GenerationStatusResult {
   // Props to spread onto MediaCard
   generationStatusProps: {
-    generationStatus?: MediaCardProps['generationStatus'];
+    generationStatus?: MediaCardResolvedProps['generationStatus'];
     generationId?: number;
     generationError?: string;
   };
@@ -74,14 +78,14 @@ export function useMediaCardGenerationStatus(assetId: number): GenerationStatusR
       return null;
     }
 
-    // Create a mock MediaCardProps with just what we need
-    const mockProps: Partial<MediaCardProps> = {
+    // Create a mock MediaCardResolvedProps with just what we need
+    const mockProps: Partial<MediaCardResolvedProps> = {
       generationStatus: generationInfo.status,
       generationError: generationInfo.errorMessage || undefined,
       badgeConfig: { showFooterProvider: true }, // Assume provider badge exists
     };
 
-    return createGenerationStatusWidget(mockProps as MediaCardProps);
+    return createGenerationStatusWidget(mockProps as MediaCardResolvedProps);
   }, [generationInfo]);
 
   // Helper flags
@@ -151,13 +155,13 @@ export function useMediaCardGenerationStatusBatch(
         generationError: generationInfo.errorMessage || undefined,
       };
 
-      const mockProps: Partial<MediaCardProps> = {
+      const mockProps: Partial<MediaCardResolvedProps> = {
         generationStatus: generationInfo.status,
         generationError: generationInfo.errorMessage || undefined,
         badgeConfig: { showFooterProvider: true },
       };
 
-      const generationWidget = createGenerationStatusWidget(mockProps as MediaCardProps);
+      const generationWidget = createGenerationStatusWidget(mockProps as MediaCardResolvedProps);
 
       resultMap.set(assetId, {
         generationStatusProps,

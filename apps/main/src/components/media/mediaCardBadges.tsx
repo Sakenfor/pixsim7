@@ -16,7 +16,7 @@ import { useGenerationInputStore } from '@features/generation/stores/generationI
 
 import { OPERATION_METADATA, OPERATION_TYPES } from '@/types/operations';
 
-import type { MediaCardProps } from './MediaCard';
+import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 /**
@@ -69,7 +69,7 @@ export function SelectionStatusBadge({ assetId }: { assetId: number }) {
  * Create input status badge widget (top-right, below status)
  * Shows when asset is in the generation inputs with operation type indicator
  */
-export function createQueueStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createQueueStatusWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id } = props;
 
   return {
@@ -88,7 +88,7 @@ export function createQueueStatusWidget(props: MediaCardProps): OverlayWidget<Me
  * Create selection status badge widget (bottom-left corner)
  * Shows when asset is part of the global selection
  */
-export function createSelectionStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createSelectionStatusWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id } = props;
 
   return {

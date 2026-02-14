@@ -51,7 +51,6 @@ import {
   type GroupPathEntry,
 } from './groupHelpers';
 import { PageJumpPopover } from './PageJumpPopover';
-import { mediaCardPropsFromAsset } from './shared';
 
 
 // ---------------------------------------------------------------------------
@@ -870,11 +869,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
         <div key={a.id} className="relative group rounded-md">
           <div className="opacity-75 group-hover:opacity-100 transition-opacity">
             <MediaCard
-              {...mediaCardPropsFromAsset(a)}
+              asset={a}
               onOpen={undefined}
               onToggleFavorite={() => toggleFavoriteTag(a)}
               actions={controller.getAssetActions(a)}
-              contextMenuAsset={a}
               contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}
@@ -1002,11 +1000,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
           return (
             <MediaCard
-              {...mediaCardPropsFromAsset(a)}
+              asset={a}
               onOpen={() => openGalleryAsset(a, controller.assets)}
               onToggleFavorite={() => toggleFavoriteTag(a)}
               actions={actions}
-              contextMenuAsset={a}
               contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}

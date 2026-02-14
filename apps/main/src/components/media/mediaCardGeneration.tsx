@@ -9,9 +9,8 @@
 import { ActionHintBadge, ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
-import { getAsset } from '@lib/api/assets';
+import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { getGeneration } from '@lib/api/generations';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
@@ -41,11 +40,11 @@ import { providerCapabilityRegistry, useOperationSpec, useProviderIdForModel } f
 
 import { OPERATION_METADATA, getFallbackOperation, type OperationType } from '@/types/operations';
 
-import type { MediaCardProps } from './MediaCard';
+import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 // Re-export from split modules for backward compatibility
-export { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGeneration.utils';
+export { stripInputParams, parseGenerationRecord, parseGenerationContext, extractGenerationAssetIds } from './mediaCardGeneration.utils';
 export {
   getSmartActionLabel,
   resolveMaxSlotsFromSpecs,
@@ -55,12 +54,12 @@ export {
   type SlotPickerContentProps,
 } from './SlotPicker';
 
-import { stripInputParams, parseGenerationRecord, extractGenerationAssetIds } from './mediaCardGeneration.utils';
+import { stripInputParams, parseGenerationContext } from './mediaCardGeneration.utils';
 import { getSmartActionLabel, resolveMaxSlotsForModel, SlotPickerGrid } from './SlotPicker';
 
 type GenerationButtonGroupContentProps = {
   data: MediaCardOverlayData;
-  cardProps: MediaCardProps;
+  cardProps: MediaCardResolvedProps;
 };
 
 function stripSeedFromValue(value: unknown): unknown {
@@ -110,6 +109,41 @@ async function operationSupportsSeedParam(
     : [];
 
   return parameters.some((param) => param?.name === 'seed');
+}
+
+type PromptLimitOpSpec = {
+  parameters?: Array<{
+    name?: string;
+    max?: number;
+    max_length?: number;
+    metadata?: {
+      per_model_max_length?: Record<string, number>;
+    };
+  }>;
+};
+
+function resolvePromptLimitFromSpec(
+  providerId: string | undefined,
+  model: string | undefined,
+  opSpec: PromptLimitOpSpec | undefined,
+): number | undefined {
+  const promptSpec = Array.isArray(opSpec?.parameters)
+    ? opSpec.parameters.find((param) => param?.name === 'prompt')
+    : undefined;
+
+  if (model && promptSpec?.metadata?.per_model_max_length) {
+    const modelLower = model.toLowerCase();
+    for (const [key, limit] of Object.entries(promptSpec.metadata.per_model_max_length)) {
+      if (key.toLowerCase() === modelLower || modelLower.startsWith(key.toLowerCase())) {
+        return limit;
+      }
+    }
+  }
+
+  if (typeof promptSpec?.max_length === 'number') return promptSpec.max_length;
+  if (typeof promptSpec?.max === 'number') return promptSpec.max;
+  if (providerId) return providerCapabilityRegistry.getPromptLimit(providerId) ?? undefined;
+  return undefined;
 }
 
 function hasAssetInputs(params: Record<string, unknown>): boolean {
@@ -247,24 +281,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
-  const resolveAssetsFromGeneration = useCallback(
-    async (
-      genRecord: Record<string, unknown>,
-      params: Record<string, unknown>,
-    ): Promise<AssetModel[]> => {
-      const assetIds = extractGenerationAssetIds(genRecord, params);
-      if (assetIds.length === 0) {
-        return [];
-      }
-
-      const results = await Promise.allSettled(assetIds.map((assetId) => getAsset(assetId)));
-      return results
-        .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
-        .filter((asset): asset is AssetModel => !!asset);
-    },
-    [],
-  );
-
   const hydrateWidgetGenerationState = useCallback(
     async (options: {
       scopeId: string;
@@ -357,25 +373,33 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   );
 
   const handleLoadToQuickGen = useCallback(async () => {
-    if (!data.sourceGenerationId || isLoadingSource) return;
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isLoadingSource) return;
 
     setIsLoadingSource(true);
 
     try {
-      const generation = await getGeneration(data.sourceGenerationId);
-      const genRecord = generation as unknown as Record<string, unknown>;
+      const ctx = await getAssetGenerationContext(id);
       const {
         params,
         operationType: resolvedOperationType,
         providerId,
         prompt,
-      } = parseGenerationRecord(genRecord, operationType);
+        sourceAssetIds,
+      } = parseGenerationContext(ctx, operationType);
 
       const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
       const sourceParams = (params && typeof params === 'object')
         ? (params as Record<string, unknown>)
         : {};
-      const assets = await resolveAssetsFromGeneration(genRecord, sourceParams);
+
+      // Resolve input assets from context's source_asset_ids
+      let assets: AssetModel[] = [];
+      if (sourceAssetIds.length > 0) {
+        const results = await Promise.allSettled(sourceAssetIds.map((assetId) => getAsset(assetId)));
+        assets = results
+          .map((result) => (result.status === 'fulfilled' ? fromAssetResponse(result.value) : null))
+          .filter((asset): asset is AssetModel => !!asset);
+      }
 
       await hydrateWidgetGenerationState({
         scopeId,
@@ -396,27 +420,27 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       setIsLoadingSource(false);
     }
   }, [
+    id,
     data.sourceGenerationId,
+    data.hasGenerationContext,
     isLoadingSource,
     operationType,
     scopedScopeId,
     widgetContext,
-    resolveAssetsFromGeneration,
     hydrateWidgetGenerationState,
   ]);
 
   // Handler for extending video with the same prompt
   const handleExtendWithSamePrompt = useCallback(async () => {
-    if (!data.sourceGenerationId || isExtending) return;
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isExtending) return;
     if (mediaType !== 'video') return;
 
     setIsExtending(true);
 
     try {
-      // Fetch the source generation to get the prompt
-      const generation = await getGeneration(data.sourceGenerationId);
-      const genRecord = generation as unknown as Record<string, unknown>;
-      const { providerId, prompt } = parseGenerationRecord(genRecord, operationType);
+      // Fetch generation context (from record or metadata)
+      const ctx = await getAssetGenerationContext(id);
+      const { providerId, prompt } = parseGenerationContext(ctx, operationType);
 
       // Get current scoped stores for any additional settings
       const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
@@ -431,6 +455,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       };
 
       // Build the generation request
+      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', 'video_extend');
+      const maxChars = resolvePromptLimitFromSpec(
+        providerId,
+        extendParams?.model as string | undefined,
+        opSpec,
+      );
+
       const buildResult = buildGenerationRequest({
         operationType: 'video_extend',
         prompt: prompt || '',
@@ -443,6 +474,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         }],
         prompts: [],
         transitionDurations: [],
+        maxChars,
         activeAsset: toSelectedAsset(inputAsset, 'gallery'),
         currentInput: {
           id: `card-${id}`,
@@ -488,6 +520,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     }
   }, [
     data.sourceGenerationId,
+    data.hasGenerationContext,
     isExtending,
     mediaType,
     operationType,
@@ -500,20 +533,19 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
   // Handler for regenerating (re-run the exact same generation)
   const handleRegenerate = useCallback(async () => {
-    if (!data.sourceGenerationId || isRegenerating) return;
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isRegenerating) return;
 
     setIsRegenerating(true);
 
     try {
-      // Fetch the source generation to get all params
-      const generation = await getGeneration(data.sourceGenerationId);
-      const genRecord = generation as unknown as Record<string, unknown>;
+      // Fetch generation context (from record or metadata)
+      const ctx = await getAssetGenerationContext(id);
       const {
         params,
         operationType: resolvedOperationType,
         providerId,
         prompt,
-      } = parseGenerationRecord(genRecord, operationType);
+      } = parseGenerationContext(ctx, operationType);
 
       const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
       const parsedParams = params as Record<string, unknown>;
@@ -541,7 +573,9 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       setIsRegenerating(false);
     }
   }, [
+    id,
     data.sourceGenerationId,
+    data.hasGenerationContext,
     isRegenerating,
     operationType,
     submitDirectGeneration,
@@ -609,11 +643,11 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   };
 
-  const sourceGenerationId = data.sourceGenerationId;
+  const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
   const menuItems = useMemo<MenuItem[]>(() => {
     const items = buildGenerationMenuItems(id, mediaType, actions);
 
-    if (sourceGenerationId) {
+    if (hasGenContext) {
       items.push({
         id: 'load-to-quick-gen',
         label: 'Load to Quick Gen',
@@ -634,7 +668,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       });
     }
 
-    if (mediaType === 'video' && sourceGenerationId) {
+    if (mediaType === 'video' && hasGenContext) {
       items.unshift({
         id: 'extend-same-prompt-now',
         label: 'Extend Same Prompt Now',
@@ -651,7 +685,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     id,
     mediaType,
     actions,
-    sourceGenerationId,
+    hasGenContext,
     handleLoadToQuickGen,
     isLoadingSource,
     handleRegenerate,
@@ -710,8 +744,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   }
 
-  // Extend Video button - only show for videos with a source generation
-  if (mediaType === 'video' && sourceGenerationId) {
+  // Extend Video button - only show for videos with generation context
+  if (mediaType === 'video' && hasGenContext) {
     buttonItems.push({
       id: 'extend-video',
       icon: isExtending ? (
@@ -725,8 +759,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
   }
 
-  // Regenerate button - only show if asset has a source generation
-  if (sourceGenerationId) {
+  // Regenerate button - only show if asset has generation context
+  if (hasGenContext) {
     buttonItems.push({
       id: 'regenerate',
       icon: isRegenerating ? (
@@ -812,8 +846,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
  */
 export function buildGenerationMenuItems(
   id: number,
-  mediaType: MediaCardProps['mediaType'],
-  actions: MediaCardProps['actions']
+  mediaType: MediaCardResolvedProps['mediaType'],
+  actions: MediaCardResolvedProps['actions']
 ): MenuItem[] {
   if (!actions) return [];
 
@@ -874,7 +908,7 @@ export function buildGenerationMenuItems(
 /**
  * Create generation actions menu widget
  */
-export function createGenerationMenu(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createGenerationMenu(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, mediaType, actions, badgeConfig, presetCapabilities } = props;
 
   // Only show the generation menu if preset capabilities enable it
@@ -915,7 +949,7 @@ export function createGenerationMenu(props: MediaCardProps): OverlayWidget<Media
  * Create generation button group widget (bottom-center)
  * Two merged buttons: menu (left) + smart action (right)
  */
-export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createGenerationButtonGroup(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { actions, badgeConfig, presetCapabilities } = props;
 
   // Only show if preset capabilities enable it
@@ -947,7 +981,7 @@ export function createGenerationButtonGroup(props: MediaCardProps): OverlayWidge
  * Create generation status badge widget (top-right, below provider badge)
  * Shows when an asset is being generated (pending/processing) or failed
  */
-export function createGenerationStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createGenerationStatusWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { generationStatus, generationError, badgeConfig } = props;
 
   if (!generationStatus) {

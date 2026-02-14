@@ -32,7 +32,7 @@ import { applyQuickTag } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
-import type { MediaCardProps } from './MediaCard';
+import type { MediaCardResolvedProps } from './MediaCard';
 
 // Re-export from split files for backwards compatibility
 export {
@@ -58,25 +58,27 @@ export {
 
 export interface MediaCardOverlayData {
   id: number;
-  mediaType: MediaCardProps['mediaType'];
+  mediaType: MediaCardResolvedProps['mediaType'];
   providerId: string;
-  status?: MediaCardProps['providerStatus'];
+  status?: MediaCardResolvedProps['providerStatus'];
   tags: string[];
   description?: string;
   createdAt: string;
-  uploadState: MediaCardProps['uploadState'] | 'idle';
+  uploadState: MediaCardResolvedProps['uploadState'] | 'idle';
   uploadProgress: number;
   remoteUrl: string;
   /** Processed video source URL (same as main video element, handles auth) */
   videoSrc?: string;
   durationSec?: number;
-  actions?: MediaCardProps['actions'];
+  actions?: MediaCardResolvedProps['actions'];
   // Generation status
-  generationStatus?: MediaCardProps['generationStatus'];
+  generationStatus?: MediaCardResolvedProps['generationStatus'];
   generationId?: number;
   generationError?: string;
   /** ID of the generation that created this asset (for regenerate) */
   sourceGenerationId?: number;
+  /** True when asset has generation context (from record or metadata) */
+  hasGenerationContext?: boolean;
   // Favorite state
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
@@ -85,7 +87,7 @@ export interface MediaCardOverlayData {
 /**
  * Create primary media type icon widget (top-left)
  */
-export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
+export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
   const { mediaType, providerStatus, hashStatus, badgeConfig } = props;
 
   // Map providerStatus ("ok", "local_only", etc.) to the internal
@@ -130,7 +132,7 @@ export function createPrimaryIconWidget(props: MediaCardProps): OverlayWidget<Me
  * Create status badge/menu widget (top-right)
  * Uses MenuWidget for expandable actions when actions are available
  */
-export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, providerId, providerStatus, actions, presetCapabilities, mediaType } = props;
 
   // If preset provides its own status widget, skip the runtime one
@@ -255,7 +257,7 @@ export function createStatusWidget(props: MediaCardProps): OverlayWidget<MediaCa
 /**
  * Create duration badge widget (bottom-right)
  */
-export function createDurationWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createDurationWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { mediaType, durationSec } = props;
 
   if (mediaType !== 'video' || !durationSec) {
@@ -281,7 +283,7 @@ export function createDurationWidget(props: MediaCardProps): OverlayWidget<Media
 /**
  * Create provider badge widget (top-right, shows on hover)
  */
-export function createProviderWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createProviderWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { providerId, badgeConfig } = props;
 
   if (!badgeConfig?.showFooterProvider || !providerId || providerId.includes('_')) {
@@ -306,7 +308,7 @@ export function createProviderWidget(props: MediaCardProps): OverlayWidget<Media
  * Uses DataBinding for reactive video URL resolution
  * Settings are read from overlayWidgetSettingsStore for user customization
  */
-export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { mediaType, onOpen, id, actions } = props;
 
   if (mediaType !== 'video') {
@@ -350,7 +352,7 @@ export function createVideoScrubber(props: MediaCardProps): OverlayWidget<MediaC
  * Uses REACTIVE function-based values for state and progress
  * Settings are read from overlayWidgetSettingsStore for user customization
  */
-export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { id, onUploadClick, presetCapabilities } = props;
 
   // Skip if preset capabilities indicate no upload button
@@ -389,7 +391,7 @@ export function createUploadButton(props: MediaCardProps): OverlayWidget<MediaCa
  * Uses REACTIVE function-based content for dynamic tag display
  * Settings are read from overlayWidgetSettingsStore for user customization
  */
-export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createTagsTooltip(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { badgeConfig, presetCapabilities } = props;
 
   // Skip if preset capabilities indicate no tags tooltip
@@ -443,7 +445,7 @@ export function createTagsTooltip(props: MediaCardProps): OverlayWidget<MediaCar
  * Create favorite toggle widget (top-right, below status)
  * Always visible — heart icon that toggles the user:favorite tag.
  */
-export function createFavoriteWidget(props: MediaCardProps): OverlayWidget<MediaCardOverlayData> {
+export function createFavoriteWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
   return createBadgeWidget({
     id: 'favorite-toggle',
     position: { anchor: 'top-right', offset: { x: -8, y: 44 } },
@@ -602,7 +604,7 @@ import {
 /**
  * Create default widget set for MediaCard
  */
-export function createDefaultMediaCardWidgets(props: MediaCardProps): OverlayWidget<MediaCardOverlayData>[] {
+export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData>[] {
   const { presetCapabilities } = props;
 
   // All presets rely on runtime widgets for the primary icon. The Generation

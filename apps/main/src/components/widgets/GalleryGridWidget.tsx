@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Gallery Grid Widget
  *
@@ -6,11 +7,13 @@
  */
 
 import { useNavigate } from 'react-router-dom';
-import { useGallerySurfaceController } from '@features/gallery';
-import { mediaCardPropsFromAsset } from '@features/assets/components/shared';
-import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
-import { MasonryGrid } from '../layout/MasonryGrid';
+
 import type { BlockProps, BlockDefinition } from '@lib/ui/composer';
+
+import { useGallerySurfaceController } from '@features/gallery';
+
+import { MasonryGrid } from '../layout/MasonryGrid';
+import { MediaCard, type MediaCardBadgeConfig } from '../media/MediaCard';
 
 // Backward compatibility - these types are aliased
 type WidgetProps = BlockProps;
@@ -66,7 +69,7 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
     return controller.assets.map((asset) => (
       <MediaCard
         key={asset.id}
-        {...mediaCardPropsFromAsset(asset)}
+        asset={asset}
         onOpen={() => navigate(`/assets/${asset.id}`)}
         actions={{
           ...controller.getAssetActions(asset),
@@ -74,7 +77,6 @@ export function GalleryGridWidget({ config }: GalleryGridWidgetProps) {
           // onShowMetadata removed - was duplicate of onOpenDetails
         }}
         badgeConfig={badgeConfig}
-        contextMenuAsset={asset}
         contextMenuSelection={controller.selectedAssets}
       />
     ));
