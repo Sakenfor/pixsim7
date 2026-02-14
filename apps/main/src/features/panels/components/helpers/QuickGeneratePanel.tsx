@@ -39,22 +39,6 @@ export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps)
   const content = useMemo(() => {
     // Asset context - Generate from asset
     if (asset) {
-      // Only show for gallery assets (not local files)
-      if (asset.source !== 'gallery') {
-        return (
-          <div className="h-full flex items-center justify-center p-4 text-center">
-            <div className="max-w-sm">
-              <div className="text-neutral-500 dark:text-neutral-400 text-sm mb-2">
-                Generation Not Available
-              </div>
-              <p className="text-xs text-neutral-400 dark:text-neutral-500">
-                Quick generation is only available for gallery assets. Local files cannot be used as generation sources.
-              </p>
-            </div>
-          </div>
-        );
-      }
-
       return (
         <div className="h-full overflow-y-auto p-2">
           <ViewerQuickGenerate asset={asset} alwaysExpanded />

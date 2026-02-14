@@ -10,8 +10,6 @@ import {
   type PanelSettingsScopeMode,
 } from '@features/panels';
 
-const GENERATION_SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
-
 export interface UseQuickGenScopeSyncConfig {
   /** Dockview / panel-manager ID ('controlCenter' | 'viewerQuickGenerate') */
   panelManagerId: string;
@@ -60,18 +58,19 @@ export function useQuickGenScopeSync({
     [panelManagerId, panelIds],
   );
 
+  const SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;
   const generationScopeDefinition =
-    panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID) ?? GENERATION_SCOPE_FALLBACK;
+    panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID) ?? SCOPE_FALLBACK;
 
   // Primitive selector → safe for useSyncExternalStore (no object identity churn)
   const activeMode = usePanelInstanceSettingsStore((state) => {
     const hostScopes = state.instances[hostInstanceId]?.scopes;
-    const hostMode = getScopeMode(hostScopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode);
+    const hostMode = getScopeMode(hostScopes, generationScopeDefinition, SCOPE_FALLBACK.defaultMode);
 
     // If any child diverges from host, it was just changed via Properties → adopt it
     for (const { instanceId } of childInstances) {
       const childScopes = state.instances[instanceId]?.scopes;
-      const childMode = getScopeMode(childScopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode);
+      const childMode = getScopeMode(childScopes, generationScopeDefinition, SCOPE_FALLBACK.defaultMode);
       if (childMode !== hostMode) {
         return childMode;
       }
@@ -85,12 +84,12 @@ export function useQuickGenScopeSync({
   // Detect whether any instance (host or child) disagrees with activeMode
   const needsScopeSync = usePanelInstanceSettingsStore((state) => {
     const hostScopes = state.instances[hostInstanceId]?.scopes;
-    if (getScopeMode(hostScopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode) !== activeMode) {
+    if (getScopeMode(hostScopes, generationScopeDefinition, SCOPE_FALLBACK.defaultMode) !== activeMode) {
       return true;
     }
     return childInstances.some(({ instanceId }) => {
       const scopes = state.instances[instanceId]?.scopes;
-      return getScopeMode(scopes, generationScopeDefinition, GENERATION_SCOPE_FALLBACK.defaultMode) !== activeMode;
+      return getScopeMode(scopes, generationScopeDefinition, SCOPE_FALLBACK.defaultMode) !== activeMode;
     });
   });
 

@@ -32,6 +32,37 @@ describe('buildGenerationRequest', () => {
     expect(result?.params?.prompt).toBe('cinematic dusk skyline');
   });
 
+  it('clamps prompt to maxChars in payload', () => {
+    const result = buildGenerationRequest(
+      createBaseContext({
+        prompt: '   cinematic dusk skyline   ',
+        maxChars: 9,
+      })
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.finalPrompt).toBe('cinematic');
+    expect(result?.params?.prompt).toBe('cinematic');
+  });
+
+  it('does not let dynamicParams.prompt override clamped prompt', () => {
+    const result = buildGenerationRequest(
+      createBaseContext({
+        prompt: '  hero in storm  ',
+        dynamicParams: {
+          prompt: 'stale unbounded prompt from params store',
+          model: 'seedream_4',
+        },
+        maxChars: 4,
+      })
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.finalPrompt).toBe('hero');
+    expect(result?.params?.prompt).toBe('hero');
+    expect(result?.params?.model).toBe('seedream_4');
+  });
+
   it('requires a prompt for image_to_image even when an image is provided', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',

@@ -3,6 +3,7 @@
  * Split from mediaCardGeneration.tsx — no React dependencies.
  */
 import type { InputItem } from '@features/generation';
+import type { AssetGenerationContext } from '@lib/api/assets';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
 
@@ -255,4 +256,39 @@ export function extractGenerationAssetIds(
   }
 
   return ids;
+}
+
+/**
+ * Parse an AssetGenerationContext (from the /generation-context endpoint)
+ * into the same shape that parseGenerationRecord returns.
+ *
+ * The endpoint always returns flat provider params (model, quality, seed, etc.)
+ * regardless of whether the context was derived from metadata or a Generation
+ * record.  These flat params are what buildGenerationConfig / generateAsset expect.
+ */
+export function parseGenerationContext(
+  ctx: AssetGenerationContext,
+  fallbackOperationType: OperationType,
+): {
+  params: Record<string, unknown>;
+  operationType: OperationType;
+  providerId: string;
+  prompt: string;
+  sourceAssetIds: number[];
+} {
+  const operationType =
+    ctx.operation_type && ctx.operation_type in OPERATION_METADATA
+      ? (ctx.operation_type as OperationType)
+      : fallbackOperationType;
+
+  // canonical_params is already flat provider params (backend handles unwrapping)
+  const params = { ...ctx.canonical_params };
+
+  return {
+    params,
+    operationType,
+    providerId: ctx.provider_id || 'pixverse',
+    prompt: ctx.final_prompt || '',
+    sourceAssetIds: ctx.source_asset_ids || [],
+  };
 }

@@ -31,7 +31,6 @@ import {
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
   GenerationScopeProvider,
-  GenerationSourceToggle,
   ViewerAssetInputProvider,
   QuickGenPanelHost,
   useProvideGenerationWidget,
@@ -114,14 +113,12 @@ function ViewerQuickGenerateChrome({
   onCollapse,
   controlCenterOpen,
   mode,
-  onModeChange,
 }: {
   asset: ViewerAsset;
   alwaysExpanded: boolean;
   onCollapse: () => void;
   controlCenterOpen: boolean;
   mode: GenerationSourceMode;
-  onModeChange: (mode: GenerationSourceMode) => void;
 }) {
   // Read source context for loading/info display (mode comes from prop, not capability)
   const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
@@ -159,42 +156,36 @@ function ViewerQuickGenerateChrome({
     }
   }, [asset.type, setOperationType, mode, autoSwitchEnabled]);
 
-  // Auto-set dynamic params from viewed asset
+  // Auto-set dynamic params from viewed asset (only gallery assets have valid backend IDs)
   useEffect(() => {
     if (!asset.id) return;
     setDynamicParams((prev: Record<string, unknown>) => {
       const next = { ...prev };
       delete next.video_url;
       delete next.image_url;
-      next.source_asset_id = asset.id;
+      if (asset.source === 'gallery') {
+        next.source_asset_id = asset.id;
+      }
       return next;
     });
-  }, [asset.id, asset.type, setDynamicParams]);
+  }, [asset.id, asset.type, asset.source, setDynamicParams]);
 
   return (
     <div className="space-y-2">
-      {/* Header with mode toggle and close button */}
+      {/* Header with close button */}
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
           Quick Generate
         </span>
-        <div className="flex items-center gap-2">
-          {/* Mode toggle - provides CAP_GENERATION_SOURCE */}
-          <GenerationSourceToggle
-            mode={mode}
-            sourceGenerationId={asset.sourceGenerationId}
-            onModeChange={onModeChange}
-          />
-          {!alwaysExpanded && (
-            <button
-              onClick={onCollapse}
-              className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
-              title="Close"
-            >
-              <Icon name="x" size={12} />
-            </button>
-          )}
-        </div>
+        {!alwaysExpanded && (
+          <button
+            onClick={onCollapse}
+            className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
+            title="Close"
+          >
+            <Icon name="x" size={12} />
+          </button>
+        )}
       </div>
 
       {/* Loading indicator for asset mode */}
@@ -254,14 +245,19 @@ function ViewerQuickGenerateContent({
         onCollapse={onCollapse}
         controlCenterOpen={controlCenterOpen}
         mode={mode}
-        onModeChange={onModeChange}
       />
       <QuickGenPanelHost
         key={storageKey}
         panels={layout.panels}
         storageKey={storageKey}
         panelManagerId="viewerQuickGenerate"
-        context={{ targetProviderId: 'generation-widget:viewerQuickGenerate', sourceLabel: 'Viewer' }}
+        context={{
+          targetProviderId: 'generation-widget:viewerQuickGenerate',
+          sourceLabel: 'Viewer',
+          sourceToggleMode: mode,
+          sourceToggleGenerationId: asset.sourceGenerationId,
+          onSourceToggleModeChange: onModeChange,
+        }}
         defaultLayout={layout.defaultLayout}
         resolvePanelPosition={layout.resolvePanelPosition}
         className="h-[360px] min-h-[280px] mt-2"
@@ -279,11 +275,11 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
 
   // Reset mode when asset changes
   useEffect(() => {
-    // If switching to an asset without source generation while in asset mode, reset to user
-    if (mode === 'asset' && !asset.sourceGenerationId) {
+    // If switching to an asset without generation context while in asset mode, reset to user
+    if (mode === 'asset' && !asset.sourceGenerationId && !asset.hasGenerationContext) {
       setMode('user');
     }
-  }, [asset.id, asset.sourceGenerationId, mode]);
+  }, [asset.id, asset.sourceGenerationId, asset.hasGenerationContext, mode]);
 
   // Scope sync — keeps all viewer quickgen panels in lockstep
   const { scopeInstanceId, scopeLabel } = useQuickGenScopeSync({

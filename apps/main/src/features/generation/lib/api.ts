@@ -150,11 +150,15 @@ function buildGenerationConfig(
  * Returns a job ID that can be tracked via polling.
  */
 export async function generateAsset(req: GenerateAssetRequest): Promise<GenerateAssetResponse> {
-  const { preferred_account_id, ...restExtra } = (req.extraParams || {}) as Record<string, any>;
+  const restExtra = { ...((req.extraParams || {}) as Record<string, any>) };
+  const preferred_account_id = restExtra.preferred_account_id;
+  delete restExtra.preferred_account_id;
+  // Prevent stale param state from overriding the canonical prompt argument.
+  delete restExtra.prompt;
 
   const mergedParams = {
-    prompt: req.prompt,
     ...restExtra,
+    prompt: req.prompt,
   };
 
   // Optional dev validation (warnings only, doesn't block)
@@ -171,7 +175,7 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   // Build proper GenerationNodeConfig from Control Center settings
   const config = buildGenerationConfig(
     generationType,
-    { prompt: req.prompt, ...restExtra },
+    mergedParams,
     providerId
   );
 

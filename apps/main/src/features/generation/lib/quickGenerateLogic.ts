@@ -328,8 +328,9 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   const clampedPrompt = maxChars != null ? trimmedPrompt.slice(0, maxChars) : trimmedPrompt;
 
   const params: Record<string, any> = {
-    prompt: clampedPrompt,
     ...dynamicParams,
+    // Always enforce the clamped prompt at payload level.
+    prompt: clampedPrompt,
   };
 
   if (inferredSourceAssetId) {

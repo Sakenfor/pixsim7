@@ -18,6 +18,7 @@ import {
 } from '@features/contextHub';
 import {
   GenerationSettingsPanel,
+  GenerationSourceToggle,
 } from '@features/generation';
 import {
   QUICKGEN_SETTINGS_COMPONENT_ID,
@@ -85,6 +86,15 @@ export function SettingsPanel(props: QuickGenPanelProps) {
     { scope: capabilityScope },
   );
 
+  // Build source toggle element from context (if provided)
+  const sourceToggle = ctx?.onSourceToggleModeChange ? (
+    <GenerationSourceToggle
+      mode={ctx.sourceToggleMode!}
+      sourceGenerationId={ctx.sourceToggleGenerationId}
+      onModeChange={ctx.onSourceToggleModeChange}
+    />
+  ) : undefined;
+
   // Don't show loading state - just render empty during brief mode transitions
   if (useDefaultPanel) {
     return (
@@ -101,6 +111,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
           queueProgress={controller.queueProgress}
           onGenerateBurst={controller.generateBurst}
           onGenerateEach={controller.generateEach}
+          sourceToggle={sourceToggle}
         />
       </div>
     );

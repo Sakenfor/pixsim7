@@ -67,6 +67,10 @@ export function useLazyPreview(
 
   const ref = useRef<HTMLDivElement | null>(null);
   const loadingRef = useRef(false);
+  const loadPreviewRef = useRef(loadPreview);
+
+  // Keep latest callback without forcing observer teardown/recreate on each render.
+  loadPreviewRef.current = loadPreview;
 
   useEffect(() => {
     const el = ref.current;
@@ -80,7 +84,7 @@ export function useLazyPreview(
         entries.forEach((entry) => {
           if (entry.isIntersecting && !hasPreview && !loadingRef.current) {
             loadingRef.current = true;
-            loadPreview().finally(() => {
+            loadPreviewRef.current().finally(() => {
               loadingRef.current = false;
             });
             observer.disconnect();
@@ -95,7 +99,7 @@ export function useLazyPreview(
     return () => {
       observer.disconnect();
     };
-  }, [hasPreview, loadPreview, rootMargin, disabled]);
+  }, [hasPreview, rootMargin, disabled]);
 
   return ref;
 }

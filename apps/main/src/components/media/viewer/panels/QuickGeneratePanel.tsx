@@ -24,15 +24,6 @@ export function QuickGeneratePanel({ context }: QuickGeneratePanelProps) {
     );
   }
 
-  // Only show for gallery assets (not local files)
-  if (asset.source !== 'gallery') {
-    return (
-      <div className="h-full flex items-center justify-center text-neutral-500 text-sm p-4 text-center">
-        Generation available for gallery assets only
-      </div>
-    );
-  }
-
   return (
     <div className="h-full overflow-y-auto p-2">
       <ViewerQuickGenerate asset={asset} alwaysExpanded />

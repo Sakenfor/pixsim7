@@ -12,8 +12,10 @@ import {
 } from '@features/contextHub';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import { providerCapabilityRegistry } from '@features/providers';
 
 import type { OperationType } from '@/types/operations';
+import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { createPendingGeneration } from '../models';
 import { useGenerationsStore } from '../stores/generationsStore';
@@ -172,6 +174,12 @@ export function useMediaGenerationActions() {
 
         const { operationType, prompt, providerId } = sessionState;
         const dynamicParams = settingsState.params || {};
+        const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
+        const maxChars = resolvePromptLimitForModel(
+          providerId,
+          dynamicParams?.model as string | undefined,
+          opSpec?.parameters,
+        );
 
         // Build the generation request with the asset as source
         const buildResult = buildGenerationRequest({
@@ -183,6 +191,7 @@ export function useMediaGenerationActions() {
           },
           prompts: [],
           transitionDurations: [],
+          maxChars,
           activeAsset: toSelectedAsset(asset, 'gallery'),
           currentInput: { id: 'quick', asset, queuedAt: '', lockedTimestamp: undefined },
         });

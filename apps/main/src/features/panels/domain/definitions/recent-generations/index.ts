@@ -4,12 +4,12 @@ import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'recent-generations',
-  title: 'Recent Generations',
+  title: 'Recent Assets',
   component: RecentGenerationsPanel,
   category: 'generation',
   tags: ['generation', 'recent', 'output'],
   icon: 'sparkles',
-  description: 'Browse recently completed generation outputs',
+  description: 'Browse recently generated assets',
   settingScopes: ['generation'],
   supportsCompactMode: true,
   supportsMultipleInstances: false,
