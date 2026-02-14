@@ -361,36 +361,46 @@ button:focus-visible {
 /* Scale down overlays when card is small (< 80px) */
 @container (max-width: 79px) {
   .compact-card-remove {
+    width: 10px;
+    height: 10px;
+    top: 2px;
+    right: 2px;
+  }
+  .compact-card-remove svg {
+    width: 5px;
+    height: 5px;
+  }
+  .compact-card-status {
     width: 12px;
     height: 12px;
     top: 2px;
     right: 2px;
   }
-  .compact-card-remove svg {
-    width: 6px;
-    height: 6px;
-  }
-  .compact-card-status {
-    width: 14px;
-    height: 14px;
-    top: 2px;
-    right: 2px;
-  }
   .compact-card-status svg {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
   }
   .compact-card-play {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
   }
   .compact-card-play svg {
-    width: 8px;
-    height: 8px;
+    width: 7px;
+    height: 7px;
   }
   .compact-card-lock {
     font-size: 7px;
     padding: 1px 3px;
+  }
+  .compact-card-generate {
+    width: 14px;
+    height: 14px;
+    bottom: 2px;
+    left: 2px;
+  }
+  .compact-card-generate svg {
+    width: 7px;
+    height: 7px;
   }
   .compact-card-nav {
     transform: scale(0.7);
@@ -401,30 +411,40 @@ button:focus-visible {
 /* Default size (80px - 150px) */
 @container (min-width: 80px) and (max-width: 150px) {
   .compact-card-remove {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     top: 3px;
     right: 3px;
   }
   .compact-card-remove svg {
-    width: 7px;
-    height: 7px;
+    width: 6px;
+    height: 6px;
   }
   .compact-card-status {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
   }
   .compact-card-status svg {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
   }
   .compact-card-play {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
   }
   .compact-card-play svg {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
+  }
+  .compact-card-generate {
+    width: 16px;
+    height: 16px;
+    bottom: 3px;
+    left: 3px;
+  }
+  .compact-card-generate svg {
+    width: 8px;
+    height: 8px;
   }
   .compact-card-nav {
     transform: scale(0.85);

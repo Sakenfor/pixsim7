@@ -11,7 +11,7 @@
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
-import { resolvePresetScope } from '@features/panels';
+import { getDockWidgetByDockviewId, resolvePresetScope } from '@features/panels';
 import type { LayoutPreset, PresetScope as WorkspacePresetScope } from '@features/workspace/stores/workspaceStore';
 
 import { menuActionsToCapabilityActions } from '../actionAdapters';
@@ -32,6 +32,14 @@ function getPresetsForScope(ctx: MenuActionContext): LayoutPreset[] {
   const currentScope = resolvePresetScope(ctx.currentDockviewId) as WorkspacePresetScope;
 
   return state.getPresetsForScope(currentScope);
+}
+
+/**
+ * Resolve a human-readable label for the current dockview scope.
+ */
+export function getScopeLabel(ctx: MenuActionContext): string | undefined {
+  const zone = getDockWidgetByDockviewId(ctx.currentDockviewId);
+  return zone?.label;
 }
 
 /**

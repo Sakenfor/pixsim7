@@ -48,7 +48,6 @@ function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializePlugins = usePluginCatalogStore((s) => s.initialize);
-  const loadEnabledBundles = usePluginCatalogStore((s) => s.loadEnabledBundles);
 
   // Get dynamic routes reactively from module registry
   const dynamicRoutes = useModuleRoutes({ includeHidden: true });
@@ -67,8 +66,10 @@ function App() {
 
   useEffect(() => {
     // Initialize auth state
-    initialize();
-  }, [initialize]);
+    if (!isAuthenticated) {
+      initialize();
+    }
+  }, [initialize, isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -76,11 +77,10 @@ function App() {
     }
 
     initializePlugins()
-      .then(() => loadEnabledBundles())
       .catch((error) => {
         console.warn('[Plugins] Failed to initialize plugin catalog:', error);
       });
-  }, [isAuthenticated, initializePlugins, loadEnabledBundles]);
+  }, [isAuthenticated, initializePlugins]);
 
   return (
     <BrowserRouter>

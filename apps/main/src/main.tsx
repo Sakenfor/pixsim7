@@ -17,6 +17,7 @@ import '@lib/dockview' // Register auto-context menu presets
 
 import './lib/debugControlCenterPersistence' // Debug utility for persistence issues
 import './lib/utils/debugFlags' // Debug flags system for toggleable logging
+import './lib/dev/guardPerformanceMeasure'
 
 
 // Initialize web logging for frontend
@@ -28,13 +29,14 @@ initializeConsole()
 
 // Register and initialize modules outside React to avoid StrictMode re-runs
 registerModules()
-moduleRegistry.initializeAll()
 
 registerContextMenuActions()
 
-// Initialize panels early so all dockviews have access to panel definitions
-// Then render the app
-initializePanels().then(() => {
+async function bootstrapApp() {
+  // Initialize infrastructure before rendering.
+  await moduleRegistry.initializeAll()
+  await initializePanels()
+
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <DevToolProvider>
@@ -42,4 +44,6 @@ initializePanels().then(() => {
       </DevToolProvider>
     </StrictMode>,
   )
-})
+}
+
+void bootstrapApp()

@@ -2219,6 +2219,34 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/assets/{asset_id}/generation-context": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * Get Asset Generation Context
+         * @description Resolve generation context for an asset.
+         *
+         *     Always tries to resolve from the asset's own media_metadata first
+         *     (same logic for synced AND app-generated assets).  Falls back to
+         *     the Generation record only when metadata lacks usable data, and
+         *     even then returns flat provider params — never the raw
+         *     GenerationNodeConfigSchema wrapper.
+         *
+         *     Returns 404 if no context can be resolved.
+         */
+        readonly get: operations["get_asset_generation_context_api_v1_assets__asset_id__generation_context_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/assets/{asset_id}/reupload": {
         readonly parameters: {
             readonly query?: never;
@@ -9409,7 +9437,7 @@ export interface paths {
          * @description Disable a plugin for the current user
          *
          *     The plugin will not be loaded on next app startup.
-         *     Note: Built-in plugins can be disabled but will remain in the catalog.
+         *     Required plugins cannot be disabled.
          */
         readonly post: operations["disable_plugin_api_v1_plugins__plugin_id__disable_post"];
         readonly delete?: never;
@@ -9458,6 +9486,29 @@ export interface paths {
         readonly get: operations["list_enabled_plugins_api_v1_plugins_enabled_list_get"];
         readonly put?: never;
         readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/plugins/sync": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * Sync Plugins
+         * @description Sync frontend source plugin metadata into the backend catalog.
+         *
+         *     This endpoint is idempotent and only creates missing catalog entries.
+         *     Existing entries are never overwritten.
+         */
+        readonly post: operations["sync_plugins_api_v1_plugins_sync_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -12565,6 +12616,32 @@ export interface components {
             readonly message: string;
         };
         /**
+         * AssetGenerationContext
+         * @description Generation-equivalent context resolved from either a Generation record
+         *     or asset media_metadata.  Read-only — no DB writes.
+         */
+        readonly AssetGenerationContext: {
+            /** Canonical Params */
+            readonly canonical_params?: Record<string, unknown>;
+            /** Final Prompt */
+            readonly final_prompt?: string | null;
+            /** Inputs */
+            readonly inputs?: readonly Record<string, unknown>[];
+            /** Operation Type */
+            readonly operation_type: string;
+            /** Provider Id */
+            readonly provider_id: string;
+            /** Raw Params */
+            readonly raw_params?: Record<string, unknown>;
+            /**
+             * Source
+             * @enum {string}
+             */
+            readonly source: "generation" | "metadata";
+            /** Source Asset Ids */
+            readonly source_asset_ids?: readonly number[];
+        };
+        /**
          * AssetGroupBy
          * @enum {string}
          */
@@ -12916,6 +12993,11 @@ export interface components {
             readonly file_size_bytes?: number | null;
             /** File Url */
             readonly file_url?: string | null;
+            /**
+             * Has Generation Context
+             * @default false
+             */
+            readonly has_generation_context: boolean;
             /** Height */
             readonly height?: number | null;
             /** Id */
@@ -18628,14 +18710,14 @@ export interface components {
             readonly author?: string | null;
             /**
              * Bundle Url
-             * @description URL to plugin bundle
+             * @description URL to plugin bundle (null for source plugins)
              */
-            readonly bundle_url: string;
+            readonly bundle_url?: string | null;
             /** Description */
             readonly description?: string | null;
             /**
              * Family
-             * @description Plugin family (scene, ui, tool)
+             * @description Plugin family (scene, ui, tool, panel, graph, game, surface, generation)
              */
             readonly family: string;
             /** Icon */
@@ -18650,6 +18732,11 @@ export interface components {
              * @description Enabled for current user
              */
             readonly is_enabled: boolean;
+            /**
+             * Is Required
+             * @description Required plugin (cannot be disabled)
+             */
+            readonly is_required: boolean;
             /** Manifest Url */
             readonly manifest_url?: string | null;
             readonly metadata?: components["schemas"]["PluginMetadata"];
@@ -18668,6 +18755,11 @@ export interface components {
              * @description Plugin type within family
              */
             readonly plugin_type: string;
+            /**
+             * Source
+             * @description Plugin source type (bundle, source, remote, frontend-sync)
+             */
+            readonly source: string;
             /** Tags */
             readonly tags?: readonly string[];
             /**
@@ -18687,6 +18779,69 @@ export interface components {
             readonly message: string;
             /** Plugin Id */
             readonly plugin_id: string;
+        };
+        /**
+         * PluginSyncItem
+         * @description Plugin metadata sent by frontend to sync source-code plugins into catalog.
+         */
+        readonly PluginSyncItem: {
+            /** Author */
+            readonly author?: string | null;
+            /** Description */
+            readonly description?: string | null;
+            /** Family */
+            readonly family: string;
+            /** Icon */
+            readonly icon?: string | null;
+            /**
+             * Is Required
+             * @default false
+             */
+            readonly is_required: boolean;
+            /** Metadata */
+            readonly metadata?: Record<string, unknown>;
+            /** Name */
+            readonly name: string;
+            /** Plugin Id */
+            readonly plugin_id: string;
+            /**
+             * Plugin Type
+             * @default ui-overlay
+             */
+            readonly plugin_type: string;
+            /** Tags */
+            readonly tags?: readonly string[];
+            /**
+             * Version
+             * @default 1.0.0
+             */
+            readonly version: string;
+        };
+        /**
+         * PluginSyncRequest
+         * @description Request payload for /plugins/sync.
+         */
+        readonly PluginSyncRequest: {
+            /** Plugins */
+            readonly plugins?: readonly components["schemas"]["PluginSyncItem"][];
+        };
+        /**
+         * PluginSyncResponse
+         * @description Response payload for /plugins/sync.
+         */
+        readonly PluginSyncResponse: {
+            /**
+             * Created
+             * @default 0
+             */
+            readonly created: number;
+            /** Created Plugin Ids */
+            readonly created_plugin_ids?: readonly string[];
+            /**
+             * Skipped
+             * @default 0
+             */
+            readonly skipped: number;
         };
         /**
          * PresetExecutionMode
@@ -25790,6 +25945,39 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_asset_generation_context_api_v1_assets__asset_id__generation_context_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly asset_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AssetGenerationContext"];
                 };
             };
             /** @description Validation Error */
@@ -37953,7 +38141,7 @@ export interface operations {
             readonly query?: {
                 /** @description Only return enabled plugins */
                 readonly enabled_only?: boolean;
-                /** @description Filter by plugin family (scene, ui, tool) */
+                /** @description Filter by plugin family (scene, ui, tool, panel, graph, game, surface, generation) */
                 readonly family?: string | null;
             };
             readonly header?: {
@@ -38104,6 +38292,41 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["PluginListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly sync_plugins_api_v1_plugins_sync_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["PluginSyncRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["PluginSyncResponse"];
                 };
             };
             /** @description Validation Error */

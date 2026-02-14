@@ -57,7 +57,7 @@ function OverlayPresetsSection({ settings, helpers }: PanelSettingsProps<Gallery
               title={preset.configuration.description}
             >
               <div className="flex items-center gap-2">
-                {preset.icon && <Icon name={preset.icon} size={18} />}
+                {preset.icon && <Icon name={preset.icon} size={18} color={isActive ? '#fff' : undefined} />}
                 <span className="font-medium">{preset.name}</span>
               </div>
               {preset.configuration.description && (

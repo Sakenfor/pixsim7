@@ -37,6 +37,7 @@ import {
   loadPresetAction,
   deletePresetAction,
   resetLayoutAction,
+  getScopeLabel,
 } from './presetActions';
 
 // Export individual action modules
@@ -123,6 +124,20 @@ const layoutPresetsSubmenuAction: MenuAction = {
   availableIn: ['background', 'tab', 'panel-content'],
   children: (ctx) => {
     const items: MenuAction[] = [];
+    const scopeLabel = getScopeLabel(ctx);
+
+    // Add scope header so users know which area's presets they're seeing
+    if (scopeLabel) {
+      items.push({
+        id: 'composite:layout-presets:scope-header',
+        label: scopeLabel,
+        icon: 'layout',
+        availableIn: ['background', 'tab', 'panel-content'],
+        disabled: () => true,
+        divider: true,
+        execute: () => {},
+      });
+    }
 
     if (savePresetAction.visible?.(ctx) !== false) {
       items.push({ ...savePresetAction, category: undefined });

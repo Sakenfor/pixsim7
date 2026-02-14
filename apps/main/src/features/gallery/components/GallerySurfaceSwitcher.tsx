@@ -90,7 +90,7 @@ export function GallerySurfaceSwitcher({
             }`}
             title={surface.description}
           >
-            {surface.icon && <Icon name={surface.icon} size={14} className="mr-1" />}
+            {surface.icon && <Icon name={surface.icon} size={14} className="mr-1" color={currentSurfaceId === surface.id ? '#fff' : undefined} />}
             {surface.label}
           </button>
         ))}

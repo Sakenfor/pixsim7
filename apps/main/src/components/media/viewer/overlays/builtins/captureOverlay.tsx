@@ -65,6 +65,13 @@ export function CaptureOverlayToolbar({
         Rect
       </button>
       <button
+        onClick={() => setDrawingMode('polygon')}
+        className={getToolbarButtonClass(drawingMode === 'polygon')}
+        title="Draw polygon capture region, double-click to finish"
+      >
+        Poly
+      </button>
+      <button
         onClick={() => setDrawingMode('select')}
         className={getToolbarButtonClass(drawingMode === 'select')}
         title="Select a capture region"
@@ -88,6 +95,12 @@ export function CaptureOverlayToolbar({
       )}
 
       <div className="flex-1" />
+
+      <span className="text-neutral-500 text-[10px]">
+        {drawingMode === 'rect' && 'Drag to draw rectangle'}
+        {drawingMode === 'polygon' && 'Click points, double-click to finish'}
+        {drawingMode === 'select' && 'Click region to select'}
+      </span>
 
       <button
         onClick={() => onCaptureFrame?.()}
