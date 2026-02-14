@@ -1,9 +1,11 @@
 import {
   hasAuthoringProjectBundleContributor,
   registerAuthoringProjectBundleContributor,
-  type AuthoringProjectBundleContributor,
-  type ProjectBundleExtensionImportOutcome,
-} from '@lib/game/projectBundle';
+} from '@lib/game/projectBundle/contributors';
+import type {
+  AuthoringProjectBundleContributor,
+  ProjectBundleExtensionImportOutcome,
+} from '@lib/game/projectBundle/types';
 
 import { useGraphStore, type GraphState } from '@features/graph/stores/graphStore';
 
@@ -90,7 +92,11 @@ function parseSceneGraphPayload(raw: unknown): SceneGraphProjectExtensionPayload
   }
 
   const currentSceneId = raw.currentSceneId;
-  if (currentSceneId !== undefined && currentSceneId !== null && typeof currentSceneId !== 'string') {
+  if (
+    currentSceneId !== undefined &&
+    currentSceneId !== null &&
+    typeof currentSceneId !== 'string'
+  ) {
     return null;
   }
 
@@ -98,11 +104,13 @@ function parseSceneGraphPayload(raw: unknown): SceneGraphProjectExtensionPayload
     version: SCENE_GRAPH_PROJECT_EXTENSION_VERSION,
     scenes: scenes as Record<string, DraftScene>,
     sceneMetadata: (sceneMetadata || {}) as Record<string, SceneMetadata>,
-    currentSceneId: (typeof currentSceneId === 'string' ? currentSceneId : null),
+    currentSceneId: typeof currentSceneId === 'string' ? currentSceneId : null,
   };
 }
 
-function restoreSceneGraph(payload: SceneGraphProjectExtensionPayloadV1): ProjectBundleExtensionImportOutcome {
+function restoreSceneGraph(
+  payload: SceneGraphProjectExtensionPayloadV1,
+): ProjectBundleExtensionImportOutcome {
   if (Object.keys(payload.scenes).length === 0) {
     return {
       warnings: [SCENE_GRAPH_EMPTY_SCENES_WARNING],
@@ -124,7 +132,7 @@ function restoreSceneGraph(payload: SceneGraphProjectExtensionPayloadV1): Projec
   return {};
 }
 
-const sceneGraphProjectContributor: AuthoringProjectBundleContributor<unknown> = {
+export const authoringProjectBundleContributor: AuthoringProjectBundleContributor<unknown> = {
   key: SCENE_GRAPH_PROJECT_EXTENSION_KEY,
 
   export: () => {
@@ -168,11 +176,12 @@ const sceneGraphProjectContributor: AuthoringProjectBundleContributor<unknown> =
   subscribeDirtyState: (listener) => subscribeSceneGraphDirty(listener),
 };
 
+// Backward-compatible explicit entrypoint used by older call sites.
 export function registerSceneGraphProjectBundleExtension(): void {
   if (hasAuthoringProjectBundleContributor(SCENE_GRAPH_PROJECT_EXTENSION_KEY)) {
     return;
   }
 
   markSceneGraphBaseline();
-  registerAuthoringProjectBundleContributor(sceneGraphProjectContributor);
+  registerAuthoringProjectBundleContributor(authoringProjectBundleContributor);
 }

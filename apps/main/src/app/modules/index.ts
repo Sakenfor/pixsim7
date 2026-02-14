@@ -2,6 +2,8 @@
 // Core and page modules are registered manually.
 // Feature modules are auto-discovered from features/[name]/module.ts
 
+import { autoRegisterAuthoringProjectBundleContributors } from '@lib/game/projectBundle';
+
 import { registerDiscoveredFeatureModules } from './autoDiscover';
 
 // Core modules (must be manually imported - not in features/)
@@ -52,6 +54,10 @@ export function registerModules() {
   // Feature modules (priority: 50-75) - AUTO-DISCOVERED
   // Any features/*/module.ts is automatically picked up
   registerDiscoveredFeatureModules();
+
+  // Authoring contributors (project bundle extensions) are auto-discovered
+  // from features/*/projectBundle/* and registered once at startup.
+  autoRegisterAuthoringProjectBundleContributors();
 
   // Page-only modules (no initialization logic, just navigation metadata)
   // Note: npcs module now auto-discovered via features/npcs/module.ts

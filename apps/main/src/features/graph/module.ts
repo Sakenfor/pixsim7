@@ -3,7 +3,8 @@ import { registerRenderersFromNodeTypes } from '@features/graph/lib/editor/autoR
 import { registerBuiltinRenderers } from '@features/graph/lib/editor/builtinRenderers';
 import { registerPluginRenderers } from '@features/graph/lib/editor/pluginRenderers';
 import { preloadHighPriorityRenderers } from '@features/graph/lib/editor/rendererBootstrap';
-import { registerSceneGraphProjectBundleExtension } from '@features/graph/projectBundle/sceneGraphProjectExtension';
+import { registerBuiltinNodeTypes } from '@features/graph/lib/nodeTypes/builtin';
+import { registerArcNodeTypes } from '@features/graph/lib/nodeTypes/arc';
 
 import type { Module } from '@app/modules/types';
 
@@ -12,7 +13,7 @@ import type { Module } from '@app/modules/types';
  *
  * Manages the scene graph node type system and renderers.
  * This module handles:
- * - Registering built-in and arc node types (TODO: need to implement these functions)
+ * - Registering built-in and arc node types
  * - Registering node renderers (built-in, arc, and plugin)
  * - Preloading high-priority renderers for performance
  * - Auto-registering renderers from node type definitions
@@ -27,13 +28,9 @@ export const graphSystemModule: Module = {
   dependsOn: ['plugin-bootstrap'], // Needs plugins loaded first
 
   async initialize() {
-    // Register scene graph authoring as a project-bundle extension handler.
-    registerSceneGraphProjectBundleExtension();
-
     // Register builtin node types
-    // TODO: Implement registerBuiltinNodeTypes() and registerArcNodeTypes()
-    // registerBuiltinNodeTypes();
-    // registerArcNodeTypes();
+    registerBuiltinNodeTypes();
+    registerArcNodeTypes();
 
     // Register builtin node renderers
     registerBuiltinRenderers();
