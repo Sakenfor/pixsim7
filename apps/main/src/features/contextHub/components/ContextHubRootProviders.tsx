@@ -5,6 +5,7 @@ import { useEditorContext } from "@lib/context";
 import {
   isAnyAuthoringProjectBundleContributorDirty,
   subscribeAuthoringProjectBundleDirtyState,
+  startAutosave,
 } from "@lib/game/projectBundle";
 
 import {
@@ -59,6 +60,11 @@ export function ContextHubRootProviders() {
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
+
+  useEffect(() => {
+    const stopAutosave = startAutosave(() => editorContext.world.id);
+    return stopAutosave;
+  }, [editorContext.world.id]);
 
   const sceneValue = useMemo<SceneContextSummary>(
     () => {

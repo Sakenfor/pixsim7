@@ -412,6 +412,57 @@ export async function deleteSavedGameProject(projectId: number): Promise<void> {
 }
 
 // =============================================================================
+// Project Draft API (autosave / recovery)
+// =============================================================================
+
+export interface UpsertDraftRequest {
+  bundle: GameProjectBundle;
+  source_world_id?: number | null;
+  draft_source_project_id?: number | null;
+}
+
+export interface DraftSummary {
+  id: number;
+  draft_source_project_id: number | null;
+  source_world_id: number | null;
+  schema_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function upsertProjectDraft(
+  request: UpsertDraftRequest,
+): Promise<DraftSummary> {
+  return pixsimClient.put<DraftSummary>('/game/worlds/projects/drafts', request);
+}
+
+export async function getProjectDraft(
+  draftSourceProjectId?: number | null,
+): Promise<SavedGameProjectDetail | null> {
+  const params = new URLSearchParams();
+  if (draftSourceProjectId != null) {
+    params.set('draft_source_project_id', String(draftSourceProjectId));
+  }
+  const query = params.toString();
+  return pixsimClient.get<SavedGameProjectDetail | null>(
+    query ? `/game/worlds/projects/drafts?${query}` : '/game/worlds/projects/drafts',
+  );
+}
+
+export async function deleteProjectDraft(
+  draftSourceProjectId?: number | null,
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (draftSourceProjectId != null) {
+    params.set('draft_source_project_id', String(draftSourceProjectId));
+  }
+  const query = params.toString();
+  await pixsimClient.delete<void>(
+    query ? `/game/worlds/projects/drafts?${query}` : '/game/worlds/projects/drafts',
+  );
+}
+
+// =============================================================================
 // NPCs API
 // =============================================================================
 

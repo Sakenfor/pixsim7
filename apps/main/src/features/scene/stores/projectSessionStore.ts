@@ -14,6 +14,7 @@ export interface ProjectSessionSnapshot {
   extensionWarnings: string[];
   coreWarnings: string[];
   dirty: boolean;
+  lastAutosavedAt: number | null;
   lastImportedAt: number | null;
   lastExportedAt: number | null;
   lastOperation: 'import' | 'export' | null;
@@ -55,6 +56,7 @@ interface ProjectSessionActions {
   recordImport: (input: RecordProjectImportInput) => void;
   recordExport: (input: RecordProjectExportInput) => void;
   setDirty: (dirty: boolean) => void;
+  setLastAutosavedAt: (ts: number) => void;
   reset: () => void;
 }
 
@@ -73,6 +75,7 @@ const initialState: ProjectSessionSnapshot = {
   extensionWarnings: [],
   coreWarnings: [],
   dirty: false,
+  lastAutosavedAt: null,
   lastImportedAt: null,
   lastExportedAt: null,
   lastOperation: null,
@@ -183,6 +186,8 @@ export const useProjectSessionStore = create<ProjectSessionStore>()(
       setDirty: (dirty) =>
         set((state) => (state.dirty === dirty ? state : { dirty })),
 
+      setLastAutosavedAt: (ts) => set({ lastAutosavedAt: ts }),
+
       reset: () => set({ ...initialState }),
     }),
     {
@@ -200,6 +205,7 @@ export const useProjectSessionStore = create<ProjectSessionStore>()(
         extensionWarnings: state.extensionWarnings,
         coreWarnings: state.coreWarnings,
         dirty: state.dirty,
+        lastAutosavedAt: state.lastAutosavedAt,
         lastImportedAt: state.lastImportedAt,
         lastExportedAt: state.lastExportedAt,
         lastOperation: state.lastOperation,
