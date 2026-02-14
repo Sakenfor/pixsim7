@@ -40,7 +40,9 @@ export type PanelId =
   | "quickgen-prompt"
   | "quickgen-settings"
   | "quickgen-blocks"
-  | "media-preview";
+  | "media-preview"
+  | "mini-gallery"
+  | "recent-generations";
 
 /**
  * Preset scope determines which dockviews a preset applies to
@@ -60,6 +62,7 @@ export interface FloatingPanelState {
   width: number;
   height: number;
   zIndex: number;
+  minimized?: boolean;
   context?: Record<string, any>;
 }
 
@@ -96,6 +99,8 @@ export interface WorkspaceState {
   activePresetByScope: Partial<Record<PresetScope, string | null>>;
   /** User-pinned panels shown as quick-add shortcuts in context menu */
   pinnedQuickAddPanels: string[];
+  /** Remembered geometry for floating panels (persists across close/reopen) */
+  lastFloatingPanelStates: Record<string, { x: number; y: number; width: number; height: number }>;
 }
 
 export interface WorkspaceActions {
@@ -252,7 +257,7 @@ const defaultPresets: LayoutPreset[] = [
 
 ];
 
-const STORAGE_KEY = "workspace_v6"; // v6: added pinnedQuickAddPanels
+const STORAGE_KEY = "workspace_v7"; // v7: added lastFloatingPanelStates
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
@@ -263,6 +268,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       fullscreenPanel: null,
       floatingPanels: [],
       pinnedQuickAddPanels: ['gallery', 'inspector'],
+      lastFloatingPanelStates: {},
       activePresetByScope: {
         workspace: "default",
         "control-center": "control-center-default",
@@ -406,6 +412,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           fullscreenPanel: null,
           floatingPanels: [],
           pinnedQuickAddPanels: ['gallery', 'inspector'],
+          lastFloatingPanelStates: {},
           activePresetByScope: {
         workspace: "default",
         "control-center": "control-center-default",
@@ -433,10 +440,14 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           return;
         }
 
-        const finalWidth = width ?? 600;
-        const finalHeight = height ?? 400;
-        const finalX = x ?? Math.max(0, (window.innerWidth - finalWidth) / 2);
-        const finalY = y ?? Math.max(0, (window.innerHeight - finalHeight) / 2);
+        const saved = get().lastFloatingPanelStates[panelId];
+        const finalWidth = width ?? saved?.width ?? 600;
+        const finalHeight = height ?? saved?.height ?? 400;
+        const rawX = x ?? saved?.x ?? (window.innerWidth - finalWidth) / 2;
+        const rawY = y ?? saved?.y ?? (window.innerHeight - finalHeight) / 2;
+        // Clamp to viewport so panels don't appear off-screen
+        const finalX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(finalWidth, 100)));
+        const finalY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(finalHeight, 40)));
         const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
 
         set({
@@ -456,14 +467,21 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       closeFloatingPanel: (panelId) => {
+        const panel = get().floatingPanels.find((p) => p.id === panelId);
+        const saved = panel
+          ? { ...get().lastFloatingPanelStates, [panelId]: { x: panel.x, y: panel.y, width: panel.width, height: panel.height } }
+          : get().lastFloatingPanelStates;
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
+          lastFloatingPanelStates: saved,
         });
       },
 
       minimizeFloatingPanel: (panelId) => {
         set({
-          floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
+          floatingPanels: get().floatingPanels.map((p) =>
+            p.id === panelId ? { ...p, minimized: !p.minimized } : p,
+          ),
         });
       },
 
@@ -514,9 +532,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const floatingPanel = get().floatingPanels.find((p) => p.id === panelId);
         if (!floatingPanel) return;
 
-        // Remove from floating panels
+        // Save geometry before removing
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
+          lastFloatingPanelStates: {
+            ...get().lastFloatingPanelStates,
+            [panelId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
+          },
         });
 
         // Get workspace dockview API
@@ -542,10 +564,13 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => createBackendStorage("workspace")),
-      version: 6, // v6: added pinnedQuickAddPanels
+      version: 7, // v7: added lastFloatingPanelStates
       migrate: (persistedState: any, version: number) => {
         if (version < 6) {
           persistedState.pinnedQuickAddPanels = ['gallery', 'inspector'];
+        }
+        if (version < 7) {
+          persistedState.lastFloatingPanelStates = {};
         }
         return persistedState;
       },
@@ -556,11 +581,15 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         fullscreenPanel: state.fullscreenPanel,
         floatingPanels: state.floatingPanels,
         pinnedQuickAddPanels: state.pinnedQuickAddPanels,
+        lastFloatingPanelStates: state.lastFloatingPanelStates,
         activePresetByScope: state.activePresetByScope,
       }) as Partial<WorkspaceState & WorkspaceActions>,
       onRehydrateStorage: () => (state) => {
         if (state && !Array.isArray(state.floatingPanels)) {
           state.floatingPanels = [];
+        }
+        if (state && (typeof state.lastFloatingPanelStates !== 'object' || state.lastFloatingPanelStates === null)) {
+          state.lastFloatingPanelStates = {};
         }
       },
     },
