@@ -11,6 +11,8 @@ import { pluginCatalog } from "@lib/plugins/pluginSystem";
 import { interactionRegistry } from "@lib/registries";
 import { widgetRegistry } from "@lib/ui/composer";
 
+import { ProjectContextBadge } from "../shared/ProjectContextBadge";
+
 
 
 type CategoryFilter =
@@ -167,6 +169,7 @@ export function GameToolsPanel() {
               {viewLabel}
             </span>
           )}
+          <ProjectContextBadge />
         </div>
       )}
 

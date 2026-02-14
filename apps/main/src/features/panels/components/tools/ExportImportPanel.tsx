@@ -5,10 +5,9 @@
  * Supports single exports, bundle exports, and collision resolution.
  */
 
+import { Panel, Button } from "@pixsim7/shared.ui";
 import { useState, useRef } from "react";
-import { Panel, Button, Input } from "@pixsim7/shared.ui";
-import type { SimulationScenario } from "@features/simulation/lib/core/scenarios";
-import type { SavedSimulationRun } from "@features/simulation/lib/core/multiRunStorage";
+
 import {
   exportScenario,
   exportRun,
@@ -20,6 +19,10 @@ import {
   sanitizeFilename,
   type ImportResult,
 } from "@features/simulation/lib/core/exportImport";
+import type { SavedSimulationRun } from "@features/simulation/lib/core/multiRunStorage";
+import type { SimulationScenario } from "@features/simulation/lib/core/scenarios";
+
+import { ProjectContextBadge } from "../shared/ProjectContextBadge";
 
 interface ExportImportPanelProps {
   scenarios: SimulationScenario[];
@@ -177,6 +180,9 @@ export function ExportImportPanel({
 
   return (
     <div className="space-y-4">
+      <div className="px-4 pt-2">
+        <ProjectContextBadge />
+      </div>
       {/* Tabs */}
       <Panel className="p-4">
         <div className="flex gap-2">
