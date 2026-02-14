@@ -51,9 +51,11 @@ export interface PluginInfo {
   family: string;
   plugin_type: string;
   tags: string[];
-  bundle_url: string;
+  bundle_url: string | null;
   manifest_url: string | null;
   is_builtin: boolean;
+  is_required: boolean;
+  source: string;
   is_enabled: boolean;
   metadata: PluginMetadata;
 }
@@ -67,6 +69,30 @@ export interface PluginStateResponse {
   plugin_id: string;
   is_enabled: boolean;
   message: string;
+}
+
+export interface PluginSyncItem {
+  plugin_id: string;
+  name: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  icon?: string;
+  family: string;
+  plugin_type?: string;
+  tags?: string[];
+  is_required?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PluginSyncRequest {
+  plugins: PluginSyncItem[];
+}
+
+export interface PluginSyncResponse {
+  created: number;
+  skipped: number;
+  created_plugin_ids: string[];
 }
 
 export function createPluginsApi(client: PixSimApiClient) {
@@ -100,6 +126,9 @@ export function createPluginsApi(client: PixSimApiClient) {
     async disablePlugin(pluginId: string): Promise<PluginStateResponse> {
       return client.post<PluginStateResponse>(`/plugins/${encodeURIComponent(pluginId)}/disable`);
     },
+
+    async syncPlugins(payload: PluginSyncRequest): Promise<PluginSyncResponse> {
+      return client.post<PluginSyncResponse>('/plugins/sync', payload);
+    },
   };
 }
-

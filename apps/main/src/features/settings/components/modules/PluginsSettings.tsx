@@ -21,11 +21,31 @@ const FAMILY_INFO: Record<string, { label: string; description: string }> = {
   },
   ui: {
     label: 'UI Plugins',
-    description: 'UI components, overlays, and control centers',
+    description: 'UI components, overlays, and control center modules',
   },
   tool: {
     label: 'Tool Plugins',
-    description: 'Additional tools and utilities',
+    description: 'World, gallery, brain, and development tools',
+  },
+  panel: {
+    label: 'Panel Plugins',
+    description: 'Workspace panels, dock widgets, and panel groups',
+  },
+  graph: {
+    label: 'Graph Plugins',
+    description: 'Node types, renderers, and graph editors',
+  },
+  game: {
+    label: 'Game Plugins',
+    description: 'Helpers and interaction behavior plugins',
+  },
+  surface: {
+    label: 'Surface Plugins',
+    description: 'Gallery and gizmo rendering surfaces',
+  },
+  generation: {
+    label: 'Generation Plugins',
+    description: 'Provider and generation UI plugins',
   },
 };
 
@@ -119,6 +139,7 @@ export function PluginsSettings() {
             <div className="mt-3 space-y-2">
               {familyPlugins.map(plugin => {
                 const pending = isPending(plugin.plugin_id);
+                const isRequired = plugin.is_required;
 
                 return (
                   <div
@@ -145,6 +166,11 @@ export function PluginsSettings() {
                             Built-in
                           </span>
                         )}
+                        {isRequired && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">
+                            Required
+                          </span>
+                        )}
                       </div>
                       {plugin.description && (
                         <div className="text-[10px] text-neutral-600 dark:text-neutral-400 mt-0.5">
@@ -158,12 +184,12 @@ export function PluginsSettings() {
                       )}
                     </div>
 
-                    <label className="flex items-center cursor-pointer ml-4">
+                    <label className={`flex items-center ml-4 ${isRequired ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                       <input
                         type="checkbox"
                         checked={plugin.is_enabled}
                         onChange={() => handleToggle(plugin.plugin_id, plugin.is_enabled)}
-                        disabled={pending}
+                        disabled={pending || isRequired}
                         className="sr-only peer"
                       />
                       <div

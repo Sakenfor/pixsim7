@@ -439,6 +439,7 @@ function buildSceneViewMetadata(
     }, context),
     sceneViewId: manifest.sceneView.id,
     surfaces: manifest.sceneView.surfaces,
+    contentTypes: manifest.sceneView.contentTypes,
     default: manifest.sceneView.default,
     icon: manifest.icon,
     capabilities,

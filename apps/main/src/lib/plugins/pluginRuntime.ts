@@ -23,6 +23,12 @@ export interface PluginDefinition<F extends PluginFamily = PluginFamily> {
 }
 
 export async function registerPluginDefinition<F extends PluginFamily>(definition: PluginDefinition<F>): Promise<void> {
+  const registrationDecision = await shouldRegisterPlugin(definition.id);
+  if (!registrationDecision.allowed) {
+    console.info(`[PluginRuntime] Skipping disabled plugin ${definition.id}: ${registrationDecision.reason}`);
+    return;
+  }
+
   const adapter = familyAdapters[definition.family];
   if (!adapter) {
     throw new Error(`No plugin adapter registered for family: ${definition.family}`);
@@ -63,5 +69,37 @@ export async function registerPluginDefinition<F extends PluginFamily>(definitio
 export async function registerPluginDefinitions(definitions: PluginDefinition[]): Promise<void> {
   for (const definition of definitions) {
     await registerPluginDefinition(definition);
+  }
+}
+
+async function shouldRegisterPlugin(
+  pluginId: string
+): Promise<{ allowed: boolean; reason?: string }> {
+  try {
+    const { usePluginCatalogStore } = await import('@/stores/pluginCatalogStore');
+    const state = usePluginCatalogStore.getState();
+
+    // Fail-open when backend catalog is unavailable or not initialized yet.
+    if (!state.isInitialized || !state.isApiAvailable) {
+      return { allowed: true };
+    }
+
+    const backendEntry = state.plugins.find((plugin) => plugin.plugin_id === pluginId);
+    if (!backendEntry) {
+      return { allowed: true };
+    }
+
+    if (backendEntry.is_required) {
+      return { allowed: true };
+    }
+
+    if (!backendEntry.is_enabled) {
+      return { allowed: false, reason: 'disabled in backend catalog' };
+    }
+
+    return { allowed: true };
+  } catch {
+    // Fail-open on any integration issue to preserve current behavior.
+    return { allowed: true };
   }
 }

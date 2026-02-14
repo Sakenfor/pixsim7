@@ -236,21 +236,3 @@ export function getPluginConfigWithDefaults(
     ...stored,
   };
 }
-
-/**
- * Convenience function to check if a plugin is enabled
- * (assumes 'enabled' field in config)
- */
-export function isPluginEnabled(pluginId: string, defaultValue = true): boolean {
-  const config = getPluginConfig(pluginId);
-  return config.enabled !== undefined ? config.enabled : defaultValue;
-}
-
-/**
- * Convenience function to toggle plugin enabled state
- */
-export function togglePluginEnabled(pluginId: string): void {
-  const config = getPluginConfig(pluginId);
-  const currentEnabled = config.enabled !== undefined ? config.enabled : true;
-  setPluginConfig(pluginId, { enabled: !currentEnabled });
-}

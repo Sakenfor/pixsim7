@@ -19,6 +19,7 @@ import {
   getEnabledPlugins,
   enablePlugin as apiEnablePlugin,
   disablePlugin as apiDisablePlugin,
+  syncPlugins as apiSyncPlugins,
 } from '../lib/api/plugins';
 
 // ===== TYPES =====
@@ -31,6 +32,7 @@ interface PluginCatalogState {
   // Loading state
   isLoading: boolean;
   isInitialized: boolean;
+  isApiAvailable: boolean;
   error: string | null;
 
   // Pending operations (for optimistic updates)
@@ -44,8 +46,10 @@ interface PluginCatalogState {
   getPluginsByFamily: (family: string) => PluginInfo[];
   getEnabledByFamily: (family: string) => PluginInfo[];
   isPluginEnabled: (pluginId: string) => boolean;
+  isPluginRequired: (pluginId: string) => boolean;
   isPending: (pluginId: string) => boolean;
   loadEnabledBundles: () => Promise<void>;
+  syncRuntimeCatalog: () => Promise<void>;
 }
 
 // ===== STORE =====
@@ -56,6 +60,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
   enabledPlugins: [],
   isLoading: false,
   isInitialized: false,
+  isApiAvailable: true,
   error: null,
   pendingOperations: new Set(),
 
@@ -69,11 +74,13 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      let apiAvailable = true;
       // Fetch all plugins and enabled plugins in parallel
       const [allPlugins, enabled] = await Promise.all([
         getPlugins().catch((error: any) => {
           if (error?.response?.status === 404) {
             console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
+            apiAvailable = false;
             return [];
           }
           throw error;
@@ -81,6 +88,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         getEnabledPlugins().catch((error: any) => {
           if (error?.response?.status === 404) {
             console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
+            apiAvailable = false;
             return [];
           }
           throw error;
@@ -92,6 +100,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         enabledPlugins: enabled,
         isInitialized: true,
         isLoading: false,
+        isApiAvailable: apiAvailable,
       });
 
       await loadBundlesForPlugins(enabled);
@@ -103,6 +112,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
       set({
         error: message,
         isLoading: false,
+        isApiAvailable: false,
         isInitialized: true, // Mark as initialized even on error to prevent loops
       });
     }
@@ -115,10 +125,12 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
+      let apiAvailable = true;
       const [allPlugins, enabled] = await Promise.all([
         getPlugins().catch((error: any) => {
           if (error?.response?.status === 404) {
             console.warn('[PluginCatalog] Plugin API not available (getPlugins).');
+            apiAvailable = false;
             return [];
           }
           throw error;
@@ -126,6 +138,7 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         getEnabledPlugins().catch((error: any) => {
           if (error?.response?.status === 404) {
             console.warn('[PluginCatalog] Plugin API not available (getEnabledPlugins).');
+            apiAvailable = false;
             return [];
           }
           throw error;
@@ -136,13 +149,14 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
         plugins: allPlugins,
         enabledPlugins: enabled,
         isLoading: false,
+        isApiAvailable: apiAvailable,
       });
 
       await loadBundlesForPlugins(enabled);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to refresh plugins';
       console.error('[PluginCatalog] Refresh failed:', error);
-      set({ error: message, isLoading: false });
+      set({ error: message, isLoading: false, isApiAvailable: false });
     }
   },
 
@@ -201,6 +215,11 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
    */
   disablePlugin: async (pluginId: string) => {
     const state = get();
+    const plugin = state.plugins.find(p => p.plugin_id === pluginId);
+    if (plugin?.is_required) {
+      console.warn(`[PluginCatalog] Cannot disable required plugin: ${pluginId}`);
+      return false;
+    }
 
     // Mark as pending
     const newPending = new Set(state.pendingOperations);
@@ -265,6 +284,13 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
   },
 
   /**
+   * Check if a plugin is required (always-on)
+   */
+  isPluginRequired: (pluginId: string) => {
+    return get().plugins.some(p => p.plugin_id === pluginId && p.is_required);
+  },
+
+  /**
    * Check if a plugin has a pending operation
    */
   isPending: (pluginId: string) => {
@@ -277,19 +303,58 @@ export const usePluginCatalogStore = create<PluginCatalogState>((set, get) => ({
   loadEnabledBundles: async () => {
     await loadBundlesForPlugins(get().enabledPlugins);
   },
+
+  /**
+   * Sync locally registered runtime plugins into backend catalog.
+   * Creates only missing entries and never overwrites existing catalog rows.
+   */
+  syncRuntimeCatalog: async () => {
+    const state = get();
+    if (!state.isInitialized || !state.isApiAvailable) {
+      return;
+    }
+
+    try {
+      const [{ pluginCatalog }, { fromPluginSystemMetadata }] = await Promise.all([
+        import('@lib/plugins/pluginSystem'),
+        import('@lib/plugins/converters'),
+      ]);
+
+      const backendPluginIds = new Set(get().plugins.map((plugin) => plugin.plugin_id));
+      const runtimeDescriptors = pluginCatalog.getAll().map(fromPluginSystemMetadata);
+      const missing = runtimeDescriptors
+        .filter((descriptor) => !backendPluginIds.has(descriptor.id))
+        .map(mapDescriptorToSyncItem);
+
+      if (!missing.length) {
+        return;
+      }
+
+      const response = await apiSyncPlugins({ plugins: missing });
+      if (response.created > 0) {
+        await get().refresh();
+      }
+    } catch (error) {
+      console.warn('[PluginCatalog] Failed to sync runtime catalog:', error);
+    }
+  },
 }));
 
 async function loadBundlesForPlugins(plugins: PluginInfo[]) {
   if (!plugins.length) return;
 
   const descriptors = plugins
-    .filter(plugin => !!plugin.bundle_url && isBundleFamily(plugin.family))
+    .filter(plugin =>
+      !!plugin.bundle_url
+      && isBundleFamily(plugin.family)
+      && (plugin.source === 'bundle' || plugin.source === 'remote')
+    )
     .map(plugin => {
       // Safe cast after filter validates family
       const family = plugin.family as BundleFamily;
       return {
         pluginId: plugin.plugin_id,
-        bundleUrl: plugin.bundle_url,
+        bundleUrl: plugin.bundle_url as string,
         family,
         manifest: {
           id: plugin.plugin_id,
@@ -353,3 +418,82 @@ export const selectUIPlugins = (state: PluginCatalogState) =>
  */
 export const selectToolPlugins = (state: PluginCatalogState) =>
   state.plugins.filter(p => p.family === 'tool');
+
+function mapDescriptorToSyncItem(
+  descriptor: import('@lib/plugins/descriptor').UnifiedPluginDescriptor
+): import('../lib/api/plugins').PluginSyncItem {
+  const sceneExt = descriptor.extensions?.sceneView;
+  const controlCenterExt = descriptor.extensions?.controlCenter;
+  const metadata: Record<string, unknown> = {
+    permissions: descriptor.permissions ?? [],
+    surfaces: sceneExt?.surfaces ?? [],
+    default: sceneExt?.default ?? controlCenterExt?.default ?? false,
+    frontend_family: descriptor.family,
+  };
+
+  if (sceneExt) {
+    metadata.scene_view = {
+      scene_view_id: sceneExt.sceneViewId,
+      surfaces: sceneExt.surfaces ?? [],
+      default: sceneExt.default ?? false,
+    };
+  }
+  if (controlCenterExt) {
+    metadata.control_center = {
+      control_center_id: controlCenterExt.controlCenterId,
+      display_name: controlCenterExt.displayName ?? null,
+      features: controlCenterExt.features ?? [],
+      preview: controlCenterExt.preview ?? null,
+      default: controlCenterExt.default ?? false,
+    };
+  }
+
+  return {
+    plugin_id: descriptor.id,
+    name: descriptor.name,
+    description: descriptor.description,
+    version: descriptor.version ?? '1.0.0',
+    author: descriptor.author,
+    icon: descriptor.icon,
+    family: mapFrontendFamilyToBackendFamily(descriptor.family),
+    plugin_type: descriptor.pluginType ?? 'ui-overlay',
+    tags: descriptor.tags ?? [],
+    is_required: !descriptor.canDisable,
+    metadata,
+  };
+}
+
+function mapFrontendFamilyToBackendFamily(
+  family: import('@lib/plugins/descriptor').UnifiedPluginFamily
+): string {
+  switch (family) {
+    case 'scene-view':
+      return 'scene';
+    case 'ui-plugin':
+    case 'control-center':
+      return 'ui';
+    case 'world-tool':
+    case 'gallery-tool':
+    case 'brain-tool':
+    case 'dev-tool':
+      return 'tool';
+    case 'workspace-panel':
+    case 'dock-widget':
+    case 'panel-group':
+      return 'panel';
+    case 'node-type':
+    case 'renderer':
+    case 'graph-editor':
+      return 'graph';
+    case 'helper':
+    case 'interaction':
+      return 'game';
+    case 'gallery-surface':
+    case 'gizmo-surface':
+      return 'surface';
+    case 'generation-ui':
+      return 'generation';
+    default:
+      return 'ui';
+  }
+}

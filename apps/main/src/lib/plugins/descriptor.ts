@@ -45,6 +45,7 @@ export type UnifiedPluginFamily =
   | 'workspace-panel'
   | 'dock-widget'
   | 'gizmo-surface'
+  | 'panel-group'
   | 'generation-ui';
 
 /**
@@ -53,6 +54,7 @@ export type UnifiedPluginFamily =
 export interface SceneViewExtension {
   sceneViewId: string;
   surfaces?: Array<'overlay' | 'hud' | 'panel' | 'workspace'>;
+  contentTypes?: string[];
   default?: boolean;
 }
 

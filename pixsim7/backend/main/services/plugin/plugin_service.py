@@ -11,7 +11,6 @@ from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from sqlmodel import col
 
 from pixsim7.backend.main.domain.plugin_catalog import (
     PluginCatalogEntry,
@@ -20,6 +19,7 @@ from pixsim7.backend.main.domain.plugin_catalog import (
 from pixsim7.backend.main.shared.schemas.plugin_schemas import (
     PluginResponse,
     PluginMetadata,
+    PluginSyncItem,
 )
 
 
@@ -37,10 +37,12 @@ BUILTIN_PLUGINS = [
         "family": "scene",
         "plugin_type": "ui-overlay",
         "tags": ["scene", "comic", "panels", "overlay"],
-        "bundle_url": "/plugins/scene/comic-panel-view/plugin.js",
-        "manifest_url": "/plugins/scene/comic-panel-view/manifest.json",
+        "bundle_url": None,
+        "manifest_url": None,
         "is_builtin": True,
-        "metadata": {
+        "is_required": False,
+        "source": "source",
+        "meta": {
             "permissions": ["ui:overlay", "read:session", "read:world"],
             "surfaces": ["overlay", "hud", "panel"],
             "default": True,
@@ -97,14 +99,7 @@ class PluginCatalogService:
         plugins = []
         for entry in catalog_entries:
             user_state = user_states.get(entry.plugin_id)
-
-            # Determine enabled state:
-            # - If user has explicit state, use it
-            # - Otherwise, built-in plugins are enabled by default
-            if user_state is not None:
-                is_enabled = user_state.is_enabled
-            else:
-                is_enabled = entry.is_builtin  # Built-ins enabled by default
+            is_enabled = self._resolve_enabled_state(entry, user_state)
 
             if not include_disabled and not is_enabled:
                 continue
@@ -139,7 +134,7 @@ class PluginCatalogService:
         state_result = await self.db.execute(state_query)
         user_state = state_result.scalar_one_or_none()
 
-        is_enabled = user_state.is_enabled if user_state else entry.is_builtin
+        is_enabled = self._resolve_enabled_state(entry, user_state)
 
         return self._to_response(entry, is_enabled)
 
@@ -225,6 +220,8 @@ class PluginCatalogService:
 
         if not entry:
             return False
+        if entry.is_required:
+            raise ValueError(f"Plugin '{plugin_id}' is required and cannot be disabled")
 
         # Upsert user state
         state_query = select(UserPluginState).where(
@@ -263,43 +260,119 @@ class PluginCatalogService:
         plugin_id: str,
         name: str,
         family: str,
-        bundle_url: str,
+        bundle_url: Optional[str] = None,
         **kwargs,
     ) -> PluginCatalogEntry:
         """Create a new plugin catalog entry"""
+        payload = self._normalize_plugin_data(kwargs)
         entry = PluginCatalogEntry(
             plugin_id=plugin_id,
             name=name,
             family=family,
             bundle_url=bundle_url,
-            **kwargs,
+            **payload,
         )
         self.db.add(entry)
         await self.db.commit()
         await self.db.refresh(entry)
         return entry
 
+    async def sync_frontend_plugins(self, plugins: list[PluginSyncItem]) -> tuple[int, int, list[str]]:
+        """
+        Sync frontend source plugins into the backend catalog.
+
+        Creates only missing plugin entries and never overwrites existing ones.
+        """
+        created = 0
+        skipped = 0
+        created_plugin_ids: list[str] = []
+
+        for plugin in plugins:
+            query = select(PluginCatalogEntry).where(
+                PluginCatalogEntry.plugin_id == plugin.plugin_id
+            )
+            result = await self.db.execute(query)
+            existing = result.scalar_one_or_none()
+            if existing:
+                skipped += 1
+                continue
+
+            entry = PluginCatalogEntry(
+                plugin_id=plugin.plugin_id,
+                name=plugin.name,
+                description=plugin.description,
+                version=plugin.version,
+                author=plugin.author,
+                icon=plugin.icon,
+                family=plugin.family,
+                plugin_type=plugin.plugin_type,
+                tags=plugin.tags or [],
+                bundle_url=None,
+                manifest_url=None,
+                is_builtin=True,
+                is_required=plugin.is_required,
+                source="frontend-sync",
+                meta=plugin.metadata or {},
+            )
+            self.db.add(entry)
+            created += 1
+            created_plugin_ids.append(plugin.plugin_id)
+
+        if created > 0:
+            await self.db.commit()
+
+        return created, skipped, created_plugin_ids
+
     async def seed_builtin_plugins(self) -> int:
         """
         Seed built-in plugins if not already present
 
         Returns:
-            Number of plugins seeded
+            Number of plugins inserted or corrected
         """
         seeded = 0
 
         for plugin_data in BUILTIN_PLUGINS:
+            normalized = self._normalize_plugin_data(plugin_data)
             # Check if already exists
             query = select(PluginCatalogEntry).where(
-                PluginCatalogEntry.plugin_id == plugin_data["plugin_id"]
+                PluginCatalogEntry.plugin_id == normalized["plugin_id"]
             )
             result = await self.db.execute(query)
             existing = result.scalar_one_or_none()
 
             if not existing:
-                entry = PluginCatalogEntry(**plugin_data)
+                entry = PluginCatalogEntry(**normalized)
                 self.db.add(entry)
                 seeded += 1
+                continue
+
+            # Keep canonical builtin definitions aligned without overwriting user state.
+            if existing.is_builtin:
+                changed = False
+                for field in (
+                    "name",
+                    "description",
+                    "version",
+                    "author",
+                    "icon",
+                    "family",
+                    "plugin_type",
+                    "tags",
+                    "bundle_url",
+                    "manifest_url",
+                    "is_required",
+                    "source",
+                    "meta",
+                ):
+                    next_value = normalized.get(field)
+                    if getattr(existing, field) != next_value:
+                        setattr(existing, field, next_value)
+                        changed = True
+
+                if changed:
+                    existing.updated_at = datetime.now(timezone.utc)
+                    seeded += 1
 
         if seeded > 0:
             await self.db.commit()
@@ -329,10 +402,40 @@ class PluginCatalogService:
             bundle_url=entry.bundle_url,
             manifest_url=entry.manifest_url,
             is_builtin=entry.is_builtin,
+            is_required=entry.is_required,
+            source=entry.source,
             is_enabled=is_enabled,
             metadata=PluginMetadata(
                 permissions=metadata.get("permissions", []),
                 surfaces=metadata.get("surfaces", []),
                 default=metadata.get("default", False),
+                scene_view=metadata.get("scene_view"),
+                control_center=metadata.get("control_center"),
             ),
         )
+
+    @staticmethod
+    def _normalize_plugin_data(data: dict) -> dict:
+        """Normalize legacy payload keys to current model fields."""
+        normalized = dict(data)
+        if "metadata" in normalized and "meta" not in normalized:
+            normalized["meta"] = normalized.pop("metadata")
+        normalized.setdefault("source", "bundle")
+        normalized.setdefault("is_required", False)
+        return normalized
+
+    @staticmethod
+    def _resolve_enabled_state(
+        entry: PluginCatalogEntry,
+        user_state: Optional[UserPluginState],
+    ) -> bool:
+        """
+        Compute effective enabled state.
+
+        Required plugins are always enabled regardless of stored user state.
+        """
+        if entry.is_required:
+            return True
+        if user_state is not None:
+            return user_state.is_enabled
+        return entry.is_builtin

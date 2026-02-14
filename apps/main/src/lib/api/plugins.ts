@@ -12,6 +12,9 @@ export type {
   PluginInfo,
   PluginListResponse,
   PluginStateResponse,
+  PluginSyncItem,
+  PluginSyncRequest,
+  PluginSyncResponse,
 } from '@pixsim7/shared.api.client/domains';
 
 const pluginsApi = createPluginsApi(pixsimClient);
@@ -21,4 +24,4 @@ export const getEnabledPlugins = pluginsApi.getEnabledPlugins;
 export const getPlugin = pluginsApi.getPlugin;
 export const enablePlugin = pluginsApi.enablePlugin;
 export const disablePlugin = pluginsApi.disablePlugin;
-
+export const syncPlugins = pluginsApi.syncPlugins;

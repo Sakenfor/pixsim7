@@ -1,6 +1,8 @@
 import { MODULE_PRIORITIES } from '@pixsim7/shared.modules.core';
 
 import { initializePluginKernel } from '@lib/plugins/pluginKernel';
+import { useAuthStore } from '@/stores/authStore';
+import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 
 import type { Module } from '../types';
 
@@ -21,6 +23,19 @@ export const pluginBootstrapModule: Module = {
   priority: MODULE_PRIORITIES.INFRASTRUCTURE,
 
   async initialize() {
+    const authState = useAuthStore.getState();
+    if (!authState.isAuthenticated) {
+      await authState.initialize();
+    }
+
+    if (useAuthStore.getState().isAuthenticated) {
+      await usePluginCatalogStore.getState().initialize();
+    }
+
     await initializePluginKernel({ verbose: true, strict: false });
+
+    if (useAuthStore.getState().isAuthenticated) {
+      await usePluginCatalogStore.getState().syncRuntimeCatalog();
+    }
   },
 };

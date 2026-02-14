@@ -11,6 +11,8 @@ from pixsim7.backend.main.shared.schemas.plugin_schemas import (
     PluginResponse,
     PluginListResponse,
     PluginStateResponse,
+    PluginSyncRequest,
+    PluginSyncResponse,
 )
 
 router = APIRouter(tags=["plugins"])
@@ -22,7 +24,7 @@ router = APIRouter(tags=["plugins"])
 async def list_plugins(
     user: CurrentUser,
     plugin_service: PluginCatalogSvc,
-    family: Optional[str] = Query(None, description="Filter by plugin family (scene, ui, tool)"),
+    family: Optional[str] = Query(None, description="Filter by plugin family (scene, ui, tool, panel, graph, game, surface, generation)"),
     enabled_only: bool = Query(False, description="Only return enabled plugins"),
 ):
     """
@@ -41,6 +43,30 @@ async def list_plugins(
     return PluginListResponse(
         plugins=plugins,
         total=len(plugins),
+    )
+
+
+# ===== SYNC FRONTEND PLUGINS =====
+# NOTE: This must be defined BEFORE /plugins/{plugin_id} to avoid route conflict
+
+@router.post("/plugins/sync", response_model=PluginSyncResponse)
+async def sync_plugins(
+    payload: PluginSyncRequest,
+    user: CurrentUser,
+    plugin_service: PluginCatalogSvc,
+):
+    """
+    Sync frontend source plugin metadata into the backend catalog.
+
+    This endpoint is idempotent and only creates missing catalog entries.
+    Existing entries are never overwritten.
+    """
+    _ = user  # Explicitly require auth; no special role needed for now.
+    created, skipped, created_plugin_ids = await plugin_service.sync_frontend_plugins(payload.plugins)
+    return PluginSyncResponse(
+        created=created,
+        skipped=skipped,
+        created_plugin_ids=created_plugin_ids,
     )
 
 
@@ -136,12 +162,15 @@ async def disable_plugin(
     Disable a plugin for the current user
 
     The plugin will not be loaded on next app startup.
-    Note: Built-in plugins can be disabled but will remain in the catalog.
+    Required plugins cannot be disabled.
     """
-    success = await plugin_service.disable_plugin(
-        plugin_id=plugin_id,
-        user_id=user.id,
-    )
+    try:
+        success = await plugin_service.disable_plugin(
+            plugin_id=plugin_id,
+            user_id=user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if not success:
         raise HTTPException(status_code=404, detail=f"Plugin not found: {plugin_id}")

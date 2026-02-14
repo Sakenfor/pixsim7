@@ -17,7 +17,6 @@ import { registerWorldTools } from '@features/worldTools/lib/registerWorldTools'
 import { registerFrontendMiniGames } from '@/components/minigames/registry';
 import { registerIconSetsPlugin } from '@/plugins/ui/icon-sets';
 import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
-import { getPluginConfig } from '@/stores/pluginConfigStore';
 
 import { bootstrapExamplePlugins } from './bootstrap';
 import { discoverControlCenterRegistrations } from './bootstrapControlCenters';
@@ -100,16 +99,6 @@ async function doInitialize(options: PluginKernelOptions): Promise<void> {
 
     await loadAllPlugins({ verbose, strict });
     await registerDevTools();
-
-    // Restore saved activation states from pluginConfigStore
-    const { pluginCatalog } = await import('./pluginSystem');
-    for (const plugin of pluginCatalog.getAll()) {
-      if (!plugin.canDisable) continue;
-      const config = getPluginConfig(plugin.id);
-      if (config.enabled === false) {
-        pluginCatalog.setActivationState(plugin.id, 'inactive');
-      }
-    }
 
     initialized = true;
   } catch (error) {

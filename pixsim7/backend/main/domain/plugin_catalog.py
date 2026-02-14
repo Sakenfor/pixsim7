@@ -20,6 +20,11 @@ class PluginFamily(str, Enum):
     SCENE = "scene"
     UI = "ui"
     TOOL = "tool"
+    PANEL = "panel"
+    GRAPH = "graph"
+    GAME = "game"
+    SURFACE = "surface"
+    GENERATION = "generation"
     CONTROL_CENTER = "control-center"
 
 
@@ -53,7 +58,7 @@ class PluginCatalogEntry(SQLModel, table=True):
     family: str = Field(
         index=True,
         max_length=50,
-        description="Plugin family (scene, ui, tool, control-center)"
+        description="Plugin family (scene, ui, tool, panel, graph, game, surface, generation)"
     )
     plugin_type: str = Field(
         default="ui-overlay",
@@ -67,9 +72,10 @@ class PluginCatalogEntry(SQLModel, table=True):
     )
 
     # ===== BUNDLE LOCATION =====
-    bundle_url: str = Field(
+    bundle_url: Optional[str] = Field(
+        default=None,
         max_length=500,
-        description="URL to plugin.js bundle (relative or absolute)"
+        description="URL to plugin.js bundle (relative or absolute); null for source plugins"
     )
     manifest_url: Optional[str] = Field(
         default=None,
@@ -82,10 +88,19 @@ class PluginCatalogEntry(SQLModel, table=True):
         default=False,
         description="Built-in plugin (cannot be uninstalled)"
     )
+    is_required: bool = Field(
+        default=False,
+        description="Required plugin that cannot be disabled"
+    )
     is_available: bool = Field(
         default=True,
         index=True,
         description="Available for installation (false = deprecated)"
+    )
+    source: str = Field(
+        default="bundle",
+        max_length=50,
+        description="Plugin source type (bundle, source, remote, frontend-sync)"
     )
 
     # ===== METADATA =====

@@ -30,6 +30,7 @@ export function fromPluginSystemMetadata(
       extensions.sceneView = {
         sceneViewId: sceneView.sceneViewId,
         surfaces: sceneView.surfaces,
+        contentTypes: sceneView.contentTypes,
         default: sceneView.default,
       };
       break;

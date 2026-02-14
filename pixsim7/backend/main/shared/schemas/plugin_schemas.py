@@ -61,16 +61,18 @@ class PluginResponse(BaseModel):
     icon: Optional[str] = None
 
     # Classification
-    family: str = Field(description="Plugin family (scene, ui, tool)")
+    family: str = Field(description="Plugin family (scene, ui, tool, panel, graph, game, surface, generation)")
     plugin_type: str = Field(description="Plugin type within family")
     tags: list[str] = Field(default_factory=list)
 
     # Bundle location
-    bundle_url: str = Field(description="URL to plugin bundle")
+    bundle_url: Optional[str] = Field(default=None, description="URL to plugin bundle (null for source plugins)")
     manifest_url: Optional[str] = None
 
     # State
     is_builtin: bool = Field(description="Built-in plugin")
+    is_required: bool = Field(description="Required plugin (cannot be disabled)")
+    source: str = Field(description="Plugin source type (bundle, source, remote, frontend-sync)")
     is_enabled: bool = Field(description="Enabled for current user")
 
     # Metadata
@@ -113,8 +115,37 @@ class PluginCreateRequest(BaseModel):
     plugin_type: str = Field(default="ui-overlay", max_length=50)
     tags: list[str] = Field(default_factory=list)
 
-    bundle_url: str = Field(min_length=1, max_length=500)
+    bundle_url: Optional[str] = Field(default=None, max_length=500)
     manifest_url: Optional[str] = None
 
     is_builtin: bool = False
+    is_required: bool = False
+    source: str = Field(default="bundle", max_length=50)
     metadata: dict = Field(default_factory=dict)
+
+
+class PluginSyncItem(BaseModel):
+    """Plugin metadata sent by frontend to sync source-code plugins into catalog."""
+    plugin_id: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+    version: str = Field(default="1.0.0", max_length=20)
+    author: Optional[str] = None
+    icon: Optional[str] = None
+    family: str = Field(min_length=1, max_length=50)
+    plugin_type: str = Field(default="ui-overlay", max_length=50)
+    tags: list[str] = Field(default_factory=list)
+    is_required: bool = False
+    metadata: dict = Field(default_factory=dict)
+
+
+class PluginSyncRequest(BaseModel):
+    """Request payload for /plugins/sync."""
+    plugins: list[PluginSyncItem] = Field(default_factory=list)
+
+
+class PluginSyncResponse(BaseModel):
+    """Response payload for /plugins/sync."""
+    created: int = 0
+    skipped: int = 0
+    created_plugin_ids: list[str] = Field(default_factory=list)
