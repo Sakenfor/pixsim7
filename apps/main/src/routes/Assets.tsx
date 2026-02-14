@@ -30,7 +30,7 @@ import { useWorkspaceStore } from '@features/workspace';
 
 
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
-import { ThemedIcon, Icon, IconBadge } from '../lib/icons';
+import { Icon, IconBadge } from '../lib/icons';
 
 
 
@@ -207,7 +207,7 @@ export function AssetsRoute() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
-                  <ThemedIcon name="target" size={20} variant="primary" />
+                  <Icon name="target" size={20} variant="primary" />
                   Asset Selection Mode
                 </h2>
                 <p className="text-sm text-blue-700 dark:text-blue-300">
@@ -227,7 +227,7 @@ export function AssetsRoute() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                  <ThemedIcon name="wrench" size={20} variant="primary" />
+                  <Icon name="wrench" size={20} variant="primary" />
                   {controller.selectedAssetIds.size} Asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} Selected
                 </h2>
                 <p className="text-sm text-purple-700 dark:text-purple-300">

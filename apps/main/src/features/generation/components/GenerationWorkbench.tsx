@@ -28,7 +28,7 @@ import clsx from 'clsx';
 import React from 'react';
 
 import { GenerationSettingsBar, GenerationStatusDisplay, type ParamSpec } from '@lib/generation-ui';
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 
 import { useGenerationsStore, type GenerationModel } from '@features/generation';
 
@@ -231,7 +231,7 @@ export function GenerationWorkbench({
 
   const defaultButtonLabel = (
     <span className="flex items-center gap-1">
-      <ThemedIcon name="zap" size={12} variant="default" />
+      <Icon name="zap" size={12} variant="default" />
       Go
     </span>
   );
@@ -281,7 +281,7 @@ export function GenerationWorkbench({
               title={generateButtonTitle ?? (generating ? 'Generating...' : 'Generate (Enter)')}
             >
               {generating ? (
-                <ThemedIcon name="loader" size={14} variant="default" className="animate-spin" />
+                <Icon name="loader" size={14} variant="default" className="animate-spin" />
               ) : (
                 generateButtonLabel ?? defaultButtonLabel
               )}
@@ -299,7 +299,7 @@ export function GenerationWorkbench({
       {!hideErrorDisplay && error && (
         <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-3 rounded flex-shrink-0 border border-red-200 dark:border-red-800">
           <div className="flex items-start gap-2">
-            <ThemedIcon
+            <Icon
               name="alertCircle"
               size={14}
               variant="default"

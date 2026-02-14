@@ -25,7 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { useContextMenuOptional } from '@lib/dockview';
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 import {
   OverlayContainer,
   getMediaCardPreset,
@@ -497,7 +497,7 @@ export function MediaCard(props: MediaCardProps) {
             )
           ) : thumbFailed ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800">
-              <ThemedIcon name="alert-circle" className="w-6 h-6 text-neutral-400" />
+              <Icon name="alert-circle" className="w-6 h-6 text-neutral-400" />
               <button
                 onClick={(e) => {
                   e.stopPropagation();

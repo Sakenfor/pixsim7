@@ -1,4 +1,4 @@
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 
 interface GalleryLayoutControlsProps {
   layout: 'masonry' | 'grid';
@@ -43,7 +43,7 @@ export function GalleryLayoutControls({
 
       {/* Card size slider */}
       <div className="flex items-center gap-2 px-2 py-1 bg-neutral-100 dark:bg-neutral-800 rounded">
-        <ThemedIcon name="image" size={12} variant="default" />
+        <Icon name="image" size={12} variant="default" />
         <input
           type="range"
           min="160"
@@ -65,7 +65,7 @@ export function GalleryLayoutControls({
           title="Layout settings"
           onClick={onSettingsClick}
         >
-          <ThemedIcon name="settings" size={12} variant="default" />
+          <Icon name="settings" size={12} variant="default" />
         </button>
       )}
     </div>

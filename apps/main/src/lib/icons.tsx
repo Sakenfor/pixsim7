@@ -525,8 +525,9 @@ export function Icon({
   size = 16,
   className = '',
   strokeWidth = 2,
+  variant: explicitVariant,
   ...props
-}: IconProps & { name: IconName | string }) {
+}: IconProps & { name: IconName | string; variant?: IconVariant }) {
   // Hooks must be called unconditionally at the top
   const iconTheme = useIconSettingsStore((state) => state.iconTheme);
   const iconSetId = useIconSettingsStore((state) => state.iconSetId);
@@ -562,12 +563,20 @@ export function Icon({
     return null;
   }
 
-  const shouldUseTheme =
-    typeof className !== 'string' || className.trim().length === 0;
-  const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
-  const resolvedClassName = shouldUseTheme
-    ? (variant === 'default' ? '' : iconVariants[variant] ?? iconVariants.default)
-    : className;
+  let resolvedClassName: string;
+  if (explicitVariant) {
+    // Explicit variant: use variant class + any user className
+    const variantClass = iconVariants[explicitVariant] ?? '';
+    resolvedClassName = className ? `${variantClass} ${className}` : variantClass;
+  } else {
+    // Theme-based (auto)
+    const shouldUseTheme =
+      typeof className !== 'string' || className.trim().length === 0;
+    const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
+    resolvedClassName = shouldUseTheme
+      ? (variant === 'default' ? '' : iconVariants[variant] ?? iconVariants.default)
+      : className;
+  }
 
   const resolvedStrokeWidth = setStrokeWidth ?? (setSvgProps.weight ? undefined : strokeWidth);
 
@@ -592,43 +601,27 @@ export function Icon({
 }
 
 /**
- * Theme-aware icon wrapper
- * Automatically adjusts opacity/colors based on theme
- */
-export function ThemedIcon({
-  name,
-  size = 16,
-  variant = 'default',
-  className = '',
-  spinning = false,
-  ...props
-}: IconProps & {
-  name: IconName;
-  variant?: IconVariant;
-  spinning?: boolean;
-}) {
-  return (
-    <Icon
-      name={name}
-      size={size}
-      className={`${iconVariants[variant]} ${spinning ? 'animate-spin' : ''} ${className}`}
-      {...props}
-    />
-  );
-}
-
-/**
- * Icon with circular background badge
+ * Icon with background badge.
+ *
+ * Two modes:
+ * - **variant** (default) — uses predefined theme colors + auto padding
+ * - **bg** — arbitrary background color, forces white icon, caller sizes via className
  */
 export function IconBadge({
   name,
   size = 16,
   variant = 'primary',
+  bg,
+  rounded = 'full',
   className = '',
   ...props
 }: IconProps & {
   name: IconName;
   variant?: IconVariant;
+  /** Arbitrary background color — forces white icon via inline style */
+  bg?: string;
+  /** Corner rounding (default: 'full') */
+  rounded?: 'md' | 'lg' | 'full';
 }) {
   const badgeVariants = {
     default: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300',
@@ -642,13 +635,19 @@ export function IconBadge({
     info: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400',
   };
 
-  // Calculate padding based on icon size
-  const padding = typeof size === 'number' ? Math.round(size * 0.4) : 6;
+  const roundedCls = { md: 'rounded-md', lg: 'rounded-lg', full: 'rounded-full' }[rounded];
+
+  // bg mode: no auto-padding — caller controls size via className (e.g. "w-4 h-4")
+  // variant mode: auto-padding based on icon size (existing behaviour)
+  const padding = bg ? undefined : (typeof size === 'number' ? Math.round(size * 0.4) : 6);
 
   return (
     <span
-      className={`inline-flex items-center justify-center rounded-full ${badgeVariants[variant]} ${className}`}
-      style={{ padding: `${padding}px` }}
+      className={`inline-flex items-center justify-center ${roundedCls} ${bg ? '' : badgeVariants[variant]} ${className}`}
+      style={bg
+        ? { backgroundColor: bg, color: '#fff' }
+        : { padding: `${padding}px` }
+      }
     >
       <Icon name={name} size={size} {...props} />
     </span>

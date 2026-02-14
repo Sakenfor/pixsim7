@@ -18,7 +18,7 @@ import { useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useAssetAutoContextMenu } from '@lib/dockview';
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 import { VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
@@ -57,6 +57,7 @@ export interface CompactAssetCardProps {
   onSelect?: () => void; // Callback when card is clicked for selection
   hideFooter?: boolean; // Hide the footer with asset ID/URL
   fillHeight?: boolean; // Fill parent height instead of using aspect ratio
+  aspectSquare?: boolean; // Force square aspect ratio (useful in thumbnail grids)
   // Navigation
   currentIndex?: number; // Current index (1-based for display)
   totalCount?: number; // Total count
@@ -69,6 +70,9 @@ export interface CompactAssetCardProps {
   enableHoverPreview?: boolean;
   showPlayOverlay?: boolean;
   clickToPlay?: boolean;
+  // Generation shortcut
+  onGenerate?: () => void; // "Go" button — triggers generation with this asset
+  generating?: boolean; // Whether a generation is currently running
   // Extension points
   onClick?: () => void; // Custom click handler for the card body
   overlay?: React.ReactNode; // Custom overlay content (absolute-positioned, pointer-events-none)
@@ -85,6 +89,7 @@ export function CompactAssetCard({
   onLockTimestamp,
   hideFooter = false,
   fillHeight = false,
+  aspectSquare = false,
   currentIndex,
   totalCount,
   onNavigatePrev,
@@ -94,6 +99,8 @@ export function CompactAssetCard({
   enableHoverPreview = true,
   showPlayOverlay = true,
   clickToPlay = false,
+  onGenerate,
+  generating = false,
   onClick,
   overlay,
   hoverActions,
@@ -204,7 +211,7 @@ export function CompactAssetCard({
 
       <div
         className={`relative bg-neutral-100 dark:bg-neutral-800 compact-card-container ${
-          fillHeight ? 'h-full' : (isVideo ? 'aspect-video' : 'aspect-square')
+          fillHeight ? 'h-full' : (aspectSquare || !isVideo ? 'aspect-square' : 'aspect-video')
         }`}
       >
         {/* Base thumbnail/poster image */}
@@ -248,7 +255,7 @@ export function CompactAssetCard({
         {showPlayOverlay && isVideo && !hoverPreviewEnabled && (
           <div className="absolute inset-0 z-[2] flex items-center justify-center pointer-events-none">
             <div className="compact-card-play w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
-              <ThemedIcon name="play" size={12} variant="default" className="text-white" />
+              <Icon name="play" size={12} variant="default" className="text-white" />
             </div>
           </div>
         )}
@@ -257,7 +264,7 @@ export function CompactAssetCard({
         {isLocalOnly && (
           <div className="absolute right-1.5 top-1.5 z-10">
             <div className="compact-card-status w-6 h-6 rounded-full bg-amber-500/80 flex items-center justify-center" title="Local only - not synced to provider">
-              <ThemedIcon name="alertTriangle" size={12} variant="default" className="text-white" />
+              <Icon name="alertTriangle" size={12} variant="default" className="text-white" />
             </div>
           </div>
         )}
@@ -269,7 +276,19 @@ export function CompactAssetCard({
             className="compact-card-remove absolute right-1 top-1 w-4 h-4 rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-20 opacity-70 hover:opacity-100"
             title="Remove"
           >
-            <ThemedIcon name="close" size={8} variant="default" className="text-white" />
+            <Icon name="close" size={8} variant="default" className="text-white" />
+          </button>
+        )}
+
+        {/* Generate button - bottom left */}
+        {onGenerate && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onGenerate(); }}
+            className="compact-card-generate absolute left-1 bottom-1 w-5 h-5 rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all z-20 opacity-0 group-hover/card:opacity-90 hover:!opacity-100 disabled:opacity-30"
+            title="Generate"
+            disabled={generating}
+          >
+            <Icon name="play" size={10} variant="default" className="text-accent-text ml-px" />
           </button>
         )}
 

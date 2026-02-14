@@ -2,7 +2,7 @@ import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import React from 'react';
 
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
 import type { GenerationStatus } from '../models';
@@ -55,7 +55,7 @@ export function GenerationHistoryButton({ direction }: GenerationHistoryButtonPr
           className="text-xs px-1.5 py-0.5 rounded hover:bg-accent-subtle/50 dark:hover:bg-accent-subtle/30 transition-colors flex items-center gap-1"
           title="Recent generations"
         >
-          <ThemedIcon name="listPlus" size={12} variant="default" />
+          <Icon name="listPlus" size={12} variant="default" />
           <span className="hidden sm:inline">Recents</span>
         </button>
       }

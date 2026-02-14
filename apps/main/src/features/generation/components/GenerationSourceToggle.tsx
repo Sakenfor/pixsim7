@@ -9,10 +9,12 @@
  * Usage: Render in widget header/chrome, inside a GenerationScopeProvider.
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { getGeneration } from '@lib/api/generations';
-import { Icon } from '@lib/icons';
+import { Icon, IconBadge, Icons } from '@lib/icons';
+import { IconButton } from '@pixsim7/shared.ui';
+import clsx from 'clsx';
 
 import {
   CAP_GENERATION_SOURCE,
@@ -27,6 +29,11 @@ import { useGenerationScopeStores } from '../hooks/useGenerationScope';
 import { fromGenerationResponse, type GenerationModel } from '../models';
 
 const EMPTY_PARAMS: Record<string, unknown> = {};
+
+const SOURCE_MODES: { id: GenerationSourceMode; icon: string; label: string; color: string }[] = [
+  { id: 'asset', icon: 'package', label: 'Asset', color: '#D97706' },
+  { id: 'user',  icon: 'user',    label: 'My Settings', color: '#2563EB' },
+];
 
 export interface GenerationSourceToggleProps {
   /** Current mode (controlled) */
@@ -181,44 +188,71 @@ export function GenerationSourceToggle({
     [capabilityValue, scopeId]
   );
 
+  const [open, setOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const current = SOURCE_MODES.find(m => m.id === mode) ?? SOURCE_MODES[1];
+
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex rounded-md bg-neutral-100 dark:bg-neutral-800 p-0.5">
-        <button
-          onClick={() => handleModeChange('asset')}
-          disabled={!available}
-          className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
-            mode === 'asset'
-              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
-              : available
-                ? 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-                : 'text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
-          }`}
-          title={
-            available
-              ? 'Use original generation settings'
-              : 'No source generation for this asset'
-          }
-        >
-          Asset
-        </button>
-        <button
-          onClick={() => handleModeChange('user')}
-          className={`px-2 py-0.5 text-[10px] font-medium rounded transition-all ${
-            mode === 'user'
-              ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-neutral-100 shadow-sm'
-              : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200'
-          }`}
-          title="Use Control Center settings"
-        >
-          My Settings
-        </button>
-      </div>
-      {loading && <Icon name="loader" size={12} className="animate-spin text-neutral-400" />}
+    <div ref={dropdownRef} className="relative flex items-center gap-1">
+      <IconButton
+        bg={current.color}
+        size="lg"
+        icon={loading
+          ? <Icons.loader size={14} className="animate-spin" />
+          : <Icon name={current.icon as any} size={14} />
+        }
+        onClick={() => setOpen(o => !o)}
+        title={current.label}
+      />
+
       {error && (
         <span className="text-[10px] text-red-500" title={error}>
-          <Icon name="alert-circle" size={12} />
+          <Icon name="alertCircle" size={12} />
         </span>
+      )}
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[130px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700">
+          {SOURCE_MODES.map(m => {
+            const isDisabled = m.id === 'asset' && !available;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                disabled={isDisabled}
+                onClick={() => { handleModeChange(m.id); setOpen(false); }}
+                className={clsx(
+                  'w-full flex items-center gap-2 px-3 py-1.5 text-[11px]',
+                  isDisabled
+                    ? 'text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
+                    : 'hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                  mode === m.id && 'font-semibold'
+                )}
+                title={m.id === 'asset' && !available ? 'No source generation for this asset' : m.label}
+              >
+                <IconBadge
+                  name={m.icon as any}
+                  size={10}
+                  bg={m.color}
+                  rounded="md"
+                  className={clsx('w-4 h-4 shrink-0', isDisabled && 'opacity-40')}
+                />
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );

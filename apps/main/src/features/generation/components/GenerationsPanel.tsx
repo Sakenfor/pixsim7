@@ -8,7 +8,7 @@ import { DisclosureSection, FoldableJson } from '@pixsim7/shared.ui';
 import { useMemo, useState, useCallback } from 'react';
 
 import { retryGeneration, cancelGeneration, deleteGeneration, getGeneration } from '@lib/api/generations';
-import { Icons, ThemedIcon } from '@lib/icons';
+import { Icons, Icon } from '@lib/icons';
 
 import { getGenerationStatusDisplay } from '@features/generation/lib/core/generationAssetMapping';
 import { getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation/stores/generationScopeStores';
@@ -186,7 +186,7 @@ export function GenerationsPanel({ onOpenAsset }: GenerationsPanelProps) {
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
               title="Refresh generations"
             >
-              <ThemedIcon
+              <Icon
                 name="refresh"
                 size={16}
                 className={`text-neutral-600 dark:text-neutral-400 ${isLoading ? 'animate-spin' : ''}`}
@@ -382,7 +382,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
       <div className="flex items-start gap-3 p-3">
         {/* Status icon */}
         <div className={`flex-shrink-0 mt-0.5 ${statusDisplay.color}`}>
-          <ThemedIcon name={statusDisplay.icon} size={18} />
+          <Icon name={statusDisplay.icon} size={18} />
         </div>
 
         {/* Content */}
@@ -433,7 +433,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
             title={isExpanded ? 'Show less' : 'Show details'}
           >
-            <ThemedIcon
+            <Icon
               name={isExpanded ? 'chevronUp' : 'chevronDown'}
               size={14}
               className="text-neutral-600 dark:text-neutral-400"
@@ -447,7 +447,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
             className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
             title="Refresh status from backend"
           >
-            <ThemedIcon
+            <Icon
               name="refresh"
               size={14}
               className={`text-neutral-600 dark:text-neutral-400 ${isRefreshing ? 'animate-spin' : ''}`}
@@ -463,7 +463,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
                 title="Open asset"
               >
-                <ThemedIcon name="externalLink" size={14} className="text-neutral-600 dark:text-neutral-400" />
+                <Icon name="externalLink" size={14} className="text-neutral-600 dark:text-neutral-400" />
               </button>
             );
           })()}
@@ -475,7 +475,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
                 title="Retry generation"
               >
-                <ThemedIcon
+                <Icon
                   name="refreshCw"
                   size={14}
                   className={`text-blue-600 dark:text-blue-400 ${isRetrying ? 'animate-spin' : ''}`}
@@ -486,7 +486,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors"
                 title="Load to Quick Generate (edit prompt and retry)"
               >
-                <ThemedIcon
+                <Icon
                   name="edit"
                   size={14}
                   className="text-amber-600 dark:text-amber-400"
@@ -501,7 +501,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
               title="Cancel generation"
             >
-              <ThemedIcon
+              <Icon
                 name="x"
                 size={14}
                 className={`text-red-600 dark:text-red-400 ${isCancelling ? 'opacity-50' : ''}`}
@@ -515,7 +515,7 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
               className="p-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded transition-colors disabled:opacity-50"
               title="Delete generation"
             >
-              <ThemedIcon
+              <Icon
                 name="trash"
                 size={14}
                 className={`text-neutral-500 dark:text-neutral-500 ${isDeleting ? 'opacity-50' : ''}`}

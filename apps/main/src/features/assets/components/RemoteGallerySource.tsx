@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
-import { Icon, ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
 import { GalleryToolsPanel } from '@features/gallery';
@@ -884,7 +884,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               onClick={() => controller.selectAsset(a)}
               className="pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity shadow-lg flex items-center gap-1"
             >
-              <ThemedIcon name="check" size={14} variant="default" />
+              <Icon name="check" size={14} variant="default" />
               Select Asset
             </Button>
           </div>

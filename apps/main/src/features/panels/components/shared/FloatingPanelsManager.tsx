@@ -1,6 +1,8 @@
-import { useState, useRef } from "react";
+import { memo, useCallback, useState, useRef } from "react";
 import { Rnd } from "react-rnd";
 
+import { Icon } from "@lib/icons";
+import { IconButton } from "@pixsim7/shared.ui";
 import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
@@ -42,8 +44,9 @@ interface FloatingPanelProps {
   onDragStateChange: (panelId: string, isDragging: boolean, zone: DropZone | null, rect: DOMRect | null) => void;
 }
 
-function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
+const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
   const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
+  const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
   );
@@ -129,7 +132,10 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
       ref={rndRef}
       key={panel.id}
       position={{ x: panel.x, y: panel.y }}
-      size={{ width: panel.width, height: panel.height }}
+      size={panel.minimized
+        ? { width: panel.width, height: 34 }
+        : { width: panel.width, height: panel.height }
+      }
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragStop={handleDragStop}
@@ -142,55 +148,83 @@ function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
         updateFloatingPanelPosition(panel.id, position.x, position.y);
       }}
       onMouseDown={() => bringFloatingPanelToFront(panel.id)}
-      minWidth={300}
-      minHeight={200}
+      minWidth={panel.minimized ? 120 : 200}
+      minHeight={panel.minimized ? 34 : 200}
+      enableResizing={!panel.minimized}
       bounds="window"
       dragHandleClassName="floating-panel-header"
       style={{ zIndex: 10100 + panel.zIndex }}
       className="floating-panel"
     >
-      <div className="h-full flex flex-col bg-white dark:bg-neutral-900 rounded-lg shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden">
+      <div className={`h-full flex flex-col bg-white dark:bg-neutral-900 shadow-2xl border border-neutral-300 dark:border-neutral-700 overflow-hidden ${panel.minimized ? "rounded-full" : "rounded-lg"}`}>
         {/* Header */}
-        <div className="floating-panel-header flex items-center justify-between px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700 cursor-move">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+        <div
+          className={`floating-panel-header flex items-center justify-between cursor-move select-none ${
+            panel.minimized
+              ? "px-3 py-1 bg-neutral-800 dark:bg-neutral-800"
+              : "px-3 py-2 bg-neutral-100 dark:bg-neutral-800 border-b dark:border-neutral-700"
+          }`}
+          onDoubleClick={() => minimizeFloatingPanel(panel.id)}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`font-semibold text-neutral-800 dark:text-neutral-200 truncate ${panel.minimized ? "text-xs" : "text-sm"}`}>
               {title}
             </span>
-            <span className="px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
-              FLOATING
-            </span>
+            {!panel.minimized && (
+              <span className="shrink-0 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded font-medium">
+                FLOATING
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
+          <div className="flex items-center shrink-0">
+            <IconButton
+              size={panel.minimized ? "sm" : "md"}
+              rounded="md"
+              icon={<Icon name={panel.minimized ? "maximize2" : "minus"} size={panel.minimized ? 10 : 12} />}
+              onClick={() => minimizeFloatingPanel(panel.id)}
+              className={
+                panel.minimized
+                  ? "text-neutral-300 hover:text-blue-400"
+                  : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              }
+              title={panel.minimized ? "Restore panel" : "Minimize panel"}
+            />
+            <IconButton
+              size={panel.minimized ? "sm" : "md"}
+              rounded="md"
+              icon={<Icon name="x" size={panel.minimized ? 10 : 12} />}
               onClick={() => closeFloatingPanel(panel.id)}
-              className="text-neutral-600 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+              className={
+                panel.minimized
+                  ? "text-neutral-300 hover:text-red-400"
+                  : "text-neutral-500 dark:text-neutral-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
+              }
               title="Close floating panel"
-            >
-              ✕
-            </button>
+            />
           </div>
         </div>
 
-        {/* Content — no ScopeHost here: floating panels manage their own scope
-           via explicit context props from the opener (e.g. generationScopeId). */}
-        <div className="flex-1 overflow-auto">
-          <ContextHubHost hostId={`floating:${panel.id}`}>
-            <FloatingPanelContextProvider
-              context={panelContext}
-              instanceId={`floating:${panel.id}`}
-            >
-              {isDevToolPanel ? (
-                <Component context={panelContext} />
-              ) : (
-                <Component {...panelContext} />
-              )}
-            </FloatingPanelContextProvider>
-          </ContextHubHost>
-        </div>
+        {/* Content — hidden when minimized */}
+        {!panel.minimized && (
+          <div className="flex-1 overflow-auto">
+            <ContextHubHost hostId={`floating:${panel.id}`}>
+              <FloatingPanelContextProvider
+                context={panelContext}
+                instanceId={`floating:${panel.id}`}
+              >
+                {isDevToolPanel ? (
+                  <Component context={panelContext} />
+                ) : (
+                  <Component {...panelContext} />
+                )}
+              </FloatingPanelContextProvider>
+            </ContextHubHost>
+          </div>
+        )}
       </div>
     </Rnd>
   );
-}
+});
 
 export function FloatingPanelsManager() {
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
@@ -203,7 +237,7 @@ export function FloatingPanelsManager() {
     workspaceRect: DOMRect | null;
   }>({ panelId: null, isDragging: false, activeZone: null, workspaceRect: null });
 
-  const handleDragStateChange = (
+  const handleDragStateChange = useCallback((
     panelId: string,
     isDragging: boolean,
     zone: DropZone | null,
@@ -215,7 +249,7 @@ export function FloatingPanelsManager() {
       activeZone: zone,
       workspaceRect: rect,
     });
-  };
+  }, []);
 
   return (
     <>

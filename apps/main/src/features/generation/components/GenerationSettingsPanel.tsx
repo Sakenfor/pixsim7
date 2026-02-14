@@ -8,7 +8,7 @@
  */
 
 import clsx from 'clsx';
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef, type ReactNode } from 'react';
 
 import {
   getDurationOptions,
@@ -18,7 +18,153 @@ import {
   getParamIcon,
   isVisualParam,
 } from '@lib/generation-ui';
-import { Icon } from '@lib/icons';
+import { Icon, IconBadge, type IconName } from '@lib/icons';
+import { IconButton } from '@pixsim7/shared.ui';
+
+// ── Provider brand config ──────────────────────────────────────────────
+const PROVIDER_BRANDS: Record<string, { color: string; short: string }> = {
+  pixverse: { color: '#7C3AED', short: 'Px' },
+  sora:     { color: '#6B7280', short: 'So' },
+  remaker:  { color: '#059669', short: 'Rm' },
+};
+const AUTO_BRAND = { color: '#3B82F6', short: 'A' };
+
+// ── Operation type config ──────────────────────────────────────────────
+const OPERATION_ICONS: Record<string, { icon: IconName; label: string; color: string }> = {
+  image_to_image:   { icon: 'image',          label: 'Image',      color: '#8B5CF6' },
+  image_to_video:   { icon: 'film',           label: 'Video',      color: '#2563EB' },
+  video_extend:     { icon: 'arrowRight',     label: 'Extend',     color: '#0891B2' },
+  video_transition: { icon: 'arrowRightLeft', label: 'Transition', color: '#D97706' },
+  fusion:           { icon: 'layers',         label: 'Fusion',     color: '#DC2626' },
+};
+
+// ── Shared close-on-outside hook ───────────────────────────────────────
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, ref, close]);
+}
+
+// ── Shared dropdown menu shell ─────────────────────────────────────────
+const DROPDOWN_MENU_CLS = 'absolute left-0 top-full mt-1 z-50 min-w-[140px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700';
+const DROPDOWN_ITEM_CLS = 'w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700';
+
+/** Compact provider badge with dropdown picker. */
+function ProviderIconButton({
+  providerId,
+  providers,
+  onSelect,
+  disabled,
+}: {
+  providerId: string | undefined;
+  providers: { id: string; name: string }[];
+  onSelect: (id: string | undefined) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, open, () => setOpen(false));
+
+  const brand = providerId ? (PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: providerId.slice(0, 2) }) : AUTO_BRAND;
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton
+        bg={brand.color}
+        size="lg"
+        icon={<span className="text-[10px] font-bold">{brand.short}</span>}
+        onClick={() => setOpen(o => !o)}
+        disabled={disabled}
+        title={providerId ?? 'Auto'}
+      />
+
+      {open && (
+        <div className={DROPDOWN_MENU_CLS}>
+          <button
+            type="button"
+            onClick={() => { onSelect(undefined); setOpen(false); }}
+            className={clsx(DROPDOWN_ITEM_CLS, !providerId && 'font-semibold')}
+          >
+            <span
+              className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0"
+              style={{ backgroundColor: AUTO_BRAND.color }}
+            >{AUTO_BRAND.short}</span>
+            Auto
+          </button>
+
+          {providers.map(p => {
+            const b = PROVIDER_BRANDS[p.id] ?? { color: '#6B7280', short: p.id.slice(0, 2) };
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => { onSelect(p.id); setOpen(false); }}
+                className={clsx(DROPDOWN_ITEM_CLS, providerId === p.id && 'font-semibold')}
+              >
+                <span
+                  className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0"
+                  style={{ backgroundColor: b.color }}
+                >{b.short}</span>
+                {p.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Compact operation type icon button with dropdown picker. */
+function OperationIconButton({
+  operationType,
+  onSelect,
+  disabled,
+}: {
+  operationType: string;
+  onSelect: (op: string) => void;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, open, () => setOpen(false));
+
+  const current = OPERATION_ICONS[operationType] ?? { icon: 'alertCircle' as IconName, label: operationType, color: '#6B7280' };
+
+  return (
+    <div ref={ref} className="relative">
+      <IconButton
+        bg={current.color}
+        size="lg"
+        icon={<Icon name={current.icon} size={14} />}
+        onClick={() => setOpen(o => !o)}
+        disabled={disabled}
+        title={current.label}
+      />
+
+      {open && (
+        <div className={DROPDOWN_MENU_CLS}>
+          {Object.entries(OPERATION_ICONS).map(([op, meta]) => (
+            <button
+              key={op}
+              type="button"
+              onClick={() => { onSelect(op); setOpen(false); }}
+              className={clsx(DROPDOWN_ITEM_CLS, operationType === op && 'font-semibold')}
+            >
+              <IconBadge name={meta.icon} size={10} bg={meta.color} rounded="md" className="w-4 h-4 shrink-0" />
+              {meta.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 import {
   CAP_GENERATION_WIDGET,
@@ -66,6 +212,8 @@ export interface GenerationSettingsPanelProps {
   onGenerateBurst?: (count: number) => void;
   /** Callback for generate-each mode (one generation per queued asset) */
   onGenerateEach?: () => void;
+  /** Optional node rendered in Row 2 next to Input Sets (e.g. Asset/My Settings toggle) */
+  sourceToggle?: ReactNode;
 }
 
 export function GenerationSettingsPanel({
@@ -83,6 +231,7 @@ export function GenerationSettingsPanel({
   queueProgress,
   onGenerateBurst,
   onGenerateEach,
+  sourceToggle,
 }: GenerationSettingsPanelProps) {
   const { useSessionStore, useInputStore } = useGenerationScopeStores();
   const operationType = useSessionStore(s => s.operationType);
@@ -190,31 +339,28 @@ export function GenerationSettingsPanel({
   }, [qualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
   const showTargetButton = canTarget;
-  const showOperationRow = showOperationType || showTargetButton || showPresets;
+  const showRow1 = showProvider || showOperationType || showTargetButton;
+  const showRow2 = showPresets || !!sourceToggle;
 
   return (
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
-      {/* Fixed top section - Operation type & Provider */}
+      {/* Fixed top section */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Operation type & Presets */}
-        {showOperationRow && (
-          <div className={clsx('flex gap-1', !showOperationType && !showPresets && 'justify-end')}>
-            {showOperationType && (
-              <select
-                value={operationType}
-                onChange={(e) => setOperationType(e.target.value as any)}
+        {/* Row 1: Provider icon, Operation type, Account, Target */}
+        {showRow1 && (
+          <div className="flex gap-1 items-center">
+            {showProvider && (
+              <ProviderIconButton
+                providerId={providerId}
+                providers={workbench.providers}
+                onSelect={(id) => setProvider(id)}
                 disabled={generating}
-                className="flex-1 px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm font-medium"
-              >
-                <option value="image_to_image">Image</option>
-                <option value="image_to_video">Video</option>
-                <option value="video_extend">Extend</option>
-                <option value="video_transition">Transition</option>
-                <option value="fusion">Fusion</option>
-              </select>
+              />
             )}
-            {showPresets && (
-              <PresetSelector
+            {showOperationType && (
+              <OperationIconButton
+                operationType={operationType}
+                onSelect={(op) => setOperationType(op as any)}
                 disabled={generating}
               />
             )}
@@ -257,20 +403,14 @@ export function GenerationSettingsPanel({
           </div>
         )}
 
-        {/* Provider */}
-        {showProvider && (
-          <select
-            value={providerId || ''}
-            onChange={(e) => setProvider(e.target.value || undefined)}
-            disabled={generating}
-            className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
-            title="Provider"
-          >
-            <option value="">Auto</option>
-            {workbench.providers.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+        {/* Row 2: Input Sets + Source toggle */}
+        {showRow2 && (
+          <div className="flex items-center justify-between gap-1">
+            {showPresets ? (
+              <PresetSelector disabled={generating} />
+            ) : <div />}
+            {sourceToggle}
+          </div>
         )}
       </div>
 

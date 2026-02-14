@@ -12,7 +12,7 @@ import type { GenerationStatus } from '@features/generation';
 export interface GenerationStatusConfig {
   /** Display label */
   label: string;
-  /** Icon name (from ThemedIcon) */
+  /** Icon name (from Icon) */
   icon: IconName;
   /** Base color name */
   color: 'yellow' | 'amber' | 'blue' | 'green' | 'red' | 'neutral';

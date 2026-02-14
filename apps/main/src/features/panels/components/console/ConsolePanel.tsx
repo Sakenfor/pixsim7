@@ -6,7 +6,7 @@
  */
 
 import { useRef, useState, useEffect, useCallback, useMemo } from "react";
-import { ThemedIcon } from "@lib/icons";
+import { Icon } from "@lib/icons";
 import { useConsoleStore } from "@lib/dev/console";
 import { pixsim } from "@lib/dev/console";
 
@@ -272,7 +272,7 @@ export function ConsolePanel() {
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-neutral-800 bg-neutral-900/80">
         <div className="flex items-center gap-2">
-          <ThemedIcon name="code" size={14} variant="muted" />
+          <Icon name="code" size={14} variant="muted" />
           <span className="text-[11px] font-medium text-neutral-300">
             Console
           </span>
@@ -283,14 +283,14 @@ export function ConsolePanel() {
             className="p-1 rounded hover:bg-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
             title="Clear (Ctrl+L)"
           >
-            <ThemedIcon name="trash" size={12} variant="muted" />
+            <Icon name="trash" size={12} variant="muted" />
           </button>
           <button
             onClick={() => pixsim.help()}
             className="p-1 rounded hover:bg-neutral-800 text-neutral-500 hover:text-neutral-300 transition-colors"
             title="Help"
           >
-            <ThemedIcon name="info" size={12} variant="muted" />
+            <Icon name="info" size={12} variant="muted" />
           </button>
         </div>
       </div>

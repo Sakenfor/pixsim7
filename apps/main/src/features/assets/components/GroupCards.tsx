@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 
 import type { AssetGroupMeta } from '@lib/api/assets';
-import { ThemedIcon } from '@lib/icons';
+import { Icon } from '@lib/icons';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
@@ -235,7 +235,7 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
         </div>
       ) : (
         <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
-          <ThemedIcon
+          <Icon
             name={asset?.mediaType === 'video' ? 'video' : 'image'}
             size={16}
             variant="subtle"
