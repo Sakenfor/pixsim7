@@ -1,14 +1,16 @@
 import { authService } from '@lib/auth';
 
-import type { LocalAsset } from '../stores/localFoldersStore';
-
-import {
-  computeFileSha256Worker,
+export {
+  computeLocalAssetScopeSignature,
+  computeStableSignature,
+  ensureLocalAssetSha256,
+  hasValidHashForFile,
+  hasValidStoredHash,
+  scheduleAssetsForHashing,
+  type EnsureLocalAssetSha256Options,
   type HashWorkerProgress,
-} from './hashWorkerManager';
-
-const FNV_OFFSET_BASIS = 2166136261;
-const FNV_PRIME = 16777619;
+  type LocalHashAssetLike,
+} from '@pixsim7/shared.assets.web';
 
 type HashBatchResponse = {
   results?: Array<{
@@ -16,95 +18,6 @@ type HashBatchResponse = {
     exists: boolean;
   }>;
 };
-
-export function computeStableSignature(tokens: string[]): string {
-  const sorted = [...tokens].sort();
-  let hash = FNV_OFFSET_BASIS;
-
-  for (const token of sorted) {
-    for (let i = 0; i < token.length; i++) {
-      hash ^= token.charCodeAt(i);
-      hash = Math.imul(hash, FNV_PRIME);
-    }
-  }
-
-  return `${sorted.length}:${hash >>> 0}`;
-}
-
-export function computeLocalAssetScopeSignature(assets: LocalAsset[]): string {
-  return computeStableSignature(
-    assets.map(asset => `${asset.key}|${asset.size ?? -1}|${asset.lastModified ?? -1}`)
-  );
-}
-
-/**
- * Scheduling helper for large local folders.
- *
- * Prioritizes small files for immediate UI progress while periodically mixing in
- * large files to avoid a long "large-files-only" tail at the end.
- */
-export function scheduleAssetsForHashing(assets: LocalAsset[]): LocalAsset[] {
-  if (assets.length <= 2) {
-    return [...assets];
-  }
-
-  const sorted = [...assets].sort(
-    (a, b) => (a.size ?? Number.MAX_SAFE_INTEGER) - (b.size ?? Number.MAX_SAFE_INTEGER),
-  );
-
-  const scheduled: LocalAsset[] = [];
-  let left = 0;
-  let right = sorted.length - 1;
-
-  while (left <= right) {
-    // Take up to two small files.
-    for (let i = 0; i < 2 && left <= right; i++) {
-      scheduled.push(sorted[left]);
-      left += 1;
-    }
-
-    // Then one large file to reduce long-tail stalls.
-    if (left <= right) {
-      scheduled.push(sorted[right]);
-      right -= 1;
-    }
-  }
-
-  return scheduled;
-}
-
-export function hasValidStoredHash(asset: LocalAsset): boolean {
-  return !!asset.sha256
-    && asset.sha256_file_size === asset.size
-    && asset.sha256_last_modified === asset.lastModified;
-}
-
-export function hasValidHashForFile(asset: LocalAsset, file: File): boolean {
-  return !!asset.sha256
-    && asset.sha256_file_size === file.size
-    && asset.sha256_last_modified === file.lastModified;
-}
-
-type EnsureLocalAssetSha256Options = {
-  onProgress?: (progress: HashWorkerProgress) => void;
-};
-
-export async function ensureLocalAssetSha256(
-  asset: LocalAsset,
-  file: File,
-  updateAssetHash: (assetKey: string, sha256: string, file: File) => Promise<void>,
-  options?: EnsureLocalAssetSha256Options,
-): Promise<string> {
-  if (hasValidHashForFile(asset, file) && asset.sha256) {
-    return asset.sha256;
-  }
-
-  const sha256 = await computeFileSha256Worker(file, {
-    onProgress: options?.onProgress,
-  });
-  await updateAssetHash(asset.key, sha256, file);
-  return sha256;
-}
 
 export async function checkHashesAgainstBackend(
   hashes: string[],
@@ -139,6 +52,3 @@ export async function checkHashesAgainstBackend(
       .map((r) => r.sha256)
   );
 }
-
-export type { EnsureLocalAssetSha256Options, HashWorkerProgress };
-

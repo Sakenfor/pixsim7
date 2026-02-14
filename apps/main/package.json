@@ -36,6 +36,7 @@
     "@pixsim7/shared.api.client": "workspace:*",
     "@pixsim7/shared.auth.core": "workspace:*",
     "@pixsim7/shared.assets.core": "workspace:*",
+    "@pixsim7/shared.assets.web": "workspace:*",
     "@pixsim7/shared.async.core": "workspace:*",
     "@pixsim7/shared.detection.core": "workspace:*",
     "@pixsim7/shared.devtools.core": "workspace:*",

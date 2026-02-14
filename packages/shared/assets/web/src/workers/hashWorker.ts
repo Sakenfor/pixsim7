@@ -1,3 +1,4 @@
+/// <reference lib="webworker" />
 /**
  * Web Worker for computing SHA-256 hashes off the main thread.
  *
@@ -35,7 +36,6 @@ async function readFileWithProgress(
   id: string,
 ): Promise<ArrayBuffer> {
   const totalBytes = file.size;
-  // Preserve previous behavior for empty files.
   if (totalBytes <= 0) {
     return file.arrayBuffer();
   }
@@ -80,15 +80,14 @@ ctx.addEventListener('message', async (event: MessageEvent<HashWorkerRequest>) =
     const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
     const hashArray = new Uint8Array(hashBuffer);
 
-    // Build hex string
     let hex = '';
     for (let i = 0; i < hashArray.length; i++) {
       hex += hashArray[i].toString(16).padStart(2, '0');
     }
 
     ctx.postMessage({ id, kind: 'done', sha256: hex } satisfies HashWorkerResponse);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     ctx.postMessage({ id, kind: 'error', error: message } satisfies HashWorkerResponse);
   }
 });
