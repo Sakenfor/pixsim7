@@ -16,6 +16,8 @@ export interface ProjectBundleExtensionImportOutcome {
 
 export interface ProjectBundleExtensionHandler<TPayload = unknown> {
   key: string;
+  version?: number;
+  migrate?: (payload: unknown, fromVersion: number, toVersion: number) => TPayload | null;
   export?: (
     context: ProjectBundleExportContext,
   ) => Promise<TPayload | null | undefined> | TPayload | null | undefined;
@@ -30,6 +32,8 @@ export interface ProjectBundleExtensionHandler<TPayload = unknown> {
 
 export interface AuthoringProjectBundleContributor<TPayload = unknown> {
   key: string;
+  version?: number;
+  migrate?: (payload: unknown, fromVersion: number, toVersion: number) => TPayload | null;
   export?: (
     context: ProjectBundleExportContext,
   ) => Promise<TPayload | null | undefined> | TPayload | null | undefined;
@@ -56,6 +60,8 @@ export interface ProjectBundleExtensionImportReport {
   skipped: string[];
   unknown: string[];
   warnings: string[];
+  migrated: string[];
+  failed: string[];
 }
 
 export interface ExportWorldProjectWithExtensionsResult {

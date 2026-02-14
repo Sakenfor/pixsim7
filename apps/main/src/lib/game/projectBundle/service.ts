@@ -74,10 +74,12 @@ export async function importWorldProjectWithExtensions(
     skipped: [],
     unknown: [],
     warnings: [],
+    migrated: [],
+    failed: [],
   };
 
   const extensionEntries = Object.entries(bundle.extensions || {});
-  for (const [key, payload] of extensionEntries) {
+  for (const [key, rawPayload] of extensionEntries) {
     const handler = projectBundleExtensionRegistry.get(key);
     if (!handler) {
       extensionReport.unknown.push(key);
@@ -87,6 +89,46 @@ export async function importWorldProjectWithExtensions(
     if (!handler.import) {
       extensionReport.skipped.push(key);
       continue;
+    }
+
+    let payload = rawPayload;
+
+    // Version migration
+    const payloadVersion =
+      typeof payload === 'object' && payload !== null && 'version' in payload
+        ? (payload as { version?: unknown }).version
+        : undefined;
+    const handlerVersion = handler.version;
+
+    if (
+      handlerVersion != null &&
+      typeof payloadVersion === 'number' &&
+      payloadVersion !== handlerVersion
+    ) {
+      if (handler.migrate) {
+        try {
+          const migrated = handler.migrate(payload, payloadVersion, handlerVersion);
+          if (migrated != null) {
+            payload = migrated;
+            extensionReport.migrated.push(key);
+          } else {
+            extensionReport.failed.push(key);
+            extensionReport.warnings.push(
+              `migrate ${key}: migration returned null (v${payloadVersion} → v${handlerVersion})`,
+            );
+            continue;
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          extensionReport.failed.push(key);
+          extensionReport.warnings.push(`migrate ${key}: ${message}`);
+          continue;
+        }
+      } else {
+        extensionReport.warnings.push(
+          `${key}: version mismatch (payload v${payloadVersion}, handler v${handlerVersion}) — no migrate function, attempting import anyway`,
+        );
+      }
     }
 
     try {

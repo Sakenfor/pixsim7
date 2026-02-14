@@ -19,6 +19,8 @@ function toExtensionHandler(
 ): ProjectBundleExtensionHandler<unknown> {
   return {
     key: contributor.key,
+    version: contributor.version,
+    migrate: contributor.migrate,
     export: contributor.export,
     import: contributor.import,
   };

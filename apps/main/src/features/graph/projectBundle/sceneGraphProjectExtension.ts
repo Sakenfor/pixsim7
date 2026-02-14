@@ -78,7 +78,9 @@ function parseSceneGraphPayload(raw: unknown): SceneGraphProjectExtensionPayload
 
   const version = raw.version;
   if (version !== undefined && version !== SCENE_GRAPH_PROJECT_EXTENSION_VERSION) {
-    return null;
+    console.warn(
+      `[SceneGraphExtension] version mismatch: payload v${version}, expected v${SCENE_GRAPH_PROJECT_EXTENSION_VERSION} — attempting best-effort parse`,
+    );
   }
 
   const scenes = raw.scenes;
@@ -134,6 +136,7 @@ function restoreSceneGraph(
 
 export const authoringProjectBundleContributor: AuthoringProjectBundleContributor<unknown> = {
   key: SCENE_GRAPH_PROJECT_EXTENSION_KEY,
+  version: SCENE_GRAPH_PROJECT_EXTENSION_VERSION,
 
   export: () => {
     const graphState = useGraphStore.getState();
