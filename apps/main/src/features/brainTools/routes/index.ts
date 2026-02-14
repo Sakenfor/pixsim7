@@ -1,6 +1,11 @@
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import type { Module } from '@app/modules/types';
+
+function NpcBrainLabRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=npc-brain-lab', replace: true });
+}
 
 export const npcBrainLabModule: Module = {
   id: 'npc-brain-lab',
@@ -11,6 +16,7 @@ export const npcBrainLabModule: Module = {
     description: 'Design and test NPC behavior and AI',
     category: 'game',
     featureId: 'game',
-    component: lazy(() => import('../components/NpcBrainLab').then(m => ({ default: m.NpcBrainLab }))),
+    showInNav: false,
+    component: NpcBrainLabRedirect,
   },
 };

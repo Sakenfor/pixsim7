@@ -1,5 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { lazy } from 'react';
+import { createElement, lazy } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
@@ -17,9 +18,13 @@ const openInteractionStudioAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo(ROUTES.INTERACTION_STUDIO);
+    navigateTo('/workspace?openPanel=interaction-studio');
   },
 };
+
+function InteractionStudioRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=interaction-studio', replace: true });
+}
 
 export const interactionStudioModule: Module = {
   id: 'interaction-studio',
@@ -32,7 +37,8 @@ export const interactionStudioModule: Module = {
     category: 'game',
     featureId: 'interactions',
     featurePrimary: true,
-    component: lazy(() => import('../../../routes/InteractionStudio').then(m => ({ default: m.InteractionStudio }))),
+    showInNav: false,
+    component: InteractionStudioRedirect,
     actions: [openInteractionStudioAction],
     appMap: {
       docs: [

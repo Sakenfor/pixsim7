@@ -1,5 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
@@ -19,7 +20,7 @@ const enterGameWorldAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo(ROUTES.GAME_WORLD);
+    navigateTo('/workspace?openPanel=game-world');
   },
 };
 
@@ -33,9 +34,13 @@ const openNpcEditorAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo(ROUTES.NPC_BRAIN_LAB);
+    navigateTo('/workspace?openPanel=npc-brain-lab');
   },
 };
+
+function GameWorldRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=game-world', replace: true });
+}
 
 /**
  * Game Module
@@ -58,7 +63,8 @@ export const gameModule: Module = {
     category: 'game',
     featureId: 'game',
     featured: true,
-    component: lazy(() => import('../../routes/GameWorld').then(m => ({ default: m.GameWorld }))),
+    showInNav: false,
+    component: GameWorldRedirect,
     actions: [enterGameWorldAction, openNpcEditorAction],
     appMap: {
       docs: ['docs/backend/game.md'],

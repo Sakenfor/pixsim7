@@ -50,7 +50,7 @@ export function GizmoLab({ sceneId }: GizmoLabProps = {}) {
   }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="h-full flex flex-col bg-neutral-50 dark:bg-neutral-950">
       {/* Header */}
       <header className="border-b border-neutral-200 dark:border-neutral-800 p-4 bg-white dark:bg-neutral-900">
         <div className="max-w-7xl mx-auto flex items-center justify-between">

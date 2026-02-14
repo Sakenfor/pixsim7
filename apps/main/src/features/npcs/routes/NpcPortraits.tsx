@@ -1,5 +1,6 @@
+import { Button, Panel, Input } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
-import { Button, Panel, Input, Badge } from '@pixsim7/shared.ui';
+
 import {
   listGameNpcs,
   getNpcExpressions,
@@ -10,8 +11,10 @@ import {
   type GameNpcDetail,
   type NpcExpressionDTO,
 } from '@lib/api/game';
-import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
+
 import { useWorkspaceStore } from '@features/workspace';
+
+import { NpcPreferencesEditor } from '../components/NpcPreferencesEditor';
 
 type TabType = 'expressions' | 'preferences';
 
@@ -112,7 +115,7 @@ export function NpcPortraits() {
   };
 
   return (
-    <div className="p-6 space-y-4 content-with-dock min-h-screen">
+    <div className="p-6 space-y-4 content-with-dock h-full overflow-y-auto">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">NPC Configuration</h1>

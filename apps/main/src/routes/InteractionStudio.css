@@ -3,7 +3,9 @@
  */
 
 .interaction-studio {
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
   background: linear-gradient(135deg, rgba(20, 20, 40, 1), rgba(30, 30, 50, 1));
   padding: 24px;
 }

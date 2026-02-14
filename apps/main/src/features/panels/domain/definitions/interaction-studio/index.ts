@@ -1,0 +1,20 @@
+import { InteractionStudio } from '@/routes/InteractionStudio';
+
+import { definePanel } from '../../../lib/definePanel';
+
+export default definePanel({
+  id: 'interaction-studio',
+  title: 'Interaction Studio',
+  component: InteractionStudio,
+  category: 'game',
+  tags: ['interaction', 'npc', 'design', 'prototype'],
+  icon: 'sparkles',
+  description: 'Design and prototype NPC interactions visually',
+  orchestration: {
+    type: 'zone-panel',
+    defaultZone: 'center',
+    canChangeZone: true,
+  },
+  supportsCompactMode: false,
+  supportsMultipleInstances: false,
+});

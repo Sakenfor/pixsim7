@@ -1,5 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
@@ -17,9 +18,13 @@ const openGizmoLabAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo(ROUTES.GIZMO_LAB);
+    navigateTo('/workspace?openPanel=gizmo-lab');
   },
 };
+
+function GizmoLabRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=gizmo-lab', replace: true });
+}
 
 export const gizmoLabModule: Module = {
   id: 'gizmo-lab',
@@ -31,9 +36,9 @@ export const gizmoLabModule: Module = {
     description: 'Explore and test gizmos and interactive tools',
     category: 'development',
     featureId: 'gizmos',
-    showInNav: true,
+    showInNav: false,
     featurePrimary: true,
-    component: lazy(() => import('../../../routes/GizmoLab').then(m => ({ default: m.GizmoLab }))),
+    component: GizmoLabRedirect,
     actions: [openGizmoLabAction],
     appMap: {
       docs: ['docs/ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md'],

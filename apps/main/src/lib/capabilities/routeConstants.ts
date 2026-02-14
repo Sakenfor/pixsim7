@@ -34,6 +34,7 @@ export const ROUTES = {
   // Graph
   ARC_GRAPH: '/arc-graph',
   GRAPH_DETAIL: '/graph/:id',
+  ROUTINE_GRAPH: '/routine-graph',
 
   // Interactions
   INTERACTION_STUDIO: '/interaction-studio',

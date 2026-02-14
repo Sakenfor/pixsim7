@@ -1,5 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { lazy } from 'react';
+import { createElement, lazy } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
@@ -17,9 +18,13 @@ const openArcGraphAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo(ROUTES.ARC_GRAPH);
+    navigateTo('/workspace?openPanel=arc-graph');
   },
 };
+
+function ArcGraphRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=arc-graph', replace: true });
+}
 
 export const arcGraphModule: Module = {
   id: 'arc-graph',
@@ -33,7 +38,8 @@ export const arcGraphModule: Module = {
     featureId: 'graph',
     featurePrimary: true,
     featured: true,
-    component: lazy(() => import('../../../routes/ArcGraph').then(m => ({ default: m.ArcGraphRoute }))),
+    showInNav: false,
+    component: ArcGraphRedirect,
     actions: [openArcGraphAction],
     appMap: {
       docs: ['docs/game/NPC_RESPONSE_GRAPH_DESIGN.md'],

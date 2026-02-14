@@ -1,5 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
@@ -12,7 +13,7 @@ import type { Module } from '@app/modules/types';
  * Actions are registered automatically via page.actions.
  */
 
-/** Open Automation action - navigates to automation page */
+/** Open Automation action - navigates to automation panel in workspace */
 const openAutomationAction: ActionDefinition = {
   id: 'automation.open',
   featureId: 'automation',
@@ -23,9 +24,13 @@ const openAutomationAction: ActionDefinition = {
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo('/automation');
+    navigateTo('/workspace?openPanel=automation');
   },
 };
+
+function AutomationRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=automation', replace: true });
+}
 
 export const automationModule: Module = {
   id: 'automation',
@@ -38,7 +43,8 @@ export const automationModule: Module = {
     category: 'automation',
     featureId: 'automation',
     featured: true,
-    component: lazy(() => import('../../routes/Automation').then(m => ({ default: m.AutomationRoute }))),
+    showInNav: false,
+    component: AutomationRedirect,
     actions: [openAutomationAction],
     appMap: {
       docs: ['docs/backend/automation.md'],

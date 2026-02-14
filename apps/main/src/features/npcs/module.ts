@@ -4,9 +4,14 @@
  * UI for configuring NPC portraits, expressions, and preferences.
  */
 
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import type { Module } from '@app/modules/types';
+
+function NpcPortraitsRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=npc-portraits', replace: true });
+}
 
 export const npcsModule: Module = {
   id: 'npcs',
@@ -18,8 +23,7 @@ export const npcsModule: Module = {
     description: 'Configure NPC expressions mapped to assets',
     category: 'game',
     featureId: 'npcs',
-    component: lazy(() =>
-      import('./routes/NpcPortraits').then((m) => ({ default: m.NpcPortraits }))
-    ),
+    showInNav: false,
+    component: NpcPortraitsRedirect,
   },
 };

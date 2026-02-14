@@ -4,9 +4,14 @@
  * Page module definitions for the routine graph editor.
  */
 
-import { lazy } from 'react';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import type { Module } from '@app/modules/types';
+
+function RoutineGraphRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=routine-graph', replace: true });
+}
 
 export const routineGraphPageModule: Module = {
   id: 'routine-graph-page',
@@ -20,9 +25,8 @@ export const routineGraphPageModule: Module = {
     featureId: 'routine-graph',
     featurePrimary: true,
     featured: true,
-    component: lazy(() =>
-      import('./RoutineGraphRoute').then((m) => ({ default: m.RoutineGraphRoute }))
-    ),
+    showInNav: false,
+    component: RoutineGraphRedirect,
     appMap: {
       docs: ['docs/architecture/subsystems/npc-architecture.md'],
       backend: [
