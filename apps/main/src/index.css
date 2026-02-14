@@ -409,11 +409,13 @@ button:focus-visible {
   font-size: var(--cq-font-sm);
   padding: var(--cq-pad-y) var(--cq-pad-x);
 }
+.cq-badge svg     { width: var(--cq-icon-sm); height: var(--cq-icon-sm); }
 
 .cq-badge-xs {
   font-size: var(--cq-font-xs);
   padding: var(--cq-pad-y) var(--cq-pad-x);
 }
+.cq-badge-xs svg  { width: var(--cq-icon-xs); height: var(--cq-icon-xs); }
 
 .cq-inset-tr        { top: var(--cq-inset-sm);  right: var(--cq-inset-sm); }
 .cq-inset-tl        { top: var(--cq-inset-sm);  left:  var(--cq-inset-sm); }

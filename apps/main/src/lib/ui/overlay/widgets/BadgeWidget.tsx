@@ -5,12 +5,14 @@
  * Uses shared UI components for consistency where applicable
  */
 
-import React from 'react';
-import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 import { Badge } from '@pixsim7/shared.ui';
-import { Icon } from '@lib/icons';
+import React from 'react';
+
 import type { DataBinding } from '@lib/editing-core';
-import { resolveDataBinding, createBindingFromValue } from '@lib/editing-core';
+import { resolveDataBinding } from '@lib/editing-core';
+import { Icon } from '@lib/icons';
+
+import type { OverlayWidget, WidgetPosition, VisibilityConfig } from '../types';
 
 export interface BadgeWidgetConfig {
   /** Widget ID */
@@ -85,6 +87,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     interactive: Boolean(onClick),
     ariaLabel: tooltip,
     onClick,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     render: (data, context) => {
       const resolvedLabel = resolveDataBinding(labelBinding, data);
 
@@ -112,7 +115,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
           <div
             className={`
               inline-flex items-center justify-center
-              w-8 h-8
+              cq-btn-md
               ${iconColorClasses[color]}
               ${shapeClasses[shape]}
               ${pulse ? 'animate-pulse' : ''}
@@ -121,7 +124,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
             `.trim()}
             title={tooltip}
           >
-            {icon && <Icon name={icon} className="w-4 h-4" />}
+            {icon && <Icon name={icon} />}
           </div>
         );
       }
@@ -131,14 +134,14 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
         <Badge
           color={color}
           className={`
-            inline-flex items-center gap-1
+            cq-badge inline-flex items-center gap-1
             ${pulse ? 'animate-pulse' : ''}
             shadow-sm
             ${className}
           `.trim()}
         >
           {(variant === 'icon' || variant === 'icon-text') && icon && (
-            <Icon name={icon} className="w-3 h-3" />
+            <Icon name={icon} />
           )}
           {resolvedLabel && (
             <span className="whitespace-nowrap">{resolvedLabel}</span>
@@ -223,6 +226,6 @@ export const BadgePresets = {
       },
       color: 'red',
       shape: 'rounded',
-      className: 'min-w-[1.25rem] !text-[10px] !px-1.5 !py-0',
+      className: 'cq-badge-xs min-w-[1.25rem]',
     }),
 };
