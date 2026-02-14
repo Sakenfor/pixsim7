@@ -8,7 +8,7 @@ import {
   registerTool,
   type GizmoDefinition,
   type InteractiveTool,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import { OrbGizmo } from './components/OrbGizmo';
 import { ConstellationGizmo } from './components/ConstellationGizmo';
 import {

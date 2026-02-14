@@ -5,7 +5,7 @@
  * Applications should call these functions during initialization to register mini-games.
  */
 
-import { registerMiniGame, type MiniGameDefinition, type MiniGameResult } from '@pixsim7/scene.gizmos';
+import { registerMiniGame, type MiniGameDefinition, type MiniGameResult } from '@pixsim7/interaction.gizmos';
 import { ReflexMiniGame } from './ReflexMiniGame';
 
 /**

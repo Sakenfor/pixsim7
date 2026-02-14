@@ -20,14 +20,14 @@ We have chosen **Option 1: Keep Gizmo Components in Frontend**.
 
 | Package | Responsibility |
 |---------|----------------|
-| `@pixsim7/scene.gizmos` | Type definitions, registry, core logic (UI-agnostic) |
+| `@pixsim7/interaction.gizmos` | Type definitions, registry, core logic (UI-agnostic) |
 | `@pixsim7/game.components` | Generic, reusable UI components (ScenePlayer, ReflexMiniGame) |
 | `frontend` | Application-specific components (gizmo implementations, renderers, SceneGizmoMiniGame) |
 
 ### Dependency Flow
 
 ```
-@pixsim7/scene.gizmos (types + registry)
+@pixsim7/interaction.gizmos (types + registry)
        ↓
 @pixsim7/game.components (generic UI)
        ↓
@@ -82,7 +82,7 @@ frontend (app-specific implementations)
 
 5. **Updated documentation**
    - Added README for `@pixsim7/game.components`
-   - Added README for `@pixsim7/scene.gizmos`
+   - Added README for `@pixsim7/interaction.gizmos`
    - Created this ADR
 
 ### Files Created/Modified
@@ -258,7 +258,7 @@ registerGizmoSurface({
 ✓ No frontend imports found in game components
 
 # Package builds
-✓ @pixsim7/scene.gizmos build successful
+✓ @pixsim7/interaction.gizmos build successful
 ✓ @pixsim7/game.components build successful
 ```
 

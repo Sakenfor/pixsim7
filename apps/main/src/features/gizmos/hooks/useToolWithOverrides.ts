@@ -6,7 +6,7 @@
  * to get tools that respect console parameter adjustments.
  */
 
-import { createToolInstance, getAllTools, getTool, type InteractiveTool } from '@pixsim7/scene.gizmos';
+import { createToolInstance, getAllTools, getTool, type InteractiveTool } from '@pixsim7/interaction.gizmos';
 import { useMemo } from 'react';
 
 import { applyToolOverrides } from '../lib/core/toolOverrides';

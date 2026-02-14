@@ -16,7 +16,7 @@ import {
   buildZoneContext,
   getZoneColorByEffectiveness,
   getZoneEffectivenessDescription,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 
 import { Icon } from '@lib/icons';

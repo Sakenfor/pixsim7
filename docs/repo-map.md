@@ -184,7 +184,7 @@ features/
 - New features that don't fit existing `lib/` or `components/` patterns
 
 **When NOT to use `features/`:**
-- Code that already has a shared package (e.g., gizmos â†’ `@pixsim7/scene.gizmos`)
+- Code that already has a shared package (e.g., gizmos â†’ `@pixsim7/interaction.gizmos`)
 - Pure utilities or shared components
 - Existing aliased domains (`@/gizmos`, `@/narrative`, etc.)
 
@@ -245,11 +245,11 @@ Gizmos follow a **package/app split**:
 
 | Layer | Location | Alias | Purpose |
 |-------|----------|-------|---------|
-| **Core** | `packages/scene/gizmos/` | `@pixsim7/scene.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
+| **Core** | `packages/scene/gizmos/` | `@pixsim7/interaction.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
 | **App UI** | `apps/main/src/lib/gizmos/` | `@/gizmos` | Surface registry, console integration, tool overrides, interaction stats |
 | **Components** | `apps/main/src/components/gizmos/` | â€” | React components (BodyMapGizmo, InteractiveTool, etc.) |
 
-The core package is UI-agnostic and shared across engine/UI layers. The app layer adds presentation-specific code. Import from `@pixsim7/scene.gizmos` in shared libraries, use `@/gizmos` in app code.
+The core package is UI-agnostic and shared across engine/UI layers. The app layer adds presentation-specific code. Import from `@pixsim7/interaction.gizmos` in shared libraries, use `@/gizmos` in app code.
 
 ## Backend (`pixsim7/backend`)
 

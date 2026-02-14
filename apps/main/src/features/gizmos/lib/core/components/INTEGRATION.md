@@ -5,7 +5,7 @@
 The Scene Gizmo system provides interactive 3D controls for scene progression, particularly useful for erotic/intimate scenes where player agency enhances immersion.
 
 The system uses a **canonical registry** architecture where:
-- All gizmo/tool definitions live in `@pixsim7/scene.gizmos` (pure TypeScript, no React)
+- All gizmo/tool definitions live in `@pixsim7/interaction.gizmos` (pure TypeScript, no React)
 - Frontend "packs" register content by importing
 - Editor UIs and playgrounds query the registry dynamically
 
@@ -48,7 +48,7 @@ Packs are organized in dependency layers:
    - Adds: body-map gizmo, caress/feather/silk/pleasure tools
 
 Each pack:
-- Imports `registerGizmo`/`registerTool` from `@pixsim7/scene.gizmos`
+- Imports `registerGizmo`/`registerTool` from `@pixsim7/interaction.gizmos`
 - Defines gizmos/tools as pure data objects
 - Auto-registers them at import time
 - Re-exports for direct access if needed
@@ -63,7 +63,7 @@ import {
   getTool,
   getGizmosByCategory,
   getToolsByType,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 
 // Get all gizmos
 const allGizmos = getAllGizmos();
@@ -124,7 +124,7 @@ The SceneGizmoMiniGame will automatically render when the scene reaches a node w
 The gizmo emits results as the player interacts:
 
 ```typescript
-import type { GizmoResult } from '@pixsim7/scene.gizmos';
+import type { GizmoResult } from '@pixsim7/interaction.gizmos';
 
 interface GizmoResult {
   segmentId?: string;      // Next segment to play
@@ -221,7 +221,7 @@ Use gestures to trigger special segments:
 For diegetic interaction (player's touch in the scene):
 
 ```typescript
-import type { InteractiveTool as ToolType, TouchPattern } from '@pixsim7/scene.gizmos';
+import type { InteractiveTool as ToolType, TouchPattern } from '@pixsim7/interaction.gizmos';
 import { InteractiveTool } from '../gizmos/InteractiveTool';
 
 <InteractiveTool
@@ -309,7 +309,7 @@ if (currentNode.miniGame?.id === 'sceneGizmo') {
 
 ### Architecture Overview
 
-The gizmo system uses a **canonical registry** in `@pixsim7/scene.gizmos` that serves as the single source of truth for all gizmos and tools. The system is organized into "packs" that register content at import time:
+The gizmo system uses a **canonical registry** in `@pixsim7/interaction.gizmos` that serves as the single source of truth for all gizmos and tools. The system is organized into "packs" that register content at import time:
 
 - **Base Pack** (`registry.ts`): Core gizmos (orb, constellation) and basic tools (touch, temperature, energy)
 - **Enhanced Pack** (`registry-enhanced.ts`): Additional tools like feather
@@ -320,7 +320,7 @@ The gizmo system uses a **canonical registry** in `@pixsim7/scene.gizmos` that s
 Create a new gizmo definition and register it using the canonical registry:
 
 ```typescript
-import { registerGizmo, type GizmoDefinition } from '@pixsim7/scene.gizmos';
+import { registerGizmo, type GizmoDefinition } from '@pixsim7/interaction.gizmos';
 import { ColorWheelGizmo } from './ColorWheelGizmo';
 
 export const colorWheelGizmo: GizmoDefinition = {
@@ -361,7 +361,7 @@ import './lib/gizmos/custom-gizmos-pack';
 Define interactive tool metadata and register it at import time:
 
 ```typescript
-import { registerTool, type InteractiveTool } from '@pixsim7/scene.gizmos';
+import { registerTool, type InteractiveTool } from '@pixsim7/interaction.gizmos';
 
 export const silkTool: InteractiveTool = {
   id: 'silk',
@@ -432,7 +432,7 @@ import {
   registerTool,
   type GizmoDefinition,
   type InteractiveTool,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 
 // Define your gizmos
 export const customGizmo: GizmoDefinition = { /* ... */ };

@@ -10,7 +10,7 @@ import {
   getAllTools,
   type GizmoDefinition,
   type InteractiveTool,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import type { NpcBodyZone } from '@pixsim7/shared.types';
 import { create } from 'zustand';
 

@@ -12,8 +12,8 @@
  * - NPC/entity feedback callbacks
  */
 
-import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
-import { getProfileOrThrow } from '@pixsim7/scene.gizmos';
+import type { GizmoComponentProps } from '@pixsim7/interaction.gizmos';
+import { getProfileOrThrow } from '@pixsim7/interaction.gizmos';
 import type {
   SurfaceProfile,
   SurfaceRegion,

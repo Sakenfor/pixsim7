@@ -1,5 +1,5 @@
 /**
- * @pixsim7/semantic-shapes
+ * @pixsim7/interaction.shapes
  *
  * Semantic shape definitions for PixSim7.
  * Beyond basic geometry - shapes with meaning and purpose.

@@ -4,9 +4,9 @@
  */
 
 import type { NpcPersona } from '@pixsim7/game.engine';
-import type { NpcPreferences, ToolPreference, PatternPreference } from '@pixsim7/scene.gizmos';
-import { PREFERENCE_PRESETS, createDefaultPreferences } from '@pixsim7/scene.gizmos';
-import type { BrainFace } from '@pixsim7/scene.shapes';
+import type { NpcPreferences, ToolPreference, PatternPreference } from '@pixsim7/interaction.gizmos';
+import { PREFERENCE_PRESETS, createDefaultPreferences } from '@pixsim7/interaction.gizmos';
+import type { BrainFace } from '@pixsim7/interaction.shapes';
 import { NpcId as toNpcId, WorldId as toWorldId } from '@pixsim7/shared.types';
 import { Button, Panel, Badge } from '@pixsim7/shared.ui';
 import { useState, useEffect } from 'react';

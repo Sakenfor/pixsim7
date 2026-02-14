@@ -5,7 +5,7 @@
  * frontend implementations (like gizmo renderers).
  */
 
-import { registerMiniGame, type MiniGameDefinition, type SceneGizmoConfig, type GizmoResult } from '@pixsim7/scene.gizmos';
+import { registerMiniGame, type MiniGameDefinition, type SceneGizmoConfig, type GizmoResult } from '@pixsim7/interaction.gizmos';
 
 import { SceneGizmoMiniGame } from './SceneGizmoMiniGame';
 

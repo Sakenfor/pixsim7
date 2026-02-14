@@ -1,5 +1,5 @@
 import { parseNpcKey } from '@pixsim7/game.engine';
-import type { BrainFace } from '@pixsim7/scene.shapes';
+import type { BrainFace } from '@pixsim7/interaction.shapes';
 import { Panel, Button, Select } from '@pixsim7/shared.ui';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';

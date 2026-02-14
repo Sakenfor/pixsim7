@@ -3,7 +3,7 @@
  * Allows controlling multiple parameters with concentric rotating rings
  */
 
-import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
+import type { GizmoComponentProps } from '@pixsim7/interaction.gizmos';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import './RingsGizmo.css';
 

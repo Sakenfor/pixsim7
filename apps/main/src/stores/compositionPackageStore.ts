@@ -7,7 +7,7 @@
  * This is the single source of truth for composition role data at runtime.
  * Replaces build-time generated constants with dynamic API data.
  */
-import { getAvailableRoles } from '@pixsim7/core.scene-composition';
+import { getAvailableRoles } from '@pixsim7/core.image-composition';
 import type { CompositionPackage, CompositionRoleDefinition } from '@pixsim7/shared.types';
 import { create } from 'zustand';
 

@@ -8,7 +8,7 @@
  * - Keeps package boundaries clean
  */
 
-import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/scene.gizmos';
+import type { SceneGizmoConfig, GizmoResult, GizmoAction } from '@pixsim7/interaction.gizmos';
 import { Panel } from '@pixsim7/shared.ui';
 import { useEffect, useState, useCallback, Suspense } from 'react';
 

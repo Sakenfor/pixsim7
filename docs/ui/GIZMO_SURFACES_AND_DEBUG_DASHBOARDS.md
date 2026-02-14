@@ -141,7 +141,7 @@ gizmoSurfaceRegistry.register({
 Gizmo components should implement the `GizmoComponentProps` interface:
 
 ```tsx
-import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
+import type { GizmoComponentProps } from '@pixsim7/interaction.gizmos';
 
 export function MyNewGizmo({
   config,

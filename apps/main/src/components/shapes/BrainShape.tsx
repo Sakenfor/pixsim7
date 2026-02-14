@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import type { BrainState } from '@lib/core';
 import { getLogicStrategies, getInstincts, getMemories } from '@lib/core';
-import { BrainFace, brainShape } from '@pixsim7/scene.shapes';
+import { BrainFace, brainShape } from '@pixsim7/interaction.shapes';
 import './BrainShape.css';
 
 export interface BrainShapeProps {

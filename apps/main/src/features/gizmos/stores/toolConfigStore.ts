@@ -6,7 +6,7 @@
  * for testing, development, or "cheat" purposes.
  */
 
-import type { InteractiveTool } from '@pixsim7/scene.gizmos';
+import type { InteractiveTool } from '@pixsim7/interaction.gizmos';
 import { create } from 'zustand';
 import { resolvePath } from '@lib/editing-core';
 

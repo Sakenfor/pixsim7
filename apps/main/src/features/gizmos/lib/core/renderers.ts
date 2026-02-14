@@ -9,7 +9,7 @@
  * - Keeps package boundaries clean (no packages importing from frontend)
  */
 
-import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
+import type { GizmoComponentProps } from '@pixsim7/interaction.gizmos';
 import { lazy, type ComponentType } from 'react';
 
 // Lazy load gizmo components for code splitting

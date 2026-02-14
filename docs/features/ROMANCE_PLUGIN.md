@@ -366,7 +366,7 @@ The romance plugin follows the same architecture as pickpocket:
 ### Integration Points
 
 1. **Interaction System**: Registered in `interactionRegistry` alongside talk, pickpocket, persuade
-2. **Gizmo System**: Uses existing `@pixsim7/scene.gizmos` infrastructure
+2. **Gizmo System**: Uses existing `@pixsim7/interaction.gizmos` infrastructure
 3. **NPC Preferences**: Compatible with existing NPC preference system
 4. **Tool System**: Extends `InteractiveTool` types
 5. **Session Management**: Uses standard `GameSession` structure
@@ -451,7 +451,7 @@ Create test NPCs with known IDs:
 To extend the romance system:
 
 1. **Add New Tools**: Register in `registry-romance.ts`
-2. **Add New Patterns**: Update `TouchPattern` type in `@pixsim7/scene.gizmos`
+2. **Add New Patterns**: Update `TouchPattern` type in `@pixsim7/interaction.gizmos`
 3. **Add New Zones**: Update `bodyMapGizmo.defaultConfig.zones`
 4. **Add NPC Presets**: Extend `get_npc_preferences()` in backend
 
@@ -462,7 +462,7 @@ Part of the Pixsim7 project. See main LICENSE file.
 ## Credits
 
 - **Architecture**: Based on pickpocket plugin system
-- **Gizmo System**: Uses `@pixsim7/scene.gizmos` framework
+- **Gizmo System**: Uses `@pixsim7/interaction.gizmos` framework
 - **Interactive Tools**: Inspired by NPC preference system
 - **Visual Design**: TODO for Opus AI to implement
 

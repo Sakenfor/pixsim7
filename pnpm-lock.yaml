@@ -60,9 +60,9 @@ importers:
 
   apps/devtools:
     dependencies:
-      '@pixsim7/core.composer':
+      '@pixsim7/core.panel-composer':
         specifier: workspace:*
-        version: link:../../packages/core/composer
+        version: link:../../packages/core/panel-composer
       '@pixsim7/game.components':
         specifier: workspace:*
         version: link:../../packages/game/components
@@ -75,15 +75,15 @@ importers:
       '@pixsim7/graphics.geometry':
         specifier: workspace:*
         version: link:../../packages/graphics/geometry
+      '@pixsim7/interaction.gizmos':
+        specifier: workspace:*
+        version: link:../../packages/interaction/gizmos
+      '@pixsim7/interaction.shapes':
+        specifier: workspace:*
+        version: link:../../packages/interaction/shapes
       '@pixsim7/pixcubes':
         specifier: workspace:*
         version: link:../../packages/pixcubes
-      '@pixsim7/scene.gizmos':
-        specifier: workspace:*
-        version: link:../../packages/scene/gizmos
-      '@pixsim7/scene.shapes':
-        specifier: workspace:*
-        version: link:../../packages/scene/shapes
       '@pixsim7/shared.api.client':
         specifier: workspace:*
         version: link:../../packages/shared/api/client
@@ -290,18 +290,18 @@ importers:
       '@pixsim7/core.brain':
         specifier: workspace:*
         version: link:../../packages/core/brain
-      '@pixsim7/core.composer':
+      '@pixsim7/core.image-composition':
         specifier: workspace:*
-        version: link:../../packages/core/composer
+        version: link:../../packages/core/image-composition
       '@pixsim7/core.links':
         specifier: workspace:*
         version: link:../../packages/core/links
+      '@pixsim7/core.panel-composer':
+        specifier: workspace:*
+        version: link:../../packages/core/panel-composer
       '@pixsim7/core.prompt':
         specifier: workspace:*
         version: link:../../packages/core/prompt
-      '@pixsim7/core.scene-composition':
-        specifier: workspace:*
-        version: link:../../packages/core/scene-composition
       '@pixsim7/core.stats':
         specifier: workspace:*
         version: link:../../packages/core/stats
@@ -320,21 +320,24 @@ importers:
       '@pixsim7/graphics.geometry':
         specifier: workspace:*
         version: link:../../packages/graphics/geometry
+      '@pixsim7/interaction.gizmos':
+        specifier: workspace:*
+        version: link:../../packages/interaction/gizmos
+      '@pixsim7/interaction.shapes':
+        specifier: workspace:*
+        version: link:../../packages/interaction/shapes
       '@pixsim7/pixcubes':
         specifier: workspace:*
         version: link:../../packages/pixcubes
-      '@pixsim7/scene.gizmos':
-        specifier: workspace:*
-        version: link:../../packages/scene/gizmos
-      '@pixsim7/scene.shapes':
-        specifier: workspace:*
-        version: link:../../packages/scene/shapes
       '@pixsim7/shared.api.client':
         specifier: workspace:*
         version: link:../../packages/shared/api/client
       '@pixsim7/shared.assets.core':
         specifier: workspace:*
         version: link:../../packages/shared/assets/core
+      '@pixsim7/shared.assets.web':
+        specifier: workspace:*
+        version: link:../../packages/shared/assets/web
       '@pixsim7/shared.async.core':
         specifier: workspace:*
         version: link:../../packages/shared/async/core
@@ -571,14 +574,21 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/core/composer:
+  packages/core/game:
+    dependencies:
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/core/game:
+  packages/core/image-composition:
     dependencies:
+      '@pixsim7/graphics.layers':
+        specifier: workspace:*
+        version: link:../../graphics/layers
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -597,21 +607,14 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/core/prompt:
-    dependencies:
-      '@pixsim7/shared.types':
-        specifier: workspace:*
-        version: link:../../shared/types
+  packages/core/panel-composer:
     devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/core/scene-composition:
+  packages/core/prompt:
     dependencies:
-      '@pixsim7/graphics.layers':
-        specifier: workspace:*
-        version: link:../../graphics/layers
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -648,9 +651,9 @@ importers:
       '@pixsim7/game.react':
         specifier: workspace:*
         version: link:../react
-      '@pixsim7/scene.gizmos':
+      '@pixsim7/interaction.gizmos':
         specifier: workspace:*
-        version: link:../../scene/gizmos
+        version: link:../../interaction/gizmos
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -765,6 +768,41 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
+  packages/interaction/gizmos:
+    dependencies:
+      '@pixsim7/game.engine':
+        specifier: workspace:*
+        version: link:../../game/engine
+      '@pixsim7/shared.graph.core':
+        specifier: workspace:*
+        version: link:../../shared/graph/core
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.0
+        version: 20.19.25
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/interaction/shapes:
+    dependencies:
+      '@pixsim7/core.brain':
+        specifier: workspace:*
+        version: link:../../core/brain
+      '@pixsim7/game.engine':
+        specifier: workspace:*
+        version: link:../../game/engine
+      '@pixsim7/shared.types':
+        specifier: workspace:*
+        version: link:../../shared/types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
   packages/pixcubes:
     dependencies:
       clsx:
@@ -807,41 +845,6 @@ importers:
         specifier: ^5.4.0
         version: 5.9.3
 
-  packages/scene/gizmos:
-    dependencies:
-      '@pixsim7/game.engine':
-        specifier: workspace:*
-        version: link:../../game/engine
-      '@pixsim7/shared.graph.core':
-        specifier: workspace:*
-        version: link:../../shared/graph/core
-      '@pixsim7/shared.types':
-        specifier: workspace:*
-        version: link:../../shared/types
-    devDependencies:
-      '@types/node':
-        specifier: ^20.11.0
-        version: 20.19.25
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-
-  packages/scene/shapes:
-    dependencies:
-      '@pixsim7/core.brain':
-        specifier: workspace:*
-        version: link:../../core/brain
-      '@pixsim7/game.engine':
-        specifier: workspace:*
-        version: link:../../game/engine
-      '@pixsim7/shared.types':
-        specifier: workspace:*
-        version: link:../../shared/types
-    devDependencies:
-      typescript:
-        specifier: ^5.4.0
-        version: 5.9.3
-
   packages/shared/api/client:
     dependencies:
       '@pixsim7/shared.helpers.core':
@@ -872,6 +875,12 @@ importers:
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../types
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/assets/web:
     devDependencies:
       typescript:
         specifier: ^5.4.0

@@ -7,7 +7,7 @@
  * Panels are freely rearrangeable within the dockview.
  */
 
-import { getAllGizmos, getAllTools } from '@pixsim7/scene.gizmos';
+import { getAllGizmos, getAllTools } from '@pixsim7/interaction.gizmos';
 import { Button } from '@pixsim7/shared.ui';
 import type { DockviewApi } from 'dockview-core';
 import { useCallback, useEffect, useMemo } from 'react';

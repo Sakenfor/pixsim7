@@ -5,7 +5,7 @@
  * Reads selection from gizmoLabStore.
  */
 
-import type { Vector3D, TouchPattern } from '@pixsim7/scene.gizmos';
+import type { Vector3D, TouchPattern } from '@pixsim7/interaction.gizmos';
 import { Panel } from '@pixsim7/shared.ui';
 import { useState, useEffect } from 'react';
 

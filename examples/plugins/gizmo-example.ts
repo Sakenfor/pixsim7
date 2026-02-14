@@ -81,7 +81,7 @@ export async function registerMyCustomGizmoSurface(): Promise<void> {
  * ```tsx
  * // MyCustomGizmo.tsx
  *
- * import type { GizmoComponentProps } from '@pixsim7/scene.gizmos';
+ * import type { GizmoComponentProps } from '@pixsim7/interaction.gizmos';
  *
  * export function MyCustomGizmo({ config, state, onAction }: GizmoComponentProps) {
  *   return (

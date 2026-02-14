@@ -6,7 +6,7 @@
 import {
   registerTool,
   type InteractiveTool,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 
 // ============================================================================
 // Banana Interactive Tool

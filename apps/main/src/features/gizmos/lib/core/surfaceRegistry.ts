@@ -4,7 +4,7 @@
  * Manages gizmo and debug dashboard "surfaces" - making them pluggable UI components
  * that can appear as workspace panels, in-scene overlays, or HUD elements.
  *
- * This is separate from the core gizmo registry (@pixsim7/scene.gizmos) which handles
+ * This is separate from the core gizmo registry (@pixsim7/interaction.gizmos) which handles
  * gizmo logic and configuration. Surface registry focuses on UI presentation.
  */
 

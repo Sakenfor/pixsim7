@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Scene, SceneRuntimeState } from '@pixsim7/shared.types'
-import type { MiniGameResult } from '@pixsim7/scene.gizmos'
+import type { MiniGameResult } from '@pixsim7/interaction.gizmos'
 import { Button, Panel } from '@pixsim7/shared.ui'
 import { MiniGameHost } from './minigames/MiniGameHost'
 import { getDefaultNextEdge } from '@pixsim7/game.engine'

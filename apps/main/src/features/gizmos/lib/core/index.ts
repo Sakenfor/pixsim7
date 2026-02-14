@@ -2,7 +2,7 @@
  * Gizmo Library - Main exports
  *
  * This module manages gizmo surfaces (UI presentation layer) in the main app.
- * For core gizmo logic and types, see @pixsim7/scene.gizmos package.
+ * For core gizmo logic and types, see @pixsim7/interaction.gizmos package.
  */
 
 // Surface Registry - UI presentation layer for gizmos

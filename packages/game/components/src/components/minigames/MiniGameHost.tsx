@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { getMiniGame } from '@pixsim7/scene.gizmos';
+import { getMiniGame } from '@pixsim7/interaction.gizmos';
 
 // ============================================================================
 // Error Boundary for Mini-Games

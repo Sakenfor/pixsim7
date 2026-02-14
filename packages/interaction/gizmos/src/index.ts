@@ -1,5 +1,5 @@
 /**
- * @pixsim7/scene.gizmos
+ * @pixsim7/interaction.gizmos
  * Pure TypeScript contracts for scene gizmo system
  * UI-agnostic types for interactive scene control
  */

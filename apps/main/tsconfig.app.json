@@ -145,7 +145,7 @@
       "@pixsim7/shared.helpers.core": ["../../packages/shared/helpers/core/src"],
       "@pixsim7/shared.plugins": ["../../packages/shared/plugins/src"],
       "@pixsim7/shared.preview.protocol": ["../../packages/shared/preview/protocol/src"],
-      "@pixsim7/core.composer": ["../../packages/core/composer/src"]
+      "@pixsim7/core.panel-composer": ["../../packages/core/composer/src"]
     },
 
     /* Linting */

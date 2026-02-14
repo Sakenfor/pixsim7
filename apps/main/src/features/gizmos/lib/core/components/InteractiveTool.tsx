@@ -11,7 +11,7 @@ import {
   TouchPattern,
   NpcPreferences,
   calculateFeedback,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import { useEffect, useRef, useState } from 'react';
 import './InteractiveTool.css';
 

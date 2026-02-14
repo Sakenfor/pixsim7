@@ -4,7 +4,7 @@
  * Non-react helpers for applying console overrides to gizmo tools.
  */
 
-import { createToolInstance, getTool, type InteractiveTool } from '@pixsim7/scene.gizmos';
+import { createToolInstance, getTool, type InteractiveTool } from '@pixsim7/interaction.gizmos';
 import { deepMerge } from '@pixsim7/shared.helpers.core';
 
 import { useToolConfigStore, type ToolOverrides } from '../../stores/toolConfigStore';

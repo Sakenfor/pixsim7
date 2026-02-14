@@ -32,8 +32,8 @@ The frontend is **well-structured** with good separation between framework-agnos
 | `@pixsim7/generation-core` | `packages/shared/generation-core/` | Generation logic, provider params | `shared.types` |
 | `@pixsim7/shared.api.client` | `packages/shared/api/client/` | Environment-neutral API (browser/Node/Electron/Tauri) | `shared.types`, `axios` (peer) |
 | `@pixsim7/game.engine` | `packages/game/engine/` | Headless game logic | `helpers-core`, `ref-core`, `logic-core`, `shared.types` |
-| `@pixsim7/scene.shapes` | `packages/scene/shapes/` | 3D shape definitions | `game.engine`, `shared.types` |
-| `@pixsim7/scene.gizmos` | `packages/scene/gizmos/` | 3D gizmos/controls | `shared.types` |
+| `@pixsim7/interaction.shapes` | `packages/interaction/shapes/` | Semantic shape definitions | `game.engine`, `shared.types` |
+| `@pixsim7/interaction.gizmos` | `packages/interaction/gizmos/` | Interactive gizmos/controls | `shared.types` |
 
 ### React-Dependent Packages
 
@@ -64,7 +64,7 @@ packages/
 │   ├── react/           # React bindings
 │   ├── components/      # React components
 │   └── runtime/
-├── scene/
+├── interaction/
 │   ├── shapes/          # Framework-agnostic
 │   └── gizmos/          # Framework-agnostic
 ├── plugins/             # Plugin packages
@@ -211,8 +211,8 @@ packages/
 │   └── components/              # @pixsim7/game.components (unchanged)
 │
 ├── scene/                       # Scene domain packages
-│   ├── shapes/                  # @pixsim7/scene.shapes (unchanged)
-│   └── gizmos/                  # @pixsim7/scene.gizmos (unchanged)
+│   ├── shapes/                  # @pixsim7/interaction.shapes (unchanged)
+│   └── gizmos/                  # @pixsim7/interaction.gizmos (unchanged)
 │
 ├── ui/                          # React UI (top-level)
 │   └── src/                     # @pixsim7/ui (was shared.ui)
@@ -242,8 +242,8 @@ import { ... } from '@pixsim7/game.engine';    // Framework-agnostic
 import { ... } from '@pixsim7/game.react';     // React bindings
 
 // Scene domain (framework-agnostic)
-import { ... } from '@pixsim7/scene.shapes';
-import { ... } from '@pixsim7/scene.gizmos';
+import { ... } from '@pixsim7/interaction.shapes';
+import { ... } from '@pixsim7/interaction.gizmos';
 
 // React UI
 import { ... } from '@pixsim7/ui';
@@ -288,8 +288,8 @@ Game domain:
 └── @pixsim7/game.components    → game.react, scene.gizmos, ui (+ React)
 
 Scene domain:
-├── @pixsim7/scene.shapes       → game.engine, types
-└── @pixsim7/scene.gizmos       → types
+├── @pixsim7/interaction.shapes       → game.engine, types
+└── @pixsim7/interaction.gizmos       → types
 
 React layer:
 └── @pixsim7/ui                 → (+ React, framer-motion, zustand)

@@ -90,7 +90,7 @@ function NPCBrainPanel() {
 ### 2. Using the Shape Registry
 
 ```typescript
-import { ShapeRegistry } from '@pixsim7/semantic-shapes';
+import { ShapeRegistry } from '@pixsim7/interaction.shapes';
 
 // Get a shape definition
 const brainShape = ShapeRegistry.get('brain');
@@ -137,7 +137,7 @@ const neonGlow = sciFiTheme.utils.neonGlow('#00D9FF', 1.5);
 
 ```typescript
 // lib/shapes/customShape.ts
-import { SemanticShape } from '@pixsim7/semantic-shapes';
+import { SemanticShape } from '@pixsim7/interaction.shapes';
 
 export const customShape: SemanticShape = {
   id: 'custom',
@@ -177,7 +177,7 @@ export const customShape: SemanticShape = {
 ### Step 2: Register the Shape
 
 ```typescript
-import { ShapeRegistry } from '@pixsim7/semantic-shapes';
+import { ShapeRegistry } from '@pixsim7/interaction.shapes';
 import { customShape } from './lib/shapes/customShape';
 
 // Register on app initialization
@@ -188,7 +188,7 @@ ShapeRegistry.register(customShape);
 
 ```tsx
 // components/shapes/CustomShape.tsx
-import { SemanticShapeInstance } from '@pixsim7/semantic-shapes';
+import { SemanticShapeInstance } from '@pixsim7/interaction.shapes';
 
 interface CustomShapeProps {
   data: any;

@@ -4,7 +4,7 @@
  * Verification tests for Phase 58.1
  */
 
-import { createComposition } from '@pixsim7/core.composer';
+import { createComposition } from '@pixsim7/core.panel-composer';
 
 import { useHudLayoutStore } from '@features/hud';
 

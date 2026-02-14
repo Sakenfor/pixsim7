@@ -6,7 +6,7 @@
  * Reads selection from gizmoLabStore.
  */
 
-import type { GizmoResult, SceneGizmoConfig } from '@pixsim7/scene.gizmos';
+import type { GizmoResult, SceneGizmoConfig } from '@pixsim7/interaction.gizmos';
 import { Panel } from '@pixsim7/shared.ui';
 import { Loader2, Play, AlertCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';

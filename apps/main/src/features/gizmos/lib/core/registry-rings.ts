@@ -9,7 +9,7 @@
 import {
   registerGizmo,
   type GizmoDefinition,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import { lazy } from 'react';
 
 // ============================================================================

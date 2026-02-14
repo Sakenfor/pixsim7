@@ -16,7 +16,7 @@ import {
   getIntimacyLevel,
   getRelationshipFlags,
 } from '@lib/core';
-import { BrainFace } from '@pixsim7/scene.shapes';
+import { BrainFace } from '@pixsim7/interaction.shapes';
 import { sciFiTheme } from '@/lib/theme/scifi-tokens';
 import './BrainShapeExample.css';
 

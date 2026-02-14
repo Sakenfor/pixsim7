@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Panel } from '@pixsim7/shared.ui'
-import type { MiniGameResult } from '@pixsim7/scene.gizmos'
+import type { MiniGameResult } from '@pixsim7/interaction.gizmos'
 
 interface ReflexMiniGameProps {
   onResult: (result: MiniGameResult) => void

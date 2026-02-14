@@ -6,7 +6,7 @@
  * Hover highlights zones and shows a tooltip with the zone label.
  */
 
-import { getZoneShapeCSS } from '@pixsim7/scene.gizmos';
+import { getZoneShapeCSS } from '@pixsim7/interaction.gizmos';
 import type { NpcBodyZone } from '@pixsim7/shared.types';
 import { useCallback, useState } from 'react';
 

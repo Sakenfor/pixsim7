@@ -5,7 +5,7 @@
  * Handles loading the profile, managing the session, and executing outcomes.
  */
 
-import { getProfile } from '@pixsim7/scene.gizmos';
+import { getProfile } from '@pixsim7/interaction.gizmos';
 import type {
   InteractionInstance,
   InteractionDefinition,

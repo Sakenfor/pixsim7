@@ -16,13 +16,13 @@ import {
   type InteractiveTool,
   type ManifestToolDefinition,
   type ManifestToolPack,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 
 import { ensureBackendPluginCatalogEntry } from '@lib/plugins/backendCatalog';
 import type { PluginOrigin } from '@lib/plugins/pluginSystem';
 
 // Re-export for backward compatibility
-export { manifestToolToInteractiveTool, type ManifestToolDefinition, type ManifestToolPack } from '@pixsim7/scene.gizmos';
+export { manifestToolToInteractiveTool, type ManifestToolDefinition, type ManifestToolPack } from '@pixsim7/interaction.gizmos';
 
 /**
  * Frontend plugin manifest with tools (supports both flat tools and toolPacks)

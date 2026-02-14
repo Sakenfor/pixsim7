@@ -16,7 +16,7 @@ import {
   getAllTools,
   getGizmo,
   getTool,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 import { create } from 'zustand';
 
 import type { Operation } from '@lib/dev';

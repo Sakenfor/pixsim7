@@ -2,7 +2,7 @@
  * NPC Preference Utilities
  *
  * Thin adapters that map GameNpcDetail to the generic PreferenceHolder
- * interface from @pixsim7/scene.gizmos. All pure logic lives in the package.
+ * interface from @pixsim7/interaction.gizmos. All pure logic lives in the package.
  */
 
 import {
@@ -25,7 +25,7 @@ import {
   calculateFeedback,
   isToolUnlocked,
   getRecommendedTools,
-} from '@pixsim7/scene.gizmos';
+} from '@pixsim7/interaction.gizmos';
 
 export {
   // Adapter functions (renamed for NPC-specific API)

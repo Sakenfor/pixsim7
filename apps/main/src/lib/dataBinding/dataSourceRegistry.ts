@@ -8,7 +8,7 @@
 import type {
   DataSourceType,
   DataSourceDefinition,
-} from "@pixsim7/core.composer";
+} from "@pixsim7/core.panel-composer";
 
 import { BaseRegistry } from "../core/BaseRegistry";
 
@@ -16,7 +16,7 @@ export type {
   DataSourceType,
   DataSourceDefinition,
   DataSourceBinding,
-} from "@pixsim7/core.composer";
+} from "@pixsim7/core.panel-composer";
 
 /**
  * Data transform function (pure, deterministic)

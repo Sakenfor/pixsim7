@@ -618,8 +618,8 @@ generationUIPluginRegistry.register(npcResponsePlugin);
 ## Example Usage After Integration
 
 ```typescript
-import { VideoGenerationManager } from '@pixsim7/scene.gizmos';
-import { NpcResponseEvaluator } from '@pixsim7/scene.gizmos';
+import { VideoGenerationManager } from '@pixsim7/interaction.gizmos';
+import { NpcResponseEvaluator } from '@pixsim7/interaction.gizmos';
 
 // Create manager (now uses Jobs API)
 const videoManager = new VideoGenerationManager({

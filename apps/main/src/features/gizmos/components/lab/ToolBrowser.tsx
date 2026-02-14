@@ -5,7 +5,7 @@
  * updates the shared gizmoLabStore so the playground can render it.
  */
 
-import { getAllTools } from '@pixsim7/scene.gizmos';
+import { getAllTools } from '@pixsim7/interaction.gizmos';
 import { useMemo } from 'react';
 
 import { useGizmoLabStore } from '../../stores/gizmoLabStore';

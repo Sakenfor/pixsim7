@@ -1,8 +1,7 @@
 {
-  "name": "@pixsim7/core.composer",
+  "name": "@pixsim7/interaction.shapes",
   "version": "0.0.1",
   "private": true,
-  "description": "Core panel composition model and serialization (framework-agnostic)",
   "main": "src/index.ts",
   "module": "src/index.ts",
   "types": "src/index.ts",
@@ -13,15 +12,16 @@
       "types": "./src/index.ts"
     }
   },
-  "files": [
-    "src",
-    "dist"
-  ],
+  "files": ["src", "dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json"
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch"
   },
-  "dependencies": {},
-  "peerDependencies": {},
+  "dependencies": {
+    "@pixsim7/core.brain": "workspace:*",
+    "@pixsim7/game.engine": "workspace:*",
+    "@pixsim7/shared.types": "workspace:*"
+  },
   "devDependencies": {
     "typescript": "^5.4.0"
   }

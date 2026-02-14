@@ -35,7 +35,7 @@
  * ```
  */
 
-import type { InteractiveTool } from '@pixsim7/scene.gizmos';
+import type { InteractiveTool } from '@pixsim7/interaction.gizmos';
 
 import { opsRegistry, type Operation } from '@lib/dev';
 
