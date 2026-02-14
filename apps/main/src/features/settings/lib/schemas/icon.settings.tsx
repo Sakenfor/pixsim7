@@ -9,9 +9,9 @@ import { useEffect, useState } from 'react';
 
 import { iconSetRegistry } from '@lib/icons';
 
-import { useIconSettingsStore, type IconTheme } from '@features/icons';
+import { settingsSchemaRegistry, type SettingTab } from '../core';
 
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
+import { useAppearanceSettingsAdapter } from './appearance.adapter';
 
 function IconSetSelect({
   value,
@@ -79,33 +79,6 @@ const iconTab: SettingTab = {
   ],
 };
 
-function useIconSettingsStoreAdapter(): SettingStoreAdapter {
-  const iconTheme = useIconSettingsStore((s) => s.iconTheme);
-  const setIconTheme = useIconSettingsStore((s) => s.setIconTheme);
-  const iconSetId = useIconSettingsStore((s) => s.iconSetId);
-  const setIconSetId = useIconSettingsStore((s) => s.setIconSetId);
-
-  return {
-    get: (fieldId: string) => {
-      if (fieldId === 'iconTheme') return iconTheme;
-      if (fieldId === 'iconSetId') return iconSetId;
-      return undefined;
-    },
-    set: (fieldId: string, value: any) => {
-      if (fieldId === 'iconSetId') {
-        setIconSetId(String(value || 'outline'));
-      }
-      if (fieldId === 'iconTheme') {
-        setIconTheme((value as IconTheme) ?? 'inherit');
-      }
-    },
-    getAll: () => ({
-      iconTheme,
-      iconSetId,
-    }),
-  };
-}
-
 export function registerIconSettings(): () => void {
   return settingsSchemaRegistry.register({
     categoryId: 'appearance',
@@ -115,6 +88,6 @@ export function registerIconSettings(): () => void {
       order: 15,
     },
     tab: iconTab,
-    useStore: useIconSettingsStoreAdapter,
+    useStore: useAppearanceSettingsAdapter,
   });
 }

@@ -1,9 +1,9 @@
+import { IconButton } from '@pixsim7/shared.ui';
 import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getAsset } from '@lib/api/assets';
 import { Icon, IconBadge } from '@lib/icons';
-import { IconButton } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
 import { fromAssetResponse } from '@features/assets';
@@ -227,7 +227,7 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
             ))}
           </select>
           {historyMode === 'global' && (
-            <span className="px-1.5 py-0.5 text-[9px] rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-200">
+            <span className="px-1.5 py-0.5 text-[9px] rounded bg-accent-subtle text-accent">
               Global
             </span>
           )}

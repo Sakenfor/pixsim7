@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+
+import { extractErrorMessage } from '../lib/api/errorHandling';
 import { authService } from '../lib/auth/authService';
 import { useAuthStore } from '../stores/authStore';
-import { extractErrorMessage } from '../lib/api/errorHandling';
 
 export function Login() {
   const [login, setLogin] = useState('');
@@ -81,7 +82,7 @@ export function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed text-white font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
+              className="w-full py-2.5 px-4 bg-accent hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed text-accent-text font-medium rounded transition-colors focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 dark:focus:ring-offset-neutral-800"
             >
               {loading ? 'Logging in...' : 'Login'}
             </button>
@@ -91,7 +92,7 @@ export function Login() {
             Don't have an account?{' '}
             <Link
               to="/register"
-              className="text-blue-600 dark:text-blue-400 hover:underline font-medium"
+              className="text-accent hover:underline font-medium"
             >
               Register
             </Link>

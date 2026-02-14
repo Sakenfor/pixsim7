@@ -523,7 +523,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     <div className="flex justify-center py-6">
       <button
         onClick={loadMore}
-        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+        className="px-6 py-2 bg-accent hover:bg-accent-hover text-accent-text rounded-lg font-medium transition-colors flex items-center gap-2"
       >
         <Icons.chevronDown size={16} />
         Load More ({remainingCount.toLocaleString()} remaining)

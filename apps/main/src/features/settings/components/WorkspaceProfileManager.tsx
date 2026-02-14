@@ -71,7 +71,7 @@ export function WorkspaceProfileManager() {
           <h2 className="text-xl font-bold">Workspace Profiles</h2>
           <button
             onClick={() => setShowCreateForm(!showCreateForm)}
-            className="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm transition-colors"
+            className="px-3 py-1 bg-accent hover:bg-accent-hover text-accent-text rounded text-sm transition-colors"
           >
             {showCreateForm ? 'Cancel' : '+ New Profile'}
           </button>
@@ -102,7 +102,7 @@ export function WorkspaceProfileManager() {
               <button
                 onClick={handleSavePreset}
                 disabled={!newPresetName.trim()}
-                className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-sm transition-colors"
+                className="w-full px-3 py-2 bg-accent hover:bg-accent-hover disabled:bg-neutral-300 disabled:cursor-not-allowed text-accent-text rounded text-sm transition-colors"
               >
                 Save Current Layout
               </button>
@@ -150,7 +150,7 @@ function ProfileCard({
   onSetGraphEditorId: (graphEditorId: string) => void;
 }) {
   return (
-    <div className="p-4 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all">
+    <div className="p-4 rounded-lg border-2 border-neutral-200 dark:border-neutral-700 hover:border-accent transition-all">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
@@ -159,7 +159,7 @@ function ProfileCard({
             <h3 className="font-semibold text-sm flex items-center gap-2">
               {preset.name}
               {preset.isDefault && (
-                <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full text-xs">
+                <span className="px-2 py-0.5 bg-accent-subtle text-accent rounded-full text-xs">
                   Default
                 </span>
               )}

@@ -32,6 +32,7 @@ export const SETTINGS_KEYS = [
   'context_hub_overrides_v1',
   'component_settings_v1',
   'icon_settings_v1',
+  'appearance_v1',
   'pixsim7:promptSettings',
   'media_settings_v1',
   'generation-history-store',

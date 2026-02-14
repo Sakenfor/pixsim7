@@ -568,7 +568,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       onClick={handleToggleRecentGenerations}
       className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
         isRecentGensPanelOpen
-          ? 'bg-blue-600 hover:bg-blue-700 text-white'
+          ? 'bg-accent hover:bg-accent-hover text-accent-text'
           : hasCompletedGenerations
           ? 'bg-neutral-700 hover:bg-neutral-600 text-white'
           : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400'
@@ -889,7 +889,9 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     updateLockedTimestamp?.(operationType, currentInputId, timestamp)
                 : undefined
             }
-            onGenerate={controller.generate}
+            onGenerate={() => controller.generate(
+              currentInput ? { overrideOperationInputs: [currentInput] } : undefined
+            )}
             generating={controller.generating}
             hideFooter
             fillHeight

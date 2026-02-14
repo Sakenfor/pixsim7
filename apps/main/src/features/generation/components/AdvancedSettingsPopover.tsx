@@ -4,6 +4,12 @@ import { createPortal } from 'react-dom';
 
 import type { ParamSpec } from '@lib/generation-ui';
 
+interface AccountOption {
+  id: number;
+  nickname?: string;
+  email: string;
+}
+
 interface AdvancedSettingsPopoverProps {
   params: ParamSpec[];
   values: Record<string, any>;
@@ -11,6 +17,8 @@ interface AdvancedSettingsPopoverProps {
   disabled?: boolean;
   /** Current model value for filtering params with applies_to_models metadata */
   currentModel?: string;
+  /** Provider accounts for the account selector */
+  accounts?: AccountOption[];
 }
 
 /**
@@ -26,6 +34,7 @@ export function AdvancedSettingsPopover({
   onChange,
   disabled = false,
   currentModel,
+  accounts,
 }: AdvancedSettingsPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
@@ -117,16 +126,19 @@ export function AdvancedSettingsPopover({
     }
     return true;
   });
-  if (safeParams.length === 0) return null;
+  const hasAccounts = accounts && accounts.length > 0;
+  const selectedAccountId = values.preferred_account_id ?? '';
+  if (safeParams.length === 0 && !hasAccounts) return null;
 
   // Count how many advanced params have non-default values
-  const activeCount = safeParams.filter(p => {
+  let activeCount = safeParams.filter(p => {
     const val = values[p.name];
     if (val === undefined || val === null || val === '') return false;
     if (p.type === 'boolean' && !val) return false;
     if (p.default !== undefined && val === p.default) return false;
     return true;
   }).length;
+  if (selectedAccountId) activeCount++;
 
   const popoverContent = isOpen && position && (
     <div
@@ -144,6 +156,24 @@ export function AdvancedSettingsPopover({
         </h3>
       </div>
       <div className="p-3 space-y-3 max-h-[300px] overflow-y-auto">
+        {hasAccounts && (
+          <div className="space-y-1">
+            <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
+              Account
+            </label>
+            <select
+              value={selectedAccountId}
+              onChange={(e) => onChange('preferred_account_id', e.target.value ? Number(e.target.value) : undefined)}
+              disabled={disabled}
+              className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
+            >
+              <option value="">Auto</option>
+              {accounts!.map(a => (
+                <option key={a.id} value={a.id}>{a.nickname || a.email}</option>
+              ))}
+            </select>
+          </div>
+        )}
         {safeParams.map(param => (
           <div key={param.name} className="space-y-1">
             <label className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
@@ -156,7 +186,7 @@ export function AdvancedSettingsPopover({
                   checked={!!values[param.name]}
                   onChange={(e) => onChange(param.name, e.target.checked)}
                   disabled={disabled}
-                  className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-blue-600 focus:ring-blue-500"
+                  className="w-4 h-4 rounded border-neutral-300 dark:border-neutral-600 text-accent focus:ring-accent"
                 />
                 <span className="text-[11px] text-neutral-600 dark:text-neutral-300 group-hover:text-neutral-800 dark:group-hover:text-neutral-100">
                   {param.description || 'Enable'}
@@ -170,7 +200,7 @@ export function AdvancedSettingsPopover({
                   onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
                   disabled={disabled}
                   placeholder="Random"
-                  className="flex-1 min-w-0 px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
                 />
                 {values[param.name] != null && (
                   <button
@@ -191,14 +221,14 @@ export function AdvancedSettingsPopover({
                 onChange={(e) => onChange(param.name, e.target.value === '' ? undefined : Number(e.target.value))}
                 disabled={disabled}
                 placeholder={param.default?.toString() || ''}
-                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               />
             ) : param.enum ? (
               <select
                 value={values[param.name] ?? param.default ?? ''}
                 onChange={(e) => onChange(param.name, e.target.value || undefined)}
                 disabled={disabled}
-                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               >
                 <option value="">Default</option>
                 {param.enum.map((opt: string) => (
@@ -212,7 +242,7 @@ export function AdvancedSettingsPopover({
                 onChange={(e) => onChange(param.name, e.target.value || undefined)}
                 disabled={disabled}
                 placeholder={param.default?.toString() || `Enter ${param.name.replace(/_/g, ' ')}`}
-                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+                className="w-full px-2.5 py-1.5 text-[11px] rounded-lg bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 focus:border-accent focus:ring-1 focus:ring-accent transition-colors"
               />
             )}
           </div>
@@ -231,7 +261,7 @@ export function AdvancedSettingsPopover({
         className={clsx(
           'p-1.5 rounded-lg transition-colors relative',
           isOpen
-            ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'
+            ? 'bg-accent-subtle text-accent'
             : 'bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200',
           disabled && 'opacity-50 cursor-not-allowed'
         )}
@@ -244,7 +274,7 @@ export function AdvancedSettingsPopover({
         </svg>
         {/* Badge for active count */}
         {activeCount > 0 && (
-          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-blue-500 text-white text-[8px] font-bold rounded-full flex items-center justify-center">
+          <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-accent text-accent-text text-[8px] font-bold rounded-full flex items-center justify-center">
             {activeCount}
           </span>
         )}

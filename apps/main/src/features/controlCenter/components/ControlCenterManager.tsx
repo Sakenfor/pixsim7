@@ -5,10 +5,12 @@
  * This is the only control center component in the core - all others are plugins.
  */
 
-import { useEffect, useState } from 'react';
-import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
 import { Button } from '@pixsim7/shared.ui';
 import { useToast } from '@pixsim7/shared.ui';
+import { useEffect, useState } from 'react';
+
+import { controlCenterRegistry } from '@lib/plugins/controlCenterPlugin';
+
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export function ControlCenterManager() {
@@ -125,14 +127,14 @@ export function ControlCenterManager() {
                     className={`
                       relative p-4 rounded-lg border-2 text-left transition-all
                       ${isActive
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                        : 'border-neutral-200 dark:border-neutral-700 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+                        ? 'border-accent bg-accent-subtle'
+                        : 'border-neutral-200 dark:border-neutral-700 hover:border-accent-muted hover:bg-neutral-50 dark:hover:bg-neutral-800'
                       }
                     `}
                   >
                     {/* Active badge */}
                     {isActive && (
-                      <div className="absolute top-2 right-2 px-2 py-0.5 bg-blue-500 text-white text-xs font-bold rounded">
+                      <div className="absolute top-2 right-2 px-2 py-0.5 bg-accent text-accent-text text-xs font-bold rounded">
                         ACTIVE
                       </div>
                     )}

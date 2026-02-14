@@ -1,8 +1,9 @@
+import clsx from 'clsx';
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import clsx from 'clsx';
-import { Icon, type IconName } from '@lib/icons';
+
 import { useActions } from '@lib/capabilities';
+import { Icon, type IconName } from '@lib/icons';
 
 export interface Shortcut {
   id: string;
@@ -60,9 +61,9 @@ export function ShortcutsModule() {
               'border border-neutral-200 dark:border-neutral-700',
               'bg-white dark:bg-neutral-900',
               'hover:bg-neutral-50 dark:hover:bg-neutral-800',
-              'hover:border-blue-400 dark:hover:border-blue-600',
+              'hover:border-accent-muted',
               'transition-all duration-150',
-              'focus:outline-none focus:ring-2 focus:ring-blue-500'
+              'focus:outline-none focus:ring-2 focus:ring-accent'
             )}
             aria-label={shortcut.label}
           >

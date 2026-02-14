@@ -184,7 +184,7 @@ ${actionsCode}
         className={clsx(
           'absolute flex items-center justify-center border backdrop-blur-md transition-all duration-300',
           assignedAction
-            ? 'bg-gradient-to-br from-blue-500/20 to-purple-500/20 border-blue-400/50'
+            ? 'bg-gradient-to-br from-accent/20 to-purple-500/20 border-accent-muted/50'
             : 'bg-gradient-to-br from-white/5 to-white/10 border-white/20'
         )}
         style={{
@@ -231,7 +231,7 @@ ${actionsCode}
                     value={panelId}
                     onChange={(e) => setPanelId(e.target.value)}
                     placeholder="e.g., gallery"
-                    className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                    className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                   />
                 </div>
                 <div>
@@ -241,7 +241,7 @@ ${actionsCode}
                     value={panelName}
                     onChange={(e) => setPanelName(e.target.value)}
                     placeholder="e.g., Gallery"
-                    className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                    className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                   />
                 </div>
               </div>
@@ -304,7 +304,7 @@ ${actionsCode}
                 <h3 className="text-sm font-semibold text-white">Actions</h3>
                 <button
                   onClick={handleAddAction}
-                  className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 rounded text-white"
+                  className="px-2 py-1 text-xs bg-accent hover:bg-accent-hover rounded text-accent-text"
                 >
                   + Add
                 </button>
@@ -317,7 +317,7 @@ ${actionsCode}
                     className={clsx(
                       'p-3 rounded border cursor-pointer transition-colors',
                       selectedActionId === action.id
-                        ? 'bg-blue-600/20 border-blue-400'
+                        ? 'bg-accent/20 border-accent-muted'
                         : 'bg-black/30 border-white/10 hover:border-white/30'
                     )}
                     onClick={() => setSelectedActionId(action.id)}
@@ -402,7 +402,7 @@ ${actionsCode}
                             label: e.target.value,
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                       />
                     </div>
 
@@ -418,7 +418,7 @@ ${actionsCode}
                             className={clsx(
                               'text-2xl p-2 rounded border transition-colors',
                               selectedAction.icon === icon
-                                ? 'bg-blue-600/30 border-blue-400'
+                                ? 'bg-accent/30 border-accent-muted'
                                 : 'bg-black/30 border-white/10 hover:border-white/30'
                             )}
                           >
@@ -435,7 +435,7 @@ ${actionsCode}
                           })
                         }
                         placeholder="Custom emoji"
-                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                       />
                     </div>
 
@@ -451,7 +451,7 @@ ${actionsCode}
                           })
                         }
                         rows={3}
-                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none resize-none"
+                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none resize-none"
                       />
                     </div>
 
@@ -468,7 +468,7 @@ ${actionsCode}
                           })
                         }
                         placeholder="e.g., Ctrl+S"
-                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                       />
                     </div>
 
@@ -484,7 +484,7 @@ ${actionsCode}
                             id: e.target.value,
                           })
                         }
-                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-blue-400 outline-none"
+                        className="w-full px-3 py-1.5 rounded bg-black/50 text-white text-sm border border-white/10 focus:border-accent-muted outline-none"
                       />
                     </div>
                   </div>
@@ -511,7 +511,7 @@ ${actionsCode}
                 <button
                   onClick={handleSave}
                   disabled={!panelId || !panelName || actions.length === 0}
-                  className="flex-1 px-3 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:bg-white/10 disabled:text-white/30 text-white text-sm transition-colors"
+                  className="flex-1 px-3 py-2 rounded bg-accent hover:bg-accent-hover disabled:bg-white/10 disabled:text-white/30 text-accent-text text-sm transition-colors"
                 >
                   💾 Save
                 </button>

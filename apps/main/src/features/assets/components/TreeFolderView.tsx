@@ -190,7 +190,7 @@ function TreeNodeView({
         <div
           className={`flex items-center gap-2 py-1 px-2 rounded cursor-pointer transition-colors group/folder ${
             isSelected
-              ? 'bg-blue-100 dark:bg-blue-900/30 border-l-2 border-blue-500'
+              ? 'bg-accent-subtle border-l-2 border-accent'
               : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
           }`}
           style={{ paddingLeft: `${level * 12 + 8}px` }}
@@ -335,7 +335,7 @@ function TreeNodeView({
             status === 'success' ? 'bg-green-600 text-white' :
             status === 'error' ? 'bg-red-600 text-white' :
             status === 'uploading' ? 'bg-neutral-400 text-white' :
-            'bg-blue-600 text-white hover:bg-blue-700'
+            'bg-accent text-accent-text hover:bg-accent-hover'
           }`}
           title={
             status === 'success' ? 'Uploaded successfully' :

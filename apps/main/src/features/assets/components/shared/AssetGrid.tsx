@@ -140,7 +140,7 @@ export function SelectionIndicator({
 
   return (
     <div
-      className={`absolute ${positionClasses[position]} ${sizeClasses[size]} bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg`}
+      className={`absolute ${positionClasses[position]} ${sizeClasses[size]} bg-accent text-accent-text rounded-full flex items-center justify-center shadow-lg`}
     >
       {children}
     </div>

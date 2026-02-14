@@ -11,11 +11,11 @@ import { Icon } from "@lib/icons";
 
 import { usePanelConfigStore } from "@features/panels";
 
+import { getBuiltinPreset } from "../lib/builtinPresets";
+import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
+import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
-import { useWorkspaceStore, type PanelId } from "../stores/workspaceStore";
-
-/** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
+import { useWorkspaceStore } from "../stores/workspaceStore";
 
 export function QuickPanelSwitcher() {
   const [isOpen, setIsOpen] = useState(false);
@@ -57,7 +57,7 @@ export function QuickPanelSwitcher() {
     .sort((a, b) => a.id.localeCompare(b.id));
 
   const handleOpenPanel = (panelId: string) => {
-    openFloatingPanel(panelId as PanelId, { width: 800, height: 600 });
+    openFloatingPanel(panelId, { width: 800, height: 600 });
     setIsOpen(false);
   };
 
@@ -66,13 +66,26 @@ export function QuickPanelSwitcher() {
     const api = host?.api;
     if (!api) return;
 
+    // User preset — apply serialized layout directly
     const layout = getPresetLayout(presetId);
     if (layout) {
       api.fromJSON(layout);
+      setActivePreset("workspace", presetId);
+      setIsOpen(false);
+      return;
+    }
+
+    // Built-in preset — apply recipe
+    const builtin = getBuiltinPreset(presetId);
+    if (builtin && builtin.recipe.panels.length > 0) {
+      clearDockview(api);
+      const floatingIds = new Set(
+        useWorkspaceStore.getState().floatingPanels.map((p) => p.id)
+      );
+      buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
     } else {
-      // Null layout means use default - reset
-      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-      window.location.reload();
+      clearDockview(api);
+      createDefaultLayout(api);
     }
     setActivePreset("workspace", presetId);
     setIsOpen(false);
@@ -100,7 +113,7 @@ export function QuickPanelSwitcher() {
               onClick={() => setActiveTab("panels")}
               className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === "panels"
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600"
+                  ? "text-accent border-b-2 border-accent"
                   : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
               }`}
             >
@@ -110,7 +123,7 @@ export function QuickPanelSwitcher() {
               onClick={() => setActiveTab("profiles")}
               className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
                 activeTab === "profiles"
-                  ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600"
+                  ? "text-accent border-b-2 border-accent"
                   : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-200"
               }`}
             >
@@ -145,7 +158,7 @@ export function QuickPanelSwitcher() {
                       <span
                         className={`text-xs px-2 py-0.5 rounded-full ${
                           panel.category === "workspace"
-                            ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                            ? "bg-accent-subtle text-accent"
                             : panel.category === "scene"
                               ? "bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
                               : panel.category === "game"
@@ -187,7 +200,7 @@ export function QuickPanelSwitcher() {
                         <div className="text-sm font-medium flex items-center gap-2">
                           {preset.name}
                           {preset.isDefault && (
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
+                            <span className="text-xs px-2 py-0.5 bg-accent-subtle text-accent rounded-full">
                               Default
                             </span>
                           )}
@@ -209,13 +222,13 @@ export function QuickPanelSwitcher() {
           <div className="border-t border-neutral-200 dark:border-neutral-700 p-2">
             <button
               onClick={() => {
-                openFloatingPanel("settings" as PanelId, {
+                openFloatingPanel("settings", {
                   width: 900,
                   height: 700,
                 });
                 setIsOpen(false);
               }}
-              className="w-full px-3 py-2 text-sm text-blue-600 dark:text-blue-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"
+              className="w-full px-3 py-2 text-sm text-accent hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded transition-colors"
             >
               ⚙️ Manage Panels & Profiles
             </button>

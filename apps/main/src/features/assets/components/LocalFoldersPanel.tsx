@@ -462,7 +462,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
           {/* Add Folder + support/error */}
           <div className="space-y-2">
             <button
-              className="w-full px-4 py-2 border rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
+              className="w-full px-4 py-2 border rounded-lg bg-accent text-accent-text hover:bg-accent-hover disabled:bg-neutral-400 disabled:cursor-not-allowed transition-colors font-medium flex items-center justify-center gap-2"
               onClick={controller.addFolder}
               disabled={controller.adding || controller.scanning !== null || !controller.supported}
             >
@@ -546,7 +546,7 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
               Upload to
             </label>
             <select
-              className="w-full px-3 py-1.5 border rounded-lg bg-white dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-3 py-1.5 border rounded-lg bg-white dark:bg-neutral-800 text-sm focus:ring-2 focus:ring-accent focus:border-accent"
               value={controller.providerId || ''}
               onChange={(e) => controller.setProviderId(e.target.value || undefined)}
             >

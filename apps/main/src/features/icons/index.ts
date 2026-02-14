@@ -1,2 +1,5 @@
-export { useIconSettingsStore } from './stores/iconSettingsStore';
-export type { IconTheme } from './stores/iconSettingsStore';
+/**
+ * @deprecated Use `@features/appearance` instead.
+ */
+export { useAppearanceStore as useIconSettingsStore } from '@features/appearance';
+export type { IconTheme } from '@features/appearance';

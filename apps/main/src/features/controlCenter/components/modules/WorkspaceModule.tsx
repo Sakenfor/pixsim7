@@ -64,7 +64,7 @@ export function WorkspaceModule() {
   return (
     <div className="p-4 space-y-4">
       {/* Workspace Stats */}
-      <div className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-700">
+      <div className="bg-gradient-to-r from-accent-subtle to-cyan-50 dark:to-cyan-900/20 rounded-lg p-3 border border-accent-muted">
         <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
           <span>🏗️</span>
           Workspace Status
@@ -147,7 +147,7 @@ export function WorkspaceModule() {
               <button
                 key={preset.id}
                 onClick={() => handleLoadPreset(preset.id)}
-                className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300 dark:hover:border-blue-700 transition-colors text-left"
+                className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-accent-subtle hover:border-accent-muted transition-colors text-left"
               >
                 <div className="font-medium">{preset.name}</div>
                 {preset.description && (
@@ -166,7 +166,7 @@ export function WorkspaceModule() {
               handleSavePreset(name);
             }
           }}
-          className="w-full px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+          className="w-full px-3 py-1.5 text-sm bg-accent hover:bg-accent-hover text-accent-text rounded transition-colors"
         >
           💾 Save Current Layout
         </button>

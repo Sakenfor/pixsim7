@@ -10,6 +10,8 @@ import { useActivityBarStore } from '@/stores/activityBarStore';
 import { moduleRegistry } from '@app/modules';
 import type { PageCategory } from '@app/modules/contracts';
 
+import { SubNavFlyout } from './SubNavFlyout';
+
 /** Category display order (development excluded) */
 const CATEGORY_ORDER: PageCategory[] = ['creation', 'automation', 'game', 'management'];
 
@@ -43,7 +45,7 @@ function Separator() {
 }
 
 /** Render a Lucide icon directly from the base icon map, bypassing theme system. */
-function NavIcon({ name, size }: { name: string; size: number }) {
+export function NavIcon({ name, size }: { name: string; size: number }) {
   const Comp = getBaseIcon(name);
   if (!Comp) return null;
   return <Comp size={size} strokeWidth={2} />;
@@ -58,33 +60,46 @@ function NavButton({
 }) {
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
+  const hasSubNav = page.subNav && page.subNav.length > 0;
 
   const handleClick = useCallback(() => {
     navigate(page.route);
   }, [navigate, page.route]);
 
-  return (
+  const button = (
     <div className="relative flex items-center justify-center">
       {/* Active indicator bar */}
       {active && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-blue-400" />
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
       )}
       <button
         onClick={handleClick}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={hasSubNav ? undefined : () => setHovered(true)}
+        onMouseLeave={hasSubNav ? undefined : () => setHovered(false)}
         className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
           active
-            ? 'text-blue-400 bg-blue-500/15'
+            ? 'text-accent bg-accent/15'
             : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
         }`}
         aria-label={page.name}
       >
         <NavIcon name={page.icon} size={20} />
       </button>
-      <Tooltip content={page.name} position="right" show={hovered} delay={400} />
+      {!hasSubNav && (
+        <Tooltip content={page.name} position="right" show={hovered} delay={400} />
+      )}
     </div>
   );
+
+  if (hasSubNav) {
+    return (
+      <SubNavFlyout items={page.subNav!} route={page.route}>
+        {button}
+      </SubNavFlyout>
+    );
+  }
+
+  return button;
 }
 
 export function ActivityBar() {
@@ -113,7 +128,7 @@ export function ActivityBar() {
         {/* Home button */}
         <div className="relative flex items-center justify-center">
           {isHomeActive && (
-            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-blue-400" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
           )}
           <button
             onClick={() => navigate('/')}
@@ -121,7 +136,7 @@ export function ActivityBar() {
             onMouseLeave={() => setHomeHovered(false)}
             className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
               isHomeActive
-                ? 'text-blue-400 bg-blue-500/15'
+                ? 'text-accent bg-accent/15'
                 : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50'
             }`}
             aria-label="Home"

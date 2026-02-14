@@ -36,7 +36,7 @@ export function QueueStatusBadge({ assetId }: { assetId: number }) {
 
   return (
     <div
-      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-blue-500 text-white shadow-sm"
+      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-accent text-accent-text shadow-sm"
       title={`In inputs for ${label}`}
     >
       <Icon name={icon} />

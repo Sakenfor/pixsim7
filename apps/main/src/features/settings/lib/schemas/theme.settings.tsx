@@ -1,19 +1,38 @@
- 
+
 /**
  * Theme Settings Schema
  *
- * Controls the accent color used across the UI via CSS variable tokens.
+ * Controls color scheme and accent color via the unified appearance store.
  */
 
-import { useThemeSettingsStore, type AccentColor } from '@features/theme';
+import { settingsSchemaRegistry, type SettingTab } from '../core';
 
-import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
+import { useAppearanceSettingsAdapter } from './appearance.adapter';
 
 const themeTab: SettingTab = {
   id: 'theme',
   label: 'Theme',
   icon: 'paintbrush',
   groups: [
+    {
+      id: 'color-scheme',
+      title: 'Color Scheme',
+      description: 'Choose how the app adapts to light and dark environments.',
+      fields: [
+        {
+          id: 'colorScheme',
+          type: 'select',
+          label: 'Color Scheme',
+          description: 'Controls whether the UI uses a light or dark background.',
+          defaultValue: 'system',
+          options: [
+            { value: 'system', label: 'System (Default)' },
+            { value: 'light', label: 'Light' },
+            { value: 'dark', label: 'Dark' },
+          ],
+        },
+      ],
+    },
     {
       id: 'accent-color',
       title: 'Accent Color',
@@ -38,30 +57,10 @@ const themeTab: SettingTab = {
   ],
 };
 
-function useThemeSettingsStoreAdapter(): SettingStoreAdapter {
-  const accentColor = useThemeSettingsStore((s) => s.accentColor);
-  const setAccentColor = useThemeSettingsStore((s) => s.setAccentColor);
-
-  return {
-    get: (fieldId: string) => {
-      if (fieldId === 'accentColor') return accentColor;
-      return undefined;
-    },
-    set: (fieldId: string, value: any) => {
-      if (fieldId === 'accentColor') {
-        setAccentColor((value as AccentColor) ?? 'blue');
-      }
-    },
-    getAll: () => ({
-      accentColor,
-    }),
-  };
-}
-
 export function registerThemeSettings(): () => void {
   return settingsSchemaRegistry.register({
     categoryId: 'appearance',
     tab: themeTab,
-    useStore: useThemeSettingsStoreAdapter,
+    useStore: useAppearanceSettingsAdapter,
   });
 }

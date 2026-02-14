@@ -10,12 +10,16 @@
 
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+import { mediaCardPresets } from '@lib/ui/overlay';
+
+import { useAssets } from '@features/assets';
+import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
 import { usePanelConfigStore } from '@features/panels';
 import type { GalleryPanelSettings } from '@features/panels';
-import { useAssets } from '@features/assets';
-import { mediaCardPresets } from '@lib/ui/overlay';
-import { deriveOverlayPresetIdFromBadgeConfig } from '@features/gallery/lib/core/badgeConfigMerge';
-import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+
+
 
 export function GalleryModule() {
   const navigate = useNavigate();
@@ -147,7 +151,7 @@ export function GalleryModule() {
         <div className="flex flex-col gap-1.5">
           <button
             onClick={() => navigate('/assets')}
-            className="px-3 py-1.5 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+            className="px-3 py-1.5 text-sm bg-accent hover:bg-accent-hover text-accent-text rounded transition-colors"
           >
             📂 Open Gallery
           </button>

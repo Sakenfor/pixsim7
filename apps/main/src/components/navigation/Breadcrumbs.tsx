@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+
 import { useGraphStore, type GraphState } from '@features/graph';
 
 /**
@@ -70,11 +71,11 @@ export function Breadcrumbs() {
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+    <div className="flex items-center gap-2 px-3 py-2 bg-accent-subtle border-b border-accent-muted">
       {/* Back button */}
       <button
         onClick={() => zoomOut()}
-        className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium transition-colors"
+        className="px-2 py-1 bg-accent hover:bg-accent-hover text-accent-text rounded text-xs font-medium transition-colors"
         title="Zoom out (back)"
       >
         ← Back
@@ -93,8 +94,8 @@ export function Breadcrumbs() {
                 px-2 py-1 rounded transition-colors
                 ${
                   index === breadcrumbs.length - 1
-                    ? 'bg-blue-500 text-white font-semibold'
-                    : 'hover:bg-blue-100 dark:hover:bg-blue-800 text-blue-700 dark:text-blue-300'
+                    ? 'bg-accent text-accent-text font-semibold'
+                    : 'hover:bg-accent-subtle text-accent'
                 }
               `}
               title={index === 0 ? 'Go to root' : `Jump to ${crumb.label}`}
@@ -106,7 +107,7 @@ export function Breadcrumbs() {
       </div>
 
       {/* Zoom level indicator */}
-      <div className="ml-auto text-xs text-blue-600 dark:text-blue-400">
+      <div className="ml-auto text-xs text-accent">
         📍 Level {breadcrumbs.length - 1}
       </div>
     </div>

@@ -39,7 +39,7 @@ function ToggleSwitch({
         disabled={disabled}
         className="sr-only peer"
       />
-      <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative" />
+      <div className="w-11 h-6 bg-neutral-300 dark:bg-neutral-700 rounded-full peer peer-checked:bg-accent peer-checked:after:translate-x-5 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all relative" />
     </label>
   );
 }
@@ -100,7 +100,7 @@ function RangeField({ field, value, onChange, disabled }: {
         value={currentValue}
         onChange={(e) => onChange(Number(e.target.value))}
         disabled={disabled}
-        className="w-24 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-24 h-1.5 bg-neutral-300 dark:bg-neutral-600 rounded-lg appearance-none cursor-pointer accent-accent disabled:opacity-50 disabled:cursor-not-allowed"
       />
       <span className="text-[11px] text-neutral-600 dark:text-neutral-400 w-12 text-right">
         {displayValue}

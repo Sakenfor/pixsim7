@@ -17,7 +17,6 @@ import { usePanelSettingsHelpers } from '@features/panels/lib/panelSettingsHelpe
 import { panelSettingsScopeRegistry, getScopeMode } from '@features/panels/lib/panelSettingsScopes';
 import { usePanelConfigStore } from '@features/panels/stores/panelConfigStore';
 import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
-import type { PanelId } from '@features/workspace';
 
 import { resolveSchemaValues } from '../lib/core/schemaUtils';
 
@@ -36,7 +35,7 @@ export interface PanelDetailViewProps {
 
 export function PanelDetailView({ metadata, selectedInstanceId, onClearInstance }: PanelDetailViewProps) {
   const allPanels = useMemo(() => getAllPanelMetadata(), []);
-  const panelId = metadata.id as PanelId;
+  const panelId = metadata.id;
   // Get panel definition from registry (for panel-specific settings)
   const panelDefinition = useMemo(
     () => panelSelectors.getAll().find((p) => p.id === metadata.id),
@@ -416,7 +415,7 @@ export function PanelDetailView({ metadata, selectedInstanceId, onClearInstance 
                         <span className="text-sm text-neutral-700 dark:text-neutral-300">
                           {allPanels.find((p) => p.id === panelId)?.title || panelId}
                         </span>
-                        <span className="text-xs font-mono px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded">
+                        <span className="text-xs font-mono px-2 py-1 bg-accent-subtle text-accent rounded">
                           {action}
                         </span>
                       </div>
@@ -581,7 +580,7 @@ export function PanelDetailView({ metadata, selectedInstanceId, onClearInstance 
               onClick={() => togglePanel(panelId)}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 isEnabled
-                  ? 'bg-blue-600 dark:bg-blue-500'
+                  ? 'bg-accent'
                   : 'bg-neutral-300 dark:bg-neutral-600'
               }`}
             >
@@ -604,7 +603,7 @@ export function PanelDetailView({ metadata, selectedInstanceId, onClearInstance 
                   onClick={() => setActiveTabId(tab.id)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                     activeTab?.id === tab.id
-                      ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                      ? "bg-accent-subtle text-accent"
                       : "text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
                   }`}
                 >

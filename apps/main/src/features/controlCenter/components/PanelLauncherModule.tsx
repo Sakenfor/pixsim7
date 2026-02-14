@@ -4,7 +4,7 @@ import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { resolveWorkspaceDockview, useWorkspaceStore, type PanelId } from '@features/workspace';
+import { resolveWorkspaceDockview, useWorkspaceStore } from '@features/workspace';
 
 
 export function PanelLauncherModule() {
@@ -16,7 +16,7 @@ export function PanelLauncherModule() {
   const allPanels = useMemo(() => panelSelectors.getPublicPanels(), []);
 
   // Get list of currently open panels (docked) from dockview API
-  const [openPanels, setOpenPanels] = useState<Set<PanelId>>(new Set());
+  const [openPanels, setOpenPanels] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const host = resolveWorkspaceDockview().host;
@@ -24,11 +24,11 @@ export function PanelLauncherModule() {
     if (!api) return;
 
     const updateOpenPanels = () => {
-      const panels = new Set<PanelId>();
+      const panels = new Set<string>();
       for (const panel of getDockviewPanels(api)) {
         const panelId = resolvePanelDefinitionId(panel);
         if (typeof panelId === 'string') {
-          panels.add(panelId as PanelId);
+          panels.add(panelId);
         }
       }
       setOpenPanels(panels);
@@ -48,11 +48,11 @@ export function PanelLauncherModule() {
     [floatingPanels]
   );
 
-  const handleOpenPanel = (panelId: PanelId) => {
+  const handleOpenPanel = (panelId: string) => {
     restorePanel(panelId);
   };
 
-  const handleOpenFloating = (panelId: PanelId) => {
+  const handleOpenFloating = (panelId: string) => {
     openFloatingPanel(panelId);
   };
 
@@ -80,7 +80,7 @@ export function PanelLauncherModule() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Header */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
@@ -91,77 +91,38 @@ export function PanelLauncherModule() {
         </div>
       </div>
 
-      {/* Panels grouped by category */}
-      <div className="space-y-3">
+      {/* Panels by category */}
+      <div className="space-y-1.5">
         {Object.entries(panelsByCategory).map(([category, panels]) => (
-          <div key={category} className="space-y-1.5">
-            {/* Category header */}
-            <div className="text-xs font-medium text-neutral-600 dark:text-neutral-400 uppercase tracking-wide">
+          <div key={category}>
+            <div className="text-[10px] font-medium text-neutral-500 uppercase tracking-wide px-1 mb-0.5">
               {categoryLabels[category] || category}
             </div>
-
-            {/* Panel grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
+            <div className="flex flex-wrap gap-1">
               {panels.map((panel) => {
-                const isOpen = openPanels.has(panel.id as PanelId);
-                const isFloating = floatingPanelIds.has(panel.id as PanelId);
+                const isOpen = openPanels.has(panel.id);
+                const isFloating = floatingPanelIds.has(panel.id);
 
                 return (
-                  <div
+                  <button
                     key={panel.id}
-                    className={`relative flex flex-col p-2 rounded border transition-all hover:shadow-sm ${
+                    onClick={() => isOpen ? handleOpenFloating(panel.id) : handleOpenPanel(panel.id)}
+                    title={`${panel.title}${isOpen ? ' (docked)' : isFloating ? ' (floating)' : ''}\nClick: ${isOpen ? 'Float' : 'Dock'} · Right-click: Float`}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      handleOpenFloating(panel.id);
+                    }}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors ${
                       isOpen
-                        ? 'bg-green-50/50 dark:bg-green-900/20 border-green-400/50 dark:border-green-600/50'
+                        ? 'bg-green-500/15 text-green-700 dark:text-green-400 hover:bg-green-500/25'
                         : isFloating
-                        ? 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-400/50 dark:border-blue-600/50'
-                        : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 hover:border-blue-300 dark:hover:border-blue-700'
+                        ? 'bg-accent/15 text-accent hover:bg-accent/25'
+                        : 'bg-neutral-100 dark:bg-neutral-800/60 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700/60'
                     }`}
                   >
-                    {/* Status indicator dot */}
-                    {(isOpen || isFloating) && (
-                      <div className="absolute top-1 right-1">
-                        <span
-                          className={`block w-2 h-2 rounded-full ${
-                            isOpen ? 'bg-green-500' : 'bg-blue-500'
-                          }`}
-                          title={isOpen ? 'Docked' : 'Floating'}
-                        />
-                      </div>
-                    )}
-
-                    {/* Icon */}
-                    <div className="mb-1 text-center">
-                      <Icon name={panel.icon as string} size={24} />
-                    </div>
-
-                    {/* Title */}
-                    <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100 text-center mb-2 line-clamp-2 min-h-[2rem]">
-                      {panel.title}
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex gap-1 mt-auto">
-                      <button
-                        onClick={() => handleOpenPanel(panel.id as PanelId)}
-                        disabled={isOpen}
-                        className={`flex-1 text-[10px] py-1 px-1 rounded transition-colors ${
-                          isOpen
-                            ? 'bg-neutral-100 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-600 cursor-not-allowed'
-                            : 'bg-blue-500 text-white hover:bg-blue-600'
-                        }`}
-                        title={isOpen ? 'Already docked' : 'Dock panel'}
-                      >
-                        {isOpen ? '✓' : 'Dock'}
-                      </button>
-                      <button
-                        onClick={() => handleOpenFloating(panel.id as PanelId)}
-                        className="flex-1 text-[10px] py-1 px-1 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors"
-                        title="Open as floating window"
-                      >
-                        Float
-                      </button>
-                    </div>
-                  </div>
+                    <Icon name={panel.icon as string} size={13} />
+                    <span className="whitespace-nowrap">{panel.title}</span>
+                  </button>
                 );
               })}
             </div>

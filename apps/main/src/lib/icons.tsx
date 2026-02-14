@@ -132,13 +132,14 @@ import {
   ArrowDown,
   ArrowUp,
   MousePointer2,
+  Home,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 
 
 import { BaseRegistry, type Identifiable } from '@lib/core';
 
-import { useIconSettingsStore, type IconTheme } from '@features/icons';
+import { useAppearanceStore, type IconTheme } from '@features/appearance';
 
 /**
  * Icon component props
@@ -359,6 +360,7 @@ export const Icons = {
   'zoom-in': ZoomIn,
   gauge: Gauge,
   film: Film,
+  home: Home,
 } as const;
 
 export type IconName = keyof typeof Icons;
@@ -523,14 +525,14 @@ export function getIcon(name: IconName | string): IconComponent | undefined {
 export function Icon({
   name,
   size = 16,
-  className = '',
+  className,
   strokeWidth = 2,
   variant: explicitVariant,
   ...props
 }: IconProps & { name: IconName | string; variant?: IconVariant }) {
   // Hooks must be called unconditionally at the top
-  const iconTheme = useIconSettingsStore((state) => state.iconTheme);
-  const iconSetId = useIconSettingsStore((state) => state.iconSetId);
+  const iconTheme = useAppearanceStore((state) => state.iconTheme);
+  const iconSetId = useAppearanceStore((state) => state.iconSetId);
 
   if (typeof name === 'string' && name.trim().length === 0) {
     return null;
@@ -552,7 +554,7 @@ export function Icon({
       const fontSize = typeof size === 'number' ? `${size}px` : size;
       return (
         <span
-          className={className}
+          className={className ?? ''}
           style={{ fontSize, lineHeight: 1 }}
           aria-hidden="true"
         >
@@ -567,15 +569,14 @@ export function Icon({
   if (explicitVariant) {
     // Explicit variant: use variant class + any user className
     const variantClass = iconVariants[explicitVariant] ?? '';
-    resolvedClassName = className ? `${variantClass} ${className}` : variantClass;
+    resolvedClassName = className != null && className.length > 0 ? `${variantClass} ${className}` : variantClass;
   } else {
     // Theme-based (auto)
-    const shouldUseTheme =
-      typeof className !== 'string' || className.trim().length === 0;
+    const shouldUseTheme = className === undefined;
     const variant = iconSet?.defaultVariant ?? iconThemeVariants[iconTheme] ?? 'default';
     resolvedClassName = shouldUseTheme
       ? (variant === 'default' ? '' : iconVariants[variant] ?? iconVariants.default)
-      : className;
+      : (className ?? '');
   }
 
   const resolvedStrokeWidth = setStrokeWidth ?? (setSvgProps.weight ? undefined : strokeWidth);

@@ -7,6 +7,7 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
+import { IconButton } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useEffect, useState, useRef, type ReactNode } from 'react';
 
@@ -19,7 +20,6 @@ import {
   isVisualParam,
 } from '@lib/generation-ui';
 import { Icon, IconBadge, type IconName } from '@lib/icons';
-import { IconButton } from '@pixsim7/shared.ui';
 
 // ── Provider brand config ──────────────────────────────────────────────
 const PROVIDER_BRANDS: Record<string, { color: string; short: string }> = {
@@ -263,13 +263,12 @@ export function GenerationSettingsPanel({
   );
   const inferredProviderId = providerId ?? modelProviderId;
 
-  // Account selector
+  // Account selector (rendered inside AdvancedSettingsPopover)
   const { accounts: allAccounts } = useProviderAccounts(inferredProviderId);
   const activeAccounts = useMemo(
     () => allAccounts.filter(a => a.status === 'active'),
     [allAccounts]
   );
-  const selectedAccountId = workbench.dynamicParams?.preferred_account_id ?? '';
 
   // Credit estimation for Go button
   const { estimate: costEstimate, loading: creditLoading } = useCostEstimate({
@@ -339,77 +338,57 @@ export function GenerationSettingsPanel({
   }, [qualityOptionsForModel, workbench.dynamicParams?.quality, workbench.handleParamChange]);
 
   const showTargetButton = canTarget;
-  const showRow1 = showProvider || showOperationType || showTargetButton;
-  const showRow2 = showPresets || !!sourceToggle;
 
   return (
     <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
       {/* Fixed top section */}
       <div className="flex-shrink-0 flex flex-col gap-1.5">
-        {/* Row 1: Provider icon, Operation type, Account, Target */}
-        {showRow1 && (
-          <div className="flex gap-1 items-center">
-            {showProvider && (
-              <ProviderIconButton
-                providerId={providerId}
-                providers={workbench.providers}
-                onSelect={(id) => setProvider(id)}
-                disabled={generating}
-              />
-            )}
-            {showOperationType && (
-              <OperationIconButton
-                operationType={operationType}
-                onSelect={(op) => setOperationType(op as any)}
-                disabled={generating}
-              />
-            )}
-            {activeAccounts.length > 0 && (
-              <select
-                value={selectedAccountId}
-                onChange={(e) => workbench.handleParamChange('preferred_account_id', e.target.value ? Number(e.target.value) : undefined)}
-                disabled={generating}
-                className="w-20 px-1 py-1.5 text-[10px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm truncate"
-                title="Account"
-              >
-                <option value="">Auto</option>
-                {activeAccounts.map(a => (
-                  <option key={a.id} value={a.id}>{a.nickname || a.email}</option>
-                ))}
-              </select>
-            )}
-            {showTargetButton && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (!targetProviderId) return;
-                  if (isTargeted) {
-                    clearOverride(CAP_GENERATION_WIDGET);
-                    return;
-                  }
-                  setPreferredProvider(CAP_GENERATION_WIDGET, targetProviderId);
-                }}
-                className={clsx(
-                  'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
-                  isTargeted
-                    ? 'bg-blue-600 border-blue-600 text-white'
-                    : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'
-                )}
-                title={isTargeted ? 'Targeted for quick add' : 'Target this quick generate for quick add'}
-              >
-                <Icon name="target" size={12} />
-              </button>
-            )}
-          </div>
-        )}
+        {/* Row 1: Provider icon, Operation type, Target, Advanced settings */}
+        <div className="flex gap-1 items-center">
+          {showProvider && (
+            <ProviderIconButton
+              providerId={providerId}
+              providers={workbench.providers}
+              onSelect={(id) => setProvider(id)}
+              disabled={generating}
+            />
+          )}
+          {showOperationType && (
+            <OperationIconButton
+              operationType={operationType}
+              onSelect={(op) => setOperationType(op as any)}
+              disabled={generating}
+            />
+          )}
+          {showTargetButton && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!targetProviderId) return;
+                if (isTargeted) {
+                  clearOverride(CAP_GENERATION_WIDGET);
+                  return;
+                }
+                setPreferredProvider(CAP_GENERATION_WIDGET, targetProviderId);
+              }}
+              className={clsx(
+                'flex items-center justify-center px-2 py-1.5 rounded-lg border text-[10px] font-medium',
+                isTargeted
+                  ? 'bg-accent border-accent text-accent-text'
+                  : 'bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'
+              )}
+              title={isTargeted ? 'Targeted for quick add' : 'Target this quick generate for quick add'}
+            >
+              <Icon name="target" size={12} />
+            </button>
+          )}
+          {sourceToggle && <div className="ml-auto">{sourceToggle}</div>}
+        </div>
 
-        {/* Row 2: Input Sets + Source toggle */}
-        {showRow2 && (
-          <div className="flex items-center justify-between gap-1">
-            {showPresets ? (
-              <PresetSelector disabled={generating} />
-            ) : <div />}
-            {sourceToggle}
+        {/* Row 2: Input Sets */}
+        {showPresets && (
+          <div className="flex items-center gap-1">
+            <PresetSelector disabled={generating} />
           </div>
         )}
       </div>
@@ -441,7 +420,9 @@ export function GenerationSettingsPanel({
 
           const options = param.name === 'quality' && qualityOptionsForModel
             ? qualityOptionsForModel
-            : param.enum ?? (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
+            : (param.enum && param.enum.length > 0)
+              ? param.enum
+              : (param.name === 'aspect_ratio' ? COMMON_ASPECT_RATIOS : null);
 
           if (param.type === 'number' && !options) {
             return (
@@ -466,6 +447,7 @@ export function GenerationSettingsPanel({
 
           // Show as button grid for visual params
           if (showAsVisualGrid && options.length <= 8) {
+            const isIconOnly = param.name === 'aspect_ratio' || param.name === 'quality';
             return (
               <div key={param.name} className="flex flex-wrap gap-1">
                 {options.map((opt: string) => {
@@ -479,16 +461,17 @@ export function GenerationSettingsPanel({
                       onClick={() => workbench.handleParamChange(param.name, opt)}
                       disabled={generating}
                       className={clsx(
-                        'px-2 py-1 rounded-lg text-[11px] font-medium transition-colors duration-200',
-                        'flex items-center gap-1.5',
+                        'rounded-lg text-[11px] font-medium transition-colors duration-200',
+                        'flex items-center',
+                        isIconOnly ? 'px-1.5 py-1 justify-center' : 'px-2 py-1 gap-1.5',
                         isSelected
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-blue-50 dark:hover:bg-neutral-700'
+                          ? 'bg-accent text-accent-text shadow-sm'
+                          : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-accent-subtle dark:hover:bg-neutral-700'
                       )}
-                      title={opt}
+                      title={param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt}
                     >
                       {icon}
-                      <span>{opt}</span>
+                      {!isIconOnly && <span>{opt}</span>}
                     </button>
                   );
                 })}
@@ -548,7 +531,7 @@ export function GenerationSettingsPanel({
           {inputCount > 0 && (
             <div className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
               <span>Queued:</span>
-              <span className="font-mono text-blue-600 dark:text-blue-400">
+              <span className="font-mono text-accent">
                 {inputCount}
               </span>
             </div>
@@ -586,6 +569,7 @@ export function GenerationSettingsPanel({
             onChange={workbench.handleParamChange}
             disabled={generating}
             currentModel={workbench.dynamicParams?.model as string | undefined}
+            accounts={activeAccounts}
           />
 
           {/* Generate Each button - one generation per queued asset */}

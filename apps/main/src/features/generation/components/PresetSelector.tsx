@@ -183,7 +183,7 @@ export function PresetSelector({
               <button
                 type="button"
                 onClick={() => setIsSaving(true)}
-                className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded"
+                className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-accent hover:bg-accent-subtle rounded"
               >
                 <Icon name="save" size={12} />
                 Save current as input set
@@ -203,7 +203,7 @@ export function PresetSelector({
                   key={preset.id}
                   className={clsx(
                     'group flex items-center gap-1 px-2 py-1.5 hover:bg-neutral-50 dark:hover:bg-neutral-700 cursor-pointer',
-                    lastUsedPreset?.id === preset.id && 'bg-blue-50 dark:bg-blue-900/20'
+                    lastUsedPreset?.id === preset.id && 'bg-accent-subtle'
                   )}
                   onClick={() => handleLoad(preset)}
                 >

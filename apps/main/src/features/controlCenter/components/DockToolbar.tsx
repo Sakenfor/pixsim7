@@ -187,7 +187,7 @@ export function DockToolbar({
                 type="checkbox"
                 checked={conformToOtherPanels}
                 onChange={(e) => setConformToOtherPanels(e.target.checked)}
-                className="rounded border-neutral-300 dark:border-neutral-600 text-blue-600 focus:ring-blue-500"
+                className="rounded border-neutral-300 dark:border-neutral-600 text-accent focus:ring-accent"
               />
               <span className="text-xs text-neutral-600 dark:text-neutral-300">Conform to panels</span>
             </label>
@@ -203,7 +203,7 @@ export function DockToolbar({
             'text-xs px-1.5 py-0.5 rounded transition-colors',
             pinned
               ? 'bg-amber-100 dark:bg-amber-900/30'
-              : 'hover:bg-blue-100 dark:hover:bg-blue-900/30'
+              : 'hover:bg-accent-subtle'
           )}
           title={pinned ? 'Unpin' : 'Pin'}
           aria-pressed={pinned}
@@ -306,7 +306,7 @@ function ToggleButton({
       className={clsx(
         'flex-1 px-2 py-1 text-[11px] rounded transition-colors',
         active
-          ? 'bg-blue-600 text-white'
+          ? 'bg-accent text-accent-text'
           : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600'
       )}
     >
@@ -330,8 +330,8 @@ function PositionButton({
   variant?: 'blue' | 'purple';
 }) {
   const isActive = currentPosition === position;
-  const activeColor = variant === 'purple' ? 'bg-purple-600' : 'bg-blue-600';
-  const hoverColor = variant === 'purple' ? 'hover:bg-purple-600/80' : 'hover:bg-blue-600/80';
+  const activeColor = variant === 'purple' ? 'bg-purple-600' : 'bg-accent';
+  const hoverColor = variant === 'purple' ? 'hover:bg-purple-600/80' : 'hover:bg-accent-hover';
 
   return (
     <button

@@ -1,18 +1,8 @@
-import type { PanelId } from "../../stores/workspaceStore";
-
-const PANEL_NAMES: Partial<Record<PanelId, string>> = {
-  gallery: "Gallery",
-  project: "Project",
-  scene: "Scene Builder",
-  graph: "Graph",
-  inspector: "Inspector",
-  health: "Health",
-  game: "Game",
-};
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 interface RestoreClosedPanelsMenuProps {
-  closedPanels: PanelId[];
-  onRestorePanel: (panelId: PanelId) => void;
+  closedPanels: string[];
+  onRestorePanel: (panelId: string) => void;
   onClearHistory: () => void;
 }
 
@@ -26,7 +16,7 @@ export function RestoreClosedPanelsMenu({
   return (
     <div className="relative">
       <button
-        className="text-xs px-2 py-1 border rounded bg-blue-50 border-blue-300 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:border-blue-700 dark:text-blue-300"
+        className="text-xs px-2 py-1 border rounded bg-accent-subtle border-accent-muted text-accent hover:bg-accent-subtle/80"
         onClick={() =>
           document
             .getElementById("closed-panels-menu")
@@ -46,7 +36,7 @@ export function RestoreClosedPanelsMenu({
               className="w-full text-left text-xs px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded"
               onClick={() => onRestorePanel(panelId)}
             >
-              {PANEL_NAMES[panelId] ?? panelId}
+              {panelSelectors.get(panelId)?.title ?? panelId}
             </button>
           ))}
           <div className="border-t dark:border-neutral-700 my-1" />

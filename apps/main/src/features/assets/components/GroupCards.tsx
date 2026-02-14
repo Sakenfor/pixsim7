@@ -34,7 +34,7 @@ export function GroupFolderTile({
     <button
       type="button"
       onClick={onOpen}
-      className="cq-scale relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-400 dark:hover:border-blue-400 transition-colors overflow-hidden text-left"
+      className="cq-scale relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-accent-muted transition-colors overflow-hidden text-left"
       style={{ height: tileHeight }}
       title={group.label}
     >
@@ -111,7 +111,7 @@ export function GroupListRow({
     <button
       type="button"
       onClick={onOpen}
-      className="group w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/60 hover:border-blue-400 dark:hover:border-blue-400 transition-colors px-3 py-3 text-left"
+      className="group w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/60 hover:border-accent-muted transition-colors px-3 py-3 text-left"
       title={group.label}
     >
       <div className="flex items-center gap-4">

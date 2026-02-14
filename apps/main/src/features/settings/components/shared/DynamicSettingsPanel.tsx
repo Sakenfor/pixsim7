@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 
+import { isAdminUser } from '@lib/auth/userRoles';
 import { Icon } from '@lib/icons';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -31,7 +32,7 @@ function SettingGroupRenderer({
 }) {
   const store = useStore();
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === 'admin' || user?.is_admin;
+  const isAdmin = isAdminUser(user);
   const allValues = { ...store.getAll(), __isAdmin: !!isAdmin, __userRole: user?.role };
 
   if (group.showWhen && !group.showWhen(allValues)) {
@@ -143,7 +144,7 @@ export function DynamicSettingsPanel({ categoryId, tabId }: DynamicSettingsPanel
                 onClick={() => setActiveTabId(tab.id)}
                 className={`w-full px-3 py-2 text-[11px] font-medium transition-colors flex items-center gap-2 text-left ${
                   activeTabId === tab.id
-                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-r-2 border-blue-500'
+                    ? 'bg-accent-subtle text-accent border-r-2 border-accent'
                     : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
                 }`}
               >

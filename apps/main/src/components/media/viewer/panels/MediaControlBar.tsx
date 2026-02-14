@@ -125,7 +125,7 @@ export function MediaControlBar({
                   onClick={() => onFitModeChange(mode)}
                   className={`px-2 py-0.5 text-[10px] rounded ${
                     fitMode === mode
-                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      ? 'bg-accent-subtle text-accent'
                       : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
                   }`}
                   title={`Fit: ${mode}`}
@@ -152,7 +152,7 @@ export function MediaControlBar({
             onClick={onToggleMaximize}
             className={`px-2 py-0.5 text-[10px] rounded ${
               isMaximized
-                ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                ? 'bg-accent-subtle text-accent'
                 : 'hover:bg-neutral-100 dark:hover:bg-neutral-800'
             }`}
             title={isMaximized ? 'Restore' : 'Maximize Preview'}

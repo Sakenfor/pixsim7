@@ -413,88 +413,71 @@ export function PromptComposer({
   return (
     <div className={clsx('flex flex-col gap-2', className)}>
       <div className="flex items-center gap-2">
-        <div className="inline-flex rounded-md border border-neutral-300 dark:border-neutral-700 overflow-hidden">
+        <div className="relative">
           <button
+            ref={layoutTriggerRef}
             type="button"
             disabled={disabled}
-            onClick={() => handleModeChange('text')}
-            className={clsx(
-              'px-2 py-1 text-xs font-medium transition-colors',
-              mode === 'text'
-                ? 'bg-blue-500 text-white'
-                : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-            )}
+            onClick={() => {
+              setShowLayoutMenu((prev) => {
+                if (!prev && layoutTriggerRef.current) {
+                  const rect = layoutTriggerRef.current.getBoundingClientRect();
+                  setLayoutMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
+                }
+                return !prev;
+              });
+            }}
+            title={mode === 'text' ? 'Text mode' : `Blocks — ${blocksLayout}`}
+            className="inline-flex items-center gap-1 px-1.5 py-1 rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
           >
-            Text
+            <Icon
+              name={mode === 'text' ? 'fileText' : blocksLayout === 'stacked' ? 'rows' : 'columns'}
+              size={14}
+            />
+            <Icon name="chevronDown" size={10} />
           </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => handleModeChange('blocks')}
-            className={clsx(
-              'px-2 py-1 text-xs font-medium border-l border-neutral-300 dark:border-neutral-700 transition-colors',
-              mode === 'blocks'
-                ? 'bg-blue-500 text-white'
-                : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-            )}
+          <Dropdown
+            isOpen={showLayoutMenu}
+            onClose={() => setShowLayoutMenu(false)}
+            triggerRef={layoutTriggerRef}
+            positionMode="fixed"
+            anchorPosition={layoutMenuAnchor}
+            minWidth="140px"
+            portal
           >
-            Blocks
-          </button>
-          <div className="relative">
-            <button
-              ref={layoutTriggerRef}
-              type="button"
-              disabled={disabled}
+            <DropdownItem
+              icon={<Icon name="fileText" size={14} />}
+              rightSlot={mode === 'text' ? <Icon name="check" size={12} /> : undefined}
               onClick={() => {
-                setShowLayoutMenu((prev) => {
-                  if (!prev && layoutTriggerRef.current) {
-                    const rect = layoutTriggerRef.current.getBoundingClientRect();
-                    setLayoutMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
-                  }
-                  return !prev;
-                });
+                handleModeChange('text');
+                setShowLayoutMenu(false);
               }}
-              title="Block layout"
-              className={clsx(
-                'px-1 py-1 text-xs border-l border-neutral-300 dark:border-neutral-700 transition-colors',
-                mode === 'blocks'
-                  ? 'bg-blue-500 text-white hover:bg-blue-600'
-                  : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-              )}
             >
-              <Icon name="chevronDown" size={10} />
-            </button>
-            <Dropdown
-              isOpen={showLayoutMenu}
-              onClose={() => setShowLayoutMenu(false)}
-              triggerRef={layoutTriggerRef}
-              positionMode="fixed"
-              anchorPosition={layoutMenuAnchor}
-              minWidth="130px"
-              portal
+              Text
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icon name="rows" size={14} />}
+              rightSlot={mode === 'blocks' && blocksLayout === 'stacked' ? <Icon name="check" size={12} /> : undefined}
+              onClick={() => {
+                setBlocksLayout('stacked');
+                if (mode !== 'blocks') handleModeChange('blocks');
+                setShowLayoutMenu(false);
+              }}
             >
-              <DropdownItem
-                icon={blocksLayout === 'stacked' ? <Icon name="check" size={12} /> : <span className="w-3" />}
-                onClick={() => {
-                  setBlocksLayout('stacked');
-                  if (mode !== 'blocks') handleModeChange('blocks');
-                  setShowLayoutMenu(false);
-                }}
-              >
-                Stacked
-              </DropdownItem>
-              <DropdownItem
-                icon={blocksLayout === 'inline' ? <Icon name="check" size={12} /> : <span className="w-3" />}
-                onClick={() => {
-                  setBlocksLayout('inline');
-                  if (mode !== 'blocks') handleModeChange('blocks');
-                  setShowLayoutMenu(false);
-                }}
-              >
-                Inline
-              </DropdownItem>
-            </Dropdown>
-          </div>
+              Blocks — Stacked
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icon name="columns" size={14} />}
+              rightSlot={mode === 'blocks' && blocksLayout === 'inline' ? <Icon name="check" size={12} /> : undefined}
+              onClick={() => {
+                setBlocksLayout('inline');
+                if (mode !== 'blocks') handleModeChange('blocks');
+                setShowLayoutMenu(false);
+              }}
+            >
+              Blocks — Inline
+            </DropdownItem>
+          </Dropdown>
         </div>
 
         <button
@@ -664,7 +647,7 @@ export function PromptComposer({
                     'text-[10px] px-2 py-1 rounded border whitespace-nowrap',
                     'border-neutral-200 dark:border-neutral-700',
                     'text-neutral-600 dark:text-neutral-300',
-                    'hover:border-blue-400 hover:bg-blue-50 dark:hover:border-blue-500 dark:hover:bg-blue-900/20'
+                    'hover:border-accent-muted hover:bg-accent-subtle'
                   )}
                   title={`${match.block_id} (${Math.round(match.similarity_score * 100)}%)`}
                 >
