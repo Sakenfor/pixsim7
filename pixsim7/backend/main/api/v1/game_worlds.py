@@ -22,6 +22,8 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     DuplicateSavedGameProjectRequest,
     SavedGameProjectSummary,
     SavedGameProjectDetail,
+    UpsertDraftRequest,
+    DraftSummary,
 )
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
 from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
@@ -425,6 +427,70 @@ async def delete_saved_project(
     deleted = await storage.delete_project(owner_user_id=user.id, project_id=project_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="project_not_found")
+
+    return Response(status_code=204)
+
+
+def _to_draft_summary(draft) -> DraftSummary:
+    return DraftSummary(
+        id=draft.id,
+        draft_source_project_id=draft.draft_source_project_id,
+        source_world_id=draft.source_world_id,
+        schema_version=draft.schema_version,
+        created_at=draft.created_at,
+        updated_at=draft.updated_at,
+    )
+
+
+@router.put("/projects/drafts", response_model=DraftSummary)
+async def upsert_project_draft(
+    req: UpsertDraftRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> DraftSummary:
+    storage = GameProjectStorageService(game_world_service.db)
+    draft = await storage.upsert_draft(
+        owner_user_id=user.id,
+        bundle=req.bundle,
+        source_world_id=req.source_world_id,
+        draft_source_project_id=req.draft_source_project_id,
+    )
+    return _to_draft_summary(draft)
+
+
+@router.get("/projects/drafts")
+async def get_project_draft(
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+    draft_source_project_id: Optional[int] = None,
+) -> Optional[SavedGameProjectDetail]:
+    storage = GameProjectStorageService(game_world_service.db)
+    draft = await storage.get_latest_draft(
+        owner_user_id=user.id,
+        draft_source_project_id=draft_source_project_id,
+    )
+    if not draft:
+        return None
+
+    try:
+        return _to_saved_project_detail(draft)
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="stored_draft_bundle_invalid")
+
+
+@router.delete("/projects/drafts", status_code=204)
+async def delete_project_draft(
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+    draft_source_project_id: Optional[int] = None,
+) -> Response:
+    storage = GameProjectStorageService(game_world_service.db)
+    deleted = await storage.delete_draft(
+        owner_user_id=user.id,
+        draft_source_project_id=draft_source_project_id,
+    )
+    if not deleted:
+        raise HTTPException(status_code=404, detail="draft_not_found")
 
     return Response(status_code=204)
 

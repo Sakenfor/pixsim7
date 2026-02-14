@@ -244,6 +244,8 @@ class GameProjectSnapshot(SQLModel, table=True):
     source_world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
     name: str = Field(max_length=160)
     schema_version: int = Field(default=1)
+    is_draft: bool = Field(default=False, index=True)
+    draft_source_project_id: Optional[int] = Field(default=None, index=True)
     bundle: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
     created_at: datetime = Field(default_factory=utcnow, index=True)
     updated_at: datetime = Field(

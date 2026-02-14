@@ -189,3 +189,18 @@ class SavedGameProjectSummary(BaseModel):
 class SavedGameProjectDetail(SavedGameProjectSummary):
     bundle: GameProjectBundle
 
+
+class UpsertDraftRequest(BaseModel):
+    bundle: GameProjectBundle
+    source_world_id: Optional[int] = None
+    draft_source_project_id: Optional[int] = None
+
+
+class DraftSummary(BaseModel):
+    id: int
+    draft_source_project_id: Optional[int] = None
+    source_world_id: Optional[int] = None
+    schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
+    created_at: datetime
+    updated_at: datetime
+

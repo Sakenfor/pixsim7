@@ -33,7 +33,10 @@ class GameProjectStorageService:
 
         result = await self.db.execute(
             select(GameProjectSnapshot)
-            .where(GameProjectSnapshot.owner_user_id == owner_user_id)
+            .where(
+                GameProjectSnapshot.owner_user_id == owner_user_id,
+                GameProjectSnapshot.is_draft == False,  # noqa: E712
+            )
             .order_by(GameProjectSnapshot.updated_at.desc(), GameProjectSnapshot.id.desc())
             .offset(offset)
             .limit(limit)
@@ -151,4 +154,81 @@ class GameProjectStorageService:
         await self.db.refresh(duplicated_project)
 
         return duplicated_project
+
+    async def upsert_draft(
+        self,
+        *,
+        owner_user_id: int,
+        bundle: GameProjectBundle,
+        source_world_id: Optional[int] = None,
+        draft_source_project_id: Optional[int] = None,
+    ) -> GameProjectSnapshot:
+        existing = await self.get_latest_draft(
+            owner_user_id=owner_user_id,
+            draft_source_project_id=draft_source_project_id,
+        )
+
+        if existing:
+            existing.bundle = bundle.model_dump(mode="json")
+            existing.schema_version = int(bundle.schema_version)
+            existing.source_world_id = source_world_id
+            self.db.add(existing)
+            await self.db.commit()
+            await self.db.refresh(existing)
+            return existing
+
+        draft = GameProjectSnapshot(
+            owner_user_id=owner_user_id,
+            name="[draft]",
+            source_world_id=source_world_id,
+            schema_version=int(bundle.schema_version),
+            bundle=bundle.model_dump(mode="json"),
+            is_draft=True,
+            draft_source_project_id=draft_source_project_id,
+        )
+        self.db.add(draft)
+        await self.db.commit()
+        await self.db.refresh(draft)
+        return draft
+
+    async def get_latest_draft(
+        self,
+        *,
+        owner_user_id: int,
+        draft_source_project_id: Optional[int] = None,
+    ) -> Optional[GameProjectSnapshot]:
+        query = select(GameProjectSnapshot).where(
+            GameProjectSnapshot.owner_user_id == owner_user_id,
+            GameProjectSnapshot.is_draft == True,  # noqa: E712
+        )
+
+        if draft_source_project_id is not None:
+            query = query.where(
+                GameProjectSnapshot.draft_source_project_id == draft_source_project_id,
+            )
+        else:
+            query = query.where(
+                GameProjectSnapshot.draft_source_project_id.is_(None),
+            )
+
+        query = query.order_by(GameProjectSnapshot.updated_at.desc()).limit(1)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def delete_draft(
+        self,
+        *,
+        owner_user_id: int,
+        draft_source_project_id: Optional[int] = None,
+    ) -> bool:
+        draft = await self.get_latest_draft(
+            owner_user_id=owner_user_id,
+            draft_source_project_id=draft_source_project_id,
+        )
+        if not draft:
+            return False
+
+        await self.db.delete(draft)
+        await self.db.commit()
+        return True
 
