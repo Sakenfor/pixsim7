@@ -15,6 +15,7 @@ from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, Account
 from pixsim7.backend.main.shared.schemas.asset_schemas import (
     AssetResponse,
     AssetListResponse,
+    AssetGenerationContext,
 )
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary, AssignTagsRequest
 from pixsim7.backend.main.services.tag_service import TagService
@@ -620,6 +621,120 @@ async def get_asset(
         raise HTTPException(status_code=403, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get asset: {str(e)}")
+
+
+# ===== ASSET GENERATION CONTEXT =====
+
+
+@router.get("/{asset_id}/generation-context", response_model=AssetGenerationContext)
+async def get_asset_generation_context(
+    asset_id: int,
+    user: CurrentUser,
+    asset_service: AssetSvc,
+    db: DatabaseSession,
+):
+    """
+    Resolve generation context for an asset.
+
+    Always tries to resolve from the asset's own media_metadata first
+    (same logic for synced AND app-generated assets).  Falls back to
+    the Generation record only when metadata lacks usable data, and
+    even then returns flat provider params — never the raw
+    GenerationNodeConfigSchema wrapper.
+
+    Returns 404 if no context can be resolved.
+    """
+    try:
+        asset = await asset_service.get_asset_for_user(asset_id, user)
+    except ResourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Asset not found")
+
+    from pixsim7.backend.main.services.generation.context import (
+        extract_flat_provider_params,
+        extract_source_asset_ids,
+    )
+
+    # ── Fast path: stamped generation_context in media_metadata ──
+    meta = asset.media_metadata or {}
+    gen_ctx = meta.get("generation_context") if isinstance(meta, dict) else None
+    if gen_ctx and isinstance(gen_ctx, dict):
+        return AssetGenerationContext(
+            source="metadata",
+            operation_type=gen_ctx.get("operation_type", "text_to_image"),
+            provider_id=gen_ctx.get("provider_id", asset.provider_id),
+            final_prompt=gen_ctx.get("prompt"),
+            canonical_params=gen_ctx.get("params", {}),
+            raw_params={},
+            inputs=[],
+            source_asset_ids=gen_ctx.get("source_asset_ids", []),
+        )
+
+    # ── Legacy: Try metadata resolution (synced assets without stamped context) ──
+    from pixsim7.backend.main.services.generation.synthetic import (
+        resolve_generation_context_from_metadata,
+    )
+
+    if isinstance(meta, dict):
+        customer_paths = meta.get("customer_paths", {})
+        if not isinstance(customer_paths, dict):
+            customer_paths = {}
+        has_prompt = bool(
+            customer_paths.get("prompt")
+            or meta.get("prompt")
+            or meta.get("text")
+        )
+        has_create_mode = bool(
+            customer_paths.get("create_mode")
+            or meta.get("create_mode")
+        )
+    else:
+        has_prompt = False
+        has_create_mode = False
+
+    if has_prompt or has_create_mode:
+        try:
+            ctx = await resolve_generation_context_from_metadata(db, asset)
+            # If metadata didn't have a prompt but Generation record does, supplement it
+            if not ctx["final_prompt"] and asset.source_generation_id:
+                from pixsim7.backend.main.domain import Generation
+                generation = await db.get(Generation, asset.source_generation_id)
+                if generation and generation.final_prompt:
+                    ctx["final_prompt"] = generation.final_prompt
+            return AssetGenerationContext(**ctx)
+        except Exception as e:
+            logger.error(
+                "generation_context_metadata_failed",
+                asset_id=asset_id,
+                error=str(e),
+                exc_info=True,
+            )
+            # Fall through to Generation record path
+
+    # ── Fallback: extract flat params from Generation record ──
+    if asset.source_generation_id:
+        from pixsim7.backend.main.domain import Generation
+        generation = await db.get(Generation, asset.source_generation_id)
+        if generation:
+            source_asset_ids = extract_source_asset_ids(generation.inputs or [])
+
+            # Extract flat provider params from the canonical_params wrapper
+            flat_params = extract_flat_provider_params(generation.canonical_params or {})
+
+            return AssetGenerationContext(
+                source="generation",
+                operation_type=generation.operation_type.value if generation.operation_type else "text_to_image",
+                provider_id=generation.provider_id or asset.provider_id,
+                final_prompt=generation.final_prompt,
+                canonical_params=flat_params,
+                raw_params={},
+                inputs=generation.inputs or [],
+                source_asset_ids=source_asset_ids,
+            )
+
+    raise HTTPException(
+        status_code=404,
+        detail="No generation context available for this asset",
+    )
 
 
 # ===== CHECK ASSET BY HASH =====

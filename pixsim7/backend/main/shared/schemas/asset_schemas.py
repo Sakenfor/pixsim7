@@ -120,6 +120,9 @@ class AssetResponse(BaseModel):
     parent_asset_id: Optional[int] = None
     version_message: Optional[str] = None
 
+    # Generation context availability (computed)
+    has_generation_context: bool = False
+
     # Timestamps
     created_at: datetime
 
@@ -217,6 +220,9 @@ class AssetResponse(BaseModel):
 
         Reads media_metadata.upload_history.last_upload_status_by_provider
         and exposes it as a top-level field for easy frontend access.
+
+        Also computes has_generation_context: True when asset has either a
+        source_generation_id or usable media_metadata (prompt / create_mode).
         """
         # Handle both dict and SQLAlchemy model instances
         if hasattr(data, "media_metadata"):
@@ -239,6 +245,35 @@ class AssetResponse(BaseModel):
                     elif hasattr(data, "__dict__"):
                         data.__dict__["last_upload_status_by_provider"] = last_status
 
+        # Compute has_generation_context
+        source_gen_id = (
+            data.get("source_generation_id") if isinstance(data, dict)
+            else getattr(data, "source_generation_id", None)
+        )
+        has_ctx = source_gen_id is not None
+        if not has_ctx and media_metadata and isinstance(media_metadata, dict):
+            # Fast path: stamped generation_context dict
+            if media_metadata.get("generation_context"):
+                has_ctx = True
+            else:
+                # Legacy fallback: check raw metadata heuristics
+                customer_paths = media_metadata.get("customer_paths", {})
+                has_prompt = bool(
+                    (customer_paths.get("prompt") if isinstance(customer_paths, dict) else None)
+                    or media_metadata.get("prompt")
+                    or media_metadata.get("text")
+                )
+                has_create_mode = bool(
+                    (customer_paths.get("create_mode") if isinstance(customer_paths, dict) else None)
+                    or media_metadata.get("create_mode")
+                )
+                has_ctx = has_prompt or has_create_mode
+
+        if isinstance(data, dict):
+            data["has_generation_context"] = has_ctx
+        elif hasattr(data, "__dict__"):
+            data.__dict__["has_generation_context"] = has_ctx
+
         return data
 
 
@@ -258,3 +293,18 @@ class AssetStatsResponse(BaseModel):
     total_size_gb: float
     by_media_type: dict[str, int]
     by_sync_status: dict[str, int]
+
+
+class AssetGenerationContext(BaseModel):
+    """
+    Generation-equivalent context resolved from either a Generation record
+    or asset media_metadata.  Read-only — no DB writes.
+    """
+    source: Literal["generation", "metadata"]
+    operation_type: str
+    provider_id: str
+    final_prompt: Optional[str] = None
+    canonical_params: Dict[str, Any] = Field(default_factory=dict)
+    raw_params: Dict[str, Any] = Field(default_factory=dict)
+    inputs: List[Dict[str, Any]] = Field(default_factory=list)
+    source_asset_ids: List[int] = Field(default_factory=list)

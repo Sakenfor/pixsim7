@@ -20,6 +20,7 @@ import { pixsimClient } from './client';
 export type {
   AssetListResponse,
   AssetResponse,
+  AssetGenerationContext,
   AssetGroupBy,
   AssetGroupListResponse,
   AssetGroupRequest,
@@ -71,6 +72,11 @@ export const enrichAsset = assetsApi.enrichAsset;
  * Auto-creates tags if they don't exist.
  */
 export const assignTags = assetsApi.assignTags;
+
+/**
+ * Get generation context for an asset (from Generation record or media_metadata).
+ */
+export const getAssetGenerationContext = assetsApi.getAssetGenerationContext;
 
 /**
  * Download an asset to the user's device.

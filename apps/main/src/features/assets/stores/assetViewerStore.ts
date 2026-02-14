@@ -33,6 +33,8 @@ export interface ViewerAsset {
   source: 'gallery' | 'local';
   /** Link to the generation that created this asset (if any) */
   sourceGenerationId?: number;
+  /** True when asset has generation context (from record or metadata) */
+  hasGenerationContext?: boolean;
   /** Additional metadata */
   metadata?: {
     description?: string;

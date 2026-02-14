@@ -146,6 +146,26 @@ class SyntheticGenerationService:
         # Link asset back to generation
         asset.source_generation_id = generation.id
 
+        # Stamp generation_context onto media_metadata
+        from .context import build_generation_context
+        gen_ctx = build_generation_context(
+            operation_type=gen_data["operation_type"].value,
+            provider_id=asset.provider_id,
+            prompt=gen_data["final_prompt"],
+            params={k: v for k, v in gen_data["canonical_params"].items()
+                    if k not in ("operation_type", "_provider_asset_id")},
+            source_asset_ids=[
+                int(inp["asset"].split(":")[1])
+                for inp in gen_data["inputs"]
+                if isinstance(inp.get("asset"), str) and inp["asset"].startswith("asset:")
+            ],
+            prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
+            reproducible_hash=gen_data["reproducible_hash"],
+        )
+        meta = asset.media_metadata or {}
+        meta["generation_context"] = gen_ctx
+        asset.media_metadata = meta
+
         # Explicit commit - FastAPI dependency doesn't auto-commit
         await self.db.commit()
 
@@ -193,6 +213,26 @@ class SyntheticGenerationService:
         generation.reproducible_hash = gen_data["reproducible_hash"]
         generation.prompt_version_id = gen_data["prompt_version_id"]
         generation.final_prompt = gen_data["final_prompt"]
+
+        # Re-stamp generation_context onto asset media_metadata
+        from .context import build_generation_context
+        gen_ctx = build_generation_context(
+            operation_type=gen_data["operation_type"].value,
+            provider_id=asset.provider_id,
+            prompt=gen_data["final_prompt"],
+            params={k: v for k, v in gen_data["canonical_params"].items()
+                    if k not in ("operation_type", "_provider_asset_id")},
+            source_asset_ids=[
+                int(inp["asset"].split(":")[1])
+                for inp in gen_data["inputs"]
+                if isinstance(inp.get("asset"), str) and inp["asset"].startswith("asset:")
+            ],
+            prompt_version_id=str(gen_data["prompt_version_id"]) if gen_data["prompt_version_id"] else None,
+            reproducible_hash=gen_data["reproducible_hash"],
+        )
+        meta = asset.media_metadata or {}
+        meta["generation_context"] = gen_ctx
+        asset.media_metadata = meta
 
         self.db.add(generation)
         await self.db.commit()
@@ -450,6 +490,107 @@ class SyntheticGenerationService:
             relation_type,
             CREATE_MODE_TO_ROLE.get(create_mode, "source")
         )
+
+
+async def resolve_generation_context_from_metadata(
+    db: AsyncSession,
+    asset: Asset,
+) -> dict:
+    """
+    Resolve generation-equivalent context from an asset's media_metadata.
+
+    Read-only — no DB writes, no PromptVersion creation.
+    Returns a dict matching the AssetGenerationContext schema fields.
+    """
+    meta = asset.media_metadata or {}
+    customer_paths = meta.get("customer_paths", {})
+    if not isinstance(customer_paths, dict):
+        customer_paths = {}
+
+    create_mode = customer_paths.get("create_mode") or meta.get("create_mode", "i2v")
+
+    prompt_text = (
+        customer_paths.get("prompt")
+        or meta.get("prompt")
+        or customer_paths.get("original_prompt")
+        or meta.get("text")
+    )
+
+    # Build inputs from existing lineage edges (read-only query)
+    stmt = (
+        select(AssetLineage)
+        .where(AssetLineage.child_asset_id == asset.id)
+        .order_by(AssetLineage.sequence_order.asc())
+    )
+    result = await db.execute(stmt)
+    edges = result.scalars().all()
+
+    inputs = []
+    source_asset_ids = []
+    for edge in edges:
+        role = RELATION_TO_ROLE.get(
+            edge.relation_type,
+            CREATE_MODE_TO_ROLE.get(create_mode, "source"),
+        )
+        entry: dict = {
+            "role": role,
+            "asset": f"asset:{edge.parent_asset_id}",
+            "sequence_order": edge.sequence_order,
+        }
+        if edge.parent_start_time is not None or edge.parent_end_time is not None:
+            entry["time"] = {}
+            if edge.parent_start_time is not None:
+                entry["time"]["start"] = edge.parent_start_time
+            if edge.parent_end_time is not None:
+                entry["time"]["end"] = edge.parent_end_time
+        if edge.parent_frame is not None:
+            entry["frame"] = edge.parent_frame
+        inputs.append(entry)
+        source_asset_ids.append(edge.parent_asset_id)
+
+    # Determine operation type
+    operation_type = CREATE_MODE_TO_OPERATION.get(create_mode)
+    if operation_type is None:
+        if asset.media_type == MediaType.IMAGE:
+            operation_type = (
+                OperationType.IMAGE_TO_IMAGE if inputs else OperationType.TEXT_TO_IMAGE
+            )
+        else:
+            operation_type = OperationType.IMAGE_TO_VIDEO
+
+    # Build canonical params (reuses the same logic as synthetic generation)
+    params: dict = {
+        "operation_type": operation_type.value,
+    }
+    duration = (
+        customer_paths.get("duration")
+        or meta.get("duration")
+        or meta.get("video_duration")
+    )
+    if duration:
+        params["duration"] = duration
+    for key in ["quality", "resolution", "aspect_ratio", "style"]:
+        if meta.get(key):
+            params[key] = meta[key]
+        elif customer_paths.get(key):
+            params[key] = customer_paths[key]
+    negative_prompt = customer_paths.get("negative_prompt") or meta.get("negative_prompt")
+    if negative_prompt:
+        params["negative_prompt"] = negative_prompt
+    seed = meta.get("seed") or customer_paths.get("seed")
+    if seed:
+        params["seed"] = seed
+
+    return {
+        "source": "metadata",
+        "operation_type": operation_type.value,
+        "provider_id": asset.provider_id,
+        "final_prompt": prompt_text,
+        "canonical_params": params,
+        "raw_params": {},
+        "inputs": inputs,
+        "source_asset_ids": source_asset_ids,
+    }
 
 
 async def find_sibling_assets(

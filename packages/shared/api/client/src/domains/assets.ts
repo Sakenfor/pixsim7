@@ -159,6 +159,17 @@ export interface FilterOptionsRequest {
 
 export type FilterMetadataQueryOptions = FilterOptionsRequest;
 
+export interface AssetGenerationContext {
+  source: 'generation' | 'metadata';
+  operation_type: string;
+  provider_id: string;
+  final_prompt?: string | null;
+  canonical_params: Record<string, unknown>;
+  raw_params: Record<string, unknown>;
+  inputs: Array<Record<string, unknown>>;
+  source_asset_ids: number[];
+}
+
 export function getAssetDownloadUrl(asset: AssetResponse): string {
   return asset.remote_url || asset.file_url || `/assets/${asset.id}/file`;
 }
@@ -243,6 +254,10 @@ export function createAssetsApi(client: PixSimApiClient) {
      */
     async enrichAsset(assetId: number): Promise<EnrichAssetResponse> {
       return client.post<EnrichAssetResponse>(`/assets/${assetId}/enrich`);
+    },
+
+    async getAssetGenerationContext(assetId: number): Promise<AssetGenerationContext> {
+      return client.get<AssetGenerationContext>(`/assets/${assetId}/generation-context`);
     },
   };
 }

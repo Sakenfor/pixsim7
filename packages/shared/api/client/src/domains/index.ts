@@ -122,6 +122,9 @@ export type {
   PluginInfo,
   PluginListResponse,
   PluginStateResponse,
+  PluginSyncItem,
+  PluginSyncRequest,
+  PluginSyncResponse,
 } from './plugins';
 
 export type {

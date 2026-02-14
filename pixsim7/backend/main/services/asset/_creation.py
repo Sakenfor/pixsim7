@@ -176,6 +176,14 @@ class AssetCreationMixin:
             except Exception as e:
                 logger.warning(f"Failed to analyze prompt for generation {generation.id}: {e}")
 
+        # Stamp generation_context onto media_metadata so the asset is
+        # self-describing (no Generation join needed for Regenerate/Extend).
+        from pixsim7.backend.main.services.generation.context import build_generation_context_from_generation
+        gen_ctx = build_generation_context_from_generation(generation)
+        if not metadata:
+            metadata = {}
+        metadata["generation_context"] = gen_ctx
+
         # Create asset — each generation always gets its own Asset record.
         # Content dedup is handled at the storage layer (content-addressed keys)
         # and tracked via ContentBlob.
@@ -193,7 +201,7 @@ class AssetCreationMixin:
             sync_status=SyncStatus.REMOTE,
             source_generation_id=generation.id,
             provider_uploads={submission.provider_id: provider_asset_id},
-            media_metadata=metadata or None,
+            media_metadata=metadata,
             prompt_analysis=prompt_analysis_result,
             created_at=datetime.now(timezone.utc),
         )

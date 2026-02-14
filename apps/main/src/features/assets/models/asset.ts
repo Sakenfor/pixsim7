@@ -64,6 +64,8 @@ export interface AssetModel {
   providerUploads?: Record<string, string> | null;
   remoteUrl?: string | null;
   sourceGenerationId?: number | null;
+  /** True when asset has a Generation record or usable media_metadata for regen/extend */
+  hasGenerationContext?: boolean;
   storedKey?: string | null;
   syncStatus: AssetSyncStatus;
   tags?: TagSummary[];
@@ -150,6 +152,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
       : response.provider_uploads,
     remoteUrl: response.remote_url,
     sourceGenerationId: response.source_generation_id,
+    hasGenerationContext: response.has_generation_context ?? false,
     storedKey: response.stored_key,
     syncStatus: response.sync_status,
     tags: response.tags?.map((tag) => ({
@@ -203,6 +206,7 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
     fullUrl: safeMainUrl || undefined,
     source: 'gallery',
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
+    hasGenerationContext: asset.hasGenerationContext ?? false,
     metadata: {
       description: asset.description ?? undefined,
       tags: asset.tags?.map((t) => t.name),
