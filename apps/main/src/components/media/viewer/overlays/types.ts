@@ -23,6 +23,7 @@ export interface MediaOverlayTool extends Identifiable {
   id: MediaOverlayId;
   label: string;
   description?: string;
+  icon?: string;
   shortcut?: string;
   priority?: number;
   tone?: MediaOverlayTone;

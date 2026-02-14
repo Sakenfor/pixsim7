@@ -6,7 +6,7 @@
  * Supports overlay modes for drawing regions and pose references.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
@@ -18,6 +18,7 @@ import { useFrameCapture, useOverlayShortcuts, useViewerContext } from './hooks'
 import { MediaControlBar } from './MediaControlBar';
 import { MediaDisplay, type FitMode } from './MediaDisplay';
 import { useMediaMaximize } from './useMediaMaximize';
+import { ViewerToolStrip } from './ViewerToolStrip';
 
 interface MediaPanelProps {
   context?: ViewerPanelContext;
@@ -139,7 +140,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
   const zoomOut = () => setZoom(Math.max(zoom - 25, 25));
   const resetZoom = () => setZoom(100);
 
-  const handleToggleOverlay = (id: string) => {
+  const handleToggleOverlay = useCallback((id: string) => {
     const entering = overlayMode !== id;
     if (!toggleOverlay(id)) {
       return;
@@ -147,7 +148,12 @@ export function MediaPanel({ context }: MediaPanelProps) {
     if (entering) {
       selectRegion(null);
     }
-  };
+  }, [overlayMode, toggleOverlay, selectRegion]);
+
+  const handleExitOverlay = useCallback(() => {
+    setOverlayMode('none');
+    selectRegion(null);
+  }, [setOverlayMode, selectRegion]);
 
   // Clear selection when asset changes
   useEffect(() => {
@@ -174,8 +180,16 @@ export function MediaPanel({ context }: MediaPanelProps) {
         />
       )}
 
-      {/* Main content area */}
+      {/* Main content area with tool strip */}
       <div className="flex-1 min-h-0 flex">
+        {/* Tool strip */}
+        <ViewerToolStrip
+          overlayTools={availableOverlays}
+          overlayMode={effectiveOverlayMode}
+          onToggleOverlay={handleToggleOverlay}
+          onExitOverlay={handleExitOverlay}
+        />
+
         {/* Media/overlay display */}
         <div className="flex-1 min-w-0 relative flex flex-col">
           {ActiveMain ? (
@@ -222,9 +236,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
         onFitModeChange={setFitMode}
         isMaximized={isMaximized}
         onToggleMaximize={toggleMaximize}
-        overlayMode={effectiveOverlayMode}
-        overlayTools={availableOverlays}
-        onToggleOverlay={handleToggleOverlay}
+        isOverlayActive={effectiveOverlayMode !== 'none'}
         showCapture={asset?.type === 'video' && activeOverlayId !== 'capture'}
         captureDisabled={isCapturing}
         onCaptureFrame={captureFrame}

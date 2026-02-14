@@ -131,6 +131,7 @@ import {
   Film,
   ArrowDown,
   ArrowUp,
+  MousePointer2,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -324,6 +325,7 @@ export const Icons = {
   // Misc
   folderTree: FolderTree,
   cursorClick: Target,
+  mousePointer: MousePointer2,
   package: Package,
   box: Box,
   square: Square,
@@ -569,6 +571,14 @@ export function Icon({
 
   const resolvedStrokeWidth = setStrokeWidth ?? (setSvgProps.weight ? undefined : strokeWidth);
 
+  // When user provides explicit color:
+  // 1. Set stroke as attribute (overrides icon set's stroke for Lucide outline icons)
+  // 2. Set color as inline style (highest CSS specificity, ensures currentColor = user's
+  //    color for both Lucide stroke="currentColor" and Phosphor fill="currentColor")
+  const colorOverride = props.color
+    ? { stroke: props.color, style: { color: props.color, ...((props as any).style || {}) } }
+    : {};
+
   return (
     <IconComponent
       size={size}
@@ -576,6 +586,7 @@ export function Icon({
       strokeWidth={resolvedStrokeWidth}
       {...setSvgProps}
       {...props}
+      {...colorOverride}
     />
   );
 }
@@ -603,42 +614,6 @@ export function ThemedIcon({
       className={`${iconVariants[variant]} ${spinning ? 'animate-spin' : ''} ${className}`}
       {...props}
     />
-  );
-}
-
-/**
- * Clickable icon button with hover states
- */
-export function IconButton({
-  name,
-  size = 16,
-  variant = 'default',
-  onClick,
-  disabled = false,
-  title,
-  className = '',
-  ...props
-}: IconProps & {
-  name: IconName;
-  variant?: IconVariant;
-  onClick?: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  const baseClasses = 'p-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50';
-  const enabledClasses = 'hover:bg-neutral-200 dark:hover:bg-neutral-700 active:bg-neutral-300 dark:active:bg-neutral-600 cursor-pointer';
-  const disabledClasses = 'opacity-40 cursor-not-allowed';
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`${baseClasses} ${disabled ? disabledClasses : enabledClasses} ${className}`}
-    >
-      <Icon name={name} size={size} className={iconVariants[variant]} {...props} />
-    </button>
   );
 }
 

@@ -243,6 +243,19 @@ export {
 } from './polygonEdit';
 
 // ============================================================================
+// Rectangle Editing
+// ============================================================================
+
+export {
+  // Handle positions
+  getRectHandles,
+  // Handle hit testing
+  findRectHandle,
+  // Handle-based resize
+  resizeRectByHandle,
+} from './rectEdit';
+
+// ============================================================================
 // Region Serialization
 // ============================================================================
 
