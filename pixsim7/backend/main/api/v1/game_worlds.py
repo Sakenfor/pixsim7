@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ValidationError
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, GameWorldSvc
@@ -18,6 +18,8 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     GameProjectImportRequest,
     GameProjectImportResponse,
     SaveGameProjectRequest,
+    RenameSavedGameProjectRequest,
+    DuplicateSavedGameProjectRequest,
     SavedGameProjectSummary,
     SavedGameProjectDetail,
 )
@@ -361,6 +363,70 @@ async def save_project_snapshot(
         raise
 
     return _to_saved_project_summary(project)
+
+
+@router.patch("/projects/snapshots/{project_id}", response_model=SavedGameProjectSummary)
+async def rename_saved_project(
+    project_id: int,
+    req: RenameSavedGameProjectRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SavedGameProjectSummary:
+    storage = GameProjectStorageService(game_world_service.db)
+    try:
+        project = await storage.rename_project(
+            owner_user_id=user.id,
+            project_id=project_id,
+            name=req.name,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "project_name_required":
+            raise HTTPException(status_code=400, detail=msg)
+        if msg == "project_not_found":
+            raise HTTPException(status_code=404, detail=msg)
+        raise
+
+    return _to_saved_project_summary(project)
+
+
+@router.post("/projects/snapshots/{project_id}/duplicate", response_model=SavedGameProjectSummary)
+async def duplicate_saved_project(
+    project_id: int,
+    req: DuplicateSavedGameProjectRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SavedGameProjectSummary:
+    storage = GameProjectStorageService(game_world_service.db)
+    try:
+        project = await storage.duplicate_project(
+            owner_user_id=user.id,
+            project_id=project_id,
+            name=req.name,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "project_name_required":
+            raise HTTPException(status_code=400, detail=msg)
+        if msg == "project_not_found":
+            raise HTTPException(status_code=404, detail=msg)
+        raise
+
+    return _to_saved_project_summary(project)
+
+
+@router.delete("/projects/snapshots/{project_id}", status_code=204)
+async def delete_saved_project(
+    project_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> Response:
+    storage = GameProjectStorageService(game_world_service.db)
+    deleted = await storage.delete_project(owner_user_id=user.id, project_id=project_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+    return Response(status_code=204)
 
 
 def generate_migration_suggestions(errors: List[str]) -> List[str]:

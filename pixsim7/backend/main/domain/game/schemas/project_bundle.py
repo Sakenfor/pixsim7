@@ -161,11 +161,20 @@ class GameProjectImportResponse(BaseModel):
     id_maps: ProjectImportIdMaps
     warnings: List[str] = Field(default_factory=list)
 
+
 class SaveGameProjectRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
     bundle: GameProjectBundle
     source_world_id: Optional[int] = None
     overwrite_project_id: Optional[int] = None
+
+
+class RenameSavedGameProjectRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+
+
+class DuplicateSavedGameProjectRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
 
 
 class SavedGameProjectSummary(BaseModel):
@@ -179,3 +188,4 @@ class SavedGameProjectSummary(BaseModel):
 
 class SavedGameProjectDetail(SavedGameProjectSummary):
     bundle: GameProjectBundle
+

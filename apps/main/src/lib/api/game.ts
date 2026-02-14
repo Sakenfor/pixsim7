@@ -104,6 +104,14 @@ export interface SaveGameProjectRequest {
   overwrite_project_id?: number;
 }
 
+export interface RenameSavedGameProjectRequest {
+  name: string;
+}
+
+export interface DuplicateSavedGameProjectRequest {
+  name: string;
+}
+
 // Re-export types for backward compatibility
 export type {
   GameLocationSummary,
@@ -380,6 +388,27 @@ export async function saveGameProject(
   request: SaveGameProjectRequest
 ): Promise<SavedGameProjectSummary> {
   return pixsimClient.post<SavedGameProjectSummary>('/game/worlds/projects/snapshots', request);
+}
+
+export async function renameSavedGameProject(
+  projectId: number,
+  request: RenameSavedGameProjectRequest,
+): Promise<SavedGameProjectSummary> {
+  return pixsimClient.patch<SavedGameProjectSummary>(`/game/worlds/projects/snapshots/${projectId}`, request);
+}
+
+export async function duplicateSavedGameProject(
+  projectId: number,
+  request: DuplicateSavedGameProjectRequest,
+): Promise<SavedGameProjectSummary> {
+  return pixsimClient.post<SavedGameProjectSummary>(
+    `/game/worlds/projects/snapshots/${projectId}/duplicate`,
+    request,
+  );
+}
+
+export async function deleteSavedGameProject(projectId: number): Promise<void> {
+  await pixsimClient.delete<void>(`/game/worlds/projects/snapshots/${projectId}`);
 }
 
 // =============================================================================

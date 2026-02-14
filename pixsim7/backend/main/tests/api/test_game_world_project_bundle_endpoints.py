@@ -287,3 +287,86 @@ class TestGameWorldProjectBundleEndpoints:
         assert body["id"] == 11
         assert body["name"] == "My Project"
 
+
+    @pytest.mark.asyncio
+    async def test_rename_saved_project_success(self):
+        app = _app(authenticated=True)
+        renamed = SimpleNamespace(
+            id=11,
+            name="Renamed Project",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.rename_project",
+            new=AsyncMock(return_value=renamed),
+        ):
+            async with _client(app) as c:
+                response = await c.patch(
+                    "/api/v1/game/worlds/projects/snapshots/11",
+                    json={"name": "Renamed Project"},
+                )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == 11
+        assert body["name"] == "Renamed Project"
+
+    @pytest.mark.asyncio
+    async def test_duplicate_saved_project_success(self):
+        app = _app(authenticated=True)
+        duplicated = SimpleNamespace(
+            id=12,
+            name="Copied Project",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.duplicate_project",
+            new=AsyncMock(return_value=duplicated),
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/game/worlds/projects/snapshots/11/duplicate",
+                    json={"name": "Copied Project"},
+                )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == 12
+        assert body["name"] == "Copied Project"
+
+    @pytest.mark.asyncio
+    async def test_delete_saved_project_success(self):
+        app = _app(authenticated=True)
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.delete_project",
+            new=AsyncMock(return_value=True),
+        ):
+            async with _client(app) as c:
+                response = await c.delete("/api/v1/game/worlds/projects/snapshots/11")
+
+        assert response.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_delete_saved_project_not_found(self):
+        app = _app(authenticated=True)
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.delete_project",
+            new=AsyncMock(return_value=False),
+        ):
+            async with _client(app) as c:
+                response = await c.delete("/api/v1/game/worlds/projects/snapshots/999")
+
+        assert response.status_code == 404
+

@@ -19,6 +19,13 @@ export interface ProjectSessionSnapshot {
   lastOperation: 'import' | 'export' | null;
 }
 
+export interface SetCurrentProjectInput {
+  projectId: number | null;
+  projectName?: string | null;
+  projectSourceWorldId?: number | null;
+  projectUpdatedAt?: string | null;
+}
+
 interface RecordProjectImportInput {
   projectId?: number | null;
   projectName?: string | null;
@@ -43,6 +50,8 @@ interface RecordProjectExportInput {
 }
 
 interface ProjectSessionActions {
+  setCurrentProject: (input: SetCurrentProjectInput) => void;
+  clearCurrentProject: () => void;
   recordImport: (input: RecordProjectImportInput) => void;
   recordExport: (input: RecordProjectExportInput) => void;
   setDirty: (dirty: boolean) => void;
@@ -98,6 +107,36 @@ export const useProjectSessionStore = create<ProjectSessionStore>()(
   persist(
     (set) => ({
       ...initialState,
+
+      setCurrentProject: (input) => {
+        const projectId = toProjectId(input.projectId);
+        if (!projectId) {
+          set(() => ({
+            currentProjectId: null,
+            currentProjectName: null,
+            currentProjectSourceWorldId: null,
+            currentProjectUpdatedAt: null,
+          }));
+          return;
+        }
+
+        set((state) => ({
+          currentProjectId: projectId,
+          currentProjectName: toProjectName(input.projectName) ?? state.currentProjectName,
+          currentProjectSourceWorldId:
+            toProjectId(input.projectSourceWorldId) ?? state.currentProjectSourceWorldId,
+          currentProjectUpdatedAt:
+            toProjectTimestamp(input.projectUpdatedAt) ?? state.currentProjectUpdatedAt,
+        }));
+      },
+
+      clearCurrentProject: () =>
+        set(() => ({
+          currentProjectId: null,
+          currentProjectName: null,
+          currentProjectSourceWorldId: null,
+          currentProjectUpdatedAt: null,
+        })),
 
       recordImport: (input) => {
         const importedAt = Date.now();
@@ -168,3 +207,4 @@ export const useProjectSessionStore = create<ProjectSessionStore>()(
     },
   ),
 );
+

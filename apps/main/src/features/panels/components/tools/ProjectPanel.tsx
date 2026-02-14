@@ -2,8 +2,11 @@ import { Button, useToast } from '@pixsim7/shared.ui';
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  deleteSavedGameProject,
+  duplicateSavedGameProject,
   getSavedGameProject,
   listSavedGameProjects,
+  renameSavedGameProject,
   saveGameProject,
 } from '@lib/api';
 import {
@@ -68,6 +71,10 @@ function confirmDiscardUnsavedAuthoringChanges(): boolean {
   );
 }
 
+function confirmDeleteSavedProject(projectName: string): boolean {
+  return window.confirm(`Delete saved project "${projectName}"? This cannot be undone.`);
+}
+
 export function ProjectPanel() {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -80,6 +87,7 @@ export function ProjectPanel() {
   const selectedProjectId = useProjectIndexStore((state) => state.selectedProjectId);
   const setSavedProjects = useProjectIndexStore((state) => state.setProjects);
   const upsertSavedProject = useProjectIndexStore((state) => state.upsertProject);
+  const removeSavedProject = useProjectIndexStore((state) => state.removeProject);
   const selectSavedProject = useProjectIndexStore((state) => state.selectProject);
   const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
   const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
@@ -95,6 +103,8 @@ export function ProjectPanel() {
   const lastOperation = useProjectSessionStore((state) => state.lastOperation);
   const sessionCoreWarnings = useProjectSessionStore((state) => state.coreWarnings);
   const sessionExtensionWarnings = useProjectSessionStore((state) => state.extensionWarnings);
+  const setCurrentProject = useProjectSessionStore((state) => state.setCurrentProject);
+  const clearCurrentProject = useProjectSessionStore((state) => state.clearCurrentProject);
   const recordImport = useProjectSessionStore((state) => state.recordImport);
   const recordExport = useProjectSessionStore((state) => state.recordExport);
   const registeredExtensions = useMemo(
@@ -204,6 +214,98 @@ export function ProjectPanel() {
       toast.success(overwrite ? `Project updated: ${saved.name}` : `Project saved: ${saved.name}`);
     } catch (error) {
       toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRenameSelectedProject = async () => {
+    if (!selectedProjectId || !selectedProject) {
+      toast.warning('Select a project to rename');
+      return;
+    }
+
+    const resolvedName = projectName.trim();
+    if (!resolvedName) {
+      toast.warning('Enter a project name before renaming');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const renamed = await renameSavedGameProject(selectedProjectId, { name: resolvedName });
+      upsertSavedProject(renamed);
+      selectSavedProject(renamed.id);
+      setProjectName(renamed.name);
+
+      if (currentProjectId === renamed.id) {
+        setCurrentProject({
+          projectId: renamed.id,
+          projectName: renamed.name,
+          projectSourceWorldId: renamed.source_world_id ?? null,
+          projectUpdatedAt: renamed.updated_at,
+        });
+      }
+
+      toast.success(`Project renamed: ${renamed.name}`);
+    } catch (error) {
+      toast.error(`Project rename failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDuplicateSelectedProject = async () => {
+    if (!selectedProjectId || !selectedProject) {
+      toast.warning('Select a project to duplicate');
+      return;
+    }
+
+    const resolvedName = projectName.trim() || `${selectedProject.name} Copy`;
+
+    setBusy(true);
+    try {
+      const duplicated = await duplicateSavedGameProject(selectedProjectId, { name: resolvedName });
+      upsertSavedProject(duplicated);
+      selectSavedProject(duplicated.id);
+      setProjectName(duplicated.name);
+
+      toast.success(`Project duplicated: ${duplicated.name}`);
+    } catch (error) {
+      toast.error(`Project duplicate failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteSelectedProject = async () => {
+    if (!selectedProjectId || !selectedProject) {
+      toast.warning('Select a project to delete');
+      return;
+    }
+
+    if (!confirmDeleteSavedProject(selectedProject.name)) {
+      return;
+    }
+
+    setBusy(true);
+    try {
+      await deleteSavedGameProject(selectedProjectId);
+      const deletedId = selectedProjectId;
+      const deletedName = selectedProject.name;
+      removeSavedProject(deletedId);
+
+      if (currentProjectId === deletedId) {
+        clearCurrentProject();
+      }
+
+      if (selectedProjectId === deletedId) {
+        setProjectName('');
+      }
+
+      toast.success(`Project deleted: ${deletedName}`);
+    } catch (error) {
+      toast.error(`Project delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setBusy(false);
     }
@@ -358,6 +460,39 @@ export function ProjectPanel() {
             ))}
           </select>
         </label>
+
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void handleRenameSelectedProject();
+            }}
+            disabled={busy || !selectedProjectId}
+          >
+            Rename Selected
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void handleDuplicateSelectedProject();
+            }}
+            disabled={busy || !selectedProjectId}
+          >
+            Duplicate Selected
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void handleDeleteSelectedProject();
+            }}
+            disabled={busy || !selectedProjectId}
+          >
+            Delete Selected
+          </Button>
+        </div>
 
         {selectedProject && (
           <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">

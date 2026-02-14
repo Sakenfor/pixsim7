@@ -118,6 +118,8 @@ from .project_bundle import (
     ProjectImportIdMaps,
     GameProjectImportResponse,
     SaveGameProjectRequest,
+    RenameSavedGameProjectRequest,
+    DuplicateSavedGameProjectRequest,
     SavedGameProjectSummary,
     SavedGameProjectDetail,
 )
@@ -219,6 +221,9 @@ __all__ = [
     "ProjectImportIdMaps",
     "GameProjectImportResponse",
     "SaveGameProjectRequest",
+    "RenameSavedGameProjectRequest",
+    "DuplicateSavedGameProjectRequest",
     "SavedGameProjectSummary",
     "SavedGameProjectDetail",
 ]
+
