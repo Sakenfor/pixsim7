@@ -7,6 +7,7 @@ Processes generations created via GenerationService:
 3. Update generation status
 """
 import os
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
@@ -244,6 +245,116 @@ def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
     return False
 
 
+async def _release_account_reservation(
+    *,
+    account_service: AccountService,
+    account_id: int,
+    gen_logger,
+) -> None:
+    """Best-effort account release helper used across failure paths."""
+    try:
+        await account_service.release_account(account_id)
+    except Exception as release_err:
+        gen_logger.warning("account_release_failed", error=str(release_err))
+
+
+async def _apply_account_cooldown(
+    *,
+    db: AsyncSession,
+    account: ProviderAccount,
+    cooldown_seconds: int,
+    gen_logger,
+    event_name: str,
+    error_code: str | None = None,
+) -> None:
+    """Apply account cooldown and log outcome."""
+    try:
+        account.cooldown_until = datetime.now(timezone.utc) + timedelta(
+            seconds=cooldown_seconds,
+        )
+        await db.commit()
+        payload = {
+            "account_id": account.id,
+            "cooldown_seconds": cooldown_seconds,
+        }
+        if error_code:
+            payload["error_code"] = error_code
+        gen_logger.info(event_name, **payload)
+    except Exception as cooldown_err:
+        gen_logger.warning(
+            "account_cooldown_failed",
+            account_id=account.id,
+            error=str(cooldown_err),
+        )
+
+
+async def _requeue_generation_for_account_rotation(
+    *,
+    db: AsyncSession,
+    generation: Generation,
+    generation_id: int,
+    failed_account_id: int,
+    reason: str,
+    log_event: str,
+    account_log_field: str,
+    gen_logger,
+    clear_preferred_on_account_match: bool = False,
+    error_code: str | None = None,
+) -> dict | None:
+    """
+    Reset generation state and enqueue it to retry with a different account.
+
+    Returns requeue payload on success; returns None if enqueue fails so caller
+    can fall through to standard failure handling.
+    """
+    cleared_preferred = False
+    generation.account_id = None
+    if (
+        clear_preferred_on_account_match
+        and generation.preferred_account_id == failed_account_id
+    ):
+        generation.preferred_account_id = None
+        cleared_preferred = True
+
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+        generation.status = GenStatus.PENDING
+        generation.started_at = None
+        await db.commit()
+        await db.refresh(generation)
+
+        arq_pool = await get_arq_pool()
+        await arq_pool.enqueue_job(
+            "process_generation",
+            generation_id=generation.id,
+        )
+
+        payload = {
+            "generation_id": generation.id,
+            account_log_field: failed_account_id,
+        }
+        if clear_preferred_on_account_match:
+            payload["cleared_preferred_account"] = cleared_preferred
+        if error_code:
+            payload["error_code"] = error_code
+        gen_logger.info(log_event, **payload)
+
+        return {
+            "status": "requeued",
+            "reason": reason,
+            "generation_id": generation_id,
+        }
+    except Exception as requeue_err:
+        gen_logger.error(
+            "generation_requeue_failed",
+            error=str(requeue_err),
+            generation_id=generation.id,
+        )
+        return None
+
+
 async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
     Process a single generation.
@@ -286,7 +397,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
 
             # Check if scheduled for later
-            from datetime import datetime, timezone
             if generation.scheduled_at and generation.scheduled_at > datetime.now(timezone.utc):
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
                 debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
@@ -452,184 +562,84 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             error=str(mark_err),
                         )
 
-                    # Release account reservation
-                    try:
-                        await account_service.release_account(account.id)
-                    except Exception as release_err:
-                        gen_logger.warning("account_release_failed", error=str(release_err))
-
-                    # Clear account_id so requeued job doesn't try to reuse the exhausted account
-                    generation.account_id = None
-
-                    # Reset generation to PENDING and re-enqueue so it picks a different account
-                    # Don't mark as failed - we want to try again with another account
-                    try:
-                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-                        generation.status = GenStatus.PENDING
-                        generation.started_at = None
-                        await db.commit()
-                        await db.refresh(generation)
-
-                        arq_pool = await get_arq_pool()
-                        await arq_pool.enqueue_job(
-                            "process_generation",
-                            generation_id=generation.id,
-                        )
-
-                        gen_logger.info(
-                            "generation_requeued_for_different_account",
-                            generation_id=generation.id,
-                            exhausted_account_id=account.id,
-                        )
-
-                        return {
-                            "status": "requeued",
-                            "reason": "account_quota_exhausted",
-                            "generation_id": generation_id,
-                        }
-                    except Exception as requeue_err:
-                        gen_logger.error(
-                            "generation_requeue_failed",
-                            error=str(requeue_err),
-                            generation_id=generation.id,
-                        )
-                        # Fall through to mark as failed if requeue fails
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_quota_exhausted",
+                        log_event="generation_requeued_for_different_account",
+                        account_log_field="exhausted_account_id",
+                        gen_logger=gen_logger,
+                    )
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
-                    # Put account in short cooldown (30 seconds) so it's not immediately reselected
-                    try:
-                        from datetime import timedelta
-                        account.cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=30)
-                        await db.commit()
-                        gen_logger.info(
-                            "account_cooldown_concurrent_limit",
-                            account_id=account.id,
-                            cooldown_seconds=30,
-                        )
-                    except Exception as cooldown_err:
-                        gen_logger.warning(
-                            "account_cooldown_failed",
-                            account_id=account.id,
-                            error=str(cooldown_err),
-                        )
-
-                    # Release account reservation
-                    try:
-                        await account_service.release_account(account.id)
-                    except Exception as release_err:
-                        gen_logger.warning("account_release_failed", error=str(release_err))
-
-                    # Clear account_id so job picks a different account on retry
-                    generation.account_id = None
-
-                    # Reset generation to PENDING and re-enqueue for different account
-                    try:
-                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-                        generation.status = GenStatus.PENDING
-                        generation.started_at = None
-                        await db.commit()
-                        await db.refresh(generation)
-
-                        arq_pool = await get_arq_pool()
-                        await arq_pool.enqueue_job(
-                            "process_generation",
-                            generation_id=generation.id,
-                        )
-
-                        gen_logger.info(
-                            "generation_requeued_concurrent_limit",
-                            generation_id=generation.id,
-                            previous_account_id=account.id,
-                        )
-
-                        return {
-                            "status": "requeued",
-                            "reason": "account_concurrent_limit",
-                            "generation_id": generation_id,
-                        }
-                    except Exception as requeue_err:
-                        gen_logger.error(
-                            "generation_requeue_failed",
-                            error=str(requeue_err),
-                            generation_id=generation.id,
-                        )
-                        # Fall through to mark as failed if requeue fails
+                    await _apply_account_cooldown(
+                        db=db,
+                        account=account,
+                        cooldown_seconds=30,
+                        gen_logger=gen_logger,
+                        event_name="account_cooldown_concurrent_limit",
+                    )
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_concurrent_limit",
+                        log_event="generation_requeued_concurrent_limit",
+                        account_log_field="previous_account_id",
+                        gen_logger=gen_logger,
+                    )
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Session/auth failure on one account - cool it down and retry with another account.
                 elif _is_auth_rotation_error(e):
-                    try:
-                        from datetime import timedelta
-
-                        account.cooldown_until = datetime.now(timezone.utc) + timedelta(
-                            seconds=AUTH_FAILURE_COOLDOWN_SECONDS
-                        )
-                        await db.commit()
-                        gen_logger.info(
-                            "account_cooldown_auth_failure",
-                            account_id=account.id,
-                            cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
-                            error_code=_extract_error_code(e),
-                        )
-                    except Exception as cooldown_err:
-                        gen_logger.warning(
-                            "account_cooldown_failed",
-                            account_id=account.id,
-                            error=str(cooldown_err),
-                        )
-
-                    # Release account reservation
-                    try:
-                        await account_service.release_account(account.id)
-                    except Exception as release_err:
-                        gen_logger.warning("account_release_failed", error=str(release_err))
-
-                    # Ensure next run does not lock onto the same failed account.
-                    cleared_preferred = generation.preferred_account_id == account.id
-                    generation.account_id = None
-                    if cleared_preferred:
-                        generation.preferred_account_id = None
-
-                    # Reset generation to PENDING and re-enqueue for different account.
-                    try:
-                        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-                        generation.status = GenStatus.PENDING
-                        generation.started_at = None
-                        await db.commit()
-                        await db.refresh(generation)
-
-                        arq_pool = await get_arq_pool()
-                        await arq_pool.enqueue_job(
-                            "process_generation",
-                            generation_id=generation.id,
-                        )
-
-                        gen_logger.info(
-                            "generation_requeued_auth_failure",
-                            generation_id=generation.id,
-                            failed_account_id=account.id,
-                            cleared_preferred_account=cleared_preferred,
-                            error_code=_extract_error_code(e),
-                        )
-
-                        return {
-                            "status": "requeued",
-                            "reason": "account_auth_failure",
-                            "generation_id": generation_id,
-                        }
-                    except Exception as requeue_err:
-                        gen_logger.error(
-                            "generation_requeue_failed",
-                            error=str(requeue_err),
-                            generation_id=generation.id,
-                        )
-                        # Fall through to mark as failed if requeue fails
+                    error_code = _extract_error_code(e)
+                    await _apply_account_cooldown(
+                        db=db,
+                        account=account,
+                        cooldown_seconds=AUTH_FAILURE_COOLDOWN_SECONDS,
+                        gen_logger=gen_logger,
+                        event_name="account_cooldown_auth_failure",
+                        error_code=error_code,
+                    )
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_auth_failure",
+                        log_event="generation_requeued_auth_failure",
+                        account_log_field="failed_account_id",
+                        gen_logger=gen_logger,
+                        clear_preferred_on_account_match=True,
+                        error_code=error_code,
+                    )
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Content filtered - retry only if retryable (output rejection, not prompt rejection)
                 elif isinstance(e, ProviderContentFilteredError):
@@ -712,10 +722,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Fall through to mark as failed
 
                 # Release account reservation on failure
-                try:
-                    await account_service.release_account(account.id)
-                except Exception as release_err:
-                    gen_logger.warning("account_release_failed", error=str(release_err))
+                await _release_account_reservation(
+                    account_service=account_service,
+                    account_id=account.id,
+                    gen_logger=gen_logger,
+                )
 
                 # Check if this error should NOT be retried
                 is_non_retryable = _is_non_retryable_error(e)

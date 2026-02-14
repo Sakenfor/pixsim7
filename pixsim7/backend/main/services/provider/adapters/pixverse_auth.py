@@ -21,6 +21,53 @@ logger = get_logger()
 class PixverseAuthMixin:
     """Mixin for Pixverse authentication operations"""
 
+    async def _persist_oauth_only_account_state(self, account: ProviderAccount) -> bool:
+        """
+        Persist OAuth-only account markers in an isolated transaction.
+
+        Auto-reauth failures trigger session rollbacks in the caller's DB session.
+        Persisting via a separate session ensures the OAuth-only flags survive that
+        rollback and prevent repeated password reauth attempts.
+        """
+        account_id = getattr(account, "id", None)
+        if account_id is None:
+            return False
+
+        try:
+            from pixsim7.backend.main.infrastructure.database.session import AsyncSessionLocal
+            from pixsim7.backend.main.domain.providers import ProviderAccount as ProviderAccountModel
+
+            async with AsyncSessionLocal() as isolated_session:
+                stored = await isolated_session.get(ProviderAccountModel, account_id)
+                if not stored:
+                    logger.warning(
+                        "pixverse_oauth_only_persist_missing_account",
+                        account_id=account_id,
+                    )
+                    return False
+
+                merged_meta = dict(getattr(stored, "provider_metadata", None) or {})
+                merged_meta.update(getattr(account, "provider_metadata", None) or {})
+                merged_meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
+
+                stored.provider_metadata = merged_meta
+                stored.password = None
+                await isolated_session.commit()
+
+                logger.info(
+                    "pixverse_oauth_only_persisted",
+                    account_id=account_id,
+                    auth_method=PixverseAuthMethod.GOOGLE.value,
+                )
+                return True
+        except Exception as persist_exc:
+            logger.warning(
+                "pixverse_oauth_only_persist_failed",
+                account_id=account_id,
+                error=str(persist_exc),
+            )
+            return False
+
     async def get_user_info(self, jwt_token: str, cookies: dict = None) -> dict:
         """
         Get user info from Pixverse API (like pixsim6)
@@ -276,25 +323,22 @@ class PixverseAuthMixin:
                     note="global_reauth_cooldown_activated",
                 )
 
-            if "please sign in via oauth" in msg:
+            if "sign in via oauth" in msg:
                 # This is an OAuth-only account (Google/Discord/Apple); password-based
                 # reauth will never work. Mark it as GOOGLE so future auto-reauth
                 # attempts are skipped and rely purely on cookie-based flows.
                 meta = getattr(account, "provider_metadata", None) or {}
-                if meta.get("auth_method") != PixverseAuthMethod.GOOGLE.value:
-                    meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
-                    account.provider_metadata = meta
+                meta["auth_method"] = PixverseAuthMethod.GOOGLE.value
+                account.provider_metadata = meta
                 # Clear any stored password so that future auto-reauth attempts are
                 # definitively skipped even if auth_method metadata is missing.
                 account.password = None
-                # Don't try to persist here - it can corrupt async sessions.
-                # The changes are on the account object and will be persisted
-                # when the outer transaction commits (if it succeeds).
+                persisted = await self._persist_oauth_only_account_state(account)
                 logger.info(
                     "pixverse_detected_oauth_only_account",
                     account_id=account.id,
                     auth_method=PixverseAuthMethod.GOOGLE.value,
-                    note="changes_not_persisted_will_be_lost_on_rollback",
+                    persisted=persisted,
                 )
 
             # Rollback the session to clean state after any auto-reauth failure
@@ -537,4 +581,3 @@ class PixverseAuthMixin:
             'account_id': account_id,
             'provider_metadata': provider_metadata,  # Full getUserInfo response
         }
-
