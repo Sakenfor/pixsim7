@@ -49,6 +49,7 @@ from .core import (
     NPCState,
     NpcExpression,
     GameHotspot,
+    GameProjectSnapshot,
     # ECS
     get_npc_entity,
     set_npc_entity,
@@ -185,6 +186,7 @@ __all__ = [
     "NPCState",
     "NpcExpression",
     "GameHotspot",
+    "GameProjectSnapshot",
     # ECS
     "get_npc_entity",
     "set_npc_entity",
@@ -296,3 +298,4 @@ def __getattr__(name: str) -> Any:
         return getattr(_behavior, name)
 
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+

@@ -17,8 +17,12 @@ from pixsim7.backend.main.domain.game.schemas.project_bundle import (
     GameProjectBundle,
     GameProjectImportRequest,
     GameProjectImportResponse,
+    SaveGameProjectRequest,
+    SavedGameProjectSummary,
+    SavedGameProjectDetail,
 )
 from pixsim7.backend.main.services.game.project_bundle import GameProjectBundleService
+from pixsim7.backend.main.services.game.project_storage import GameProjectStorageService
 
 
 router = APIRouter()
@@ -76,6 +80,29 @@ async def _build_world_detail(
     world_state = state or await game_world_service.get_world_state(world.id)
     world_time = world_state.world_time if world_state else 0.0
     return GameWorldDetail(id=world.id, name=world.name, meta=world.meta, world_time=world_time)
+
+
+def _to_saved_project_summary(project) -> SavedGameProjectSummary:
+    return SavedGameProjectSummary(
+        id=project.id,
+        name=project.name,
+        source_world_id=project.source_world_id,
+        schema_version=project.schema_version,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+    )
+
+
+def _to_saved_project_detail(project) -> SavedGameProjectDetail:
+    return SavedGameProjectDetail(
+        id=project.id,
+        name=project.name,
+        source_world_id=project.source_world_id,
+        schema_version=project.schema_version,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        bundle=GameProjectBundle.model_validate(project.bundle),
+    )
 
 
 @router.get("/", response_model=PaginatedWorldsResponse)
@@ -275,6 +302,65 @@ async def import_world_project(
         if msg in {"unsupported_import_mode", "world_name_required"}:
             raise HTTPException(status_code=400, detail=msg)
         raise
+
+
+@router.get("/projects/snapshots", response_model=List[SavedGameProjectSummary])
+async def list_saved_projects(
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+    offset: int = 0,
+    limit: int = 100,
+) -> List[SavedGameProjectSummary]:
+    storage = GameProjectStorageService(game_world_service.db)
+    projects = await storage.list_projects(
+        owner_user_id=user.id,
+        offset=offset,
+        limit=limit,
+    )
+    return [_to_saved_project_summary(project) for project in projects]
+
+
+@router.get("/projects/snapshots/{project_id}", response_model=SavedGameProjectDetail)
+async def get_saved_project(
+    project_id: int,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SavedGameProjectDetail:
+    storage = GameProjectStorageService(game_world_service.db)
+    project = await storage.get_project(owner_user_id=user.id, project_id=project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="project_not_found")
+
+    try:
+        return _to_saved_project_detail(project)
+    except ValidationError:
+        raise HTTPException(status_code=500, detail="stored_project_bundle_invalid")
+
+
+@router.post("/projects/snapshots", response_model=SavedGameProjectSummary)
+async def save_project_snapshot(
+    req: SaveGameProjectRequest,
+    game_world_service: GameWorldSvc,
+    user: CurrentUser,
+) -> SavedGameProjectSummary:
+    storage = GameProjectStorageService(game_world_service.db)
+    try:
+        project = await storage.save_project(
+            owner_user_id=user.id,
+            name=req.name,
+            bundle=req.bundle,
+            source_world_id=req.source_world_id,
+            overwrite_project_id=req.overwrite_project_id,
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg == "project_name_required":
+            raise HTTPException(status_code=400, detail=msg)
+        if msg in {"project_not_found", "world_not_found"}:
+            raise HTTPException(status_code=404, detail=msg)
+        raise
+
+    return _to_saved_project_summary(project)
 
 
 def generate_migration_suggestions(errors: List[str]) -> List[str]:
@@ -1080,3 +1166,4 @@ async def get_world_config_endpoint(
     config = get_world_config(world.meta)
 
     return config
+

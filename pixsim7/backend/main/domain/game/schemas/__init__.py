@@ -117,6 +117,9 @@ from .project_bundle import (
     ProjectImportCounts,
     ProjectImportIdMaps,
     GameProjectImportResponse,
+    SaveGameProjectRequest,
+    SavedGameProjectSummary,
+    SavedGameProjectDetail,
 )
 
 __all__ = [
@@ -215,4 +218,7 @@ __all__ = [
     "ProjectImportCounts",
     "ProjectImportIdMaps",
     "GameProjectImportResponse",
+    "SaveGameProjectRequest",
+    "SavedGameProjectSummary",
+    "SavedGameProjectDetail",
 ]

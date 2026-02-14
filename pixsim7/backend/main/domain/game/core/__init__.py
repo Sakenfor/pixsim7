@@ -25,6 +25,7 @@ from .models import (
     NPCState,
     NpcExpression,
     GameHotspot,
+    GameProjectSnapshot,
 )
 
 from .ecs import (
@@ -95,6 +96,7 @@ __all__ = [
     "NPCState",
     "NpcExpression",
     "GameHotspot",
+    "GameProjectSnapshot",
     # ECS
     "get_npc_entity",
     "set_npc_entity",
@@ -136,3 +138,4 @@ __all__ = [
     "get_current_location",
     "get_current_scene",
 ]
+

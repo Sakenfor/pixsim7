@@ -4,6 +4,7 @@ API tests for game world project bundle import/export endpoints.
 Focuses on HTTP behavior with mocked dependencies and service methods.
 """
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -187,3 +188,102 @@ class TestGameWorldProjectBundleEndpoints:
                 )
 
         assert response.status_code == 400
+
+
+    @pytest.mark.asyncio
+    async def test_list_saved_projects_success(self):
+        app = _app(authenticated=True)
+        saved = SimpleNamespace(
+            id=7,
+            name="World Snapshot",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.list_projects",
+            new=AsyncMock(return_value=[saved]),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/game/worlds/projects/snapshots")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert isinstance(body, list)
+        assert len(body) == 1
+        assert body[0]["id"] == 7
+        assert body[0]["name"] == "World Snapshot"
+
+    @pytest.mark.asyncio
+    async def test_get_saved_project_success(self):
+        app = _app(authenticated=True)
+        saved = SimpleNamespace(
+            id=7,
+            name="World Snapshot",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_project",
+            new=AsyncMock(return_value=saved),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/game/worlds/projects/snapshots/7")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == 7
+        assert body["bundle"]["schema_version"] == 1
+
+    @pytest.mark.asyncio
+    async def test_get_saved_project_not_found(self):
+        app = _app(authenticated=True)
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.get_project",
+            new=AsyncMock(return_value=None),
+        ):
+            async with _client(app) as c:
+                response = await c.get("/api/v1/game/worlds/projects/snapshots/999")
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_save_project_snapshot_success(self):
+        app = _app(authenticated=True)
+        saved = SimpleNamespace(
+            id=11,
+            name="My Project",
+            source_world_id=1,
+            schema_version=1,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+            bundle=_bundle_payload(),
+        )
+
+        with patch(
+            "pixsim7.backend.main.api.v1.game_worlds.GameProjectStorageService.save_project",
+            new=AsyncMock(return_value=saved),
+        ):
+            async with _client(app) as c:
+                response = await c.post(
+                    "/api/v1/game/worlds/projects/snapshots",
+                    json={
+                        "name": "My Project",
+                        "source_world_id": 1,
+                        "bundle": _bundle_payload(),
+                    },
+                )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["id"] == 11
+        assert body["name"] == "My Project"
+

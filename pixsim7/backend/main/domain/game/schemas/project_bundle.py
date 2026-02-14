@@ -160,3 +160,22 @@ class GameProjectImportResponse(BaseModel):
     counts: ProjectImportCounts
     id_maps: ProjectImportIdMaps
     warnings: List[str] = Field(default_factory=list)
+
+class SaveGameProjectRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    bundle: GameProjectBundle
+    source_world_id: Optional[int] = None
+    overwrite_project_id: Optional[int] = None
+
+
+class SavedGameProjectSummary(BaseModel):
+    id: int
+    name: str
+    source_world_id: Optional[int] = None
+    schema_version: int = PROJECT_BUNDLE_SCHEMA_VERSION
+    created_at: datetime
+    updated_at: datetime
+
+
+class SavedGameProjectDetail(SavedGameProjectSummary):
+    bundle: GameProjectBundle

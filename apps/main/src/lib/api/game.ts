@@ -84,6 +84,26 @@ export interface GameProjectImportResponse {
   warnings: string[];
 }
 
+export interface SavedGameProjectSummary {
+  id: number;
+  name: string;
+  source_world_id: number | null;
+  schema_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SavedGameProjectDetail extends SavedGameProjectSummary {
+  bundle: GameProjectBundle;
+}
+
+export interface SaveGameProjectRequest {
+  name: string;
+  bundle: GameProjectBundle;
+  source_world_id?: number | null;
+  overwrite_project_id?: number;
+}
+
 // Re-export types for backward compatibility
 export type {
   GameLocationSummary,
@@ -335,6 +355,33 @@ export async function importWorldProject(
   });
 }
 
+export async function listSavedGameProjects(
+  opts?: { offset?: number; limit?: number }
+): Promise<SavedGameProjectSummary[]> {
+  const params = new URLSearchParams();
+  if (typeof opts?.offset === 'number') {
+    params.set('offset', String(opts.offset));
+  }
+  if (typeof opts?.limit === 'number') {
+    params.set('limit', String(opts.limit));
+  }
+
+  const query = params.toString();
+  return pixsimClient.get<SavedGameProjectSummary[]>(
+    query ? `/game/worlds/projects/snapshots?${query}` : '/game/worlds/projects/snapshots'
+  );
+}
+
+export async function getSavedGameProject(projectId: number): Promise<SavedGameProjectDetail> {
+  return pixsimClient.get<SavedGameProjectDetail>(`/game/worlds/projects/snapshots/${projectId}`);
+}
+
+export async function saveGameProject(
+  request: SaveGameProjectRequest
+): Promise<SavedGameProjectSummary> {
+  return pixsimClient.post<SavedGameProjectSummary>('/game/worlds/projects/snapshots', request);
+}
+
 // =============================================================================
 // NPCs API
 // =============================================================================
@@ -530,3 +577,4 @@ export async function resolveTemplateBatch(
 ): Promise<ResolveBatchResponse> {
   return gameApi.resolveTemplateBatch(refs, sharedContext);
 }
+

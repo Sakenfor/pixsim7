@@ -1,7 +1,12 @@
 import { Button, useToast } from '@pixsim7/shared.ui';
-import { useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import type { GameProjectBundle } from '@lib/api';
+import {
+  getSavedGameProject,
+  listSavedGameProjects,
+  saveGameProject,
+  type SavedGameProjectSummary,
+} from '@lib/api';
 import {
   clearAuthoringProjectBundleDirtyState,
   exportWorldProjectWithExtensions,
@@ -21,8 +26,11 @@ import { PanelHeader } from '../shared/PanelHeader';
 
 type LastProjectAction =
   | {
-      kind: 'export';
+      kind: 'save';
+      projectId: number;
+      projectName: string;
       worldName: string;
+      overwritten: boolean;
       counts: {
         locations: number;
         npcs: number;
@@ -32,7 +40,9 @@ type LastProjectAction =
       extensionReport: ProjectBundleExtensionExportReport;
     }
   | {
-      kind: 'import';
+      kind: 'load';
+      projectId: number;
+      projectName: string;
       worldId: number;
       worldName: string;
       counts: ImportWorldProjectWithExtensionsResult['response']['counts'];
@@ -40,32 +50,32 @@ type LastProjectAction =
       extensionReport: ProjectBundleExtensionImportReport;
     };
 
-function downloadJson(filename: string, payload: unknown): void {
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 function formatTimestamp(value: number | null): string {
   if (!value) return 'Never';
   return new Date(value).toLocaleString();
 }
 
+function formatIsoTimestamp(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+  return new Date(parsed).toLocaleString();
+}
+
 function confirmDiscardUnsavedAuthoringChanges(): boolean {
   return window.confirm(
-    'You have unsaved authoring changes. Importing a project may overwrite them. Continue?',
+    'You have unsaved authoring changes. Loading a project may overwrite them. Continue?',
   );
 }
 
 export function ProjectPanel() {
   const toast = useToast();
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [projectName, setProjectName] = useState('');
   const [worldNameOverride, setWorldNameOverride] = useState('');
+  const [savedProjects, setSavedProjects] = useState<SavedGameProjectSummary[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
 
   const { worldId, setWorldId, setLocationId } = useWorldContextStore();
@@ -84,25 +94,72 @@ export function ProjectPanel() {
     [],
   );
 
-  const handleExport = async () => {
+  const selectedProject = useMemo(
+    () => savedProjects.find((entry) => entry.id === selectedProjectId) ?? null,
+    [savedProjects, selectedProjectId],
+  );
+
+  const loadSavedProjects = async (opts?: { silent?: boolean }) => {
+    try {
+      const projects = await listSavedGameProjects({ limit: 200 });
+      setSavedProjects(projects);
+      if (projects.length === 0) {
+        setSelectedProjectId(null);
+      } else if (!projects.some((project) => project.id === selectedProjectId)) {
+        setSelectedProjectId(projects[0].id);
+      }
+    } catch (error) {
+      if (!opts?.silent) {
+        toast.error(
+          `Failed to load saved projects: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
+    }
+  };
+
+  useEffect(() => {
+    void loadSavedProjects({ silent: true });
+    // Intentionally run once for panel bootstrap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSaveProject = async (overwrite: boolean) => {
     if (!worldId) {
-      toast.warning('Select a world before exporting a project');
+      toast.warning('Select a world before saving a project');
+      return;
+    }
+    if (overwrite && !selectedProjectId) {
+      toast.warning('Select a project to overwrite');
       return;
     }
 
     setBusy(true);
     try {
       const { bundle, extensionReport } = await exportWorldProjectWithExtensions(worldId);
-      const filenameBase = String(bundle.core.world.name || `world_${worldId}`)
-        .replace(/[^a-z0-9]/gi, '_')
-        .toLowerCase();
-      const filename = `${filenameBase}_project_${Date.now()}.json`;
+      const resolvedName =
+        projectName.trim() ||
+        selectedProject?.name ||
+        String(bundle.core.world.name || `world_${worldId}`);
 
-      downloadJson(filename, bundle);
+      const saved = await saveGameProject({
+        name: resolvedName,
+        bundle,
+        source_world_id: worldId,
+        ...(overwrite && selectedProjectId ? { overwrite_project_id: selectedProjectId } : {}),
+      });
+
+      await loadSavedProjects({ silent: true });
+      setSelectedProjectId(saved.id);
+      setProjectName(saved.name);
 
       setLastAction({
-        kind: 'export',
+        kind: 'save',
+        projectId: saved.id,
+        projectName: saved.name,
         worldName: bundle.core.world.name,
+        overwritten: overwrite,
         counts: {
           locations: bundle.core.locations.length,
           npcs: bundle.core.npcs.length,
@@ -111,29 +168,39 @@ export function ProjectPanel() {
         },
         extensionReport,
       });
+
       clearAuthoringProjectBundleDirtyState();
       recordExport({
-        sourceFileName: filename,
+        sourceFileName: saved.name,
         schemaVersion: bundle.schema_version ?? null,
         extensionKeys: Object.keys(bundle.extensions || {}),
         extensionWarnings: extensionReport.warnings,
       });
 
-      toast.success(`Project exported: ${filename}`);
+      toast.success(overwrite ? `Project updated: ${saved.name}` : `Project saved: ${saved.name}`);
     } catch (error) {
-      toast.error(`Project export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setBusy(false);
     }
   };
 
-  const handleImportFile = async (file: File) => {
+  const handleLoadSelectedProject = async () => {
+    if (!selectedProjectId) {
+      toast.warning('Select a project to load');
+      return;
+    }
+
+    const hasUnsavedChanges = dirty || isAnyAuthoringProjectBundleContributorDirty();
+    if (hasUnsavedChanges && !confirmDiscardUnsavedAuthoringChanges()) {
+      return;
+    }
+
     setBusy(true);
     try {
-      const text = await file.text();
-      const bundle = JSON.parse(text) as GameProjectBundle;
+      const project = await getSavedGameProject(selectedProjectId);
       const { response, extensionReport } = await importWorldProjectWithExtensions(
-        bundle,
+        project.bundle,
         worldNameOverride.trim() ? { world_name_override: worldNameOverride.trim() } : undefined,
       );
 
@@ -143,41 +210,36 @@ export function ProjectPanel() {
       setLocationId(firstLocationId ?? null);
 
       setLastAction({
-        kind: 'import',
+        kind: 'load',
+        projectId: project.id,
+        projectName: project.name,
         worldId: response.world_id,
         worldName: response.world_name,
         counts: response.counts,
         coreWarnings: response.warnings,
         extensionReport,
       });
+
       clearAuthoringProjectBundleDirtyState();
       recordImport({
-        sourceFileName: file.name,
-        schemaVersion: bundle.schema_version ?? null,
-        extensionKeys: Object.keys(bundle.extensions || {}),
+        sourceFileName: project.name,
+        schemaVersion: project.bundle.schema_version ?? null,
+        extensionKeys: Object.keys(project.bundle.extensions || {}),
         extensionWarnings: extensionReport.warnings,
         coreWarnings: response.warnings,
       });
 
       const warningCount = response.warnings.length + extensionReport.warnings.length;
       if (warningCount > 0) {
-        toast.warning(`Project imported with ${warningCount} warning(s)`);
+        toast.warning(`Project loaded with ${warningCount} warning(s)`);
       } else {
-        toast.success(`Project imported as "${response.world_name}"`);
+        toast.success(`Project loaded: ${project.name}`);
       }
     } catch (error) {
-      toast.error(`Project import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      toast.error(`Project load failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setBusy(false);
     }
-  };
-
-  const onPickImportFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    void handleImportFile(file);
-    // Allow selecting the same file again on subsequent imports.
-    event.target.value = '';
   };
 
   return (
@@ -194,43 +256,106 @@ export function ProjectPanel() {
 
       <div className="p-3 space-y-3 border-b border-neutral-200 dark:border-neutral-800">
         <label className="flex flex-col gap-1 text-xs">
-          <span className="text-neutral-600 dark:text-neutral-300">Import world name override (optional)</span>
+          <span className="text-neutral-600 dark:text-neutral-300">Project name</span>
           <input
-            value={worldNameOverride}
-            onChange={(event) => setWorldNameOverride(event.target.value)}
-            placeholder="Use bundle world name when empty"
+            value={projectName}
+            onChange={(event) => setProjectName(event.target.value)}
+            placeholder="Default: world name"
             className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
           />
         </label>
 
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={handleExport} disabled={busy || !worldId}>
-            Export Project
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void handleSaveProject(false);
+            }}
+            disabled={busy || !worldId}
+          >
+            Save As New
           </Button>
           <Button
             size="sm"
             variant="secondary"
             onClick={() => {
-              const hasUnsavedChanges =
-                dirty || isAnyAuthoringProjectBundleContributorDirty();
-              if (hasUnsavedChanges && !confirmDiscardUnsavedAuthoringChanges()) {
-                return;
-              }
-              fileInputRef.current?.click();
+              void handleSaveProject(true);
+            }}
+            disabled={busy || !worldId || !selectedProjectId}
+          >
+            Overwrite Selected
+          </Button>
+        </div>
+      </div>
+
+      <div className="p-3 space-y-3 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="flex items-center justify-between text-xs">
+          <div className="font-semibold">Saved Projects</div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void loadSavedProjects();
             }}
             disabled={busy}
           >
-            Import Project
+            Refresh
           </Button>
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          onChange={onPickImportFile}
-          className="hidden"
-        />
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-neutral-600 dark:text-neutral-300">Select project</span>
+          <select
+            value={selectedProjectId ?? ''}
+            onChange={(event) => {
+              const nextValue = Number(event.target.value);
+              const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
+              setSelectedProjectId(nextId);
+              const nextProject = savedProjects.find((entry) => entry.id === nextId);
+              if (nextProject) {
+                setProjectName(nextProject.name);
+              }
+            }}
+            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+          >
+            <option value="">Select a saved project...</option>
+            {savedProjects.map((project) => (
+              <option key={project.id} value={project.id}>
+                #{project.id} {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedProject && (
+          <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
+            <div>Schema: {selectedProject.schema_version}</div>
+            <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
+            <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
+          </div>
+        )}
+
+        <label className="flex flex-col gap-1 text-xs">
+          <span className="text-neutral-600 dark:text-neutral-300">Load world name override (optional)</span>
+          <input
+            value={worldNameOverride}
+            onChange={(event) => setWorldNameOverride(event.target.value)}
+            placeholder="Use project world name when empty"
+            className="px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900"
+          />
+        </label>
+
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            void handleLoadSelectedProject();
+          }}
+          disabled={busy || !selectedProjectId}
+        >
+          Load Selected Project
+        </Button>
       </div>
 
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
@@ -249,7 +374,7 @@ export function ProjectPanel() {
         <div>Status: {dirty ? 'Dirty' : 'Clean'}</div>
         <div>Last operation: {lastOperation ?? 'none'}</div>
         <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
-        <div>Source file: {sourceFileName || 'N/A'}</div>
+        <div>Source project: {sourceFileName || 'N/A'}</div>
         <div>Last import: {formatTimestamp(lastImportedAt)}</div>
         <div>Last export: {formatTimestamp(lastExportedAt)}</div>
         <div>
@@ -261,9 +386,13 @@ export function ProjectPanel() {
         <div className="font-semibold mb-2">Last Operation</div>
         {!lastAction && <div className="text-neutral-500 dark:text-neutral-400">No project operation yet.</div>}
 
-        {lastAction?.kind === 'export' && (
+        {lastAction?.kind === 'save' && (
           <div className="space-y-1">
-            <div>Exported world: <b>{lastAction.worldName}</b></div>
+            <div>
+              Saved project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
+              {lastAction.overwritten ? ' [updated]' : ''}
+            </div>
+            <div>World source: <b>{lastAction.worldName}</b></div>
             <div>
               Core counts: locations {lastAction.counts.locations}, npcs {lastAction.counts.npcs}, scenes {lastAction.counts.scenes}, items {lastAction.counts.items}
             </div>
@@ -273,8 +402,11 @@ export function ProjectPanel() {
           </div>
         )}
 
-        {lastAction?.kind === 'import' && (
+        {lastAction?.kind === 'load' && (
           <div className="space-y-1">
+            <div>
+              Loaded project: <b>{lastAction.projectName}</b> (#{lastAction.projectId})
+            </div>
             <div>
               Imported world: <b>{lastAction.worldName}</b> (#{lastAction.worldId})
             </div>

@@ -229,3 +229,25 @@ class GameHotspot(SQLModel, table=True):
     )
     meta: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=utcnow, index=True)
+
+class GameProjectSnapshot(SQLModel, table=True):
+    """
+    Persisted authored project bundle.
+
+    Stores the canonical bundle payload (core + extensions) so projects can be
+    saved/loaded from the backend without file export/import.
+    """
+    __tablename__ = "game_project_snapshots"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    owner_user_id: int = Field(index=True)
+    source_world_id: Optional[int] = Field(default=None, foreign_key="game_worlds.id", index=True)
+    name: str = Field(max_length=160)
+    schema_version: int = Field(default=1)
+    bundle: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSONB))
+    created_at: datetime = Field(default_factory=utcnow, index=True)
+    updated_at: datetime = Field(
+        default_factory=utcnow,
+        sa_column_kwargs={"server_default": func.now(), "onupdate": func.now()},
+        index=True,
+    )
