@@ -3,10 +3,14 @@ import { assetEvents } from './assetEvents';
 import { useQuickTagStore } from './quickTagStore';
 
 /**
- * Apply the given tag to an asset and record it in recent tags.
+ * Apply the given tag(s) to an asset and record them in recent tags.
  */
-export async function applyQuickTag(assetId: number, tagSlug: string): Promise<void> {
-  const updated = await assignTags(assetId, { add: [tagSlug] });
+export async function applyQuickTag(assetId: number, tagSlugs: string[]): Promise<void> {
+  if (tagSlugs.length === 0) return;
+  const updated = await assignTags(assetId, { add: tagSlugs });
   assetEvents.emitAssetUpdated(updated);
-  useQuickTagStore.getState().addRecentTag(tagSlug);
+  const store = useQuickTagStore.getState();
+  for (const slug of tagSlugs) {
+    store.addRecentTag(slug);
+  }
 }

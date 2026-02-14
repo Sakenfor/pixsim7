@@ -151,12 +151,12 @@ const generalTab: SettingTab = {
       description: 'One-click tagging from the gallery card tag button.',
       fields: [
         {
-          id: 'quick_tag.default_tag',
+          id: 'quick_tag.default_tags',
           type: 'text',
-          label: 'Default Tag',
-          description: 'Tag slug applied when clicking the tag button on a card (e.g., "user:hero-shots").',
+          label: 'Default Tags',
+          description: 'Comma-separated tag slugs applied when clicking the tag button on a card.',
           defaultValue: '',
-          placeholder: 'e.g., user:hero-shots',
+          placeholder: 'e.g., user:hero-shots, style:cinematic',
         },
         {
           id: 'quick_tag.max_recent_tags',
@@ -318,7 +318,7 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
         return state.analyzer[key as keyof AnalyzerPreferences];
       }
       if (section === 'quick_tag' && key) {
-        if (key === 'default_tag') return quickTagState.defaultTag ?? '';
+        if (key === 'default_tags') return quickTagState.defaultTags.join(', ');
         if (key === 'max_recent_tags') return quickTagState.maxRecentTags;
         if (key === 'clear_recents') return null; // custom button, no stored value
       }
@@ -351,7 +351,13 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
         });
       } else if (section === 'quick_tag' && key) {
         const store = useQuickTagStore.getState();
-        if (key === 'default_tag') store.setDefaultTag(value || null);
+        if (key === 'default_tags') {
+          const slugs = (value as string)
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean);
+          store.setDefaultTags(slugs);
+        }
         if (key === 'max_recent_tags') store.setMaxRecentTags(value);
         if (key === 'clear_recents') store.clearRecentTags();
       }
@@ -372,7 +378,7 @@ function useTagsSettingsStoreAdapter(): SettingStoreAdapter {
       result[`analyzer.${k}`] = v;
     }
     // Quick tag fields
-    result['quick_tag.default_tag'] = quickTagState.defaultTag ?? '';
+    result['quick_tag.default_tags'] = quickTagState.defaultTags.join(', ');
     result['quick_tag.max_recent_tags'] = quickTagState.maxRecentTags;
     return result;
   }, [state, quickTagState]);

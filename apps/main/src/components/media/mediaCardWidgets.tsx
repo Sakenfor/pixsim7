@@ -468,7 +468,7 @@ export function createFavoriteWidget(props: MediaCardResolvedProps): OverlayWidg
  * Extracted as a named component so React hooks are valid.
  */
 function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
-  const { defaultTag, recentTags, setDefaultTag, addRecentTag } = useQuickTagStore();
+  const { defaultTags, recentTags, toggleDefaultTag, addRecentTag } = useQuickTagStore();
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 200, collapseDelay: 150 });
   const [inputValue, setInputValue] = useState('');
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -480,9 +480,20 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     }
   }, [isExpanded]);
 
-  const handleClick = () => {
-    if (defaultTag) {
-      applyQuickTag(data.id, defaultTag);
+  const hasAny = defaultTags.length > 0;
+  // How many of the active defaults does this asset already carry?
+  const matchCount = defaultTags.filter((t) => data.tags.includes(t)).length;
+  const hasAll = hasAny && matchCount === defaultTags.length;
+  const hasSome = matchCount > 0 && !hasAll;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent card open
+    if (defaultTags.length > 0) {
+      // Only apply tags the asset doesn't already have
+      const missing = defaultTags.filter((t) => !data.tags.includes(t));
+      if (missing.length > 0) {
+        applyQuickTag(data.id, missing);
+      }
     }
   };
 
@@ -490,10 +501,19 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     if (e.key === 'Enter' && inputValue.trim()) {
       const slug = inputValue.trim();
       addRecentTag(slug);
-      setDefaultTag(slug);
+      // Add to defaults if not already there
+      if (!defaultTags.includes(slug)) {
+        toggleDefaultTag(slug);
+      }
       setInputValue('');
     }
   };
+
+  const buttonTitle = hasAll
+    ? `Tagged: ${defaultTags.join(', ')}`
+    : hasAny
+      ? `Quick tag: ${defaultTags.join(', ')}`
+      : 'Set quick tags';
 
   return (
     <div className="relative" {...handlers}>
@@ -502,11 +522,15 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
         onClick={handleClick}
         className={`
           p-1.5 rounded-full transition-colors
-          ${defaultTag
+          ${hasAll
             ? '!bg-blue-500/90 !text-white backdrop-blur-sm'
-            : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-blue-500 backdrop-blur-sm'}
+            : hasSome
+              ? '!bg-blue-500/50 !text-white backdrop-blur-sm'
+              : hasAny
+                ? '!bg-white/80 dark:!bg-neutral-800/80 !text-blue-500 hover:!text-blue-600 backdrop-blur-sm'
+                : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-blue-500 backdrop-blur-sm'}
         `}
-        title={defaultTag ? `Quick tag: ${defaultTag}` : 'Set a default tag'}
+        title={buttonTitle}
       >
         <Icon name="tag" size={14} />
       </button>
@@ -521,30 +545,40 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
           }}
           {...handlers}
         >
-          {/* Current default */}
-          {defaultTag && (
-            <div className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium border-b border-neutral-100 dark:border-neutral-700">
-              Default: {defaultTag}
+          {/* Active defaults summary */}
+          {hasAny && (
+            <div className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium border-b border-neutral-100 dark:border-neutral-700 truncate">
+              Active: {defaultTags.join(', ')}
             </div>
           )}
 
-          {/* Recent tags */}
+          {/* Recent tags — click toggles active state */}
           {recentTags.length > 0 && (
             <div className="py-1">
-              {recentTags.map((slug) => (
-                <button
-                  key={slug}
-                  onClick={() => setDefaultTag(slug)}
-                  className={`
-                    w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
-                    hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
-                    ${slug === defaultTag ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-neutral-700 dark:text-neutral-300'}
-                  `}
-                >
-                  <Icon name="tag" size={12} className="shrink-0" />
-                  <span className="truncate">{slug}</span>
-                </button>
-              ))}
+              {recentTags.map((slug) => {
+                const isActive = defaultTags.includes(slug);
+                return (
+                  <button
+                    key={slug}
+                    onClick={() => toggleDefaultTag(slug)}
+                    className={`
+                      w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
+                      hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
+                      ${isActive ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-neutral-700 dark:text-neutral-300'}
+                    `}
+                  >
+                    <span className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]
+                      ${isActive
+                        ? 'bg-blue-500 border-blue-500 text-white'
+                        : 'border-neutral-300 dark:border-neutral-600'}`}
+                    >
+                      {isActive && '✓'}
+                    </span>
+                    <Icon name="tag" size={12} className="shrink-0" />
+                    <span className="truncate">{slug}</span>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -555,7 +589,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleInputKeyDown}
-              placeholder="New tag slug…"
+              placeholder="Add tag slug…"
               className="w-full px-2 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -568,7 +602,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
 
 /**
  * Create quick tag widget (top-right, below favorite)
- * Click applies the default tag; hover expands a panel to pick/set defaults.
+ * Click applies active default tags; hover expands a panel to toggle tags on/off.
  */
 export function createQuickTagWidget(): OverlayWidget<MediaCardOverlayData> {
   return {
