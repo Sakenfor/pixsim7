@@ -9,7 +9,6 @@ import { useProviders } from '../hooks/useProviders';
 import { deleteAccount, toggleAccountStatus, updateAccount } from '../lib/api/accounts';
 import type { AccountUpdate } from '../lib/api/accounts';
 
-
 import { AIProviderSettings } from './AIProviderSettings';
 import { CompactAccountCard } from './CompactAccountCard';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
@@ -22,17 +21,266 @@ interface ProviderSettings {
   auto_reauth_max_retries: number;
 }
 
-type ProviderTab = 'accounts' | 'config';
+type SidebarSelection =
+  | { kind: 'overview' }
+  | { kind: 'provider'; providerId: string; sub: 'accounts' | 'config' }
+  | { kind: 'ai-providers' };
+
+/* ------------------------------------------------------------------ */
+/*  Sidebar helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+function ChevronIcon({ expanded }: { expanded: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  );
+}
+
+function ProviderSidebarItem({
+  providerId,
+  providerName,
+  activeCount,
+  totalCount,
+  isExpanded,
+  selection,
+  onToggleExpand,
+  onSelect,
+}: {
+  providerId: string;
+  providerName: string;
+  activeCount: number;
+  totalCount: number;
+  isExpanded: boolean;
+  selection: SidebarSelection;
+  onToggleExpand: () => void;
+  onSelect: (sub: 'accounts' | 'config') => void;
+}) {
+  const isActiveProvider =
+    selection.kind === 'provider' && selection.providerId === providerId;
+  const activeSub = isActiveProvider
+    ? (selection as Extract<SidebarSelection, { kind: 'provider' }>).sub
+    : null;
+
+  return (
+    <div>
+      <button
+        onClick={() => {
+          if (!isExpanded) {
+            onToggleExpand();
+            onSelect('accounts');
+          } else if (!isActiveProvider) {
+            onSelect('accounts');
+          } else {
+            onToggleExpand();
+          }
+        }}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
+          isActiveProvider
+            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+            : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+        }`}
+      >
+        <ChevronIcon expanded={isExpanded} />
+        <span className="flex-1 truncate font-medium">{providerName}</span>
+        <span className="text-[10px] tabular-nums opacity-70">
+          {activeCount}/{totalCount}
+        </span>
+      </button>
+
+      {isExpanded && (
+        <div className="ml-4 mt-0.5 space-y-0.5 border-l border-neutral-200 dark:border-neutral-700">
+          {([
+            { key: 'accounts' as const, label: 'Accounts' },
+            { key: 'config' as const, label: 'Configuration' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => onSelect(key)}
+              className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors ${
+                activeSub === key
+                  ? 'bg-blue-500 text-white'
+                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Overview content                                                   */
+/* ------------------------------------------------------------------ */
+
+function OverviewContent({
+  capacity,
+  providerNames,
+  onNavigate,
+}: {
+  capacity: Array<{
+    provider_id: string;
+    total_accounts: number;
+    active_accounts: number;
+    current_jobs: number;
+    max_jobs: number;
+    total_credits: number;
+    accounts: ProviderAccount[];
+  }>;
+  providerNames: Record<string, string>;
+  onNavigate: (providerId: string) => void;
+}) {
+  const totals = useMemo(() => ({
+    accounts: capacity.reduce((s, c) => s + c.total_accounts, 0),
+    active: capacity.reduce((s, c) => s + c.active_accounts, 0),
+    jobs: capacity.reduce((s, c) => s + c.current_jobs, 0),
+    maxJobs: capacity.reduce((s, c) => s + c.max_jobs, 0),
+    credits: capacity.reduce((s, c) => s + c.total_credits, 0),
+  }), [capacity]);
+
+  return (
+    <div className="p-4">
+      {/* Aggregate stats */}
+      <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="p-3 border rounded-lg dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Total Accounts</div>
+          <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">{totals.accounts}</div>
+          <div className="text-xs text-neutral-500">{totals.active} active</div>
+        </div>
+        <div className="p-3 border rounded-lg dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Jobs Running</div>
+          <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+            {totals.jobs}/{totals.maxJobs}
+          </div>
+          <div className="text-xs text-neutral-500">
+            {totals.maxJobs > 0 ? Math.round((totals.jobs / totals.maxJobs) * 100) : 0}% utilized
+          </div>
+        </div>
+        <div className="p-3 border rounded-lg dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Total Credits</div>
+          <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+            {totals.credits.toLocaleString()}
+          </div>
+        </div>
+        <div className="p-3 border rounded-lg dark:border-neutral-700">
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Providers</div>
+          <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">{capacity.length}</div>
+        </div>
+      </div>
+
+      {/* Per-provider cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {capacity.map((cap) => {
+          const utilizationPercent =
+            cap.max_jobs > 0 ? Math.round((cap.current_jobs / cap.max_jobs) * 100) : 0;
+
+          return (
+            <button
+              key={cap.provider_id}
+              onClick={() => onNavigate(cap.provider_id)}
+              className="p-4 border rounded-lg dark:border-neutral-700 text-left hover:border-blue-400 dark:hover:border-blue-600 transition-colors"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                  {providerNames[cap.provider_id] || cap.provider_id}
+                </span>
+                <span className="text-xs text-neutral-500">
+                  {cap.active_accounts}/{cap.total_accounts} active
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-xs mb-3">
+                <div>
+                  <div className="text-neutral-500 dark:text-neutral-400">Jobs</div>
+                  <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    {cap.current_jobs}/{cap.max_jobs}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-neutral-500 dark:text-neutral-400">Credits</div>
+                  <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    {cap.total_credits.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-neutral-500 dark:text-neutral-400">Avg Success</div>
+                  <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                    {cap.accounts.length > 0
+                      ? Math.round(
+                          (cap.accounts.reduce((sum, a) => sum + a.success_rate, 0) /
+                            cap.accounts.length) *
+                            100
+                        )
+                      : 0}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Utilization bar */}
+              <div>
+                <div className="h-1.5 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all ${
+                      utilizationPercent >= 90
+                        ? 'bg-red-500'
+                        : utilizationPercent >= 70
+                          ? 'bg-amber-500'
+                          : 'bg-green-500'
+                    }`}
+                    style={{ width: `${utilizationPercent}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
+                  {utilizationPercent}% utilization
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {capacity.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="text-sm text-neutral-500 mb-4">
+            No provider accounts configured yet.
+          </div>
+          <div className="text-xs text-neutral-400 max-w-md">
+            Install the browser extension and add accounts for Pixverse, Sora, or other providers to get started.
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main panel                                                         */
+/* ------------------------------------------------------------------ */
 
 export function ProviderSettingsPanel() {
   const { providers } = useProviders();
   const [refreshKey, setRefreshKey] = useState(0);
   const { capacity, loading, error, accounts } = useProviderCapacity(refreshKey);
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [showGlobalSettings, setShowGlobalSettings] = useState(false);
+
+  // Navigation
+  const [selection, setSelection] = useState<SidebarSelection>({ kind: 'overview' });
+  const [expandedProviders, setExpandedProviders] = useState<Set<string>>(new Set());
+
+  // Account editing / deleting
   const [editingAccountId, setEditingAccountId] = useState<number | null>(null);
   const [editingAccount, setEditingAccount] = useState<ProviderAccount | null>(null);
   const [deletingAccount, setDeletingAccount] = useState<ProviderAccount | null>(null);
+
+  // Sorting
   const [sortBy, setSortBy] = useState<'name' | 'status' | 'credits' | 'lastUsed' | 'success'>('lastUsed');
   const [sortDesc, setSortDesc] = useState(true);
 
@@ -40,8 +288,6 @@ export function ProviderSettingsPanel() {
   const [providerSettings, setProviderSettings] = useState<ProviderSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
 
-  // Active provider tab (for provider-specific content)
-  const [activeTab, setActiveTab] = useState<ProviderTab>('accounts');
   const toast = useToast();
 
   // Deduplication confirmation
@@ -51,13 +297,15 @@ export function ProviderSettingsPanel() {
     emailList: string;
   } | null>(null);
 
+  // --- Handlers ---
+
   const handleSaveAccount = async (accountId: number, data: AccountUpdate) => {
     try {
       await updateAccount(accountId, data);
       setRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error('Error in handleSaveAccount:', error);
-      throw error; // Re-throw so modal can catch it
+      throw error;
     }
   };
 
@@ -76,7 +324,6 @@ export function ProviderSettingsPanel() {
     setRefreshKey(prev => prev + 1);
   };
 
-  // Load provider settings when activeProvider changes
   const loadProviderSettings = async (providerId: string) => {
     try {
       const settings = await pixsimClient.get<ProviderSettings>(`/providers/${providerId}/settings`);
@@ -89,15 +336,14 @@ export function ProviderSettingsPanel() {
   const saveProviderSettings = async () => {
     if (!activeProvider || !providerSettings) return;
 
-      setSavingSettings(true);
-      try {
-        await pixsimClient.patch<ProviderSettings>(`/providers/${activeProvider}/settings`, {
-          global_password: providerSettings.global_password || null,
-          auto_reauth_enabled: providerSettings.auto_reauth_enabled,
-          auto_reauth_max_retries: providerSettings.auto_reauth_max_retries,
-        });
+    setSavingSettings(true);
+    try {
+      await pixsimClient.patch<ProviderSettings>(`/providers/${activeProvider}/settings`, {
+        global_password: providerSettings.global_password || null,
+        auto_reauth_enabled: providerSettings.auto_reauth_enabled,
+        auto_reauth_max_retries: providerSettings.auto_reauth_max_retries,
+      });
 
-      // Show brief success message
       const tempSuccess = document.createElement('div');
       tempSuccess.className = 'fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded shadow-lg z-50';
       tempSuccess.textContent = 'Settings saved successfully';
@@ -111,19 +357,28 @@ export function ProviderSettingsPanel() {
     }
   };
 
+  const toggleSort = (field: typeof sortBy) => {
+    if (sortBy === field) {
+      setSortDesc(!sortDesc);
+    } else {
+      setSortBy(field);
+      setSortDesc(true);
+    }
+  };
 
-  // Get provider names map
+  // --- Derived state ---
+
   const providerNames = providers.reduce<Record<string, string>>((acc, p) => {
     acc[p.id] = p.name;
     return acc;
   }, {});
 
-  const providerTabList = providers.length
+  const providerList = providers.length
     ? providers.map((p) => ({ id: p.id, name: p.name }))
     : capacity.map((c) => ({ id: c.provider_id, name: providerNames[c.provider_id] || c.provider_id }));
 
-  // Auto-select first provider if none selected (even if it has 0 accounts)
-  const activeProvider = selectedProvider || (providerTabList.length > 0 ? providerTabList[0].id : null);
+  const activeProvider = selection.kind === 'provider' ? selection.providerId : null;
+
   const providerData =
     capacity.find((c) => c.provider_id === activeProvider) ||
     (activeProvider
@@ -138,12 +393,11 @@ export function ProviderSettingsPanel() {
         }
       : null);
 
-  // Sorted accounts
   const sortedAccounts = useMemo(() => {
     if (!providerData) return [];
-    const accounts = [...providerData.accounts];
+    const accs = [...providerData.accounts];
 
-    accounts.sort((a, b) => {
+    accs.sort((a, b) => {
       let comparison = 0;
 
       switch (sortBy) {
@@ -153,11 +407,9 @@ export function ProviderSettingsPanel() {
         case 'status':
           comparison = a.status.localeCompare(b.status);
           break;
-        case 'credits': {
-          // Use backend-provided total_credits instead of recalculating
+        case 'credits':
           comparison = a.total_credits - b.total_credits;
           break;
-        }
         case 'lastUsed': {
           const aTime = a.last_used ? new Date(a.last_used).getTime() : 0;
           const bTime = b.last_used ? new Date(b.last_used).getTime() : 0;
@@ -172,8 +424,10 @@ export function ProviderSettingsPanel() {
       return sortDesc ? -comparison : comparison;
     });
 
-    return accounts;
+    return accs;
   }, [providerData, sortBy, sortDesc]);
+
+  // --- Effects ---
 
   useEffect(() => {
     if (editingAccountId == null) {
@@ -188,25 +442,23 @@ export function ProviderSettingsPanel() {
     (async () => {
       try {
         const account = await pixsimClient.get<ProviderAccount>(`/accounts/${editingAccountId}`);
-        if (!cancelled) {
-          setEditingAccount(account);
-        }
+        if (!cancelled) setEditingAccount(account);
       } catch (error) {
         console.error('Failed to load account details', error);
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [editingAccountId, accounts]);
 
-  // Load provider settings when active provider changes
   useEffect(() => {
+    setProviderSettings(null);
     if (activeProvider) {
       loadProviderSettings(activeProvider);
     }
   }, [activeProvider]);
+
+  // --- Loading / error ---
 
   if (loading) {
     return (
@@ -226,388 +478,371 @@ export function ProviderSettingsPanel() {
     );
   }
 
-  const toggleSort = (field: typeof sortBy) => {
-    if (sortBy === field) {
-      setSortDesc(!sortDesc);
-    } else {
-      setSortBy(field);
-      setSortDesc(true);
-    }
-  };
+  // --- Content title ---
+
+  const contentTitle =
+    selection.kind === 'overview'
+      ? 'Overview'
+      : selection.kind === 'ai-providers'
+        ? 'AI Providers'
+        : selection.sub === 'accounts'
+          ? `${providerNames[selection.providerId] || selection.providerId} \u2014 Accounts`
+          : `${providerNames[selection.providerId] || selection.providerId} \u2014 Configuration`;
+
+  // --- Render ---
 
   return (
-    <div className="h-full flex flex-col bg-white dark:bg-neutral-900">
-      {/* Modals */}
-      {editingAccount && (
-        <EditAccountModal
-          account={editingAccount}
-          onClose={() => setEditingAccountId(null)}
-          onSave={handleSaveAccount}
-          onRefresh={() => setRefreshKey(prev => prev + 1)}
-        />
-      )}
-      {deletingAccount && (
-        <DeleteConfirmModal
-          account={deletingAccount}
-          onClose={() => setDeletingAccount(null)}
-          onConfirm={handleDeleteAccount}
-        />
-      )}
-
-      {/* Header */}
-      <div className="p-4 border-b dark:border-neutral-700">
-        <div className="flex items-center justify-end mb-3">
+    <div className="h-full w-full flex bg-white dark:bg-neutral-900">
+      {/* Sidebar */}
+      <div className="w-48 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
+        <div className="flex-shrink-0 px-3 py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between">
+          <h1 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">Providers</h1>
           <button
             onClick={() => setRefreshKey(prev => prev + 1)}
-            className="px-3 py-1 text-xs bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
+            className="px-2 py-1 text-[10px] bg-neutral-200 dark:bg-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-600 transition-colors"
           >
             Refresh
           </button>
         </div>
 
-        {/* Provider tabs */}
-        {providerTabList.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto">
-            {providerTabList.map((tab) => {
-              const cap = capacity.find((c) => c.provider_id === tab.id) || null;
-              const isActive = !showGlobalSettings && activeProvider === tab.id;
+        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+          {/* Overview */}
+          <button
+            onClick={() => setSelection({ kind: 'overview' })}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
+              selection.kind === 'overview'
+                ? 'bg-blue-500 text-white'
+                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+            }`}
+          >
+            Overview
+          </button>
 
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => {
-                    setSelectedProvider(tab.id);
-                    setShowGlobalSettings(false);
-                  }}
-                  className={`px-4 py-2 rounded-lg border transition-colors whitespace-nowrap ${
-                    isActive
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                  }`}
-                >
-                  <div className="text-sm font-medium">
-                    {providerNames[tab.id] || tab.name || tab.id}
-                  </div>
-                  <div className="text-xs opacity-80">
-                    {cap ? `${cap.current_jobs}/${cap.max_jobs} jobs • ${cap.total_credits} credits` : '0/0 jobs • 0 credits'}
-                  </div>
-                </button>
-              );
-            })}
-
-            {/* Global Settings tab */}
-            <button
-              onClick={() => setShowGlobalSettings(true)}
-              className={`px-4 py-2 rounded-lg border transition-colors whitespace-nowrap ${
-                showGlobalSettings
-                  ? 'bg-purple-600 text-white border-purple-600'
-                  : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border-neutral-300 dark:border-neutral-700 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-              }`}
-            >
-              <div className="text-sm font-medium">Settings</div>
-              <div className="text-xs opacity-80">AI Providers & Global</div>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Provider-specific Tabs (only show when a provider is selected, not global settings) */}
-      {providerData && !showGlobalSettings && (
-        <div className="border-b dark:border-neutral-700">
-          <div className="flex gap-1 px-4">
-            {[
-              { id: 'accounts' as const, label: 'Accounts' },
-              { id: 'config' as const, label: 'Configuration' },
-            ].map((tab) => (
-              <button
+          {/* Provider items */}
+          {providerList.map((tab) => {
+            const cap = capacity.find((c) => c.provider_id === tab.id);
+            return (
+              <ProviderSidebarItem
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Content */}
-      <div className="flex-1 overflow-auto" key={refreshKey}>
-        {/* Global Settings Content */}
-        {showGlobalSettings ? (
-          <div className="p-4">
-            <div className="max-w-2xl">
-              <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
-                AI Providers
-              </h3>
-              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
-                Configure AI providers for prompt editing and other AI-powered features.
-                These settings apply globally across all video providers.
-              </p>
-              <AIProviderSettings
-                onSaveSuccess={() => {
-                  toast?.({
-                    title: 'Settings saved',
-                    description: 'AI provider settings updated successfully',
-                    variant: 'success',
+                providerId={tab.id}
+                providerName={providerNames[tab.id] || tab.name || tab.id}
+                activeCount={cap?.active_accounts ?? 0}
+                totalCount={cap?.total_accounts ?? 0}
+                isExpanded={expandedProviders.has(tab.id)}
+                selection={selection}
+                onToggleExpand={() => {
+                  setExpandedProviders((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(tab.id)) next.delete(tab.id);
+                    else next.add(tab.id);
+                    return next;
                   });
                 }}
-                onSaveError={() => {
-                  toast?.({
-                    title: 'Error',
-                    description: 'Failed to save AI provider settings',
-                    variant: 'error',
-                  });
+                onSelect={(sub) => {
+                  setSelection({ kind: 'provider', providerId: tab.id, sub });
+                  setExpandedProviders((prev) => new Set(prev).add(tab.id));
                 }}
               />
+            );
+          })}
+
+          {/* AI Providers */}
+          <button
+            onClick={() => setSelection({ kind: 'ai-providers' })}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
+              selection.kind === 'ai-providers'
+                ? 'bg-blue-500 text-white'
+                : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+            }`}
+          >
+            AI Providers
+          </button>
+        </div>
+      </div>
+
+      {/* Content area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Content header */}
+        <div className="flex-shrink-0 border-b border-neutral-200 dark:border-neutral-700 px-4 py-3">
+          <h2 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+            {contentTitle}
+          </h2>
+        </div>
+
+        {/* Content body */}
+        <div className="flex-1 overflow-auto" key={refreshKey}>
+          {/* Overview */}
+          {selection.kind === 'overview' && (
+            <OverviewContent
+              capacity={capacity}
+              providerNames={providerNames}
+              onNavigate={(providerId) => {
+                setSelection({ kind: 'provider', providerId, sub: 'accounts' });
+                setExpandedProviders((prev) => new Set(prev).add(providerId));
+              }}
+            />
+          )}
+
+          {/* AI Providers */}
+          {selection.kind === 'ai-providers' && (
+            <div className="p-4">
+              <div className="max-w-2xl">
+                <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
+                  AI Providers
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
+                  Configure AI providers for prompt editing and other AI-powered features.
+                  These settings apply globally across all video providers.
+                </p>
+                <AIProviderSettings
+                  onSaveSuccess={() => {
+                    toast?.({
+                      title: 'Settings saved',
+                      description: 'AI provider settings updated successfully',
+                      variant: 'success',
+                    });
+                  }}
+                  onSaveError={() => {
+                    toast?.({
+                      title: 'Error',
+                      description: 'Failed to save AI provider settings',
+                      variant: 'error',
+                    });
+                  }}
+                />
+              </div>
             </div>
-          </div>
-        ) : providerTabList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <div className="text-sm text-neutral-500 mb-4">
-              No provider accounts configured yet.
-            </div>
-            <div className="text-xs text-neutral-400 max-w-md">
-              Install the browser extension and add accounts for Pixverse, Sora, or other providers to get started.
-            </div>
-          </div>
-        ) : providerData ? (
-          <div className="p-4">
-            {/* Accounts Tab */}
-            {activeTab === 'accounts' && (
-              <>
-                {/* Provider summary */}
-                <div className="grid grid-cols-4 gap-4 mb-6">
-                  <div className="p-3 border rounded-lg dark:border-neutral-700">
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                      Total Accounts
-                    </div>
-                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                      {providerData.total_accounts}
-                    </div>
-                    <div className="text-xs text-neutral-500">
-                      {providerData.active_accounts} active
-                    </div>
+          )}
+
+          {/* Provider — Accounts */}
+          {selection.kind === 'provider' && selection.sub === 'accounts' && providerData && (
+            <div className="p-4">
+              {/* Provider summary */}
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="p-3 border rounded-lg dark:border-neutral-700">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                    Total Accounts
                   </div>
-                  <div className="p-3 border rounded-lg dark:border-neutral-700">
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                      Jobs Running
-                    </div>
-                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                      {providerData.current_jobs}/{providerData.max_jobs}
-                    </div>
-                    <div className="text-xs text-neutral-500">
-                      {providerData.max_jobs > 0
-                        ? Math.round((providerData.current_jobs / providerData.max_jobs) * 100)
-                        : 0}% utilized
-                    </div>
+                  <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                    {providerData.total_accounts}
                   </div>
-                  <div className="p-3 border rounded-lg dark:border-neutral-700">
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                      Total Credits
-                    </div>
-                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                      {providerData.total_credits.toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="p-3 border rounded-lg dark:border-neutral-700">
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                      Avg Success Rate
-                    </div>
-                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                      {providerData.accounts.length > 0
-                        ? Math.round(
-                            (providerData.accounts.reduce((sum, acc) => sum + acc.success_rate, 0) /
-                              providerData.accounts.length) *
-                              100
-                          )
-                        : 0}%
-                    </div>
+                  <div className="text-xs text-neutral-500">
+                    {providerData.active_accounts} active
                   </div>
                 </div>
+                <div className="p-3 border rounded-lg dark:border-neutral-700">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                    Jobs Running
+                  </div>
+                  <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                    {providerData.current_jobs}/{providerData.max_jobs}
+                  </div>
+                  <div className="text-xs text-neutral-500">
+                    {providerData.max_jobs > 0
+                      ? Math.round((providerData.current_jobs / providerData.max_jobs) * 100)
+                      : 0}% utilized
+                  </div>
+                </div>
+                <div className="p-3 border rounded-lg dark:border-neutral-700">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                    Total Credits
+                  </div>
+                  <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                    {providerData.total_credits.toLocaleString()}
+                  </div>
+                </div>
+                <div className="p-3 border rounded-lg dark:border-neutral-700">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
+                    Avg Success Rate
+                  </div>
+                  <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                    {providerData.accounts.length > 0
+                      ? Math.round(
+                          (providerData.accounts.reduce((sum, acc) => sum + acc.success_rate, 0) /
+                            providerData.accounts.length) *
+                            100
+                        )
+                      : 0}%
+                  </div>
+                </div>
+              </div>
 
-                {/* Maintenance Actions */}
-                <div className="flex items-center gap-2 mb-4 p-3 border rounded-lg dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
-                  <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
-                    Maintenance:
-                  </span>
-                  <button
-                    onClick={async () => {
-                      try {
+              {/* Maintenance Actions */}
+              <div className="flex items-center gap-2 mb-4 p-3 border rounded-lg dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
+                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
+                  Maintenance:
+                </span>
+                <button
+                  onClick={async () => {
+                    try {
+                      toast?.({
+                        title: 'Running cleanup...',
+                        description: 'Clearing expired cooldowns and fixing account states',
+                        variant: 'info',
+                      });
+                      const { message } = await pixsimClient.post<{ message: string }>(
+                        `/accounts/cleanup?provider_id=${activeProvider!}`
+                      );
+                      toast?.({
+                        title: 'Cleanup complete',
+                        description: message,
+                        variant: 'success',
+                      });
+                      setRefreshKey(prev => prev + 1);
+                    } catch (error) {
+                      console.error('Cleanup failed:', error);
+                      toast?.({
+                        title: 'Cleanup failed',
+                        description: 'Failed to run account cleanup',
+                        variant: 'error',
+                      });
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                >
+                  Fix Account States
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      toast?.({
+                        title: 'Syncing credits...',
+                        description: 'Fetching latest credit balances for all accounts',
+                        variant: 'info',
+                      });
+
+                      const accountsForProvider = providerData.accounts;
+                      let synced = 0;
+                      let failed = 0;
+
+                      for (const account of accountsForProvider) {
+                        try {
+                          await pixsimClient.post(`/accounts/${account.id}/sync-credits?force=true`);
+                          synced++;
+                        } catch (err) {
+                          console.error(`Failed to sync account ${account.id}:`, err);
+                          failed++;
+                        }
+                      }
+
+                      toast?.({
+                        title: 'Sync complete',
+                        description: `Synced ${synced} accounts${failed > 0 ? `, ${failed} failed` : ''}`,
+                        variant: synced > 0 ? 'success' : 'error',
+                      });
+                      setRefreshKey(prev => prev + 1);
+                    } catch (error) {
+                      console.error('Bulk sync failed:', error);
+                      toast?.({
+                        title: 'Sync failed',
+                        description: 'Failed to sync credits',
+                        variant: 'error',
+                      });
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                >
+                  Sync All Credits
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      toast?.({
+                        title: 'Checking for duplicates...',
+                        description: 'Scanning for duplicate account entries',
+                        variant: 'info',
+                      });
+
+                      const { duplicate_count, accounts } = await pixsimClient.get<{
+                        duplicate_count: number;
+                        accounts: Array<{ email: string }>;
+                      }>(`/accounts/deduplicate?provider_id=${activeProvider!}`);
+
+                      if (duplicate_count === 0) {
                         toast?.({
-                          title: 'Running cleanup...',
-                          description: 'Clearing expired cooldowns and fixing account states',
-                          variant: 'info',
-                        });
-                        const { message } = await pixsimClient.post<{ message: string }>(
-                          `/accounts/cleanup?provider_id=${activeProvider}`
-                        );
-                        toast?.({
-                          title: 'Cleanup complete',
-                          description: message,
+                          title: 'No duplicates found',
+                          description: 'All accounts are unique',
                           variant: 'success',
                         });
-                        setRefreshKey(prev => prev + 1);
-                      } catch (error) {
-                        console.error('Cleanup failed:', error);
-                        toast?.({
-                          title: 'Cleanup failed',
-                          description: 'Failed to run account cleanup',
-                          variant: 'error',
-                        });
+                        return;
                       }
-                    }}
-                    className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    Fix Account States
-                  </button>
+
+                      const emailList = accounts.map((a: { email: string }) => a.email).join(', ');
+                      setDedupeConfirm({
+                        providerId: activeProvider!,
+                        duplicateCount: duplicate_count,
+                        emailList,
+                      });
+                    } catch (error) {
+                      console.error('Deduplication check failed:', error);
+                      toast?.({
+                        title: 'Check failed',
+                        description: 'Failed to check for duplicate accounts',
+                        variant: 'error',
+                      });
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
+                >
+                  Find Duplicates
+                </button>
+                <div className="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
+                  Use these tools to fix account states, sync credits, and remove duplicates
+                </div>
+              </div>
+
+              {/* Sort Controls */}
+              <div className="flex items-center gap-2 mb-4 flex-wrap">
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
+                {[
+                  { key: 'lastUsed', label: 'Last Used' },
+                  { key: 'name', label: 'Name' },
+                  { key: 'credits', label: 'Credits' },
+                  { key: 'status', label: 'Status' },
+                  { key: 'success', label: 'Success Rate' },
+                ].map(({ key, label }) => (
                   <button
-                    onClick={async () => {
-                      try {
-                        toast?.({
-                          title: 'Syncing credits...',
-                          description: 'Fetching latest credit balances for all accounts',
-                          variant: 'info',
-                        });
-
-                        // Get all accounts for this provider
-                        const accountsForProvider = providerData.accounts;
-                        let synced = 0;
-                        let failed = 0;
-
-                        for (const account of accountsForProvider) {
-                          try {
-                            await pixsimClient.post(`/accounts/${account.id}/sync-credits?force=true`);
-                            synced++;
-                          } catch (err) {
-                            console.error(`Failed to sync account ${account.id}:`, err);
-                            failed++;
-                          }
-                        }
-
-                        toast?.({
-                          title: 'Sync complete',
-                          description: `Synced ${synced} accounts${failed > 0 ? `, ${failed} failed` : ''}`,
-                          variant: synced > 0 ? 'success' : 'error',
-                        });
-                        setRefreshKey(prev => prev + 1);
-                      } catch (error) {
-                        console.error('Bulk sync failed:', error);
-                        toast?.({
-                          title: 'Sync failed',
-                          description: 'Failed to sync credits',
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    className="px-3 py-1.5 text-xs bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+                    key={key}
+                    onClick={() => toggleSort(key as typeof sortBy)}
+                    className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                      sortBy === key
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
+                    }`}
                   >
-                    Sync All Credits
+                    {label} {sortBy === key && (sortDesc ? '\u2193' : '\u2191')}
                   </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        // Preview duplicates (GET = dry run)
-                        toast?.({
-                          title: 'Checking for duplicates...',
-                          description: 'Scanning for duplicate account entries',
-                          variant: 'info',
-                        });
+                ))}
+                <div className="flex-1" />
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''}
+                </span>
+              </div>
 
-                        const { duplicate_count, accounts } = await pixsimClient.get<{
-                          duplicate_count: number;
-                          accounts: Array<{ email: string }>;
-                        }>(`/accounts/deduplicate?provider_id=${activeProvider}`);
+              {/* Accounts Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {sortedAccounts.map((account) => (
+                  <CompactAccountCard
+                    key={account.id}
+                    account={account}
+                    onEdit={() => setEditingAccountId(account.id)}
+                    onToggle={() => handleToggleStatus(account)}
+                    onDelete={() => setDeletingAccount(account)}
+                  />
+                ))}
+              </div>
 
-                        if (duplicate_count === 0) {
-                          toast?.({
-                            title: 'No duplicates found',
-                            description: 'All accounts are unique',
-                            variant: 'success',
-                          });
-                          return;
-                        }
-
-                        // Show confirmation modal
-                        const emailList = accounts.map((a: { email: string }) => a.email).join(', ');
-                        setDedupeConfirm({
-                          providerId: activeProvider,
-                          duplicateCount: duplicate_count,
-                          emailList,
-                        });
-                      } catch (error) {
-                        console.error('Deduplication check failed:', error);
-                        toast?.({
-                          title: 'Check failed',
-                          description: 'Failed to check for duplicate accounts',
-                          variant: 'error',
-                        });
-                      }
-                    }}
-                    className="px-3 py-1.5 text-xs bg-orange-600 text-white rounded-md hover:bg-orange-700 transition-colors"
-                  >
-                    Find Duplicates
-                  </button>
-                  <div className="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
-                    Use these tools to fix account states, sync credits, and remove duplicates
-                  </div>
+              {sortedAccounts.length === 0 && (
+                <div className="text-center py-12 text-sm text-neutral-500">
+                  No accounts found for this provider
                 </div>
+              )}
+            </div>
+          )}
 
-                {/* Sort Controls */}
-                <div className="flex items-center gap-2 mb-4 flex-wrap">
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">Sort by:</span>
-                  {[
-                    { key: 'lastUsed', label: 'Last Used' },
-                    { key: 'name', label: 'Name' },
-                    { key: 'credits', label: 'Credits' },
-                    { key: 'status', label: 'Status' },
-                    { key: 'success', label: 'Success Rate' },
-                  ].map(({ key, label }) => (
-                    <button
-                      key={key}
-                      onClick={() => toggleSort(key as typeof sortBy)}
-                      className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                        sortBy === key
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700'
-                      }`}
-                    >
-                      {label} {sortBy === key && (sortDesc ? '↓' : '↑')}
-                    </button>
-                  ))}
-                  <div className="flex-1" />
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {sortedAccounts.length} account{sortedAccounts.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-
-                {/* Accounts Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {sortedAccounts.map((account) => (
-                    <CompactAccountCard
-                      key={account.id}
-                      account={account}
-                      onEdit={() => setEditingAccountId(account.id)}
-                      onToggle={() => handleToggleStatus(account)}
-                      onDelete={() => setDeletingAccount(account)}
-                    />
-                  ))}
-                </div>
-
-                {sortedAccounts.length === 0 && (
-                  <div className="text-center py-12 text-sm text-neutral-500">
-                    No accounts found for this provider
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Configuration Tab */}
-            {activeTab === 'config' && providerSettings && (
+          {/* Provider — Configuration */}
+          {selection.kind === 'provider' && selection.sub === 'config' && providerSettings && (
+            <div className="p-4">
               <div className="max-w-2xl">
                 <h3 className="text-lg font-medium text-neutral-800 dark:text-neutral-200 mb-2">
                   {providerNames[activeProvider!] || activeProvider} Configuration
@@ -682,13 +917,28 @@ export function ProviderSettingsPanel() {
                   </div>
                 </div>
               </div>
-            )}
-
-          </div>
-        ) : null}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Deduplication confirmation modal */}
+      {/* Modals */}
+      {editingAccount && (
+        <EditAccountModal
+          account={editingAccount}
+          onClose={() => setEditingAccountId(null)}
+          onSave={handleSaveAccount}
+          onRefresh={() => setRefreshKey(prev => prev + 1)}
+        />
+      )}
+      {deletingAccount && (
+        <DeleteConfirmModal
+          account={deletingAccount}
+          onClose={() => setDeletingAccount(null)}
+          onConfirm={handleDeleteAccount}
+        />
+      )}
+
       <ConfirmModal
         isOpen={!!dedupeConfirm}
         title="Remove Duplicate Accounts"
