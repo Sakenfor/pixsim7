@@ -5,7 +5,7 @@
  * across gallery surface components.
  */
 
-import type { MediaCardResolvedProps, MediaCardActions, MediaCardBadgeConfig } from '@/components/media/MediaCard';
+import type { MediaCardResolvedProps } from '@/components/media/MediaCard';
 
 import { FAVORITE_TAG_SLUG } from '../../lib/favoriteTag';
 import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
@@ -14,7 +14,7 @@ import { getAssetDisplayUrls, type AssetModel } from '../../models/asset';
  * Core MediaCard props derived from an asset.
  * Excludes interactive props like actions, callbacks, and context menu data.
  */
-export type AssetMediaCardResolvedProps = Pick<
+export type AssetMediaCardProps = Pick<
   MediaCardResolvedProps,
   | 'id'
   | 'mediaType'
@@ -38,17 +38,9 @@ export type AssetMediaCardResolvedProps = Pick<
 
 /**
  * Build core MediaCard props from an AssetModel.
- *
- * @example
- * ```tsx
- * <MediaCard
- *   {...mediaCardPropsFromAsset(asset)}
- *   actions={getAssetActions(asset)}
- *   contextMenuAsset={asset}
- * />
- * ```
+ * Used internally by MediaCard's asset-first resolution path.
  */
-export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardResolvedProps {
+export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps {
   const { mainUrl, thumbnailUrl, previewUrl } = getAssetDisplayUrls(asset);
 
   return {
@@ -70,48 +62,5 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardResolv
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     hasGenerationContext: asset.hasGenerationContext ?? false,
     isFavorite: asset.tags?.some((t) => t.slug === FAVORITE_TAG_SLUG) ?? false,
-  };
-}
-
-/**
- * Options for building complete MediaCard props with interactivity.
- */
-export interface MediaCardResolvedPropsOptions {
-  /** Asset actions (delete, archive, generation, etc.) */
-  actions?: MediaCardActions;
-  /** Badge display configuration */
-  badgeConfig?: MediaCardBadgeConfig;
-  /** Include asset for context menu */
-  includeContextMenu?: boolean;
-  /** Selected assets for multi-select context menu */
-  selectedAssets?: AssetModel[];
-}
-
-/**
- * Build complete MediaCard props including actions and context menu.
- *
- * @example
- * ```tsx
- * <MediaCard {...buildMediaCardResolvedProps(asset, {
- *   actions: getAssetActions(asset),
- *   includeContextMenu: true,
- *   selectedAssets,
- * })} />
- * ```
- */
-export function buildMediaCardResolvedProps(
-  asset: AssetModel,
-  options: MediaCardResolvedPropsOptions = {}
-): Partial<MediaCardResolvedProps> {
-  const { actions, badgeConfig, includeContextMenu = true, selectedAssets } = options;
-
-  return {
-    ...mediaCardPropsFromAsset(asset),
-    actions,
-    badgeConfig,
-    ...(includeContextMenu && {
-      contextMenuAsset: asset,
-      contextMenuSelection: selectedAssets,
-    }),
   };
 }
