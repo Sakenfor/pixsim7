@@ -1,4 +1,4 @@
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 /**
  * Asset Source System
@@ -23,6 +23,8 @@ export interface AssetSourceComponentProps {
   layout: 'masonry' | 'grid';
   cardSize: number;
   overlayPresetId?: string;
+  /** Extra toolbar controls injected by the parent page shell */
+  toolbarExtra?: ReactNode;
 }
 
 export interface AssetSourceDefinition {

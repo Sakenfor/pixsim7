@@ -1,5 +1,5 @@
 import { Button, Dropdown } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
@@ -167,9 +167,10 @@ interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
   cardSize: number;
   overlayPresetId?: string;
+  toolbarExtra?: ReactNode;
 }
 
-export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: RemoteGallerySourceProps) {
+export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbarExtra }: RemoteGallerySourceProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const panelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
@@ -1036,66 +1037,62 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
 
 
 
-            {showParallelGroups ? (
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                {groupByStack.length} group axes
-              </span>
-            ) : showGroupOverview ? (
-              <div className="flex items-center gap-0.5">
+            {showParallelGroups ? null : showGroupOverview ? (
+              <div className="h-7 inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 overflow-hidden text-xs">
                 <button
                   onClick={() => goToGroupPage(groupPage - 1)}
                   disabled={groupLoading || groupPage <= 1}
-                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Previous group page"
                 >
                   &lsaquo;
                 </button>
+                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
                 <PageJumpPopover
                   currentPage={groupPage}
                   totalPages={groupTotalPages}
                   loading={groupLoading}
                   onGoToPage={goToGroupPage}
+                  borderless
                 />
+                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
                 <button
                   onClick={() => goToGroupPage(groupPage + 1)}
                   disabled={groupLoading || !groupHasMore}
-                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Next group page"
                 >
                   &rsaquo;
                 </button>
-                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
-                  {groupData ? `${groupData.groups.length} groups` : '0 groups'}
-                </span>
               </div>
             ) : (
-              <div className="flex items-center gap-0.5">
+              <div className="h-7 inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 overflow-hidden text-xs">
                 <button
                   onClick={() => goToPage(controller.currentPage - 1)}
                   disabled={controller.loading || controller.currentPage <= 1}
-                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Previous page"
                 >
                   &lsaquo;
                 </button>
+                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
                 <PageJumpPopover
                   currentPage={controller.currentPage}
                   totalPages={controller.totalPages}
                   hasMore={controller.hasMore}
                   loading={controller.loading}
                   onGoToPage={goToPage}
+                  borderless
                 />
+                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
                 <button
                   onClick={() => goToPage(controller.currentPage + 1)}
                   disabled={controller.loading || !controller.hasMore}
-                  className="h-7 w-7 inline-flex items-center justify-center text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                   title="Next page"
                 >
                   &rsaquo;
                 </button>
-                <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
-                  {controller.assets.length} items
-                </span>
               </div>
             )}
 
@@ -1272,6 +1269,9 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId }: Remot
               <option value="old">Oldest First</option>
               <option value="alpha">A-Z</option>
             </select>
+
+            {/* Injected toolbar controls from parent shell */}
+            {toolbarExtra}
           </div>
           <div>
             <DynamicFilters

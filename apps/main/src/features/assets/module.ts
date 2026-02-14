@@ -90,6 +90,10 @@ export const assetsModule: Module = {
     capabilityCategory: 'management',
     featureId: 'assets',
     featured: true,
+    subNav: [
+      { id: 'remote-gallery', label: 'Remote Gallery', icon: 'globe', param: { key: 'source', value: 'remote-gallery' } },
+      { id: 'local-fs', label: 'Local Folders', icon: 'folder', param: { key: 'source', value: 'local-fs' } },
+    ],
     component: lazy(() => import('../../routes/Assets').then(m => ({ default: m.AssetsRoute }))),
     actions: [openGalleryAction, uploadAssetAction, searchAssetsAction],
     appMap: {

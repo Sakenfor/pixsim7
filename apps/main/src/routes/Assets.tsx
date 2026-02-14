@@ -58,7 +58,6 @@ export function AssetsRoute() {
   const [cardSize, setCardSize] = useState<number>(260);
 
   // Dropdown states
-  const [sourceDropdownOpen, setSourceDropdownOpen] = useState(false);
   const [panelsDropdownOpen, setPanelsDropdownOpen] = useState(false);
 
   // Get current surface ID from URL (for remote gallery)
@@ -199,10 +198,9 @@ export function AssetsRoute() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={layoutStyle}>
-      {/* Fixed header section */}
-      <div className="flex-shrink-0 p-6 space-y-4 overflow-visible">
-        {/* Selection Mode Banner */}
-        {controller.isSelectionMode && (
+      {/* Selection banners (only rendered when active) */}
+      {controller.isSelectionMode && (
+        <div className="flex-shrink-0 px-6 pt-4">
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -219,10 +217,10 @@ export function AssetsRoute() {
               </Button>
             </div>
           </div>
-        )}
-
-        {/* Gallery Tools Selection Banner */}
-        {!controller.isSelectionMode && controller.selectedAssetIds.size > 0 && (
+        </div>
+      )}
+      {!controller.isSelectionMode && controller.selectedAssetIds.size > 0 && (
+        <div className="flex-shrink-0 px-6 pt-4">
           <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
@@ -239,167 +237,8 @@ export function AssetsRoute() {
               </Button>
             </div>
           </div>
-        )}
-
-        {/* Top navigation bar */}
-        <div className="flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 rounded-lg px-4 py-2 border border-neutral-200 dark:border-neutral-700">
-          {/* Left side - Source selector */}
-          <div className="flex items-center gap-4">
-            {/* Source Dropdown Button */}
-            <div className="relative">
-              <button
-                onClick={() => setSourceDropdownOpen(!sourceDropdownOpen)}
-                className="flex items-center gap-2.5 px-3 py-1.5 rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors group"
-              >
-                <IconBadge name="folder" size={16} variant="primary" />
-                <span className="text-base font-semibold">{sourceDef.label}</span>
-                <Icon
-                  name="chevronDown"
-                  size={14}
-                  className={`text-neutral-400 transition-transform ${sourceDropdownOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              <Dropdown
-                isOpen={sourceDropdownOpen}
-                onClose={() => setSourceDropdownOpen(false)}
-                position="bottom-left"
-                minWidth="200px"
-              >
-                {allSources.map((source, index) => (
-                  <DropdownItem
-                    key={source.id}
-                    onClick={() => {
-                      handleSourceChange(source.id);
-                      setSourceDropdownOpen(false);
-                    }}
-                    icon={<IconBadge name="folder" size={12} variant={activeSourceId === source.id ? 'primary' : 'muted'} />}
-                    variant={activeSourceId === source.id ? 'primary' : 'default'}
-                  >
-                    <span className="flex items-center justify-between w-full">
-                      {source.label}
-                      <span className="text-[10px] text-neutral-400 ml-2">Ctrl+{index + 1}</span>
-                    </span>
-                  </DropdownItem>
-                ))}
-              </Dropdown>
-            </div>
-
-            {/* Divider */}
-            <div className="h-5 w-px bg-neutral-300 dark:bg-neutral-600" />
-
-            {/* Surface Switcher (only for remote gallery) */}
-            {activeSourceId === 'remote-gallery' && (
-              <GallerySurfaceSwitcher mode="dropdown" />
-            )}
-          </div>
-
-          {/* Right side - Controls */}
-          <div className="flex items-center gap-3">
-            {/* MediaCard Preset (only for remote gallery) */}
-            {activeSourceId === 'remote-gallery' && (
-              <select
-                value={currentOverlayPresetId}
-                onChange={(e) => handleOverlayPresetChange(e.target.value)}
-                className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                title="Media card preset"
-              >
-                {mediaCardPresets.map(preset => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.icon} {preset.name}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            {/* Gallery Layout Controls */}
-            <GalleryLayoutControls
-              layout={layout}
-              setLayout={setLayout}
-              cardSize={cardSize}
-              setCardSize={setCardSize}
-            />
-
-            {/* Divider */}
-            <div className="h-5 w-px bg-neutral-300 dark:bg-neutral-600" />
-
-            {/* Panels Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setPanelsDropdownOpen(!panelsDropdownOpen)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded-md hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors"
-                title="Open panels"
-              >
-                <IconBadge name="layoutGrid" size={12} variant="secondary" />
-                <span className="font-medium">Panels</span>
-                <Icon name="chevronDown" size={12} className={`text-neutral-400 transition-transform ${panelsDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              <Dropdown
-                isOpen={panelsDropdownOpen}
-                onClose={() => setPanelsDropdownOpen(false)}
-                position="bottom-right"
-                minWidth="180px"
-              >
-                <DropdownItem
-                  onClick={() => {
-                    useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
-                    setPanelsDropdownOpen(false);
-                  }}
-                  icon={<IconBadge name="settings" size={12} variant="muted" />}
-                >
-                  Settings
-                </DropdownItem>
-                <DropdownItem
-                  onClick={() => {
-                    useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
-                    setPanelsDropdownOpen(false);
-                  }}
-                  icon={<IconBadge name="sparkles" size={12} variant="success" />}
-                >
-                  Generations
-                </DropdownItem>
-                <DropdownItem
-                  onClick={() => {
-                    useWorkspaceStore.getState().openFloatingPanel('providers', { width: 700, height: 500 });
-                    setPanelsDropdownOpen(false);
-                  }}
-                  icon={<IconBadge name="plug" size={12} variant="info" />}
-                >
-                  Providers
-                </DropdownItem>
-                <DropdownDivider />
-                <DropdownItem
-                  onClick={() => {
-                    useWorkspaceStore.getState().openFloatingPanel('dev-tools', { width: 800, height: 600 });
-                    setPanelsDropdownOpen(false);
-                  }}
-                  icon={<IconBadge name="wrench" size={12} variant="warning" />}
-                >
-                  Dev Tools
-                </DropdownItem>
-              </Dropdown>
-            </div>
-
-            {/* Generation feed indicator */}
-            <button
-              type="button"
-              onClick={() => {
-                if (generationWsConnected) {
-                  useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
-                }
-              }}
-              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
-                generationWsConnected
-                  ? 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
-                  : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-              }`}
-              title={generationWsConnected ? 'Generation feed live - click to open' : 'Generation feed offline'}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${generationWsConnected ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
-              <span>{generationWsConnected ? 'Live' : 'Offline'}</span>
-            </button>
-          </div>
         </div>
-      </div>
+      )}
 
       {/* Scrollable source component with asset viewer */}
       <div className="flex-1 overflow-hidden px-6 pb-6 relative">
@@ -420,6 +259,105 @@ export function AssetsRoute() {
               layout={layout}
               cardSize={cardSize}
               overlayPresetId={currentOverlayPresetId}
+              toolbarExtra={
+                <>
+                  {activeSourceId === 'remote-gallery' && (
+                    <GallerySurfaceSwitcher mode="dropdown" />
+                  )}
+                  {activeSourceId === 'remote-gallery' && (
+                    <select
+                      value={currentOverlayPresetId}
+                      onChange={(e) => handleOverlayPresetChange(e.target.value)}
+                      className="h-7 px-1.5 text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:outline-none focus:border-accent transition-colors"
+                      title="Media card preset"
+                    >
+                      {mediaCardPresets.map(preset => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.icon} {preset.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <GalleryLayoutControls
+                    layout={layout}
+                    setLayout={setLayout}
+                    cardSize={cardSize}
+                    setCardSize={setCardSize}
+                  />
+                  <div className="relative">
+                    <button
+                      onClick={() => setPanelsDropdownOpen(!panelsDropdownOpen)}
+                      className="h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                      title="Open panels"
+                    >
+                      <Icon name="layoutGrid" size={13} />
+                      <span>Panels</span>
+                      <Icon name="chevronDown" size={10} className={`transition-transform ${panelsDropdownOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    <Dropdown
+                      isOpen={panelsDropdownOpen}
+                      onClose={() => setPanelsDropdownOpen(false)}
+                      position="bottom-right"
+                      minWidth="180px"
+                    >
+                      <DropdownItem
+                        onClick={() => {
+                          useWorkspaceStore.getState().openFloatingPanel('settings', { width: 900, height: 700 });
+                          setPanelsDropdownOpen(false);
+                        }}
+                        icon={<IconBadge name="settings" size={12} variant="muted" />}
+                      >
+                        Settings
+                      </DropdownItem>
+                      <DropdownItem
+                        onClick={() => {
+                          useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
+                          setPanelsDropdownOpen(false);
+                        }}
+                        icon={<IconBadge name="sparkles" size={12} variant="success" />}
+                      >
+                        Generations
+                      </DropdownItem>
+                      <DropdownItem
+                        onClick={() => {
+                          useWorkspaceStore.getState().openFloatingPanel('providers', { width: 700, height: 500 });
+                          setPanelsDropdownOpen(false);
+                        }}
+                        icon={<IconBadge name="plug" size={12} variant="info" />}
+                      >
+                        Providers
+                      </DropdownItem>
+                      <DropdownDivider />
+                      <DropdownItem
+                        onClick={() => {
+                          useWorkspaceStore.getState().openFloatingPanel('dev-tools', { width: 800, height: 600 });
+                          setPanelsDropdownOpen(false);
+                        }}
+                        icon={<IconBadge name="wrench" size={12} variant="warning" />}
+                      >
+                        Dev Tools
+                      </DropdownItem>
+                    </Dropdown>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (generationWsConnected) {
+                        useWorkspaceStore.getState().openFloatingPanel('generations', { width: 800, height: 600 });
+                      }
+                    }}
+                    className={`h-7 px-1.5 text-xs inline-flex items-center gap-1.5 rounded border transition-colors ${
+                      generationWsConnected
+                        ? 'border-green-500/30 bg-green-500/5 text-green-600 dark:text-green-400 hover:bg-green-500/10'
+                        : 'border-amber-500/30 bg-amber-500/5 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
+                    }`}
+                    title={generationWsConnected ? 'Generation feed live - click to open' : 'Generation feed offline'}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${generationWsConnected ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} />
+                    <span>{generationWsConnected ? 'Live' : 'Offline'}</span>
+                  </button>
+                </>
+              }
             />
           </div>
         </AssetViewerLayout>

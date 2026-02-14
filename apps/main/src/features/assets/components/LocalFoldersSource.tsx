@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { SourceControllerProvider } from '../context/SourceControllerContext';
 import { useLocalFoldersController } from '../hooks/useLocalFoldersController';
 
@@ -7,6 +9,7 @@ interface LocalFoldersSourceProps {
   layout?: 'masonry' | 'grid';
   cardSize?: number;
   overlayPresetId?: string;
+  toolbarExtra?: ReactNode;
 }
 
 /**

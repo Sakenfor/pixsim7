@@ -99,28 +99,17 @@ export function GallerySurfaceSwitcher({
   }
 
   // Dropdown mode
-  const currentSurface = surfaces.find(s => s.id === currentSurfaceId);
-
   return (
-    <div className="relative inline-block">
-      <select
-        value={currentSurfaceId}
-        onChange={(e) => handleSurfaceChange(e.target.value as GallerySurfaceId)}
-        className="px-3 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
-      >
-        {surfaces.map(surface => (
-          <option key={surface.id} value={surface.id}>
-            {surface.icon} {surface.label}
-          </option>
-        ))}
-      </select>
-
-      {/* Current surface indicator */}
-      {currentSurface && (
-        <div className="absolute -bottom-5 left-0 right-0 text-[9px] text-center text-neutral-400">
-          {currentSurface.category}
-        </div>
-      )}
-    </div>
+    <select
+      value={currentSurfaceId}
+      onChange={(e) => handleSurfaceChange(e.target.value as GallerySurfaceId)}
+      className="h-7 px-1.5 text-xs rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 focus:outline-none focus:border-accent transition-colors"
+    >
+      {surfaces.map(surface => (
+        <option key={surface.id} value={surface.id}>
+          {surface.icon} {surface.label}
+        </option>
+      ))}
+    </select>
   );
 }

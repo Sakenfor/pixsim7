@@ -11,6 +11,8 @@ export interface PageJumpPopoverProps {
   hasMore?: boolean;
   loading: boolean;
   onGoToPage: (page: number) => void;
+  /** When true, renders without its own border (for use inside a shared chip container) */
+  borderless?: boolean;
 }
 
 export function PageJumpPopover({
@@ -19,6 +21,7 @@ export function PageJumpPopover({
   hasMore,
   loading,
   onGoToPage,
+  borderless,
 }: PageJumpPopoverProps) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState('');
@@ -90,7 +93,9 @@ export function PageJumpPopover({
       <button
         ref={anchorRef}
         onClick={() => setOpen((prev) => !prev)}
-        className="h-7 px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors min-w-[52px] text-center"
+        className={`h-7 px-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors min-w-[36px] text-center ${
+          borderless ? '' : 'border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60'
+        }`}
         title="Click to jump to page"
       >
         {pageLabel}

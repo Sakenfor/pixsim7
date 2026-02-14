@@ -95,6 +95,14 @@ export const PAGE_CATEGORIES = {
  */
 export type PageCategory = (typeof PAGE_CATEGORIES)[keyof typeof PAGE_CATEGORIES];
 
+export interface SubNavItem {
+  id: string;
+  label: string;
+  icon?: string;
+  /** Query param appended to page route when navigating */
+  param?: { key: string; value: string };
+}
+
 export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory = string> {
   /** Route path (e.g., '/assets', '/workspace') */
   route: string;
@@ -156,6 +164,9 @@ export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory =
    * Keep paths workspace-relative (e.g., docs/..., features/...).
    */
   appMap?: AppMapMetadata;
+
+  /** Sub-navigation items shown as a flyout in the ActivityBar */
+  subNav?: SubNavItem[];
 
   /**
    * Dev Tool configuration (optional).
