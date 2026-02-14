@@ -73,6 +73,18 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             kind=AnalyzerKind.PARSER,
             target=AnalyzerTarget.PROMPT,
             source_plugin_id="core",
+            config={
+                "enable_section_parsing": True,
+                "section_label_confidence": 0.9,
+                "enable_stemming": True,
+                "enable_negation": True,
+                "enable_action_inference": True,
+                "enable_ontology_resolution": True,
+                "min_confidence": 0.0,
+                "default_role": "other",
+                "disabled_roles": [],
+                "role_keywords": {},
+            },
             enabled=True,
             is_default=True,
         ))

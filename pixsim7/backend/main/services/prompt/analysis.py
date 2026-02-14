@@ -34,6 +34,16 @@ _PROVIDER_TO_AI_SETTINGS_KEY: Dict[str, str] = {
     "openai-llm": "openai_api_key",
 }
 
+# Normalize llm_provider values (DB default is "anthropic", frontend sends "anthropic-llm")
+_NORMALIZE_PROVIDER_ID: Dict[str, str] = {
+    "anthropic": "anthropic-llm",
+    "openai": "openai-llm",
+    # Already-normalized values pass through
+    "anthropic-llm": "anthropic-llm",
+    "openai-llm": "openai-llm",
+    "cmd-llm": "cmd-llm",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -211,7 +221,6 @@ class PromptAnalysisService:
                         user_id=user_id,
                     )
                 existing.prompt_analysis = analysis
-                existing.updated_at = datetime.now(timezone.utc)
                 await self.db.flush()
 
             return existing, False
@@ -297,7 +306,6 @@ class PromptAnalysisService:
             user_id=user_id,
         )
         version.prompt_analysis = analysis
-        version.updated_at = datetime.now(timezone.utc)
 
         await self.db.flush()
 
@@ -319,9 +327,10 @@ class PromptAnalysisService:
         Run the specified analyzer on text.
 
         Dispatches to appropriate adapter based on analyzer_id.
-        For LLM analyzers, injects user AI credentials from UserAISettings
-        when available (so users don't need to duplicate API keys in
-        analyzer instance configs).
+        For LLM analyzers, resolves user preferences from UserAISettings:
+        - API key: injected from Providers panel if not in analyzer config
+        - Provider: user's default llm_provider used as fallback
+        - Model: user's llm_default_model used when provider matches preference
         """
         # Check if analyzer exists
         analyzer_id = analyzer_registry.resolve_legacy(analyzer_id)
@@ -345,7 +354,8 @@ class PromptAnalysisService:
                 text,
                 analyzer_id=None,
                 role_registry=role_registry,
-            )  # adapter handles internally
+                parser_config=merged_config,
+            )
 
         elif analyzer_info and analyzer_info.kind == AnalyzerKind.LLM:
             # Use LLM analyzer
@@ -358,16 +368,33 @@ class PromptAnalysisService:
                 "llm:claude": "anthropic-llm",
                 "llm:openai": "openai-llm",
             }
+
+            # Resolve provider: explicit > analyzer default > user pref > fallback
+            user_prefs = await self._load_user_ai_settings(user_id)
+            user_provider = (
+                _NORMALIZE_PROVIDER_ID.get(user_prefs.llm_provider, user_prefs.llm_provider)
+                if user_prefs else None
+            )
+
             resolved_provider = (
                 provider_id
                 or analyzer_info.provider_id
-                or provider_map.get(analyzer_id, "anthropic-llm")
+                or provider_map.get(analyzer_id)
+                or user_provider
+                or "anthropic-llm"
             )
-            resolved_model = model_id or analyzer_info.model_id
+
+            # Resolve model: explicit > user pref (if same provider) > analyzer default
+            user_model = (
+                user_prefs.llm_default_model
+                if user_prefs and user_prefs.llm_default_model and user_provider == resolved_provider
+                else None
+            )
+            resolved_model = model_id or user_model or analyzer_info.model_id
 
             # Inject user AI credentials if not already in config
-            merged_config = await self._inject_user_ai_credentials(
-                merged_config, resolved_provider, user_id,
+            merged_config = self._inject_api_key_from_settings(
+                merged_config, resolved_provider, user_prefs,
             )
 
             return await analyze_prompt_with_llm(
@@ -388,36 +415,14 @@ class PromptAnalysisService:
                 role_registry=role_registry,
             )
 
-    async def _inject_user_ai_credentials(
-        self,
-        config: Optional[Dict[str, Any]],
-        provider_id: str,
-        user_id: Optional[int],
-    ) -> Optional[Dict[str, Any]]:
+    async def _load_user_ai_settings(self, user_id: Optional[int]) -> Optional[Any]:
         """
-        Inject the user's AI provider API key into analyzer config.
+        Load UserAISettings for the given user.
 
-        Looks up UserAISettings for the user and maps the resolved provider_id
-        to the appropriate API key field.  Only injects if:
-        - user_id and db session are available
-        - the config doesn't already contain an api_key
-        - UserAISettings has a key for this provider
-
-        This bridges the Providers panel (where users store API keys) with the
-        analyzer system (which previously required separate AnalyzerInstance
-        configs with duplicated keys).
+        Returns None if no user_id, no db session, or no settings found.
         """
-        # Skip if config already has an api_key or no user context
         if not user_id or not self.db:
-            return config
-
-        settings_field = _PROVIDER_TO_AI_SETTINGS_KEY.get(provider_id)
-        if not settings_field:
-            return config
-
-        # Don't overwrite an explicitly-provided api_key
-        if config and config.get("api_key"):
-            return config
+            return None
 
         try:
             from pixsim7.backend.main.domain.core.user_ai_settings import UserAISettings
@@ -425,27 +430,52 @@ class PromptAnalysisService:
             result = await self.db.execute(
                 select(UserAISettings).where(UserAISettings.user_id == user_id)
             )
-            user_settings = result.scalar_one_or_none()
-
-            if not user_settings:
-                return config
-
-            api_key = getattr(user_settings, settings_field, None)
-            if not api_key:
-                return config
-
-            logger.debug(
-                f"Injecting {settings_field} from UserAISettings into "
-                f"analyzer config for provider {provider_id}"
-            )
-
-            merged = dict(config) if config else {}
-            merged["api_key"] = api_key
-            return merged
-
+            return result.scalar_one_or_none()
         except Exception as e:
             logger.warning(f"Failed to load UserAISettings for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    def _inject_api_key_from_settings(
+        config: Optional[Dict[str, Any]],
+        provider_id: str,
+        user_settings: Optional[Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Inject the user's API key from UserAISettings into analyzer config.
+
+        Only injects if:
+        - user_settings is available
+        - the config doesn't already contain an api_key
+        - UserAISettings has a key for this provider
+
+        This bridges the Providers panel (where users store API keys) with the
+        analyzer system (which previously required separate AnalyzerInstance
+        configs with duplicated keys).
+        """
+        # Don't overwrite an explicitly-provided api_key
+        if config and config.get("api_key"):
             return config
+
+        if not user_settings:
+            return config
+
+        settings_field = _PROVIDER_TO_AI_SETTINGS_KEY.get(provider_id)
+        if not settings_field:
+            return config
+
+        api_key = getattr(user_settings, settings_field, None)
+        if not api_key:
+            return config
+
+        logger.debug(
+            f"Injecting {settings_field} from UserAISettings into "
+            f"analyzer config for provider {provider_id}"
+        )
+
+        merged = dict(config) if config else {}
+        merged["api_key"] = api_key
+        return merged
 
     async def _resolve_role_registry(
         self,

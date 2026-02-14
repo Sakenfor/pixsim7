@@ -31,6 +31,7 @@ async def parse_prompt_to_candidates(
     *,
     role_registry: Optional[PromptRoleRegistry] = None,
     parser_hints: Optional[Dict[str, List[str]]] = None,
+    parser_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Parse prompt text into normalized candidates.
@@ -42,6 +43,7 @@ async def parse_prompt_to_candidates(
         text: Prompt text to parse
         role_registry: Optional PromptRoleRegistry for dynamic roles.
         parser_hints: Optional parser hints to augment role keywords.
+        parser_config: Optional config dict for parser behavior.
 
     Returns:
         Dict with "candidates" key containing list of:
@@ -58,7 +60,7 @@ async def parse_prompt_to_candidates(
         }
     """
     # Currently only SimplePromptParser is implemented.
-    parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry)
+    parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry, config=parser_config)
 
     parsed = await parser.parse(text)
 
@@ -95,6 +97,7 @@ async def analyze_prompt(
     *,
     role_registry: Optional[PromptRoleRegistry] = None,
     parser_hints: Optional[Dict[str, List[str]]] = None,
+    parser_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Generic, source-agnostic prompt analysis.
@@ -159,6 +162,7 @@ async def analyze_prompt(
         text,
         role_registry=role_registry,
         parser_hints=parser_hints,
+        parser_config=parser_config,
     )
     candidates: List[Dict[str, Any]] = result.get("candidates", [])
 

@@ -7,6 +7,10 @@ roles:
     description: "Emotional tone or atmosphere"
     priority: 50
     composition_role: role:style_reference
+    # Only unambiguous emotional descriptors — words like "soft", "gentle",
+    # "tense", "intense" etc. are too context-dependent for keyword matching
+    # (they often describe lighting, textures, terrain).  The full set remains
+    # in the moods ontology vocabulary for LLM-based analysis.
     keywords:
       - afraid
       - anxious
@@ -21,8 +25,6 @@ roles:
       - enthusiastic
       - teasing
       - playful
-      - tender
-      - gentle
       - passionate
       - angry
       - furious
@@ -31,14 +33,4 @@ roles:
       - depressed
       - frustrated
       - annoyed
-      - tense
-      - relaxed
-      - calm
-      - chaotic
-      - peaceful
-      - soft
-      - intense
-      - harsh
-      - rough
-      - violent
     aliases: []
