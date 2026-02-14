@@ -784,10 +784,8 @@ async def create_llm_instance(
 
     Admin only. Creates a new configuration instance for an LLM provider.
     """
-    from pixsim7.backend.main.services.llm.instance_service import (
-        LlmInstanceService,
-        InstanceConfigError,
-    )
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+    from pixsim7.backend.main.services.provider_instance_base import ProviderInstanceConfigError
 
     if not user.is_admin():
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -803,7 +801,7 @@ async def create_llm_instance(
             enabled=data.enabled,
             priority=data.priority,
         )
-    except InstanceConfigError as e:
+    except ProviderInstanceConfigError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid instance config: {e.message}"
@@ -864,10 +862,8 @@ async def update_llm_instance(
 
     Admin only. Updates configuration for an existing instance.
     """
-    from pixsim7.backend.main.services.llm.instance_service import (
-        LlmInstanceService,
-        InstanceConfigError,
-    )
+    from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
+    from pixsim7.backend.main.services.provider_instance_base import ProviderInstanceConfigError
 
     if not user.is_admin():
         raise HTTPException(status_code=403, detail="Admin access required")
@@ -878,7 +874,7 @@ async def update_llm_instance(
 
     try:
         instance = await service.update_instance(instance_id, **updates)
-    except InstanceConfigError as e:
+    except ProviderInstanceConfigError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid instance config: {e.message}"

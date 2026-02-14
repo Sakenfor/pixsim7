@@ -8,24 +8,22 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from pixsim7.backend.main.domain.providers import (
     ProviderInstanceConfig,
     ProviderInstanceConfigKind,
 )
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.services.provider_instance_base import (
+    ProviderInstanceServiceBase,
+    ProviderInstanceConfigError,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class AnalyzerInstanceConfigError(Exception):
+class AnalyzerInstanceConfigError(ProviderInstanceConfigError):
     """Raised when analyzer instance config validation fails."""
-    def __init__(self, analyzer_id: str, message: str):
-        self.analyzer_id = analyzer_id
-        self.message = message
-        super().__init__(f"[{analyzer_id}] {message}")
+    pass
 
 
 def _resolve_analyzer_defaults(
@@ -52,15 +50,14 @@ def _resolve_analyzer_defaults(
     return analyzer_info.id, resolved_provider_id, resolved_model_id
 
 
-class AnalyzerInstanceService:
+class AnalyzerInstanceService(ProviderInstanceServiceBase):
     """
     Service for managing analyzer instances.
 
     Uses ProviderInstanceConfig with kind=ANALYZER.
     """
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
+    _kind = ProviderInstanceConfigKind.ANALYZER
 
     async def create_instance(
         self,
@@ -84,8 +81,7 @@ class AnalyzerInstanceService:
         if not isinstance(config, dict):
             raise AnalyzerInstanceConfigError(analyzer_id, "Config must be a dictionary")
 
-        instance = ProviderInstanceConfig(
-            kind=ProviderInstanceConfigKind.ANALYZER,
+        instance = await self._create(
             provider_id=provider_id,
             analyzer_id=analyzer_id,
             model_id=model_id,
@@ -96,9 +92,6 @@ class AnalyzerInstanceService:
             enabled=enabled,
             priority=priority,
         )
-        self.session.add(instance)
-        await self.session.flush()
-        await self.session.refresh(instance)
 
         logger.info(
             "analyzer_instance_created",
@@ -108,10 +101,7 @@ class AnalyzerInstanceService:
         return instance
 
     async def get_instance(self, instance_id: int) -> Optional[ProviderInstanceConfig]:
-        instance = await self.session.get(ProviderInstanceConfig, instance_id)
-        if not instance or instance.kind != ProviderInstanceConfigKind.ANALYZER:
-            return None
-        return instance
+        return await self._get_by_id(instance_id)
 
     async def get_instance_for_user(
         self,
@@ -119,10 +109,7 @@ class AnalyzerInstanceService:
         instance_id: int,
         owner_user_id: int,
     ) -> Optional[ProviderInstanceConfig]:
-        instance = await self.get_instance(instance_id)
-        if not instance or instance.owner_user_id != owner_user_id:
-            return None
-        return instance
+        return await self._get_for_user(instance_id, owner_user_id)
 
     async def list_instances(
         self,
@@ -132,27 +119,17 @@ class AnalyzerInstanceService:
         provider_id: Optional[str] = None,
         enabled_only: bool = True,
     ) -> list[ProviderInstanceConfig]:
-        stmt = select(ProviderInstanceConfig).where(
-            ProviderInstanceConfig.kind == ProviderInstanceConfigKind.ANALYZER,
+        filters = [
             ProviderInstanceConfig.owner_user_id == owner_user_id,
-        )
+        ]
 
         if analyzer_id:
-            stmt = stmt.where(ProviderInstanceConfig.analyzer_id == analyzer_id)
+            filters.append(ProviderInstanceConfig.analyzer_id == analyzer_id)
 
         if provider_id:
-            stmt = stmt.where(ProviderInstanceConfig.provider_id == provider_id)
+            filters.append(ProviderInstanceConfig.provider_id == provider_id)
 
-        if enabled_only:
-            stmt = stmt.where(ProviderInstanceConfig.enabled == True)
-
-        stmt = stmt.order_by(
-            ProviderInstanceConfig.priority.desc(),
-            ProviderInstanceConfig.label
-        )
-
-        result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        return await self._list(*filters, enabled_only=enabled_only)
 
     async def update_instance(
         self,
@@ -161,10 +138,7 @@ class AnalyzerInstanceService:
         owner_user_id: int,
         **updates,
     ) -> Optional[ProviderInstanceConfig]:
-        instance = await self.get_instance_for_user(
-            instance_id=instance_id,
-            owner_user_id=owner_user_id,
-        )
+        instance = await self._get_for_user(instance_id, owner_user_id)
         if not instance:
             return None
 
@@ -189,22 +163,11 @@ class AnalyzerInstanceService:
                 "Config must be a dictionary"
             )
 
-        allowed_fields = {
-            "provider_id",
-            "model_id",
-            "label",
-            "description",
-            "config",
-            "enabled",
-            "priority",
-        }
-        for key, value in updates.items():
-            if key in allowed_fields:
-                setattr(instance, key, value)
-
-        await self.session.flush()
-        await self.session.refresh(instance)
-        return instance
+        return await self._apply_updates(
+            instance,
+            {"provider_id", "model_id", "label", "description", "config", "enabled", "priority"},
+            updates,
+        )
 
     async def delete_instance(
         self,
@@ -212,13 +175,8 @@ class AnalyzerInstanceService:
         instance_id: int,
         owner_user_id: int,
     ) -> bool:
-        instance = await self.get_instance_for_user(
-            instance_id=instance_id,
-            owner_user_id=owner_user_id,
-        )
+        instance = await self._get_for_user(instance_id, owner_user_id)
         if not instance:
             return False
 
-        await self.session.delete(instance)
-        await self.session.flush()
-        return True
+        return await self._delete_instance(instance)
