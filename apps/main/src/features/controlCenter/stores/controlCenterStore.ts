@@ -8,6 +8,7 @@ import { manuallyRehydrateStore, exposeStoreForDebugging } from '../lib/zustandP
 export type ControlModule = 'quickGenerate' | 'providers' | 'panels' | 'none';
 export type DockPosition = 'bottom' | 'left' | 'right' | 'top' | 'floating';
 export type LayoutBehavior = 'overlay' | 'push';
+export type RetractedMode = 'hidden' | 'peek';
 
 /**
  * ControlCenterState contains UI-specific state for the Control Center dock.
@@ -17,6 +18,7 @@ export interface ControlCenterState {
   dockPosition: DockPosition;
   layoutBehavior: LayoutBehavior;
   conformToOtherPanels: boolean;
+  retractedMode: RetractedMode;
   open: boolean;
   pinned: boolean;
   height: number;
@@ -34,6 +36,7 @@ export interface ControlCenterActions {
   setDockPosition: (position: DockPosition) => void;
   setLayoutBehavior: (behavior: LayoutBehavior) => void;
   setConformToOtherPanels: (conform: boolean) => void;
+  setRetractedMode: (mode: RetractedMode) => void;
   toggleOpen: () => void;
   setOpen: (v: boolean) => void;
   setPinned: (v: boolean) => void;
@@ -56,6 +59,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         dockPosition: 'bottom',
         layoutBehavior: 'overlay',
         conformToOtherPanels: false,
+        retractedMode: 'hidden',
         open: false,
         pinned: false,
         height: 300,
@@ -71,6 +75,10 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         setConformToOtherPanels: (conform) => {
           if (get().conformToOtherPanels === conform) return;
           set({ conformToOtherPanels: conform });
+        },
+        setRetractedMode: (mode) => {
+          if (get().retractedMode === mode) return;
+          set({ retractedMode: mode });
         },
         setDockPosition: (position) => {
           if (get().dockPosition === position) return;
@@ -125,6 +133,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           dockPosition: 'bottom',
           layoutBehavior: 'overlay',
           conformToOtherPanels: false,
+          retractedMode: 'hidden',
           open: false,
           pinned: false,
           height: 300,
@@ -143,6 +152,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         dockPosition: s.dockPosition,
         layoutBehavior: s.layoutBehavior,
         conformToOtherPanels: s.conformToOtherPanels,
+        retractedMode: s.retractedMode,
         open: s.open,
         pinned: s.pinned,
         height: s.height,
@@ -151,7 +161,7 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
         activeModule: s.activeModule,
         enabledModules: s.enabledModules,
       }),
-      version: 11,
+      version: 12,
       migrate: (persistedState: any, version: number) => {
         const migrated = { ...persistedState };
 
@@ -199,6 +209,11 @@ export const useControlCenterStore = create<ControlCenterState & ControlCenterAc
           delete migrated.presetId;
           delete migrated.presetParams;
           delete migrated.generating;
+        }
+
+        // Migrate from version 11 to 12: add retractedMode
+        if (version < 12) {
+          migrated.retractedMode ??= 'hidden';
         }
 
         return migrated;

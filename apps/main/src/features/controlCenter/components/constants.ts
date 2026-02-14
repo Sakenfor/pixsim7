@@ -7,6 +7,9 @@
 /** Reveal strip detection - how close to edge to trigger reveal (px) */
 export const REVEAL_STRIP_THRESHOLD = 6;
 
+/** Toolbar header height — used for peek mode reveal strip (px) */
+export const TOOLBAR_HEIGHT = 33;
+
 /** Leave detection - buffer zone before auto-hide triggers (px) */
 export const LEAVE_BUFFER_THRESHOLD = 10;
 

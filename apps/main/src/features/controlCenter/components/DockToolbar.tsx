@@ -87,8 +87,14 @@ export function DockToolbar({
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Panel layout reset action
+  // Store actions for inline settings
   const triggerPanelLayoutReset = useControlCenterStore(s => s.triggerPanelLayoutReset);
+  const retractedMode = useControlCenterStore(s => s.retractedMode);
+  const setRetractedMode = useControlCenterStore(s => s.setRetractedMode);
+  const layoutBehavior = useControlCenterStore(s => s.layoutBehavior);
+  const setLayoutBehavior = useControlCenterStore(s => s.setLayoutBehavior);
+  const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
+  const setConformToOtherPanels = useControlCenterStore(s => s.setConformToOtherPanels);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -140,16 +146,51 @@ export function DockToolbar({
             <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
               Settings
             </div>
-            <button
-              onClick={() => {
-                navigate('/settings?tab=control-center');
-                setShowDropdown(false);
-              }}
-              className="w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-100 dark:hover:bg-neutral-700 flex items-center gap-2"
-            >
-              <span>⚙️</span>
-              <span>Control Center Settings</span>
-            </button>
+
+            {/* Retracted Mode */}
+            <div className="px-3 py-1.5">
+              <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">When retracted</div>
+              <div className="flex gap-1">
+                <ToggleButton
+                  active={retractedMode === 'hidden'}
+                  onClick={() => setRetractedMode('hidden')}
+                  label="Hidden"
+                />
+                <ToggleButton
+                  active={retractedMode === 'peek'}
+                  onClick={() => setRetractedMode('peek')}
+                  label="Show toolbar"
+                />
+              </div>
+            </div>
+
+            {/* Layout Behavior */}
+            <div className="px-3 py-1.5">
+              <div className="text-xs text-neutral-600 dark:text-neutral-300 mb-1">Layout</div>
+              <div className="flex gap-1">
+                <ToggleButton
+                  active={layoutBehavior === 'overlay'}
+                  onClick={() => setLayoutBehavior('overlay')}
+                  label="Overlay"
+                />
+                <ToggleButton
+                  active={layoutBehavior === 'push'}
+                  onClick={() => setLayoutBehavior('push')}
+                  label="Push"
+                />
+              </div>
+            </div>
+
+            {/* Conform to Panels */}
+            <label className="px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700">
+              <input
+                type="checkbox"
+                checked={conformToOtherPanels}
+                onChange={(e) => setConformToOtherPanels(e.target.checked)}
+                className="rounded border-neutral-300 dark:border-neutral-600 text-blue-600 focus:ring-blue-500"
+              />
+              <span className="text-xs text-neutral-600 dark:text-neutral-300">Conform to panels</span>
+            </label>
           </div>
         )}
       </div>
@@ -246,6 +287,31 @@ export function DockToolbar({
         </ExpandableButtonGroup>
       </div>
     </div>
+  );
+}
+
+/** Toggle button for inline settings */
+function ToggleButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={clsx(
+        'flex-1 px-2 py-1 text-[11px] rounded transition-colors',
+        active
+          ? 'bg-blue-600 text-white'
+          : 'bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-600'
+      )}
+    >
+      {label}
+    </button>
   );
 }
 

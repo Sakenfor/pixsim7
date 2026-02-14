@@ -1,5 +1,5 @@
 
-import { ToastContainer, useTheme } from '@pixsim7/shared.ui';
+import { ToastContainer } from '@pixsim7/shared.ui';
 import { useEffect, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
@@ -9,14 +9,17 @@ import {
   ContextMenuPortal,
 } from '@lib/dockview';
 import { PanelPropertiesPopup } from '@lib/dockview';
+import { useContentInset } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
+
+import { useApplyAppearance } from '@features/appearance';
 import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { ControlCenterManager } from '@features/controlCenter';
+import { CubeWidgetOverlay } from '@features/cubes';
 import { useInitializePanelSystem } from '@features/panels';
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
-import { useApplyTheme } from '@features/theme';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
@@ -24,6 +27,7 @@ import { usePluginCatalogStore } from '@/stores/pluginCatalogStore';
 
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { DevToolQuickAccess } from './components/dev/DevToolQuickAccess';
+import { ActivityBar } from './components/navigation/ActivityBar';
 import { PluginOverlays } from './components/PluginOverlays';
 import { useActionShortcuts } from './hooks/useActionShortcuts';
 import { useDevToolShortcuts } from './hooks/useDevToolShortcuts';
@@ -48,14 +52,13 @@ function App() {
   const initialize = useAuthStore((state) => state.initialize);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const initializePlugins = usePluginCatalogStore((s) => s.initialize);
+  const leftInset = useContentInset('left');
 
   // Get dynamic routes reactively from module registry
   const dynamicRoutes = useModuleRoutes({ includeHidden: true });
 
-  // Initialize theme (applies saved theme or system preference)
-  useTheme();
-  // Apply accent color theme class to <html>
-  useApplyTheme();
+  // Apply appearance settings (dark mode, accent color)
+  useApplyAppearance();
 
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
@@ -92,7 +95,11 @@ function App() {
             panelRegistry: panelSelectors,
           }}
         >
-          <div className="min-h-screen flex flex-col">
+          {isAuthenticated && <ActivityBar />}
+          <div
+            className="min-h-screen flex flex-col transition-[margin] duration-200"
+            style={{ marginLeft: isAuthenticated ? leftInset : 0 }}
+          >
             <Suspense fallback={<RouteLoadingFallback />}>
               <Routes>
                 {/* Auth routes (not protected) */}
@@ -129,6 +136,12 @@ function App() {
           {isAuthenticated && (
             <ErrorBoundary>
               <FloatingPanelsManager />
+            </ErrorBoundary>
+          )}
+          {/* Cube widget overlay (only when authenticated) */}
+          {isAuthenticated && (
+            <ErrorBoundary>
+              <CubeWidgetOverlay />
             </ErrorBoundary>
           )}
           {/* Global toast notifications */}

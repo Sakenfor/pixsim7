@@ -4,6 +4,8 @@ import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
 
+import { useEdgeInset, useInsetOn } from '@lib/layout/edgeInsets';
+import type { Edge } from '@lib/layout/edgeInsets';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets';
@@ -11,7 +13,7 @@ import { useControlCenterStore } from '@features/controlCenter/stores/controlCen
 import { PanelHostDockview } from '@features/panels';
 import type { PanelDefinition, PanelHostDockviewRef } from '@features/panels';
 
-import { FLOATING_DEFAULTS, Z_INDEX } from './constants';
+import { FLOATING_DEFAULTS, TOOLBAR_HEIGHT, Z_INDEX } from './constants';
 import { DockToolbar } from './DockToolbar';
 import { useDockBehavior } from './hooks/useDockBehavior';
 
@@ -41,6 +43,7 @@ export function ControlCenterDock() {
   const height = useControlCenterStore(s => s.height);
   const enabledModules = useControlCenterStore(s => s.enabledModules);
   const dockPosition = useControlCenterStore(s => s.dockPosition);
+  const retractedMode = useControlCenterStore(s => s.retractedMode);
   const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
   const floatingPosition = useControlCenterStore(s => s.floatingPosition);
   const floatingSize = useControlCenterStore(s => s.floatingSize);
@@ -75,6 +78,7 @@ export function ControlCenterDock() {
   // Use extracted hook for dock behavior (reveal/hide, resize, keyboard)
   const { dragging, startResize } = useDockBehavior({
     dockPosition,
+    retractedMode,
     open,
     pinned,
     height,
@@ -97,6 +101,21 @@ export function ControlCenterDock() {
 
   const isVertical = dockPosition === 'left' || dockPosition === 'right';
   const isFloating = dockPosition === 'floating';
+  const layoutBehavior = useControlCenterStore(s => s.layoutBehavior);
+
+  // Register in edge insets so other widgets + content area can respond
+  useEdgeInset(
+    'controlCenter',
+    isFloating ? 'bottom' : (dockPosition as Edge),
+    height,
+    open && !isFloating,
+    10, // after activity bar (0)
+    layoutBehavior === 'push',
+  );
+
+  // Read insets from other widgets to offset our positioning
+  const leftInset = useInsetOn('left', 'controlCenter');
+  const rightInset = useInsetOn('right', 'controlCenter');
 
   // Calculate layout adjustments when conforming to other panels
   const layoutAdjustment = useMemo(() => {
@@ -118,25 +137,36 @@ export function ControlCenterDock() {
     return { offsetRight: 0, widthReduction: 0 };
   }, [conformToOtherPanels, isFloating, isViewerOpen, viewerMode, viewerSettings.panelWidth, dockPosition]);
 
-  // Position classes (for docked modes)
+  // Position classes (for docked modes) — left/right set via inline style from edge insets
   const positionClasses = clsx(
-    'fixed z-40 select-none transition-all duration-300 ease-out',
+    'fixed z-40 select-none overflow-hidden transition-all duration-300 ease-out',
     {
-      'left-0 bottom-0': dockPosition === 'bottom',
-      'left-0 top-0 bottom-0': dockPosition === 'left',
-      'top-0 bottom-0': dockPosition === 'right',
-      'left-0 top-0': dockPosition === 'top',
+      'bottom-0': dockPosition === 'bottom',
+      'top-0 bottom-0': dockPosition === 'left' || dockPosition === 'right',
+      'top-0': dockPosition === 'top',
     }
   );
 
-  // Transform classes based on position and open state (for docked modes)
+  // Retracted transform/size — peek collapses to toolbar height, hidden slides off-screen
+  const retractedStyle: React.CSSProperties = {};
+  if (!open) {
+    if (retractedMode === 'peek') {
+      // Collapse to toolbar height — header stays visible regardless of dock edge
+      if (isVertical) {
+        retractedStyle.width = `${TOOLBAR_HEIGHT}px`;
+      } else {
+        retractedStyle.height = `${TOOLBAR_HEIGHT}px`;
+      }
+    } else {
+      // Translate off-screen leaving a 6px reveal strip
+      if (dockPosition === 'bottom') retractedStyle.transform = 'translateY(calc(100% - 6px))';
+      else if (dockPosition === 'top') retractedStyle.transform = 'translateY(calc(-100% + 6px))';
+      else if (dockPosition === 'left') retractedStyle.transform = 'translateX(calc(-100% + 6px))';
+      else if (dockPosition === 'right') retractedStyle.transform = 'translateX(calc(100% - 6px))';
+    }
+  }
+
   const transformClasses = clsx({
-    'translate-y-0': open && (dockPosition === 'bottom' || dockPosition === 'top'),
-    'translate-y-[calc(100%-6px)]': !open && dockPosition === 'bottom',
-    '-translate-y-[calc(100%-6px)]': !open && dockPosition === 'top',
-    'translate-x-0': open && (dockPosition === 'left' || dockPosition === 'right'),
-    '-translate-x-[calc(100%-6px)]': !open && dockPosition === 'left',
-    'translate-x-[calc(100%-6px)]': !open && dockPosition === 'right',
     'opacity-100': open,
     'opacity-90': !open,
   });
@@ -147,14 +177,16 @@ export function ControlCenterDock() {
       : { height: `${height}px` };
 
     if (dockPosition === 'bottom' || dockPosition === 'top') {
-      const adjustedWidth = `calc(100% - ${layoutAdjustment.widthReduction}px)`;
-      return { ...baseStyle, width: adjustedWidth, right: `${layoutAdjustment.offsetRight}px` };
+      const totalWidthReduction = layoutAdjustment.widthReduction + leftInset + rightInset;
+      return { ...baseStyle, left: `${leftInset}px`, width: `calc(100% - ${totalWidthReduction}px)` };
+    } else if (dockPosition === 'left') {
+      return { ...baseStyle, left: `${leftInset}px` };
     } else if (dockPosition === 'right') {
-      return { ...baseStyle, right: `${layoutAdjustment.offsetRight}px` };
+      return { ...baseStyle, right: `${layoutAdjustment.offsetRight + rightInset}px` };
     }
 
     return baseStyle;
-  }, [isVertical, height, dockPosition, layoutAdjustment]);
+  }, [isVertical, height, dockPosition, layoutAdjustment, leftInset, rightInset]);
 
   // Render content (shared between floating and docked)
   const renderContent = () => (
@@ -260,7 +292,7 @@ export function ControlCenterDock() {
     <div
       ref={dockRef}
       className={clsx(positionClasses, transformClasses)}
-      style={containerStyle}
+      style={{ ...containerStyle, ...retractedStyle }}
     >
       {renderContent()}
     </div>

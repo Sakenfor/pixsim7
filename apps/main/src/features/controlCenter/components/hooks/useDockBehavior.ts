@@ -6,9 +6,12 @@
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
-import type { DockPosition } from '@features/controlCenter/stores/controlCenterStore';
+
+import type { DockPosition, RetractedMode } from '@features/controlCenter/stores/controlCenterStore';
+
 import {
   REVEAL_STRIP_THRESHOLD,
+  TOOLBAR_HEIGHT,
   LEAVE_BUFFER_THRESHOLD,
   KEYBOARD_RESIZE_STEP,
   THROTTLE,
@@ -18,6 +21,8 @@ import {
 interface UseDockBehaviorOptions {
   /** Current dock position */
   dockPosition: DockPosition;
+  /** How the dock appears when retracted ('hidden' = 6px strip, 'peek' = toolbar visible) */
+  retractedMode: RetractedMode;
   /** Whether the dock is currently open */
   open: boolean;
   /** Whether the dock is pinned (won't auto-hide) */
@@ -72,6 +77,7 @@ function throttle<T extends (...args: any[]) => void>(
 
 export function useDockBehavior({
   dockPosition,
+  retractedMode,
   open,
   pinned,
   height,
@@ -112,6 +118,10 @@ export function useDockBehavior({
   useEffect(() => {
     if (dockPosition === 'floating') return;
 
+    // In peek mode the visible toolbar zone is larger — use it as the leave buffer
+    // to prevent close→reopen flicker when the mouse moves into the peek strip
+    const leaveBuffer = retractedMode === 'peek' ? TOOLBAR_HEIGHT : LEAVE_BUFFER_THRESHOLD;
+
     function onMouseLeave(e: MouseEvent) {
       if (pinned) return;
 
@@ -119,10 +129,10 @@ export function useDockBehavior({
       const winW = window.innerWidth;
 
       // If leaving to the reveal strip, keep open
-      if (dockPosition === 'bottom' && e.clientY >= winH - LEAVE_BUFFER_THRESHOLD) return;
-      if (dockPosition === 'top' && e.clientY <= LEAVE_BUFFER_THRESHOLD) return;
-      if (dockPosition === 'left' && e.clientX <= LEAVE_BUFFER_THRESHOLD) return;
-      if (dockPosition === 'right' && e.clientX >= winW - LEAVE_BUFFER_THRESHOLD) return;
+      if (dockPosition === 'bottom' && e.clientY >= winH - leaveBuffer) return;
+      if (dockPosition === 'top' && e.clientY <= leaveBuffer) return;
+      if (dockPosition === 'left' && e.clientX <= leaveBuffer) return;
+      if (dockPosition === 'right' && e.clientX >= winW - leaveBuffer) return;
 
       setOpen(false);
     }
@@ -132,11 +142,14 @@ export function useDockBehavior({
 
     node.addEventListener('mouseleave', onMouseLeave);
     return () => node.removeEventListener('mouseleave', onMouseLeave);
-  }, [pinned, setOpen, dockPosition, dockRef]);
+  }, [pinned, setOpen, dockPosition, retractedMode, dockRef]);
 
   // Reveal strip hover to open (disabled for floating mode)
   useEffect(() => {
     if (dockPosition === 'floating') return;
+
+    // Peek mode shows the full toolbar row, so the reveal zone must be wider
+    const threshold = retractedMode === 'peek' ? TOOLBAR_HEIGHT : REVEAL_STRIP_THRESHOLD;
 
     const onMove = throttle((e: MouseEvent) => {
       // Check ref to avoid re-creating listener
@@ -150,10 +163,10 @@ export function useDockBehavior({
 
       // Check appropriate edge based on dock position
       let nearEdge = false;
-      if (dockPosition === 'bottom' && e.clientY >= winH - REVEAL_STRIP_THRESHOLD) nearEdge = true;
-      if (dockPosition === 'top' && e.clientY <= REVEAL_STRIP_THRESHOLD) nearEdge = true;
-      if (dockPosition === 'left' && e.clientX <= REVEAL_STRIP_THRESHOLD) nearEdge = true;
-      if (dockPosition === 'right' && e.clientX >= winW - REVEAL_STRIP_THRESHOLD) nearEdge = true;
+      if (dockPosition === 'bottom' && e.clientY >= winH - threshold) nearEdge = true;
+      if (dockPosition === 'top' && e.clientY <= threshold) nearEdge = true;
+      if (dockPosition === 'left' && e.clientX <= threshold) nearEdge = true;
+      if (dockPosition === 'right' && e.clientX >= winW - threshold) nearEdge = true;
 
       if (!nearEdge) return;
 
@@ -171,7 +184,7 @@ export function useDockBehavior({
 
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [setOpen, dockPosition, dockRef]);
+  }, [setOpen, dockPosition, retractedMode, dockRef]);
 
   // Keyboard resize support
   useEffect(() => {
