@@ -353,106 +353,92 @@ button:focus-visible {
   transition: none !important;
 }
 
-/* CompactAssetCard - container-query scaling for overlays */
-.compact-card-container {
+/* ═══════════════════════════════════════════════════════════════════════
+ * cq-scale — proportional container-query scaling system
+ *
+ * Generic foundation for any card or UI element that needs its overlays,
+ * buttons, badges and icons to scale proportionally with its container.
+ *
+ * Usage:
+ *   1. Add `cq-scale` class to the container element
+ *   2. Use the `--cq-*` custom properties on descendant elements, OR
+ *      use the ready-made `.cq-btn-*` / `.cq-badge` utility classes
+ *
+ * All sizes use cqi (1cqi = 1% of container inline-size) with clamp()
+ * for smooth, breakpoint-free scaling.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+.cq-scale {
   container-type: inline-size;
+
+  /* ── Size tokens ──────────────────────────────────────────────────── */
+  --cq-btn-xs:     clamp(7px,  12cqi, 16px);   /* ~12% — tiny action btn  */
+  --cq-btn-sm:     clamp(10px, 14cqi, 20px);   /* ~14% — small action btn */
+  --cq-btn-md:     clamp(14px, 18cqi, 24px);   /* ~18% — medium btn       */
+  --cq-btn-lg:     clamp(14px, 20cqi, 32px);   /* ~20% — large btn        */
+
+  --cq-icon-xs:    clamp(3px,  6cqi,  8px);    /* icon inside btn-xs      */
+  --cq-icon-sm:    clamp(5px,  7cqi,  10px);   /* icon inside btn-sm      */
+  --cq-icon-md:    clamp(6px,  8cqi,  12px);   /* icon inside btn-md/lg   */
+
+  --cq-inset-sm:   clamp(1px,  3cqi,  4px);    /* edge offset — tight     */
+  --cq-inset-md:   clamp(2px,  4cqi,  6px);    /* edge offset — relaxed   */
+
+  --cq-font-xs:    clamp(6px,  7cqi,  9px);    /* tiny label text         */
+  --cq-font-sm:    clamp(7px,  8cqi,  10px);   /* small badge text        */
+
+  --cq-pad-x:      clamp(2px,  4cqi,  6px);    /* horizontal padding      */
+  --cq-pad-y:      clamp(0px,  1.5cqi, 2px);   /* vertical padding        */
 }
 
-/* Scale down overlays when card is small (< 80px) */
+/* ── Ready-made utility classes ──────────────────────────────────────── */
+
+.cq-btn-xs          { width: var(--cq-btn-xs);  height: var(--cq-btn-xs);  }
+.cq-btn-xs svg      { width: var(--cq-icon-xs); height: var(--cq-icon-xs); }
+
+.cq-btn-sm          { width: var(--cq-btn-sm);  height: var(--cq-btn-sm);  }
+.cq-btn-sm svg      { width: var(--cq-icon-sm); height: var(--cq-icon-sm); }
+
+.cq-btn-md          { width: var(--cq-btn-md);  height: var(--cq-btn-md);  }
+.cq-btn-md svg      { width: var(--cq-icon-md); height: var(--cq-icon-md); }
+
+.cq-btn-lg          { width: var(--cq-btn-lg);  height: var(--cq-btn-lg);  }
+.cq-btn-lg svg      { width: var(--cq-icon-md); height: var(--cq-icon-md); }
+
+.cq-badge {
+  font-size: var(--cq-font-sm);
+  padding: var(--cq-pad-y) var(--cq-pad-x);
+}
+
+.cq-badge-xs {
+  font-size: var(--cq-font-xs);
+  padding: var(--cq-pad-y) var(--cq-pad-x);
+}
+
+.cq-inset-tr        { top: var(--cq-inset-sm);  right: var(--cq-inset-sm); }
+.cq-inset-tl        { top: var(--cq-inset-sm);  left:  var(--cq-inset-sm); }
+.cq-inset-br        { bottom: var(--cq-inset-sm); right: var(--cq-inset-sm); }
+.cq-inset-bl        { bottom: var(--cq-inset-sm); left:  var(--cq-inset-sm); }
+
+.cq-inset-tr-md     { top: var(--cq-inset-md);  right: var(--cq-inset-md); }
+.cq-inset-tl-md     { top: var(--cq-inset-md);  left:  var(--cq-inset-md); }
+.cq-inset-br-md     { bottom: var(--cq-inset-md); right: var(--cq-inset-md); }
+.cq-inset-bl-md     { bottom: var(--cq-inset-md); left:  var(--cq-inset-md); }
+
+/* Hover-action overlay padding */
+.cq-hover-actions {
+  padding-bottom: clamp(2px, 3cqi, 6px);
+}
+
+/* ── Scale-transform breakpoints (nav pills, hover-action wrappers) ── */
+/* transform: scale() needs a unitless value; CSS cannot derive it from cqi */
+
 @container (max-width: 79px) {
-  .compact-card-remove {
-    width: 10px;
-    height: 10px;
-    top: 2px;
-    right: 2px;
-  }
-  .compact-card-remove svg {
-    width: 5px;
-    height: 5px;
-  }
-  .compact-card-status {
-    width: 12px;
-    height: 12px;
-    top: 2px;
-    right: 2px;
-  }
-  .compact-card-status svg {
-    width: 7px;
-    height: 7px;
-  }
-  .compact-card-play {
-    width: 16px;
-    height: 16px;
-  }
-  .compact-card-play svg {
-    width: 7px;
-    height: 7px;
-  }
-  .compact-card-lock {
-    font-size: 7px;
-    padding: 1px 3px;
-  }
-  .compact-card-generate {
-    width: 14px;
-    height: 14px;
-    bottom: 2px;
-    left: 2px;
-  }
-  .compact-card-generate svg {
-    width: 7px;
-    height: 7px;
-  }
-  .compact-card-nav {
-    transform: scale(0.7);
-    transform-origin: bottom center;
-  }
+  .cq-scale-down  { transform: scale(0.65); transform-origin: bottom center; }
 }
-
-/* Default size (80px - 150px) */
 @container (min-width: 80px) and (max-width: 150px) {
-  .compact-card-remove {
-    width: 12px;
-    height: 12px;
-    top: 3px;
-    right: 3px;
-  }
-  .compact-card-remove svg {
-    width: 6px;
-    height: 6px;
-  }
-  .compact-card-status {
-    width: 16px;
-    height: 16px;
-  }
-  .compact-card-status svg {
-    width: 9px;
-    height: 9px;
-  }
-  .compact-card-play {
-    width: 22px;
-    height: 22px;
-  }
-  .compact-card-play svg {
-    width: 9px;
-    height: 9px;
-  }
-  .compact-card-generate {
-    width: 16px;
-    height: 16px;
-    bottom: 3px;
-    left: 3px;
-  }
-  .compact-card-generate svg {
-    width: 8px;
-    height: 8px;
-  }
-  .compact-card-nav {
-    transform: scale(0.85);
-    transform-origin: bottom center;
-  }
+  .cq-scale-down  { transform: scale(0.85); transform-origin: bottom center; }
 }
-
-/* Large cards (> 150px) keep defaults — no overrides needed */
 
 /* Respect user's reduced motion preference */
 @media (prefers-reduced-motion: reduce) {

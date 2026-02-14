@@ -738,8 +738,8 @@ export function AssetPanel(props: QuickGenPanelProps) {
               const isSelected = !!inputItem && inputItem.id === currentInputId;
               const isClamped = clampedSlotIndices.has(idx);
               const wrapperClasses = isGridMode
-                ? 'relative aspect-square'
-                : 'relative flex-shrink-0 h-full aspect-square';
+                ? 'relative aspect-square cq-scale'
+                : 'relative flex-shrink-0 h-full aspect-square cq-scale';
 
               if (!inputItem) {
                 const isArmed = armedSlotIndex === idx;
@@ -770,7 +770,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     <div className="text-[10px] text-neutral-400">
                       {isArmed ? 'Next input' : 'Empty slot'}
                     </div>
-                    <div className="absolute top-1 left-1 bg-neutral-700 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                    <div className="cq-badge cq-inset-tl absolute bg-neutral-700 text-white font-medium rounded">
                       {idx + 1}
                     </div>
                     {isClamped && (
@@ -831,7 +831,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     disableMotion={isSelected}
                     className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? 'grayscale' : ''}`}
                   />
-                  <div className="absolute top-1 left-1 bg-purple-600 text-white text-[10px] font-medium px-1.5 py-0.5 rounded">
+                  <div className="cq-badge cq-inset-tl absolute bg-purple-600 text-white font-medium rounded">
                     {idx + 1}
                   </div>
                   {isClamped && (
