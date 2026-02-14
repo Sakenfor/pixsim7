@@ -24,6 +24,10 @@ import { ContextHubCapabilityBridge } from "./ContextHubCapabilityBridge";
 
 export function ContextHubRootProviders() {
   const editorContext = useEditorContext();
+  const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
+  const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
+  const currentProjectSourceWorldId = useProjectSessionStore((state) => state.currentProjectSourceWorldId);
+  const currentProjectUpdatedAt = useProjectSessionStore((state) => state.currentProjectUpdatedAt);
   const sourceFileName = useProjectSessionStore((state) => state.sourceFileName);
   const schemaVersion = useProjectSessionStore((state) => state.schemaVersion);
   const extensionKeys = useProjectSessionStore((state) => state.extensionKeys);
@@ -115,6 +119,10 @@ export function ContextHubRootProviders() {
   const projectValue = useMemo<ProjectContextSummary>(
     () => ({
       worldId: editorContext.world.id,
+      projectId: currentProjectId,
+      projectName: currentProjectName,
+      projectSourceWorldId: currentProjectSourceWorldId,
+      projectUpdatedAt: currentProjectUpdatedAt,
       sourceFileName,
       schemaVersion,
       extensionKeys,
@@ -127,6 +135,10 @@ export function ContextHubRootProviders() {
     }),
     [
       editorContext.world.id,
+      currentProjectId,
+      currentProjectName,
+      currentProjectSourceWorldId,
+      currentProjectUpdatedAt,
       sourceFileName,
       schemaVersion,
       extensionKeys,
@@ -199,3 +211,4 @@ export function ContextHubRootProviders() {
 
   return <ContextHubCapabilityBridge />;
 }
+

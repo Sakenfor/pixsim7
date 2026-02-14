@@ -42,6 +42,7 @@ export type { PlaybackEvent } from './lib/core';
 
 export { useWorldContextStore } from './stores/worldContextStore';
 export { useProjectSessionStore } from './stores/projectSessionStore';
+export { useProjectIndexStore } from './stores/projectIndexStore';
 
 // ============================================================================
 // Plugin SDK - Stable Exports for Scene View Plugins
@@ -84,3 +85,4 @@ export {
   ensureAssetRef,
   extractNumericAssetId,
 } from './ui/comicPanels';
+

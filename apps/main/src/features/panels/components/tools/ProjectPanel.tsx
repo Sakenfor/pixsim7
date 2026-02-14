@@ -5,7 +5,6 @@ import {
   getSavedGameProject,
   listSavedGameProjects,
   saveGameProject,
-  type SavedGameProjectSummary,
 } from '@lib/api';
 import {
   clearAuthoringProjectBundleDirtyState,
@@ -18,7 +17,7 @@ import {
   type ProjectBundleExtensionImportReport,
 } from '@lib/game';
 
-import { useProjectSessionStore, useWorldContextStore } from '@features/scene';
+import { useProjectIndexStore, useProjectSessionStore, useWorldContextStore } from '@features/scene';
 
 import { WorldContextSelector } from '@/components/game/WorldContextSelector';
 
@@ -74,11 +73,20 @@ export function ProjectPanel() {
   const [busy, setBusy] = useState(false);
   const [projectName, setProjectName] = useState('');
   const [worldNameOverride, setWorldNameOverride] = useState('');
-  const [savedProjects, setSavedProjects] = useState<SavedGameProjectSummary[]>([]);
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [lastAction, setLastAction] = useState<LastProjectAction | null>(null);
 
   const { worldId, setWorldId, setLocationId } = useWorldContextStore();
+  const savedProjects = useProjectIndexStore((state) => state.projects);
+  const selectedProjectId = useProjectIndexStore((state) => state.selectedProjectId);
+  const setSavedProjects = useProjectIndexStore((state) => state.setProjects);
+  const upsertSavedProject = useProjectIndexStore((state) => state.upsertProject);
+  const selectSavedProject = useProjectIndexStore((state) => state.selectProject);
+  const currentProjectId = useProjectSessionStore((state) => state.currentProjectId);
+  const currentProjectName = useProjectSessionStore((state) => state.currentProjectName);
+  const currentProjectSourceWorldId = useProjectSessionStore(
+    (state) => state.currentProjectSourceWorldId,
+  );
+  const currentProjectUpdatedAt = useProjectSessionStore((state) => state.currentProjectUpdatedAt);
   const sourceFileName = useProjectSessionStore((state) => state.sourceFileName);
   const schemaVersion = useProjectSessionStore((state) => state.schemaVersion);
   const dirty = useProjectSessionStore((state) => state.dirty);
@@ -103,10 +111,12 @@ export function ProjectPanel() {
     try {
       const projects = await listSavedGameProjects({ limit: 200 });
       setSavedProjects(projects);
-      if (projects.length === 0) {
-        setSelectedProjectId(null);
-      } else if (!projects.some((project) => project.id === selectedProjectId)) {
-        setSelectedProjectId(projects[0].id);
+
+      if (
+        currentProjectId != null &&
+        projects.some((project) => project.id === currentProjectId)
+      ) {
+        selectSavedProject(currentProjectId);
       }
     } catch (error) {
       if (!opts?.silent) {
@@ -124,6 +134,16 @@ export function ProjectPanel() {
     // Intentionally run once for panel bootstrap.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (currentProjectId == null) {
+      return;
+    }
+    if (!savedProjects.some((project) => project.id === currentProjectId)) {
+      return;
+    }
+    selectSavedProject(currentProjectId);
+  }, [currentProjectId, savedProjects, selectSavedProject]);
 
   const handleSaveProject = async (overwrite: boolean) => {
     if (!worldId) {
@@ -150,8 +170,8 @@ export function ProjectPanel() {
         ...(overwrite && selectedProjectId ? { overwrite_project_id: selectedProjectId } : {}),
       });
 
-      await loadSavedProjects({ silent: true });
-      setSelectedProjectId(saved.id);
+      upsertSavedProject(saved);
+      selectSavedProject(saved.id);
       setProjectName(saved.name);
 
       setLastAction({
@@ -171,6 +191,10 @@ export function ProjectPanel() {
 
       clearAuthoringProjectBundleDirtyState();
       recordExport({
+        projectId: saved.id,
+        projectName: saved.name,
+        projectSourceWorldId: saved.source_world_id ?? null,
+        projectUpdatedAt: saved.updated_at,
         sourceFileName: saved.name,
         schemaVersion: bundle.schema_version ?? null,
         extensionKeys: Object.keys(bundle.extensions || {}),
@@ -209,6 +233,9 @@ export function ProjectPanel() {
       const firstLocationId = Object.values(response.id_maps.locations)[0];
       setLocationId(firstLocationId ?? null);
 
+      upsertSavedProject(project);
+      selectSavedProject(project.id);
+
       setLastAction({
         kind: 'load',
         projectId: project.id,
@@ -222,6 +249,10 @@ export function ProjectPanel() {
 
       clearAuthoringProjectBundleDirtyState();
       recordImport({
+        projectId: project.id,
+        projectName: project.name,
+        projectSourceWorldId: project.source_world_id ?? null,
+        projectUpdatedAt: project.updated_at,
         sourceFileName: project.name,
         schemaVersion: project.bundle.schema_version ?? null,
         extensionKeys: Object.keys(project.bundle.extensions || {}),
@@ -311,7 +342,7 @@ export function ProjectPanel() {
             onChange={(event) => {
               const nextValue = Number(event.target.value);
               const nextId = Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
-              setSelectedProjectId(nextId);
+              selectSavedProject(nextId);
               const nextProject = savedProjects.find((entry) => entry.id === nextId);
               if (nextProject) {
                 setProjectName(nextProject.name);
@@ -333,6 +364,20 @@ export function ProjectPanel() {
             <div>Schema: {selectedProject.schema_version}</div>
             <div>Source world: {selectedProject.source_world_id ?? 'N/A'}</div>
             <div>Saved: {formatIsoTimestamp(selectedProject.updated_at)}</div>
+          </div>
+        )}
+
+        {currentProjectId != null && (
+          <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
+            <div>
+              Current project: #{currentProjectId}
+              {currentProjectName ? ` ${currentProjectName}` : ''}
+            </div>
+            <div>Current source world: {currentProjectSourceWorldId ?? 'N/A'}</div>
+            <div>
+              Current updated:{' '}
+              {currentProjectUpdatedAt ? formatIsoTimestamp(currentProjectUpdatedAt) : 'Unknown'}
+            </div>
           </div>
         )}
 
@@ -375,6 +420,10 @@ export function ProjectPanel() {
         <div>Last operation: {lastOperation ?? 'none'}</div>
         <div>Bundle schema: {schemaVersion ?? 'Unknown'}</div>
         <div>Source project: {sourceFileName || 'N/A'}</div>
+        <div>
+          Current project: {currentProjectId != null ? `#${currentProjectId}` : 'N/A'}
+          {currentProjectName ? ` (${currentProjectName})` : ''}
+        </div>
         <div>Last import: {formatTimestamp(lastImportedAt)}</div>
         <div>Last export: {formatTimestamp(lastExportedAt)}</div>
         <div>
@@ -435,3 +484,4 @@ export function ProjectPanel() {
     </div>
   );
 }
+

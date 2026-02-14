@@ -23,8 +23,10 @@ import {
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
+  CAP_SCENE_VIEW,
 } from "./capabilityKeys";
 import { assetInputContract } from "./contracts/assetInput";
+import { sceneViewContract } from "./contracts/sceneView";
 
 export {
   CAP_ASSET,
@@ -41,6 +43,7 @@ export {
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
+  CAP_SCENE_VIEW,
 };
 
 registerCapabilityDescriptor({
@@ -142,7 +145,16 @@ registerCapabilityDescriptor({
   source: "contextHub",
 });
 
+registerCapabilityDescriptor({
+  key: CAP_SCENE_VIEW,
+  label: "Scene View",
+  description: "Scene view content type matching for plugin resolution.",
+  kind: "context",
+  source: "contextHub",
+});
+
 registerCapabilityContract(assetInputContract);
+registerCapabilityContract(sceneViewContract);
 
 export type AssetSelection = EntityScopedCapability<{
   asset: ViewerAsset | null;
@@ -163,6 +175,10 @@ export interface WorldContextSummary {
 
 export interface ProjectContextSummary {
   worldId?: number | null;
+  projectId?: number | null;
+  projectName?: string | null;
+  projectSourceWorldId?: number | null;
+  projectUpdatedAt?: string | null;
   sourceFileName?: string | null;
   schemaVersion?: number | null;
   extensionKeys?: string[];
@@ -316,3 +332,4 @@ export interface GenerationSourceContext {
   /** Reset to user mode, clearing fetched data */
   resetToUser: () => void;
 }
+
