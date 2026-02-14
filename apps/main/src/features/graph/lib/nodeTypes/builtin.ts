@@ -56,6 +56,25 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'VideoNodeEditor',
     rendererComponent: 'VideoNodeRenderer',
     preloadPriority: 10, // Very common, preload eagerly
+    settingsSchema: {
+      defaults: {
+        autoPlay: true,
+        loopByDefault: false,
+        defaultVolume: 80,
+      },
+      groups: [
+        {
+          id: 'playback',
+          title: 'Playback',
+          description: 'Default playback behavior for video nodes',
+          fields: [
+            { key: 'autoPlay', label: 'Auto-play', description: 'Automatically start playback when the node is entered', type: 'toggle' },
+            { key: 'loopByDefault', label: 'Loop by default', description: 'Loop media when it reaches the end', type: 'toggle' },
+            { key: 'defaultVolume', label: 'Default volume', description: 'Initial volume level for new video nodes', type: 'range', min: 0, max: 100, step: 5, format: (v: number) => `${v}%` },
+          ],
+        },
+      ],
+    },
     toRuntime: (node) => ({
       ...createBaseRuntimeNode(node),
       media: node.segments,
@@ -81,6 +100,25 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'ChoiceNodeEditor',
     rendererComponent: 'ChoiceNodeRenderer',
     preloadPriority: 9, // Very common, preload eagerly
+    settingsSchema: {
+      defaults: {
+        showTimer: false,
+        timerDuration: 15,
+        shuffleChoices: false,
+      },
+      groups: [
+        {
+          id: 'display',
+          title: 'Display',
+          description: 'Default display and timing options for choice nodes',
+          fields: [
+            { key: 'showTimer', label: 'Show timer', description: 'Display a countdown timer for timed choices', type: 'toggle' },
+            { key: 'timerDuration', label: 'Timer duration', description: 'Default countdown duration in seconds', type: 'range', min: 5, max: 60, step: 1, format: (v: number) => `${v}s` },
+            { key: 'shuffleChoices', label: 'Shuffle choices', description: 'Randomize the order of choices each time', type: 'toggle' },
+          ],
+        },
+      ],
+    },
     toRuntime: (node) => {
       const metadata = getNodeMetadata(node);
       const choices = Array.isArray(metadata?.choices) ? metadata.choices : [];
@@ -345,6 +383,35 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'GenerationNodeEditor',
     rendererComponent: 'DefaultNodeRenderer',
     preloadPriority: 2, // Experimental, rare
+    settingsSchema: {
+      defaults: {
+        defaultStrategy: 'once',
+        timeoutMs: 30000,
+        showPlaceholder: true,
+      },
+      groups: [
+        {
+          id: 'behavior',
+          title: 'Behavior',
+          description: 'Default generation behavior and fallback options',
+          fields: [
+            {
+              key: 'defaultStrategy',
+              label: 'Default strategy',
+              description: 'When to trigger content generation',
+              type: 'select',
+              options: [
+                { value: 'once', label: 'Once' },
+                { value: 'every-visit', label: 'Every visit' },
+                { value: 'on-demand', label: 'On demand' },
+              ],
+            },
+            { key: 'timeoutMs', label: 'Timeout', description: 'Maximum time to wait for generation to complete', type: 'range', min: 5000, max: 120000, step: 5000, format: (v: number) => `${(v / 1000).toFixed(0)}s` },
+            { key: 'showPlaceholder', label: 'Show placeholder', description: 'Display a placeholder while content is generating', type: 'toggle' },
+          ],
+        },
+      ],
+    },
     toRuntime: (node) => ({
       ...createBaseRuntimeNode(node),
     }),
@@ -395,6 +462,23 @@ export function registerBuiltinNodeTypes() {
     editorComponent: 'MiniGameNodeEditor',
     rendererComponent: 'VideoNodeRenderer',
     preloadPriority: 3, // Less common
+    settingsSchema: {
+      defaults: {
+        allowSkip: false,
+        showHints: true,
+      },
+      groups: [
+        {
+          id: 'defaults',
+          title: 'Defaults',
+          description: 'Default behavior for mini-game nodes',
+          fields: [
+            { key: 'allowSkip', label: 'Allow skip', description: 'Let players skip the mini-game segment', type: 'toggle' },
+            { key: 'showHints', label: 'Show hints', description: 'Display gameplay hints during the mini-game', type: 'toggle' },
+          ],
+        },
+      ],
+    },
     toRuntime: (node) => ({
       ...createBaseRuntimeNode(node),
     }),

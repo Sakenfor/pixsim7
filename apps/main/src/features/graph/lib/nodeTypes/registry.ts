@@ -103,6 +103,9 @@ export interface NodeTypeDefinition<
 
   /** Priority for preloading (higher = load sooner) */
   preloadPriority?: number;
+
+  /** Settings schema for per-node-type user preferences */
+  settingsSchema?: import('@pixsim7/shared.types').NodeSettingsSchema;
 }
 
 export interface NodeTypeRegistryOptions {

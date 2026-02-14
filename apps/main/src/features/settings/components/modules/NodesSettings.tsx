@@ -6,37 +6,68 @@
  * Uses DynamicSettingsPanel with schema from nodes.settings.tsx.
  *
  * NOTE: Schema registration is deferred to avoid circular dependency with nodeTypeRegistry.
+ * The initial registration (no subSections) happens at import time. Once the component
+ * mounts (after node types are registered), it re-registers with dynamic subSections.
  */
 
-import { useMemo, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { getNodeTypesWithSettings } from '@lib/nodeSettings';
 
-import { settingsRegistry } from '../../lib/core/registry';
+import { settingsRegistry, type SettingsSubSection } from '../../lib/core/registry';
 import { registerNodeSettings } from '../../lib/schemas/nodes.settings';
 import { DynamicSettingsPanel } from '../shared/DynamicSettingsPanel';
 
 // Track if settings have been registered (deferred to avoid circular deps)
 let nodeSettingsRegistered = false;
 
+/** Factory: create a sub-section component for a specific node type */
+function createNodeSettingsComponent(nodeTypeId: string) {
+  return function NodeTypeSettings() {
+    return (
+      <div className="flex-1 overflow-auto p-4">
+        <DynamicSettingsPanel categoryId="nodes" tabId={nodeTypeId} />
+      </div>
+    );
+  };
+}
+
 /** Default component - shows first node type's settings or empty state */
 export function NodesSettings() {
-  // Deferred registration to avoid circular dependency with nodeTypeRegistry
   const registeredRef = useRef(false);
   useEffect(() => {
     if (!nodeSettingsRegistered && !registeredRef.current) {
       registeredRef.current = true;
       nodeSettingsRegistered = true;
+
+      // Register schema-based settings (tabs in settingsSchemaRegistry)
       registerNodeSettings();
+
+      // Build sub-sections from discovered node types and re-register
+      const nodeTypes = getNodeTypesWithSettings();
+      if (nodeTypes.length > 0) {
+        const subSections: SettingsSubSection[] = nodeTypes.map((nt) => ({
+          id: nt.id,
+          label: nt.name,
+          icon: nt.icon,
+          component: createNodeSettingsComponent(nt.id),
+        }));
+
+        settingsRegistry.register({
+          id: 'nodes',
+          label: 'Nodes',
+          icon: '🔷',
+          component: NodesSettings,
+          order: 26,
+          subSections,
+        });
+      }
     }
   }, []);
 
-  const nodeTypesWithSettings = useMemo(
-    () => getNodeTypesWithSettings(),
-    []
-  );
+  const nodeTypes = getNodeTypesWithSettings();
 
-  if (nodeTypesWithSettings.length === 0) {
+  if (nodeTypes.length === 0) {
     return (
       <div className="flex-1 overflow-auto p-4 text-xs text-neutral-500">
         No node types with configurable settings found.
@@ -44,21 +75,15 @@ export function NodesSettings() {
     );
   }
 
-  // Show first node type by default
-  const firstNodeTypeId = nodeTypesWithSettings[0].id;
-  return (
-    <div className="flex-1 overflow-auto p-4">
-      <DynamicSettingsPanel categoryId="nodes" tabId={firstNodeTypeId} />
-    </div>
-  );
+  // Default view: show all node type tabs with internal navigation
+  return <DynamicSettingsPanel categoryId="nodes" />;
 }
 
-// Register this module (sub-sections built dynamically inside component to avoid circular deps)
+// Initial registration (no subSections yet - node types aren't registered at import time)
 settingsRegistry.register({
   id: 'nodes',
   label: 'Nodes',
   icon: '🔷',
   component: NodesSettings,
-  order: 26, // After Widgets (25), before Library (35)
-  // Note: subSections not used here - component handles dynamic node type display
+  order: 26,
 });

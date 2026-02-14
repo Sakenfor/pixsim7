@@ -75,6 +75,9 @@ export type {
   NodeTypeRegistryOptions,
   PortDefinition,
   PortConfig,
+  NodeSettingsSchema,
+  NodeSettingsGroup,
+  NodeSettingField,
 } from './nodeTypeRegistry';
 
 // NPC Zones (types only)

@@ -91,6 +91,46 @@ export interface NodeTypeDefinition<TData = any> {
 
   /** Priority for preloading (higher = load sooner) */
   preloadPriority?: number;
+
+  /** Settings schema for per-node-type user preferences */
+  settingsSchema?: NodeSettingsSchema;
+}
+
+// ===================
+// Node Settings Schema Types
+// ===================
+
+/** A single setting field within a node settings group */
+export interface NodeSettingField {
+  key: string;
+  label: string;
+  description?: string;
+  type: 'toggle' | 'select' | 'number' | 'text' | 'range';
+  /** Options for 'select' type */
+  options?: Array<{ value: string; label: string }>;
+  /** Range/number constraints */
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Text field config */
+  placeholder?: string;
+  maxLength?: number;
+  /** Custom display formatter for range/number values */
+  format?: (value: number) => string;
+}
+
+/** A group of related settings displayed together */
+export interface NodeSettingsGroup {
+  id: string;
+  title?: string;
+  description?: string;
+  fields: NodeSettingField[];
+}
+
+/** Complete settings schema for a node type */
+export interface NodeSettingsSchema {
+  defaults: Record<string, unknown>;
+  groups: NodeSettingsGroup[];
 }
 
 export interface NodeTypeRegistryOptions {
