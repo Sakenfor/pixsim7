@@ -17,6 +17,7 @@ export {
   CAP_PANEL_CONTEXT,
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
+  CAP_SCENE_VIEW,
 } from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -39,6 +40,11 @@ export type {
   GenerationSourceMode,
   GenerationSourceContext,
 } from "./domain/capabilities";
+export type {
+  SceneViewOffer as SceneViewCapabilityOffer,
+  SceneViewRequirement as SceneViewCapabilityRequirement,
+} from "./domain/contracts/sceneView";
+export { sceneViewContract } from "./domain/contracts/sceneView";
 export type {
   CapabilityDescriptor,
   CapabilityDescriptorKind,

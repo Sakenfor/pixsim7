@@ -12,3 +12,4 @@ export const CAP_EDITOR_CONTEXT = "editorContext" as const;
 export const CAP_PANEL_CONTEXT = "panelContext" as const;
 export const CAP_GENERATION_WIDGET = "generationWidget" as const;
 export const CAP_GENERATION_SOURCE = "generationSource" as const;
+export const CAP_SCENE_VIEW = "sceneView" as const;

@@ -42,7 +42,7 @@ const layoutClasses: Record<ComicPanelLayout, string> = {
  * - Click interaction support
  */
 export function ComicPanelSceneView({
-  panels,
+  panels = [],
   layout = 'single',
   showCaption = true,
   className = '',

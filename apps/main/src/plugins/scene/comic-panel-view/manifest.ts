@@ -22,6 +22,7 @@ export const manifest: SceneViewPluginManifest = {
     displayName: 'Comic Panels',
     description: 'Sequential comic-style frames for scene playback',
     surfaces: ['overlay', 'hud', 'panel'],
+    contentTypes: ['comic-panels'],
     default: true,
   },
 };

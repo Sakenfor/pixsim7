@@ -605,8 +605,18 @@ export const InteractiveImageSurface = forwardRef<
         onDoubleClick={handleDoubleClick}
       />
 
-      {/* Additional overlay content */}
-      {children}
+      {/* Additional overlay content - positioned to match image display rect */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          left: imageRect.x,
+          top: imageRect.y,
+          width: imageRect.width,
+          height: imageRect.height,
+        }}
+      >
+        {children}
+      </div>
 
       {/* Loading indicator */}
       {!isLoaded && (

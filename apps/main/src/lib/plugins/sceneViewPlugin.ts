@@ -12,6 +12,22 @@ import type { PluginManifest } from './types';
 import { type UnifiedPluginOrigin } from './types';
 
 /**
+ * Content type vocabulary for scene view plugins.
+ * Each plugin declares which content types it can render.
+ */
+export type SceneViewContentType = 'comic-panels' | 'video' | 'dialogue' | '3d' | (string & {});
+
+/**
+ * Offer describing what content a scene provides.
+ * Built by inspecting scene data (see sceneContentInspector).
+ */
+export interface SceneViewOffer {
+  contentTypes: SceneViewContentType[];
+  panelCount?: number;
+  hasSession?: boolean;
+}
+
+/**
  * Additional metadata describing a scene view plugin.
  */
 export interface SceneViewDescriptor {
@@ -19,6 +35,7 @@ export interface SceneViewDescriptor {
   displayName: string;
   description?: string;
   surfaces?: Array<'overlay' | 'hud' | 'panel' | 'workspace'>;
+  contentTypes?: SceneViewContentType[];
   default?: boolean;
 }
 
@@ -28,7 +45,8 @@ export interface SceneViewPluginManifest extends PluginManifest {
 }
 
 export interface SceneViewRenderProps {
-  panels: SceneMetaComicPanel[];
+  contentType?: SceneViewContentType;
+  panels?: SceneMetaComicPanel[];
   session?: ComicPanelSession;
   sceneMeta?: ComicPanelSceneMeta;
   layout?: ComicPanelLayout;
@@ -94,6 +112,30 @@ class SceneViewRegistry {
 
     const first = this.registry.keys().next();
     return first && !first.done ? first.value : null;
+  }
+
+  /**
+   * Resolve the best plugin for a given content offer.
+   * Checks each registered plugin's declared contentTypes against the offer.
+   * Falls back to getDefaultId() if no match is found.
+   */
+  resolve(offer: SceneViewOffer): string | null {
+    if (!offer.contentTypes.length) {
+      return this.getDefaultId();
+    }
+
+    for (const [id, entry] of this.registry) {
+      const declared = entry.manifest.sceneView.contentTypes;
+      if (!declared || declared.length === 0) {
+        continue;
+      }
+      const hasIntersection = declared.some(ct => offer.contentTypes.includes(ct));
+      if (hasIntersection) {
+        return id;
+      }
+    }
+
+    return this.getDefaultId();
   }
 
   list() {

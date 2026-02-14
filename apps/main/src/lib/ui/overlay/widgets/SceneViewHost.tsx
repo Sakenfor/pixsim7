@@ -23,6 +23,7 @@ import type {
 import { getActiveComicPanels } from '@features/scene';
 import { Ref } from '@pixsim7/shared.types';
 import { sceneViewRegistry, type SceneViewRenderProps } from '@lib/plugins/sceneViewPlugin';
+import { inspectSceneContent } from '@lib/plugins/sceneContentInspector';
 
 export interface SceneViewHostConfig {
   /** Widget ID */
@@ -158,11 +159,13 @@ export function createSceneViewHost(config: SceneViewHostConfig): OverlayWidget 
       const resolvedRequestContext: ComicPanelRequestContext | undefined =
         resolveDataBinding(requestContextBinding, data) ?? inferRequestContextFromData(data);
 
-      // Resolve the scene view plugin
-      const pluginId = sceneViewId ?? sceneViewRegistry.getDefaultId();
+      // Inspect scene content and resolve the best plugin
+      const offer = inspectSceneContent(data?.scene, data?.session);
+      const pluginId = sceneViewId ?? sceneViewRegistry.resolve(offer) ?? sceneViewRegistry.getDefaultId();
       const plugin = pluginId ? sceneViewRegistry.getPlugin(pluginId) : null;
 
       const pluginProps: SceneViewRenderProps = {
+        contentType: offer.contentTypes[0],
         panels: resolvedPanels || [],
         session: data?.session,
         sceneMeta: data?.scene,
