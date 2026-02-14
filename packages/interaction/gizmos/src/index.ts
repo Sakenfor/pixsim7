@@ -111,6 +111,9 @@ export {
 export type {
   ToolInteractionEvent,
   VideoGenerationOutput,
+  ResponseGraphNode,
+  ResponseGraphConnection,
+  NpcResponseMetadata,
 } from './npcResponseEvaluator';
 
 export {

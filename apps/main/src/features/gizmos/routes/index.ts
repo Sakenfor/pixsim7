@@ -40,7 +40,7 @@ export const gizmoLabModule: Module = {
       frontend: [
         'apps/main/src/features/gizmos/',
         'apps/main/src/lib/game/gizmos/',
-        'packages/scene/gizmos/',
+        'packages/interaction/gizmos/',
       ],
     },
   },

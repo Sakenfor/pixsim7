@@ -7,9 +7,13 @@
 import type { InteractiveTool, TouchPattern } from './tools';
 import type {
   ResponseGraphNode,
+  NpcResponseMetadata,
+} from './responseGraphTypes';
+export type {
+  ResponseGraphNode,
   ResponseGraphConnection,
   NpcResponseMetadata,
-} from '@pixsim7/shared.graph.core';
+} from './responseGraphTypes';
 
 // ============================================================================
 // Evaluation Context

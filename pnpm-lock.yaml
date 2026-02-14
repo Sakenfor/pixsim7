@@ -773,9 +773,6 @@ importers:
       '@pixsim7/game.engine':
         specifier: workspace:*
         version: link:../../game/engine
-      '@pixsim7/shared.graph.core':
-        specifier: workspace:*
-        version: link:../../shared/graph/core
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types

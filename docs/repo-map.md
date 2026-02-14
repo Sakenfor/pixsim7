@@ -9,7 +9,7 @@ High-level guide to the pixsim7 codebase. Use this as a starting point when you 
 | `apps/main/` | React front-end (panels, console, gizmos, stores, routing). |
 | `packages/game/` | TypeScript game engine modules (narrative executor, scene integration, runtime plugins). |
 | `packages/shared/` | Shared TypeScript definitions, configs, graph schemas. |
-| `packages/scene/` | Scene/gizmo utilities shared between engine and UI. |
+| `packages/interaction/` | Interaction gizmo/shape utilities shared between engine and UI. |
 | `pixsim7/backend/` | Backend services (FastAPI), world scheduler, automation workers. |
 | `docs/` | Living documentation, specs, system guides. |
 | `docs/archive/` | Historical/legacy docs kept for reference. |
@@ -237,7 +237,7 @@ The workspace uses **SmartDockview** as the single layout engine for all dockvie
 ## Shared Packages
 
 - `packages/shared/types/` â€” Canonical DTOs (GameSession, NPC zones, graph schemas) referenced by both front-end and backend.
-- `packages/scene/gizmos/` â€” Core gizmo types, registries, NPC preferences, zone utilities (shared by engine + UI).
+- `packages/interaction/gizmos/` â€” Core gizmo types, registries, NPC preferences, zone utilities (shared by engine + UI).
 
 ### Gizmo Architecture
 
@@ -245,7 +245,7 @@ Gizmos follow a **package/app split**:
 
 | Layer | Location | Alias | Purpose |
 |-------|----------|-------|---------|
-| **Core** | `packages/scene/gizmos/` | `@pixsim7/interaction.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
+| **Core** | `packages/interaction/gizmos/` | `@pixsim7/interaction.gizmos` | Types, registry, NPC preferences, zone utils, video generation manager |
 | **App UI** | `apps/main/src/lib/gizmos/` | `@/gizmos` | Surface registry, console integration, tool overrides, interaction stats |
 | **Components** | `apps/main/src/components/gizmos/` | â€” | React components (BodyMapGizmo, InteractiveTool, etc.) |
 
@@ -432,4 +432,3 @@ Potential future aliases as the codebase evolves:
   2. Add the alias to all Vite configs
   3. Create or update the barrel export (`index.ts`)
   4. Document the alias in this file
-

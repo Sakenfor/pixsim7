@@ -6,7 +6,7 @@
  *
  * Design philosophy:
  * - Core types are deliberately open-ended (string types, metadata escape hatch)
- * - Higher-level packages (scene-composition, timeline) attach semantics via metadata
+ * - Higher-level packages (image-composition, timeline) attach semantics via metadata
  * - All operations are immutable — return new objects, never mutate
  *
  * @example

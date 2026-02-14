@@ -54,7 +54,7 @@ frontend (app-specific implementations)
    - Minimal disruption to existing code
 
 4. **Clear separation of concerns**
-   - `scene.gizmos`: Pure logic and types
+   - `@pixsim7/interaction.gizmos`: Pure logic and types
    - `game components`: Generic, reusable components
    - `frontend`: Application-specific implementations
 
@@ -91,7 +91,7 @@ frontend (app-specific implementations)
 - `apps/main/src/lib/gizmos/renderers.ts`
 - `apps/main/src/components/minigames/SceneGizmoMiniGame.tsx`
 - `packages/game/components/README.md`
-- `packages/scene/gizmos/README.md`
+- `packages/interaction/gizmos/README.md`
 - `docs/ADR-GIZMO-ARCHITECTURE.md`
 
 **Modified:**
@@ -114,7 +114,7 @@ frontend (app-specific implementations)
 ✅ **Proper layering** - Dependencies flow in one direction (no cycles)
 ✅ **GizmoLab re-enabled** - Full functionality restored
 ✅ **Explicit architecture** - Documented in READMEs and this ADR
-✅ **Type safety maintained** - All types properly exported from scene.gizmos
+✅ **Type safety maintained** - All types properly exported from `@pixsim7/interaction.gizmos`
 
 ### Negative
 
@@ -265,14 +265,14 @@ registerGizmoSurface({
 ### Architecture Checks
 
 - ✅ game components does not import from frontend
-- ✅ Proper dependency chain (scene.gizmos → game components → frontend)
+- ✅ Proper dependency chain (`@pixsim7/interaction.gizmos` → game components → frontend)
 - ✅ All exports intentional and documented
-- ✅ Types properly exported from scene.gizmos
+- ✅ Types properly exported from `@pixsim7/interaction.gizmos`
 - ✅ GizmoLab accessible at `/gizmo-lab` route
 
 ## References
 
 - [packages/game/components/README.md](../packages/game/components/README.md)
-- [packages/scene/gizmos/README.md](../packages/scene/gizmos/README.md)
+- [packages/interaction/gizmos/README.md](../packages/interaction/gizmos/README.md)
 - [Monorepo Package Boundaries Best Practices](https://monorepo.tools/)
 - [Dependency Inversion Principle](https://en.wikipedia.org/wiki/Dependency_inversion_principle)

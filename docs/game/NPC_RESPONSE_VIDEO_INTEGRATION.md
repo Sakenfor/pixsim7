@@ -151,7 +151,7 @@ class OperationType(str, Enum):
 
 Refactor `VideoGenerationManager` to use existing backend instead of custom generation function:
 
-**File: `packages/scene/gizmos/src/videoGenerationManager.ts`**
+**File: `packages/interaction/gizmos/src/videoGenerationManager.ts`**
 
 ```typescript
 export class VideoGenerationManager {

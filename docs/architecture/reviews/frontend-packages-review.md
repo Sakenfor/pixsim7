@@ -285,7 +285,7 @@ Asset domain:
 Game domain:
 ├── @pixsim7/game.engine        → helpers, ref, stats, types
 ├── @pixsim7/game.react         → game.engine, types (+ React)
-└── @pixsim7/game.components    → game.react, scene.gizmos, ui (+ React)
+└── @pixsim7/game.components    → game.react, interaction.gizmos, ui (+ React)
 
 Scene domain:
 ├── @pixsim7/interaction.shapes       → game.engine, types

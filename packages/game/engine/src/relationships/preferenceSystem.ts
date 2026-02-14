@@ -4,7 +4,7 @@
  * Pure game logic for NPC tool preferences, feedback calculation,
  * relationship-gated tool access, and personality presets.
  *
- * Pattern parameters use `string` to stay decoupled from the scene.gizmos
+ * Pattern parameters use `string` to stay decoupled from interaction.gizmos
  * TouchPattern union — consumers can narrow the type as needed.
  */
 
