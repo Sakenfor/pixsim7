@@ -438,7 +438,7 @@ export function MediaCard(props: MediaCardProps) {
 
   return (
     <div
-      className="group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition overflow-hidden relative"
+      className="cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition overflow-hidden relative"
       data-pixsim7="media-card"
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >

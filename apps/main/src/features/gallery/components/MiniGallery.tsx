@@ -7,10 +7,10 @@ import { Icon } from '@lib/icons';
 
 import type { AssetModel } from '@features/assets';
 import { getAssetDisplayUrls, useAssetViewerStore } from '@features/assets';
-import type { AssetFilters } from '@features/assets/hooks/useAssets';
-import { useAssets } from '@features/assets/hooks/useAssets';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
+import type { AssetFilters } from '@features/assets/hooks/useAssets';
+import { useAssets } from '@features/assets/hooks/useAssets';
 import { GenerationScopeProvider, useGenerationScopeStores } from '@features/generation';
 import { useQuickGenerateController } from '@features/prompts';
 import { useOperationSpec, useProviderIdForModel } from '@features/providers';
@@ -130,7 +130,7 @@ function MiniGalleryItem({
     () => (
       <>
         {asset.mediaType === 'video' && (
-          <div className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-black/70 flex items-center justify-center pointer-events-none">
+          <div className="cq-btn-sm cq-inset-br absolute rounded-full bg-black/70 flex items-center justify-center pointer-events-none">
             <Icon name="play" size={10} variant="default" className="text-white" />
           </div>
         )}

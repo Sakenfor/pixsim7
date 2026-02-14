@@ -36,7 +36,7 @@ export function QueueStatusBadge({ assetId }: { assetId: number }) {
 
   return (
     <div
-      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-blue-500 text-white shadow-sm"
+      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-blue-500 text-white shadow-sm"
       title={`In inputs for ${label}`}
     >
       <Icon name={icon} className="w-3 h-3" />
@@ -56,7 +56,7 @@ export function SelectionStatusBadge({ assetId }: { assetId: number }) {
 
   return (
     <div
-      className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-purple-500 text-white shadow-sm"
+      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-purple-500 text-white shadow-sm"
       title={`Selected (${selectionCount} total)`}
     >
       <Icon name="check" className="w-3 h-3" />

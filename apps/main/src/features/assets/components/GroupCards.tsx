@@ -34,7 +34,7 @@ export function GroupFolderTile({
     <button
       type="button"
       onClick={onOpen}
-      className="relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-400 dark:hover:border-blue-400 transition-colors overflow-hidden text-left"
+      className="cq-scale relative w-full rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:border-blue-400 dark:hover:border-blue-400 transition-colors overflow-hidden text-left"
       style={{ height: tileHeight }}
       title={group.label}
     >
@@ -47,10 +47,10 @@ export function GroupFolderTile({
         ))}
       </div>
       <div className="absolute inset-x-2 bottom-2 px-2 py-1 rounded bg-white/90 dark:bg-neutral-900/90 border border-neutral-200 dark:border-neutral-700">
-        <div className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+        <div className="font-semibold text-neutral-900 dark:text-neutral-100 truncate" style={{ fontSize: 'var(--cq-font-sm)' }}>
           {group.label}
         </div>
-        <div className="text-xs text-neutral-500 dark:text-neutral-400">
+        <div className="text-neutral-500 dark:text-neutral-400" style={{ fontSize: 'var(--cq-font-xs)' }}>
           {group.count} items
         </div>
       </div>
@@ -203,7 +203,7 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
 
   return (
     <div
-      className="w-full h-full rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
+      className="cq-scale w-full h-full rounded bg-neutral-200 dark:bg-neutral-700 overflow-hidden"
       style={size ? { width: size, height: size } : undefined}
     >
       {showPoster ? (
@@ -231,7 +231,7 @@ export function GroupPreviewCell({ asset, size }: { asset?: AssetModel; size?: n
         />
       ) : thumbLoading ? (
         <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
-          <div className="w-4 h-4 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
+          <div className="cq-btn-xs border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="w-full h-full flex items-center justify-center text-neutral-400 dark:text-neutral-500">
