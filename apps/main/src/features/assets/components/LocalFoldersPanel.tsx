@@ -73,6 +73,23 @@ function writeStoredContentScrollByScope(value: ContentScrollByScope): void {
   }
 }
 
+function formatBytes(value: number): string {
+  const bytes = Math.max(0, value);
+  if (bytes < 1024) return `${bytes} B`;
+
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let size = bytes / 1024;
+  let unitIndex = 0;
+
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  const digits = size >= 100 ? 0 : size >= 10 ? 1 : 2;
+  return `${size.toFixed(digits)} ${units[unitIndex]}`;
+}
+
 export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
   const controller = useLocalFoldersController();
   const { providers } = useProviders();
@@ -112,6 +129,22 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
   const controllerGetFileForAsset = controller.getFileForAsset;
   const controllerUploadOne = controller.uploadOne;
   const contentScrollScope = controller.selectedFolderPath || ALL_ASSETS_SCROLL_SCOPE;
+
+  const hashingBytesLabel = useMemo(() => {
+    const progress = controller.hashingProgress;
+    if (!progress?.bytesTotal || progress.bytesTotal <= 0) return null;
+
+    const bytesDone = Math.max(0, progress.bytesDone ?? 0);
+    const bytesTotal = Math.max(1, progress.bytesTotal);
+    const percent = Math.min(100, Math.round((bytesDone / bytesTotal) * 100));
+    return `${formatBytes(bytesDone)} / ${formatBytes(bytesTotal)} (${percent}%)`;
+  }, [controller.hashingProgress]);
+
+  const hashingPhaseLabel = useMemo(() => {
+    const phase = controller.hashingProgress?.phase;
+    if (phase === 'digesting') return 'digesting';
+    return 'reading';
+  }, [controller.hashingProgress?.phase]);
 
   const getContentScrollByScope = useCallback((): ContentScrollByScope => {
     if (!contentScrollByScopeRef.current) {
@@ -462,9 +495,20 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
                 {!controller.hashingPaused && (
                   <div className="w-2.5 h-2.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
                 )}
-                <span className="flex-1">
-                  {controller.hashingPaused ? 'Paused' : 'Hashing'}{' '}
-                  {controller.hashingProgress.done}/{controller.hashingProgress.total}
+                <span className="flex-1 min-w-0">
+                  <span className="block truncate">
+                    {controller.hashingPaused
+                      ? 'Paused'
+                      : `Hashing ${controller.hashingProgress.done}/${controller.hashingProgress.total} (${hashingPhaseLabel})`}
+                  </span>
+                  {hashingBytesLabel && (
+                    <span className="block truncate opacity-80">
+                      {hashingBytesLabel}
+                      {controller.hashingProgress.activeAssetName
+                        ? ` - ${controller.hashingProgress.activeAssetName}`
+                        : ''}
+                    </span>
+                  )}
                 </span>
                 <button
                   onClick={controller.hashingPaused ? controller.resumeHashing : controller.pauseHashing}
@@ -595,3 +639,4 @@ export function LocalFoldersPanel({ layout = 'masonry', cardSize = 260 }: LocalF
     </div>
   );
 }
+

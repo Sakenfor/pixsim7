@@ -56,7 +56,14 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   loadPersisted: () => void;
 
   // Background SHA hashing progress (null when idle)
-  hashingProgress: { total: number; done: number } | null;
+  hashingProgress: {
+    total: number;
+    done: number;
+    bytesDone?: number;
+    bytesTotal?: number;
+    phase?: 'reading' | 'digesting';
+    activeAssetName?: string;
+  } | null;
   hashingPaused: boolean;
   pauseHashing: () => void;
   resumeHashing: () => void;
@@ -74,3 +81,4 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   /** Dismiss the missing folders warning */
   dismissMissingFolders: () => void;
 }
+

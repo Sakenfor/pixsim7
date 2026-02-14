@@ -21,6 +21,7 @@ import {
   computeLocalAssetScopeSignature,
   ensureLocalAssetSha256,
   hasValidStoredHash,
+  scheduleAssetsForHashing,
 } from '../lib/localHashing';
 import { useAssetViewerStore } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
@@ -37,6 +38,8 @@ export type MissingFolder = {
   name: string;
   isMissing: true;
 };
+
+type HashingProgressState = NonNullable<LocalFoldersController['hashingProgress']>;
 
 /**
  * Source identity for local folders
@@ -141,7 +144,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   const backendHashCheckInProgressRef = useRef<Set<string>>(new Set());
 
   // Background hashing progress & controls
-  const [hashingProgress, setHashingProgress] = useState<{ total: number; done: number } | null>(null);
+  const [hashingProgress, setHashingProgress] = useState<HashingProgressState | null>(null);
   const bgHashRunIdRef = useRef(0);
   const bgHashPausedRef = useRef(false);
   const hashProgressLastUiUpdateRef = useRef(0);
@@ -278,16 +281,14 @@ export function useLocalFoldersController(): LocalFoldersController {
       return;
     }
 
-    // Get assets that need hashing
-    const assetsToHash = currentFilteredAssets
-      .filter(asset => {
+    // Get assets that need hashing and schedule them with a mixed-size strategy.
+    const assetsToHash = scheduleAssetsForHashing(
+      currentFilteredAssets.filter(asset => {
         if (hasValidStoredHash(asset)) return false;
         if (asset.last_upload_status === 'success') return false;
         return true;
       })
-      // Hash smaller files first so visible progress moves quickly instead of
-      // spending the entire first interval on a single huge file.
-      .sort((a, b) => (a.size ?? Number.MAX_SAFE_INTEGER) - (b.size ?? Number.MAX_SAFE_INTEGER));
+    );
 
     // If nothing to do, mark as checked for this scope signature.
     if (assetsToHash.length === 0) {
@@ -303,7 +304,44 @@ export function useLocalFoldersController(): LocalFoldersController {
     bgHashPausedRef.current = false;
     hashProgressLastUiUpdateRef.current = 0;
     setHashingPaused(false);
-    setHashingProgress({ total: assetsToHash.length, done: 0 });
+
+    let estimatedTotalBytes = assetsToHash.reduce((sum, asset) => (
+      sum + Math.max(0, asset.size ?? 0)
+    ), 0);
+    let completedBytes = 0;
+    const inFlightLoadedBytes = new Map<string, number>();
+    const inFlightTotalBytes = new Map<string, number>();
+    let activeAssetName: string | undefined;
+    let activePhase: 'reading' | 'digesting' = 'reading';
+
+    const publishProgress = (done: number, force = false) => {
+      if (bgHashRunIdRef.current !== runId) return;
+      const now = performance.now();
+      const shouldUpdateUi = force || (
+        hashProgressLastUiUpdateRef.current === 0 ||
+        now - hashProgressLastUiUpdateRef.current >= 80
+      );
+      if (!shouldUpdateUi) return;
+
+      hashProgressLastUiUpdateRef.current = now;
+      const inFlightBytes = Array.from(inFlightLoadedBytes.values()).reduce((sum, value) => sum + value, 0);
+      const rawBytesDone = completedBytes + inFlightBytes;
+      const bytesTotal = Math.max(0, estimatedTotalBytes);
+      const bytesDone = bytesTotal > 0
+        ? Math.min(bytesTotal, Math.max(0, rawBytesDone))
+        : undefined;
+
+      setHashingProgress({
+        total: assetsToHash.length,
+        done,
+        bytesDone,
+        bytesTotal: bytesTotal > 0 ? bytesTotal : undefined,
+        phase: activePhase,
+        activeAssetName,
+      });
+    };
+
+    publishProgress(0, true);
 
     const hashConcurrency = Math.max(1, Math.trunc(hashChunkSize));
     setHashWorkerPoolSize(hashConcurrency);
@@ -337,34 +375,62 @@ export function useLocalFoldersController(): LocalFoldersController {
           }
 
           const asset = assetsToHash[current];
+          const progressKey = `${asset.key}::${current}`;
+          inFlightTotalBytes.set(progressKey, Math.max(0, asset.size ?? 0));
+          inFlightLoadedBytes.set(progressKey, 0);
 
           try {
             const file = await getFileForAsset(asset);
             if (file) {
+              const previousEstimate = inFlightTotalBytes.get(progressKey) || 0;
+              const observedTotal = Math.max(0, file.size);
+              if (observedTotal !== previousEstimate) {
+                estimatedTotalBytes += observedTotal - previousEstimate;
+                inFlightTotalBytes.set(progressKey, observedTotal);
+              }
+
               await ensureLocalAssetSha256(
                 asset,
                 file,
                 async (assetKey, sha256, fileForHash) => {
                   pendingHashUpdates.push({ assetKey, sha256, file: fileForHash });
                 },
+                {
+                  onProgress: (progress) => {
+                    if (bgHashRunIdRef.current !== runId) return;
+
+                    const knownTotal = inFlightTotalBytes.get(progressKey) || 0;
+                    const reportedTotal = Math.max(0, progress.totalBytes);
+                    const nextTotal = reportedTotal > 0 ? reportedTotal : knownTotal;
+                    if (nextTotal !== knownTotal) {
+                      estimatedTotalBytes += nextTotal - knownTotal;
+                      inFlightTotalBytes.set(progressKey, nextTotal);
+                    }
+
+                    const boundedLoaded = Math.max(
+                      0,
+                      Math.min(nextTotal || progress.loadedBytes, progress.loadedBytes),
+                    );
+                    inFlightLoadedBytes.set(progressKey, boundedLoaded);
+                    activeAssetName = asset.name;
+                    activePhase = progress.phase;
+                    publishProgress(done, false);
+                  },
+                },
               );
             }
           } catch (e) {
             console.warn('Failed to hash asset:', asset.name, e);
           } finally {
+            const accountedTotal = inFlightTotalBytes.get(progressKey) || 0;
+            const accountedLoaded = inFlightLoadedBytes.get(progressKey) || 0;
+            completedBytes += Math.max(accountedTotal, accountedLoaded);
+            inFlightTotalBytes.delete(progressKey);
+            inFlightLoadedBytes.delete(progressKey);
+
             done += 1;
-            if (bgHashRunIdRef.current === runId) {
-              const now = performance.now();
-              const shouldUpdateUi = (
-                done === assetsToHash.length ||
-                hashProgressLastUiUpdateRef.current === 0 ||
-                now - hashProgressLastUiUpdateRef.current >= 100
-              );
-              if (shouldUpdateUi) {
-                hashProgressLastUiUpdateRef.current = now;
-                setHashingProgress({ total: assetsToHash.length, done });
-              }
-            }
+            activePhase = 'reading';
+            publishProgress(done, true);
           }
 
           // Apply hash updates in small batches to avoid per-file state churn.
@@ -797,3 +863,4 @@ export function useLocalFoldersController(): LocalFoldersController {
     hashFolder,
   };
 }
+
