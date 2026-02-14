@@ -3,7 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   deleteSavedGameProject,
+  deleteProjectDraft,
   duplicateSavedGameProject,
+  getProjectDraft,
   getSavedGameProject,
   listSavedGameProjects,
   renameSavedGameProject,
@@ -11,6 +13,7 @@ import {
 } from '@lib/api';
 import {
   clearAuthoringProjectBundleDirtyState,
+  clearDraftAfterSave,
   exportWorldProjectWithExtensions,
   importWorldProjectWithExtensions,
   isAnyAuthoringProjectBundleContributorDirty,
@@ -155,6 +158,70 @@ export function ProjectPanel() {
     selectSavedProject(currentProjectId);
   }, [currentProjectId, savedProjects, selectSavedProject]);
 
+  const setDirty = useProjectSessionStore((state) => state.setDirty);
+
+  const handleSaveCurrent = async () => {
+    if (!worldId) {
+      toast.warning('Select a world before saving a project');
+      return;
+    }
+    if (currentProjectId == null) {
+      toast.warning('No active project to save');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const { bundle, extensionReport } = await exportWorldProjectWithExtensions(worldId);
+      const resolvedName = currentProjectName || String(bundle.core.world.name || `world_${worldId}`);
+
+      const saved = await saveGameProject({
+        name: resolvedName,
+        bundle,
+        source_world_id: worldId,
+        overwrite_project_id: currentProjectId,
+      });
+
+      upsertSavedProject(saved);
+      selectSavedProject(saved.id);
+      setProjectName(saved.name);
+
+      setLastAction({
+        kind: 'save',
+        projectId: saved.id,
+        projectName: saved.name,
+        worldName: bundle.core.world.name,
+        overwritten: true,
+        counts: {
+          locations: bundle.core.locations.length,
+          npcs: bundle.core.npcs.length,
+          scenes: bundle.core.scenes.length,
+          items: bundle.core.items.length,
+        },
+        extensionReport,
+      });
+
+      clearAuthoringProjectBundleDirtyState();
+      recordExport({
+        projectId: saved.id,
+        projectName: saved.name,
+        projectSourceWorldId: saved.source_world_id ?? null,
+        projectUpdatedAt: saved.updated_at,
+        sourceFileName: saved.name,
+        schemaVersion: bundle.schema_version ?? null,
+        extensionKeys: Object.keys(bundle.extensions || {}),
+        extensionWarnings: extensionReport.warnings,
+      });
+
+      void clearDraftAfterSave(saved.id);
+      toast.success(`Project saved: ${saved.name}`);
+    } catch (error) {
+      toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSaveProject = async (overwrite: boolean) => {
     if (!worldId) {
       toast.warning('Select a world before saving a project');
@@ -211,6 +278,7 @@ export function ProjectPanel() {
         extensionWarnings: extensionReport.warnings,
       });
 
+      void clearDraftAfterSave(saved.id);
       toast.success(overwrite ? `Project updated: ${saved.name}` : `Project saved: ${saved.name}`);
     } catch (error) {
       toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -297,6 +365,7 @@ export function ProjectPanel() {
 
       if (currentProjectId === deletedId) {
         clearCurrentProject();
+        setDirty(false);
       }
 
       if (selectedProjectId === deletedId) {
@@ -306,6 +375,70 @@ export function ProjectPanel() {
       toast.success(`Project deleted: ${deletedName}`);
     } catch (error) {
       toast.error(`Project delete failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRecoverDraft = async () => {
+    setBusy(true);
+    try {
+      const draft = await getProjectDraft(currentProjectId);
+      if (!draft) {
+        toast.info('No draft found to recover');
+        return;
+      }
+
+      const draftTime = Date.parse(draft.updated_at);
+      const currentTime = currentProjectUpdatedAt ? Date.parse(currentProjectUpdatedAt) : 0;
+      if (Number.isFinite(draftTime) && Number.isFinite(currentTime) && draftTime <= currentTime) {
+        const proceed = window.confirm(
+          'The draft is older than the current saved version. Recover anyway?',
+        );
+        if (!proceed) return;
+      }
+
+      const { response, extensionReport } = await importWorldProjectWithExtensions(draft.bundle);
+
+      setWorldId(response.world_id);
+      const firstLocationId = Object.values(response.id_maps.locations)[0];
+      setLocationId(firstLocationId ?? null);
+
+      setLastAction({
+        kind: 'load',
+        projectId: draft.id,
+        projectName: draft.name,
+        worldId: response.world_id,
+        worldName: response.world_name,
+        counts: response.counts,
+        coreWarnings: response.warnings,
+        extensionReport,
+      });
+
+      clearAuthoringProjectBundleDirtyState();
+      recordImport({
+        projectId: currentProjectId,
+        projectName: currentProjectName,
+        projectSourceWorldId: draft.source_world_id ?? null,
+        projectUpdatedAt: draft.updated_at,
+        sourceFileName: '[draft recovery]',
+        schemaVersion: draft.bundle.schema_version ?? null,
+        extensionKeys: Object.keys(draft.bundle.extensions || {}),
+        extensionWarnings: extensionReport.warnings,
+        coreWarnings: response.warnings,
+      });
+
+      try {
+        await deleteProjectDraft(currentProjectId);
+      } catch {
+        // draft cleanup is best-effort
+      }
+
+      toast.success('Draft recovered successfully');
+    } catch (error) {
+      toast.error(
+        `Draft recovery failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     } finally {
       setBusy(false);
     }
@@ -325,8 +458,29 @@ export function ProjectPanel() {
     setBusy(true);
     try {
       const project = await getSavedGameProject(selectedProjectId);
+
+      // Check for a newer draft
+      let bundleToLoad = project.bundle;
+      try {
+        const draft = await getProjectDraft(selectedProjectId);
+        if (draft) {
+          const draftTime = Date.parse(draft.updated_at);
+          const savedTime = Date.parse(project.updated_at);
+          if (Number.isFinite(draftTime) && draftTime > savedTime) {
+            const useDraft = window.confirm(
+              `A newer autosaved draft exists (${new Date(draftTime).toLocaleString()}). Load the draft instead of the saved version?`,
+            );
+            if (useDraft) {
+              bundleToLoad = draft.bundle;
+            }
+          }
+        }
+      } catch {
+        // Draft check is best-effort — proceed with saved bundle
+      }
+
       const { response, extensionReport } = await importWorldProjectWithExtensions(
-        project.bundle,
+        bundleToLoad,
         worldNameOverride.trim() ? { world_name_override: worldNameOverride.trim() } : undefined,
       );
 
@@ -381,6 +535,20 @@ export function ProjectPanel() {
         title="Project"
         category="workspace"
         contextLabel={worldId ? `World #${worldId}` : 'No world selected'}
+        statusIcon={
+          dirty ? (
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500" />
+          ) : currentProjectId != null ? (
+            <span className="inline-block w-2 h-2 rounded-full bg-green-500" />
+          ) : undefined
+        }
+        statusLabel={
+          dirty
+            ? 'Unsaved'
+            : currentProjectId != null
+              ? currentProjectName ?? undefined
+              : undefined
+        }
       />
 
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
@@ -419,6 +587,16 @@ export function ProjectPanel() {
           >
             Overwrite Selected
           </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void handleSaveCurrent();
+            }}
+            disabled={busy || !worldId || currentProjectId == null}
+          >
+            Save Current
+          </Button>
         </div>
       </div>
 
@@ -455,7 +633,7 @@ export function ProjectPanel() {
             <option value="">Select a saved project...</option>
             {savedProjects.map((project) => (
               <option key={project.id} value={project.id}>
-                #{project.id} {project.name}
+                #{project.id} {project.name}{project.id === currentProjectId ? ' (active)' : ''}
               </option>
             ))}
           </select>
@@ -504,9 +682,13 @@ export function ProjectPanel() {
 
         {currentProjectId != null && (
           <div className="text-xs text-neutral-600 dark:text-neutral-300 space-y-1">
-            <div>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`inline-block w-2 h-2 rounded-full ${dirty ? 'bg-amber-500' : 'bg-green-500'}`}
+              />
               Current project: #{currentProjectId}
               {currentProjectName ? ` ${currentProjectName}` : ''}
+              {dirty && <span className="text-amber-600 dark:text-amber-400">(unsaved changes)</span>}
             </div>
             <div>Current source world: {currentProjectSourceWorldId ?? 'N/A'}</div>
             <div>
@@ -526,16 +708,28 @@ export function ProjectPanel() {
           />
         </label>
 
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            void handleLoadSelectedProject();
-          }}
-          disabled={busy || !selectedProjectId}
-        >
-          Load Selected Project
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={() => {
+              void handleLoadSelectedProject();
+            }}
+            disabled={busy || !selectedProjectId}
+          >
+            Load Selected Project
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void handleRecoverDraft();
+            }}
+            disabled={busy}
+          >
+            Recover Draft
+          </Button>
+        </div>
       </div>
 
       <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 text-xs">
@@ -598,7 +792,7 @@ export function ProjectPanel() {
               Core counts: locations {lastAction.counts.locations}, hotspots {lastAction.counts.hotspots}, npcs {lastAction.counts.npcs}, scenes {lastAction.counts.scenes}, nodes {lastAction.counts.nodes}, edges {lastAction.counts.edges}, items {lastAction.counts.items}
             </div>
             <div>
-              Extensions: applied {lastAction.extensionReport.applied.length}, skipped {lastAction.extensionReport.skipped.length}, unknown {lastAction.extensionReport.unknown.length}, warnings {lastAction.extensionReport.warnings.length}
+              Extensions: applied {lastAction.extensionReport.applied.length}, skipped {lastAction.extensionReport.skipped.length}, unknown {lastAction.extensionReport.unknown.length}{lastAction.extensionReport.migrated.length > 0 ? `, migrated ${lastAction.extensionReport.migrated.length}` : ''}{lastAction.extensionReport.failed.length > 0 ? `, failed ${lastAction.extensionReport.failed.length}` : ''}, warnings {lastAction.extensionReport.warnings.length}
             </div>
             {(lastAction.coreWarnings.length > 0 || lastAction.extensionReport.warnings.length > 0) && (
               <div className="pt-2">
