@@ -609,6 +609,9 @@ importers:
 
   packages/core/scene-composition:
     dependencies:
+      '@pixsim7/graphics.layers':
+        specifier: workspace:*
+        version: link:../../graphics/layers
       '@pixsim7/shared.types':
         specifier: workspace:*
         version: link:../../shared/types
@@ -747,6 +750,16 @@ importers:
         version: 5.9.3
 
   packages/graphics/geometry:
+    devDependencies:
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/graphics/layers:
+    dependencies:
+      '@pixsim7/graphics.geometry':
+        specifier: workspace:*
+        version: link:../geometry
     devDependencies:
       typescript:
         specifier: ^5.4.0
