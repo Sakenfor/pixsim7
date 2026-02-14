@@ -92,7 +92,7 @@ import './GeneralSettings';
 import './UnifiedPanelsSettings';
 import './PluginsSettings';
 import './AnalyzersSettings';
-import './WidgetPresetsSettings';
+// WidgetPresetsSettings — now a sub-section of Workspace (see UnifiedPanelsSettings.tsx)
 import './ProfilesSettings';
 import './BackupSettings';
 import './DebugSettings';

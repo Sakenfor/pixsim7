@@ -15,7 +15,6 @@ import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelecto
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";
 import type { LayoutPreset } from "@features/workspace/stores/workspaceStore";
 
-import { settingsRegistry } from "../../lib/core/registry";
 
 type PresetScope = LayoutPreset["scope"];
 
@@ -277,10 +276,4 @@ export function WidgetPresetsSettings() {
   );
 }
 
-settingsRegistry.register({
-  id: "widget-presets",
-  label: "UI Presets",
-  icon: "🎭",
-  component: WidgetPresetsSettings,
-  order: 18,
-});
+// Registration moved to UnifiedPanelsSettings.tsx (Workspace > Layout Presets sub-section)

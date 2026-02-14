@@ -21,7 +21,7 @@ export { LibrarySettings } from './components/modules/LibrarySettings';
 export { DebugSettings } from './components/modules/DebugSettings';
 export { GeneralSettings } from './components/modules/GeneralSettings';
 export { GenerationSettings } from './components/modules/GenerationSettings';
-export { UnifiedPanelsSettings as PanelsSettings } from './components/modules/UnifiedPanelsSettings';
+// Note: UnifiedPanelsSettings self-registers via side-effect import in modules/index.ts
 export { ProfilesSettings } from './components/modules/ProfilesSettings';
 export { PromptsSettings } from './components/modules/PromptsSettings';
 export { TaggingSettings, TagsSettings } from './components/modules/TaggingSettings';

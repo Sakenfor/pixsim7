@@ -593,7 +593,7 @@ export function AnalyzersSettings() {
         <div>
           <h2 className="text-sm font-semibold">Analyzer Instances</h2>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Configure custom analyzer instances with your own providers and API keys.
+            Override analyzer configuration per-provider (model, API key, custom params).
           </p>
         </div>
         <button
@@ -603,6 +603,13 @@ export function AnalyzersSettings() {
         >
           + New Instance
         </button>
+      </div>
+
+      {/* Credential bridge info */}
+      <div className="p-2.5 bg-blue-50 dark:bg-blue-900/15 border border-blue-200 dark:border-blue-800/50 rounded text-[10px] text-blue-700 dark:text-blue-300">
+        <strong>Note:</strong> LLM analyzers (Claude, OpenAI) automatically use API keys
+        from your <strong>Provider Settings</strong>. You only need analyzer instances here
+        for custom overrides (different model, base URL, or provider-specific config).
       </div>
 
       {/* Error banner */}
@@ -630,10 +637,11 @@ export function AnalyzersSettings() {
       {instances.length === 0 ? (
         <div className="p-4 bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-700 rounded text-center">
           <p className="text-neutral-600 dark:text-neutral-400 text-[11px]">
-            No analyzer instances configured yet.
+            No analyzer instances configured.
           </p>
           <p className="text-neutral-500 dark:text-neutral-500 text-[10px] mt-1">
-            Create an instance to use custom providers or API keys for analyzers.
+            LLM analyzers use your Provider Settings credentials by default.
+            Create an instance only if you need custom overrides.
           </p>
         </div>
       ) : (
