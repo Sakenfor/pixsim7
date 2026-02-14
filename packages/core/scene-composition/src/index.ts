@@ -75,3 +75,23 @@ export function inferRoleFromPackageTags(
 
   return undefined;
 }
+
+// ============================================================================
+// Layer–Role Binding
+// ============================================================================
+
+export type {
+  LayerIntent,
+  LayerInfluenceType,
+  BoundLayer,
+} from './layerRoleBinding';
+
+export {
+  META_ROLE_ID,
+  META_INTENT,
+  META_INFLUENCE_TYPE,
+  META_INFLUENCE_REGION,
+  bindLayersToRoles,
+  applyRoleLayerDefaults,
+  toBoundCompositionSlots,
+} from './layerRoleBinding';

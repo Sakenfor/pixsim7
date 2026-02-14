@@ -21,6 +21,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@pixsim7/graphics.layers": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "peerDependencies": {},
