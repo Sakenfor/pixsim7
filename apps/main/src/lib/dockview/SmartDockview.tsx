@@ -55,6 +55,11 @@ import {
   SmartDockviewBase,
   getDockviewPanels,
   useSmartDockview,
+  useDockviewIds,
+  createDockviewHost,
+  registerDockviewHost,
+  unregisterDockviewHost,
+  getDockviewHost,
   type LocalPanelRegistry,
 } from '@pixsim7/shared.ui.dockview';
 import clsx from 'clsx';
@@ -68,10 +73,7 @@ import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from '@featur
 import { type PanelDefinition } from '@features/panels';
 
 import { DockviewIdProvider, useContextMenuOptional } from './contextMenu';
-import { createDockviewHost } from './host';
-import { registerDockviewHost, unregisterDockviewHost, getDockviewHost } from './hostRegistry';
 import { useDockviewContextMenu } from './useDockviewContextMenu';
-import { useDockviewIds } from './useDockviewIds';
 import { useDockviewPanelRegistry } from './useDockviewPanelRegistry';
 import { wrapPanelWithContextMenu, type PanelWrapOptions } from './wrapPanelWithContextMenu';
 
@@ -176,6 +178,9 @@ interface SmartDockviewBaseProps<TContext = any> {
    * If omitted, all categories are available.
    */
   allowedCategories?: string[];
+
+  /** Optional: Component rendered in the right side of each group header */
+  rightHeaderActionsComponent?: React.FunctionComponent<any>;
 }
 
 /** Registry mode props - uses LocalPanelRegistry */
@@ -301,6 +306,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     excludePanels = [],
     allowedPanels,
     allowedCategories,
+    rightHeaderActionsComponent,
   } = props;
 
   // Resolve dockId (new) vs scope (deprecated)
@@ -645,6 +651,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
             theme={theme}
             layout={layoutController}
             defaultLayout={applyDefaultLayout}
+            rightHeaderActionsComponent={rightHeaderActionsComponent}
           />
         </ContextHubHost>
       </div>

@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { getDockviewApi, subscribeToDockviewRegistry } from '@lib/dockview/hostRegistry';
-import { addDockviewPanel, focusPanel } from '@lib/dockview/panelAdd';
+import { getDockviewApi, subscribeToDockviewRegistry, addDockviewPanel, focusPanel } from '@lib/dockview';
 
 import { DockviewWorkspace } from "../components/DockviewWorkspace";
 import { WorkspaceToolbar } from "../components/WorkspaceToolbar";

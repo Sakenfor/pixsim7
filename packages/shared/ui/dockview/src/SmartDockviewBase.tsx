@@ -52,6 +52,8 @@ export interface SmartDockviewBaseProps<TContext = any> extends UseSmartDockview
   theme?: string;
   /** Optional: External layout controller */
   layout?: SmartDockviewLayoutController;
+  /** Optional: Component rendered in the right side of each group header */
+  rightHeaderActionsComponent?: React.FunctionComponent<any>;
 }
 
 export function SmartDockviewBase<TContext = any>({
@@ -66,6 +68,7 @@ export function SmartDockviewBase<TContext = any>({
   watermarkComponent,
   theme = "dockview-theme-abyss",
   layout,
+  rightHeaderActionsComponent,
   storageKey,
   minPanelsForTabs,
   onLayoutChange,
@@ -137,6 +140,7 @@ export function SmartDockviewBase<TContext = any>({
         tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelHeaderProps>>}
         defaultTabComponent={defaultTabComponent as unknown as React.FunctionComponent<IDockviewPanelHeaderProps>}
         watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}
+        rightHeaderActionsComponent={rightHeaderActionsComponent}
         onReady={handleReady}
         className={theme}
       />

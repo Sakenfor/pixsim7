@@ -9,12 +9,13 @@
  * Presets are scoped to specific dockviews.
  */
 
+import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
+
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
 import { getDockWidgetByDockviewId, resolvePresetScope } from '@features/panels';
 import type { LayoutPreset, PresetScope as WorkspacePresetScope } from '@features/workspace/stores/workspaceStore';
 
-import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 

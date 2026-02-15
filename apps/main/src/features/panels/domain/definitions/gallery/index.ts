@@ -1,6 +1,8 @@
-import { definePanel } from '../../../lib/definePanel';
-import { AssetsRoute } from '@/routes/Assets';
 import { galleryPanelSettingsSections } from '@features/gallery/components/GalleryPanelSettings';
+
+import { AssetsRoute } from '@/routes/Assets';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'gallery',
@@ -26,5 +28,6 @@ export default definePanel({
       },
     },
   },
+  siblings: ['mini-gallery', 'asset-tags'],
   settingsSections: galleryPanelSettingsSections,
 });

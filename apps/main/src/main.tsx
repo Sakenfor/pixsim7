@@ -2,7 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
 import './index.css'
-import { registerContextMenuActions } from '@lib/dockview'
+import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
+import { panelSelectors } from '@lib/plugins/catalogSelectors'
 
 import { initializePanels } from '@features/panels'
 
@@ -31,6 +32,7 @@ initializeConsole()
 registerModules()
 
 registerContextMenuActions()
+configurePanelLookup(panelSelectors)
 
 async function bootstrapApp() {
   // Initialize infrastructure before rendering.

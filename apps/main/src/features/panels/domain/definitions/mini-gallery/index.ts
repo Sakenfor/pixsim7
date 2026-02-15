@@ -12,5 +12,6 @@ export default definePanel({
   description: 'Compact gallery panel for browsing and filtering assets',
   supportsCompactMode: true,
   supportsMultipleInstances: true,
+  siblings: ['gallery', 'asset-tags'],
   internal: false,
 });

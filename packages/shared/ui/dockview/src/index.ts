@@ -30,6 +30,10 @@ export type {
 // Re-export PanelPosition and PanelSizeConstraints from types for backward compatibility
 export type { PanelPosition, PanelSizeConstraints } from './types';
 
+// Panel registry hook (for context menu "Add Panel")
+export { useDockviewPanelRegistry } from './useDockviewPanelRegistry';
+export type { DockviewPanelRegistry, DockviewPanelRegistryEntry } from './useDockviewPanelRegistry';
+
 // Drag-to-dock utilities
 export { useDragToDock } from './useDragToDock';
 export type { UseDragToDockOptions, UseDragToDockReturn, DropZone } from './useDragToDock';
@@ -38,6 +42,13 @@ export type { DropZoneOverlayProps } from './DropZoneOverlay';
 
 // ===== Re-exports from Core (Framework-Agnostic) =====
 // These are re-exported for backward compatibility with existing imports
+
+// Panel lookup configuration
+export { configurePanelLookup } from '@pixsim7/shared.dockview.core';
+
+// Safe API wrapper
+export { createSafeApi } from '@pixsim7/shared.dockview.core';
+export type { SafeDockviewApi } from '@pixsim7/shared.dockview.core';
 
 // Panel utilities (with backward-compatible aliases)
 export {
@@ -59,6 +70,10 @@ export type {
 // Host
 export { createDockviewHost } from '@pixsim7/shared.dockview.core';
 export type { DockviewHost } from '@pixsim7/shared.dockview.core';
+
+// Dockview resolution utilities
+export { resolveDockview, resolveDockviewHost, resolveDockviewApi } from '@pixsim7/shared.dockview.core';
+export type { ResolveDockviewResult } from '@pixsim7/shared.dockview.core';
 
 // Host registry
 export {

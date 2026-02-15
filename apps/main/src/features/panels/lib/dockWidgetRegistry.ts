@@ -4,14 +4,14 @@
  * Provides dock widget helpers backed by the unified plugin catalog.
  */
 
-import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
-import { DEFAULT_DOCK_ZONES } from '@lib/dockview/dockZoneRegistry';
+import type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.dockview';
+import { DEFAULT_DOCK_ZONES } from '@pixsim7/shared.ui.dockview';
 
 import { dockWidgetSelectors } from '@lib/plugins/catalogSelectors';
 import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
-export type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
-export { DEFAULT_DOCK_ZONES } from '@lib/dockview/dockZoneRegistry';
+export type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.dockview';
+export { DEFAULT_DOCK_ZONES } from '@pixsim7/shared.ui.dockview';
 export type DockWidgetDefinition = DockZoneDefinition;
 
 export { dockWidgetSelectors };

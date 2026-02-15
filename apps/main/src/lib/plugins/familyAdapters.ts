@@ -4,9 +4,11 @@ import { interactionRegistry, type InteractionPlugin, type BaseInteractionConfig
 
 import type { DevToolDefinition } from '@lib/dev/devtools';
 import { devToolRegistry } from '@lib/dev/devtools/devToolRegistry';
-import type { DockZoneDefinition } from '@lib/dockview/dockZoneRegistry';
+import type { DockZoneDefinition } from '@lib/dockview';
 import { nodeTypeRegistry, type SceneNodeTypeDefinition } from '@lib/registries';
 import type { SettingGroup } from '@lib/settingsSchema/types';
+import type { WidgetDefinition } from '@lib/widgets';
+import { registerWidget } from '@lib/widgets';
 
 import type { BrainToolPlugin } from '@features/brainTools/lib/registry';
 import type { GalleryToolPlugin } from '@features/gallery';
@@ -84,6 +86,7 @@ export interface PluginTypeMap {
   'control-center': ControlCenterRegistration;
   'ui-plugin': UiPluginRegistration;
   'panel-group': PanelGroupDefinition;
+  'overlay-widget': WidgetDefinition;
 }
 
 // ============================================================================
@@ -415,6 +418,21 @@ function buildPanelGroupMetadata(
   } as ExtendedPluginMetadata<'panel-group'>;
 }
 
+function buildOverlayWidgetMetadata(
+  widget: WidgetDefinition,
+  context: PluginRegistrationContext
+): ExtendedPluginMetadata<'overlay-widget'> {
+  return {
+    ...buildBaseMetadata('overlay-widget', { id: widget.id, description: widget.description, tags: widget.tags }, context),
+    name: widget.title || widget.id,
+    category: widget.category,
+    domain: widget.domain,
+    icon: widget.icon,
+    surfaces: widget.surfaces,
+    capabilities: { addsUIOverlay: true },
+  } as ExtendedPluginMetadata<'overlay-widget'>;
+}
+
 function buildSceneViewMetadata(
   entry: SceneViewRegistration,
   context: PluginRegistrationContext
@@ -575,5 +593,12 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
   'panel-group': {
     register: () => {},
     buildMetadata: buildPanelGroupMetadata,
+  },
+  'overlay-widget': {
+    register: (widget: WidgetDefinition) => {
+      registerWidget(widget);
+    },
+    buildMetadata: buildOverlayWidgetMetadata,
+    getSettingsSchema: (widget: WidgetDefinition) => widget.settingsSchema?.groups,
   },
 };

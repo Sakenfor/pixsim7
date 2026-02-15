@@ -6,12 +6,13 @@
  * - Only shows panels registered in the panel catalog
  */
 
+import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
+
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
-import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 

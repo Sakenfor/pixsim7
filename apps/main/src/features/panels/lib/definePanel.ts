@@ -97,6 +97,9 @@ export interface DefinePanelOptions<TSettings = any> {
   contextLabel?: ContextLabelStrategy;
   coreEditorRole?: CoreEditorRole;
 
+  // Sibling panels (related panels for quick-add dropdown)
+  siblings?: string[];
+
   // Internal panel (hidden from user lists)
   internal?: boolean;
 
@@ -158,6 +161,7 @@ export function definePanel<TSettings = any>(
     orchestration,
     contextLabel,
     coreEditorRole,
+    siblings,
     internal = false,
     onMount,
     onUnmount,
@@ -199,7 +203,7 @@ export function definePanel<TSettings = any>(
   }
 
   return {
-    id: id as any, // Cast to PanelId
+    id,
     title,
     component,
     category,
@@ -230,6 +234,7 @@ export function definePanel<TSettings = any>(
     orchestration,
     contextLabel,
     coreEditorRole,
+    siblings,
     onMount,
     onUnmount,
     isInternal: internal,

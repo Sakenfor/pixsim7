@@ -32,6 +32,9 @@ export type {
   DockZoneDefinition,
 } from './types';
 
+// Panel lookup configuration
+export { configurePanelLookup } from './types';
+
 // Panel utilities
 export {
   getPanels,
@@ -59,6 +62,10 @@ export {
 } from './layoutPersistence';
 export type { LayoutStorage } from './layoutPersistence';
 
+// Safe API wrapper
+export { createSafeApi } from './safeDockviewApi';
+export type { SafeDockviewApi } from './safeDockviewApi';
+
 // Host
 export { createDockviewHost } from './host';
 export type { DockviewHost } from './host';
@@ -78,6 +85,10 @@ export {
   clearDockviewRegistry,
 } from './hostRegistry';
 export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
+
+// Dockview resolution utilities
+export { resolveDockview, resolveDockviewHost, resolveDockviewApi } from './resolveDockview';
+export type { ResolveDockviewResult } from './resolveDockview';
 
 // Dock zone registry
 export {

@@ -1,19 +1,9 @@
 /**
- * Dockview Host (app-specific wrapper)
+ * Dockview Host - Re-exported from shared package.
  *
- * Re-exports shared types and provides app-specific createDockviewHost
- * that injects panelSelectors as the PanelLookup.
+ * Panel lookup is configured globally via `configurePanelLookup()` at app init,
+ * so no app-specific injection wrapper is needed.
  */
 
-import {
-  createDockviewHost as createDockviewHostBase,
-} from '@pixsim7/shared.ui.dockview';
-import type { DockviewApi } from 'dockview-core';
-
-import { panelSelectors } from '@lib/plugins/catalogSelectors';
-
+export { createDockviewHost } from '@pixsim7/shared.ui.dockview';
 export type { DockviewHost } from '@pixsim7/shared.ui.dockview';
-
-export function createDockviewHost(dockviewId: string, api: DockviewApi) {
-  return createDockviewHostBase(dockviewId, api, panelSelectors);
-}

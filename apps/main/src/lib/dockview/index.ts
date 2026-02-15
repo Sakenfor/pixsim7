@@ -11,16 +11,18 @@
 export { SmartDockview } from './SmartDockview';
 export type { SmartDockviewProps } from './SmartDockview';
 
-export { LocalPanelRegistry, createLocalPanelRegistry } from '@pixsim7/shared.ui.dockview';
-
-export { useSmartDockview } from '@pixsim7/shared.ui.dockview';
-export type { UseSmartDockviewOptions, UseSmartDockviewReturn } from '@pixsim7/shared.ui.dockview';
-
-export { useDockviewIds } from './useDockviewIds';
-export type { DockviewIds } from './useDockviewIds';
-export { resolveDockview, resolveDockviewApi, resolveDockviewHost } from './resolveDockview';
-
+// Shared utilities (re-exported from shared packages)
 export {
+  LocalPanelRegistry,
+  createLocalPanelRegistry,
+  configurePanelLookup,
+  useSmartDockview,
+  useDockviewIds,
+  createSafeApi,
+  createDockviewHost,
+  resolveDockview,
+  resolveDockviewApi,
+  resolveDockviewHost,
   addDockviewPanel,
   ensurePanels,
   getDockviewGroupCount,
@@ -30,11 +32,6 @@ export {
   focusPanel,
   isPanelOpen,
   resolvePanelDefinitionId,
-} from './panelAdd';
-export { createSafeApi, type SafeDockviewApi } from './safeDockviewApi';
-export { createDockviewHost } from './host';
-export type { DockviewHost } from './host';
-export {
   getDockviewHost,
   getDockviewHostIds,
   getDockviewApi,
@@ -44,14 +41,6 @@ export {
   registerDockviewHost,
   unregisterDockviewHost,
   subscribeToDockviewRegistry,
-} from './hostRegistry';
-export type { DockviewCapabilities, DockviewRegistration } from './hostRegistry';
-
-// Context menu system
-export * from './contextMenu';
-
-// Dock Zone Registry (dockview container definitions)
-export {
   dockZoneRegistry,
   registerDockZone,
   unregisterDockZone,
@@ -64,10 +53,21 @@ export {
   registerDefaultDockZones,
   areDefaultZonesRegistered,
   DEFAULT_DOCK_ZONES,
-} from './dockZoneRegistry';
-export type { DockZoneDefinition, PresetScope } from './dockZoneRegistry';
+} from '@pixsim7/shared.ui.dockview';
 
 export type {
+  UseSmartDockviewOptions,
+  UseSmartDockviewReturn,
+  DockviewIds,
+  SafeDockviewApi,
+  DockviewHost,
+  ResolveDockviewResult,
+  AddDockviewPanelOptions,
+  EnsurePanelsOptions,
+  DockviewCapabilities,
+  DockviewRegistration,
+  DockZoneDefinition,
+  PresetScope,
   LocalPanelDefinition,
   PanelPosition,
   PanelSizeConstraints,
@@ -75,3 +75,6 @@ export type {
   SmartDockviewLayout,
   SmartDockviewPanelProps,
 } from '@pixsim7/shared.ui.dockview';
+
+// Context menu system
+export * from './contextMenu';

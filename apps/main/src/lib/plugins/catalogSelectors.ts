@@ -7,9 +7,9 @@
  */
 
 import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
+import type { DockZoneDefinition, PresetScope } from '@pixsim7/shared.ui.dockview';
 import type { PanelInstancePolicy } from '@pixsim7/shared.ui.panels';
 
-import type { DockZoneDefinition, PresetScope } from '@lib/dockview/dockZoneRegistry';
 
 
 import type { BrainToolPlugin, BrainToolContext } from '@features/brainTools/lib/types';

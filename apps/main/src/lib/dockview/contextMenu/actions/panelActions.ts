@@ -8,10 +8,11 @@
  * - Duplicate Panel
  */
 
+import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu';
+
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
 import { getDockviewPanels, resolvePanelDefinitionId } from '../../panelAdd';
-import { menuActionsToCapabilityActions } from '../actionAdapters';
 import { usePropertiesPopupStore } from '../PanelPropertiesPopup';
 import { resolveCurrentDockviewApi } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';

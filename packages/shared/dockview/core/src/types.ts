@@ -47,6 +47,29 @@ export interface PanelLookup {
 }
 
 /**
+ * Global panel lookup instance.
+ * Set once at app init via `configurePanelLookup()`, then used as the
+ * default fallback by `addPanel`, `ensurePanels`, `createDockviewHost`, etc.
+ */
+let _panelLookup: PanelLookup | undefined;
+
+/**
+ * Configure the global panel lookup used by all dockview utilities.
+ * Call once at app startup (e.g. `configurePanelLookup(panelSelectors)`).
+ */
+export function configurePanelLookup(lookup: PanelLookup): void {
+  _panelLookup = lookup;
+}
+
+/**
+ * Returns the configured global panel lookup, or undefined if not configured.
+ * @internal Used by panelUtils and host — prefer passing lookup explicitly when available.
+ */
+export function getConfiguredPanelLookup(): PanelLookup | undefined {
+  return _panelLookup;
+}
+
+/**
  * Serializable layout definition
  */
 export interface DockviewLayout {

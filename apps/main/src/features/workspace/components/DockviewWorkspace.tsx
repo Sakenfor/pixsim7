@@ -4,13 +4,13 @@ import { useShallow } from "zustand/react/shallow";
 
 
 import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
+import { SiblingPanelsDropdown } from "@lib/dockview/SiblingPanelsDropdown";
 // Note: widgets auto-register on import via @lib/widgets/register
 
 import { initializePanels } from "@features/panels";
 
 import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
 import { useWorkspaceStore } from "../stores/workspaceStore";
-import type { PanelId } from "../stores/workspaceStore";
 
 // Watermark component for empty workspace
 function WorkspaceWatermark() {
@@ -72,7 +72,7 @@ export function DockviewWorkspace() {
       floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
         const workspacePanelId = resolvePanelDefinitionId(panel);
         if (workspacePanelId) {
-          useWorkspaceStore.getState().openFloatingPanel(workspacePanelId as PanelId, options);
+          useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
         }
       },
     }),
@@ -91,6 +91,7 @@ export function DockviewWorkspace() {
         watermarkComponent={WorkspaceWatermark}
         panelManagerId="workspace"
         capabilities={capabilities}
+        rightHeaderActionsComponent={SiblingPanelsDropdown}
       />
     </div>
   );

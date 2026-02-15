@@ -4,14 +4,15 @@
  * Wraps dockview's default tab component to add right-click context menu.
  */
 
+import { useContextMenuOptional } from '@pixsim7/shared.ui.context-menu';
 import { DockviewDefaultTab } from 'dockview';
 import type { IDockviewPanelHeaderProps } from 'dockview-core';
 
 import { useContextHubState } from '@features/contextHub';
 
+
 import { buildDockviewContext } from './buildDockviewContext';
 import { useDockviewContext } from './DockviewIdContext';
-import { useContextMenuOptional } from './useContextMenu';
 
 /**
  * Custom tab component that adds context menu support

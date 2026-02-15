@@ -15,7 +15,7 @@
  * ```
  */
 
-import { autoContextConfigRegistry, type AutoContextConfig } from './autoContextMenu';
+import { autoContextConfigRegistry, type AutoContextConfig } from '@pixsim7/shared.ui.context-menu';
 
 // ============================================================================
 // Asset Configuration
@@ -161,4 +161,4 @@ autoContextConfigRegistry.register('scene', sceneConfig);
  * Re-export type-specific hooks for convenience.
  * These are tree-shakeable if not imported.
  */
-export { useAssetAutoContextMenu, usePromptAutoContextMenu } from './autoContextMenu';
+export { useAssetAutoContextMenu, usePromptAutoContextMenu } from '@pixsim7/shared.ui.context-menu';

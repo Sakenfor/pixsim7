@@ -1,4 +1,5 @@
-﻿/**
+﻿/* eslint-disable react-refresh/only-export-components */
+/**
  * Asset Tags Panel Definition
  *
  * Tag management panel that reuses the gallery tool UI.
@@ -41,7 +42,7 @@ function getAssetIds(selection: AssetSelection | null): number[] {
   return Array.from(ids);
 }
 
-export function AssetTagsPanel() {
+function AssetTagsPanel() {
   const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
   const assetIds = useMemo(() => getAssetIds(selection ?? null), [selection]);
   const [assets, setAssets] = useState<AssetModel[]>([]);
@@ -164,7 +165,7 @@ export function AssetTagsPanel() {
   );
 }
 
-export default definePanel({
+const assetTagsPanel = definePanel({
   id: 'asset-tags',
   title: 'Asset Tags',
   component: AssetTagsPanel,
@@ -173,6 +174,8 @@ export default definePanel({
   icon: 'tag',
   description: 'Manage tags for selected assets',
   contexts: ['asset-viewer', 'workspace'],
+  siblings: ['gallery', 'mini-gallery'],
   supportsCompactMode: false,
   supportsMultipleInstances: false,
 });
+export default assetTagsPanel;

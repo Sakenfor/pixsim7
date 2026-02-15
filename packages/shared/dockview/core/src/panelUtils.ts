@@ -7,6 +7,7 @@
 
 import type { DockviewApi, IDockviewPanel } from 'dockview-core';
 import type { PanelLookup, PanelPosition } from './types';
+import { getConfiguredPanelLookup } from './types';
 
 export interface AddPanelOptions {
   /** Allow multiple instances of this panel */
@@ -127,7 +128,8 @@ export function addPanel(
     return panelId;
   }
 
-  const definition = panelLookup?.get(panelId);
+  const lookup = panelLookup ?? getConfiguredPanelLookup();
+  const definition = lookup?.get(panelId);
   const title = options.title ?? definition?.title ?? panelId;
   const instanceId = options.instanceId ?? (allowMultiple ? createInstanceId(panelId) : panelId);
   const params = { ...(options.params ?? {}), panelId };
@@ -171,7 +173,8 @@ export function togglePanel(
     api.removePanel(panel);
     return false; // Panel is now hidden
   } else {
-    addPanel(api, panelId, options, panelLookup);
+    const lookup = panelLookup ?? getConfiguredPanelLookup();
+    addPanel(api, panelId, options, lookup);
     return true; // Panel is now shown
   }
 }
@@ -194,6 +197,7 @@ export function ensurePanels(
 ): string[] {
   const added: string[] = [];
   if (!api) return added;
+  const lookup = panelLookup ?? getConfiguredPanelLookup();
 
   for (const panelId of panelIds) {
     if (findPanel(api, panelId)) {
@@ -201,7 +205,7 @@ export function ensurePanels(
     }
 
     const resolvedOptions = options.resolveOptions?.(panelId, api) ?? {};
-    const instanceId = addPanel(api, panelId, resolvedOptions, panelLookup);
+    const instanceId = addPanel(api, panelId, resolvedOptions, lookup);
     if (instanceId) {
       added.push(instanceId);
     }

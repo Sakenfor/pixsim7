@@ -8,8 +8,7 @@
 import type { DockviewApi } from "dockview-core";
 import { useEffect, useMemo, useState } from "react";
 
-import { getDockviewHost, getDockviewPanels } from "@lib/dockview";
-import type { DockZoneDefinition } from "@lib/dockview/dockZoneRegistry";
+import { getDockviewHost, getDockviewPanels, type DockZoneDefinition } from "@lib/dockview";
 import { dockWidgetSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { useWorkspaceStore } from "@features/workspace/stores/workspaceStore";

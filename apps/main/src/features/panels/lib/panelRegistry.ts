@@ -11,7 +11,6 @@ import type { ComponentType } from "react";
 import type { EditorContext } from "@lib/context/editorContext";
 
 import type { SettingGroup, SettingTab } from "@features/settings";
-import type { PanelId } from "@features/workspace";
 
 import { BaseRegistry } from "../../../lib/core/BaseRegistry";
 
@@ -124,7 +123,7 @@ type SettingsSchema<T> = {
  * Extends BasePanelDefinition with rich metadata, settings, and orchestration.
  */
 export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
-  id: PanelId;
+  id: string;
   category: PanelCategory;
   tags: string[];
   description?: string;
@@ -221,6 +220,12 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
   supportsCompactMode?: boolean;
   supportsMultipleInstances?: boolean;
   requiresContext?: boolean;
+
+  /**
+   * Explicit sibling panel IDs — related panels that can be quickly added
+   * alongside this one via a "+" dropdown in the group header.
+   */
+  siblings?: string[];
 }
 
 function resolveInstancePolicy(
@@ -293,7 +298,7 @@ export class PanelRegistry
    * Unregister a panel
    * Calls onUnmount hook before removing the panel.
    */
-  unregister(panelId: PanelId): boolean {
+  unregister(panelId: string): boolean {
     const definition = this.items.get(panelId);
     if (definition) {
       // Call cleanup hook
@@ -422,7 +427,7 @@ export function registerSimplePanel(panel: BasePanelDefinition): void {
   // Convert to full PanelDefinition with defaults
   const fullDefinition: PanelDefinition = {
     ...panel,
-    id: panel.id as PanelId,
+    id: panel.id,
     category: (panel.category ?? 'custom') as PanelCategory,
     tags: panel.tags ?? [],
   };

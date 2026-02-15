@@ -1,30 +1,13 @@
 /**
- * Panel addition and management utilities (app-specific wrapper)
+ * Panel addition and management utilities.
  *
- * Re-exports shared utilities and provides app-specific addDockviewPanel
- * that injects panelSelectors as the PanelLookup.
+ * Re-exports shared utilities. Panel lookup is configured globally via
+ * `configurePanelLookup()` at app init, so no app-specific injection is needed.
  */
 
-import {
-  addDockviewPanel as addDockviewPanelBase,
-  ensurePanels as ensurePanelsBase,
-  getDockviewGroupCount,
-  getDockviewGroups,
-  getDockviewPanels,
-  findDockviewPanel,
-  focusPanel,
-  isPanelOpen,
-  resolvePanelDefinitionId,
-  type AddDockviewPanelOptions,
-  type EnsurePanelsOptions,
-} from '@pixsim7/shared.ui.dockview';
-import type { DockviewApi } from 'dockview-core';
-
-import { panelSelectors } from '@lib/plugins/catalogSelectors';
-
-
-export type { AddDockviewPanelOptions, EnsurePanelsOptions } from '@pixsim7/shared.ui.dockview';
 export {
+  addDockviewPanel,
+  ensurePanels,
   getDockviewGroupCount,
   getDockviewGroups,
   getDockviewPanels,
@@ -32,20 +15,5 @@ export {
   focusPanel,
   isPanelOpen,
   resolvePanelDefinitionId,
-};
-
-export function addDockviewPanel(
-  api: DockviewApi,
-  panelId: string,
-  options: AddDockviewPanelOptions = {},
-): string | null {
-  return addDockviewPanelBase(api, panelId, options, panelSelectors);
-}
-
-export function ensurePanels(
-  api: DockviewApi,
-  panelIds: Iterable<string>,
-  options: EnsurePanelsOptions = {},
-): string[] {
-  return ensurePanelsBase(api, panelIds, options, panelSelectors);
-}
+} from '@pixsim7/shared.ui.dockview';
+export type { AddDockviewPanelOptions, EnsurePanelsOptions } from '@pixsim7/shared.ui.dockview';

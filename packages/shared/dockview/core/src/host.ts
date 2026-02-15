@@ -6,6 +6,7 @@
 
 import type { DockviewApi } from 'dockview-core';
 import type { PanelLookup } from './types';
+import { getConfiguredPanelLookup } from './types';
 import { addPanel, focusPanel, isPanelOpen, togglePanel, removePanel } from './panelUtils';
 import type { AddPanelOptions } from './panelUtils';
 
@@ -34,12 +35,13 @@ export function createDockviewHost(
   api: DockviewApi,
   panelLookup?: PanelLookup,
 ): DockviewHost {
+  const lookup = panelLookup ?? getConfiguredPanelLookup();
   return {
     dockviewId,
     api,
-    addPanel: (panelId, options) => addPanel(api, panelId, options, panelLookup),
+    addPanel: (panelId, options) => addPanel(api, panelId, options, lookup),
     removePanel: (panelId) => removePanel(api, panelId),
-    togglePanel: (panelId, options) => togglePanel(api, panelId, options, panelLookup),
+    togglePanel: (panelId, options) => togglePanel(api, panelId, options, lookup),
     isPanelOpen: (panelId, allowMultiple = false) => isPanelOpen(api, panelId, allowMultiple),
     focusPanel: (panelId) => focusPanel(api, panelId),
   };

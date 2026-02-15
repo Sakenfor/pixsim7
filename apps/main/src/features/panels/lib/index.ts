@@ -70,15 +70,12 @@ export {
   autoRegisterPanelGroups,
 } from "./panelGroupRegistry";
 
+// Sibling resolution
 export {
-  discoverPanels,
-  autoRegisterPanels,
-  getPanelsForContext,
-  getPanelIdsForContext,
-  type DiscoveredPanel,
-  type AutoDiscoveryOptions,
-  type DiscoveryResult,
-} from "./autoDiscovery";
+  resolveSiblings,
+  filterOpenSiblings,
+  type SiblingCandidate,
+} from "./siblingResolution";
 
 // Panel actions
 export * from "./actions";
