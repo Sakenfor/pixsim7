@@ -15,8 +15,9 @@ export function CompactAccountCard({
 }: CompactAccountCardProps) {
   const isActive = account.status === 'active';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
-  // Use backend-provided total_credits instead of recalculating
-  const totalCredits = account.total_credits;
+  const credits = account.credits || {};
+  const creditTypes = Object.keys(credits);
+  const hasMultipleCreditTypes = creditTypes.length > 1;
 
   const statusConfig = {
     active: {
@@ -145,13 +146,28 @@ export function CompactAccountCard({
         {/* Credits */}
         <div className="flex flex-col">
           <span className="text-neutral-500 dark:text-neutral-400">Credits</span>
-          <span
-            className={`font-mono font-semibold ${
-              totalCredits === 0 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'
-            }`}
-          >
-            {totalCredits.toLocaleString()}
-          </span>
+          {hasMultipleCreditTypes ? (
+            <div className="flex flex-col gap-0.5">
+              {creditTypes.map((type) => (
+                <span
+                  key={type}
+                  className={`font-mono font-semibold text-[10px] ${
+                    credits[type] === 0 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'
+                  }`}
+                >
+                  {type}: {(credits[type] as number).toLocaleString()}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span
+              className={`font-mono font-semibold ${
+                account.total_credits === 0 ? 'text-red-500' : 'text-neutral-800 dark:text-neutral-200'
+              }`}
+            >
+              {account.total_credits.toLocaleString()}
+            </span>
+          )}
         </div>
 
         {/* Jobs */}

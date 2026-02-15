@@ -226,9 +226,6 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                 try:
                     device = await db.get(AndroidDevice, device.id)
                     if device:
-                        # Clear automation assignment (we're done with the device)
-                        device.assigned_account_id = None
-
                         # Only restore to ONLINE if:
                         # 1. Device was BUSY (expected state from automation)
                         # 2. Device is NOT in an ad watching session
@@ -240,15 +237,24 @@ async def process_automation(ctx: dict, execution_id: int) -> dict:
                                 device.ad_session_started_at is not None
                             )
                             if not is_in_ad_session:
+                                # No ad session — clear assignment and go ONLINE
+                                device.assigned_account_id = None
                                 device.status = DeviceStatus.ONLINE
                             else:
+                                # Ad session active — preserve assigned_account_id
+                                # so check_device_ads() can refresh credits when
+                                # the session ends.
                                 logger.info(
                                     "automation_preserving_ad_session",
                                     device_id=device.id,
                                     device_name=device.name,
+                                    assigned_account_id=device.assigned_account_id,
                                     is_watching_ad=device.is_watching_ad,
                                     ad_session_started_at=str(device.ad_session_started_at),
                                 )
+                        else:
+                            # Device not BUSY — just clear assignment
+                            device.assigned_account_id = None
                         await db.commit()
                 except Exception as e:
                     logger.error("automation_restore_status_failed", error=str(e), exc_info=True)

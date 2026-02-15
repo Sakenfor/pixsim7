@@ -18,8 +18,11 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # TTL for credit sync (skip if synced within this time)
-CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes (web credits)
-OPENAPI_CREDIT_SYNC_TTL_SECONDS = 6 * 60 * 60  # 6 hours (openapi credits - checked less frequently)
+CREDIT_SYNC_TTL_SECONDS = 5 * 60  # 5 minutes
+
+# Longer TTL for exhausted accounts — still re-check periodically so daily
+# credit resets and ad-watch rewards are picked up the same day.
+EXHAUSTED_SYNC_TTL_SECONDS = 30 * 60  # 30 minutes
 
 
 def should_skip_credit_sync(account, force: bool = False) -> tuple[bool, str]:
@@ -31,7 +34,7 @@ def should_skip_credit_sync(account, force: bool = False) -> tuple[bool, str]:
     Skip conditions:
     1. If force=True, never skip
     2. If synced within TTL, skip
-    3. If exhausted (0 credits) and synced today, skip
+    3. If exhausted (0 credits) and synced within the longer exhausted TTL, skip
     """
     if force:
         return False, ""
@@ -54,12 +57,12 @@ def should_skip_credit_sync(account, force: bool = False) -> tuple[bool, str]:
     if time_since_sync < CREDIT_SYNC_TTL_SECONDS:
         return True, "synced_recently"
 
-    # Check if exhausted today
+    # Exhausted accounts: use a longer TTL instead of blocking for the
+    # entire day.  This still rate-limits unnecessary syncs while allowing
+    # daily resets and ad-watch rewards to be picked up.
     total_credits = account.get_total_credits()
-    if total_credits == 0:
-        # Check if synced today (same UTC date)
-        if credits_synced_at.date() == now.date():
-            return True, "exhausted_today"
+    if total_credits == 0 and time_since_sync < EXHAUSTED_SYNC_TTL_SECONDS:
+        return True, "exhausted_recently"
 
     return False, ""
 
@@ -286,31 +289,19 @@ async def sync_all_account_credits(
                         updated_credits["web"] = web_int
 
                     if openapi_total is not None:
-                        # Check if we should skip openapi sync (uses longer TTL)
+                        # Always write openapi credits since we already deleted all
+                        # rows above and have the data from get_credits().
+                        # The TTL logic is kept only for the sync timestamp update.
+                        try:
+                            openapi_int = int(openapi_total)
+                        except (TypeError, ValueError):
+                            openapi_int = 0
+                        await account_service.set_credit(account_id, "openapi", openapi_int)
+                        updated_credits["openapi"] = openapi_int
+                        # Update openapi-specific timestamp
                         metadata = account.provider_metadata or {}
-                        openapi_synced_at_str = metadata.get("openapi_credits_synced_at")
-                        should_sync_openapi = True
-
-                        if openapi_synced_at_str and not force:
-                            try:
-                                openapi_synced_at = datetime.fromisoformat(openapi_synced_at_str.replace("Z", "+00:00"))
-                                time_since_sync = (datetime.now(timezone.utc) - openapi_synced_at).total_seconds()
-                                if time_since_sync < OPENAPI_CREDIT_SYNC_TTL_SECONDS:
-                                    should_sync_openapi = False
-                                    logger.debug(f"Skipping openapi credit sync for {account_email} (synced {time_since_sync/3600:.1f}h ago)")
-                            except (ValueError, AttributeError):
-                                pass
-
-                        if should_sync_openapi:
-                            try:
-                                openapi_int = int(openapi_total)
-                            except (TypeError, ValueError):
-                                openapi_int = 0
-                            await account_service.set_credit(account_id, "openapi", openapi_int)
-                            updated_credits["openapi"] = openapi_int
-                            # Update openapi-specific timestamp
-                            metadata["openapi_credits_synced_at"] = datetime.now(timezone.utc).isoformat()
-                            account.provider_metadata = metadata
+                        metadata["openapi_credits_synced_at"] = datetime.now(timezone.utc).isoformat()
+                        account.provider_metadata = metadata
                 else:
                     for credit_type, amount in credits_data.items():
                         # Strip credit_ prefix if present (credit_daily -> daily)
@@ -527,12 +518,17 @@ async def sync_account_credits(
         updated_credits: Dict[str, int] = {}
         if credits_data and isinstance(credits_data, dict):
             if account.provider_id == "pixverse":
-                # For Pixverse, persist separate web and OpenAPI credit pools.
-                # Clear any legacy credit buckets for this account so we don't
-                # double-count in total_credits (e.g. old "package" rows).
+                # Pixverse has separate web and OpenAPI credit pools.
+                # Only delete legacy buckets (not web/openapi) to avoid
+                # double-counting from old "package" rows, but preserve
+                # credit types that weren't fetched (e.g. web on timeout).
+                from sqlalchemy import and_
                 await db.execute(
                     ProviderCredit.__table__.delete().where(
-                        ProviderCredit.account_id == account.id
+                        and_(
+                            ProviderCredit.account_id == account.id,
+                            ProviderCredit.credit_type.notin_(["web", "openapi"]),
+                        )
                     )
                 )
 

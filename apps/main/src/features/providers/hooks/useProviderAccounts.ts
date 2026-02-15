@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { pixsimClient } from '@lib/api/client';
+
 import type { AccountResponse } from '@lib/api/accounts';
+import { pixsimClient } from '@lib/api/client';
 
 // ============================================================================
 // OpenAPI-Derived Types
@@ -27,6 +28,8 @@ export interface ProviderCapacity {
   current_jobs: number;
   max_jobs: number;
   total_credits: number;
+  /** Aggregated credits by type across all accounts (e.g. {web: 500, openapi: 1000}) */
+  credits_by_type: Record<string, number>;
   accounts: ProviderAccount[];
 }
 
@@ -92,6 +95,16 @@ export function useProviderCapacity(refreshKey?: number) {
       const maxJobs = providerAccounts.reduce((sum, acc) => sum + acc.max_concurrent_jobs, 0);
       const totalCredits = providerAccounts.reduce((sum, acc) => sum + acc.total_credits, 0);
 
+      // Aggregate credits by type (e.g. web, openapi) across all accounts
+      const creditsByType: Record<string, number> = {};
+      for (const acc of providerAccounts) {
+        if (acc.credits) {
+          for (const [type, amount] of Object.entries(acc.credits)) {
+            creditsByType[type] = (creditsByType[type] || 0) + (amount as number);
+          }
+        }
+      }
+
       return {
         provider_id: providerId,
         total_accounts: providerAccounts.length,
@@ -99,6 +112,7 @@ export function useProviderCapacity(refreshKey?: number) {
         current_jobs: currentJobs,
         max_jobs: maxJobs,
         total_credits: totalCredits,
+        credits_by_type: creditsByType,
         accounts: providerAccounts,
       };
     });

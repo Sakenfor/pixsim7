@@ -134,18 +134,28 @@ function OverviewContent({
     current_jobs: number;
     max_jobs: number;
     total_credits: number;
+    credits_by_type: Record<string, number>;
     accounts: ProviderAccount[];
   }>;
   providerNames: Record<string, string>;
   onNavigate: (providerId: string) => void;
 }) {
-  const totals = useMemo(() => ({
-    accounts: capacity.reduce((s, c) => s + c.total_accounts, 0),
-    active: capacity.reduce((s, c) => s + c.active_accounts, 0),
-    jobs: capacity.reduce((s, c) => s + c.current_jobs, 0),
-    maxJobs: capacity.reduce((s, c) => s + c.max_jobs, 0),
-    credits: capacity.reduce((s, c) => s + c.total_credits, 0),
-  }), [capacity]);
+  const totals = useMemo(() => {
+    const creditsByType: Record<string, number> = {};
+    for (const c of capacity) {
+      for (const [type, amount] of Object.entries(c.credits_by_type)) {
+        creditsByType[type] = (creditsByType[type] || 0) + amount;
+      }
+    }
+    return {
+      accounts: capacity.reduce((s, c) => s + c.total_accounts, 0),
+      active: capacity.reduce((s, c) => s + c.active_accounts, 0),
+      jobs: capacity.reduce((s, c) => s + c.current_jobs, 0),
+      maxJobs: capacity.reduce((s, c) => s + c.max_jobs, 0),
+      credits: capacity.reduce((s, c) => s + c.total_credits, 0),
+      creditsByType,
+    };
+  }, [capacity]);
 
   return (
     <div className="p-4">
@@ -166,10 +176,25 @@ function OverviewContent({
           </div>
         </div>
         <div className="p-3 border rounded-lg dark:border-neutral-700">
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Total Credits</div>
-          <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-            {totals.credits.toLocaleString()}
-          </div>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Credits</div>
+          {Object.keys(totals.creditsByType).length > 1 ? (
+            <div className="flex flex-col gap-0.5">
+              {Object.entries(totals.creditsByType).map(([type, amount]) => (
+                <div key={type} className="flex items-baseline gap-1">
+                  <span className="text-lg font-bold text-neutral-800 dark:text-neutral-200">
+                    {amount.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                    {type}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+              {totals.credits.toLocaleString()}
+            </div>
+          )}
         </div>
         <div className="p-3 border rounded-lg dark:border-neutral-700">
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">Providers</div>
@@ -207,9 +232,19 @@ function OverviewContent({
                 </div>
                 <div>
                   <div className="text-neutral-500 dark:text-neutral-400">Credits</div>
-                  <div className="font-semibold text-neutral-800 dark:text-neutral-200">
-                    {cap.total_credits.toLocaleString()}
-                  </div>
+                  {Object.keys(cap.credits_by_type).length > 1 ? (
+                    <div className="flex flex-col">
+                      {Object.entries(cap.credits_by_type).map(([type, amount]) => (
+                        <div key={type} className="font-semibold text-neutral-800 dark:text-neutral-200">
+                          {amount.toLocaleString()} <span className="font-normal text-[10px] text-neutral-500">{type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="font-semibold text-neutral-800 dark:text-neutral-200">
+                      {cap.total_credits.toLocaleString()}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="text-neutral-500 dark:text-neutral-400">Avg Success</div>
@@ -389,6 +424,7 @@ export function ProviderSettingsPanel() {
           current_jobs: 0,
           max_jobs: 0,
           total_credits: 0,
+          credits_by_type: {},
           accounts: [] as ProviderAccount[],
         }
       : null);
@@ -645,11 +681,26 @@ export function ProviderSettingsPanel() {
                 </div>
                 <div className="p-3 border rounded-lg dark:border-neutral-700">
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">
-                    Total Credits
+                    Credits
                   </div>
-                  <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
-                    {providerData.total_credits.toLocaleString()}
-                  </div>
+                  {Object.keys(providerData.credits_by_type).length > 1 ? (
+                    <div className="flex flex-col gap-0.5">
+                      {Object.entries(providerData.credits_by_type).map(([type, amount]) => (
+                        <div key={type} className="flex items-baseline gap-1">
+                          <span className="text-lg font-bold text-neutral-800 dark:text-neutral-200">
+                            {amount.toLocaleString()}
+                          </span>
+                          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            {type}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-2xl font-bold text-neutral-800 dark:text-neutral-200">
+                      {providerData.total_credits.toLocaleString()}
+                    </div>
+                  )}
                 </div>
                 <div className="p-3 border rounded-lg dark:border-neutral-700">
                   <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1">

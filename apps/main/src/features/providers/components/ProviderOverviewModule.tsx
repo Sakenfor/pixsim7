@@ -1,7 +1,10 @@
 import { useState } from 'react';
+
+import { useWorkspaceStore } from '@features/workspace';
+
 import { useProviderCapacity } from '../hooks/useProviderAccounts';
 import { useProviders } from '../hooks/useProviders';
-import { useWorkspaceStore } from '@features/workspace';
+
 import { AIProviderSettings } from './AIProviderSettings';
 
 export function ProviderOverviewModule() {
@@ -132,9 +135,19 @@ export function ProviderOverviewModule() {
                   </div>
                   <div>
                     <div className="text-neutral-500 dark:text-neutral-400">Credits</div>
-                    <div className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">
-                      {cap.total_credits.toLocaleString()}
-                    </div>
+                    {Object.keys(cap.credits_by_type).length > 1 ? (
+                      <div className="flex flex-col">
+                        {Object.entries(cap.credits_by_type).map(([type, amount]) => (
+                          <div key={type} className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">
+                            {amount.toLocaleString()} <span className="font-normal text-[9px] text-neutral-500">{type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="font-mono font-semibold text-neutral-800 dark:text-neutral-200">
+                        {cap.total_credits.toLocaleString()}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -180,7 +193,18 @@ export function ProviderOverviewModule() {
           <div className="flex justify-between">
             <span>Total Credits:</span>
             <span className="font-semibold">
-              {capacity.reduce((sum, c) => sum + c.total_credits, 0).toLocaleString()}
+              {(() => {
+                const byType: Record<string, number> = {};
+                for (const c of capacity) {
+                  for (const [t, a] of Object.entries(c.credits_by_type)) {
+                    byType[t] = (byType[t] || 0) + a;
+                  }
+                }
+                const types = Object.entries(byType);
+                return types.length > 1
+                  ? types.map(([t, a]) => `${a.toLocaleString()} ${t}`).join(' / ')
+                  : capacity.reduce((sum, c) => sum + c.total_credits, 0).toLocaleString();
+              })()}
             </span>
           </div>
         </div>

@@ -109,7 +109,9 @@ class PixverseCreditsMixin:
             )
             api = self._get_cached_api(account)
 
-            web_total = 0
+            # None means "could not fetch" (timeout/error), distinct from 0.
+            # Callers use this to avoid overwriting stored credits on failures.
+            web_total: Optional[int] = None
             try:
                 web_data = await asyncio.wait_for(
                     api.get_credits(temp_account, force_refresh=force_refresh),
@@ -122,21 +124,20 @@ class PixverseCreditsMixin:
                     raw_response=web_data,
                 )
                 if isinstance(web_data, dict):
-                    # Prefer specific remaining/total fields, but be robust to SDK changes.
-                    raw_web = (
-                        web_data.get("remainingCredits")
-                        or web_data.get("remaining_credits")
-                        or web_data.get("total_credits")
-                        or web_data.get("credits")
-                    )
-                    try:
-                        web_total = int(raw_web or 0)
-                    except (TypeError, ValueError):
+                    # Check fields in priority order with explicit None checks
+                    # so that a valid 0 value is not skipped (unlike an `or` chain).
+                    for key in ("remainingCredits", "remaining_credits", "total_credits", "credits"):
+                        val = web_data.get(key)
+                        if val is not None:
+                            try:
+                                web_total = int(val)
+                            except (TypeError, ValueError):
+                                web_total = 0
+                            break
+                    if web_total is None:
                         web_total = 0
             except asyncio.TimeoutError as exc:
-                # For pixverse-status, treat timeouts as "unknown credits" but do not
-                # fail the entire call so ad-watch status and any cached credits can
-                # still be shown.
+                # Timeout: web_total stays None so callers know fetch failed.
                 log_provider_timeout(
                     provider_id="pixverse",
                     operation="get_credits_web",
@@ -145,7 +146,6 @@ class PixverseCreditsMixin:
                     error=str(exc),
                     error_type=exc.__class__.__name__,
                 )
-                web_total = 0
             except Exception as exc:
                 log_provider_error(
                     provider_id="pixverse",
@@ -160,7 +160,7 @@ class PixverseCreditsMixin:
                 # propagate a real error for non-timeout failures.
                 raise
 
-            openapi_total = 0
+            openapi_total: Optional[int] = None
             if "openapi_key" in session:
                 try:
                     openapi_data = await asyncio.wait_for(
@@ -168,34 +168,37 @@ class PixverseCreditsMixin:
                         timeout=PIXVERSE_CREDITS_TIMEOUT_SEC,
                     )
                     if isinstance(openapi_data, dict):
-                        raw_openapi = (
-                            openapi_data.get("credits")
-                            or openapi_data.get("total_credits")
-                        )
-                        try:
-                            openapi_total = int(raw_openapi or 0)
-                        except (TypeError, ValueError):
+                        for key in ("credits", "total_credits"):
+                            val = openapi_data.get(key)
+                            if val is not None:
+                                try:
+                                    openapi_total = int(val)
+                                except (TypeError, ValueError):
+                                    openapi_total = 0
+                                break
+                        if openapi_total is None:
                             openapi_total = 0
                 except Exception as exc:
                     # OpenAPI credits are optional - failures are non-fatal.
-                    # SDK already logs at appropriate level (WARNING for session
-                    # errors, ERROR for others), so we just log at DEBUG here.
+                    # openapi_total stays None so callers know fetch failed.
                     logger.debug(
                         "OpenAPI credits unavailable (using web credits): %s", exc
                     )
-                    openapi_total = 0
 
-            result: Dict[str, Any] = {
-                "web": max(0, web_total),
-                "openapi": max(0, openapi_total),
-            }
+            # Only include keys for credit pools that were successfully fetched.
+            # Missing keys signal "could not fetch" to the sync layer.
+            result: Dict[str, Any] = {}
+            if web_total is not None:
+                result["web"] = max(0, web_total)
+            if openapi_total is not None:
+                result["openapi"] = max(0, openapi_total)
 
             logger.debug(
                 "pixverse_credits_parsed",
                 account_id=account.id,
                 email=account.email,
-                web_credits=result["web"],
-                openapi_credits=result["openapi"],
+                web_credits=result.get("web"),
+                openapi_credits=result.get("openapi"),
             )
 
             # Optionally include ad task status

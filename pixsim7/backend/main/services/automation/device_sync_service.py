@@ -344,12 +344,24 @@ class DeviceSyncService:
                         # Keep device BUSY
                         in_session += 1
                     else:
-                        # Session expired - user done with ads
+                        # Session expired - user done with ads.
+                        # Refresh credits for the account that was watching
+                        # (ad rewards should now be reflected on the Pixverse side).
+                        account_id = device.assigned_account_id
+                        if account_id:
+                            await self._refresh_credits_after_ads(account_id, device.name)
+
                         device.is_watching_ad = False
                         device.ad_session_started_at = None
-                        if device.status == DeviceStatus.BUSY and device.assigned_account_id is None:
+                        device.assigned_account_id = None
+                        if device.status == DeviceStatus.BUSY:
                             device.status = DeviceStatus.ONLINE
-                        logger.info("ad_session_ended", device=device.name, adb_id=device.adb_id)
+                        logger.info(
+                            "ad_session_ended",
+                            device=device.name,
+                            adb_id=device.adb_id,
+                            refreshed_account_id=account_id,
+                        )
                         cleared += 1
                 else:
                     # No ad and no session - ensure clean state
@@ -363,6 +375,56 @@ class DeviceSyncService:
 
         await self.db.commit()
         return {"checked": checked, "watching_ads": watching_ads, "in_session": in_session, "cleared": cleared}
+
+    async def _refresh_credits_after_ads(self, account_id: int, device_name: str) -> None:
+        """Best-effort credit refresh for an account after ad session ends."""
+        try:
+            from pixsim7.backend.main.domain.providers import ProviderAccount
+            from pixsim7.backend.main.services.provider import registry
+            from pixsim7.backend.main.services.account import AccountService
+
+            account = await self.db.get(ProviderAccount, account_id)
+            if not account or account.provider_id != "pixverse":
+                return
+
+            provider = registry.get(account.provider_id)
+            if not hasattr(provider, "get_credits"):
+                return
+
+            credits_data = await provider.get_credits(
+                account, retry_on_session_error=False, force_refresh=True
+            )
+            if not credits_data:
+                return
+
+            account_service = AccountService(self.db)
+            updated_types = []
+            for credit_type in ("web", "openapi"):
+                value = credits_data.get(credit_type)
+                if value is not None:
+                    await account_service.set_credit(account_id, credit_type, max(0, int(value)))
+                    updated_types.append(f"{credit_type}={value}")
+
+            if updated_types:
+                # Update sync timestamp
+                metadata = account.provider_metadata or {}
+                metadata["credits_synced_at"] = datetime.now(timezone.utc).isoformat()
+                account.provider_metadata = metadata
+
+                logger.info(
+                    "ad_session_credits_refreshed",
+                    account_id=account_id,
+                    email=account.email,
+                    device=device_name,
+                    credits=", ".join(updated_types),
+                )
+        except Exception as e:
+            logger.warning(
+                "ad_session_credits_refresh_failed",
+                account_id=account_id,
+                device=device_name,
+                error=str(e),
+            )
 
 
 async def poll_device_ads(ctx: dict) -> Dict[str, int]:
