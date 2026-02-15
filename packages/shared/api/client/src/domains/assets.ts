@@ -1,174 +1,54 @@
 import type { PixSimApiClient } from '../client';
 import type { ApiComponents } from '@pixsim7/shared.types';
 
-export type AssetResponse = ApiComponents['schemas']['AssetResponse'];
-export type AssetListResponse = ApiComponents['schemas']['AssetListResponse'];
-export type ExtractFrameRequest = ApiComponents['schemas']['ExtractFrameRequest'];
-export type EnrichAssetResponse = ApiComponents['schemas']['EnrichAssetResponse'];
+type Schemas = ApiComponents['schemas'];
 
-// Manually defined - not in OpenAPI spec
-export interface ReuploadAssetRequest {
-  provider_id: string;
-}
+export type AssetResponse = Schemas['AssetResponse'];
+export type AssetListResponse = Schemas['AssetListResponse'];
+export type ExtractFrameRequest = Schemas['ExtractFrameRequest'];
+export type EnrichAssetResponse = Schemas['EnrichAssetResponse'];
+export type ReuploadAssetRequest = Schemas['ReuploadAssetRequest'];
 
+export type AssetGroupBy = Schemas['AssetGroupBy'];
+export type AssetGroupPathEntry = Schemas['AssetGroupPathEntry'];
+
+type AssetSearchRequestSchema = Schemas['AssetSearchRequest'];
+export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
+  /** Asset ID for visual similarity search (uses CLIP embeddings) */
+  similar_to?: number;
+  /** Min similarity 0-1, default 0.3 */
+  similarity_threshold?: number;
+};
 export type ListAssetsQuery = AssetSearchRequest;
 
-export interface AssetGroupPathEntry {
-  group_by: AssetGroupBy;
-  group_key: string;
-}
+type AssetGroupRequestSchema = Schemas['AssetGroupRequest'];
+export type AssetGroupRequest =
+  Partial<Omit<AssetGroupRequestSchema, 'group_by'>> &
+  Pick<AssetGroupRequestSchema, 'group_by'>;
 
-export interface AssetSearchRequest {
-  filters?: Record<string, unknown>;
-  group_filter?: Record<string, unknown> | null;
-  group_path?: AssetGroupPathEntry[] | null;
-  tag?: string | string[];
-  q?: string;
-  include_archived?: boolean;
-  searchable?: boolean | null;
-  created_from?: string | null;
-  created_to?: string | null;
-  min_width?: number | null;
-  max_width?: number | null;
-  min_height?: number | null;
-  max_height?: number | null;
-  content_domain?: string | null;
-  content_category?: string | null;
-  content_rating?: string | null;
-  provider_status?: string | null;
-  sync_status?: string | null;
-  source_generation_id?: number | null;
-  source_asset_id?: number | null;
-  operation_type?: string | null;
-  has_parent?: boolean | null;
-  has_children?: boolean | null;
-  prompt_version_id?: string | null;
-  group_by?: AssetGroupBy | null;
-  group_key?: string | null;
-  sort_by?: 'created_at' | 'file_size_bytes' | null;
-  sort_dir?: 'asc' | 'desc';
-  limit?: number;
-  offset?: number;
-  cursor?: string | null;
-}
-
-export type AssetGroupBy = 'source' | 'generation' | 'prompt' | 'sibling';
-
-export interface AssetGroupSourceMeta {
-  kind: 'source';
-  asset_id: number;
-  media_type: string;
-  created_at: string;
-  description?: string | null;
-  thumbnail_url?: string | null;
-  preview_url?: string | null;
-  remote_url?: string | null;
-  width?: number | null;
-  height?: number | null;
-}
-
-export interface AssetGroupGenerationMeta {
-  kind: 'generation';
-  generation_id: number;
-  provider_id: string;
-  operation_type: string;
-  status?: string | null;
-  created_at: string;
-  final_prompt?: string | null;
-  prompt_version_id?: string | null;
-}
-
-export interface AssetGroupPromptMeta {
-  kind: 'prompt';
-  prompt_version_id: string;
-  prompt_text: string;
-  commit_message?: string | null;
-  author?: string | null;
-  version_number?: number | null;
-  family_id?: string | null;
-  family_title?: string | null;
-  family_slug?: string | null;
-  created_at: string;
-  tags?: string[];
-}
-
-export interface AssetGroupSiblingMeta {
-  kind: 'sibling';
-  hash: string;
-  generation_id: number;
-  provider_id: string;
-  operation_type: string;
-  status?: string | null;
-  created_at: string;
-  prompt_snippet?: string | null;
-}
-
+export type AssetGroupSourceMeta = Schemas['AssetGroupSourceMeta'];
+export type AssetGroupGenerationMeta = Schemas['AssetGroupGenerationMeta'];
+export type AssetGroupPromptMeta = Schemas['AssetGroupPromptMeta'];
+export type AssetGroupSiblingMeta = Schemas['AssetGroupSiblingMeta'];
 export type AssetGroupMeta =
   | AssetGroupSourceMeta
   | AssetGroupGenerationMeta
   | AssetGroupPromptMeta
   | AssetGroupSiblingMeta;
+export type AssetGroupSummary = Schemas['AssetGroupSummary'];
+export type AssetGroupListResponse = Schemas['AssetGroupListResponse'];
 
-export interface AssetGroupRequest extends AssetSearchRequest {
-  group_by: AssetGroupBy;
-  preview_limit?: number;
-}
-
-export interface AssetGroupSummary {
-  key: string;
-  count: number;
-  latest_created_at: string;
-  preview_assets: AssetResponse[];
-  meta?: AssetGroupMeta | null;
-}
-
-export interface AssetGroupListResponse {
-  groups: AssetGroupSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export interface FilterDefinition {
-  key: string;
-  type: 'enum' | 'boolean' | 'search' | 'autocomplete';
-  label?: string;
-  description?: string;
-  depends_on?: Record<string, string[]>;
-  multi?: boolean;
-  match_modes?: string[];
-}
-
-export interface FilterOptionValue {
-  value: string;
-  label?: string;
-  count?: number;
-}
-
-export interface FilterMetadataResponse {
-  filters: FilterDefinition[];
-  options: Record<string, FilterOptionValue[]>;
-}
-
-export interface FilterOptionsRequest {
-  context?: Record<string, unknown>;
-  includeCounts?: boolean;
-  include?: string[];
-  limit?: number;
-}
-
+export type FilterDefinition = Schemas['FilterDefinition'];
+export type FilterOptionValue = Schemas['FilterOptionValue'];
+export type FilterMetadataResponse = Schemas['FilterOptionsResponse'];
+type FilterOptionsRequestSchema = Schemas['FilterOptionsRequest'];
+export type FilterOptionsRequest =
+  Omit<FilterOptionsRequestSchema, 'include_counts'> & {
+    includeCounts?: boolean;
+  };
 export type FilterMetadataQueryOptions = FilterOptionsRequest;
 
-export interface AssetGenerationContext {
-  source: 'generation' | 'metadata';
-  operation_type: string;
-  provider_id: string;
-  final_prompt?: string | null;
-  canonical_params: Record<string, unknown>;
-  raw_params: Record<string, unknown>;
-  inputs: Array<Record<string, unknown>>;
-  source_asset_ids: number[];
-}
+export type AssetGenerationContext = Schemas['AssetGenerationContext'];
 
 export function getAssetDownloadUrl(asset: AssetResponse): string {
   return asset.remote_url || asset.file_url || `/assets/${asset.id}/file`;
@@ -251,13 +131,25 @@ export function createAssetsApi(client: PixSimApiClient) {
     /**
      * Enrich an asset by fetching metadata from the provider.
      * Creates a synthetic Generation record with prompt/params.
+     * Set force=true to re-enrich assets that already have generations.
      */
-    async enrichAsset(assetId: number): Promise<EnrichAssetResponse> {
-      return client.post<EnrichAssetResponse>(`/assets/${assetId}/enrich`);
+    async enrichAsset(assetId: number, options?: { force?: boolean }): Promise<EnrichAssetResponse> {
+      const query = options?.force ? '?force=true' : '';
+      return client.post<EnrichAssetResponse>(`/assets/${assetId}/enrich${query}`);
     },
 
     async getAssetGenerationContext(assetId: number): Promise<AssetGenerationContext> {
       return client.get<AssetGenerationContext>(`/assets/${assetId}/generation-context`);
+    },
+
+    async bulkDeleteAssets(
+      assetIds: number[],
+      options?: { delete_from_provider?: boolean },
+    ): Promise<{ deleted_count: number; total_requested: number; errors?: Array<{ asset_id: number; error: string }> }> {
+      const query = options?.delete_from_provider !== undefined
+        ? `?delete_from_provider=${options.delete_from_provider}`
+        : '';
+      return client.post(`/assets/bulk/delete${query}`, { asset_ids: assetIds });
     },
   };
 }

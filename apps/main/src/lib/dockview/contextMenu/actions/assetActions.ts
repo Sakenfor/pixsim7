@@ -17,9 +17,12 @@ import { useToastStore } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
 import { assetEvents, getAssetDisplayUrls, toViewerAsset, toSelectedAsset } from '@features/assets';
+import { archiveAsset } from '@features/assets/lib/api';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useAssetViewerStore } from '@features/assets/stores/assetViewerStore';
+import { useDeleteModalStore } from '@features/assets/stores/deleteModalStore';
+import { useRelatedAssetsStore } from '@features/assets/stores/relatedAssetsStore';
 import {
   CAP_ASSET,
   CAP_GENERATION_WIDGET,
@@ -31,6 +34,7 @@ import { useGenerationInputStore } from '@features/generation';
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
+import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
 import { authService } from '@/lib/auth';
 import { ensureBackendAbsolute } from '@/lib/media/backendUrl';
@@ -65,6 +69,7 @@ type AssetActionInput = {
   sync_status?: AssetModel['syncStatus'];
   sourceGenerationId?: number | null;
   source_generation_id?: number | null;
+  sha256?: string | null;
   width?: number | null;
   height?: number | null;
   tags?: unknown;
@@ -109,11 +114,13 @@ function normalizeAsset(asset: AssetActionInput): AssetModel | null {
     providerStatus: asset.providerStatus ?? asset.provider_status ?? null,
     remoteUrl: asset.remoteUrl ?? asset.remote_url ?? null,
     sourceGenerationId: asset.sourceGenerationId ?? asset.source_generation_id ?? null,
+    sha256: (asset as any).sha256 ?? null,
     storedKey: (asset as any).storedKey ?? (asset as any).stored_key ?? null,
     syncStatus: asset.syncStatus ?? asset.sync_status ?? 'remote',
     tags,
     thumbnailKey: (asset as any).thumbnailKey ?? (asset as any).thumbnail_key ?? null,
     thumbnailUrl: asset.thumbnailUrl ?? asset.thumbnail_url ?? null,
+    uploadContext: asset.uploadContext ?? (asset as any).upload_context ?? null,
     userId: (asset as any).userId ?? (asset as any).user_id ?? 0,
     width: asset.width ?? null,
   };
@@ -193,6 +200,33 @@ async function triggerIngestionForAssets(
   if (errorCount > 0) {
     notify('error', `${label}: ${errorCount} failed. Check auth or backend logs.`);
   }
+}
+
+async function enrichAssetsGenerationContext(
+  assets: AssetModel[],
+): Promise<void> {
+  if (!assets.length) return;
+  const eligible = assets
+    .map((asset) => Number(asset.id))
+    .filter((id) => Number.isFinite(id));
+  if (!eligible.length) {
+    notify('warning', 'Enrich: no gallery assets available for this action.');
+    return;
+  }
+  const results = await Promise.allSettled(
+    eligible.map((id) => enrichAsset(id, { force: true })),
+  );
+  const successCount = results.filter((r) => r.status === 'fulfilled' && r.value.enriched).length;
+  const skippedCount = results.filter((r) => r.status === 'fulfilled' && !r.value.enriched).length;
+  const errorCount = results.filter((r) => r.status === 'rejected').length;
+  const parts: string[] = [];
+  if (successCount > 0) parts.push(`${successCount} enriched`);
+  if (skippedCount > 0) parts.push(`${skippedCount} skipped`);
+  if (errorCount > 0) parts.push(`${errorCount} failed`);
+  notify(
+    errorCount > 0 ? 'error' : successCount > 0 ? 'success' : 'info',
+    `Resync generation: ${parts.join(', ')}.`,
+  );
 }
 
 async function backfillThumbnails(limit = 100): Promise<void> {
@@ -569,6 +603,13 @@ const debugFixAction: MenuAction = {
         execute: () => triggerIngestionForAssets(assets, '?regenerate_thumbnails=true', 'Thumbnail rebuild'),
       },
       {
+        id: 'asset:debug:resync-generation',
+        label: `Resync generation context${labelSuffix}`,
+        icon: 'refresh-cw',
+        requiredCapabilities: [CAP_ASSET],
+        execute: () => enrichAssetsGenerationContext(assets),
+      },
+      {
         id: 'asset:debug:retry-thumbs',
         label: 'Retry thumbnail loads (UI)',
         icon: 'refresh-cw',
@@ -688,6 +729,179 @@ const copySubmenuAction: MenuAction = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// "More from..." Submenu — browse related assets by shared source
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** uploadContext-based "More from..." keys */
+const MORE_FROM_CONTEXT_KEYS = [
+  { key: 'source_folder', label: 'Same folder', icon: 'folder' },
+  { key: 'source_site', label: 'Same site', icon: 'globe' },
+  { key: 'source_filename', label: 'Same source video', icon: 'video' },
+] as const;
+
+function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
+  const items: MenuAction[] = [];
+  const uc = asset.uploadContext;
+
+  // Upload-context entries (folder, site, source video)
+  if (uc && typeof uc === 'object') {
+    for (const { key, label, icon } of MORE_FROM_CONTEXT_KEYS) {
+      const value = uc[key];
+      if (!value) continue;
+      const display = String(value);
+      items.push({
+        id: `asset:more-from:${key}`,
+        label: `${label}: ${display}`,
+        icon,
+        execute: () => {
+          useRelatedAssetsStore.getState().open(
+            `${label}: ${display}`,
+            { [key]: display },
+          );
+        },
+      });
+    }
+
+    // Source asset (lineage — frames extracted from this asset, etc.)
+    const sourceAssetId = uc.source_asset_id;
+    if (typeof sourceAssetId === 'number' && Number.isFinite(sourceAssetId)) {
+      items.push({
+        id: 'asset:more-from:source-asset',
+        label: `From asset #${sourceAssetId}`,
+        icon: 'image',
+        execute: () => {
+          useRelatedAssetsStore.getState().open(
+            `From asset #${sourceAssetId}`,
+            { source_asset_id: sourceAssetId },
+          );
+        },
+      });
+    }
+  }
+
+  // Same generation/prompt (top-level field, not in uploadContext)
+  if (asset.sourceGenerationId) {
+    items.push({
+      id: 'asset:more-from:generation',
+      label: 'Same generation',
+      icon: 'sparkles',
+      execute: () => {
+        useRelatedAssetsStore.getState().open(
+          `Generation #${asset.sourceGenerationId}`,
+          { source_generation_id: asset.sourceGenerationId! },
+        );
+      },
+    });
+  }
+
+  // Visual similarity search (CLIP embeddings)
+  items.push({
+    id: 'asset:more-from:similar',
+    label: 'Similar content',
+    icon: 'search',
+    execute: () => {
+      useRelatedAssetsStore.getState().open(
+        `Similar to #${asset.id}`,
+        { similar_to: asset.id },
+      );
+    },
+  });
+
+  // Same content hash (exact file duplicates / re-uploads)
+  if (asset.sha256) {
+    items.push({
+      id: 'asset:more-from:sha256',
+      label: `Exact duplicates (#${asset.sha256.slice(0, 8)})`,
+      icon: 'copy',
+      execute: () => {
+        useRelatedAssetsStore.getState().open(
+          `Exact duplicates (#${asset.sha256!.slice(0, 8)}...)`,
+          { sha256: asset.sha256! },
+        );
+      },
+    });
+  }
+
+  return items;
+}
+
+const moreFromSourceSubmenuAction: MenuAction = {
+  id: 'asset:more-from',
+  label: 'More from\u2026',
+  icon: 'search',
+  category: 'asset',
+  hideWhenEmpty: true,
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (assets.length !== 1) return false;
+    return buildMoreFromChildren(assets[0]).length > 0;
+  },
+  children: (ctx) => {
+    const asset = resolveAssets(ctx)[0];
+    return asset ? buildMoreFromChildren(asset) : [];
+  },
+  execute: () => {},
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Destructive / Management Actions
+// ─────────────────────────────────────────────────────────────────────────────
+
+const deleteAssetAction: MenuAction = {
+  id: 'asset:delete',
+  label: 'Delete',
+  icon: 'trash',
+  iconColor: 'text-red-500',
+  category: 'destructive',
+  variant: 'danger',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  dynamicLabel: (ctx) => {
+    const count = resolveAssets(ctx).length;
+    return count > 1 ? `Delete (${count})` : 'Delete';
+  },
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    useDeleteModalStore.getState().openDeleteModal(assets);
+  },
+};
+
+const archiveAssetAction: MenuAction = {
+  id: 'asset:archive',
+  label: 'Archive',
+  icon: 'archive',
+  category: 'asset',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  dynamicLabel: (ctx) => {
+    const count = resolveAssets(ctx).length;
+    return count > 1 ? `Archive (${count})` : 'Archive';
+  },
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+
+    const results = await Promise.allSettled(
+      assets.map((asset) => archiveAsset(asset.id, true)),
+    );
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const errorCount = results.length - successCount;
+
+    if (successCount > 0) {
+      for (const asset of assets) {
+        assetEvents.emitAssetDeleted(asset.id);
+      }
+      notify('success', `Archived ${successCount} asset${successCount === 1 ? '' : 's'}.`);
+    }
+    if (errorCount > 0) {
+      notify('error', `Failed to archive ${errorCount} asset${errorCount === 1 ? '' : 's'}.`);
+    }
+  },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Export All Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -700,8 +914,13 @@ export const assetActions: MenuAction[] = [
   compareWithSelectedAction,
   // Generate submenu
   generateSubmenuAction,
+  // Related assets
+  moreFromSourceSubmenuAction,
   // Copy submenu
   copySubmenuAction,
+  // Asset management
+  archiveAssetAction,
+  deleteAssetAction,
   // Debug & fixes
   debugFixAction,
 ];

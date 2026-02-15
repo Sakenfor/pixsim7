@@ -42,12 +42,17 @@ export type AssetFilters = {
   // Lineage filters
   source_generation_id?: number;
   source_asset_id?: number;
+  sha256?: string;
   operation_type?: string;
   has_parent?: boolean;
   has_children?: boolean;
 
   // Prompt analysis filters (dynamic)
   analysis_tags?: string | string[];
+
+  // Visual similarity search
+  similar_to?: number;
+  similarity_threshold?: number;
 
   // Prompt version filter (UUID string)
   prompt_version_id?: string;
@@ -123,9 +128,14 @@ export function useAssets(options?: {
     // Lineage filters
     source_generation_id: filters.source_generation_id,
     source_asset_id: filters.source_asset_id,
+    sha256: filters.sha256 || undefined,
     operation_type: filters.operation_type || undefined,
     has_parent: filters.has_parent,
     has_children: filters.has_children,
+
+    // Visual similarity
+    similar_to: filters.similar_to,
+    similarity_threshold: filters.similarity_threshold,
 
     // Prompt version filter
     prompt_version_id: filters.prompt_version_id || undefined,
@@ -135,7 +145,8 @@ export function useAssets(options?: {
     filters.created_from, filters.created_to,
     filters.min_width, filters.max_width, filters.min_height, filters.max_height,
     filters.content_domain, filters.content_category, filters.content_rating, filters.searchable,
-    filters.source_generation_id, filters.source_asset_id, filters.operation_type, filters.has_parent, filters.has_children,
+    filters.source_generation_id, filters.source_asset_id, filters.sha256, filters.operation_type, filters.has_parent, filters.has_children,
+    filters.similar_to, filters.similarity_threshold,
     filters.prompt_version_id,
   ]);
 
@@ -404,7 +415,8 @@ export function useAssets(options?: {
     filterParams.created_from, filterParams.created_to,
     filterParams.min_width, filterParams.max_width, filterParams.min_height, filterParams.max_height,
     filterParams.content_domain, filterParams.content_category, filterParams.content_rating, filterParams.searchable,
-    filterParams.source_generation_id, filterParams.source_asset_id, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.source_generation_id, filterParams.source_asset_id, filterParams.sha256, filterParams.operation_type, filterParams.has_parent, filterParams.has_children,
+    filterParams.similar_to, filterParams.similarity_threshold,
     filterParams.prompt_version_id,
     filterParams.sort_by, filterParams.sort_dir,
     extraRegistryFiltersKey,

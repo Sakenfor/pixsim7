@@ -13,20 +13,29 @@ from fastapi.responses import FileResponse
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, AccountSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.asset_schemas import (
+    AssetGroupBy,
+    AssetGroupGenerationMeta,
+    AssetGroupListResponse,
+    AssetGroupMeta,
+    AssetGroupPromptMeta,
+    AssetGroupRequest,
+    AssetGroupSiblingMeta,
+    AssetGroupSourceMeta,
+    AssetGroupSummary,
+    AssetSearchRequest,
     AssetResponse,
     AssetListResponse,
     AssetGenerationContext,
 )
 from pixsim7.backend.main.shared.schemas.tag_schemas import TagSummary, AssignTagsRequest
 from pixsim7.backend.main.services.tag_service import TagService
-from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType, ContentDomain
+from pixsim7.backend.main.domain.enums import MediaType, SyncStatus, OperationType
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError
 import json
 import os, tempfile, hashlib
 from pydantic import BaseModel, Field
-from typing import Optional, List, Any, Literal, Union
+from typing import Optional, List, Any
 from enum import Enum
-from uuid import UUID
 from datetime import datetime
 from pixsim7.backend.main.services.asset.asset_factory import add_asset
 from pixsim7.backend.main.domain.assets.upload_attribution import (
@@ -61,72 +70,6 @@ router.include_router(assets_versions.router)
 
 
 # ===== ASSET SEARCH =====
-
-class AssetGroupBy(str, Enum):
-    source = "source"
-    generation = "generation"
-    prompt = "prompt"
-    sibling = "sibling"
-
-
-class AssetGroupPathEntry(BaseModel):
-    group_by: AssetGroupBy
-    group_key: str
-
-
-class AssetSearchRequest(BaseModel):
-    """Request body for asset search."""
-    filters: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Filter key/value pairs (registry-defined)",
-    )
-    group_filter: dict[str, Any] | None = Field(
-        None,
-        description="Optional registry filters that scope grouping eligibility",
-    )
-    group_path: list[AssetGroupPathEntry] = Field(
-        default_factory=list,
-        description="Nested grouping path (ordered list of group_by + group_key)",
-    )
-    tag: str | list[str] | None = Field(None, description="Filter assets containing tag (slug)")
-    q: Optional[str] = Field(None, description="Full-text search over description/tags")
-    include_archived: bool = Field(False, description="Include archived assets (default: false)")
-    searchable: Optional[bool] = Field(True, description="Filter by searchable flag (default: true)")
-
-    created_from: datetime | None = Field(None, description="Filter by created_at >= value")
-    created_to: datetime | None = Field(None, description="Filter by created_at <= value")
-    min_width: int | None = Field(None, ge=0, description="Minimum width")
-    max_width: int | None = Field(None, ge=0, description="Maximum width")
-    min_height: int | None = Field(None, ge=0, description="Minimum height")
-    max_height: int | None = Field(None, ge=0, description="Maximum height")
-
-    content_domain: ContentDomain | None = Field(None, description="Filter by content domain")
-    content_category: str | None = Field(None, description="Filter by content category")
-    content_rating: str | None = Field(None, description="Filter by content rating")
-
-    provider_status: str | None = Field(None, description="Filter by provider status (ok, local_only, flagged, unknown)")
-    sync_status: SyncStatus | None = Field(None, description="Filter by sync status")
-
-    source_generation_id: int | None = Field(None, description="Filter by source generation ID")
-    source_asset_id: int | None = Field(None, description="Filter by source asset ID")
-    operation_type: OperationType | None = Field(None, description="Filter by lineage operation type")
-    has_parent: bool | None = Field(None, description="Has lineage parent")
-    has_children: bool | None = Field(None, description="Has lineage children")
-
-    prompt_version_id: UUID | None = Field(None, description="Filter by prompt version ID")
-
-    group_by: AssetGroupBy | None = Field(None, description="Group key to filter assets by (source, generation, prompt, sibling)")
-    group_key: str | None = Field(
-        None,
-        description="Group value to filter assets by (use 'ungrouped' or 'other')",
-    )
-
-    sort_by: str | None = Field(None, pattern=r"^(created_at|file_size_bytes)$", description="Sort field")
-    sort_dir: str = Field("desc", pattern=r"^(asc|desc)$", description="Sort direction")
-
-    limit: int = Field(50, ge=1, le=100, description="Results per page")
-    offset: int = Field(0, ge=0, description="Pagination offset (legacy)")
-    cursor: str | None = Field(None, description="Opaque cursor for pagination")
 
 # ===== SEARCH ASSETS =====
 
@@ -173,6 +116,7 @@ async def search_assets(
             searchable=request.searchable,
             source_generation_id=request.source_generation_id,
             source_asset_id=request.source_asset_id,
+            sha256=request.sha256,
             operation_type=request.operation_type,
             has_parent=request.has_parent,
             has_children=request.has_children,
@@ -181,6 +125,8 @@ async def search_assets(
             group_key=request.group_key,
             sort_by=request.sort_by,
             sort_dir=request.sort_dir,
+            similar_to=request.similar_to,
+            similarity_threshold=request.similarity_threshold,
         )
 
         # Simple total (future: separate COUNT query)
@@ -211,77 +157,6 @@ async def search_assets(
 
 
 # ===== ASSET GROUPS =====
-
-class AssetGroupRequest(AssetSearchRequest):
-    """Request body for asset grouping."""
-    group_by: AssetGroupBy = Field(..., description="Group assets by this key")
-    preview_limit: int = Field(4, ge=0, le=12, description="Preview assets per group")
-
-class AssetGroupSourceMeta(BaseModel):
-    kind: Literal["source"] = "source"
-    asset_id: int
-    media_type: str
-    created_at: datetime
-    description: Optional[str] = None
-    thumbnail_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    remote_url: Optional[str] = None
-    width: Optional[int] = None
-    height: Optional[int] = None
-
-
-class AssetGroupGenerationMeta(BaseModel):
-    kind: Literal["generation"] = "generation"
-    generation_id: int
-    provider_id: str
-    operation_type: str
-    status: Optional[str] = None
-    created_at: datetime
-    final_prompt: Optional[str] = None
-    prompt_version_id: Optional[UUID] = None
-
-
-class AssetGroupPromptMeta(BaseModel):
-    kind: Literal["prompt"] = "prompt"
-    prompt_version_id: UUID
-    prompt_text: str
-    commit_message: Optional[str] = None
-    author: Optional[str] = None
-    version_number: Optional[int] = None
-    family_id: Optional[UUID] = None
-    family_title: Optional[str] = None
-    family_slug: Optional[str] = None
-    created_at: datetime
-    tags: List[str] = Field(default_factory=list)
-
-
-class AssetGroupSiblingMeta(BaseModel):
-    kind: Literal["sibling"] = "sibling"
-    hash: str
-    generation_id: int
-    provider_id: str
-    operation_type: str
-    status: Optional[str] = None
-    created_at: datetime
-    prompt_snippet: Optional[str] = None
-
-
-AssetGroupMeta = Union[AssetGroupSourceMeta, AssetGroupGenerationMeta, AssetGroupPromptMeta, AssetGroupSiblingMeta]
-
-
-class AssetGroupSummary(BaseModel):
-    key: str
-    count: int
-    latest_created_at: datetime
-    preview_assets: list[AssetResponse] = Field(default_factory=list)
-    meta: Optional[AssetGroupMeta] = None
-
-
-class AssetGroupListResponse(BaseModel):
-    groups: list[AssetGroupSummary]
-    total: int
-    limit: int
-    offset: int
 
 
 @router.post("/groups", response_model=AssetGroupListResponse)

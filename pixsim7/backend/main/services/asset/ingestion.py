@@ -179,6 +179,19 @@ class MediaSettings:
         """Default provider for uploads when frame_extraction_upload is 'always'."""
         return self._settings.get("default_upload_provider", "pixverse")
 
+    @property
+    def generate_embeddings(self) -> bool:
+        """Generate CLIP embeddings for visual similarity search (opt-in)."""
+        return self._settings.get("generate_embeddings", False)
+
+    @property
+    def clip_embedding_command(self) -> str:
+        """Command for CLIP embedding generation (or CLIP_EMBEDDING_COMMAND env var)."""
+        return self._settings.get(
+            "clip_embedding_command",
+            os.environ.get("CLIP_EMBEDDING_COMMAND", ""),
+        )
+
     def update(self, updates: Dict[str, Any]) -> None:
         """Update settings and save."""
         self._settings.update(updates)
@@ -200,6 +213,7 @@ class MediaSettings:
             "preview_size": list(self.preview_size),
             "frame_extraction_upload": self.frame_extraction_upload,
             "default_upload_provider": self.default_upload_provider,
+            "generate_embeddings": self.generate_embeddings,
         }
 
 
@@ -250,6 +264,7 @@ class AssetIngestionService:
         extract_metadata: bool = True,
         generate_thumbnails: Optional[bool] = None,
         generate_previews: Optional[bool] = None,
+        generate_embeddings: Optional[bool] = None,
     ) -> Asset:
         """
         Ingest a single asset.
@@ -284,6 +299,8 @@ class AssetIngestionService:
             generate_thumbnails = self.settings.generate_thumbnails
         if generate_previews is None:
             generate_previews = self.settings.generate_previews
+        if generate_embeddings is None:
+            generate_embeddings = self.settings.generate_embeddings
 
         # Idempotent check: skip if already ingested with content-addressed storage (unless forced)
         # Only skip when all requested steps are already complete.
@@ -292,7 +309,8 @@ class AssetIngestionService:
             needs_metadata = extract_metadata and not asset.metadata_extracted_at
             needs_thumbnails = generate_thumbnails and not asset.thumbnail_generated_at
             needs_previews = generate_previews and not asset.preview_generated_at
-            if not (needs_metadata or needs_thumbnails or needs_previews):
+            needs_embedding = generate_embeddings and not asset.embedding_generated_at
+            if not (needs_metadata or needs_thumbnails or needs_previews or needs_embedding):
                 logger.debug(
                     "ingest_skipped_already_complete",
                     asset_id=asset_id,
@@ -356,6 +374,10 @@ class AssetIngestionService:
             if generate_previews and (force or not asset.preview_generated_at):
                 await self._generate_preview(asset, local_path)
                 asset.preview_generated_at = datetime.now(timezone.utc)
+
+            # Step 7: Generate CLIP embedding (if not already done or forced)
+            if generate_embeddings and (force or not asset.embedding_generated_at):
+                await self._generate_embedding(asset, local_path)
 
             # Link to global content blob (best-effort)
             if asset.sha256 and asset.content_id is None:
@@ -946,6 +968,118 @@ class AssetIngestionService:
                 "ffmpeg_not_found",
                 asset_id=asset.id,
                 detail="ffmpeg not available for video preview generation"
+            )
+
+    async def _generate_embedding(self, asset: Asset, local_path: str) -> None:
+        """
+        Generate CLIP embedding for visual similarity search.
+
+        Calls an external command (configured via clip_embedding_command setting
+        or CLIP_EMBEDDING_COMMAND env var) with JSON stdin/stdout contract.
+
+        Best-effort: logs warnings on failure, never blocks ingestion.
+        """
+        import json
+        import shlex
+        import subprocess
+        import sys
+
+        cmd_str = self.settings.clip_embedding_command
+        if not cmd_str.strip():
+            logger.debug(
+                "embedding_skipped_no_command",
+                asset_id=asset.id,
+                detail="No CLIP embedding command configured",
+            )
+            return
+
+        # Prefer thumbnail path (consistent 320x320 input) over original
+        embed_path = local_path
+        if asset.thumbnail_key:
+            thumb_path = self.storage.get_path(asset.thumbnail_key)
+            if Path(thumb_path).exists():
+                embed_path = thumb_path
+
+        try:
+            posix = sys.platform != "win32"
+            try:
+                cmd_list = shlex.split(cmd_str, posix=posix)
+            except ValueError:
+                cmd_list = cmd_str.strip().split()
+
+            input_payload = json.dumps({
+                "task": "embed_images",
+                "paths": [embed_path],
+            })
+
+            def run_subprocess():
+                return subprocess.run(
+                    cmd_list,
+                    input=input_payload,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                    shell=False,
+                )
+
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, run_subprocess)
+
+            if result.returncode != 0:
+                stderr_preview = (result.stderr or "")[:300]
+                logger.warning(
+                    "embedding_command_failed",
+                    asset_id=asset.id,
+                    exit_code=result.returncode,
+                    stderr=stderr_preview,
+                )
+                return
+
+            stdout_text = result.stdout.strip()
+            if not stdout_text:
+                logger.warning("embedding_empty_output", asset_id=asset.id)
+                return
+
+            output_data = json.loads(stdout_text)
+            embeddings = output_data.get("embeddings")
+            if not embeddings or len(embeddings) < 1:
+                logger.warning("embedding_missing_data", asset_id=asset.id)
+                return
+
+            embedding = embeddings[0]
+            if len(embedding) != 768:
+                logger.warning(
+                    "embedding_wrong_dimensions",
+                    asset_id=asset.id,
+                    expected=768,
+                    got=len(embedding),
+                )
+                return
+
+            asset.embedding = embedding
+            asset.embedding_generated_at = datetime.now(timezone.utc)
+
+            logger.info(
+                "embedding_generated",
+                asset_id=asset.id,
+                dimensions=len(embedding),
+            )
+
+        except json.JSONDecodeError as e:
+            logger.warning("embedding_invalid_json", asset_id=asset.id, error=str(e))
+        except subprocess.TimeoutExpired:
+            logger.warning("embedding_timeout", asset_id=asset.id)
+        except FileNotFoundError:
+            logger.warning(
+                "embedding_command_not_found",
+                asset_id=asset.id,
+                command=cmd_str.split()[0] if cmd_str.strip() else "(empty)",
+            )
+        except Exception as e:
+            logger.warning(
+                "embedding_generation_failed",
+                asset_id=asset.id,
+                error=str(e),
             )
 
     def _guess_extension(self, asset: Asset) -> str:

@@ -128,12 +128,16 @@ class AssetSearchMixin:
         content_rating: Optional[str] = None,
         source_generation_id: Optional[int] = None,
         source_asset_id: Optional[int] = None,
+        sha256: Optional[str] = None,
         prompt_version_id: Optional[Any] = None,
         operation_type: Optional[Any] = None,
         has_parent: Optional[bool] = None,
         has_children: Optional[bool] = None,
         group_by: Optional[str] = None,
         group_key: Optional[str] = None,
+        similar_to_embedding: Optional[list[float]] = None,
+        similar_to_asset_id: Optional[int] = None,
+        similarity_threshold: Optional[float] = None,
     ):
         from sqlalchemy import and_, or_, case, literal, exists, cast, distinct
         from sqlalchemy.dialects.postgresql import JSONB
@@ -284,6 +288,24 @@ class AssetSearchMixin:
         # Source generation filter
         if source_generation_id is not None:
             query = query.where(Asset.source_generation_id == source_generation_id)
+
+        # SHA-256 filter
+        if sha256:
+            query = query.where(Asset.sha256 == sha256)
+
+        # Visual similarity filter (CLIP embedding cosine distance)
+        if similar_to_embedding is not None:
+            threshold = similarity_threshold if similarity_threshold is not None else 0.3
+            max_distance = 1.0 - threshold
+            distance_expr = Asset.embedding.cosine_distance(similar_to_embedding)
+            query = query.where(Asset.embedding.isnot(None))
+            query = query.where(distance_expr <= max_distance)
+            if similar_to_asset_id is not None:
+                query = query.where(Asset.id != similar_to_asset_id)
+        elif similar_to_asset_id is not None:
+            # Source asset has no embedding — return empty result
+            from sqlalchemy import literal
+            query = query.where(literal(False))
 
         # Source asset filter (lineage + upload_context)
         if source_asset_id is not None:
@@ -909,6 +931,7 @@ class AssetSearchMixin:
         searchable: Optional[bool] = True,  # Default True to hide non-searchable
         source_generation_id: Optional[int] = None,
         source_asset_id: Optional[int] = None,
+        sha256: Optional[str] = None,
         prompt_version_id: Optional[Any] = None,
         operation_type = None,  # OperationType enum
         has_parent: Optional[bool] = None,
@@ -917,6 +940,8 @@ class AssetSearchMixin:
         group_key: Optional[str] = None,
         sort_by: Optional[str] = None,
         sort_dir: Optional[str] = "desc",
+        similar_to: Optional[int] = None,
+        similarity_threshold: Optional[float] = None,
     ) -> list[Asset]:
         """
         List assets for user with advanced search and filtering.
@@ -942,6 +967,7 @@ class AssetSearchMixin:
             searchable: Filter by searchable flag (default True)
             source_generation_id: Filter by source generation ID
             source_asset_id: Filter by lineage source asset ID
+            sha256: Filter by content hash (exact match)
             prompt_version_id: Filter by prompt version ID
             operation_type: Filter by lineage operation type
             has_parent: Filter assets with/without lineage parent
@@ -955,6 +981,15 @@ class AssetSearchMixin:
         Returns:
             List of assets
         """
+        # Pre-resolve embedding for similarity search
+        similar_to_embedding = None
+        if similar_to is not None:
+            from sqlalchemy import select as sa_select
+            result = await self.db.execute(
+                sa_select(Asset.embedding).where(Asset.id == similar_to)
+            )
+            similar_to_embedding = result.scalar_one_or_none()
+
         query, tag_joined = self._build_asset_search_query(
             user=user,
             filters=filters,
@@ -977,6 +1012,7 @@ class AssetSearchMixin:
             content_rating=content_rating,
             source_generation_id=source_generation_id,
             source_asset_id=source_asset_id,
+            sha256=sha256,
             prompt_version_id=prompt_version_id,
             operation_type=operation_type,
             has_parent=has_parent,
@@ -984,6 +1020,9 @@ class AssetSearchMixin:
             group_by=group_by,
             group_key=group_key,
             group_path=group_path,
+            similar_to_embedding=similar_to_embedding,
+            similar_to_asset_id=similar_to,
+            similarity_threshold=similarity_threshold,
         )
 
         # Handle deduplication when joins cause row multiplication
@@ -998,8 +1037,11 @@ class AssetSearchMixin:
             # Build fresh query selecting full Assets by those IDs
             query = select(Asset).where(Asset.id.in_(select(id_subquery.c.id)))
 
-        # Sorting - validate sort_by before using
-        if sort_by and sort_by in ('created_at', 'file_size_bytes'):
+        # Sorting — similarity search overrides default sort
+        if similar_to_embedding is not None:
+            distance_expr = Asset.embedding.cosine_distance(similar_to_embedding)
+            query = query.order_by(distance_expr.asc(), Asset.created_at.desc())
+        elif sort_by and sort_by in ('created_at', 'file_size_bytes'):
             sort_col = getattr(Asset, sort_by)
             if sort_dir == "asc":
                 query = query.order_by(sort_col.asc(), Asset.id.asc())
@@ -1009,8 +1051,8 @@ class AssetSearchMixin:
             # Default: created_at DESC
             query = query.order_by(Asset.created_at.desc(), Asset.id.desc())
 
-        # Cursor pagination (created_at|id)
-        if cursor:
+        # Cursor pagination (created_at|id) — skip cursor for similarity sort
+        if cursor and similar_to_embedding is None:
             try:
                 created_str, id_str = cursor.split("|", 1)
                 from datetime import datetime as _dt
@@ -1027,8 +1069,8 @@ class AssetSearchMixin:
                 pass
 
         # Pagination
-        if cursor:
-            # Ignore offset when cursor is provided
+        if cursor and similar_to_embedding is None:
+            # Ignore offset when cursor is provided (except similarity mode)
             query = query.limit(limit)
         else:
             query = query.limit(limit).offset(offset)

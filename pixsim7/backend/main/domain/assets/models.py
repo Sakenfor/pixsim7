@@ -261,6 +261,10 @@ class Asset(SQLModel, table=True):
         default=None,
         description="When preview derivative generation completed"
     )
+    embedding_generated_at: Optional[datetime] = Field(
+        default=None,
+        description="When CLIP embedding was generated for visual similarity"
+    )
 
     # ===== PROVENANCE =====
     # Link back to creation generation (for audit trail)
