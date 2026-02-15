@@ -77,6 +77,60 @@ export function buildCaptureFilename(sourceName: string | null, timeSec: number)
   return `${safeBase}_frame_${timeTag}.jpg`;
 }
 
+// ── Mask utilities ──────────────────────────────────────────────────────
+
+/**
+ * Build a filename for a drawn mask PNG.
+ *
+ * @param sourceAssetId  ID of the image the mask was drawn on
+ * @param timestamp      Optional epoch ms (defaults to Date.now())
+ */
+export function buildMaskFilename(
+  sourceAssetId: string | number,
+  timestamp: number = Date.now(),
+): string {
+  return `mask_${sourceAssetId}_${timestamp}.png`;
+}
+
+export interface MaskUploadContextOptions {
+  /** ID of the asset the mask was drawn on */
+  sourceAssetId?: number;
+  /** Mask type — currently only 'inpaint' */
+  maskType?: string;
+  /** Feature that created the mask (e.g. 'mask_overlay', 'mask_panel') */
+  feature?: string;
+  /** Source location in the UI (e.g. 'asset_viewer') */
+  source?: string;
+}
+
+/**
+ * Build a structured upload-context object for mask assets.
+ * Keeps metadata consistent across all mask-creation surfaces.
+ */
+export function buildMaskUploadContext(
+  options: MaskUploadContextOptions = {},
+): Record<string, unknown> {
+  const {
+    sourceAssetId,
+    maskType = 'inpaint',
+    feature = 'mask_overlay',
+    source = 'asset_viewer',
+  } = options;
+
+  const ctx: Record<string, unknown> = {
+    client: 'web_app',
+    feature,
+    source,
+    mask_type: maskType,
+  };
+
+  if (sourceAssetId !== undefined && Number.isFinite(sourceAssetId)) {
+    ctx.source_asset_id = sourceAssetId;
+  }
+
+  return ctx;
+}
+
 export default {
   formatTime,
   getFilenameFromUrl,
@@ -85,4 +139,6 @@ export default {
   getLocalSourceFolder,
   getExtension,
   buildCaptureFilename,
+  buildMaskFilename,
+  buildMaskUploadContext,
 };

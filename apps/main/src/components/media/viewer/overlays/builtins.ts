@@ -4,6 +4,7 @@ import {
   AnnotationOverlaySidebar,
 } from './builtins/annotationOverlay';
 import { CaptureOverlayMain, CaptureOverlayToolbar } from './builtins/captureOverlay';
+import { MaskOverlayMain, MaskOverlayToolbar } from './builtins/maskOverlay';
 import { PoseBoardOverlayMain } from './builtins/poseOverlay';
 import { registerMediaOverlay } from './registry';
 
@@ -29,6 +30,19 @@ registerMediaOverlay({
   priority: 20,
   tone: 'purple',
   Main: PoseBoardOverlayMain,
+});
+
+registerMediaOverlay({
+  id: 'mask',
+  label: 'Mask',
+  description: 'Draw an inpainting mask on the current image.',
+  icon: 'paintbrush',
+  shortcut: 'I',
+  priority: 25,
+  tone: 'blue',
+  isAvailable: (asset) => asset.type === 'image',
+  Main: MaskOverlayMain,
+  Toolbar: MaskOverlayToolbar,
 });
 
 registerMediaOverlay({

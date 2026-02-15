@@ -169,6 +169,8 @@ export function useInteractionLayer(
   const isDrawingRef = useRef(false);
   const currentStrokeRef = useRef<StrokeElement | null>(null);
   const lastPointRef = useRef<NormalizedPoint | null>(null);
+  /** Layers snapshot taken BEFORE stroke starts, used by pushHistory on pointer-up */
+  const preStrokeLayersRef = useRef<InteractionLayer[] | null>(null);
 
   // ============================================================================
   // Computed State
@@ -191,6 +193,10 @@ export function useInteractionLayer(
   // History Management
   // ============================================================================
 
+  // Ref mirrors historyIndex so pushHistory never reads a stale closure value
+  const historyIndexRef = useRef(historyIndex);
+  historyIndexRef.current = historyIndex;
+
   const pushHistory = useCallback(
     (description: string, stateDelta: Partial<SurfaceState>) => {
       const entry: HistoryEntry = {
@@ -201,8 +207,8 @@ export function useInteractionLayer(
       };
 
       setHistory((prev) => {
-        // Remove any redo entries
-        const newHistory = prev.slice(0, historyIndex + 1);
+        // Remove any redo entries (use ref to avoid stale closure)
+        const newHistory = prev.slice(0, historyIndexRef.current + 1);
         // Add new entry
         newHistory.push(entry);
         // Limit size
@@ -214,7 +220,7 @@ export function useInteractionLayer(
 
       setHistoryIndex((prev) => Math.min(prev + 1, maxHistorySize - 1));
     },
-    [historyIndex, maxHistorySize]
+    [maxHistorySize]
   );
 
   const undo = useCallback(() => {
@@ -446,6 +452,8 @@ export function useInteractionLayer(
       if (mode === 'draw' || mode === 'erase') {
         isDrawingRef.current = true;
         lastPointRef.current = event.normalized;
+        // Snapshot layers BEFORE adding the stroke so undo can restore this state
+        preStrokeLayersRef.current = layers;
 
         // Start new stroke
         const stroke: StrokeElement = {
@@ -528,14 +536,18 @@ export function useInteractionLayer(
         currentStrokeRef.current = null;
         lastPointRef.current = null;
 
-        // Push to history
-        pushHistory('Draw stroke', { layers });
+        // Push the BEFORE-stroke snapshot so undo restores pre-stroke state
+        const beforeLayers = preStrokeLayersRef.current;
+        preStrokeLayersRef.current = null;
+        if (beforeLayers) {
+          pushHistory('Draw stroke', { layers: beforeLayers });
+        }
 
         // Notify completion
         onStrokeComplete?.(completedStroke);
       }
     },
-    [layers, pushHistory, onStrokeComplete]
+    [pushHistory, onStrokeComplete]
   );
 
   // ============================================================================

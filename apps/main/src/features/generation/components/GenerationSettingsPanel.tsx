@@ -216,6 +216,97 @@ export interface GenerationSettingsPanelProps {
   sourceToggle?: ReactNode;
 }
 
+// ── Aspect Ratio Dropdown ──────────────────────────────────────────────
+
+function AspectRatioDropdown({
+  options,
+  currentValue,
+  onChange,
+  disabled,
+}: {
+  options: string[];
+  currentValue: string;
+  onChange: (value: string) => void;
+  disabled: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open]);
+
+  const label = getAspectRatioLabel(currentValue);
+
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(!open)}
+        disabled={disabled}
+        className={clsx(
+          'flex items-center gap-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
+          'bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700',
+          'text-neutral-700 dark:text-neutral-200',
+          disabled && 'opacity-50 cursor-not-allowed',
+        )}
+      >
+        {getParamIcon('aspect_ratio', currentValue)}
+        <span className="flex-1 text-left truncate">{label}</span>
+        <Icon name="chevronDown" size={12} className={clsx('text-neutral-400 transition-transform', open && 'rotate-180')} />
+      </button>
+
+      {open && (
+        <div
+          ref={menuRef}
+          className="absolute z-50 mt-1 left-0 right-0 bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[200px] overflow-y-auto"
+        >
+          {options.map((opt) => {
+            const isSelected = currentValue === opt;
+            return (
+              <button
+                type="button"
+                key={opt}
+                onClick={() => { onChange(opt); setOpen(false); }}
+                className={clsx(
+                  'flex items-center gap-2 w-full px-2.5 py-1.5 text-[11px] text-left transition-colors',
+                  isSelected
+                    ? 'bg-accent/10 text-accent font-semibold'
+                    : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+                )}
+              >
+                {getParamIcon('aspect_ratio', opt)}
+                <span>{getAspectRatioLabel(opt)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GenerationSettingsPanel({
   showOperationType = true,
   showProvider = true,
@@ -226,7 +317,7 @@ export function GenerationSettingsPanel({
   onGenerate,
   className,
   secondaryButton,
-  excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt'],
+  excludeParams = ['image_url', 'image_urls', 'video_url', 'original_video_id', 'source_asset_id', 'source_asset_ids', 'composition_assets', 'negative_prompt', 'prompt', 'mask_url', 'mask_source'],
   error,
   queueProgress,
   onGenerateBurst,
@@ -340,9 +431,8 @@ export function GenerationSettingsPanel({
   const showTargetButton = canTarget;
 
   return (
-    <div className={clsx('h-full flex flex-col gap-1.5 p-2 bg-neutral-50 dark:bg-neutral-900 rounded-xl min-h-0', className)}>
-      {/* Fixed top section */}
-      <div className="flex-shrink-0 flex flex-col gap-1.5">
+    <div className={clsx('h-full overflow-y-auto thin-scrollbar bg-neutral-50 dark:bg-neutral-900 rounded-xl', className)}>
+      <div className="flex flex-col gap-1 p-1.5">
         {/* Row 1: Provider icon, Operation type, Target, Advanced settings */}
         <div className="flex gap-1 items-center">
           {showProvider && (
@@ -391,10 +481,24 @@ export function GenerationSettingsPanel({
             <PresetSelector disabled={generating} />
           </div>
         )}
-      </div>
 
-      {/* Scrollable middle section - Dynamic params */}
-      <div className="flex-1 overflow-y-auto flex flex-col gap-1.5 min-h-0">
+        {/* Mask attached indicator */}
+        {workbench.dynamicParams?.mask_url && (
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-600/15 border border-blue-500/30">
+            <Icon name="paintbrush" size={11} className="text-blue-400" />
+            <span className="text-[11px] text-blue-300 font-medium">Mask attached</span>
+            <button
+              type="button"
+              onClick={() => workbench.handleParamChange('mask_url', undefined)}
+              className="ml-auto p-0.5 rounded hover:bg-blue-500/30 text-blue-400 hover:text-blue-200 transition-colors"
+              title="Remove mask"
+            >
+              <Icon name="x" size={10} />
+            </button>
+          </div>
+        )}
+
+        {/* Dynamic params */}
         {filteredParamSpecs.map(param => {
           if (param.type === 'boolean') return null;
           if (param.type === 'string' && !param.enum) return null;
@@ -445,9 +549,23 @@ export function GenerationSettingsPanel({
           const showAsVisualGrid = isVisualParam(param.name);
           const currentValue = workbench.dynamicParams[param.name] ?? param.default ?? options[0];
 
+          // Aspect ratio: dropdown picker
+          if (param.name === 'aspect_ratio') {
+            return (
+              <AspectRatioDropdown
+                key={param.name}
+                options={options}
+                currentValue={currentValue}
+                onChange={(val) => workbench.handleParamChange(param.name, val)}
+                disabled={generating}
+              />
+            );
+          }
+
           // Show as button grid for visual params
-          if (showAsVisualGrid && options.length <= 8) {
-            const isIconOnly = param.name === 'aspect_ratio' || param.name === 'quality';
+          const isIconOnly = param.name === 'quality';
+          const gridLimit = isIconOnly ? 14 : 8;
+          if (showAsVisualGrid && options.length <= gridLimit) {
             return (
               <div key={param.name} className="flex flex-wrap gap-1">
                 {options.map((opt: string) => {
@@ -468,7 +586,7 @@ export function GenerationSettingsPanel({
                           ? 'bg-accent text-accent-text shadow-sm'
                           : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-accent-subtle dark:hover:bg-neutral-700'
                       )}
-                      title={param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt}
+                      title={opt}
                     >
                       {icon}
                       {!isIconOnly && <span>{opt}</span>}
@@ -497,47 +615,9 @@ export function GenerationSettingsPanel({
             </select>
           );
         })}
-      </div>
 
-      {/* Fixed bottom section - Go button */}
-      <div className="flex-shrink-0 flex flex-col gap-1.5 mt-auto">
-        {/* Burst count input + queued inputs display */}
-        <div className="flex items-center justify-between gap-2 text-[10px]">
-          {/* Burst count input */}
-          <div className="flex items-center gap-1">
-            <Icon name="layers" size={12} className="text-neutral-500" />
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={burstCount}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val)) setBurstCount(Math.max(1, Math.min(50, val)));
-              }}
-              disabled={generating}
-              className={clsx(
-                'w-12 px-2 py-1 rounded-md font-medium border-0 shadow-sm text-center',
-                isBurstMode
-                  ? 'bg-purple-600 text-white'
-                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-              )}
-              title="Number of generations to run"
-            />
-            <span className="text-neutral-500">×</span>
-          </div>
-
-          {/* Queued inputs indicator */}
-          {inputCount > 0 && (
-            <div className="flex items-center gap-1 text-neutral-500 dark:text-neutral-400">
-              <span>Queued:</span>
-              <span className="font-mono text-accent">
-                {inputCount}
-              </span>
-            </div>
-          )}
-        </div>
-
+        {/* Go button — sticky so it stays visible when scrolling */}
+        <div className="sticky bottom-0 flex flex-col gap-1 -mx-1.5 px-1.5 pb-1.5 pt-1 bg-neutral-50 dark:bg-neutral-900">
         {/* Queue progress */}
         {queueProgress && (
           <div className="flex items-center gap-2 text-[10px] text-purple-600 dark:text-purple-400">
@@ -561,24 +641,58 @@ export function GenerationSettingsPanel({
           </div>
         )}
 
-        <div className="flex gap-1.5">
+        {/* Action row: gear, burst, queued, [Each], Go, [Secondary] */}
+        <div className="flex items-center gap-1.5 min-w-0">
           {/* Advanced settings gear icon */}
-          <AdvancedSettingsPopover
-            params={advancedParams}
-            values={workbench.dynamicParams}
-            onChange={workbench.handleParamChange}
-            disabled={generating}
-            currentModel={workbench.dynamicParams?.model as string | undefined}
-            accounts={activeAccounts}
-          />
+          <div className="flex-shrink-0">
+            <AdvancedSettingsPopover
+              params={advancedParams}
+              values={workbench.dynamicParams}
+              onChange={workbench.handleParamChange}
+              disabled={generating}
+              currentModel={workbench.dynamicParams?.model as string | undefined}
+              accounts={activeAccounts}
+            />
+          </div>
 
-          {/* Generate Each button - one generation per queued asset */}
+          {/* Burst count — collapses first */}
+          <div className="flex items-center gap-0.5 min-w-0 flex-shrink text-[10px] overflow-hidden">
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={burstCount}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (!isNaN(val)) setBurstCount(Math.max(1, Math.min(50, val)));
+              }}
+              disabled={generating}
+              className={clsx(
+                'w-10 px-1 py-1.5 rounded-md font-medium border-0 shadow-sm text-center text-[10px]',
+                isBurstMode
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
+              )}
+              title="Number of generations to run"
+            />
+            <span className="text-neutral-500">×</span>
+          </div>
+
+          {/* Queued indicator — hides when tight */}
+          {inputCount > 0 && (
+            <div className="flex-shrink text-[10px] text-neutral-500 dark:text-neutral-400 overflow-hidden whitespace-nowrap min-w-0">
+              <span className="font-mono text-accent">{inputCount}</span>
+              <span className="ml-0.5">in</span>
+            </div>
+          )}
+
+          {/* Generate Each button */}
           {onGenerateEach && inputCount > 1 && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <button
               onClick={onGenerateEach}
               disabled={generating || !canGenerate}
               className={clsx(
-                'px-2 py-2 rounded-lg text-xs font-semibold text-white',
+                'flex-shrink-0 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-white',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
@@ -591,7 +705,7 @@ export function GenerationSettingsPanel({
             </button>
           )}
 
-          {/* Primary Go button */}
+          {/* Primary Go button — always visible */}
           <button
             onClick={() => {
               if (isBurstMode && onGenerateBurst) {
@@ -602,7 +716,7 @@ export function GenerationSettingsPanel({
             }}
             disabled={generating || !canGenerate}
             className={clsx(
-              'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white',
+              'flex-1 min-w-[48px] flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white',
               'disabled:opacity-50 disabled:cursor-not-allowed',
               generating || !canGenerate
                 ? 'bg-neutral-400'
@@ -636,7 +750,7 @@ export function GenerationSettingsPanel({
               onClick={secondaryButton.onGenerate}
               disabled={generating || !canGenerate}
               className={clsx(
-                'flex-1 px-2 py-2 rounded-lg text-xs font-semibold text-white',
+                'flex-1 min-w-[48px] flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white',
                 'disabled:opacity-50 disabled:cursor-not-allowed',
                 generating || !canGenerate
                   ? 'bg-neutral-400'
@@ -661,6 +775,7 @@ export function GenerationSettingsPanel({
             </button>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

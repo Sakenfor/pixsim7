@@ -2,7 +2,7 @@
  * Editable UI Core - useUndoRedo Hook
  *
  * Generic undo/redo helper that can be shared between overlay and HUD editors.
- * This is intentionally minimal and can be extended as needed.
+ * Uses a single combined state to avoid stale-closure issues with rapid calls.
  */
 
 import { useCallback, useState } from 'react';
@@ -20,41 +20,64 @@ export interface UndoRedoControls<T> extends UndoRedoState<T> {
   reset: (next: T) => void;
 }
 
-export function useUndoRedo<T>(initial: T): UndoRedoControls<T> {
-  const [history, setHistory] = useState<T[]>([initial]);
-  const [index, setIndex] = useState(0);
+export interface UseUndoRedoOptions {
+  /** Maximum history entries (default: 100) */
+  maxHistory?: number;
+}
+
+interface HistoryState<T> {
+  entries: T[];
+  index: number;
+}
+
+export function useUndoRedo<T>(initial: T, options: UseUndoRedoOptions = {}): UndoRedoControls<T> {
+  const { maxHistory = 100 } = options;
+
+  // Single combined state so functional updaters always see consistent values
+  const [state, setState] = useState<HistoryState<T>>({
+    entries: [initial],
+    index: 0,
+  });
 
   const set = useCallback((next: T) => {
-    setHistory(prev => {
-      const sliced = prev.slice(0, index + 1);
-      return [...sliced, next];
+    setState((prev) => {
+      // Discard redo branch
+      const entries = prev.entries.slice(0, prev.index + 1);
+      entries.push(next);
+      // Trim if over limit
+      if (entries.length > maxHistory) {
+        entries.shift();
+        return { entries, index: entries.length - 1 };
+      }
+      return { entries, index: prev.index + 1 };
     });
-    setIndex(prev => prev + 1);
-  }, [index]);
+  }, [maxHistory]);
 
   const undo = useCallback(() => {
-    setIndex(prev => (prev > 0 ? prev - 1 : prev));
+    setState((prev) =>
+      prev.index > 0 ? { ...prev, index: prev.index - 1 } : prev
+    );
   }, []);
 
   const redo = useCallback(() => {
-    setIndex(prev => (prev < history.length - 1 ? prev + 1 : prev));
-  }, [history.length]);
-
-  const reset = useCallback((next: T) => {
-    setHistory([next]);
-    setIndex(0);
+    setState((prev) =>
+      prev.index < prev.entries.length - 1 ? { ...prev, index: prev.index + 1 } : prev
+    );
   }, []);
 
-  const value = history[index];
+  const reset = useCallback((next: T) => {
+    setState({ entries: [next], index: 0 });
+  }, []);
+
+  const value = state.entries[state.index];
 
   return {
     value,
-    canUndo: index > 0,
-    canRedo: index < history.length - 1,
+    canUndo: state.index > 0,
+    canRedo: state.index < state.entries.length - 1,
     set,
     undo,
     redo,
     reset,
   };
 }
-

@@ -6,7 +6,7 @@
  * consistent patterns across all editor implementations.
  */
 
-import { create } from 'zustand';
+import { create, useStore as useZustandStore } from 'zustand';
 import { devtools, persist } from 'zustand/middleware';
 import { temporal } from 'zundo';
 import type { StoreApi } from 'zustand';
@@ -290,7 +290,10 @@ export function createEditorSelectors<TGraph extends BaseGraph>() {
 }
 
 /**
- * Create temporal selectors for undo/redo state
+ * Create temporal selectors for undo/redo state.
+ *
+ * Returns plain functions (not hooks) for reading undo/redo availability.
+ * For reactive usage in React components, use `createTemporalHooks` instead.
  */
 export function createTemporalSelectors<TStore extends { temporal?: StoreApi<TemporalState<unknown>> }>(
   useStore: TStore
@@ -309,14 +312,53 @@ export function createTemporalSelectors<TStore extends { temporal?: StoreApi<Tem
 }
 
 /**
- * Create undo/redo hooks for a store with temporal middleware
+ * Create reactive undo/redo hooks for a store with temporal middleware.
+ *
+ * Unlike `createTemporalSelectors`, these hooks subscribe to the temporal store
+ * so components re-render when undo/redo availability or actions change.
+ *
+ * @example
+ * ```tsx
+ * const { useUndo, useRedo, useCanUndo, useCanRedo } = createTemporalHooks(useMyEditorStore);
+ *
+ * function Toolbar() {
+ *   const undo = useUndo();
+ *   const redo = useRedo();
+ *   const canUndo = useCanUndo();
+ *   const canRedo = useCanRedo();
+ *   return <button onClick={undo} disabled={!canUndo}>Undo</button>;
+ * }
+ * ```
  */
 export function createTemporalHooks<TStore extends { temporal?: StoreApi<TemporalState<unknown>> }>(
   useStore: TStore
 ) {
+  const temporalStore = (useStore as any).temporal as StoreApi<TemporalState<unknown>> | undefined;
+
   return {
-    useUndo: () => (useStore as any).temporal?.getState().undo,
-    useRedo: () => (useStore as any).temporal?.getState().redo,
+    /** Reactive hook — returns the undo action */
+    useUndo: (): (() => void) => {
+      if (!temporalStore) return () => {};
+      return useZustandStore(temporalStore, (s) => s.undo);
+    },
+
+    /** Reactive hook — returns the redo action */
+    useRedo: (): (() => void) => {
+      if (!temporalStore) return () => {};
+      return useZustandStore(temporalStore, (s) => s.redo);
+    },
+
+    /** Reactive hook — true when undo is available */
+    useCanUndo: (): boolean => {
+      if (!temporalStore) return false;
+      return useZustandStore(temporalStore, (s) => (s.pastStates?.length ?? 0) > 0);
+    },
+
+    /** Reactive hook — true when redo is available */
+    useCanRedo: (): boolean => {
+      if (!temporalStore) return false;
+      return useZustandStore(temporalStore, (s) => (s.futureStates?.length ?? 0) > 0);
+    },
   };
 }
 

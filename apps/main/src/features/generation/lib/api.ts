@@ -55,6 +55,8 @@ const CANONICAL_CONFIG_KEYS = new Set([
   'prompts',
   'composition_assets',
   'pacing',
+  'mask_url',
+  'mask_source',
   // These should NOT go into style.pixverse - they're handled at the top level
   'operation_type',
   'operationType',
@@ -136,6 +138,7 @@ function buildGenerationConfig(
     ...(sourceAssetId !== undefined ? { sourceAssetId } : {}),
     ...(sourceAssetIds ? { sourceAssetIds } : {}),
     ...(merged.composition_assets ? { composition_assets: merged.composition_assets } : {}),
+    ...(merged.mask_url ? { mask_url: merged.mask_url } : {}),
   };
 
   return config;
