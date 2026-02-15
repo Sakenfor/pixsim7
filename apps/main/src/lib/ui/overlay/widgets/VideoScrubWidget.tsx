@@ -133,7 +133,7 @@ export function VideoScrubWidgetRenderer({
   onClick,
   onDotClick,
   onExtractFrame,
-  onExtractLastFrame: _onExtractLastFrame,
+  onExtractLastFrame: _onExtractLastFrame, // eslint-disable-line @typescript-eslint/no-unused-vars
   lockedTimestamp,
   dotActive = false,
   dotTooltip,
@@ -453,7 +453,8 @@ export function VideoScrubWidgetRenderer({
 
       // Check if cursor is hovering over the dot controls area
       // This is a zone above the timeline where first/last buttons appear
-      const inDotZone = dotControlsRef.current?.contains(event.target as Node) ?? false;
+      // Hold Ctrl to bypass dot zone snapping and scrub smoothly
+      const inDotZone = !event.ctrlKey && (dotControlsRef.current?.contains(event.target as Node) ?? false);
 
       // If in dot zone, don't update scrub position - keep dot stationary so user can click buttons
       if (!inDotZone) {
@@ -680,7 +681,7 @@ export function VideoScrubWidgetRenderer({
       setIsDragging(false);
       setIsVideoLoaded(false);
       setVideoError(false);
-      setMarks([]); // Clear marks when leaving
+      // Keep marks across hover cycles - don't clear them
       dragStartTimeRef.current = null;
       lastClickTimeRef.current = 0;
       lastClickMarkRef.current = null;
@@ -801,21 +802,34 @@ export function VideoScrubWidgetRenderer({
             )}
 
             {/* User-placed marks */}
-            {marks.map((mark, idx) => (
-              <div
-                key={idx}
-                className="absolute top-1/2 bg-orange-400 hover:bg-orange-300 cursor-pointer"
-                style={{
-                  left: `${(mark / videoDuration) * 100}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  boxShadow: '0 0 3px rgba(0,0,0,0.5)',
-                }}
-                title={`Mark at ${formatTime(mark)} (double-click to capture, right-click to remove)`}
-              />
-            ))}
+            {marks.map((mark, idx) => {
+              const isSelected = lockedTimestamp !== undefined && Math.abs(mark - lockedTimestamp) < 0.05;
+              return (
+                <div
+                  key={idx}
+                  className={`absolute top-1/2 cursor-pointer ${
+                    isSelected
+                      ? 'bg-blue-500 hover:bg-blue-400'
+                      : 'bg-orange-400 hover:bg-orange-300'
+                  }`}
+                  style={{
+                    left: `${(mark / videoDuration) * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    width: isSelected ? '7px' : '6px',
+                    height: isSelected ? '7px' : '6px',
+                    borderRadius: '50%',
+                    boxShadow: isSelected
+                      ? '0 0 4px rgba(59,130,246,0.8)'
+                      : '0 0 3px rgba(0,0,0,0.5)',
+                  }}
+                  title={
+                    isSelected
+                      ? `Selected for generation at ${formatTime(mark)} (double-click to deselect, right-click to remove)`
+                      : `Mark at ${formatTime(mark)} (double-click to select, right-click to remove)`
+                  }
+                />
+              );
+            })}
 
             {/* Interactive scrub dot - click adds mark */}
             <button

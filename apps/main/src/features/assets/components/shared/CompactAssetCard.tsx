@@ -163,18 +163,18 @@ export function CompactAssetCard({
     }
   }, [showQueueGrid, queueItems]);
 
-  // Handle frame lock/unlock via dot click
+  // Handle frame lock/unlock via dot click (or double-click on mark)
   const handleDotClick = useCallback((timestamp: number) => {
     if (!onLockTimestamp) return;
 
-    if (hasLockedFrame) {
-      // Unlock
+    // If clicking the same timestamp that's already locked, unlock it
+    if (hasLockedFrame && lockedTimestamp !== undefined && Math.abs(lockedTimestamp - timestamp) < 0.05) {
       onLockTimestamp(undefined);
     } else {
-      // Lock at the clicked timestamp
+      // Lock at the new timestamp (works for both initial lock and switching marks)
       onLockTimestamp(timestamp);
     }
-  }, [hasLockedFrame, onLockTimestamp]);
+  }, [hasLockedFrame, lockedTimestamp, onLockTimestamp]);
 
   const isLocalOnly =
     asset.providerStatus === 'local_only' ||
@@ -297,8 +297,8 @@ export function CompactAssetCard({
 
         {/* Custom hover actions overlay */}
         {hoverActions && (
-          <div className="cq-hover-actions cq-scale-down absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity z-20 flex items-end justify-center pointer-events-none">
-            <div className="pointer-events-auto">
+          <div className="cq-hover-actions absolute inset-0 bg-black/30 opacity-0 group-hover/card:opacity-100 transition-opacity z-20 flex items-end justify-center pointer-events-none">
+            <div className="cq-scale-down pointer-events-auto">
               {hoverActions}
             </div>
           </div>
