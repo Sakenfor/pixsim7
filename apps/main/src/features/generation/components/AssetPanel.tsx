@@ -546,7 +546,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       onClick={handleToggleHistory}
       className={`relative flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-colors ${
         isHistoryPanelOpen
-          ? 'bg-purple-600 hover:bg-purple-700 text-white'
+          ? 'bg-accent hover:bg-accent-hover text-accent-text'
           : hasHistory
           ? 'bg-neutral-700 hover:bg-neutral-600 text-white'
           : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-400'
@@ -556,7 +556,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
       <Icon name="clock" size={10} />
       <span>{hasHistory ? sortedHistory.length : 0}</span>
       {hasPinnedAssets && !isHistoryPanelOpen && (
-        <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+        <div className="w-1.5 h-1.5 rounded-full bg-accent" />
       )}
     </button>
   );
@@ -831,7 +831,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     disableMotion={isSelected}
                     className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? 'grayscale' : ''}`}
                   />
-                  <div className="cq-badge cq-inset-tl absolute bg-purple-600 text-white font-medium rounded">
+                  <div className="cq-badge cq-inset-tl absolute bg-accent text-accent-text font-medium rounded">
                     {idx + 1}
                   </div>
                   {isClamped && (

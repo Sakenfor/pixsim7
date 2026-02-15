@@ -28,7 +28,7 @@ import {
   type TooltipWidgetSettings,
 } from '@lib/widgets';
 
-import { applyQuickTag } from '@features/assets/lib/quickTag';
+import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
@@ -101,7 +101,7 @@ export function createPrimaryIconWidget(props: MediaCardResolvedProps): OverlayW
 
   if (badgeConfig?.showStatusIcon && providerStatus && statusMeta) {
     hasRing = true;
-    ringColor = statusMeta.color === 'green' ? 'ring-green-500' :
+    ringColor = statusMeta.color === 'green' ? 'ring-accent' :
                 statusMeta.color === 'yellow' ? 'ring-amber-500' :
                 statusMeta.color === 'red' ? 'ring-red-500' :
                 'ring-neutral-400';
@@ -156,7 +156,7 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
 
   const statusBgClass =
     statusColor === 'green'
-      ? '!bg-green-500 text-white'
+      ? '!bg-accent text-accent-text'
       : statusColor === 'yellow'
       ? '!bg-amber-400 text-white'
       : statusColor === 'red'
@@ -429,7 +429,7 @@ export function createTagsTooltip(props: MediaCardResolvedProps): OverlayWidget<
     trigger: {
       type: 'icon',
       icon: 'info',
-      className: '!bg-blue-500/20 !text-blue-500',
+      className: '!bg-accent/20 !text-accent',
     },
     // Apply user settings
     placement: settings.placement,
@@ -471,6 +471,9 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const { defaultTags, recentTags, toggleDefaultTag, addRecentTag } = useQuickTagStore();
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 200, collapseDelay: 150 });
   const [inputValue, setInputValue] = useState('');
+  const [applying, setApplying] = useState(false);
+  const [flash, setFlash] = useState<'success' | 'error' | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
 
@@ -486,20 +489,38 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const hasAll = hasAny && matchCount === defaultTags.length;
   const hasSome = matchCount > 0 && !hasAll;
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent card open
-    if (defaultTags.length > 0) {
-      // Only apply tags the asset doesn't already have
-      const missing = defaultTags.filter((t) => !data.tags.includes(t));
-      if (missing.length > 0) {
-        applyQuickTag(data.id, missing);
-      }
+    if (applying || defaultTags.length === 0) return;
+    // Only apply tags the asset doesn't already have
+    const missing = defaultTags.filter((t) => !data.tags.includes(t));
+    if (missing.length === 0) return;
+    setApplying(true);
+    try {
+      await applyQuickTag(data.id, missing);
+      setFlash('success');
+      setTimeout(() => setFlash(null), 600);
+    } catch (err: any) {
+      console.error('[QuickTag] request payload:', { assetId: data.id, tags: missing });
+      console.error('[QuickTag] response data:', err?.response?.data);
+      console.error('[QuickTag] response status:', err?.response?.status);
+      const detail = err?.response?.data?.detail;
+      const msg = typeof detail === 'string' ? detail
+        : Array.isArray(detail) ? detail.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ')
+        : err?.message || String(err);
+      console.error('[QuickTag] Failed to apply tags:', msg);
+      setLastError(msg);
+      setFlash('error');
+      setTimeout(() => setFlash(null), 2000);
+    } finally {
+      setApplying(false);
     }
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && inputValue.trim()) {
-      const slug = inputValue.trim();
+      const slug = normalizeTagInput(inputValue);
+      if (!slug) return;
       addRecentTag(slug);
       // Add to defaults if not already there
       if (!defaultTags.includes(slug)) {
@@ -509,30 +530,39 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     }
   };
 
-  const buttonTitle = hasAll
-    ? `Tagged: ${defaultTags.join(', ')}`
-    : hasAny
-      ? `Quick tag: ${defaultTags.join(', ')}`
-      : 'Set quick tags';
+  const buttonTitle = flash === 'error' && lastError
+    ? `Error: ${lastError}`
+    : hasAll
+      ? `Tagged: ${defaultTags.join(', ')}`
+      : hasAny
+        ? `Quick tag: ${defaultTags.join(', ')}`
+        : 'Set quick tags';
 
   return (
     <div className="relative" {...handlers}>
       <button
         ref={triggerRef}
         onClick={handleClick}
+        disabled={applying}
         className={`
-          p-1.5 rounded-full transition-colors
-          ${hasAll
-            ? '!bg-blue-500/90 !text-white backdrop-blur-sm'
-            : hasSome
-              ? '!bg-blue-500/50 !text-white backdrop-blur-sm'
-              : hasAny
-                ? '!bg-white/80 dark:!bg-neutral-800/80 !text-blue-500 hover:!text-blue-600 backdrop-blur-sm'
-                : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-blue-500 backdrop-blur-sm'}
+          cq-btn-md inline-flex items-center justify-center rounded-full shadow-md transition-colors
+          ${flash === 'success'
+            ? '!bg-green-500/90 !text-white backdrop-blur-sm'
+            : flash === 'error'
+              ? '!bg-red-500/90 !text-white backdrop-blur-sm'
+              : applying
+                ? '!bg-accent/60 !text-accent-text backdrop-blur-sm opacity-70'
+                : hasAll
+                  ? '!bg-accent/90 !text-accent-text backdrop-blur-sm'
+                  : hasSome
+                    ? '!bg-accent/50 !text-accent-text backdrop-blur-sm'
+                    : hasAny
+                      ? '!bg-white/80 dark:!bg-neutral-800/80 !text-accent hover:!text-accent-hover backdrop-blur-sm'
+                      : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-accent backdrop-blur-sm'}
         `}
         title={buttonTitle}
       >
-        <Icon name="tag" size={14} />
+        <Icon name={flash === 'success' ? 'check' : flash === 'error' ? 'x' : 'tag'} />
       </button>
 
       {isExpanded && triggerRect && createPortal(
@@ -547,7 +577,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
         >
           {/* Active defaults summary */}
           {hasAny && (
-            <div className="px-3 py-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium border-b border-neutral-100 dark:border-neutral-700 truncate">
+            <div className="px-3 py-1.5 text-xs text-accent font-medium border-b border-neutral-100 dark:border-neutral-700 truncate">
               Active: {defaultTags.join(', ')}
             </div>
           )}
@@ -564,12 +594,12 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
                     className={`
                       w-full px-3 py-1.5 text-left text-sm flex items-center gap-2
                       hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
-                      ${isActive ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-neutral-700 dark:text-neutral-300'}
+                      ${isActive ? 'text-accent font-medium' : 'text-neutral-700 dark:text-neutral-300'}
                     `}
                   >
                     <span className={`shrink-0 w-3.5 h-3.5 rounded border flex items-center justify-center text-[10px]
                       ${isActive
-                        ? 'bg-blue-500 border-blue-500 text-white'
+                        ? 'bg-accent border-accent text-accent-text'
                         : 'border-neutral-300 dark:border-neutral-600'}`}
                     >
                       {isActive && '✓'}
@@ -590,7 +620,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleInputKeyDown}
               placeholder="Add tag slug…"
-              className="w-full px-2 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-accent"
             />
           </div>
         </div>,

@@ -484,13 +484,13 @@ export function GenerationSettingsPanel({
 
         {/* Mask attached indicator */}
         {workbench.dynamicParams?.mask_url && (
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-blue-600/15 border border-blue-500/30">
-            <Icon name="paintbrush" size={11} className="text-blue-400" />
-            <span className="text-[11px] text-blue-300 font-medium">Mask attached</span>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-accent/15 border border-accent/30">
+            <Icon name="paintbrush" size={11} className="text-accent" />
+            <span className="text-[11px] text-accent font-medium">Mask attached</span>
             <button
               type="button"
               onClick={() => workbench.handleParamChange('mask_url', undefined)}
-              className="ml-auto p-0.5 rounded hover:bg-blue-500/30 text-blue-400 hover:text-blue-200 transition-colors"
+              className="ml-auto p-0.5 rounded hover:bg-accent/30 text-accent hover:text-accent-hover transition-colors"
               title="Remove mask"
             >
               <Icon name="x" size={10} />
@@ -620,10 +620,10 @@ export function GenerationSettingsPanel({
         <div className="sticky bottom-0 flex flex-col gap-1 -mx-1.5 px-1.5 pb-1.5 pt-1 bg-neutral-50 dark:bg-neutral-900">
         {/* Queue progress */}
         {queueProgress && (
-          <div className="flex items-center gap-2 text-[10px] text-purple-600 dark:text-purple-400">
+          <div className="flex items-center gap-2 text-[10px] text-accent">
             <div className="flex-1 bg-neutral-200 dark:bg-neutral-700 rounded-full h-1.5 overflow-hidden">
               <div
-                className="bg-purple-600 h-full transition-all duration-300"
+                className="bg-accent h-full transition-all duration-300"
                 style={{ width: `${(queueProgress.queued / queueProgress.total) * 100}%` }}
               />
             </div>
@@ -670,7 +670,7 @@ export function GenerationSettingsPanel({
               className={clsx(
                 'w-10 px-1 py-1.5 rounded-md font-medium border-0 shadow-sm text-center text-[10px]',
                 isBurstMode
-                  ? 'bg-purple-600 text-white'
+                  ? 'bg-accent text-accent-text'
                   : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
               )}
               title="Number of generations to run"
@@ -722,9 +722,7 @@ export function GenerationSettingsPanel({
                 ? 'bg-neutral-400'
                 : error
                 ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
-                : isBurstMode
-                ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
-                : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
+                : 'bg-accent hover:bg-accent-hover'
             )}
             style={{ transition: 'none', animation: 'none' }}
           >

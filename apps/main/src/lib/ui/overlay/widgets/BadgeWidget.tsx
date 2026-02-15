@@ -37,7 +37,7 @@ export interface BadgeWidgetConfig {
   labelBinding?: DataBinding<string>;
 
   /** Badge color/variant */
-  color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow';
+  color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow' | 'accent';
 
   /** Badge shape (for icon-only badges) */
   shape?: 'circle' | 'square' | 'rounded';
@@ -109,6 +109,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
           pink: 'bg-pink-600 text-white',
           orange: 'bg-orange-600 text-white',
           yellow: 'bg-yellow-600 text-white',
+          accent: 'bg-accent text-accent-text',
         };
 
         return (

@@ -174,7 +174,7 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
                 togglePin(historyOperation, asset.id);
               }}
               className={entry.pinned
-                ? 'bg-purple-600 hover:bg-purple-700'
+                ? 'bg-accent hover:bg-accent-hover'
                 : 'bg-neutral-700 hover:bg-neutral-600'
               }
               style={{ color: '#fff' }}

@@ -56,7 +56,7 @@ export function SelectionStatusBadge({ assetId }: { assetId: number }) {
 
   return (
     <div
-      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-purple-500 text-white shadow-sm"
+      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-accent text-accent-text shadow-sm"
       title={`Selected (${selectionCount} total)`}
     >
       <Icon name="check" />

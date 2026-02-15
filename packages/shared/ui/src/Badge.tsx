@@ -2,7 +2,7 @@ import React from 'react';
 import clsx from 'clsx';
 
 export interface BadgeProps {
-  color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow';
+  color?: 'blue' | 'green' | 'red' | 'gray' | 'purple' | 'pink' | 'orange' | 'yellow' | 'accent';
   children: React.ReactNode;
   className?: string;
 }
@@ -16,6 +16,7 @@ const colorMap: Record<string, string> = {
   pink: 'bg-pink-100 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300',
   orange: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
   yellow: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300',
+  accent: 'bg-accent-subtle text-accent',
 };
 
 export function Badge({ color = 'gray', children, className }: BadgeProps) {
