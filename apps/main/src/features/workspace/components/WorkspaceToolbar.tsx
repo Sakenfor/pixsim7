@@ -1,21 +1,18 @@
 import { useState, useCallback } from "react";
 
 import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
+import { getBuiltinPreset } from "../lib/builtinPresets";
+import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
+import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
-import { AddPanelDropdown } from "./workspace-toolbar/AddPanelDropdown";
 import { PresetsDropdown } from "./workspace-toolbar/PresetsDropdown";
 import { RestoreClosedPanelsMenu } from "./workspace-toolbar/RestoreClosedPanelsMenu";
 import { SavePresetDialog } from "./workspace-toolbar/SavePresetDialog";
 
-
-/** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = "dockview:workspace:v4";
-
 export function WorkspaceToolbar() {
   const [showPresets, setShowPresets] = useState(false);
-  const [showAddPanel, setShowAddPanel] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   const presets = useWorkspacePresets("workspace");
@@ -39,14 +36,26 @@ export function WorkspaceToolbar() {
     const api = host?.api;
     if (!api) return;
 
+    // User preset — apply serialized layout directly
     const layout = getPresetLayout(presetId);
     if (layout) {
       api.fromJSON(layout);
+      setActivePreset("workspace", presetId);
+      return;
+    }
+
+    // Built-in preset — apply recipe
+    const builtin = getBuiltinPreset(presetId);
+    if (builtin && builtin.recipe.panels.length > 0) {
+      clearDockview(api);
+      const floatingIds = new Set(
+        useWorkspaceStore.getState().floatingPanels.map((p) => p.id)
+      );
+      buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
     } else {
-      // Null layout means use default - reset
-      localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-      // Force remount by reloading (or we could trigger a state change)
-      window.location.reload();
+      // Empty recipe (scope defaults) — rebuild default layout
+      clearDockview(api);
+      createDefaultLayout(api);
     }
     setActivePreset("workspace", presetId);
   }, [getWorkspaceHost, getPresetLayout, setActivePreset]);
@@ -62,12 +71,14 @@ export function WorkspaceToolbar() {
   }, [getWorkspaceHost, savePreset]);
 
   const handleReset = useCallback(() => {
-    // Clear layout from localStorage and reset store state
-    localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+    const host = getWorkspaceHost();
+    const api = host?.api;
+    if (api) {
+      clearDockview(api);
+      createDefaultLayout(api);
+    }
     reset();
-    // Reload to apply default layout
-    window.location.reload();
-  }, [reset]);
+  }, [getWorkspaceHost, reset]);
 
   return (
     <div className="border-b px-3 py-2 flex gap-2 items-center bg-neutral-50 dark:bg-neutral-800 relative">
@@ -104,23 +115,6 @@ export function WorkspaceToolbar() {
           onSaveClick={() => setShowSaveDialog(true)}
           onClose={() => setShowPresets(false)}
         />
-      </div>
-
-      {/* Add Panel */}
-      <div className="relative">
-        <button
-          className="text-xs px-2 py-1 border rounded hover:bg-neutral-100 dark:hover:bg-neutral-700"
-          onClick={() => setShowAddPanel(!showAddPanel)}
-          disabled={isLocked}
-        >
-          ➕ Add Panel
-        </button>
-        {showAddPanel && (
-          <AddPanelDropdown
-            onRestorePanel={restorePanel}
-            onClose={() => setShowAddPanel(false)}
-          />
-        )}
       </div>
 
       {/* Restore Closed Panels */}

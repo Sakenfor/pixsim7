@@ -12,7 +12,6 @@ export { QuickPanelSwitcher } from "./components/QuickPanelSwitcher";
 
 // Workspace Toolbar Components
 export { PresetsDropdown } from "./components/workspace-toolbar/PresetsDropdown";
-export { AddPanelDropdown } from "./components/workspace-toolbar/AddPanelDropdown";
 export { RestoreClosedPanelsMenu } from "./components/workspace-toolbar/RestoreClosedPanelsMenu";
 export { SavePresetDialog } from "./components/workspace-toolbar/SavePresetDialog";
 
@@ -22,7 +21,6 @@ export { WorkspaceRoute } from "./routes/Workspace";
 // Store
 export {
   useWorkspaceStore,
-  type PanelId,
   type PresetScope,
   type DockviewLayout,
   type LayoutPreset,

@@ -10,6 +10,8 @@ import { useActivityBarStore } from '@/stores/activityBarStore';
 import { moduleRegistry } from '@app/modules';
 import type { PageCategory } from '@app/modules/contracts';
 
+import { MorePanelsFlyout } from './MorePanelsFlyout';
+import { PanelShortcuts } from './PanelShortcuts';
 import { SubNavFlyout } from './SubNavFlyout';
 
 /** Category display order (development excluded) */
@@ -145,6 +147,12 @@ export function ActivityBar() {
           </button>
           <Tooltip content="Home" position="right" show={homeHovered} delay={400} />
         </div>
+
+        <Separator />
+
+        {/* Pinned panel shortcuts */}
+        <PanelShortcuts />
+        <MorePanelsFlyout />
 
         <Separator />
 
