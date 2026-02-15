@@ -14,6 +14,7 @@ export { DefaultGallerySurface } from './components/DefaultGallerySurface';
 export { ReviewGallerySurface } from './components/ReviewGallerySurface';
 export { AssetDetailModal } from './components/AssetDetailModal';
 export { DeleteAssetModal } from './components/DeleteAssetModal';
+export { RelatedAssetsModal } from './components/RelatedAssetsModal';
 
 // ============================================================================
 // Components - Asset Sources & Panels
@@ -93,6 +94,8 @@ export type { SelectedAsset } from './stores/assetSelectionStore';
 
 export { useAssetDetailStore } from './stores/assetDetailStore';
 
+export { useRelatedAssetsStore } from './stores/relatedAssetsStore';
+
 export { useAssetSettingsStore } from './stores/assetSettingsStore';
 
 export { useLocalFolderSettingsStore } from './stores/localFolderSettingsStore';
@@ -165,6 +168,7 @@ export { applyQuickTag } from './lib/quickTag';
 export { useAssetContextMenu, useRegisterAssetContext } from './lib/assetContextResolver';
 
 export {
+  bulkDeleteAssets,
   deleteAsset,
   uploadAssetToProvider,
   getAsset,

@@ -52,6 +52,8 @@ export const deleteAsset = assetsApi.deleteAsset;
  */
 export const archiveAsset = assetsApi.archiveAsset;
 
+export const bulkDeleteAssets = assetsApi.bulkDeleteAssets;
+
 /**
  * Extract a frame from a video at a specific timestamp.
  * Returns an image asset that can be used for image_to_video or transitions.

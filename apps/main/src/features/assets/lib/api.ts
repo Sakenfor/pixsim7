@@ -1,6 +1,7 @@
 export {
   archiveAsset,
   assignTags,
+  bulkDeleteAssets,
   deleteAsset,
   downloadAsset,
   extractFrame,

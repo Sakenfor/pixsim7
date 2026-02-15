@@ -886,12 +886,15 @@ const archiveAssetAction: MenuAction = {
     const results = await Promise.allSettled(
       assets.map((asset) => archiveAsset(asset.id, true)),
     );
-    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const succeededAssetIds = results
+      .map((result, index) => (result.status === 'fulfilled' ? assets[index]?.id : null))
+      .filter((id): id is number => typeof id === 'number');
+    const successCount = succeededAssetIds.length;
     const errorCount = results.length - successCount;
 
     if (successCount > 0) {
-      for (const asset of assets) {
-        assetEvents.emitAssetDeleted(asset.id);
+      for (const assetId of succeededAssetIds) {
+        assetEvents.emitAssetDeleted(assetId);
       }
       notify('success', `Archived ${successCount} asset${successCount === 1 ? '' : 's'}.`);
     }

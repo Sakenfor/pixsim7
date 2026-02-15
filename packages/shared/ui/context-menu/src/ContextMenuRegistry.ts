@@ -352,9 +352,11 @@ export class ContextMenuRegistry extends BaseRegistry<MenuActionBase> {
     const isLeaf = !action.children;
     const historyProvider = this.historyProvider;
 
+    const label = action.dynamicLabel ? action.dynamicLabel(ctx) : action.label;
+
     return {
       id: action.id,
-      label: action.label,
+      label,
       icon: action.icon,
       iconColor: action.iconColor,
       variant: action.variant,

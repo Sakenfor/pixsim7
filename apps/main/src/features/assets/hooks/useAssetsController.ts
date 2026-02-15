@@ -19,7 +19,7 @@ import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 import type { OperationType } from '@/types/operations';
 
-import { deleteAsset, uploadAssetToProvider, archiveAsset } from '../lib/api';
+import { deleteAsset, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
 import { getAssetDisplayUrls } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
@@ -244,6 +244,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   }, [closeViewerInternal, viewerSrc]);
 
   // Delete modal state (shared store)
+  const deleteModalAssets = useDeleteModalStore((s) => s.assets);
   const deleteModalAsset = useDeleteModalStore((s) => s.asset);
   const openDeleteModal = useDeleteModalStore((s) => s.openDeleteModal);
   const closeDeleteModal = useDeleteModalStore((s) => s.closeDeleteModal);
@@ -253,32 +254,39 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     openDeleteModal(asset);
   }, [openDeleteModal]);
 
-  // Confirm deletion from modal
+  // Confirm deletion from modal (single or batch)
   const confirmDeleteAsset = useCallback(async (deleteFromProvider: boolean) => {
-    const asset = deleteModalAsset;
-    if (!asset) return;
+    const assets = deleteModalAssets;
+    if (!assets.length) return;
 
     closeDeleteModal();
 
     try {
-      await deleteAsset(asset.id, { delete_from_provider: deleteFromProvider });
-
-      // Emit delete event so all gallery instances update
-      assetEvents.emitAssetDeleted(asset.id);
-
-      // Remove from selection if selected
-      if (isSelected(asset.id)) {
-        toggleAssetSelection(String(asset.id));
+      if (assets.length === 1) {
+        await deleteAsset(assets[0].id, { delete_from_provider: deleteFromProvider });
+      } else {
+        await bulkDeleteAssets(
+          assets.map((a) => a.id),
+          { delete_from_provider: deleteFromProvider },
+        );
       }
-      // Close viewer if viewing this asset
-      if (viewerAsset?.id === asset.id) {
+
+      // Emit delete events and clean up selection/viewer for each asset
+      for (const asset of assets) {
+        assetEvents.emitAssetDeleted(asset.id);
+        if (isSelected(asset.id)) {
+          toggleAssetSelection(String(asset.id));
+        }
+      }
+      // Close viewer if viewing a deleted asset
+      if (viewerAsset && assets.some((a) => a.id === viewerAsset.id)) {
         await closeViewer();
       }
     } catch (err) {
-      console.error('Failed to delete asset:', err);
-      alert(extractErrorMessage(err, 'Failed to delete asset'));
+      console.error('Failed to delete asset(s):', err);
+      alert(extractErrorMessage(err, 'Failed to delete asset(s)'));
     }
-  }, [deleteModalAsset, closeDeleteModal, viewerAsset, isSelected, toggleAssetSelection, closeViewer]);
+  }, [deleteModalAssets, closeDeleteModal, viewerAsset, isSelected, toggleAssetSelection, closeViewer]);
 
   // Cancel deletion
   const cancelDeleteAsset = useCallback(() => {
@@ -504,6 +512,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     reuploadAsset,
 
     // Delete modal
+    deleteModalAssets,
     deleteModalAsset,
     confirmDeleteAsset,
     cancelDeleteAsset,

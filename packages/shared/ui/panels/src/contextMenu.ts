@@ -171,6 +171,9 @@ export interface MenuActionBase<TContext = MenuActionContextBase> {
    */
   requiredCapabilities?: string[];
 
+  /** Context-aware label override. When provided, used instead of static `label`. */
+  dynamicLabel?: (ctx: TContext) => string;
+
   /** Additional visibility condition */
   visible?: (ctx: TContext) => boolean;
 
