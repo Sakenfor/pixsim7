@@ -23,9 +23,9 @@ const normalizedDir = process.platform === 'win32' && SCRIPT_DIR.startsWith('/')
   ? SCRIPT_DIR.slice(1)
   : SCRIPT_DIR;
 
-const YAML_PATH = path.resolve(normalizedDir, '../pixsim7/backend/main/shared/upload-context.yaml');
-const OUT_PY = path.resolve(normalizedDir, '../pixsim7/backend/main/shared/upload_context_schema.py');
-const OUT_TS = path.resolve(normalizedDir, '../packages/shared/types/src/upload-context.generated.ts');
+const YAML_PATH = path.resolve(normalizedDir, '../../pixsim7/backend/main/shared/upload-context.yaml');
+const OUT_PY = path.resolve(normalizedDir, '../../pixsim7/backend/main/shared/upload_context_schema.py');
+const OUT_TS = path.resolve(normalizedDir, '../../packages/shared/types/src/upload-context.generated.ts');
 
 if (!fs.existsSync(YAML_PATH)) {
   console.error(`Missing upload context spec: ${YAML_PATH}`);

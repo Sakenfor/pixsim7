@@ -71,6 +71,26 @@ router.include_router(assets_versions.router)
 
 # ===== ASSET SEARCH =====
 
+SIMILARITY_CURSOR_PREFIX = "simoff:"
+
+
+def _parse_similarity_cursor(cursor: str | None) -> int | None:
+    if not cursor:
+        return None
+    if not cursor.startswith(SIMILARITY_CURSOR_PREFIX):
+        return None
+    try:
+        offset = int(cursor[len(SIMILARITY_CURSOR_PREFIX):])
+    except ValueError:
+        return None
+    if offset < 0:
+        return None
+    return offset
+
+
+def _build_similarity_cursor(offset: int) -> str:
+    return f"{SIMILARITY_CURSOR_PREFIX}{offset}"
+
 # ===== SEARCH ASSETS =====
 
 @router.post("/search", response_model=AssetListResponse)
@@ -90,6 +110,19 @@ async def search_assets(
     - Only searchable assets are shown. Set searchable=false to include hidden assets.
     """
     try:
+        is_similarity_mode = request.similar_to is not None
+        similarity_offset = request.offset
+        if is_similarity_mode and request.cursor:
+            parsed_similarity_offset = _parse_similarity_cursor(request.cursor)
+            if parsed_similarity_offset is not None:
+                similarity_offset = parsed_similarity_offset
+
+        effective_offset = (
+            similarity_offset
+            if is_similarity_mode
+            else (request.offset if request.cursor is None else 0)
+        )
+
         assets = await asset_service.list_assets(
             user=user,
             filters=request.filters,
@@ -101,8 +134,8 @@ async def search_assets(
             q=request.q,
             include_archived=request.include_archived,
             limit=request.limit,
-            offset=request.offset if request.cursor is None else 0,
-            cursor=request.cursor,
+            offset=effective_offset,
+            cursor=None if is_similarity_mode else request.cursor,
             # New search filters
             created_from=request.created_from,
             created_to=request.created_to,
@@ -135,9 +168,12 @@ async def search_assets(
         # Generate cursor for next page
         next_cursor = None
         if len(assets) == request.limit:
-            last = assets[-1]
-            # Opaque format: created_at|id
-            next_cursor = f"{last.created_at.isoformat()}|{last.id}"
+            if is_similarity_mode:
+                next_cursor = _build_similarity_cursor(effective_offset + request.limit)
+            else:
+                last = assets[-1]
+                # Opaque format: created_at|id
+                next_cursor = f"{last.created_at.isoformat()}|{last.id}"
 
         # Build responses with tags
         asset_responses: list[AssetResponse] = []
@@ -149,7 +185,7 @@ async def search_assets(
             assets=asset_responses,
             total=total,
             limit=request.limit,
-            offset=request.offset,
+            offset=effective_offset,
             next_cursor=next_cursor,
         )
     except Exception as e:
@@ -1170,6 +1206,11 @@ async def upload_asset_to_provider(
             context_input["source_folder_id"] = source_folder_id
         if source_relative_path and "source_relative_path" not in context_input:
             context_input["source_relative_path"] = source_relative_path
+        # Derive subfolder from relative path (e.g. "Characters/warrior.png" -> "Characters")
+        if source_relative_path and "source_subfolder" not in context_input:
+            parts = source_relative_path.replace("\\", "/").split("/")
+            if len(parts) > 1:
+                context_input["source_subfolder"] = parts[0]
         normalized_context = normalize_upload_context(upload_method, context_input)
 
         # Build upload attribution metadata (rich context only)

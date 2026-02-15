@@ -75,6 +75,12 @@ export const uploadContextSpec: UploadContextSpec = {
           "description": "Local folder display name",
           "filterable": true
         },
+        "source_subfolder": {
+          "type": "string",
+          "label": "Subfolder",
+          "description": "Subfolder name within the source folder",
+          "filterable": true
+        },
         "source_relative_path": {
           "type": "string",
           "label": "Source Path",

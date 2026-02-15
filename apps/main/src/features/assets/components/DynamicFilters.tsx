@@ -19,21 +19,23 @@ import type { FilterDefinition, FilterOptionValue } from '../lib/api';
  * UI-specific metadata for filter keys.
  * Frontend owns display concerns (icons, order, labels override).
  */
-const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number }> = {
+const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow?: boolean }> = {
   q: { icon: 'search', order: 0 },
   media_type: { icon: 'video', order: 1 },
   provider_id: { icon: 'globe', order: 2 },
   tag: { icon: 'tag', order: 3 },
   analysis_tags: { icon: 'sparkles', order: 4 },
-  include_archived: { icon: 'archive', order: 4 },
   upload_method: { icon: 'upload', order: 5 },
-  provider_status: { icon: 'shield', order: 6 },
   source_site: { icon: 'globe', order: 7 },
   source_folder: { icon: 'folder', order: 7 },
+  source_subfolder: { icon: 'folderOpen', order: 8 },
   source_filename: { icon: 'video', order: 7 },
   source_folder_id: { icon: 'folder', order: 7 },
   source_relative_path: { icon: 'folder-tree', order: 7 },
   source_url: { icon: 'external-link', order: 7 },
+  // Overflow: shown in the "more" menu instead of the main bar
+  include_archived: { icon: 'archive', order: 90, overflow: true },
+  provider_status: { icon: 'shield', order: 91, overflow: true },
 };
 
 /** Group filter options by namespace parsed from "namespace:name" values. */
@@ -98,11 +100,11 @@ export function DynamicFilters({
     context: filterContext,
   });
 
-  // Sort and filter the definitions
-  const visibleFilters = useMemo(() => {
-    if (!metadata) return [];
+  // Sort and split into primary bar vs overflow menu
+  const { primaryFilters, overflowFilters } = useMemo(() => {
+    if (!metadata) return { primaryFilters: [], overflowFilters: [] };
 
-    return metadata.filters
+    const all = metadata.filters
       .filter((f) => {
         if (include && !include.includes(f.key)) return false;
         if (exclude.includes(f.key)) return false;
@@ -113,6 +115,17 @@ export function DynamicFilters({
         const orderB = FILTER_UI_CONFIG[b.key]?.order ?? 99;
         return orderA - orderB;
       });
+
+    const primary: FilterDefinition[] = [];
+    const overflow: FilterDefinition[] = [];
+    for (const f of all) {
+      if (FILTER_UI_CONFIG[f.key]?.overflow) {
+        overflow.push(f);
+      } else {
+        primary.push(f);
+      }
+    }
+    return { primaryFilters: primary, overflowFilters: overflow };
   }, [metadata, include, exclude]);
 
   const handleFilterChange = useCallback(
@@ -185,7 +198,7 @@ export function DynamicFilters({
     );
   }
 
-  if (visibleFilters.length === 0) {
+  if (primaryFilters.length === 0 && overflowFilters.length === 0) {
     return (
       <div className="text-sm text-neutral-500 dark:text-neutral-400">
         No filters available.
@@ -193,9 +206,14 @@ export function DynamicFilters({
     );
   }
 
+  const hasOverflowSelection = overflowFilters.some((f) => {
+    const val = filters[f.key as keyof AssetFilters];
+    return val !== undefined && val !== null && val !== '' && val !== false;
+  });
+
   return (
     <div className="relative flex flex-nowrap items-start gap-1.5 w-full overflow-x-auto overflow-y-visible pb-1">
-      {visibleFilters.map((filter) => {
+      {primaryFilters.map((filter) => {
         const isOpen = openFilters.has(filter.key);
         const isHovered = hoveredKey === filter.key;
         const isVisible = isOpen || isHovered;
@@ -294,6 +312,201 @@ export function DynamicFilters({
           </div>
         );
       })}
+      {overflowFilters.length > 0 && (
+        <OverflowMenu
+          filters={overflowFilters}
+          metadata={metadata}
+          values={filters}
+          onChange={handleFilterChange}
+          hasSelection={hasOverflowSelection}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Collapsible group for namespaced tag options
+// ---------------------------------------------------------------------------
+
+function CollapsibleGroup({
+  label,
+  showHeader,
+  count,
+  children,
+}: {
+  label: string;
+  showHeader: boolean;
+  count: number;
+  children: ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (!showHeader) {
+    return <div className="flex flex-col gap-1">{children}</div>;
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setCollapsed((prev) => !prev)}
+        className="flex items-center gap-1 w-full text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+      >
+        <Icon
+          name="chevronRight"
+          size={10}
+          className={`w-2.5 h-2.5 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
+        />
+        <span className="flex-1 text-left">{label}</span>
+        {count > 0 && (
+          <span className="text-[9px] px-1 rounded-full bg-accent/20 text-accent not-uppercase normal-case font-normal">
+            {count}
+          </span>
+        )}
+      </button>
+      {!collapsed && (
+        <div className="flex flex-col gap-1 pl-1">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Overflow "more" menu — renders boolean toggles & secondary filters
+// ---------------------------------------------------------------------------
+
+interface OverflowMenuProps {
+  filters: FilterDefinition[];
+  metadata: { options: Record<string, FilterOptionValue[]> };
+  values: AssetFilters;
+  onChange: (key: string, value: string | boolean | number | string[] | undefined) => void;
+  hasSelection: boolean;
+}
+
+function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: OverflowMenuProps) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef.current) {
+      setRect(null);
+      return;
+    }
+    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative flex-none">
+      <button
+        ref={anchorRef}
+        type="button"
+        title="More filters"
+        onClick={() => setOpen((prev) => !prev)}
+        className={`inline-flex items-center justify-center h-7 w-7 rounded border text-xs transition-colors ${
+          hasSelection
+            ? 'border-accent/50 bg-accent/10 text-accent'
+            : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+        }`}
+      >
+        <Icon name="moreHorizontal" size={14} className="w-3.5 h-3.5" />
+      </button>
+      {open && rect && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
+            top: rect.bottom + 6,
+            zIndex: 60,
+          }}
+        >
+          <Dropdown
+            isOpen={open}
+            onClose={() => setOpen(false)}
+            positionMode="static"
+            minWidth="200px"
+            className="max-w-[280px]"
+          >
+            <div className="space-y-2">
+              {filters.map((filter) => {
+                const uiConfig = FILTER_UI_CONFIG[filter.key] || {};
+                const displayLabel =
+                  filter.label ||
+                  filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+                const val = values[filter.key as keyof AssetFilters];
+
+                if (filter.type === 'boolean') {
+                  return (
+                    <label
+                      key={filter.key}
+                      className="flex items-center gap-2 px-1 py-0.5 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!val}
+                        onChange={(e) => onChange(filter.key, e.target.checked ? true : undefined)}
+                        className="accent-accent"
+                      />
+                      {uiConfig.icon && <Icon name={uiConfig.icon} size={14} className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400" />}
+                      <span>{displayLabel}</span>
+                    </label>
+                  );
+                }
+
+                // Enum overflow filters (e.g. provider_status)
+                if (filter.type === 'enum') {
+                  const options = metadata.options[filter.key] || [];
+                  const selectedValues = Array.isArray(val) ? val.map(String) : val ? [String(val)] : [];
+                  return (
+                    <div key={filter.key} className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1">
+                        {uiConfig.icon && <Icon name={uiConfig.icon} size={12} className="w-3 h-3" />}
+                        {displayLabel}
+                      </div>
+                      {options.map((opt) => {
+                        const optValue = String(opt.value);
+                        const isSelected = selectedValues.includes(optValue);
+                        return (
+                          <label
+                            key={opt.value}
+                            className="flex items-center gap-2 px-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                const next = new Set(selectedValues);
+                                if (next.has(optValue)) next.delete(optValue);
+                                else next.add(optValue);
+                                onChange(filter.key, Array.from(next));
+                              }}
+                              className="accent-accent"
+                            />
+                            <span>{opt.label || opt.value}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  );
+                }
+
+                return null;
+              })}
+            </div>
+          </Dropdown>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -516,16 +729,16 @@ function FilterControl({
         return (
           <div className="space-y-2">
             {renderMatchModeToggle()}
-            <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+            <div className="flex flex-col gap-0.5 max-h-[300px] overflow-y-auto">
               {groups.map(([namespace, nsOptions]) => (
-                <div key={namespace}>
-                  {showHeaders && (
-                    <div className="text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95">
-                      {namespace}
-                    </div>
-                  )}
+                <CollapsibleGroup
+                  key={namespace}
+                  label={namespace}
+                  showHeader={showHeaders}
+                  count={nsOptions.filter((o) => selectedValues.includes(String(o.value))).length}
+                >
                   {nsOptions.map((opt) => renderOption(opt, showHeaders))}
-                </div>
+                </CollapsibleGroup>
               ))}
             </div>
           </div>
