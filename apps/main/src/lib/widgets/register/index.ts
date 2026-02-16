@@ -11,7 +11,7 @@ import { registerBlockWidgets } from './blockWidgets';
 import { registerOverlayWidgets } from './overlayWidgets';
 
 export {
-  overlayWidgetDefinitions,
+  directOverlayWidgetDefinitions,
   registerOverlayWidgets,
   panelWidget,
   uploadWidget,

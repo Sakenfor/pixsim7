@@ -7,8 +7,7 @@
 
 import { createButtonWidget, type ButtonWidgetConfig } from '@lib/ui/overlay';
 import { fromUnifiedPosition, fromUnifiedVisibility } from '@lib/ui/overlay';
-import type { WidgetDefinition } from '@lib/widgets';
-import { extractBinding } from '@lib/widgets/register/extractBinding';
+import { extractBinding, type WidgetDefinition } from '@lib/widgets';
 
 // ============================================================================
 // Settings Interface

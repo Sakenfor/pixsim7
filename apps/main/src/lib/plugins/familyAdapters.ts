@@ -599,6 +599,8 @@ export const familyAdapters: Record<PluginFamily, PluginFamilyAdapter> = {
       registerWidget(widget);
     },
     buildMetadata: buildOverlayWidgetMetadata,
-    getSettingsSchema: (widget: WidgetDefinition) => widget.settingsSchema?.groups,
+    // No getSettingsSchema — overlay widget settings are managed by the widget
+    // settings system (Settings > Widgets), not the plugin config store.
+    // Including both would create two settings UIs backed by different stores.
   },
 };

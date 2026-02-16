@@ -514,7 +514,7 @@ export const progressWidget: WidgetDefinition<ProgressWidgetSettings> = {
 // All Overlay Widgets (directly registered — not via plugin system)
 // ============================================================================
 
-export const overlayWidgetDefinitions: WidgetDefinition[] = [
+export const directOverlayWidgetDefinitions: WidgetDefinition[] = [
   panelWidget,
   uploadWidget,
   menuWidget,
@@ -528,8 +528,8 @@ export const overlayWidgetDefinitions: WidgetDefinition[] = [
  * badge, button, and scene-view are registered via the plugin system.
  */
 export function registerOverlayWidgets(): void {
-  for (const widget of overlayWidgetDefinitions) {
+  for (const widget of directOverlayWidgetDefinitions) {
     registerWidget(widget);
   }
-  console.log(`[widgets] Registered ${overlayWidgetDefinitions.length} overlay widgets (direct)`);
+  console.log(`[widgets] Registered ${directOverlayWidgetDefinitions.length} overlay widgets (direct)`);
 }

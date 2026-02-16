@@ -103,7 +103,7 @@ export {
   registerAllWidgets,
   registerOverlayWidgets,
   registerBlockWidgets,
-  overlayWidgetDefinitions,
+  directOverlayWidgetDefinitions,
   blockWidgetDefinitions,
   // Individual overlay widgets
   badgeWidget,
@@ -169,6 +169,9 @@ export {
   builtInWidgets,
   registerBuiltInWidgets,
 } from './builtIn';
+
+// Widget helpers (used by overlay widget plugins)
+export { extractBinding } from './register/extractBinding';
 
 // Components
 export { HeaderWidgetArea, HeaderWidgetBar } from './components';
