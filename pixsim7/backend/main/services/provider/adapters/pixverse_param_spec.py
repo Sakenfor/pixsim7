@@ -30,7 +30,7 @@ def build_operation_parameter_spec() -> dict:
     specification compatible with older behavior.
     """
     # ==== Derive enums from SDK when available ====
-    # Video models (v3.5, v4, v5, v5.5, ...)
+    # Video models (v5, v5-fast, v5.5, v5.6, ...)
     video_model_enum: list[str]
     default_video_model: str
     if VideoModel is not None and getattr(VideoModel, "ALL", None):
@@ -50,6 +50,13 @@ def build_operation_parameter_spec() -> dict:
         [str(m) for m in VideoModel.supporting("video_extend")]
         if VideoModel is not None
         else ["v5", "v5.5"]
+    )
+
+    # Fusion models (derived from SDK capability)
+    fusion_model_enum = (
+        [str(m) for m in VideoModel.supporting("fusion")]
+        if VideoModel is not None
+        else ["v5", "v5.6"]
     )
 
     # Image models and qualities (iterate specs directly)
@@ -165,6 +172,13 @@ def build_operation_parameter_spec() -> dict:
         "default": "v5",
         "enum": video_extend_model_enum,
         "description": "Pixverse video model (extend-capable)",
+        "group": "core",
+    }
+    model_fusion = {
+        "name": "model", "type": "enum", "required": False,
+        "default": "v5",
+        "enum": fusion_model_enum,
+        "description": "Pixverse video model (fusion-capable)",
         "group": "core",
     }
     motion_mode = {
@@ -448,7 +462,7 @@ def build_operation_parameter_spec() -> dict:
             "parameters": [composition_assets_image, prompts, model, quality, transition_duration]
         },
         "fusion": {
-            "parameters": [base_prompt, composition_assets_fusion, model, quality, duration, aspect_ratio, seed]
+            "parameters": [base_prompt, composition_assets_fusion, model_fusion, quality, duration, aspect_ratio, seed]
         },
     }
     return spec

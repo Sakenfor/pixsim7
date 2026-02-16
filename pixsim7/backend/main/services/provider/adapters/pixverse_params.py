@@ -120,7 +120,7 @@ def map_parameters(
     if VideoModel is not None:
         video_models = set(VideoModel.ids()) if hasattr(VideoModel, "ids") else {str(m) for m in getattr(VideoModel, "ALL", [])}
     else:
-        video_models = {"v3.5", "v4", "v5", "v5.5"}
+        video_models = {"v5", "v5-fast", "v5.5", "v5.6"}
 
     if ImageModel is not None:
         image_models = set(ImageModel.ids()) if hasattr(ImageModel, "ids") else {str(m) for m in getattr(ImageModel, "ALL", [])}

@@ -208,9 +208,9 @@ def _ensure_required_params(operation_type: OperationType, params: Dict[str, Any
                 "Pixverse VIDEO_EXTEND requires video_url or original_video_id."
             )
     elif operation_type == OperationType.FUSION:
-        if not params.get("composition_assets"):
+        if not params.get("image_references"):
             raise ProviderError(
-                "Pixverse FUSION requires composition_assets."
+                "Pixverse FUSION requires image_references (resolved from composition_assets)."
             )
 
 
@@ -614,167 +614,25 @@ class PixverseOperationsMixin:
         """
         Generate fusion (character consistency).
 
-        Converts composition_assets to Pixverse image_references format with:
-        - Numeric ref names (@1, @2, @3) by default
-        - Type inference from tags (subject/background) with fallback rules
-        - Prompt rewriting to ensure @ref tokens match
+        Expects pre-resolved image_references from prepare_execution_params
+        (via resolve_fusion_image_references). Only handles prompt rewriting
+        and the API call itself.
         """
-        from pixsim7.backend.main.services.asset.tags import infer_composition_role_from_tags
-        from pixsim7.backend.main.shared.composition import (
-            map_composition_role_to_pixverse_type,
-            normalize_composition_role,
-        )
-        from pixsim7.backend.main.domain.assets.models import Asset
-        from sqlmodel import select
         import re
 
-        composition_assets = params.get("composition_assets", [])
-        if not composition_assets:
-            raise ValueError("composition_assets required for fusion generation")
-
-        # Enforce max 3 references (Pixverse limit)
-        if len(composition_assets) > 3:
-            raise ValueError(f"Maximum 3 composition assets allowed, got {len(composition_assets)}")
-
-        # Get database session for loading assets
-        from pixsim7.backend.main.infrastructure.database.session import get_async_session
+        image_references = params.get("image_references", [])
+        if not image_references:
+            raise ValueError("image_references required for fusion generation (resolved from composition_assets)")
 
         prompt = params.get("prompt", "")
-        image_entries: List[Dict[str, Any]] = []
-
-        async with get_async_session() as session:
-            for idx, composition_asset in enumerate(composition_assets, start=1):
-                asset_value = None
-                composition_role = None
-                layer = None
-                ref_name = None
-                pixverse_override = None
-
-                if hasattr(composition_asset, "model_dump"):
-                    composition_asset = composition_asset.model_dump()
-
-                if isinstance(composition_asset, dict):
-                    asset_value = (
-                        composition_asset.get("asset")
-                        or composition_asset.get("asset_id")
-                        or composition_asset.get("assetId")
-                    )
-                    composition_role = composition_asset.get("role")
-                    layer = composition_asset.get("layer")
-                    ref_name = composition_asset.get("ref_name")
-                    provider_params = composition_asset.get("provider_params") or {}
-                    if isinstance(provider_params, dict):
-                        pixverse_override = (
-                            provider_params.get("pixverse_role")
-                            or provider_params.get("pixverse_type")
-                        )
-                else:
-                    asset_value = composition_asset
-
-                asset_id = extract_asset_id(asset_value)
-                if not asset_id:
-                    raise ValueError(f"Could not extract asset_id from composition_asset: {composition_asset}")
-
-                # Load asset from database
-                query = select(Asset).where(Asset.id == asset_id)
-                result = await session.execute(query)
-                asset = result.scalar_one_or_none()
-
-                if not asset:
-                    raise ValueError(f"Asset {asset_id} not found")
-
-                normalized_role = normalize_composition_role(composition_role) if composition_role else None
-                pixverse_type = None
-
-                if pixverse_override in {"subject", "background"}:
-                    pixverse_type = pixverse_override
-                else:
-                    pixverse_type = map_composition_role_to_pixverse_type(
-                        normalized_role,
-                        layer=layer,
-                    )
-
-                if not pixverse_type:
-                    inferred_role = await infer_composition_role_from_tags(asset, session)
-                    pixverse_type = map_composition_role_to_pixverse_type(
-                        inferred_role,
-                        layer=layer,
-                    )
-
-                # Determine ref_name (default to numeric)
-                if not ref_name:
-                    ref_name = str(idx)
-
-                # Get Pixverse image ID from asset
-                # Check provider_uploads first, then provider_asset_id
-                img_id = None
-
-                if asset.provider_uploads and "pixverse" in asset.provider_uploads:
-                    candidate = asset.provider_uploads["pixverse"]
-                    if isinstance(candidate, str):
-                        if candidate.startswith(("http://", "https://", "file://")):
-                            candidate = None
-                        elif candidate.startswith("img_id:"):
-                            candidate = candidate.split(":", 1)[1]
-                        elif not candidate.isdigit() and "/" in candidate:
-                            candidate = None
-                    img_id = candidate
-                if not img_id and asset.provider_id == "pixverse" and asset.provider_asset_id:
-                    candidate = asset.provider_asset_id
-                    if isinstance(candidate, str) and candidate.startswith("img_id:"):
-                        candidate = candidate.split(":", 1)[1]
-                    img_id = candidate
-
-                if not img_id:
-                    raise ValueError(
-                        f"Asset {asset_id} has no Pixverse image ID. "
-                        "Asset must be uploaded to Pixverse before using in fusion."
-                    )
-
-                # Convert to int if possible (Pixverse expects integer img_id)
-                try:
-                    img_id = int(img_id)
-                except (ValueError, TypeError):
-                    # If it's not numeric, it might be a valid ID format - keep as string
-                    pass
-
-                image_entries.append({
-                    "type": pixverse_type,
-                    "img_id": img_id,
-                    "ref_name": ref_name,
-                    "layer": layer,
-                })
-
-        # Ensure at least one background if nothing explicit was mapped
-        if image_entries and not any(ref["type"] == "background" for ref in image_entries):
-            def _layer_sort_key(ref: Dict[str, Any]) -> int:
-                if ref.get("layer") is None:
-                    return 999
-                return int(ref["layer"])
-
-            background_ref = min(image_entries, key=_layer_sort_key)
-            background_ref["type"] = "background"
-
-        # Fill any remaining types as subject
-        for ref in image_entries:
-            if not ref.get("type"):
-                ref["type"] = "subject"
-
-        image_references = [
-            {"type": ref["type"], "img_id": ref["img_id"], "ref_name": ref["ref_name"]}
-            for ref in image_entries
-        ]
 
         # Rewrite prompt to ensure @ref tokens match ref_names
-        # If prompt doesn't contain any @refs, inject them
         prompt_has_refs = bool(re.search(r'@\w+', prompt))
 
         if not prompt_has_refs and prompt:
-            # Append numeric refs to the end of the prompt
             ref_tokens = " ".join(f"@{ref['ref_name']}" for ref in image_references)
             prompt = f"{prompt} {ref_tokens}"
 
-        # Validate that all ref_names appear in prompt (warn if missing)
         for ref in image_references:
             ref_token = f"@{ref['ref_name']}"
             if ref_token not in prompt:
@@ -790,10 +648,8 @@ class PixverseOperationsMixin:
             "fusion_generation",
             image_references=image_references,
             prompt=prompt,
-            msg="Converted composition_assets to image_references"
         )
 
-        # Call pixverse-py fusion method with proper format
         seed = _coerce_optional_seed(params)
         fusion_kwargs = {
             "prompt": prompt,

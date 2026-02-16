@@ -81,7 +81,6 @@ def estimate_video_credit_change(
             duration=int(duration),
             api_method="web-api",
             model=model,
-            motion_mode=motion_mode,
             multi_shot=multi_shot,
             audio=audio,
         )

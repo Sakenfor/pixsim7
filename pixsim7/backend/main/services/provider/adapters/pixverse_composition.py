@@ -1,12 +1,14 @@
 """
 Pixverse composition asset resolution
 
-Resolves composition_assets to Pixverse-ready URLs.
+Resolves composition_assets to Pixverse-ready URLs (most operations)
+or Pixverse image_references with img_ids (fusion).
+
 Split from pixverse.py for better separation of concerns.
 """
 from __future__ import annotations
 
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -224,3 +226,90 @@ async def resolve_composition_assets_for_pixverse(
                 )
 
     return resolved_urls
+
+
+def build_fusion_image_references(
+    resolved_urls: list[str],
+    composition_assets: list,
+) -> List[Dict[str, Any]]:
+    """
+    Build Pixverse image_references from already-resolved URLs + composition metadata.
+
+    Fusion uses the same URL resolution as i2v / i2i. This function just
+    combines those URLs with role metadata (subject / background) from the
+    original composition_assets.
+
+    Args:
+        resolved_urls: URLs returned by resolve_composition_assets_for_pixverse
+        composition_assets: Original composition_assets (for role / layer info)
+
+    Returns:
+        List of image_reference dicts ready for pixverse-py fusion
+    """
+    from pixsim7.backend.main.shared.composition import (
+        map_composition_role_to_pixverse_type,
+        normalize_composition_role,
+    )
+    from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+    from urllib.parse import urlparse, unquote
+
+    assets = coerce_composition_assets(composition_assets)
+    entries: List[Dict[str, Any]] = []
+
+    for idx, (url, item) in enumerate(zip(resolved_urls, assets), start=1):
+        if hasattr(item, "model_dump"):
+            item = item.model_dump()
+
+        role = item.get("role") if isinstance(item, dict) else None
+        layer = item.get("layer") if isinstance(item, dict) else None
+        ref_name = item.get("ref_name") if isinstance(item, dict) else None
+
+        provider_params = (item.get("provider_params") or {}) if isinstance(item, dict) else {}
+        pixverse_override = (
+            provider_params.get("pixverse_role") or provider_params.get("pixverse_type")
+        ) if isinstance(provider_params, dict) else None
+
+        # Map role → Pixverse type (subject / background)
+        pixverse_type = None
+        if pixverse_override in {"subject", "background"}:
+            pixverse_type = pixverse_override
+        elif role:
+            normalized = normalize_composition_role(role)
+            pixverse_type = map_composition_role_to_pixverse_type(normalized, layer=layer)
+
+        if not ref_name:
+            ref_name = str(idx)
+
+        # Derive customer_img_path from URL (Pixverse convention)
+        img_path = ""
+        try:
+            img_path = unquote(urlparse(url).path).lstrip("/")
+        except Exception:
+            pass
+
+        entries.append({
+            "type": pixverse_type,
+            "ref_name": ref_name,
+            "customer_img_url": url,
+            "customer_img_path": img_path,
+            "layer": layer,
+        })
+
+    # Ensure at least one background (lowest layer index)
+    if entries and not any(e["type"] == "background" for e in entries):
+        def _layer_key(e: dict) -> int:
+            return int(e["layer"]) if e.get("layer") is not None else 999
+        min(entries, key=_layer_key)["type"] = "background"
+
+    # Fill remaining as subject
+    for e in entries:
+        if not e.get("type"):
+            e["type"] = "subject"
+
+    logger.info(
+        "fusion_image_references_built",
+        count=len(entries),
+        types=[e["type"] for e in entries],
+    )
+
+    return entries
