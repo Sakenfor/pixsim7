@@ -352,7 +352,6 @@ class PromptAnalysisService:
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
             return await analyze_prompt(
                 text,
-                analyzer_id=None,
                 role_registry=role_registry,
                 parser_config=merged_config,
             )
@@ -411,7 +410,6 @@ class PromptAnalysisService:
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt
             return await analyze_prompt(
                 text,
-                analyzer_id=None,
                 role_registry=role_registry,
             )
 

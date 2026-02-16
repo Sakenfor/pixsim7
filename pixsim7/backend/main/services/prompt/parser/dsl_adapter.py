@@ -20,7 +20,6 @@ from typing import Dict, Any, List, Optional
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.candidates import candidates_from_segments
 from pixsim7.backend.main.services.prompt.tag_derivation import (
-    PromptTag,
     derive_structured_and_flat_tags,
 )
 from .simple import SimplePromptParser
@@ -30,7 +29,6 @@ async def parse_prompt_to_candidates(
     text: str,
     *,
     role_registry: Optional[PromptRoleRegistry] = None,
-    parser_hints: Optional[Dict[str, List[str]]] = None,
     parser_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -39,10 +37,13 @@ async def parse_prompt_to_candidates(
     Pure function: text → {"candidates": [...]}
     Candidates are transient parsed pieces (not stored PromptBlock entities).
 
+    Vocabulary (keywords, hints) is controlled via role_registry — enrich it
+    with semantic packs before calling.  Behavior (stemming, thresholds, etc.)
+    is controlled via parser_config.
+
     Args:
         text: Prompt text to parse
-        role_registry: Optional PromptRoleRegistry for dynamic roles.
-        parser_hints: Optional parser hints to augment role keywords.
+        role_registry: Optional PromptRoleRegistry (enriched with pack hints).
         parser_config: Optional config dict for parser behavior.
 
     Returns:
@@ -59,8 +60,7 @@ async def parse_prompt_to_candidates(
             "role_scores": { ... },
         }
     """
-    # Currently only SimplePromptParser is implemented.
-    parser = SimplePromptParser(hints=parser_hints, role_registry=role_registry, config=parser_config)
+    parser = SimplePromptParser(role_registry=role_registry, config=parser_config)
 
     parsed = await parser.parse(text)
 
@@ -68,51 +68,26 @@ async def parse_prompt_to_candidates(
     return {"candidates": [candidate.model_dump() for candidate in candidates]}
 
 
-def _derive_tags_from_candidates(
-    candidates: List[Dict[str, Any]],
-    *,
-    structured: bool = True,
-) -> tuple[List[PromptTag], List[str]]:
-    """
-    Derive tags from parsed prompt candidates.
-
-    Returns structured tags with segment linking and flat tags for backward compatibility.
-
-    Args:
-        candidates: List of candidate dicts from parse_prompt_to_candidates
-        structured: If True, return full structured tags; if False, only flat
-
-    Returns:
-        Tuple of (structured_tags, flat_tags)
-        - structured_tags: List of PromptTag dicts with segment indices
-        - flat_tags: Simple list of tag strings for backward compatibility
-    """
-    _ = structured
-    return derive_structured_and_flat_tags(candidates)
-
-
 async def analyze_prompt(
     text: str,
-    analyzer_id: Optional[str] = None,
     *,
     role_registry: Optional[PromptRoleRegistry] = None,
-    parser_hints: Optional[Dict[str, List[str]]] = None,
     parser_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Generic, source-agnostic prompt analysis.
+    Parse and analyze a prompt using the simple parser.
 
-    Pure function, no DB access, no source assumptions.
+    Pure function, no DB access, no LLM calls, no routing.
     Returns PixSim7-shaped JSON only.
+
+    Vocabulary is controlled via role_registry — semantic packs enrich it
+    with hints before this function is called.  Behavior (stemming,
+    thresholds, role overrides) is controlled via parser_config.
 
     Args:
         text: Raw prompt text from any source (UI, files, external systems).
-        analyzer_id: Which analyzer to use:
-            - "parser:simple" (default): Fast keyword-based parser
-            - "llm:claude": Claude-based semantic analysis
-            - "llm:openai": OpenAI-based semantic analysis
-        role_registry: Optional PromptRoleRegistry for dynamic roles.
-        parser_hints: Optional parser hints to augment role keywords.
+        role_registry: Optional PromptRoleRegistry (enriched with pack hints).
+        parser_config: Optional config dict for parser behavior.
 
     Returns:
         {
@@ -135,33 +110,9 @@ async def analyze_prompt(
           "tags_flat": ["has:character", "has:setting", ...]
         }
     """
-    if not analyzer_id:
-        analyzer_id = "parser:simple"
-
-    if role_registry is None and parser_hints:
-        role_registry = PromptRoleRegistry.default()
-        role_registry.apply_hints(parser_hints)
-
-    if analyzer_id.startswith("llm:"):
-        from .llm_analyzer import analyze_prompt_with_llm
-
-        provider_map = {
-            "llm:claude": "anthropic-llm",
-            "llm:openai": "openai-llm",
-        }
-        provider_id = provider_map.get(analyzer_id, "anthropic-llm")
-
-        return await analyze_prompt_with_llm(
-            text=text,
-            provider_id=provider_id,
-            role_registry=role_registry,
-        )
-
-    # Default: use simple parser
     result = await parse_prompt_to_candidates(
         text,
         role_registry=role_registry,
-        parser_hints=parser_hints,
         parser_config=parser_config,
     )
     candidates: List[Dict[str, Any]] = result.get("candidates", [])

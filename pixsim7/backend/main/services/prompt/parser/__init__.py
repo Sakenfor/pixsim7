@@ -27,8 +27,8 @@ from .analyzer_plugins import setup_analyzer_plugin_hooks
 from .dsl_adapter import (
     analyze_prompt,
     parse_prompt_to_candidates,
-    PromptTag,
 )
+from pixsim7.backend.main.services.prompt.tag_derivation import PromptTag
 from .stemmer import stem, stems_match, find_stem_matches
 from .negation import (
     find_negated_spans,

@@ -1,11 +1,14 @@
-from pixsim7.backend.main.services.prompt.parser.llm_analyzer import (
-    _derive_tags_from_candidates,
-)
+from pixsim7.backend.main.services.prompt.tag_derivation import derive_flat_tags
+
+
+def _derive_tags(candidates):
+    """Wrapper matching the old LLM analyzer helper (no raw ontology IDs)."""
+    return derive_flat_tags(candidates, include_ontology_ids=False)
 
 
 def test_llm_derived_tags_use_metadata_inference_for_canonical_ontology_ids():
     tags = set(
-        _derive_tags_from_candidates(
+        _derive_tags(
             [
                 {
                     "role": "camera",
@@ -23,7 +26,7 @@ def test_llm_derived_tags_use_metadata_inference_for_canonical_ontology_ids():
 
 def test_llm_derived_tags_do_not_fallback_for_legacy_ontology_ids():
     tags = set(
-        _derive_tags_from_candidates(
+        _derive_tags(
             [
                 {
                     "role": "action",
@@ -40,7 +43,7 @@ def test_llm_derived_tags_do_not_fallback_for_legacy_ontology_ids():
 
 def test_llm_derived_tags_skip_other_role_presence_tag():
     tags = set(
-        _derive_tags_from_candidates(
+        _derive_tags(
             [
                 {
                     "role": "other",

@@ -11,6 +11,7 @@ Demonstrates:
 import asyncio
 from pixsim7.backend.main.services.prompt.parser.simple import SimplePromptParser
 from pixsim7.backend.main.services.prompt.parser.hints import ParserHintProvider
+from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.domain.semantic_pack import SemanticPackDB
 
 
@@ -91,7 +92,9 @@ async def test_parser_with_hints():
     # ===== Test 4: Parse with hints =====
     print("\n4. Parsing test prompt WITH custom hints from pack...")
 
-    parser_custom = SimplePromptParser(hints=hints)
+    registry = PromptRoleRegistry.default()
+    registry.apply_hints(hints)
+    parser_custom = SimplePromptParser(role_registry=registry)
     result_custom = await parser_custom.parse(test_prompt)
 
     print(f"   Prompt: '{test_prompt}'")

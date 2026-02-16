@@ -111,17 +111,20 @@ class SimplePromptParser:
 
     def __init__(
         self,
-        hints: Optional[Dict[str, List[str]]] = None,
         role_registry: Optional[PromptRoleRegistry] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize parser with ontology keywords.
+        Initialize parser.
+
+        Vocabulary (keywords, roles) comes from role_registry — enrich it
+        with semantic pack hints before passing.  Behavior (stemming,
+        thresholds, role overrides) comes from config.
 
         Args:
-            hints: Optional parser hints from semantic packs to augment classification.
-                   Format: { 'role:character': ['minotaur', 'werecow'], ... }
-            config: Optional config dict for parser behavior (section parsing, thresholds).
+            role_registry: PromptRoleRegistry with roles and keywords
+                (already enriched with semantic pack hints if applicable).
+            config: Optional config dict for parser behavior.
         """
         self.config = SimpleParserConfig(**(config or {}))
         self.role_registry = role_registry.clone() if role_registry else PromptRoleRegistry.default()
@@ -129,8 +132,6 @@ class SimplePromptParser:
         self.action_verbs = set(action_verbs)
         # Pre-compute stemmed action verbs for matching
         self.action_verb_stems = {stem(v) for v in action_verbs}
-        if hints:
-            self.role_registry.apply_hints(hints)
         self.role_keywords = self.role_registry.get_role_keywords()
         self.role_priorities = self.role_registry.get_role_priorities()
 
@@ -181,13 +182,16 @@ class SimplePromptParser:
 
         Args:
             text: Raw prompt text
-            hints: Optional parser hints to use for this parse
+            hints: Optional runtime parser hints — creates a temporary
+                parser with these hints applied to the registry.
 
         Returns:
             PromptParseResult with classified segments
         """
         if hints:
-            parser = SimplePromptParser(hints=hints, role_registry=self.role_registry, config=self.config.model_dump())
+            enriched = self.role_registry.clone()
+            enriched.apply_hints(hints)
+            parser = SimplePromptParser(role_registry=enriched, config=self.config.model_dump())
             return await parser.parse(text)
 
         sections = self._split_sections(text) if self.config.enable_section_parsing else []
