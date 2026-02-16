@@ -138,7 +138,7 @@ export function MediaControlBar({
 
           {showCapture && onCaptureFrame && (
             <button
-              onClick={onCaptureFrame}
+              onClick={() => onCaptureFrame()}
               disabled={captureDisabled}
               className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-30 disabled:cursor-not-allowed"
               title="Capture Frame"

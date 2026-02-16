@@ -5,14 +5,16 @@
  * Uses CSS transforms for 3D effect and pointer events for drag behavior.
  */
 
-import { useRef, useState, useCallback, useEffect, type ReactNode } from 'react';
-import { clsx } from 'clsx';
-import { useCubeStore, type CubeFace, type CubeFaceContentMap } from '../useCubeStore';
 import {
   DEFAULT_CUBE_SIZE,
   CUBE_HOVER_TILT,
   DRAG_THRESHOLD,
 } from '@pixsim7/pixcubes';
+import { clsx } from 'clsx';
+import { useRef, useState, useCallback, useEffect } from 'react';
+
+import { useCubeStore, type CubeFace, type CubeFaceContentMap } from '../useCubeStore';
+
 
 export interface DraggableCubeProps {
   cubeId: string;
@@ -35,10 +37,10 @@ export function DraggableCube({
   onDragStart,
   onDragEnd,
   onFaceClick,
-  onExpand,
 }: DraggableCubeProps) {
   const cube = useCubeStore((s) => s.cubes[cubeId]);
   const updateCube = useCubeStore((s) => s.updateCube);
+  const removeCube = useCubeStore((s) => s.removeCube);
 
   const cubeRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -91,7 +93,7 @@ export function DraggableCube({
       });
     };
 
-    const handleMouseUp = (e: MouseEvent) => {
+    const handleMouseUp = () => {
       setIsDragging(false);
       onDragEnd?.();
 
@@ -138,6 +140,16 @@ export function DraggableCube({
     }
   }, [isDragging]);
 
+  // Right-click to dismiss
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      removeCube(cubeId);
+    },
+    [cubeId, removeCube]
+  );
+
   if (!cube || !cube.visible) return null;
 
   const halfSize = size / 2;
@@ -172,6 +184,7 @@ export function DraggableCube({
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
+      onContextMenu={handleContextMenu}
     >
       {/* 3D Cube container */}
       <div

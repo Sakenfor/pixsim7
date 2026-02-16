@@ -158,8 +158,6 @@ export function ProjectPanel() {
     selectSavedProject(currentProjectId);
   }, [currentProjectId, savedProjects, selectSavedProject]);
 
-  const setDirty = useProjectSessionStore((state) => state.setDirty);
-
   const handleSaveCurrent = async () => {
     if (!worldId) {
       toast.warning('Select a world before saving a project');
@@ -213,7 +211,7 @@ export function ProjectPanel() {
         extensionWarnings: extensionReport.warnings,
       });
 
-      void clearDraftAfterSave(saved.id);
+      void clearDraftAfterSave(saved.id, currentProjectId);
       toast.success(`Project saved: ${saved.name}`);
     } catch (error) {
       toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -278,7 +276,7 @@ export function ProjectPanel() {
         extensionWarnings: extensionReport.warnings,
       });
 
-      void clearDraftAfterSave(saved.id);
+      void clearDraftAfterSave(saved.id, currentProjectId);
       toast.success(overwrite ? `Project updated: ${saved.name}` : `Project saved: ${saved.name}`);
     } catch (error) {
       toast.error(`Project save failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -365,7 +363,6 @@ export function ProjectPanel() {
 
       if (currentProjectId === deletedId) {
         clearCurrentProject();
-        setDirty(false);
       }
 
       if (selectedProjectId === deletedId) {
@@ -459,8 +456,13 @@ export function ProjectPanel() {
     try {
       const project = await getSavedGameProject(selectedProjectId);
 
-      // Check for a newer draft
+      // Check for a newer draft.
       let bundleToLoad = project.bundle;
+      let loadedProjectUpdatedAt = project.updated_at;
+      let loadedProjectSourceWorldId = project.source_world_id ?? null;
+      let loadedSchemaVersion = project.bundle.schema_version ?? null;
+      let loadedExtensionKeys = Object.keys(project.bundle.extensions || {});
+      let loadedSourceLabel = project.name;
       try {
         const draft = await getProjectDraft(selectedProjectId);
         if (draft) {
@@ -472,11 +474,16 @@ export function ProjectPanel() {
             );
             if (useDraft) {
               bundleToLoad = draft.bundle;
+              loadedProjectUpdatedAt = draft.updated_at;
+              loadedProjectSourceWorldId = draft.source_world_id ?? null;
+              loadedSchemaVersion = draft.bundle.schema_version ?? null;
+              loadedExtensionKeys = Object.keys(draft.bundle.extensions || {});
+              loadedSourceLabel = `[draft] ${project.name}`;
             }
           }
         }
       } catch {
-        // Draft check is best-effort — proceed with saved bundle
+        // Draft check is best-effort - proceed with saved bundle.
       }
 
       const { response, extensionReport } = await importWorldProjectWithExtensions(
@@ -507,11 +514,11 @@ export function ProjectPanel() {
       recordImport({
         projectId: project.id,
         projectName: project.name,
-        projectSourceWorldId: project.source_world_id ?? null,
-        projectUpdatedAt: project.updated_at,
-        sourceFileName: project.name,
-        schemaVersion: project.bundle.schema_version ?? null,
-        extensionKeys: Object.keys(project.bundle.extensions || {}),
+        projectSourceWorldId: loadedProjectSourceWorldId,
+        projectUpdatedAt: loadedProjectUpdatedAt,
+        sourceFileName: loadedSourceLabel,
+        schemaVersion: loadedSchemaVersion,
+        extensionKeys: loadedExtensionKeys,
         extensionWarnings: extensionReport.warnings,
         coreWarnings: response.warnings,
       });
@@ -813,4 +820,5 @@ export function ProjectPanel() {
     </div>
   );
 }
+
 

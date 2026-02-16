@@ -2,40 +2,29 @@
  * Overlay Widgets - Unified Registration
  *
  * Registers overlay widgets directly in the unified widget registry.
- * Replaces the legacy editing-core/registry/widgetRegistry registration.
+ * badge, button, and scene-view widgets are registered via the plugin system
+ * (see plugins/overlay-widgets/).
  */
 
-import type { UnifiedWidgetConfig } from '@lib/editing-core';
-import { createBindingFromValue, type DataBinding } from '@lib/editing-core';
 import { fromUnifiedPosition, fromUnifiedVisibility } from '@lib/ui/overlay';
 
+
 // Widget creators
-import { createBadgeWidget, type BadgeWidgetConfig } from '@lib/ui/overlay';
 import { createPanelWidget, type PanelWidgetConfig } from '@lib/ui/overlay';
 import { createUploadWidget, type UploadWidgetConfig } from '@lib/ui/overlay';
-import { createButtonWidget, type ButtonWidgetConfig } from '@lib/ui/overlay';
 import { createMenuWidget, type MenuWidgetConfig } from '@lib/ui/overlay';
 import { createTooltipWidget, type TooltipWidgetConfig } from '@lib/ui/overlay';
 import { createVideoScrubWidget, type VideoScrubWidgetConfig } from '@lib/ui/overlay';
 import { createProgressWidget, type ProgressWidgetConfig } from '@lib/ui/overlay';
-import { createSceneViewHost, type SceneViewHostConfig } from '@lib/ui/overlay';
 
 import type { WidgetDefinition } from '../types';
 import { registerWidget } from '../widgetRegistry';
 
+import { extractBinding } from './extractBinding';
+
 // ============================================================================
 // Settings Interfaces
 // ============================================================================
-
-/** Badge widget settings */
-export interface BadgeWidgetSettings {
-  variant: 'icon' | 'text' | 'pill';
-  icon?: string;
-  color: 'gray' | 'blue' | 'green' | 'red' | 'yellow' | 'purple';
-  shape: 'rounded' | 'circle' | 'square';
-  pulse?: boolean;
-  tooltip?: string;
-}
 
 /** Panel widget settings */
 export interface PanelWidgetSettings {
@@ -49,14 +38,6 @@ export interface UploadWidgetSettings {
   size: 'xs' | 'sm' | 'md';
   showProgress: boolean;
   successDuration?: number;
-}
-
-/** Button widget settings */
-export interface ButtonWidgetSettings {
-  icon?: string;
-  variant: 'primary' | 'secondary' | 'ghost' | 'icon';
-  size: 'xs' | 'sm' | 'md';
-  disabled?: boolean;
 }
 
 /** Menu widget settings */
@@ -99,95 +80,9 @@ export interface ProgressWidgetSettings {
   state: 'normal' | 'success' | 'error' | 'warning';
 }
 
-/** Scene view widget settings */
-export interface SceneViewWidgetSettings {
-  sceneViewId?: string;
-  layout: 'single' | 'grid' | 'stack';
-  showCaption: boolean;
-}
-
-const isDev = import.meta.env?.DEV;
-
-// ============================================================================
-// Helper
-// ============================================================================
-
-function extractBinding<T>(
-  bindings: UnifiedWidgetConfig['bindings'],
-  target: string
-): DataBinding<T> | undefined {
-  if (!bindings) return undefined;
-  const binding = bindings.find(b => b.target === target);
-  if (!binding) return undefined;
-
-  if (binding.kind === 'static') {
-    return createBindingFromValue(target, binding.staticValue) as DataBinding<T>;
-  } else if (binding.kind === 'path' && binding.path) {
-    return { kind: 'path', path: binding.path, target } as DataBinding<T>;
-  } else if (binding.kind === 'fn') {
-    // Function bindings cannot be serialized/reconstructed from config.
-    // They must be provided at runtime via widget factory options.
-    if (isDev) {
-      console.warn(
-        `[extractBinding] Function binding for "${target}" cannot be reconstructed from serialized config. ` +
-        `Provide it via runtimeOptions instead.`
-      );
-    }
-    return undefined;
-  }
-  return undefined;
-}
-
 // ============================================================================
 // Widget Definitions
 // ============================================================================
-
-export const badgeWidget: WidgetDefinition<BadgeWidgetSettings> = {
-  id: 'badge',
-  title: 'Badge',
-  description: 'Status badge with icon or label',
-  icon: 'tag',
-  category: 'overlay',
-  domain: 'overlay',
-  tags: ['badge', 'status', 'icon', 'overlay'],
-  surfaces: ['overlay', 'hud'],
-  surfaceConfig: {
-    overlay: {
-      defaultAnchor: 'top-left',
-      defaultOffset: { x: 8, y: 8 },
-    },
-  },
-  factory: (config, runtimeOptions) => {
-    const badgeConfig: BadgeWidgetConfig = {
-      id: config.id,
-      position: fromUnifiedPosition(config.position),
-      visibility: fromUnifiedVisibility(config.visibility),
-      variant: (config.props?.variant as any) || 'icon',
-      icon: config.props?.icon as string | undefined,
-      labelBinding: extractBinding(config.bindings, 'label'),
-      color: (config.props?.color as any) || 'gray',
-      shape: (config.props?.shape as any) || 'rounded',
-      pulse: config.props?.pulse as boolean | undefined,
-      tooltip: config.props?.tooltip as string | undefined,
-      onClick: runtimeOptions?.onClick,
-      className: config.style?.className,
-      priority: config.position.order,
-    };
-    return createBadgeWidget(badgeConfig);
-  },
-  defaultSettings: {
-    variant: 'icon',
-    color: 'gray',
-    shape: 'rounded',
-  },
-  defaultConfig: {
-    type: 'badge',
-    componentType: 'overlay',
-    position: { mode: 'anchor', anchor: 'top-left', offset: { x: 8, y: 8 } },
-    visibility: { simple: 'always' },
-    version: 1,
-  },
-};
 
 export const panelWidget: WidgetDefinition<PanelWidgetSettings> = {
   id: 'panel',
@@ -312,50 +207,6 @@ export const uploadWidget: WidgetDefinition<UploadWidgetSettings> = {
     position: { mode: 'anchor', anchor: 'bottom-center', offset: { x: 0, y: -8 } },
     visibility: { simple: 'always' },
     bindings: [{ kind: 'static', target: 'state', staticValue: 'idle' }],
-    version: 1,
-  },
-};
-
-export const buttonWidget: WidgetDefinition<ButtonWidgetSettings> = {
-  id: 'button',
-  title: 'Button',
-  description: 'Action button',
-  icon: 'square',
-  category: 'actions',
-  domain: 'overlay',
-  tags: ['button', 'action', 'overlay'],
-  surfaces: ['overlay', 'hud'],
-  surfaceConfig: {
-    overlay: {
-      defaultAnchor: 'bottom-right',
-      defaultOffset: { x: -8, y: -8 },
-    },
-  },
-  factory: (config, runtimeOptions) => {
-    const buttonConfig: ButtonWidgetConfig = {
-      id: config.id,
-      position: fromUnifiedPosition(config.position),
-      visibility: fromUnifiedVisibility(config.visibility),
-      labelBinding: extractBinding(config.bindings, 'label'),
-      icon: config.props?.icon as string | undefined,
-      variant: (config.props?.variant as any) || 'secondary',
-      size: (config.props?.size as any) || 'sm',
-      disabled: config.props?.disabled as boolean | undefined,
-      onClick: runtimeOptions?.onClick,
-      className: config.style?.className,
-      priority: config.position.order,
-    };
-    return createButtonWidget(buttonConfig);
-  },
-  defaultSettings: {
-    variant: 'secondary',
-    size: 'sm',
-  },
-  defaultConfig: {
-    type: 'button',
-    componentType: 'overlay',
-    position: { mode: 'anchor', anchor: 'bottom-right', offset: { x: -8, y: -8 } },
-    visibility: { simple: 'hover' },
     version: 1,
   },
 };
@@ -659,73 +510,26 @@ export const progressWidget: WidgetDefinition<ProgressWidgetSettings> = {
   },
 };
 
-export const sceneViewWidget: WidgetDefinition<SceneViewWidgetSettings> = {
-  id: 'scene-view',
-  title: 'Scene View',
-  description: 'Scene view host for plugins',
-  icon: 'image',
-  category: 'display',
-  domain: 'overlay',
-  tags: ['scene', 'view', 'comic', 'panels', 'overlay'],
-  surfaces: ['overlay'],
-  surfaceConfig: {
-    overlay: { defaultAnchor: 'center' },
-  },
-  factory: (config, runtimeOptions) => {
-    const sceneViewConfig: SceneViewHostConfig = {
-      id: config.id,
-      position: fromUnifiedPosition(config.position),
-      visibility: fromUnifiedVisibility(config.visibility),
-      sceneViewId: config.props?.sceneViewId as string | undefined,
-      panelIdsBinding: extractBinding(config.bindings, 'panelIds'),
-      assetIdsBinding: extractBinding(config.bindings, 'assetIds'),
-      panelsBinding: extractBinding(config.bindings, 'panels'),
-      layout: (config.props?.layout as any) || 'single',
-      showCaption: config.props?.showCaption !== false,
-      className: config.style?.className,
-      priority: config.position.order,
-      onClick: runtimeOptions?.onClick,
-      requestContextBinding: extractBinding(config.bindings, 'requestContext'),
-    };
-    return createSceneViewHost(sceneViewConfig);
-  },
-  defaultSettings: {
-    sceneViewId: 'scene-view:comic-panels',
-    layout: 'single',
-    showCaption: true,
-  },
-  defaultConfig: {
-    type: 'scene-view',
-    componentType: 'overlay',
-    position: { mode: 'anchor', anchor: 'center' },
-    visibility: { simple: 'always' },
-    bindings: [],
-    version: 1,
-  },
-};
-
 // ============================================================================
-// All Overlay Widgets
+// All Overlay Widgets (directly registered — not via plugin system)
 // ============================================================================
 
 export const overlayWidgetDefinitions: WidgetDefinition[] = [
-  badgeWidget,
   panelWidget,
   uploadWidget,
-  buttonWidget,
   menuWidget,
   tooltipWidget,
   videoScrubWidget,
   progressWidget,
-  sceneViewWidget,
 ];
 
 /**
- * Register all overlay widgets in the unified registry.
+ * Register directly-managed overlay widgets in the unified registry.
+ * badge, button, and scene-view are registered via the plugin system.
  */
 export function registerOverlayWidgets(): void {
   for (const widget of overlayWidgetDefinitions) {
     registerWidget(widget);
   }
-  console.log(`[widgets] Registered ${overlayWidgetDefinitions.length} overlay widgets`);
+  console.log(`[widgets] Registered ${overlayWidgetDefinitions.length} overlay widgets (direct)`);
 }

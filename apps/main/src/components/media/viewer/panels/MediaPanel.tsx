@@ -192,23 +192,24 @@ export function MediaPanel({ context }: MediaPanelProps) {
 
         {/* Media/overlay display */}
         <div className="flex-1 min-w-0 relative flex flex-col">
-          {ActiveMain ? (
-            <ActiveMain
-              asset={asset}
-              settings={settings}
-              onCaptureFrame={captureFrame}
-              captureDisabled={isCapturing}
-            />
-          ) : (
-            <MediaDisplay
-              asset={asset}
-              settings={settings}
-              fitMode={fitMode}
-              zoom={zoom}
-              videoRef={videoRef}
-              imageRef={imageRef}
-            />
+          {ActiveMain && (
+            <div className="absolute inset-0 z-10">
+              <ActiveMain
+                asset={asset}
+                settings={settings}
+                onCaptureFrame={captureFrame}
+                captureDisabled={isCapturing}
+              />
+            </div>
           )}
+          <MediaDisplay
+            asset={asset}
+            settings={settings}
+            fitMode={fitMode}
+            zoom={zoom}
+            videoRef={videoRef}
+            imageRef={imageRef}
+          />
         </div>
 
         {ActiveSidebar && (

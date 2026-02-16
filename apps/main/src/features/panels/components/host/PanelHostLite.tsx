@@ -9,7 +9,6 @@ import {
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
-import type { PanelId } from "@features/workspace";
 
 import type { ContextLabelStrategy, CoreEditorRole } from "../../lib/panelRegistry";
 import { ScopeHost } from "../scope/ScopeHost";
@@ -18,7 +17,7 @@ import { PanelHeader } from "../shared/PanelHeader";
 type PanelHostVariant = "standalone" | "embedded" | "dockview";
 
 export interface PanelHostLiteProps {
-  panelId: PanelId;
+  panelId: string;
   className?: string;
   style?: CSSProperties;
   /**
@@ -34,7 +33,7 @@ export interface PanelHostLiteProps {
   /**
    * Custom fallback UI when the requested panel cannot be found.
    */
-  fallback?: ReactNode | ((panelId: PanelId) => ReactNode);
+  fallback?: ReactNode | ((panelId: string) => ReactNode);
   /**
    * Whether to stretch the content to flex-1 (default true). Disable when you
    * need the panel to size to its content.

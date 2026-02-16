@@ -241,16 +241,17 @@ export function useQuickGenerateController() {
 
   // ─── Generation actions ───
 
-  async function generate(options?: { overrideDynamicParams?: Record<string, any> }) {
+  async function generate(options?: { overrideDynamicParams?: Record<string, any>; overrideOperationInputs?: any[] }) {
     resetForGeneration();
 
     try {
       const { currentInputs, currentInput, transitionInputs } = getInputState();
+      const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
       const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      const request = buildRequest(dynamicParams, currentInputs, currentInput);
+      const request = buildRequest(dynamicParams, effectiveInputs, currentInput);
       if ('error' in request) {
         setError(request.error);
         setGenerating(false);

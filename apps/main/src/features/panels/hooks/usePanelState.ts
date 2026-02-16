@@ -10,7 +10,7 @@
  *
  * @example
  * ```tsx
- * function SettingsPanel({ panelId }: { panelId: PanelId }) {
+ * function SettingsPanel({ panelId }: { panelId: string }) {
  *   const { instanceId } = usePanelIdentity();
  *   const [activeTab, setActiveTab] = usePanelPersistedState(
  *     'activeTab',
@@ -24,7 +24,7 @@
 
 import { useCallback, useMemo } from "react";
 
-import { useWorkspaceStore, type PanelId } from "@features/workspace";
+import { useWorkspaceStore } from "@features/workspace";
 
 import { usePanelConfigStore } from "../stores/panelConfigStore";
 import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
@@ -34,7 +34,7 @@ export type PanelStateScope = "instance" | "panel";
 
 export interface PanelStateOptions {
   /** Panel type ID */
-  panelId: PanelId | `dev-tool:${string}`;
+  panelId: string;
   /** Instance ID (from dockview api.id or floating panel). Required for instance scope. */
   instanceId?: string;
   /** Scope determines persistence location. Defaults to 'instance'. */
@@ -55,7 +55,7 @@ const EMPTY_SETTINGS: Record<string, unknown> = {};
  *
  * @example
  * ```tsx
- * function MyPanel(props: IDockviewPanelProps & { panelId: PanelId }) {
+ * function MyPanel(props: IDockviewPanelProps & { panelId: string }) {
  *   const identity = usePanelIdentity(props);
  *   // identity.panelId = 'my-panel'
  *   // identity.instanceId = 'my-panel_1' (from dockview)
@@ -63,9 +63,9 @@ const EMPTY_SETTINGS: Record<string, unknown> = {};
  * ```
  */
 export function usePanelIdentity(props?: {
-  panelId?: PanelId | `dev-tool:${string}`;
+  panelId?: string;
   api?: { id: string };
-}): { panelId?: PanelId | `dev-tool:${string}`; instanceId?: string } {
+}): { panelId?: string; instanceId?: string } {
   return useMemo(
     () => ({
       panelId: props?.panelId,
@@ -113,7 +113,7 @@ export function usePanelPersistedState<T>(
 
   // Panel config store (for panel scope)
   const panelConfig = usePanelConfigStore((s) =>
-    panelId ? s.panelConfigs[panelId as PanelId]?.settings ?? EMPTY_SETTINGS : EMPTY_SETTINGS
+    panelId ? s.panelConfigs[panelId]?.settings ?? EMPTY_SETTINGS : EMPTY_SETTINGS
   );
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
@@ -161,13 +161,13 @@ export function usePanelPersistedState<T>(
 
       // Instance scope
       if (scope === "instance" && instanceId && panelId) {
-        setInstanceSetting(instanceId, panelId as PanelId, key, resolved);
+        setInstanceSetting(instanceId, panelId, key, resolved);
         return;
       }
 
       // Panel scope
       if (scope === "panel" && panelId) {
-        updatePanelSettings(panelId as PanelId, { [key]: resolved });
+        updatePanelSettings(panelId, { [key]: resolved });
       }
     },
     [
@@ -230,7 +230,7 @@ export function usePanelStateObject<T extends Record<string, any>>(
 
   // Panel config store
   const panelConfig = usePanelConfigStore((s) =>
-    panelId ? s.panelConfigs[panelId as PanelId]?.settings ?? EMPTY_SETTINGS : EMPTY_SETTINGS
+    panelId ? s.panelConfigs[panelId]?.settings ?? EMPTY_SETTINGS : EMPTY_SETTINGS
   );
   const updatePanelSettings = usePanelConfigStore((s) => s.updatePanelSettings);
 
@@ -268,12 +268,12 @@ export function usePanelStateObject<T extends Record<string, any>>(
       }
 
       if (scope === "instance" && instanceId && panelId) {
-        setPanelSettings(instanceId, panelId as PanelId, updates as Record<string, unknown>);
+        setPanelSettings(instanceId, panelId, updates as Record<string, unknown>);
         return;
       }
 
       if (scope === "panel" && panelId) {
-        updatePanelSettings(panelId as PanelId, updates);
+        updatePanelSettings(panelId, updates);
       }
     },
     [

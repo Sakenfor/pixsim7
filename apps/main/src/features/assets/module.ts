@@ -94,6 +94,7 @@ export const assetsModule: Module = {
       { id: 'remote-gallery', label: 'Remote Gallery', icon: 'globe', param: { key: 'source', value: 'remote-gallery' } },
       { id: 'local-fs', label: 'Local Folders', icon: 'folder', param: { key: 'source', value: 'local-fs' } },
     ],
+    settingsPanelId: 'gallery',
     component: lazy(() => import('../../routes/Assets').then(m => ({ default: m.AssetsRoute }))),
     actions: [openGalleryAction, uploadAssetAction, searchAssetsAction],
     appMap: {

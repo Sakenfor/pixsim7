@@ -4,46 +4,20 @@
  * Functions for syncing Pixverse videos/images to local Assets
  * and rebuilding lineage from stored metadata.
  */
+import type { ApiComponents } from '@pixsim7/shared.types';
+
 import { pixsimClient } from '@lib/api/client';
+
+type Schemas = ApiComponents['schemas'];
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export interface SyncDryRunItem {
-  video_id?: string;
-  image_id?: string;
-  already_imported: boolean;
-  raw: Record<string, any>;
-}
-
-export interface SyncDryRunCategory {
-  total_remote: number;
-  existing_count: number;
-  items: SyncDryRunItem[];
-}
-
-export interface SyncDryRunResponse {
-  provider_id: string;
-  account_id: number;
-  limit: number;
-  offset: number;
-  videos: SyncDryRunCategory;
-  images?: SyncDryRunCategory;
-}
-
-export interface SyncAssetsResponse {
-  provider_id: string;
-  account_id: number;
-  videos: {
-    created: number;
-    skipped_existing: number;
-  };
-  images: {
-    created: number;
-    skipped_existing: number;
-  };
-}
+export type SyncDryRunItem = Schemas['PixverseSyncDryRunItem'];
+export type SyncDryRunCategory = Schemas['PixverseSyncDryRunCategory'];
+export type SyncDryRunResponse = Schemas['PixverseSyncDryRunResponse'];
+export type SyncAssetsResponse = Schemas['PixverseSyncAssetsResponse'];
 
 export interface LineageRefreshResult {
   asset_id: number;

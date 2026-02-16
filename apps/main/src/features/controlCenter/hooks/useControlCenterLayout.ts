@@ -7,6 +7,8 @@
  */
 
 import { useMemo } from 'react';
+
+import { TOOLBAR_HEIGHT } from '@features/controlCenter/components/constants';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
 export interface ControlCenterLayoutPadding {
@@ -44,11 +46,15 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
   const open = useControlCenterStore((s) => s.open);
   const dockPosition = useControlCenterStore((s) => s.dockPosition);
   const layoutBehavior = useControlCenterStore((s) => s.layoutBehavior);
+  const retractedMode = useControlCenterStore((s) => s.retractedMode);
   const height = useControlCenterStore((s) => s.height);
 
   const result = useMemo(() => {
     const isFloating = dockPosition === 'floating';
-    const isPushActive = layoutBehavior === 'push' && open && !isFloating;
+    // Always push when retracted in peek mode (toolbar is visible and would overlap content)
+    const peekRetracted = !open && retractedMode === 'peek' && !isFloating;
+    const isPushActive = peekRetracted || (layoutBehavior === 'push' && open && !isFloating);
+    const pushSize = peekRetracted ? TOOLBAR_HEIGHT : height;
 
     const padding: ControlCenterLayoutPadding = {
       paddingTop: 0,
@@ -60,16 +66,16 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
     if (isPushActive) {
       switch (dockPosition) {
         case 'bottom':
-          padding.paddingBottom = height;
+          padding.paddingBottom = pushSize;
           break;
         case 'top':
-          padding.paddingTop = height;
+          padding.paddingTop = pushSize;
           break;
         case 'left':
-          padding.paddingLeft = height; // height is used for width in vertical mode
+          padding.paddingLeft = pushSize; // height is used for width in vertical mode
           break;
         case 'right':
-          padding.paddingRight = height;
+          padding.paddingRight = pushSize;
           break;
       }
     }
@@ -89,7 +95,7 @@ export function useControlCenterLayout(): UseControlCenterLayoutResult {
       dockPosition,
       isOpen: open,
     };
-  }, [open, dockPosition, layoutBehavior, height]);
+  }, [open, dockPosition, layoutBehavior, retractedMode, height]);
 
   return result;
 }

@@ -1,15 +1,20 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
+import { createElement } from 'react';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
+import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 
 import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
 
 import type { Module } from '@app/modules/types';
 
-import { MediaHarnessPage } from '../components/MediaHarnessPage';
-
-
-// === App Map Actions ===
+function openDevtools(path: string) {
+  if (typeof window !== 'undefined') {
+    window.location.assign(buildDevtoolsUrl(path));
+    return;
+  }
+  navigateTo('/devtools');
+}
 
 const openAppMapAction: ActionDefinition = {
   id: 'app-map.open',
@@ -18,13 +23,29 @@ const openAppMapAction: ActionDefinition = {
   description: 'View live app architecture and plugin ecosystem',
   icon: 'map',
   shortcut: 'Ctrl+Shift+M',
-  route: '/app-map',
+  route: '/devtools',
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    navigateTo('/app-map');
+    openDevtools('/app-map');
   },
 };
+
+const openCodegenAction: ActionDefinition = {
+  id: 'codegen.open',
+  featureId: 'codegen',
+  title: 'Open Codegen',
+  description: 'Run and verify workspace code generation tasks',
+  icon: 'code',
+  route: '/devtools',
+  contexts: ['background'],
+  category: 'quick-add',
+  execute: () => {
+    openDevtools('/dev/codegen');
+  },
+};
+
+const DevtoolsGatewayRedirect = () => createElement(DevtoolsRedirect, { preservePath: false });
 
 export const healthModule: Module = {
   id: 'health',
@@ -38,189 +59,21 @@ export const healthModule: Module = {
     featureId: 'health',
     showInNav: false,
     featured: true,
-    // Health page is part of ControlCenter, not a standalone route
   },
 };
 
-/**
- * @appMap.docs docs/APP_MAP.md, docs/APP_MAP_JSDOC.md
- * @appMap.backend pixsim7.backend.main.api.v1.dev_architecture
- * @appMap.frontend apps/main/src/features/panels/components/dev/AppMapPanel.tsx, apps/main/src/features/panels/components/dev/appMap, packages/shared/app-map/src/generateAppMap.ts
- * @appMap.notes App Map is the canonical source for architecture introspection. | Backend API: GET /dev/architecture/map | Frontend uses module-derived appMap metadata (JSDoc @appMap tags). | Static JSON (app_map.sources.json) is deprecated.
- */
-export const appMapModule: Module = {
-  id: 'app-map-dev',
-  name: 'App Map',
+export const devtoolsGatewayModule: Module = {
+  id: 'devtools-gateway',
+  name: 'Developer Tools',
   page: {
-    route: '/app-map',
-    icon: 'map',
-    description: 'Visualize application structure and architecture',
-    category: 'development',
-    featureId: 'app-map',
-    featurePrimary: true,
-    showInNav: true,
-    hidden: true,
-    component: DevtoolsRedirect,
-    actions: [openAppMapAction],
-    devTool: {
-      category: 'graph',
-      tags: ['architecture', 'map', 'visualization', 'structure'],
-    },
-  },
-};
-
-export const modulesDevModule: Module = {
-  id: 'modules-dev',
-  name: 'Modules Overview',
-  page: {
-    route: '/dev/modules',
+    route: '/devtools',
     icon: 'code',
     iconColor: 'text-cyan-500',
-    description: 'View all registered modules and their status',
+    description: 'Open the dedicated Developer Tools workspace',
     category: 'development',
-    featureId: 'modules-dev',
+    featureId: 'devtools',
     hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const templateAnalyticsModule: Module = {
-  id: 'template-analytics',
-  name: 'Template Analytics',
-  page: {
-    route: '/template-analytics',
-    icon: 'bar-chart',
-    iconColor: 'text-purple-500',
-    description: 'Analyze template usage and performance metrics',
-    category: 'development',
-    featureId: 'template-analytics',
-    hidden: true,
-    component: DevtoolsRedirect,
-    devTool: {
-      category: 'debug',
-      tags: ['templates', 'analytics', 'metrics', 'performance'],
-    },
-  },
-};
-
-export const promptInspectorModule: Module = {
-  id: 'prompt-inspector',
-  name: 'Prompt Inspector',
-  page: {
-    route: '/dev/prompt-inspector',
-    icon: 'search',
-    iconColor: 'text-yellow-500',
-    description: 'Inspect and debug prompts sent to LLM providers',
-    category: 'development',
-    featureId: 'prompt-inspector',
-    hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const promptImporterModule: Module = {
-  id: 'prompt-importer',
-  name: 'Prompt Importer',
-  page: {
-    route: '/dev/prompt-importer',
-    icon: 'upload',
-    iconColor: 'text-green-500',
-    description: 'Import prompts from external sources',
-    category: 'development',
-    featureId: 'prompt-importer',
-    hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const promptLabModule: Module = {
-  id: 'prompt-lab',
-  name: 'Prompt Lab',
-  page: {
-    route: '/dev/prompt-lab',
-    icon: 'flask',
-    iconColor: 'text-pink-500',
-    description: 'Experiment with prompt variations and test outputs',
-    category: 'development',
-    featureId: 'prompt-lab',
-    hidden: true,
-    component: DevtoolsRedirect,
-    appMap: {
-      docs: [
-        'docs/prompts/SEMANTIC_PACKS_IMPLEMENTATION.md',
-        'docs/prompts/PROMPT_SYSTEM_REVIEW.md',
-      ],
-      backend: [
-        'pixsim7.backend.main.api.v1.prompts',
-        'pixsim7.backend.main.api.v1.semantic_packs',
-        'pixsim7.backend.main.api.v1.dev_prompt_categories',
-      ],
-      frontend: ['apps/main/src/features/prompts/'],
-    },
-  },
-};
-
-export const actionBlockGraphModule: Module = {
-  id: 'action-block-graph',
-  name: 'Action Block Graph',
-  page: {
-    route: '/dev/action-block-graph',
-    icon: 'git-branch',
-    iconColor: 'text-orange-500',
-    description: 'Visualize and debug action block dependencies',
-    category: 'development',
-    featureId: 'action-block-graph',
-    hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const blockFitModule: Module = {
-  id: 'block-fit',
-  name: 'Block Fit',
-  page: {
-    route: '/dev/block-fit',
-    icon: 'grid',
-    iconColor: 'text-teal-500',
-    description: 'Test block layout fitting algorithms',
-    category: 'development',
-    featureId: 'block-fit',
-    hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const widgetBuilderModule: Module = {
-  id: 'widget-builder',
-  name: 'Widget Builder',
-  page: {
-    route: '/dev/widget-builder',
-    icon: 'layout',
-    iconColor: 'text-blue-500',
-    description: 'Visual editor for creating and configuring widgets',
-    category: 'development',
-    featureId: 'widget-builder',
-    hidden: true,
-    component: DevtoolsRedirect,
-  },
-};
-
-export const mediaHarnessModule: Module = {
-  id: 'media-harness',
-  name: 'Media Resolver Harness',
-  page: {
-    route: '/dev/media-harness',
-    icon: 'video',
-    iconColor: 'text-emerald-500',
-    description: 'Debug asset URL resolution, auth media, and video scrubbing',
-    category: 'development',
-    featureId: 'media-harness',
-    hidden: true,
-    component: MediaHarnessPage,
-    devTool: {
-      category: 'debug',
-      tags: ['media', 'assets', 'thumbnails', 'scrub', 'auth'],
-      safeForNonDev: false,
-    },
+    component: DevtoolsGatewayRedirect,
+    actions: [openAppMapAction, openCodegenAction],
   },
 };

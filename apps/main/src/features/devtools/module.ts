@@ -1,13 +1,9 @@
 import type { Module } from '@app/modules/types';
 
 /**
- * App Map Module
+ * Devtools Feature Marker Module
  *
- * Dev tools module for visualizing app architecture, features, and plugins.
- * Provides live view of capability registry and plugin catalog.
- *
- * Note: App-map actions are registered via appMapModule.page.actions
- * in routes/index.ts (Phase 1 action consolidation).
+ * Marker module for devtools feature wiring.
  */
 export const devtoolsModule: Module = {
   id: 'app-map',

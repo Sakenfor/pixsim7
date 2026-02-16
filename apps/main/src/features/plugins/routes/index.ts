@@ -3,8 +3,6 @@ import { lazy } from 'react';
 
 import { navigateTo } from '@lib/capabilities/routeConstants';
 
-import { DevtoolsRedirect } from '@/components/dev/DevtoolsRedirect';
-
 import type { Module } from '@app/modules/types';
 
 /** Open Plugin Manager action */
@@ -48,19 +46,5 @@ export const pluginManagerModule: Module = {
         'pixsim7.backend.main.infrastructure.plugins',
       ],
     },
-  },
-};
-
-export const pluginWorkspaceModule: Module = {
-  id: 'plugin-workspace',
-  name: 'Plugin Workspace',
-  page: {
-    route: '/plugin-workspace',
-    icon: 'settings',
-    description: 'Manage and develop plugins',
-    category: 'development',
-    featureId: 'plugin-workspace',
-    hidden: true,
-    component: DevtoolsRedirect,
   },
 };

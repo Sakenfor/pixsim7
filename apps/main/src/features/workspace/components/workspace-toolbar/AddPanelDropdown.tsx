@@ -7,10 +7,9 @@ import { panelSelectors } from "@lib/plugins/catalogSelectors";
 import { CATEGORY_LABELS, CATEGORY_ORDER } from "@features/panels";
 
 import { resolveWorkspaceDockview } from "../../lib/resolveWorkspaceDockview";
-import { type PanelId } from "../../stores/workspaceStore";
 
 interface AddPanelDropdownProps {
-  onRestorePanel: (panelId: PanelId) => void;
+  onRestorePanel: (panelId: string) => void;
   onClose: () => void;
 }
 
@@ -18,7 +17,7 @@ export function AddPanelDropdown({
   onRestorePanel,
   onClose,
 }: AddPanelDropdownProps) {
-  const [existingPanels, setExistingPanels] = useState<Set<PanelId>>(new Set());
+  const [existingPanels, setExistingPanels] = useState<Set<string>>(new Set());
 
   // Get existing panels from the dockview API
   useEffect(() => {
@@ -26,11 +25,11 @@ export function AddPanelDropdown({
     const api = host?.api;
     if (!api) return;
 
-    const ids = new Set<PanelId>();
+    const ids = new Set<string>();
     for (const panel of getDockviewPanels(api)) {
       const panelId = resolvePanelDefinitionId(panel);
       if (typeof panelId === "string") {
-        ids.add(panelId as PanelId);
+        ids.add(panelId);
       }
     }
     setExistingPanels(ids);
@@ -53,7 +52,7 @@ export function AddPanelDropdown({
             </div>
             <div className="space-y-0.5">
               {panels.map((panel) => {
-                const alreadyExists = existingPanels.has(panel.id as PanelId);
+                const alreadyExists = existingPanels.has(panel.id);
 
                 return (
                   <button

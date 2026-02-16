@@ -1,4 +1,6 @@
+import { useToastStore } from '@pixsim7/shared.ui';
 import { useCallback, useMemo } from 'react';
+
 
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
@@ -10,11 +12,12 @@ import {
   type GenerationWidgetContext,
   useCapability,
 } from '@features/contextHub';
+import type { InputItem } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { providerCapabilityRegistry } from '@features/providers';
 
-import type { OperationType } from '@/types/operations';
+import { getFallbackOperation, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { createPendingGeneration } from '../models';
@@ -157,7 +160,7 @@ export function useMediaGenerationActions() {
 
   // Quick generate - immediately triggers generation with an asset
   // Uses current scoped settings (provider, model, params, etc.)
-  // Does NOT add to inputs - just generates directly
+  // Mirrors the controller.generate() flow but with the clicked asset as sole input
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean }) => {
       try {
@@ -181,30 +184,50 @@ export function useMediaGenerationActions() {
           opSpec?.parameters,
         );
 
-        // Build the generation request with the asset as source
+        // Create a proper InputItem for the asset (mirrors what the input store creates)
+        const inputItem: InputItem = {
+          id: `quick-${asset.id}-${Date.now()}`,
+          asset,
+          queuedAt: new Date().toISOString(),
+          lockedTimestamp: undefined,
+        };
+
+        // Build the generation request with the asset as the sole input.
+        // Pass it both as operationInputs (for multi-asset resolution like
+        // composition_assets) and as currentInput (for single-asset resolution
+        // like source_asset_id). Don't manually inject source_asset_id — let
+        // buildGenerationRequest resolve it through its normal chain.
         const buildResult = buildGenerationRequest({
           operationType,
           prompt: prompt || '',
-          dynamicParams: {
-            ...dynamicParams,
-            source_asset_id: asset.id,
-          },
+          dynamicParams,
+          operationInputs: [inputItem],
           prompts: [],
           transitionDurations: [],
           maxChars,
           activeAsset: toSelectedAsset(asset, 'gallery'),
-          currentInput: { id: 'quick', asset, queuedAt: '', lockedTimestamp: undefined },
+          currentInput: inputItem,
         });
 
         if (buildResult.error || !buildResult.params) {
-          console.error('[quickGenerate] Build failed:', buildResult.error);
+          useToastStore.getState().addToast({
+            type: 'error',
+            message: buildResult.error ?? 'Failed to build generation request',
+            duration: 4000,
+          });
           return;
         }
+
+        // Use getFallbackOperation like the controller does
+        const hasAssetInput =
+          Array.isArray(buildResult.params.composition_assets) &&
+          buildResult.params.composition_assets.length > 0;
+        const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
 
         const result = await generateAsset({
           prompt: buildResult.finalPrompt,
           providerId,
-          operationType,
+          operationType: effectiveOperationType,
           extraParams: buildResult.params,
         });
 
@@ -213,7 +236,7 @@ export function useMediaGenerationActions() {
 
         addOrUpdateGeneration(createPendingGeneration({
           id: genId,
-          operationType,
+          operationType: effectiveOperationType,
           providerId,
           finalPrompt: buildResult.finalPrompt,
           params: buildResult.params,
@@ -221,10 +244,12 @@ export function useMediaGenerationActions() {
         }));
 
         setWatchingGeneration(genId);
-
-        console.debug('[quickGenerate] Started generation:', genId);
       } catch (err) {
-        console.error('[quickGenerate] Failed:', extractErrorMessage(err));
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: `Quick generate failed: ${extractErrorMessage(err)}`,
+          duration: 4000,
+        });
       }
     },
     [

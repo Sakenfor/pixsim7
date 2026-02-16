@@ -12,10 +12,18 @@ import type { PageCategory } from '@app/modules/contracts';
 
 import { MorePanelsFlyout } from './MorePanelsFlyout';
 import { PanelShortcuts } from './PanelShortcuts';
+import { SettingsFlyout } from './SettingsFlyout';
 import { SubNavFlyout } from './SubNavFlyout';
 
 /** Category display order (development excluded) */
 const CATEGORY_ORDER: PageCategory[] = ['creation', 'automation', 'game', 'management'];
+
+const CATEGORY_LABELS: Record<string, string> = {
+  creation: 'CREATE',
+  automation: 'AUTO',
+  game: 'GAME',
+  management: 'MANAGE',
+};
 
 type PageEntry = ReturnType<typeof moduleRegistry.getPages>[number];
 
@@ -53,6 +61,20 @@ export function NavIcon({ name, size }: { name: string; size: number }) {
   return <Comp size={size} strokeWidth={2} />;
 }
 
+function GearButton({ panelId }: { panelId: string }) {
+  return (
+    <SettingsFlyout panelId={panelId}>
+      <button
+        onClick={(e) => e.stopPropagation()}
+        className="absolute -top-0.5 -right-0.5 w-4 h-4 flex items-center justify-center rounded-sm bg-neutral-700/80 text-neutral-400 hover:text-neutral-100 hover:bg-neutral-600 transition-colors"
+        aria-label="Panel settings"
+      >
+        <NavIcon name="settings" size={10} />
+      </button>
+    </SettingsFlyout>
+  );
+}
+
 function NavButton({
   page,
   active,
@@ -63,21 +85,24 @@ function NavButton({
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
   const hasSubNav = page.subNav && page.subNav.length > 0;
+  const hasGear = !!page.settingsPanelId;
 
   const handleClick = useCallback(() => {
     navigate(page.route);
   }, [navigate, page.route]);
 
   const button = (
-    <div className="relative flex items-center justify-center">
+    <div
+      className="relative flex items-center justify-center group/navbtn"
+      onMouseEnter={hasSubNav ? undefined : () => setHovered(true)}
+      onMouseLeave={hasSubNav ? undefined : () => setHovered(false)}
+    >
       {/* Active indicator bar */}
       {active && (
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
       )}
       <button
         onClick={handleClick}
-        onMouseEnter={hasSubNav ? undefined : () => setHovered(true)}
-        onMouseLeave={hasSubNav ? undefined : () => setHovered(false)}
         className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
           active
             ? 'text-accent bg-accent/15'
@@ -87,6 +112,12 @@ function NavButton({
       >
         <NavIcon name={page.icon} size={20} />
       </button>
+      {/* Gear icon — visible on hover when page has settingsPanelId */}
+      {hasGear && (
+        <div className="opacity-0 group-hover/navbtn:opacity-100 transition-opacity">
+          <GearButton panelId={page.settingsPanelId!} />
+        </div>
+      )}
       {!hasSubNav && (
         <Tooltip content={page.name} position="right" show={hovered} delay={400} />
       )}
@@ -102,6 +133,38 @@ function NavButton({
   }
 
   return button;
+}
+
+function CategoryGroup({
+  category,
+  pages,
+  location,
+}: {
+  category: string;
+  pages: PageEntry[];
+  location: { pathname: string };
+}) {
+  const isCollapsed = useActivityBarStore((s) => s.collapsedCategories.includes(category));
+  const toggleCategory = useActivityBarStore((s) => s.toggleCategory);
+
+  return (
+    <div className="flex flex-col items-center">
+      <button
+        onClick={() => toggleCategory(category)}
+        className="w-full py-0.5 text-[9px] uppercase font-semibold tracking-wider text-neutral-600 hover:text-neutral-400 transition-colors select-none"
+      >
+        {CATEGORY_LABELS[category] ?? category.toUpperCase()}
+      </button>
+      {!isCollapsed &&
+        pages.map((page) => (
+          <NavButton
+            key={page.id}
+            page={page}
+            active={location.pathname.startsWith(page.route)}
+          />
+        ))}
+    </div>
+  );
 }
 
 export function ActivityBar() {
@@ -163,13 +226,7 @@ export function ActivityBar() {
           return (
             <div key={cat} className="flex flex-col items-center gap-0.5">
               {catIdx > 0 && <Separator />}
-              {group.map((page) => (
-                <NavButton
-                  key={page.id}
-                  page={page}
-                  active={location.pathname.startsWith(page.route)}
-                />
-              ))}
+              <CategoryGroup category={cat} pages={group} location={location} />
             </div>
           );
         })}

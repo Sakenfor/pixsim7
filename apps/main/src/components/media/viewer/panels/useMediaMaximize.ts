@@ -2,11 +2,12 @@
  * useMediaMaximize Hook
  *
  * Handles maximize/restore logic for media panel using dockview API.
- * Intelligently detects current state by checking actual panel height.
+ * Always reads actual panel height to determine state (no stale closures).
+ * Saves pre-maximize height so restore returns to exact previous position.
  */
 
 import type { DockviewApi } from 'dockview-core';
-import { useCallback, useMemo, type MutableRefObject } from 'react';
+import { useCallback, useRef, useSyncExternalStore, type MutableRefObject } from 'react';
 
 import { getDockviewGroupCount, getDockviewGroups, type DockviewHost } from '@lib/dockview';
 
@@ -22,6 +23,9 @@ interface UseMediaMaximizeOptions {
   normalHeight?: number; // Percentage (default: 0.75)
 }
 
+/** Threshold: within 5% of viewport = "close enough" to maximized */
+const MAXIMIZE_THRESHOLD = 0.05;
+
 export function useMediaMaximize({
   dockviewApi,
   dockviewApiRef,
@@ -30,41 +34,46 @@ export function useMediaMaximize({
   maximizedHeight = 0.95,
   normalHeight = 0.75,
 }: UseMediaMaximizeOptions = {}) {
+  /** Height to restore to when un-maximizing */
+  const savedHeight = useRef<number | null>(null);
+
   // Prefer ref if available, fall back to direct prop
   const getApi = useCallback(
     () => dockviewHostRef?.current?.api ?? dockviewHost?.api ?? dockviewApiRef?.current ?? dockviewApi,
     [dockviewApi, dockviewApiRef, dockviewHost, dockviewHostRef],
   );
 
-  /**
-   * Check if the media panel is currently in maximized state
-   * by comparing its actual height to the maximized/normal thresholds
-   */
-  const isMaximized = useMemo(() => {
+  /** Read whether the media group is currently at (or near) maximized height */
+  const readIsMaximized = useCallback((): boolean => {
     const api = getApi();
-    const groups = api ? getDockviewGroups(api) : [];
-    const groupCount = api ? getDockviewGroupCount(api, groups) : 0;
-    if (!api || groupCount < 2) return false;
-
+    if (!api) return false;
     try {
-      const mediaGroup = groups[0];
-      const currentHeight = mediaGroup.api.height;
+      const groups = getDockviewGroups(api);
+      if (getDockviewGroupCount(api, groups) < 2) return false;
+      const currentHeight = groups[0].api.height;
       const viewportHeight = window.innerHeight;
-
-      // Calculate target heights
       const maxHeight = viewportHeight * maximizedHeight;
-      const normHeight = viewportHeight * normalHeight;
-
-      // Determine which state we're closer to
-      // If current height is closer to max than normal, consider it maximized
-      const distanceToMax = Math.abs(currentHeight - maxHeight);
-      const distanceToNormal = Math.abs(currentHeight - normHeight);
-
-      return distanceToMax < distanceToNormal;
+      return Math.abs(currentHeight - maxHeight) < viewportHeight * MAXIMIZE_THRESHOLD;
     } catch {
       return false;
     }
-  }, [getApi, maximizedHeight, normalHeight]);
+  }, [getApi, maximizedHeight]);
+
+  // Subscribe to dockview layout changes so React re-renders when the user
+  // drags the splitter handle (or when we programmatically resize).
+  const isMaximized = useSyncExternalStore(
+    useCallback(
+      (onStoreChange: () => void) => {
+        const api = getApi();
+        if (!api) return () => {};
+        const disposable = api.onDidLayoutChange(onStoreChange);
+        return () => disposable.dispose();
+      },
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      [getApi, dockviewApi],
+    ),
+    readIsMaximized,
+  );
 
   const toggleMaximize = useCallback(() => {
     const api = getApi();
@@ -77,33 +86,33 @@ export function useMediaMaximize({
       const groups = getDockviewGroups(api);
       const groupCount = getDockviewGroupCount(api, groups);
 
-      if (groupCount >= 2) {
-        const viewportHeight = window.innerHeight;
-        const mediaGroupId = groups[0].id;
-        const mediaGroup = api.getGroup(mediaGroupId);
-
-        if (!mediaGroup) {
-          console.warn('[useMediaMaximize] Media group not found');
-          return;
-        }
-
-        const currentHeight = mediaGroup.api.height;
-
-        // Calculate target heights
-        const maxHeight = Math.floor(viewportHeight * maximizedHeight);
-        const normHeight = Math.floor(viewportHeight * normalHeight);
-
-        // Determine current state by comparing distances
-        const distanceToMax = Math.abs(currentHeight - maxHeight);
-        const distanceToNormal = Math.abs(currentHeight - normHeight);
-        const currentlyMaximized = distanceToMax < distanceToNormal;
-
-        // Toggle to opposite state
-        const newHeight = currentlyMaximized ? normHeight : maxHeight;
-
-        mediaGroup.api.setSize({ height: newHeight });
-      } else {
+      if (groupCount < 2) {
         console.warn('[useMediaMaximize] Expected 2+ groups but found', groupCount);
+        return;
+      }
+
+      const mediaGroup = api.getGroup(groups[0].id);
+      if (!mediaGroup) {
+        console.warn('[useMediaMaximize] Media group not found');
+        return;
+      }
+
+      const currentHeight = mediaGroup.api.height;
+      const viewportHeight = window.innerHeight;
+      const maxHeight = Math.floor(viewportHeight * maximizedHeight);
+
+      // Determine state from actual measurements — never stale
+      const currentlyMaximized = Math.abs(currentHeight - maxHeight) < viewportHeight * MAXIMIZE_THRESHOLD;
+
+      if (currentlyMaximized) {
+        // Restore to saved height, or fall back to default normal height
+        const restoreHeight = savedHeight.current ?? Math.floor(viewportHeight * normalHeight);
+        mediaGroup.api.setSize({ height: restoreHeight });
+        savedHeight.current = null;
+      } else {
+        // Save current height before maximizing
+        savedHeight.current = currentHeight;
+        mediaGroup.api.setSize({ height: maxHeight });
       }
     } catch (e) {
       console.warn('[useMediaMaximize] Failed to toggle maximize:', e);

@@ -13,26 +13,25 @@ import { registerOverlayWidgets } from './overlayWidgets';
 export {
   overlayWidgetDefinitions,
   registerOverlayWidgets,
-  badgeWidget,
   panelWidget,
   uploadWidget,
-  buttonWidget,
   menuWidget,
   tooltipWidget,
   videoScrubWidget,
   progressWidget,
-  sceneViewWidget,
-  // Settings interfaces
-  type BadgeWidgetSettings,
+  // Settings interfaces (remaining direct registrations)
   type PanelWidgetSettings,
   type UploadWidgetSettings,
-  type ButtonWidgetSettings,
   type MenuWidgetSettings,
   type TooltipWidgetSettings,
   type VideoScrubWidgetSettings,
   type ProgressWidgetSettings,
-  type SceneViewWidgetSettings,
 } from './overlayWidgets';
+
+// Plugin-based overlay widgets — re-export from their plugin locations
+export { widget as badgeWidget, type BadgeWidgetSettings } from '@/plugins/overlay-widgets/badge';
+export { widget as buttonWidget, type ButtonWidgetSettings } from '@/plugins/overlay-widgets/button';
+export { widget as sceneViewWidget, type SceneViewWidgetSettings } from '@/plugins/overlay-widgets/scene-view';
 
 export {
   blockWidgetDefinitions,

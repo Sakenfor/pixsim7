@@ -19,7 +19,6 @@ import { useComponentSettingsStore } from "@features/componentSettings";
 import { componentRegistry } from "@features/componentSettings";
 import { collectSchemaDefaults } from "@features/settings";
 import type { SettingTab, SettingGroup } from "@features/settings";
-import type { PanelId } from "@features/workspace";
 
 import { usePanelConfigStore } from "../stores/panelConfigStore";
 import { usePanelInstanceSettingsStore } from "../stores/panelInstanceSettingsStore";
@@ -108,7 +107,7 @@ export function resolveSettings<T extends Record<string, unknown> = Record<strin
  * @returns Resolved settings with metadata
  */
 export function useResolvePanelSettings<T extends Record<string, unknown> = Record<string, unknown>>(
-  panelId: PanelId | string,
+  panelId: string,
   instanceId?: string | null,
   scopeId?: string,
 ): ResolvedSettings<T> {

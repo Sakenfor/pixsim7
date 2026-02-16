@@ -45,11 +45,5 @@ export function WidgetsSettings() {
     );
   }
 
-  // Show first widget by default
-  const firstWidgetId = widgetsWithSettings[0].id;
-  return (
-    <div className="flex-1 overflow-auto p-4">
-      <DynamicSettingsPanel categoryId="workspace" tabId={firstWidgetId} />
-    </div>
-  );
+  return <DynamicSettingsPanel categoryId="workspace" />;
 }

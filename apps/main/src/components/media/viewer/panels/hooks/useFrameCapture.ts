@@ -3,6 +3,7 @@
  *
  * Hook for capturing video frames and uploading them to the asset library.
  * Handles region selection, upload context assembly, and the capture workflow.
+ * Supports clipboard copy and provider upload actions.
  */
 
 import { clampRectNormalized, denormalizeRect } from '@pixsim7/graphics.geometry';
@@ -23,6 +24,8 @@ import { useCaptureRegionStore, type AssetRegion } from '@features/mediaViewer';
 
 import { findActiveRegion, type MediaOverlayId } from '../../overlays';
 
+export type CaptureAction = 'clipboard' | 'upload';
+
 const EMPTY_CAPTURE_REGIONS: AssetRegion[] = [];
 
 export interface UseFrameCaptureOptions {
@@ -39,8 +42,8 @@ export interface UseFrameCaptureOptions {
 export interface UseFrameCaptureResult {
   /** Whether a capture is currently in progress */
   isCapturing: boolean;
-  /** Capture the current video frame */
-  captureFrame: () => Promise<void>;
+  /** Capture the current frame with the given action */
+  captureFrame: (action?: CaptureAction) => Promise<void>;
   /** Currently selected capture region (if any) */
   captureRegion: AssetRegion | null;
   /** All capture regions for the current asset */
@@ -98,44 +101,15 @@ export function useFrameCapture({
     []
   );
 
-  // Main capture function
-  const captureFrame = useCallback(async () => {
-    if (!asset || (asset.type !== 'video' && asset.type !== 'image')) return;
-    const providerId = resolveCaptureProviderId();
-    if (!providerId) {
-      toast.error('Select a provider to capture.');
-      return;
-    }
-
-    // Determine source element and dimensions based on asset type
-    const isVideo = asset.type === 'video';
-    const video = videoRef.current;
-    const image = imageRef.current;
-
-    let sourceElement: HTMLVideoElement | HTMLImageElement | null = null;
-    let sourceWidth = 0;
-    let sourceHeight = 0;
-
-    if (isVideo) {
-      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
-        toast.error('Video not ready for capture.');
-        return;
-      }
-      sourceElement = video;
-      sourceWidth = video.videoWidth;
-      sourceHeight = video.videoHeight;
-    } else {
-      if (!image || image.naturalWidth === 0 || image.naturalHeight === 0) {
-        toast.error('Image not ready for capture.');
-        return;
-      }
-      sourceElement = image;
-      sourceWidth = image.naturalWidth;
-      sourceHeight = image.naturalHeight;
-    }
-
-    setIsCapturing(true);
-    try {
+  /**
+   * Render the current frame (with optional region crop) to a JPEG blob.
+   */
+  const renderCaptureBlob = useCallback(
+    (
+      sourceElement: HTMLVideoElement | HTMLImageElement,
+      sourceWidth: number,
+      sourceHeight: number,
+    ): Promise<Blob> => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) {
@@ -191,22 +165,85 @@ export function useFrameCapture({
         }
       }
 
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((result) => resolve(result), 'image/jpeg', 0.92);
+      return new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) => (result ? resolve(result) : reject(new Error('Failed to capture.'))),
+          'image/jpeg',
+          0.92
+        );
       });
-      if (!blob) {
-        throw new Error('Failed to capture.');
+    },
+    [captureRegion]
+  );
+
+  // Main capture function
+  const captureFrame = useCallback(async (action: CaptureAction = 'upload') => {
+    if (!asset || (asset.type !== 'video' && asset.type !== 'image')) return;
+
+    if (action === 'upload') {
+      const providerId = resolveCaptureProviderId();
+      if (!providerId) {
+        toast.error('Select a provider to capture.');
+        return;
+      }
+    }
+
+    // Determine source element and dimensions based on asset type
+    const isVideo = asset.type === 'video';
+    const video = videoRef.current;
+    const image = imageRef.current;
+
+    let sourceElement: HTMLVideoElement | HTMLImageElement | null = null;
+    let sourceWidth = 0;
+    let sourceHeight = 0;
+
+    if (isVideo) {
+      if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+        toast.error('Video not ready for capture.');
+        return;
+      }
+      sourceElement = video;
+      sourceWidth = video.videoWidth;
+      sourceHeight = video.videoHeight;
+    } else {
+      if (!image || image.naturalWidth === 0 || image.naturalHeight === 0) {
+        toast.error('Image not ready for capture.');
+        return;
+      }
+      sourceElement = image;
+      sourceWidth = image.naturalWidth;
+      sourceHeight = image.naturalHeight;
+    }
+
+    setIsCapturing(true);
+    try {
+      const blob = await renderCaptureBlob(sourceElement, sourceWidth, sourceHeight);
+
+      if (action === 'clipboard') {
+        // Copy to clipboard
+        try {
+          // Convert JPEG blob to PNG for clipboard (better compatibility)
+          await navigator.clipboard.write([
+            new ClipboardItem({ [blob.type]: blob }),
+          ]);
+          toast.success('Copied to clipboard.');
+        } catch {
+          throw new Error('Failed to copy to clipboard.');
+        }
+        return;
       }
 
+      // Upload action
+      const providerId = resolveCaptureProviderId()!;
       const sourceUrl = asset.fullUrl || asset.url || undefined;
       const sourceFilename = getFilenameFromUrl(sourceUrl) || asset.name || null;
-      const frameTime = isVideo ? video.currentTime : 0;
+      const frameTime = isVideo ? video!.currentTime : 0;
       const uploadContext: Record<string, unknown> = {
         client: 'web_app',
         feature: 'asset_viewer_capture',
         source: 'asset_viewer',
         frame_time: frameTime,
-        has_region: Boolean(regionBounds),
+        has_region: Boolean(captureRegion),
       };
 
       if (sourceFilename) {
@@ -271,6 +308,7 @@ export function useFrameCapture({
   }, [
     asset,
     captureRegion,
+    renderCaptureBlob,
     buildCaptureFilenameFromSource,
     getFilenameFromUrl,
     getSourceSiteFromUrl,

@@ -1,8 +1,7 @@
 /**
- * Analyzers Settings Module
+ * Analysis Settings Module
  *
- * Manage analyzer instances - configure LLM/vision analyzers with custom providers and models.
- * Analyzer instances are user-specific configurations that override default analyzer behavior.
+ * Manage analyzer instances (LLM/vision analyzers with custom providers and models).
  */
 import { useState, useEffect, useCallback } from 'react';
 
@@ -726,9 +725,16 @@ export function AnalyzersSettings() {
 
 // Register this module
 settingsRegistry.register({
-  id: 'analyzers',
-  label: 'Analyzers',
+  id: 'analysis',
+  label: 'Analysis',
   icon: '🔬',
   component: AnalyzersSettings,
   order: 75,
+  subSections: [
+    {
+      id: 'instances',
+      label: 'Instances',
+      component: AnalyzersSettings,
+    },
+  ],
 });

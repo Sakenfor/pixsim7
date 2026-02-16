@@ -46,71 +46,13 @@ export type InventoryStatsResponse = ApiComponents['schemas']['InventoryStatsRes
 export type MessageResponse = ApiComponents['schemas']['MessageResponse'];
 
 // Project bundle import/export
-export interface GameProjectBundle {
-  schema_version: number;
-  exported_at: string;
-  core: {
-    world: Record<string, unknown>;
-    locations: unknown[];
-    npcs: unknown[];
-    scenes: unknown[];
-    items: unknown[];
-  };
-  extensions?: Record<string, unknown>;
-}
-
-export interface GameProjectImportResponse {
-  schema_version: number;
-  world_id: number;
-  world_name: string;
-  counts: {
-    locations: number;
-    hotspots: number;
-    npcs: number;
-    schedules: number;
-    expressions: number;
-    scenes: number;
-    nodes: number;
-    edges: number;
-    items: number;
-  };
-  id_maps: {
-    locations: Record<string, number>;
-    npcs: Record<string, number>;
-    scenes: Record<string, number>;
-    nodes: Record<string, number>;
-    items: Record<string, number>;
-  };
-  warnings: string[];
-}
-
-export interface SavedGameProjectSummary {
-  id: number;
-  name: string;
-  source_world_id: number | null;
-  schema_version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SavedGameProjectDetail extends SavedGameProjectSummary {
-  bundle: GameProjectBundle;
-}
-
-export interface SaveGameProjectRequest {
-  name: string;
-  bundle: GameProjectBundle;
-  source_world_id?: number | null;
-  overwrite_project_id?: number;
-}
-
-export interface RenameSavedGameProjectRequest {
-  name: string;
-}
-
-export interface DuplicateSavedGameProjectRequest {
-  name: string;
-}
+export type GameProjectBundle = ApiComponents['schemas']['GameProjectBundle-Input'];
+export type GameProjectImportResponse = ApiComponents['schemas']['GameProjectImportResponse'];
+export type SavedGameProjectSummary = ApiComponents['schemas']['SavedGameProjectSummary'];
+export type SavedGameProjectDetail = ApiComponents['schemas']['SavedGameProjectDetail'];
+export type SaveGameProjectRequest = ApiComponents['schemas']['SaveGameProjectRequest'];
+export type RenameSavedGameProjectRequest = ApiComponents['schemas']['RenameSavedGameProjectRequest'];
+export type DuplicateSavedGameProjectRequest = ApiComponents['schemas']['DuplicateSavedGameProjectRequest'];
 
 // Re-export types for backward compatibility
 export type {
@@ -415,20 +357,8 @@ export async function deleteSavedGameProject(projectId: number): Promise<void> {
 // Project Draft API (autosave / recovery)
 // =============================================================================
 
-export interface UpsertDraftRequest {
-  bundle: GameProjectBundle;
-  source_world_id?: number | null;
-  draft_source_project_id?: number | null;
-}
-
-export interface DraftSummary {
-  id: number;
-  draft_source_project_id: number | null;
-  source_world_id: number | null;
-  schema_version: number;
-  created_at: string;
-  updated_at: string;
-}
+export type UpsertDraftRequest = ApiComponents['schemas']['UpsertDraftRequest'];
+export type DraftSummary = ApiComponents['schemas']['DraftSummary'];
 
 export async function upsertProjectDraft(
   request: UpsertDraftRequest,
@@ -657,4 +587,3 @@ export async function resolveTemplateBatch(
 ): Promise<ResolveBatchResponse> {
   return gameApi.resolveTemplateBatch(refs, sharedContext);
 }
-

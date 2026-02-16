@@ -1,7 +1,10 @@
-import { useMemo } from 'react';
+import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
+import { useMemo, useCallback, useRef, useState } from 'react';
+
 
 import { useCaptureRegionStore } from '@features/mediaViewer';
 
+import type { CaptureAction } from '../../panels/hooks/useFrameCapture';
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
 import {
   getToolbarButtonClass,
@@ -39,6 +42,9 @@ export function CaptureOverlayToolbar({
     clearRegions,
   } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
 
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const chevronRef = useRef<HTMLButtonElement>(null);
+
   // Calculate pixel dimensions for selected/active capture region
   const regionPixelDimensions = useMemo(() => {
     const activeRegion = findActiveRegion(regions, selectedRegionId);
@@ -48,10 +54,11 @@ export function CaptureOverlayToolbar({
 
   const isVideo = asset.type === 'video';
   const canCapture = Boolean(onCaptureFrame) && (asset.type === 'video' || asset.type === 'image');
-  const buttonLabel = isVideo ? 'Capture Frame' : 'Crop';
-  const buttonTitle = canCapture
-    ? (isVideo ? 'Capture current frame' : 'Crop selected region')
-    : 'Capture requires video or image';
+
+  const handleAction = useCallback((action: CaptureAction) => {
+    setIsDropdownOpen(false);
+    onCaptureFrame?.(action);
+  }, [onCaptureFrame]);
 
   return (
     <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
@@ -102,14 +109,43 @@ export function CaptureOverlayToolbar({
         {drawingMode === 'select' && 'Click region to select'}
       </span>
 
-      <button
-        onClick={() => onCaptureFrame?.()}
-        disabled={!canCapture || captureDisabled}
-        className={`${TOOLBAR_BUTTON_BASE} ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title={buttonTitle}
-      >
-        {buttonLabel}
-      </button>
+      {/* Split button: main action + dropdown chevron */}
+      <div className="relative flex">
+        <button
+          onClick={() => handleAction('clipboard')}
+          disabled={!canCapture || captureDisabled}
+          className={`${TOOLBAR_BUTTON_BASE} rounded-r-none ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
+          title="Copy to clipboard"
+        >
+          {isVideo ? 'Capture' : 'Crop'}
+        </button>
+        <button
+          ref={chevronRef}
+          onClick={() => setIsDropdownOpen((o) => !o)}
+          disabled={!canCapture || captureDisabled}
+          className={`${TOOLBAR_BUTTON_BASE} rounded-l-none border-l border-emerald-700 px-1 ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
+          title="More capture actions"
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
+            <path d="M2 3.5L5 7L8 3.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        <Dropdown
+          isOpen={isDropdownOpen}
+          onClose={() => setIsDropdownOpen(false)}
+          position="bottom-right"
+          triggerRef={chevronRef}
+          minWidth="170px"
+        >
+          <DropdownItem onClick={() => handleAction('clipboard')}>
+            Copy to clipboard
+          </DropdownItem>
+          <DropdownItem onClick={() => handleAction('upload')} variant="success">
+            Upload to provider
+          </DropdownItem>
+        </Dropdown>
+      </div>
     </div>
   );
 }

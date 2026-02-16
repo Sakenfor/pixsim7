@@ -8,8 +8,6 @@ import {
   debugFlags,
 } from "@lib/utils";
 
-import type { PanelId } from "@features/workspace";
-
 import type { MediaCardBadgeConfig } from "@/components/media/MediaCard";
 import { pluginCatalog } from "@/lib/plugins/pluginSystem";
 
@@ -31,7 +29,7 @@ export interface PanelRegistryOverride {
 }
 
 export interface PanelConfig {
-  id: PanelId;
+  id: string;
   enabled: boolean;
   settings: Record<string, unknown>; // Panel-specific settings
   category?: PanelCategory;
@@ -42,7 +40,7 @@ export interface PanelConfig {
 }
 
 export interface PanelInstance {
-  panelId: PanelId;
+  panelId: string;
   instanceId: string; // Unique per instance
   state: Record<string, unknown>; // Instance-specific state
   position: "docked" | "floating";
@@ -51,7 +49,7 @@ export interface PanelInstance {
 
 export interface PanelConfigState {
   // Panel configurations
-  panelConfigs: Partial<Record<PanelId, PanelConfig>>;
+  panelConfigs: Partial<Record<string, PanelConfig>>;
 
   // Active panel instances (for supporting multiple instances of same panel)
   activeInstances: PanelInstance[];
@@ -62,21 +60,21 @@ export interface PanelConfigState {
 
 export interface PanelConfigActions {
   // Panel configuration
-  setPanelConfig: (panelId: PanelId, config: Partial<PanelConfig>) => void;
-  getPanelConfig: (panelId: PanelId) => PanelConfig | undefined;
-  togglePanelEnabled: (panelId: PanelId) => void;
-  togglePanel: (panelId: PanelId) => void;
+  setPanelConfig: (panelId: string, config: Partial<PanelConfig>) => void;
+  getPanelConfig: (panelId: string) => PanelConfig | undefined;
+  togglePanelEnabled: (panelId: string) => void;
+  togglePanel: (panelId: string) => void;
 
   // Panel settings
   updatePanelSettings: (
-    panelId: PanelId,
+    panelId: string,
     settings: Record<string, any>,
   ) => void;
-  resetPanelSettings: (panelId: PanelId) => void;
+  resetPanelSettings: (panelId: string) => void;
 
   // Panel instances
   createPanelInstance: (
-    panelId: PanelId,
+    panelId: string,
     position: "docked" | "floating",
   ) => string;
   removePanelInstance: (instanceId: string) => void;
@@ -86,14 +84,14 @@ export interface PanelConfigActions {
   ) => void;
 
   // Bulk operations
-  getEnabledPanels: () => PanelId[];
+  getEnabledPanels: () => string[];
   getPanelsByCategory: (category: string) => PanelConfig[];
   searchPanels: (query: string) => PanelConfig[];
 
   // Registry overrides (consolidated from panelRegistryOverridesStore)
-  setRegistryOverride: (panelId: PanelId, override: PanelRegistryOverride) => void;
-  clearRegistryOverride: (panelId: PanelId) => void;
-  getRegistryOverride: (panelId: PanelId) => PanelRegistryOverride | undefined;
+  setRegistryOverride: (panelId: string, override: PanelRegistryOverride) => void;
+  clearRegistryOverride: (panelId: string) => void;
+  getRegistryOverride: (panelId: string) => PanelRegistryOverride | undefined;
 
   // Reset
   reset: () => void;
@@ -128,7 +126,7 @@ const defaultGalleryBadgeConfig: Partial<MediaCardBadgeConfig> = {
 };
 
 // Default panel configurations
-const defaultPanelConfigs: Partial<Record<PanelId, PanelConfig>> = {
+const defaultPanelConfigs: Partial<Record<string, PanelConfig>> = {
   gallery: {
     id: "gallery",
     enabled: true,

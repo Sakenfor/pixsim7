@@ -14,6 +14,7 @@ import { Icon } from '@lib/icons';
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
 import type { FilterDefinition, FilterOptionValue } from '../lib/api';
+import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
 
 /**
  * UI-specific metadata for filter keys.
@@ -100,9 +101,19 @@ export function DynamicFilters({
     context: filterContext,
   });
 
+  const pinnedKeys = usePinnedFiltersStore((s) => s.pinnedKeys);
+  const togglePin = usePinnedFiltersStore((s) => s.togglePin);
+
   // Sort and split into primary bar vs overflow menu
   const { primaryFilters, overflowFilters } = useMemo(() => {
     if (!metadata) return { primaryFilters: [], overflowFilters: [] };
+
+    const hasActiveSelection = (key: string) => {
+      const val = filters[key as keyof AssetFilters];
+      if (val === undefined || val === null || val === '' || val === false) return false;
+      if (Array.isArray(val)) return val.length > 0;
+      return true;
+    };
 
     const all = metadata.filters
       .filter((f) => {
@@ -111,6 +122,13 @@ export function DynamicFilters({
         return true;
       })
       .sort((a, b) => {
+        const pinA = pinnedKeys.includes(a.key);
+        const pinB = pinnedKeys.includes(b.key);
+        const activeA = hasActiveSelection(a.key);
+        const activeB = hasActiveSelection(b.key);
+        const scoreA = (pinA ? 2 : 0) + (activeA ? 1 : 0);
+        const scoreB = (pinB ? 2 : 0) + (activeB ? 1 : 0);
+        if (scoreA !== scoreB) return scoreB - scoreA;
         const orderA = FILTER_UI_CONFIG[a.key]?.order ?? 99;
         const orderB = FILTER_UI_CONFIG[b.key]?.order ?? 99;
         return orderA - orderB;
@@ -126,7 +144,7 @@ export function DynamicFilters({
       }
     }
     return { primaryFilters: primary, overflowFilters: overflow };
-  }, [metadata, include, exclude]);
+  }, [metadata, include, exclude, pinnedKeys, filters]);
 
   const handleFilterChange = useCallback(
     (key: string, value: string | boolean | number | string[] | undefined) => {
@@ -230,12 +248,18 @@ export function DynamicFilters({
           filter.label ||
           filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+        const isPinned = pinnedKeys.includes(filter.key);
+
         return (
           <div
             key={filter.key}
             className="relative group flex-none"
             onMouseEnter={() => openHover(filter.key)}
             onMouseLeave={() => closeHover(filter.key)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              togglePin(filter.key);
+            }}
           >
             <button
               type="button"
@@ -281,6 +305,26 @@ export function DynamicFilters({
                 }`}
               >
                 {displayLabel}
+              </span>
+              {isPinned && (
+                <span className="flex-shrink-0 text-accent">
+                  <Icon name="pin" size={10} className="w-2.5 h-2.5" />
+                </span>
+              )}
+              <span
+                role="button"
+                tabIndex={-1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePin(filter.key);
+                }}
+                className={`flex-shrink-0 cursor-pointer transition-opacity duration-150 ${
+                  isPinned
+                    ? 'opacity-0'
+                    : 'opacity-0 group-hover:opacity-60 hover:!opacity-100'
+                }`}
+              >
+                <Icon name="pin" size={10} className="w-2.5 h-2.5" />
               </span>
             </button>
             <FilterDropdown

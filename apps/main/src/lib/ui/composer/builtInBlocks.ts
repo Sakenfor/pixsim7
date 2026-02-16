@@ -5,10 +5,10 @@
  * Blocks are building pieces for composed panels (grid layouts).
  */
 
-import { TextWidget } from '../../../components/widgets/TextWidget';
-import { MetricWidget } from '../../../components/widgets/MetricWidget';
 import { ListWidget } from '../../../components/widgets/ListWidget';
-import { galleryGridWidgetDefinition } from '../../../components/widgets/GalleryGridWidget';
+import { MetricWidget } from '../../../components/widgets/MetricWidget';
+import { TextWidget } from '../../../components/widgets/TextWidget';
+
 import type { BlockDefinition } from './blockRegistry';
 
 export const builtInBlocks: BlockDefinition[] = [
@@ -196,8 +196,6 @@ export const builtInBlocks: BlockDefinition[] = [
     resizable: true,
     requiresData: true,
   },
-  // Gallery Grid Block
-  galleryGridWidgetDefinition,
 ];
 
 /**

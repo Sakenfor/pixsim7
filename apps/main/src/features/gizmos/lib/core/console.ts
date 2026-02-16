@@ -74,7 +74,6 @@ type ConsoleDataRegistry = {
     store: { getState: () => unknown };
     readableKeys?: string[];
   }) => void;
-  get?: (id: string) => unknown;
 };
 
 /**
@@ -464,16 +463,6 @@ function registerDataStore(dataRegistry: ConsoleDataRegistry): void {
     store: useToolConsoleStore,
     readableKeys: ['activeToolId', 'overrides'],
   });
-
-  if (!dataRegistry.get?.('toolConfig')) {
-    dataRegistry.register({
-      id: 'toolConfig',
-      name: 'Tool Configuration',
-      description: 'Runtime tool parameter overrides with presets and history',
-      store: useToolConfigStore,
-      readableKeys: ['overrides', 'presets', 'activeToolId', 'history'],
-    });
-  }
 }
 
 // Auto-register when imported (deferred to avoid blocking)

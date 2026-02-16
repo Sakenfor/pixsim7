@@ -22,21 +22,11 @@ import {
   healthModule,
   simulationModule,
   npcBrainLabModule,
-  appMapModule as appMapPageModule,
+  devtoolsGatewayModule,
   pluginManagerModule,
-  pluginWorkspaceModule,
-  modulesDevModule,
   overlayConfigModule,
   assetDetailModule,
   generationPageModule,
-  templateAnalyticsModule,
-  promptInspectorModule,
-  promptImporterModule,
-  promptLabModule,
-  actionBlockGraphModule,
-  blockFitModule,
-  widgetBuilderModule,
-  mediaHarnessModule,
   routineGraphPageModule,
 } from './pages';
 import { moduleRegistry } from './registry';
@@ -70,21 +60,11 @@ export function registerModules() {
   moduleRegistry.register(healthModule);
   moduleRegistry.register(simulationModule);
   moduleRegistry.register(npcBrainLabModule);
-  moduleRegistry.register(appMapPageModule);
+  moduleRegistry.register(devtoolsGatewayModule);
   moduleRegistry.register(assetDetailModule);
   moduleRegistry.register(generationPageModule);
   moduleRegistry.register(pluginManagerModule);
-  moduleRegistry.register(pluginWorkspaceModule);
-  moduleRegistry.register(modulesDevModule);
   moduleRegistry.register(overlayConfigModule);
-  moduleRegistry.register(templateAnalyticsModule);
-  moduleRegistry.register(promptInspectorModule);
-  moduleRegistry.register(promptImporterModule);
-  moduleRegistry.register(promptLabModule);
-  moduleRegistry.register(actionBlockGraphModule);
-  moduleRegistry.register(blockFitModule);
-  moduleRegistry.register(widgetBuilderModule);
-  moduleRegistry.register(mediaHarnessModule);
   moduleRegistry.register(routineGraphPageModule);
 }
 

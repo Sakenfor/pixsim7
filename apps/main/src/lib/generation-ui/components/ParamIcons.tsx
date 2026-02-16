@@ -38,10 +38,14 @@ export const PARAM_ICON_CONFIG: Record<string, Record<string, React.ReactNode>> 
     ultra: <Icons.sparkles size={14} />,
     max: <Icons.sparkles size={14} />,
     // Resolution levels
+    '360p': <span className="text-[9px] font-bold">360p</span>,
+    '480p': <span className="text-[9px] font-bold">480p</span>,
+    '540p': <span className="text-[9px] font-bold">540p</span>,
     '720p': <span className="text-[9px] font-bold">HD</span>,
     hd: <span className="text-[9px] font-bold">HD</span>,
     '1080p': <span className="text-[9px] font-bold">FHD</span>,
     fhd: <span className="text-[9px] font-bold">FHD</span>,
+    '2k': <span className="text-[9px] font-bold">2K</span>,
     '4k': <span className="text-[9px] font-bold">4K</span>,
     '8k': <span className="text-[9px] font-bold">8K</span>,
   },
@@ -133,6 +137,6 @@ export function getParamIcon(paramName: string, value: string): React.ReactNode 
  * Check if a parameter should show visual icons (button grid) vs dropdown.
  */
 export function isVisualParam(paramName: string): boolean {
-  const VISUAL_PARAMS = ['quality', 'motion_mode', 'camera_movement'];
+  const VISUAL_PARAMS = ['quality', 'motion_mode', 'camera_movement', 'aspect_ratio'];
   return VISUAL_PARAMS.includes(paramName);
 }

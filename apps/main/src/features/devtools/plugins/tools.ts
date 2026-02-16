@@ -12,7 +12,6 @@ import type { DevToolDefinition } from '@pixsim7/shared.devtools.core';
 import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 
 // Import dev tool components
-// Note: AppMapPanel and TemplateAnalyticsPanel are now auto-registered from their modules
 import { BackendArchitecturePanel } from '@features/panels/components/dev/BackendArchitecturePanel';
 import { CapabilityTestingPanel } from '@features/panels/components/dev/CapabilityTestingPanel';
 import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
@@ -74,7 +73,15 @@ export const capabilityTestingTool: DevToolDefinition = {
 // Architecture & Graph Tools
 // ============================================================================
 
-// appMapTool is now auto-registered from appMapModule (features/devtools/routes/index.ts)
+export const appMapTool: DevToolDefinition = {
+  id: 'app-map',
+  label: 'App Map',
+  description: 'Visualize application structure and plugin architecture',
+  icon: 'map',
+  category: 'graph',
+  routePath: buildDevtoolsUrl('/app-map'),
+  tags: ['architecture', 'map', 'visualization', 'structure'],
+};
 
 export const dependencyGraphTool: DevToolDefinition = {
   id: 'dependency-graph',
@@ -100,7 +107,15 @@ export const backendArchitectureTool: DevToolDefinition = {
 // Analytics & Metrics Tools
 // ============================================================================
 
-// templateAnalyticsTool is now auto-registered from templateAnalyticsModule (features/devtools/routes/index.ts)
+export const templateAnalyticsTool: DevToolDefinition = {
+  id: 'template-analytics',
+  label: 'Template Analytics',
+  description: 'Analyze template usage and performance metrics',
+  icon: 'bar-chart',
+  category: 'debug',
+  routePath: buildDevtoolsUrl('/template-analytics'),
+  tags: ['templates', 'analytics', 'metrics', 'performance'],
+};
 
 // ============================================================================
 // Gizmo & Surface Management
@@ -114,6 +129,17 @@ export const gizmoSurfacesTool: DevToolDefinition = {
   category: 'debug',
   panelComponent: GizmoSurfacesPanel,
   tags: ['gizmos', 'surfaces', 'overlays', 'dashboards', 'debug'],
+};
+
+export const mediaHarnessTool: DevToolDefinition = {
+  id: 'media-harness',
+  label: 'Media Resolver Harness',
+  description: 'Debug asset URL resolution, auth media, and video scrubbing',
+  icon: 'video',
+  category: 'debug',
+  routePath: buildDevtoolsUrl('/dev/media-harness'),
+  tags: ['media', 'assets', 'thumbnails', 'scrub', 'auth'],
+  safeForNonDev: false,
 };
 
 // ============================================================================
@@ -197,10 +223,12 @@ export const sqlQueryExplorerTool: DevToolDefinition = {
 export const codegenTool: DevToolDefinition = {
   id: 'codegen',
   label: 'Code Generation',
-  description: 'Settings for TypeScript/schema code generation scripts',
+  description: 'Run and verify workspace code generation tasks',
   icon: 'code',
   category: 'debug',
+  routePath: buildDevtoolsUrl('/dev/codegen'),
   tags: ['codegen', 'types', 'schema', 'generation', 'typescript'],
+  safeForNonDev: false,
   settings: [
     {
       type: 'boolean',

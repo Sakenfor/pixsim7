@@ -8,8 +8,6 @@
 import { deepMerge } from '@pixsim7/shared.helpers.core';
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 
-import type { PanelId } from '@features/workspace';
-
 import type { PanelSettingsUpdateHelpers } from './panelRegistry';
 
 
@@ -26,7 +24,7 @@ interface DebouncedUpdateOptions {
  * Hook to create panel settings update helpers with debouncing
  */
 export function usePanelSettingsHelpers<TSettings extends Record<string, any>>(
-  panelId: PanelId,
+  panelId: string,
   currentSettings: TSettings,
   onUpdateSettings: (settings: Partial<TSettings>) => void,
   options: DebouncedUpdateOptions = {}

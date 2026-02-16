@@ -279,25 +279,8 @@ export function MediaCard(props: MediaCardProps) {
     return intrinsicVideoAspectRatio ?? intrinsicThumbAspectRatio ?? 16 / 9;
   }, [mediaType, width, height, intrinsicThumbAspectRatio, intrinsicVideoAspectRatio]);
 
-  // Partition tags
-  const { displayTags } = useMemo(() => {
-    const isTechnical = (tagSlug: string | undefined | null) => {
-      if (!tagSlug) return false;
-      return (
-        tagSlug.includes('_url') ||
-        tagSlug.includes('_id') ||
-        tagSlug.includes('from_') ||
-        tagSlug === 'user_upload'
-      );
-    };
-
-    // Filter out technical tags and convert to display strings
-    const display = tags
-      ?.filter(tag => tag?.slug && !isTechnical(tag.slug))
-      .map(tag => tag.display_name || tag.slug) || [];
-
-    return { displayTags: display };
-  }, [tags]);
+  // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
+  const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
 
   const handleOpen = () => {
     if (onOpen) {
@@ -411,7 +394,7 @@ export function MediaCard(props: MediaCardProps) {
     mediaType,
     providerId,
     status: providerStatus,
-    tags: displayTags,
+    tags: tagSlugs,
     description,
     createdAt,
     // Upload state (for UploadWidget)

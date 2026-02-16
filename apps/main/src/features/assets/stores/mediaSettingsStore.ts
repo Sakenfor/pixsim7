@@ -28,6 +28,10 @@ export interface ServerMediaSettings {
   frame_extraction_upload: 'source_provider' | 'always' | 'never';
   /** Default provider for uploads when frame_extraction_upload is 'always' */
   default_upload_provider: string;
+  /** Generate CLIP embeddings for visual similarity search */
+  generate_embeddings: boolean;
+  /** Shell command for CLIP embedding generation */
+  clip_embedding_command: string;
 }
 
 interface MediaSettingsState {
@@ -39,6 +43,9 @@ interface MediaSettingsState {
    */
   preventDiskCache: boolean;
   setPreventDiskCache: (value: boolean) => void;
+  /** Default threshold used by "Similar content" visual search actions. */
+  visualSimilarityThreshold: number;
+  setVisualSimilarityThreshold: (value: number) => void;
 
   // === Server settings (fetched from backend) ===
   serverSettings: ServerMediaSettings | null;
@@ -72,6 +79,8 @@ const DEFAULT_SERVER_SETTINGS: ServerMediaSettings = {
   preview_size: [800, 800],
   frame_extraction_upload: 'source_provider',
   default_upload_provider: 'pixverse',
+  generate_embeddings: false,
+  clip_embedding_command: '',
 };
 
 export const useMediaSettingsStore = create<MediaSettingsState>()(
@@ -85,6 +94,11 @@ export const useMediaSettingsStore = create<MediaSettingsState>()(
         if (typeof window !== 'undefined') {
           (window as unknown as { __PIXSIM_USE_BLOB_THUMBNAILS?: boolean }).__PIXSIM_USE_BLOB_THUMBNAILS = value;
         }
+      },
+      visualSimilarityThreshold: 0.3,
+      setVisualSimilarityThreshold: (value) => {
+        const clamped = Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0.3));
+        set({ visualSimilarityThreshold: clamped });
       },
 
       // Server settings
@@ -117,6 +131,7 @@ export const useMediaSettingsStore = create<MediaSettingsState>()(
       name: STORAGE_KEY,
       partialize: (state) => ({
         preventDiskCache: state.preventDiskCache,
+        visualSimilarityThreshold: state.visualSimilarityThreshold,
         // Don't persist server settings - always fetch fresh
       }),
       onRehydrateStorage: () => (state) => {

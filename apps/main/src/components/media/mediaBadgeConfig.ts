@@ -33,7 +33,7 @@ export const MEDIA_STATUS_ICON: Record<
   MediaStatusBadge,
   { icon: IconName; label: string; color: 'green' | 'yellow' | 'red' | 'gray' }
 > = {
-  provider_ok: { icon: 'check', label: 'OK', color: 'green' },
+  provider_ok: { icon: 'info', label: 'OK', color: 'green' },
   local_only: { icon: 'download', label: 'Local only', color: 'yellow' },
   flagged: { icon: 'alertCircle', label: 'Flagged', color: 'red' },
   unknown: { icon: 'info', label: 'Unknown', color: 'gray' },

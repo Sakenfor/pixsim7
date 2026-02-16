@@ -5,7 +5,7 @@
  */
 
 import { ComponentType } from 'react';
-import type { PanelId } from '@features/workspace';
+
 import type { CubeType } from '../useCubeStore';
 
 /**
@@ -65,28 +65,28 @@ class CubeExpansionRegistry {
   /**
    * Register an expansion provider for a panel or cube type
    */
-  register(id: PanelId | CubeType | string, provider: ExpansionProvider) {
+  register(id: CubeType | string, provider: ExpansionProvider) {
     this.providers.set(id, provider);
   }
 
   /**
    * Unregister an expansion provider
    */
-  unregister(id: PanelId | CubeType | string) {
+  unregister(id: CubeType | string) {
     this.providers.delete(id);
   }
 
   /**
    * Get expansion provider for a panel or cube type
    */
-  get(id: PanelId | CubeType | string): ExpansionProvider | null {
+  get(id: CubeType | string): ExpansionProvider | null {
     return this.providers.get(id) || null;
   }
 
   /**
    * Check if an expansion provider exists
    */
-  has(id: PanelId | CubeType | string): boolean {
+  has(id: CubeType | string): boolean {
     return this.providers.has(id);
   }
 

@@ -401,6 +401,33 @@ button {
   .cq-scale-down  { transform: scale(0.85); transform-origin: bottom center; }
 }
 
+/* ── Thin overlay scrollbar ─────────────────────────────────────────── */
+/* Nearly invisible until hovered; use `.thin-scrollbar` on any overflow container */
+.thin-scrollbar {
+  scrollbar-width: thin;                        /* Firefox */
+  scrollbar-color: transparent transparent;     /* Firefox: hidden by default */
+}
+.thin-scrollbar:hover {
+  scrollbar-color: rgba(0,0,0,.18) transparent; /* Firefox: visible on hover */
+}
+.dark .thin-scrollbar:hover {
+  scrollbar-color: rgba(255,255,255,.2) transparent;
+}
+
+/* Webkit / Chromium */
+.thin-scrollbar::-webkit-scrollbar { width: 4px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+}
+.thin-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,.18);
+}
+.dark .thin-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.2);
+}
+
 /* Respect user's reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   .user-reduced-motion * {

@@ -48,5 +48,8 @@ export * from './generations';
 export * from './generationOperations';
 export * from './analyzers';
 export * from './userPreferences';
+export * from './codegen';
+
+export * from './tags';
 
 // Note: __simulate_extend.ts NOT exported (test utility)

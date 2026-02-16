@@ -1,22 +1,23 @@
 import { useMemo } from 'react';
+
+import { getBuiltinLayoutPresetsForScope } from '../lib/builtinPresets';
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import type { PresetScope, LayoutPreset } from '../stores/workspaceStore';
 
 /**
  * Hook to get filtered presets for a specific scope with proper memoization.
  *
- * This hook solves the infinite loop issue by:
- * 1. Selecting the raw presets array from the store (stable reference)
- * 2. Using useMemo to filter only when the underlying data changes
+ * Returns built-in presets first, followed by user-saved presets.
  *
  * @param scope - The preset scope to filter by
- * @returns Filtered array of presets for the given scope
+ * @returns Merged array of built-in + user presets for the given scope
  */
 export function useWorkspacePresets(scope: PresetScope): LayoutPreset[] {
-  const allPresets = useWorkspaceStore((s) => s.presets);
+  const userPresets = useWorkspaceStore((s) => s.presets);
 
-  return useMemo(
-    () => allPresets.filter((p) => p.scope === scope || p.scope === 'all'),
-    [allPresets, scope]
-  );
+  return useMemo(() => {
+    const builtins = getBuiltinLayoutPresetsForScope(scope);
+    const filtered = userPresets.filter((p) => p.scope === scope || p.scope === 'all');
+    return [...builtins, ...filtered];
+  }, [userPresets, scope]);
 }

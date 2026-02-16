@@ -1,9 +1,9 @@
+import { ScopeInstanceProvider } from "@features/panels/components/scope/scopeContext";
 import {
-  panelSettingsScopeRegistry,
-  createScopeMatcher,
-  ScopeInstanceProvider,
   GENERATION_SCOPE_ID,
-} from "@features/panels";
+  createScopeMatcher,
+  panelSettingsScopeRegistry,
+} from "@features/panels/lib/panelSettingsScopes";
 
 import { GenerationScopeProvider } from "../hooks/useGenerationScope";
 

@@ -7,7 +7,7 @@
  */
 
 import { useHoverExpand } from '@pixsim7/shared.ui';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
 import { createBindingFromValue } from '@lib/editing-core';
@@ -30,6 +30,7 @@ import {
 
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
+import { useTagAutocomplete } from '@features/assets/lib/useTagAutocomplete';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
@@ -471,11 +472,16 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const { defaultTags, recentTags, toggleDefaultTag, addRecentTag } = useQuickTagStore();
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 200, collapseDelay: 150 });
   const [inputValue, setInputValue] = useState('');
+  const [inputFocused, setInputFocused] = useState(false);
   const [applying, setApplying] = useState(false);
   const [flash, setFlash] = useState<'success' | 'error' | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const blurTimeoutRef = useRef<number>(0);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+
+  const { results, loading, parsedNamespace, parsedQuery, hasExplicitNamespace } =
+    useTagAutocomplete(inputValue, { enabled: isExpanded && inputFocused });
 
   useEffect(() => {
     if (isExpanded && triggerRef.current) {
@@ -483,11 +489,22 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     }
   }, [isExpanded]);
 
+  // Clear blur timeout on unmount
+  useEffect(() => () => window.clearTimeout(blurTimeoutRef.current), []);
+
   const hasAny = defaultTags.length > 0;
   // How many of the active defaults does this asset already carry?
   const matchCount = defaultTags.filter((t) => data.tags.includes(t)).length;
   const hasAll = hasAny && matchCount === defaultTags.length;
   const hasSome = matchCount > 0 && !hasAll;
+
+  const addTag = useCallback((slug: string) => {
+    addRecentTag(slug);
+    if (!defaultTags.includes(slug)) {
+      toggleDefaultTag(slug);
+    }
+    setInputValue('');
+  }, [addRecentTag, defaultTags, toggleDefaultTag]);
 
   const handleClick = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent card open
@@ -501,9 +518,6 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
       setFlash('success');
       setTimeout(() => setFlash(null), 600);
     } catch (err: any) {
-      console.error('[QuickTag] request payload:', { assetId: data.id, tags: missing });
-      console.error('[QuickTag] response data:', err?.response?.data);
-      console.error('[QuickTag] response status:', err?.response?.status);
       const detail = err?.response?.data?.detail;
       const msg = typeof detail === 'string' ? detail
         : Array.isArray(detail) ? detail.map((d: any) => d.msg ?? JSON.stringify(d)).join('; ')
@@ -521,13 +535,24 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
     if (e.key === 'Enter' && inputValue.trim()) {
       const slug = normalizeTagInput(inputValue);
       if (!slug) return;
-      addRecentTag(slug);
-      // Add to defaults if not already there
-      if (!defaultTags.includes(slug)) {
-        toggleDefaultTag(slug);
-      }
-      setInputValue('');
+      addTag(slug);
     }
+  };
+
+  const handleInputFocus = () => {
+    window.clearTimeout(blurTimeoutRef.current);
+    setInputFocused(true);
+  };
+
+  const handleInputBlur = () => {
+    // Delay blur so click-through on autocomplete results works
+    blurTimeoutRef.current = window.setTimeout(() => setInputFocused(false), 200);
+  };
+
+  const handleAutocompleteClick = (slug: string) => {
+    // Prevent the blur timeout from hiding results before state updates
+    window.clearTimeout(blurTimeoutRef.current);
+    addTag(slug);
   };
 
   const buttonTitle = flash === 'error' && lastError
@@ -537,6 +562,9 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
       : hasAny
         ? `Quick tag: ${defaultTags.join(', ')}`
         : 'Set quick tags';
+
+  const showAutocomplete = inputValue.trim().length > 0 && inputFocused;
+  const placeholder = hasExplicitNamespace ? 'tag_name' : `${parsedNamespace}:tag_name`;
 
   return (
     <div className="relative" {...handlers}>
@@ -587,6 +615,9 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
             <div className="py-1">
               {recentTags.map((slug) => {
                 const isActive = defaultTags.includes(slug);
+                const colonIdx = slug.indexOf(':');
+                const nsPrefix = colonIdx > 0 ? slug.slice(0, colonIdx + 1) : '';
+                const tagName = colonIdx > 0 ? slug.slice(colonIdx + 1) : slug;
                 return (
                   <button
                     key={slug}
@@ -605,24 +636,85 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
                       {isActive && '✓'}
                     </span>
                     <Icon name="tag" size={12} className="shrink-0" />
-                    <span className="truncate">{slug}</span>
+                    <span className="truncate">
+                      {nsPrefix && <span className="text-neutral-400 text-[10px]">{nsPrefix}</span>}
+                      {tagName}
+                    </span>
                   </button>
                 );
               })}
             </div>
           )}
 
-          {/* Text input */}
+          {/* Namespace badge + text input */}
           <div className="px-2 py-1.5 border-t border-neutral-100 dark:border-neutral-700">
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleInputKeyDown}
-              placeholder="Add tag slug…"
-              className="w-full px-2 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-accent"
-            />
+            <div className="flex items-center gap-1">
+              <span
+                className={`shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded ${
+                  hasExplicitNamespace
+                    ? 'bg-accent/20 text-accent'
+                    : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-500 dark:text-neutral-400'
+                }`}
+              >
+                {parsedNamespace}:
+              </span>
+              <input
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleInputKeyDown}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
+                placeholder={placeholder}
+                className="flex-1 min-w-0 px-1.5 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-accent"
+              />
+            </div>
           </div>
+
+          {/* Autocomplete results */}
+          {showAutocomplete && (
+            <div className="border-t border-neutral-100 dark:border-neutral-700 max-h-[120px] overflow-y-auto">
+              {loading && (
+                <div className="px-3 py-2 text-xs text-neutral-400">Searching...</div>
+              )}
+              {!loading && results.length > 0 && results.map((tag) => {
+                const isAlreadyActive = defaultTags.includes(tag.slug);
+                return (
+                  <button
+                    key={tag.id}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleAutocompleteClick(tag.slug)}
+                    className={`
+                      w-full px-3 py-1.5 text-left text-xs flex items-center gap-2
+                      hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors
+                      ${isAlreadyActive ? 'text-accent' : 'text-neutral-700 dark:text-neutral-300'}
+                    `}
+                  >
+                    <Icon name="tag" size={11} className="shrink-0" />
+                    <span className="truncate font-mono">{tag.slug}</span>
+                    {tag.display_name && (
+                      <span className="ml-auto text-[10px] text-neutral-400 truncate">{tag.display_name}</span>
+                    )}
+                  </button>
+                );
+              })}
+              {!loading && results.length === 0 && parsedQuery && (
+                <button
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const slug = normalizeTagInput(inputValue);
+                    if (slug) handleAutocompleteClick(slug);
+                  }}
+                  className="w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors text-neutral-700 dark:text-neutral-300"
+                >
+                  <Icon name="plus" size={11} className="shrink-0 text-accent" />
+                  <span className="truncate">
+                    Create <span className="font-mono text-accent">{parsedNamespace}:{parsedQuery}</span>
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
         </div>,
         document.body,
       )}

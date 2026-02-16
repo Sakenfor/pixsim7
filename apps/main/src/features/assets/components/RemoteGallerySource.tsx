@@ -35,6 +35,7 @@ import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses } from '../models/asset';
 
 import { DynamicFilters } from './DynamicFilters';
+import { FilterPresetBar } from './FilterPresetBar';
 import { GroupFolderTile, GroupListRow } from './GroupCards';
 import {
   parsePageParam,
@@ -1273,6 +1274,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             {/* Injected toolbar controls from parent shell */}
             {toolbarExtra}
           </div>
+          <FilterPresetBar
+            currentFilters={controller.filters}
+            onLoadPreset={(filters) => setFilters(filters)}
+          />
           <div>
             <DynamicFilters
               filters={controller.filters}

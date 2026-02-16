@@ -16,7 +16,7 @@ import { resolveMediaType } from '@pixsim7/shared.assets.core';
 import { useToastStore } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
-import { assetEvents, getAssetDisplayUrls, toViewerAsset, toSelectedAsset } from '@features/assets';
+import { assetEvents, getAssetDisplayUrls, toViewerAsset, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
 import { archiveAsset } from '@features/assets/lib/api';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -800,9 +800,13 @@ function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
     label: 'Similar content',
     icon: 'search',
     execute: () => {
+      const threshold = useMediaSettingsStore.getState().visualSimilarityThreshold;
       useRelatedAssetsStore.getState().open(
         `Similar to #${asset.id}`,
-        { similar_to: asset.id },
+        {
+          similar_to: asset.id,
+          similarity_threshold: Number.isFinite(threshold) ? threshold : 0.3,
+        },
       );
     },
   });

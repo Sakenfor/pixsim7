@@ -9,7 +9,6 @@
 import { componentRegistry, useComponentSettingsStore } from '@features/componentSettings';
 import { useResolveComponentSettings } from '@features/panels/lib/instanceSettingsResolver';
 import { usePanelInstanceSettingsStore } from '@features/panels/stores/panelInstanceSettingsStore';
-import type { PanelId } from '@features/workspace';
 
 import { resolveSchemaValues } from '../lib/core/schemaUtils';
 
@@ -69,7 +68,7 @@ export function InstanceComponentSettingsCard({
 }: {
   componentId: string;
   instanceId: string;
-  panelId: PanelId;
+  panelId: string;
 }) {
   const definition = componentRegistry.get(componentId);
   const resolved = useResolveComponentSettings(componentId, instanceId);

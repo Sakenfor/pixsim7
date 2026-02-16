@@ -7,7 +7,7 @@
 
 /* eslint-disable react-refresh/only-export-components */
 
-import { ExpandableButtonGroup } from '@pixsim7/shared.ui';
+import { ExpandableButtonGroup, useOrientation } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import { useMemo, useState, useRef, useEffect } from 'react';
 
@@ -96,6 +96,8 @@ export function DockToolbar({
   const conformToOtherPanels = useControlCenterStore(s => s.conformToOtherPanels);
   const setConformToOtherPanels = useControlCenterStore(s => s.setConformToOtherPanels);
 
+  const { isVertical } = useOrientation();
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -110,21 +112,42 @@ export function DockToolbar({
   }, [showDropdown]);
 
   return (
-    <div className="control-center-header px-3 py-1.5 flex items-center gap-2 border-b border-white/10 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90 cursor-move flex-shrink-0">
+    <div className={clsx(
+      'control-center-header flex items-center border-white/10 cursor-move flex-shrink-0',
+      isVertical
+        ? 'flex-col gap-1.5 border-r w-8 px-1 py-2 bg-gradient-to-b from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90'
+        : 'gap-2 border-b px-3 py-1.5 bg-gradient-to-r from-neutral-50/90 via-white/40 to-neutral-50/90 dark:from-neutral-800/90 dark:via-neutral-900/40 dark:to-neutral-800/90'
+    )}>
       {/* Title with dropdown */}
       <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent hover:opacity-80 transition-opacity flex items-center gap-1"
+          className={clsx(
+            'hover:opacity-80 transition-opacity flex items-center',
+            isVertical
+              ? 'p-1 rounded hover:bg-white/10'
+              : 'text-xs font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent gap-1'
+          )}
           title="Control Center Menu"
         >
-          Control Center
-          <span className="text-[8px] opacity-50">▼</span>
+          {isVertical ? (
+            <Icon name="settings" size={14} />
+          ) : (
+            <>
+              Control Center
+              <span className="text-[8px] opacity-50">▼</span>
+            </>
+          )}
         </button>
 
         {/* Dropdown menu */}
         {showDropdown && (
-          <div className="absolute top-full left-0 mt-1 w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1 z-50">
+          <div className={clsx(
+            'absolute w-56 bg-white dark:bg-neutral-800 rounded-lg shadow-xl border border-neutral-200 dark:border-neutral-700 py-1 z-50',
+            isVertical
+              ? dockPosition === 'right' ? 'top-0 right-full mr-1' : 'top-0 left-full ml-1'
+              : 'top-full left-0 mt-1'
+          )}>
             {/* Panel Management Section */}
             <div className="px-3 py-1.5 text-[10px] font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
               Panels
@@ -212,25 +235,31 @@ export function DockToolbar({
         </button>
       </div>
 
-      {/* News ticker for generation events */}
-      <NotificationTicker />
+      {/* News ticker for generation events (horizontal only) */}
+      {!isVertical && <NotificationTicker />}
 
-      {/* Content moderation warnings */}
-      <ContentModerationWarning />
+      {/* Content moderation warnings (horizontal only) */}
+      {!isVertical && <ContentModerationWarning />}
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className={clsx(
+        'flex items-center',
+        isVertical ? 'mt-auto flex-col gap-1.5' : 'ml-auto gap-2'
+      )}>
         {/* Quick Navigation Shortcuts */}
         {showQuickNav && quickNavItems.length > 0 && (
-          <div className="flex items-center gap-0.5">
+          <div className={clsx('flex items-center gap-0.5', isVertical && 'flex-col')}>
             {quickNavItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => navigate(item.path)}
-                className="text-xs px-1.5 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
+                className={clsx(
+                  'text-xs rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors',
+                  isVertical ? 'p-1' : 'px-1.5 py-0.5'
+                )}
                 title={item.label}
                 aria-label={`Navigate to ${item.label}`}
               >
-                <Icon name={item.icon} size={16} />
+                <Icon name={item.icon} size={isVertical ? 14 : 16} />
               </button>
             ))}
           </div>
@@ -240,7 +269,10 @@ export function DockToolbar({
         <ExpandableButtonGroup
           trigger={
             <button
-              className="text-xs px-2 py-1 border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95"
+              className={clsx(
+                'text-xs border border-neutral-300/50 dark:border-neutral-600/50 rounded-lg bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all hover:scale-105 active:scale-95',
+                isVertical ? 'p-1' : 'px-2 py-1'
+              )}
               aria-label={`Dock position: ${dockPosition}`}
             >
               {positionIcon}
@@ -249,9 +281,12 @@ export function DockToolbar({
           direction={expandDirection}
           hoverDelay={200}
           offset={6}
-          contentClassName="right-0"
+          {...(!isVertical && { contentClassName: 'right-0' })}
         >
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700">
+          <div className={clsx(
+            'flex gap-2 p-2 rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-neutral-700',
+            isVertical ? 'flex-col items-center' : 'items-center'
+          )}>
             <PositionButton
               position="top"
               icon="⬆"

@@ -133,6 +133,24 @@ const displayTab: SettingTab = {
         },
       ],
     },
+    {
+      id: 'visual-similarity',
+      title: 'Visual Similarity',
+      description: 'Client-side defaults for "Similar content" asset discovery.',
+      fields: [
+        {
+          id: 'visualSimilarityThreshold',
+          type: 'range',
+          label: 'Default Similarity Threshold',
+          description: 'Higher values are stricter and return fewer, closer matches.',
+          min: 0.1,
+          max: 1.0,
+          step: 0.05,
+          defaultValue: 0.3,
+          format: (v: number) => v.toFixed(2),
+        },
+      ],
+    },
   ],
 };
 
@@ -259,6 +277,30 @@ const downloadsTab: SettingTab = {
           defaultValue: 4,
           min: 1,
           max: 16,
+        },
+      ],
+    },
+    {
+      id: 'visual-embeddings',
+      title: 'Visual Embeddings',
+      description: 'Server-side CLIP embedding generation used for visual similarity search.',
+      showWhen: adminOnly,
+      fields: [
+        {
+          id: 'generate_embeddings',
+          type: 'toggle',
+          label: 'Generate Embeddings',
+          description: 'Generate CLIP embeddings during ingestion for "Similar content" search.',
+          defaultValue: false,
+        },
+        {
+          id: 'clip_embedding_command',
+          type: 'text',
+          label: 'CLIP Embedding Command',
+          description: 'Command that accepts JSON stdin and returns embeddings JSON on stdout.',
+          defaultValue: '',
+          placeholder: 'python tools/clip_embed.py',
+          disabled: (values) => !values.generate_embeddings,
         },
       ],
     },
@@ -431,6 +473,8 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   // Media settings (local)
   const preventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const setPreventDiskCache = useMediaSettingsStore((s) => s.setPreventDiskCache);
+  const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
+  const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
 
   // Gallery panel config settings (grouping layout)
   const galleryPanelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
@@ -482,6 +526,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
+      if (fieldId === 'visualSimilarityThreshold') return visualSimilarityThreshold;
 
       // Gallery panel config settings
       if (fieldId === 'groupMultiLayout') return gallerySettings.groupMultiLayout ?? 'stack';
@@ -524,6 +569,10 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Local media settings
       if (fieldId === 'preventDiskCache') {
         setPreventDiskCache(value);
+        return;
+      }
+      if (fieldId === 'visualSimilarityThreshold') {
+        setVisualSimilarityThreshold(value);
         return;
       }
 
@@ -577,6 +626,7 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       qualityMode,
       preferOriginal,
       preventDiskCache,
+      visualSimilarityThreshold,
       groupMultiLayout: gallerySettings.groupMultiLayout ?? 'stack',
       lf_autoHashOnSelect,
       lf_autoCheckBackend,

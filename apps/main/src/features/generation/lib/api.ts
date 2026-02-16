@@ -3,6 +3,8 @@ import { devValidateParams, devLogParams } from '@lib/utils/validation/devValida
 
 import type { OperationType } from '@/types/operations';
 
+import { nextRandomGenerationSeed } from './seed';
+
 export interface GenerateAssetRequest {
   prompt: string;
   providerId?: string;
@@ -81,8 +83,7 @@ function buildGenerationConfig(
   for (const [key, value] of Object.entries(merged)) {
     if (value === undefined) continue;
     if (CANONICAL_CONFIG_KEYS.has(key)) continue;
-    // Omit seed only when truly unset/blank.
-    // Keep numeric 0 for providers that interpret seed=0 as randomized.
+    // Skip blank seed values — a random seed is injected below.
     if (
       key === 'seed'
       && (value === undefined || value === null || (typeof value === 'string' && value.trim() === ''))
@@ -90,6 +91,12 @@ function buildGenerationConfig(
       continue;
     }
     providerSettings[key] = value;
+  }
+
+  // Always send a random seed when the user hasn't pinned one.
+  // This ensures each generation gets unique randomness (0–2 147 483 647).
+  if (providerSettings.seed === undefined) {
+    providerSettings.seed = nextRandomGenerationSeed();
   }
 
   // Build style block (generation-level + provider-specific)

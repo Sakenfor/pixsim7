@@ -1,13 +1,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-import type { PanelId } from "@features/workspace";
-
 import type { PanelSettingsScopeMode } from "../lib/panelSettingsScopes";
 
 export interface PanelInstanceSettings {
   instanceId: string;
-  panelId?: PanelId;
+  panelId?: string;
   scopes: Record<string, PanelSettingsScopeMode>;
   /** Per-instance panel settings overrides (keyed by setting field id) */
   panelSettings?: Record<string, unknown>;
@@ -22,7 +20,7 @@ export interface PanelInstanceSettingsState {
 export interface PanelInstanceSettingsActions {
   setScope: (
     instanceId: string,
-    panelId: PanelId | undefined,
+    panelId: string | undefined,
     scopeId: string,
     mode: PanelSettingsScopeMode,
   ) => void;
@@ -36,13 +34,13 @@ export interface PanelInstanceSettingsActions {
   // Panel settings overrides
   setPanelSetting: (
     instanceId: string,
-    panelId: PanelId | undefined,
+    panelId: string | undefined,
     key: string,
     value: unknown,
   ) => void;
   setPanelSettings: (
     instanceId: string,
-    panelId: PanelId | undefined,
+    panelId: string | undefined,
     settings: Record<string, unknown>,
   ) => void;
   clearPanelSettings: (instanceId: string) => void;
@@ -53,14 +51,14 @@ export interface PanelInstanceSettingsActions {
   // Component settings overrides
   setComponentSetting: (
     instanceId: string,
-    panelId: PanelId | undefined,
+    panelId: string | undefined,
     componentId: string,
     key: string,
     value: unknown,
   ) => void;
   setComponentSettings: (
     instanceId: string,
-    panelId: PanelId | undefined,
+    panelId: string | undefined,
     componentId: string,
     settings: Record<string, unknown>,
   ) => void;
@@ -82,7 +80,7 @@ const STORAGE_KEY = "panel_instance_settings_v1";
 function ensureInstance(
   state: PanelInstanceSettingsState,
   instanceId: string,
-  panelId?: PanelId,
+  panelId?: string,
 ): PanelInstanceSettings {
   const existing = state.instances[instanceId];
   return {

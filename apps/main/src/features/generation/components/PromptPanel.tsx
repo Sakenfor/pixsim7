@@ -129,7 +129,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
   return (
     <div className="h-full w-full p-2 flex flex-col gap-2">
       <div
-        className={`flex-1 ${error ? 'ring-2 ring-red-500 rounded-lg' : ''}`}
+        className={`flex-1 min-h-0 ${error ? 'ring-2 ring-red-500 rounded-lg' : ''}`}
         style={{ transition: 'none', animation: 'none' }}
       >
         {isTransitionMode && (

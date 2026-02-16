@@ -4,6 +4,7 @@ import type { Identifiable } from '@lib/core/BaseRegistry';
 
 import type { ViewerAsset } from '@features/assets';
 
+import type { CaptureAction } from '../panels/hooks/useFrameCapture';
 import type { ViewerSettings } from '../types';
 
 export type MediaOverlayId = string;
@@ -11,7 +12,7 @@ export type MediaOverlayId = string;
 export interface MediaOverlayComponentProps {
   asset: ViewerAsset;
   settings: ViewerSettings;
-  onCaptureFrame?: () => void;
+  onCaptureFrame?: (action?: CaptureAction) => void;
   captureDisabled?: boolean;
   /** Media dimensions (for capture region display) */
   mediaDimensions?: { width: number; height: number };

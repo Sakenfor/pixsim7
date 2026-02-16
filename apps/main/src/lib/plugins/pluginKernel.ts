@@ -20,6 +20,7 @@ import { registerPromptCompanion } from '@/plugins/ui/prompt-companion';
 
 import { bootstrapExamplePlugins } from './bootstrap';
 import { discoverControlCenterRegistrations } from './bootstrapControlCenters';
+import { discoverOverlayWidgetRegistrations } from './bootstrapOverlayWidgets';
 import { discoverSceneViewRegistrations } from './bootstrapSceneViews';
 import { discoverBundleRegistrations } from './bundleRegistrar';
 import { loadAllPlugins } from './loader';
@@ -72,15 +73,17 @@ async function doInitialize(options: PluginKernelOptions): Promise<void> {
     await registerPromptCompanion();
     await registerIconSetsPlugin();
 
-    const [sourceControlCenters, sourceSceneViews, bundleRegistrations] = await Promise.all([
+    const [sourceControlCenters, sourceSceneViews, sourceOverlayWidgets, bundleRegistrations] = await Promise.all([
       discoverControlCenterRegistrations(),
       discoverSceneViewRegistrations(),
+      discoverOverlayWidgetRegistrations(),
       discoverBundleRegistrations({ verbose, strict }),
     ]);
 
     const registrations = [
       ...sourceControlCenters,
       ...sourceSceneViews,
+      ...sourceOverlayWidgets,
       ...bundleRegistrations,
     ];
 

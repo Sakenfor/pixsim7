@@ -411,8 +411,8 @@ export function PromptComposer({
   const isOverLimit = remaining !== null && remaining < 0;
 
   return (
-    <div className={clsx('flex flex-col gap-2', className)}>
-      <div className="flex items-center gap-2">
+    <div className={clsx('flex flex-col gap-2 min-h-0', className)}>
+      <div className="flex items-center gap-2 shrink-0">
         <div className="relative">
           <button
             ref={layoutTriggerRef}
@@ -619,7 +619,7 @@ export function PromptComposer({
           className="h-full"
         />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 min-h-0 overflow-y-auto thin-scrollbar">
           {parseError && (
             <div className="text-xs text-red-600 dark:text-red-400">
               {parseError}

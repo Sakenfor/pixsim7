@@ -10,7 +10,6 @@ import { registerPluginDefinition } from "@lib/plugins/pluginRuntime";
 
 import { registerGraphEditors } from "@features/graph/lib/editor/registerEditors";
 
-import { autoRegisterPanels } from "./autoDiscovery";
 import type { PanelGroupDefinition } from "./definePanelGroup";
 import { registerDefaultDockWidgets } from "./dockWidgetRegistry";
 import { panelGroupRegistry } from "./panelGroupRegistry";
@@ -18,6 +17,7 @@ import { panelGroupRegistry } from "./panelGroupRegistry";
 /** Track initialization state */
 let initialized = false;
 let initPromise: Promise<void> | null = null;
+let scopesRegistered = false;
 
 /**
  * Initialize built-in panel registries and auto-discovery.
@@ -35,6 +35,8 @@ async function doInitializePanels(): Promise<void> {
   if (initialized) return;
 
   try {
+    await ensurePanelScopesRegistered();
+
     // Register graph editor surfaces
     await registerGraphEditors();
 
@@ -43,6 +45,7 @@ async function doInitializePanels(): Promise<void> {
 
     // Auto-discover and register panels from definitions directory
     // These are self-contained panels that use definePanel()
+    const { autoRegisterPanels } = await import("./autoDiscovery");
     const result = await autoRegisterPanels({ verbose: true });
     if (result.failed.length > 0) {
       console.warn(
@@ -60,6 +63,21 @@ async function doInitializePanels(): Promise<void> {
     console.error("Failed to initialize panels:", error);
     throw error;
   }
+}
+
+async function ensurePanelScopesRegistered(): Promise<void> {
+  if (scopesRegistered) {
+    return;
+  }
+
+  const [{ registerGenerationScopes }, { registerPreviewScopes }] = await Promise.all([
+    import("@features/generation/lib/registerGenerationScopes"),
+    import("@features/preview/lib/registerPreviewScopes"),
+  ]);
+
+  registerGenerationScopes();
+  registerPreviewScopes();
+  scopesRegistered = true;
 }
 
 /**

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { normalizeTagInput } from './quickTag';
+
 const DEFAULT_MAX_RECENT = 8;
 
 interface QuickTagState {
@@ -56,19 +58,28 @@ export const useQuickTagStore = create<QuickTagState>()(
     }),
     {
       name: 'pixsim7-quick-tag',
-      // Migrate from old single-tag shape
       migrate: (persisted: any, version: number) => {
-        if (version === 0 && persisted && 'defaultTag' in persisted) {
-          const old = persisted as Record<string, any>;
-          return {
-            ...old,
-            defaultTags: old.defaultTag ? [old.defaultTag] : [],
-            defaultTag: undefined,
-          };
+        const state = persisted as Record<string, any>;
+        if (version === 0 && state && 'defaultTag' in state) {
+          state.defaultTags = state.defaultTag ? [state.defaultTag] : [];
+          delete state.defaultTag;
         }
-        return persisted as QuickTagState;
+        // v2: normalize all stored slugs to namespace:name format
+        if (version < 2 && state) {
+          if (Array.isArray(state.defaultTags)) {
+            state.defaultTags = state.defaultTags
+              .map((t: string) => normalizeTagInput(t))
+              .filter(Boolean);
+          }
+          if (Array.isArray(state.recentTags)) {
+            state.recentTags = state.recentTags
+              .map((t: string) => normalizeTagInput(t))
+              .filter(Boolean);
+          }
+        }
+        return state as QuickTagState;
       },
-      version: 1,
+      version: 2,
     },
   ),
 );

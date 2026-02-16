@@ -23,6 +23,7 @@ import {
 } from './addPanelActions';
 import { assetActions } from './assetActions';
 import { contextHubActions } from './contextHubActions';
+import { cubeActions } from './cubeActions';
 import {
   splitPanelAction,
   movePanelAction,
@@ -47,6 +48,7 @@ export * from './presetActions';
 export * from './addPanelActions';
 export * from './assetActions';
 export * from './contextHubActions';
+export * from './cubeActions';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Composite Submenus
@@ -189,6 +191,8 @@ export const allActions = [
   layoutPresetsSubmenuAction,
   // Context hub
   ...contextHubActions,
+  // Cube spawn
+  ...cubeActions,
 ];
 
 let actionsRegistered = false;

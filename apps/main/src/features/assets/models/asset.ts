@@ -73,6 +73,7 @@ export interface AssetModel {
   thumbnailUrl?: string | null;
   uploadMethod?: string | null;
   uploadContext?: Record<string, unknown> | null;
+  sha256?: string | null;
   userId: number;
   width?: number | null;
 
@@ -166,6 +167,7 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     thumbnailUrl: response.thumbnail_url,
     uploadMethod: response.upload_method ?? null,
     uploadContext: responseWithContext.upload_context ?? null,
+    sha256: response.sha256 ?? null,
     userId: response.user_id,
     width: response.width,
 

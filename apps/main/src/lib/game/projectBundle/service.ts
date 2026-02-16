@@ -137,9 +137,11 @@ export async function importWorldProjectWithExtensions(
       extensionReport.warnings.push(...toWarnings(outcome));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      extensionReport.failed.push(key);
       extensionReport.warnings.push(`import ${key}: ${message}`);
     }
   }
 
   return { response, extensionReport };
 }
+

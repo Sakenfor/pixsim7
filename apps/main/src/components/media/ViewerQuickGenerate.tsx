@@ -173,11 +173,8 @@ function ViewerQuickGenerateChrome({
   return (
     <div className="space-y-2">
       {/* Header with close button */}
-      <div className="flex items-center justify-between">
-        <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">
-          Quick Generate
-        </span>
-        {!alwaysExpanded && (
+      {!alwaysExpanded && (
+        <div className="flex items-center justify-end">
           <button
             onClick={onCollapse}
             className="p-1 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400"
@@ -185,8 +182,8 @@ function ViewerQuickGenerateChrome({
           >
             <Icon name="x" size={12} />
           </button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Loading indicator for asset mode */}
       {mode === 'asset' && loading && (

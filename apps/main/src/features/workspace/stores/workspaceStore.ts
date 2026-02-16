@@ -7,42 +7,8 @@ import { addDockviewPanel, focusPanel, getDockviewApi } from "@lib/dockview";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
+import { getBuiltinLayoutPresetsForScope, isBuiltinPreset, BUILTIN_PRESET_IDS } from "../lib/builtinPresets";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
-
-export type PanelId =
-  | "assetViewer"
-  | "controlCenter"
-  | "gallery"
-  | "project"
-  | "scene"
-  | "graph"
-  | "inspector"
-  | "health"
-  | "game"
-  | "providers"
-  | "settings"
-  | "gizmo-lab"
-  | "npc-brain-lab"
-  | "game-theming"
-  | "scene-management"
-  | "dev-tools"
-  | "hud-designer"
-  | "world-visual-roles"
-  | "generations"
-  | "game-tools"
-  | "surface-workbench"
-  | "world-context"
-  | "edge-effects"
-  | "console"
-  | "model-inspector"
-  | "quickgen-asset"
-  | "quickgen-history"
-  | "quickgen-prompt"
-  | "quickgen-settings"
-  | "quickgen-blocks"
-  | "media-preview"
-  | "mini-gallery"
-  | "recent-generations";
 
 /**
  * Preset scope determines which dockviews a preset applies to
@@ -56,7 +22,7 @@ export type DockviewLayout = ReturnType<DockviewApi["toJSON"]>;
  * Floating panel state for panels opened outside the main dockview
  */
 export interface FloatingPanelState {
-  id: PanelId | `dev-tool:${string}`;
+  id: string;
   x: number;
   y: number;
   width: number;
@@ -86,13 +52,13 @@ export interface LayoutPreset {
 
 export interface WorkspaceState {
   /** Closed panels (can be restored) */
-  closedPanels: PanelId[];
+  closedPanels: string[];
   /** Lock prevents layout changes */
   isLocked: boolean;
   /** All saved presets (scoped) - presets are just named layout snapshots */
   presets: LayoutPreset[];
   /** Panel in fullscreen mode */
-  fullscreenPanel: PanelId | null;
+  fullscreenPanel: string | null;
   /** Floating panels outside main dockview */
   floatingPanels: FloatingPanelState[];
   /** Currently active preset ID per scope */
@@ -105,15 +71,15 @@ export interface WorkspaceState {
 
 export interface WorkspaceActions {
   /** Close a panel */
-  closePanel: (panelId: PanelId) => void;
+  closePanel: (panelId: string) => void;
   /** Restore a closed panel */
-  restorePanel: (panelId: PanelId) => void;
+  restorePanel: (panelId: string) => void;
   /** Clear all closed panels */
   clearClosedPanels: () => void;
   /** Toggle layout lock */
   toggleLock: () => void;
   /** Set fullscreen panel */
-  setFullscreen: (panelId: PanelId | null) => void;
+  setFullscreen: (panelId: string | null) => void;
   /** Save current layout as a new preset (layout from api.toJSON()) */
   savePreset: (name: string, scope: PresetScope, layout: DockviewLayout) => void;
   /** Update an existing preset's layout */
@@ -138,7 +104,7 @@ export interface WorkspaceActions {
   reset: () => void;
   // Floating panel actions
   openFloatingPanel: (
-    panelId: PanelId | `dev-tool:${string}`,
+    panelId: string,
     options?: {
       x?: number;
       y?: number;
@@ -147,27 +113,27 @@ export interface WorkspaceActions {
       context?: Record<string, any>;
     },
   ) => void;
-  closeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
-  minimizeFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => void;
+  closeFloatingPanel: (panelId: string) => void;
+  minimizeFloatingPanel: (panelId: string) => void;
   restoreFloatingPanel: (panelState: FloatingPanelState) => void;
   updateFloatingPanelPosition: (
-    panelId: PanelId | `dev-tool:${string}`,
+    panelId: string,
     x: number,
     y: number,
   ) => void;
   updateFloatingPanelSize: (
-    panelId: PanelId | `dev-tool:${string}`,
+    panelId: string,
     width: number,
     height: number,
   ) => void;
-  bringFloatingPanelToFront: (panelId: PanelId | `dev-tool:${string}`) => void;
+  bringFloatingPanelToFront: (panelId: string) => void;
   updateFloatingPanelContext: (
-    panelId: PanelId | `dev-tool:${string}`,
+    panelId: string,
     context: Record<string, any>,
   ) => void;
-  getFloatingPanel: (panelId: PanelId | `dev-tool:${string}`) => FloatingPanelState | undefined;
+  getFloatingPanel: (panelId: string) => FloatingPanelState | undefined;
   dockFloatingPanel: (
-    panelId: PanelId | `dev-tool:${string}`,
+    panelId: string,
     position: {
       direction: "left" | "right" | "above" | "below" | "within";
       referencePanel?: string;
@@ -175,99 +141,17 @@ export interface WorkspaceActions {
   ) => void;
 }
 
-/**
- * Default presets - layout is null meaning "use dockview's default initialization"
- */
-const defaultPresets: LayoutPreset[] = [
-  {
-    id: "default",
-    name: "Default Workspace",
-    scope: "workspace",
-    description: "Balanced layout for general development",
-    icon: "🏠",
-    isDefault: true,
-    layout: null,
-  },
-  {
-    id: "minimal",
-    name: "Minimal",
-    scope: "workspace",
-    description: "Focus on graph editing and game preview",
-    icon: "⚡",
-    isDefault: true,
-    layout: null,
-  },
-  {
-    id: "creative",
-    name: "Creative Studio",
-    scope: "workspace",
-    description: "Optimized for content creation",
-    icon: "🎨",
-    isDefault: true,
-    layout: null,
-  },
-  {
-    id: "narrative-flow",
-    name: "Narrative & Flow",
-    scope: "workspace",
-    description: "Flow View-centric layout for designing scenes",
-    icon: "🔀",
-    isDefault: true,
-    layout: null,
-    graphEditorId: "scene-graph-v2",
-  },
-  {
-    id: "playtest-tuning",
-    name: "Playtest & Tuning",
-    scope: "workspace",
-    description: "Game View-centric layout for playtesting",
-    icon: "🎮",
-    isDefault: true,
-    layout: null,
-  },
-  {
-    id: "dev-default",
-    name: "Dev – Debug",
-    scope: "workspace",
-    description: "Graph, dev tools, and health monitoring",
-    icon: "🧪",
-    isDefault: true,
-    layout: null,
-    graphEditorId: "scene-graph-v2",
-  },
-
-  {
-    id: "control-center-default",
-    name: "Default Control Center",
-    scope: "control-center",
-    description: "Default control center layout",
-    icon: "layout",
-    isDefault: true,
-    layout: null,
-  },
-  {
-    id: "asset-viewer-default",
-    name: "Default Asset Viewer",
-    scope: "asset-viewer",
-    description: "Default asset viewer layout",
-    icon: "layout",
-    isDefault: true,
-    layout: null,
-  },
-
-];
-
-const STORAGE_KEY = "workspace_v7"; // v7: added lastFloatingPanelStates
+const STORAGE_KEY = "workspace_v9"; // v9: remove gallery from pinned (duplicate of page nav)
 
 export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
   persist(
     (set, get) => ({
       closedPanels: [],
       isLocked: false,
-      presets: defaultPresets,
+      presets: [],
       fullscreenPanel: null,
       floatingPanels: [],
-      pinnedQuickAddPanels: ['gallery', 'inspector'],
+      pinnedQuickAddPanels: ['inspector'],
       lastFloatingPanelStates: {},
       activePresetByScope: {
         workspace: "default",
@@ -347,18 +231,16 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       deletePreset: (id) => {
+        if (isBuiltinPreset(id)) return;
         const preset = get().presets.find((p) => p.id === id);
-        if (preset?.isDefault) return;
+        if (!preset) return;
         set((s) => {
           const remaining = s.presets.filter((p) => p.id !== id);
           const newActiveByScope = { ...s.activePresetByScope };
 
           // If deleted preset was active, reset to default for that scope
-          if (preset && newActiveByScope[preset.scope] === id) {
-            const defaultForScope = remaining.find(
-              (p) => p.isDefault && p.scope === preset.scope
-            );
-            newActiveByScope[preset.scope] = defaultForScope?.id ?? null;
+          if (newActiveByScope[preset.scope] === id) {
+            newActiveByScope[preset.scope] = "default";
           }
 
           return { presets: remaining, activePresetByScope: newActiveByScope };
@@ -366,9 +248,11 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
       },
 
       getPresetsForScope: (scope) => {
-        return get().presets.filter(
+        const builtins = getBuiltinLayoutPresetsForScope(scope);
+        const userPresets = get().presets.filter(
           (p) => p.scope === scope || p.scope === "all"
         );
+        return [...builtins, ...userPresets];
       },
 
       getActivePresetId: (scope) => {
@@ -411,7 +295,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
           isLocked: false,
           fullscreenPanel: null,
           floatingPanels: [],
-          pinnedQuickAddPanels: ['gallery', 'inspector'],
+          pinnedQuickAddPanels: ['inspector'],
           lastFloatingPanelStates: {},
           activePresetByScope: {
         workspace: "default",
@@ -564,13 +448,29 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => createBackendStorage("workspace")),
-      version: 7, // v7: added lastFloatingPanelStates
+      version: 9, // v9: remove gallery from pinned (duplicate of page nav)
       migrate: (persistedState: any, version: number) => {
         if (version < 6) {
-          persistedState.pinnedQuickAddPanels = ['gallery', 'inspector'];
+          persistedState.pinnedQuickAddPanels = ['inspector'];
         }
         if (version < 7) {
           persistedState.lastFloatingPanelStates = {};
+        }
+        if (version < 8) {
+          // Strip built-in presets from persisted array — they now live in code
+          if (Array.isArray(persistedState.presets)) {
+            persistedState.presets = persistedState.presets.filter(
+              (p: any) => !p.isDefault && !BUILTIN_PRESET_IDS.has(p.id)
+            );
+          }
+        }
+        if (version < 9) {
+          // Remove 'gallery' from pinned panels — now covered by page nav in ActivityBar
+          if (Array.isArray(persistedState.pinnedQuickAddPanels)) {
+            persistedState.pinnedQuickAddPanels = persistedState.pinnedQuickAddPanels.filter(
+              (id: string) => id !== 'gallery'
+            );
+          }
         }
         return persistedState;
       },

@@ -19,12 +19,14 @@ import React, {
   type ReactNode,
 } from 'react';
 
+import { isAdminUser } from '@lib/auth/userRoles';
 import {
   useFeatures,
   useFeatureRoutes,
   useRoutes,
   useActions,
 } from '@lib/capabilities';
+import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 import { pluginCatalog } from '@lib/plugins/pluginSystem';
 import {
   fromPluginSystemMetadata,
@@ -32,6 +34,8 @@ import {
   type UnifiedPluginFamily,
   type UnifiedPluginOrigin,
 } from '@lib/plugins/types';
+
+import { useAuthStore } from '@/stores/authStore';
 
 // Split views
 import { FeaturesView } from './appMap/FeaturesView';
@@ -135,6 +139,11 @@ export function AppMapPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<TabId>('features');
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
+
+  // Devtools codegen link (admin + DEV mode)
+  const user = useAuthStore((s) => s.user);
+  const showCodegenLink = import.meta.env.DEV && isAdminUser(user);
+  const codegenUrl = useMemo(() => buildDevtoolsUrl('/dev/codegen?task=app-map'), []);
 
   // Data from capability registry
   const allFeatures = useFeatures();
@@ -317,6 +326,14 @@ export function AppMapPanel() {
                   className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
                 >
                   Open Docs
+                </a>
+              ) : null}
+              {showCodegenLink ? (
+                <a
+                  href={codegenUrl}
+                  className="px-3 py-1.5 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-sm font-medium rounded-md transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  Open Codegen
                 </a>
               ) : null}
             </div>

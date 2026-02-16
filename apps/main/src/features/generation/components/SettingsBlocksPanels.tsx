@@ -98,7 +98,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   // Don't show loading state - just render empty during brief mode transitions
   if (useDefaultPanel) {
     return (
-      <div className="h-full w-full p-2">
+      <div className="h-full w-full p-2 min-h-0 overflow-hidden">
         <GenerationSettingsPanel
           showOperationType={resolvedSettings.showOperationType}
           showProvider={resolvedSettings.showProvider}
@@ -118,7 +118,7 @@ export function SettingsPanel(props: QuickGenPanelProps) {
   }
 
   return (
-    <div className="h-full w-full p-2">
+    <div className="h-full w-full p-2 min-h-0 overflow-hidden">
       {renderSettingsPanel()}
     </div>
   );

@@ -9,7 +9,7 @@ import { initializePanels } from "@features/panels";
 
 import type { Module } from "@app/modules/types";
 
-import { useWorkspaceStore, type PanelId } from "./stores/workspaceStore";
+import { useWorkspaceStore } from "./stores/workspaceStore";
 
 // === Workspace Actions ===
 
@@ -50,10 +50,7 @@ const openPanelAction: ActionDefinition = {
   visibility: "hidden", // Programmatic-only action
   execute: (ctx) => {
     const panelId =
-      (typeof ctx === "string" ? ctx : ctx?.target) as
-        | PanelId
-        | `dev-tool:${string}`
-        | undefined;
+      (typeof ctx === "string" ? ctx : ctx?.target) as string | undefined;
     if (panelId) {
       useWorkspaceStore.getState().openFloatingPanel(panelId);
     }

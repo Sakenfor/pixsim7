@@ -20,6 +20,7 @@ import { usePersistentSet } from '@/hooks/usePersistentState';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 
 import { AssetDetailModal } from './AssetDetailModal';
+import { RelatedAssetsModal } from './RelatedAssetsModal';
 import { GallerySurfaceShell } from './shared';
 
 export function ReviewGallerySurface() {
@@ -298,6 +299,7 @@ export function ReviewGallerySurface() {
 
       {/* Asset Detail Modal - uses shared store */}
       <AssetDetailModal />
+      <RelatedAssetsModal />
     </>
   );
 }

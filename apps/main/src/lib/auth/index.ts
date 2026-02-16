@@ -17,3 +17,6 @@ export type {
 
 // Google auth (app-specific)
 export * from './googleAuth';
+
+// Role helpers
+export * from './userRoles';

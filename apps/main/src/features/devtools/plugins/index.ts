@@ -4,8 +4,6 @@
  * Central place to import and export all dev tool plugins.
  * Register your custom dev tools here.
  *
- * Note: Some tools (appMapTool, templateAnalyticsTool) are now auto-registered
- * from their module definitions via page.devTool config.
  */
 
 import {
@@ -13,9 +11,12 @@ import {
   generationHealthTool,
   pluginWorkspaceTool,
   capabilityTestingTool,
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
+  templateAnalyticsTool,
   gizmoSurfacesTool,
+  mediaHarnessTool,
   promptLabTool,
   promptBlockGraphTool,
   actionBlockGraphTool,
@@ -31,9 +32,12 @@ export {
   generationHealthTool,
   pluginWorkspaceTool,
   capabilityTestingTool,
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
+  templateAnalyticsTool,
   gizmoSurfacesTool,
+  mediaHarnessTool,
   promptLabTool,
   promptBlockGraphTool,
   actionBlockGraphTool,
@@ -44,7 +48,6 @@ export {
 };
 
 // Export array of built-in dev tools for bulk registration
-// Note: appMapTool and templateAnalyticsTool are auto-registered from modules
 export const builtInDevTools = [
   // Session & World State
   sessionStateViewerTool,
@@ -54,14 +57,17 @@ export const builtInDevTools = [
   pluginWorkspaceTool,
   capabilityTestingTool,
 
-  // Architecture & Graph (appMapTool auto-registered from appMapModule)
+  // Architecture & Graph
+  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
 
-  // Analytics & Metrics (templateAnalyticsTool auto-registered from templateAnalyticsModule)
+  // Analytics & Metrics
+  templateAnalyticsTool,
 
   // Gizmo & Surface Management
   gizmoSurfacesTool,
+  mediaHarnessTool,
 
   // Prompt Tools
   promptLabTool,

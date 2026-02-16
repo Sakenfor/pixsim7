@@ -2,14 +2,21 @@ import { useEffect, useMemo } from 'react';
 
 import { buildDevtoolsUrl } from '@lib/dev/devtools/devtoolsUrl';
 
-export function DevtoolsRedirect() {
+interface DevtoolsRedirectProps {
+  preservePath?: boolean;
+}
+
+export function DevtoolsRedirect({ preservePath = true }: DevtoolsRedirectProps) {
   const destination = useMemo(() => {
     if (typeof window === 'undefined') {
       return buildDevtoolsUrl('/');
     }
+    if (!preservePath) {
+      return buildDevtoolsUrl('/');
+    }
     const { pathname, search, hash } = window.location;
     return buildDevtoolsUrl(`${pathname}${search}${hash}`);
-  }, []);
+  }, [preservePath]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {

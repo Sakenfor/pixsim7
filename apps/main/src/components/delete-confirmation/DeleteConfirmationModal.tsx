@@ -27,8 +27,9 @@
  * ```
  */
 
-import { useState } from 'react';
 import { Modal, Badge, Button } from '@pixsim7/shared.ui';
+import { useState } from 'react';
+
 import { useDependencies } from '@/hooks/useDependencies';
 
 /**
@@ -202,7 +203,6 @@ export function DeleteConfirmationModal({
  * Policy Option - Radio-style button for policy selection
  */
 function PolicyOption({
-  policy,
   label,
   description,
   recommended,
@@ -210,7 +210,7 @@ function PolicyOption({
   selected,
   onClick,
 }: {
-  policy: DeletePolicy;
+  policy?: DeletePolicy;
   label: string;
   description: string;
   recommended?: boolean;
@@ -224,7 +224,7 @@ function PolicyOption({
       className={`
         w-full p-3 rounded-lg border text-left transition-all
         ${selected
-          ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500/50'
+          ? 'border-accent bg-accent-subtle ring-2 ring-accent/50'
           : 'border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 dark:hover:border-neutral-500'
         }
         ${recommended && !selected ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/20' : ''}
@@ -238,13 +238,13 @@ function PolicyOption({
           className={`
             w-4 h-4 rounded-full border-2 flex items-center justify-center
             ${selected
-              ? 'border-blue-500 dark:border-blue-400'
+              ? 'border-accent'
               : 'border-neutral-300 dark:border-neutral-600'
             }
           `}
         >
           {selected && (
-            <div className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400" />
+            <div className="w-2 h-2 rounded-full bg-accent" />
           )}
         </div>
         <span className="font-semibold text-sm text-neutral-900 dark:text-neutral-100">

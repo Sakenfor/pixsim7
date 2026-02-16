@@ -64,11 +64,19 @@ export function stopAutosave(): void {
 }
 
 export async function clearDraftAfterSave(
-  currentProjectId: number | null,
+  savedProjectId: number | null,
+  previousProjectId: number | null = savedProjectId,
 ): Promise<void> {
-  try {
-    await deleteProjectDraft(currentProjectId);
-  } catch {
-    // Draft may not exist — silently ignore
+  const draftScopes: Array<number | null> = [savedProjectId];
+  if (previousProjectId !== savedProjectId) {
+    draftScopes.push(previousProjectId);
+  }
+
+  for (const draftSourceProjectId of draftScopes) {
+    try {
+      await deleteProjectDraft(draftSourceProjectId);
+    } catch {
+      // Draft may not exist - silently ignore
+    }
   }
 }

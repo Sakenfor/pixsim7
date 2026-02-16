@@ -45,6 +45,21 @@ describe('buildGenerationRequest', () => {
     expect(result?.params?.prompt).toBe('cinematic');
   });
 
+  it('keeps 50 chars of headroom when clamping larger prompt limits', () => {
+    const overlongPrompt = 'x'.repeat(160);
+    const result = buildGenerationRequest(
+      createBaseContext({
+        prompt: overlongPrompt,
+        maxChars: 100,
+      })
+    );
+
+    expect(result.error).toBeUndefined();
+    expect(result.finalPrompt).toHaveLength(50);
+    expect(result?.params?.prompt).toHaveLength(50);
+    expect(result.finalPrompt).toBe(overlongPrompt.slice(0, 50));
+  });
+
   it('does not let dynamicParams.prompt override clamped prompt', () => {
     const result = buildGenerationRequest(
       createBaseContext({

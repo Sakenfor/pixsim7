@@ -12,12 +12,10 @@ import { useSelectionStore } from '@features/graph';
 
 import { useWorkspaceStore } from '../stores/workspaceStore';
 
+import { getBuiltinPreset } from './builtinPresets';
+import { createDefaultLayout } from './defaultWorkspaceLayout';
+import { clearDockview, buildLayoutFromRecipe } from './layoutRecipes';
 import { resolveWorkspaceDockview } from './resolveWorkspaceDockview';
-
-
-
-/** Storage key for workspace layout (must match DockviewWorkspace) */
-const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
 
 /**
  * Workspace console manifest
@@ -59,13 +57,24 @@ export const workspaceManifest: ConsoleManifest = {
             if (!api) throw new Error('Workspace dockview not available');
 
             const store = useWorkspaceStore.getState();
-            const layout = store.getPresetLayout(presetId);
 
+            // User preset — apply serialized layout directly
+            const layout = store.getPresetLayout(presetId);
             if (layout) {
               api.fromJSON(layout);
+              store.setActivePreset('workspace', presetId);
+              return `Loaded user preset: ${presetId}`;
+            }
+
+            // Built-in preset — apply recipe
+            const builtin = getBuiltinPreset(presetId);
+            if (builtin && builtin.recipe.panels.length > 0) {
+              clearDockview(api);
+              const floatingIds = new Set(store.floatingPanels.map((p) => p.id));
+              buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
             } else {
-              localStorage.removeItem(WORKSPACE_STORAGE_KEY);
-              throw new Error('Preset has null layout - please reload the page');
+              clearDockview(api);
+              createDefaultLayout(api);
             }
 
             store.setActivePreset('workspace', presetId);
@@ -93,8 +102,8 @@ export const workspaceManifest: ConsoleManifest = {
           name: 'List Presets',
           description: 'List all available workspace presets',
           execute: () => {
-            const presets = useWorkspaceStore.getState().presets;
-            return presets.map((p) => ({ id: p.id, name: p.name, icon: p.icon }));
+            const presets = useWorkspaceStore.getState().getPresetsForScope('workspace');
+            return presets.map((p) => ({ id: p.id, name: p.name, icon: p.icon, isDefault: p.isDefault }));
           },
         },
         toggleLock: {

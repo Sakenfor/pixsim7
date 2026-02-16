@@ -40,6 +40,24 @@ export interface BuildGenerationResult {
 }
 
 /**
+ * Keep a small prompt headroom below provider-advertised limits.
+ * Some providers enforce limits with slight counting differences
+ * (normalization/encoding), causing borderline prompts to be rejected.
+ */
+const PROMPT_CLAMP_HEADROOM_CHARS = 50;
+
+function resolvePromptClampLimit(maxChars?: number): number | undefined {
+  if (typeof maxChars !== 'number' || !Number.isFinite(maxChars) || maxChars <= 0) {
+    return undefined;
+  }
+
+  const normalized = Math.floor(maxChars);
+  return normalized > PROMPT_CLAMP_HEADROOM_CHARS
+    ? normalized - PROMPT_CLAMP_HEADROOM_CHARS
+    : normalized;
+}
+
+/**
  * Build and validate a generation request for QuickGenerateModule.
  *
  * This helper centralizes operation-specific validation and parameter
@@ -324,8 +342,11 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     }
   }
 
-  // Clamp to provider/model limit before sending to API
-  const clampedPrompt = maxChars != null ? trimmedPrompt.slice(0, maxChars) : trimmedPrompt;
+  // Clamp to provider/model limit (with headroom) before sending to API.
+  const promptClampLimit = resolvePromptClampLimit(maxChars);
+  const clampedPrompt = promptClampLimit != null
+    ? trimmedPrompt.slice(0, promptClampLimit)
+    : trimmedPrompt;
 
   const params: Record<string, any> = {
     ...dynamicParams,

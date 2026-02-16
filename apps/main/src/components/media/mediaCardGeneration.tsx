@@ -241,6 +241,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const [isLoadingSource, setIsLoadingSource] = useState(false);
   const [isExtending, setIsExtending] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isQuickGenerating, setIsQuickGenerating] = useState(false);
 
   // Reconstruct asset for slot picker and quick-generation hydration.
   const inputAsset = useMemo<AssetModel>(() => ({
@@ -372,6 +373,80 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     [addOrUpdateGeneration, setWatchingGeneration],
   );
 
+  // Quick generate using the widget's scoped stores (not the controller's global stores).
+  // This ensures the button reads the settings the user actually sees in the active
+  // generation widget (Control Center or Viewer Quick Gen).
+  const handleQuickGenerate = useCallback(async () => {
+    if (isQuickGenerating) return;
+    setIsQuickGenerating(true);
+
+    try {
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const sessionState = getGenerationSessionStore(scopeId).getState();
+      const settingsState = getGenerationSettingsStore(scopeId).getState();
+
+      const { operationType: widgetOp, prompt, providerId } = sessionState;
+      const dynamicParams = settingsState.params || {};
+
+      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', widgetOp);
+      const maxChars = resolvePromptLimitFromSpec(
+        providerId,
+        dynamicParams?.model as string | undefined,
+        opSpec,
+      );
+
+      const inputItem = {
+        id: `quick-${inputAsset.id}-${Date.now()}`,
+        asset: inputAsset,
+        queuedAt: new Date().toISOString(),
+        lockedTimestamp: undefined,
+      };
+
+      const buildResult = buildGenerationRequest({
+        operationType: widgetOp,
+        prompt: prompt || '',
+        dynamicParams,
+        operationInputs: [inputItem],
+        prompts: [],
+        transitionDurations: [],
+        maxChars,
+        activeAsset: toSelectedAsset(inputAsset, 'gallery'),
+        currentInput: inputItem,
+      });
+
+      if (buildResult.error || !buildResult.params) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: buildResult.error ?? 'Failed to build generation request',
+          duration: 4000,
+        });
+        return;
+      }
+
+      await submitDirectGeneration({
+        operationType: widgetOp,
+        providerId,
+        prompt: buildResult.finalPrompt,
+        params: buildResult.params,
+        successMessage: 'Generating...',
+      });
+    } catch (err) {
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: `Quick generate failed: ${extractErrorMessage(err)}`,
+        duration: 4000,
+      });
+    } finally {
+      setIsQuickGenerating(false);
+    }
+  }, [
+    isQuickGenerating,
+    widgetContext?.scopeId,
+    scopedScopeId,
+    inputAsset,
+    submitDirectGeneration,
+  ]);
+
   const handleLoadToQuickGen = useCallback(async () => {
     if ((!data.sourceGenerationId && !data.hasGenerationContext) || isLoadingSource) return;
 
@@ -440,15 +515,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     try {
       // Fetch generation context (from record or metadata)
       const ctx = await getAssetGenerationContext(id);
-      const { providerId, prompt } = parseGenerationContext(ctx, operationType);
+      const { params: originalParams, providerId, prompt } = parseGenerationContext(ctx, operationType);
 
-      // Get current scoped stores for any additional settings
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
-      const settingsState = getGenerationSettingsStore(scopeId).getState();
-
-      // Build params for video_extend with the current asset as source
+      // Build params for video_extend: reuse the original generation's
+      // model/quality/settings and set the current asset as extend source.
       const extendParams = {
-        ...stripInputParams(settingsState.params || {}),
+        ...stripInputParams(originalParams as Record<string, unknown>),
         source_asset_id: id,
         // Let backend resolve original_video_id from canonical asset metadata.
         // Card-level providerAssetId can be stale/ambiguous and break extend.
@@ -526,8 +598,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     operationType,
     id,
     inputAsset,
-    widgetContext,
-    scopedScopeId,
     submitDirectGeneration,
   ]);
 
@@ -545,9 +615,23 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         operationType: resolvedOperationType,
         providerId,
         prompt,
+        sourceAssetIds,
       } = parseGenerationContext(ctx, operationType);
 
       const sourceParams = stripSeedFromParams(params as Record<string, unknown>);
+
+      // Ensure source asset references are present in params so the backend
+      // receives the correct operation type (e.g. image_to_video stays i2v
+      // instead of falling back to text_to_video).
+      if (
+        sourceAssetIds.length > 0
+        && !sourceParams.source_asset_ids
+        && !sourceParams.sourceAssetIds
+        && !sourceParams.source_asset_id
+        && !sourceParams.sourceAssetId
+      ) {
+        sourceParams.source_asset_ids = sourceAssetIds;
+      }
       const parsedParams = params as Record<string, unknown>;
       const shouldRandomizeSeed =
         paramsIncludeSeed(parsedParams)
@@ -738,9 +822,14 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   if (hasQuickGenerate) {
     buttonItems.push({
       id: 'quick-generate',
-      icon: <Icon name="sparkles" size={14} />,
-      onClick: () => actions?.onQuickAdd?.(id),
+      icon: isQuickGenerating ? (
+        <Icon name="loader" size={14} className="animate-spin" />
+      ) : (
+        <Icon name="sparkles" size={14} />
+      ),
+      onClick: handleQuickGenerate,
       title: 'Quick generate with current settings',
+      disabled: isQuickGenerating,
     });
   }
 

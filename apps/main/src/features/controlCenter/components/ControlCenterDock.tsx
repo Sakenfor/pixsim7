@@ -1,8 +1,10 @@
+import { OrientationProvider } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
 import type { DockviewApi } from 'dockview-core';
 import { useRef, useMemo, useCallback, useEffect } from 'react';
 import { Rnd } from 'react-rnd';
 import { useNavigate } from 'react-router-dom';
+
 
 import { useEdgeInset, useInsetOn } from '@lib/layout/edgeInsets';
 import type { Edge } from '@lib/layout/edgeInsets';
@@ -104,13 +106,15 @@ export function ControlCenterDock() {
   const layoutBehavior = useControlCenterStore(s => s.layoutBehavior);
 
   // Register in edge insets so other widgets + content area can respond
+  // When retracted in peek mode, always push (toolbar is visible and would overlap content)
+  const peekRetracted = !open && retractedMode === 'peek';
   useEdgeInset(
     'controlCenter',
     isFloating ? 'bottom' : (dockPosition as Edge),
-    height,
-    open && !isFloating,
+    peekRetracted ? TOOLBAR_HEIGHT : height,
+    !isFloating && (open || peekRetracted),
     10, // after activity bar (0)
-    layoutBehavior === 'push',
+    layoutBehavior === 'push' || peekRetracted,
   );
 
   // Read insets from other widgets to offset our positioning
@@ -190,6 +194,7 @@ export function ControlCenterDock() {
 
   // Render content (shared between floating and docked)
   const renderContent = () => (
+    <OrientationProvider orientation={isVertical ? 'vertical' : 'horizontal'}>
     <div className={clsx(
         'h-full bg-gradient-to-t from-white/98 via-white/95 to-white/90 dark:from-neutral-900/98 dark:via-neutral-900/95 dark:to-neutral-900/90 backdrop-blur-xl shadow-2xl flex',
         {
@@ -256,6 +261,7 @@ export function ControlCenterDock() {
         )}
       </div>
     </div>
+    </OrientationProvider>
   );
 
   // Floating mode: use react-rnd for draggable/resizable behavior
