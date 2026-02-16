@@ -28,26 +28,40 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   analysis_tags: { icon: 'sparkles', order: 4 },
   upload_method: { icon: 'upload', order: 5 },
   source_site: { icon: 'globe', order: 7 },
-  source_folder: { icon: 'folder', order: 7 },
-  source_subfolder: { icon: 'folderOpen', order: 8 },
+  source_path: { icon: 'folderTree', order: 7 },
   source_filename: { icon: 'video', order: 7 },
   source_folder_id: { icon: 'folder', order: 7 },
   source_relative_path: { icon: 'folder-tree', order: 7 },
   source_url: { icon: 'external-link', order: 7 },
   // Overflow: shown in the "more" menu instead of the main bar
+  missing_prompt: { icon: 'fileQuestion', order: 80, overflow: true },
+  missing_analysis: { icon: 'scanSearch', order: 81, overflow: true },
+  missing_embedding: { icon: 'eye', order: 82, overflow: true },
+  missing_tags: { icon: 'tags', order: 83, overflow: true },
   include_archived: { icon: 'archive', order: 90, overflow: true },
   provider_status: { icon: 'shield', order: 91, overflow: true },
 };
 
-/** Group filter options by namespace parsed from "namespace:name" values. */
+/**
+ * Group filter options by namespace parsed from a separator character.
+ * @param separator  Character to split on (default `':'`)
+ * @param ungroupedKey  Key for items without separator. `undefined` = use value itself as group key.
+ */
 function groupOptionsByNamespace(
   options: FilterOptionValue[],
+  separator: string = ':',
+  ungroupedKey: string | undefined = 'other',
 ): Map<string, FilterOptionValue[]> {
   const groups = new Map<string, FilterOptionValue[]>();
 
   for (const opt of options) {
-    const colonIdx = opt.value.indexOf(':');
-    const namespace = colonIdx > 0 ? opt.value.substring(0, colonIdx) : 'other';
+    const sepIdx = opt.value.indexOf(separator);
+    const namespace =
+      sepIdx > 0
+        ? opt.value.substring(0, sepIdx)
+        : ungroupedKey !== undefined
+          ? ungroupedKey
+          : opt.value;
 
     let group = groups.get(namespace);
     if (!group) {
@@ -730,14 +744,22 @@ function FilterControl({
       );
 
     case 'enum': {
-      const shouldGroup = (key === 'tag' || key === 'analysis_tags') && options.length > 0;
+      const isTagLike = key === 'tag' || key === 'analysis_tags';
+      const isFolderPath = key === 'source_path';
+      const shouldGroup = (isTagLike || isFolderPath) && options.length > 0;
+      const groupSeparator = isFolderPath ? '/' : ':';
 
       const renderOption = (opt: FilterOptionValue, stripNamespace: boolean) => {
         const optValue = String(opt.value);
         const isSelected = selectedValues.includes(optValue);
-        const displayLabel = stripNamespace
-          ? (opt.label || opt.value.split(':').slice(1).join(':') || opt.value)
-          : (opt.label || opt.value);
+        let displayLabel: string;
+        if (stripNamespace) {
+          const parts = opt.value.split(groupSeparator);
+          const afterSep = parts.slice(1).join(groupSeparator);
+          displayLabel = afterSep || (isFolderPath ? '(root)' : opt.value);
+        } else {
+          displayLabel = opt.label || opt.value;
+        }
         return (
           <label
             key={opt.value}
@@ -766,7 +788,11 @@ function FilterControl({
       };
 
       if (shouldGroup) {
-        const grouped = groupOptionsByNamespace(options);
+        const grouped = groupOptionsByNamespace(
+          options,
+          groupSeparator,
+          isFolderPath ? undefined : 'other',
+        );
         const groups = Array.from(grouped.entries());
         const showHeaders = groups.length > 1;
 

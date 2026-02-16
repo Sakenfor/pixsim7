@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Iterable, Optional
 
-from sqlalchemy import select, func, distinct, true, cast
+from sqlalchemy import select, func, distinct, true, cast, case, literal, or_, exists
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -39,6 +39,7 @@ class FilterSpec:
         [AsyncSession, Any, bool, dict[str, Any] | None, Optional[int]],
         Awaitable[list[tuple[str, Optional[str], Optional[int]]]],
     ] | None = None
+    condition_builder: Callable[[Any], Any] | None = None
     multi: bool = False
     match_modes: set[str] | None = None
 
@@ -130,6 +131,11 @@ class AssetFilterRegistry(SimpleRegistry[str, FilterSpec]):
                 continue
             spec = self.get_spec(key)
             if not spec:
+                continue
+            if spec.condition_builder is not None:
+                cond = spec.condition_builder(value)
+                if cond is not None:
+                    conditions.append(cond)
                 continue
             column = _resolve_filter_column(spec)
             if column is None:
@@ -351,6 +357,68 @@ async def _load_analysis_tag_options(
         if row[0]
     ]
 
+def _build_source_path_expr() -> Any:
+    """Computed expression: folder/subfolder (or just folder if no subfolder)."""
+    folder = Asset.upload_context["source_folder"].astext
+    subfolder = Asset.upload_context["source_subfolder"].astext
+    return case(
+        (
+            (subfolder.isnot(None)) & (subfolder != ""),
+            folder + literal("/") + subfolder,
+        ),
+        else_=folder,
+    )
+
+
+async def _load_source_path_options(
+    db: AsyncSession,
+    user: Any,
+    include_counts: bool,
+    context: dict[str, Any] | None,
+    limit: Optional[int],
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    path_expr = _build_source_path_expr()
+    filters = [
+        Asset.user_id == user.id,
+        Asset.is_archived == False,
+        Asset.upload_method == "local",
+        Asset.upload_context["source_folder"].astext.isnot(None),
+        Asset.upload_context["source_folder"].astext != "",
+    ]
+    if context:
+        filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="source_path"))
+
+    if include_counts:
+        stmt = (
+            select(path_expr.label("path"), func.count(Asset.id).label("count"))
+            .where(*filters)
+            .group_by(path_expr)
+            .order_by(func.count(Asset.id).desc())
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+        result = await db.execute(stmt)
+        return [
+            (row.path, row.path, row.count)
+            for row in result.all()
+            if row.path
+        ]
+
+    stmt = (
+        select(distinct(path_expr).label("path"))
+        .where(*filters)
+        .order_by(path_expr.asc())
+    )
+    if limit:
+        stmt = stmt.limit(limit)
+    result = await db.execute(stmt)
+    return [
+        (row.path, row.path, None)
+        for row in result.all()
+        if row.path
+    ]
+
+
 asset_filter_registry = AssetFilterRegistry()
 
 
@@ -415,6 +483,19 @@ def register_default_asset_filters() -> None:
             )
         )
     asset_filter_registry.register(
+        FilterSpec(
+            key="source_path",
+            type="enum",
+            label="Folder",
+            description="Unified folder path (folder/subfolder)",
+            option_source="custom",
+            column=_build_source_path_expr(),
+            option_loader=_load_source_path_options,
+            depends_on={"upload_method": {"local"}},
+            multi=True,
+        )
+    )
+    asset_filter_registry.register(
         FilterSpec(key="include_archived", type="boolean", label="Show Archived")
     )
     asset_filter_registry.register(
@@ -438,6 +519,45 @@ def register_default_asset_filters() -> None:
             option_loader=_load_analysis_tag_options,
             multi=True,
             match_modes={"any", "all"},
+        )
+    )
+    # -- Missing metadata filters --
+    from pixsim7.backend.main.domain.assets.tag import AssetTag as _AssetTag
+
+    asset_filter_registry.register(
+        FilterSpec(
+            key="missing_prompt",
+            type="boolean",
+            label="Missing Prompt",
+            condition_builder=lambda v: or_(
+                Asset.prompt.is_(None), Asset.prompt == ""
+            ) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="missing_analysis",
+            type="boolean",
+            label="Missing Analysis",
+            condition_builder=lambda v: Asset.prompt_analysis.is_(None) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="missing_embedding",
+            type="boolean",
+            label="Missing Embedding",
+            condition_builder=lambda v: Asset.embedding.is_(None) if v else None,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="missing_tags",
+            type="boolean",
+            label="Missing Tags",
+            condition_builder=lambda v: ~exists(
+                select(_AssetTag.asset_id).where(_AssetTag.asset_id == Asset.id)
+            ) if v else None,
         )
     )
     asset_filter_registry.register(

@@ -133,6 +133,8 @@ import {
   ArrowUp,
   MousePointer2,
   Home,
+  FileQuestionMark,
+  Tags,
 } from 'lucide-react';
 import type { ComponentType, SVGProps } from 'react';
 
@@ -231,6 +233,7 @@ export const Icons = {
   fileText: FileText,
   fileCode: FileCode,
   'file-code': FileCode,
+  fileQuestion: FileQuestionMark,
   clock: Clock,
   code: Code,
   maximize2: Maximize2,
@@ -244,6 +247,7 @@ export const Icons = {
   cpu: Cpu,
   database: Database,
   tag: Tag,
+  tags: Tags,
   shield: Shield,
   flask: FlaskConical,
   'git-branch': GitBranch,
