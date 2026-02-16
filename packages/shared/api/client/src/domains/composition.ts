@@ -1,43 +1,21 @@
 import type { PixSimApiClient } from '../client';
 import type {
+  ApiComponents,
+  ApiOperations,
   CompositionPackage,
   CompositionRoleDefinition,
 } from '@pixsim7/shared.types';
 import { toCamelCaseDeep } from '@pixsim7/shared.helpers.core';
 
-interface CompositionRoleResponseDto {
-  id: string;
-  label: string;
-  description: string;
-  color: string;
-  default_layer: number;
-  tags: string[];
-  slug_mappings?: string[];
-  namespace_mappings?: string[];
-}
-
-interface CompositionPackageResponseDto {
-  id: string;
-  label: string;
-  description: string;
-  plugin_id?: string | null;
-  roles: CompositionRoleResponseDto[];
-  recommended_for?: string[];
-  version: string;
-}
+type Schemas = ApiComponents['schemas'];
+type CompositionRoleResponseDto = Schemas['CompositionRoleResponse'];
+type CompositionPackageResponseDto = Schemas['CompositionPackageResponse'];
+type ListRolesQuery = ApiOperations['list_roles_api_v1_composition_roles_get']['parameters']['query'];
 
 /**
  * Response from GET /composition/packages
  */
-export interface CompositionPackagesResponse {
-  packages: CompositionPackage[];
-  total: number;
-}
-
-interface CompositionPackagesResponseDto {
-  packages: CompositionPackageResponseDto[];
-  total: number;
-}
+export type CompositionPackagesResponse = Schemas['CompositionPackagesListResponse'];
 
 function normalizeRole(raw: CompositionRoleResponseDto): CompositionRoleDefinition {
   const camel = toCamelCaseDeep(raw as unknown as Record<string, unknown>) as unknown as CompositionRoleDefinition;
@@ -67,7 +45,7 @@ export function createCompositionApi(client: PixSimApiClient) {
      * Use getAvailableRoles() from @pixsim7/shared.types to filter by active packages.
      */
     async getPackages(): Promise<CompositionPackage[]> {
-      const response = await client.get<CompositionPackagesResponseDto>('/composition/packages');
+      const response = await client.get<CompositionPackagesResponse>('/composition/packages');
       return (response.packages || []).map(normalizePackage);
     },
 
@@ -79,11 +57,11 @@ export function createCompositionApi(client: PixSimApiClient) {
      *                     Core package (core.base) is always included.
      */
     async getRoles(packageIds?: string[]): Promise<CompositionRoleDefinition[]> {
-      const params = packageIds?.length
+      const params: ListRolesQuery | undefined = packageIds?.length
         ? { packages: packageIds.join(',') }
         : undefined;
 
-      const roles = await client.get<CompositionRoleResponseDto[]>('/composition/roles', { params });
+      const roles = await client.get<readonly CompositionRoleResponseDto[]>('/composition/roles', { params });
       return (roles || []).map(normalizeRole);
     },
   };

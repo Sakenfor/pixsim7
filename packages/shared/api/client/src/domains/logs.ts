@@ -12,17 +12,8 @@ export type LogQueryResponse =
 export type LogQueryParams =
   ApiOperations['query_logs_api_v1_logs_query_get']['parameters']['query'];
 
-export interface ConsoleFieldDefinition {
-  name: string;
-  color: string;
-  clickable: boolean;
-  pattern: string;
-  description: string;
-}
-
-export interface ConsoleFieldsResponse {
-  fields: ConsoleFieldDefinition[];
-}
+export type ConsoleFieldDefinition = ApiComponents['schemas']['ConsoleFieldDefinitionResponse'];
+export type ConsoleFieldsResponse = ApiComponents['schemas']['ConsoleFieldsResponse'];
 
 export function createLogsApi(client: PixSimApiClient) {
   return {
@@ -48,8 +39,7 @@ export function createLogsApi(client: PixSimApiClient) {
 
     async getConsoleFields(): Promise<ConsoleFieldDefinition[]> {
       const res = await client.get<ConsoleFieldsResponse>('/logs/console-fields');
-      return res.fields ?? [];
+      return [...(res.fields ?? [])];
     },
   };
 }
-

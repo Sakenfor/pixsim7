@@ -1,4 +1,7 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents } from '@pixsim7/shared.types';
+
+type Schemas = ApiComponents['schemas'];
 
 export interface DebugPreferences {
   generation?: boolean;
@@ -84,10 +87,10 @@ export interface AnalyzerPreferences {
 }
 
 export interface UserPreferences {
-  cubes?: any;
-  workspace?: any;
+  cubes?: unknown;
+  workspace?: unknown;
   theme?: string;
-  notifications?: any;
+  notifications?: unknown;
   debug?: DebugPreferences;
   /** Per-tool settings from DevTools registry */
   devtools?: DevToolsPreferences;
@@ -97,12 +100,14 @@ export interface UserPreferences {
   auto_tags?: AutoTagsPreferences;
   /** Analyzer settings for prompt analysis */
   analyzer?: AnalyzerPreferences;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
-export interface UserPreferencesResponse {
-  preferences: UserPreferences;
-}
+type UserPreferencesResponseSchema = Schemas['UserPreferencesResponse'];
+type UpdateUserPreferencesRequest = Schemas['UpdateUserPreferencesRequest'];
+export type UserPreferencesResponse = Omit<UserPreferencesResponseSchema, 'preferences'> & {
+  preferences?: UserPreferences;
+};
 
 export function createUserPreferencesApi(client: PixSimApiClient) {
   return {
@@ -112,8 +117,11 @@ export function createUserPreferencesApi(client: PixSimApiClient) {
     },
 
     async updateUserPreferences(preferences: Partial<UserPreferences>): Promise<UserPreferences> {
-      const response = await client.patch<UserPreferencesResponse>('/users/me/preferences', {
+      const payload: UpdateUserPreferencesRequest = {
         preferences,
+      };
+      const response = await client.patch<UserPreferencesResponse>('/users/me/preferences', {
+        ...payload,
       });
       return response.preferences || {};
     },
@@ -122,11 +130,13 @@ export function createUserPreferencesApi(client: PixSimApiClient) {
       key: K,
       value: UserPreferences[K]
     ): Promise<UserPreferences> {
-      const response = await client.patch<UserPreferencesResponse>('/users/me/preferences', {
+      const payload: UpdateUserPreferencesRequest = {
         preferences: { [key]: value },
+      };
+      const response = await client.patch<UserPreferencesResponse>('/users/me/preferences', {
+        ...payload,
       });
       return response.preferences || {};
     },
   };
 }
-

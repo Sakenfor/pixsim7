@@ -1,16 +1,11 @@
 import type { PixSimApiClient } from '../client';
-import type { DocIndexEntry, DocPageResponse } from '@pixsim7/shared.types';
+import type { ApiComponents } from '@pixsim7/shared.types';
 
-export interface DocsIndexResponse {
-  version: string;
-  generatedAt: string | null;
-  entries: DocIndexEntry[];
-}
+type Schemas = ApiComponents['schemas'];
 
-export interface DocsSearchResponse {
-  query: string;
-  results: DocIndexEntry[];
-}
+export type DocsIndexResponse = Schemas['DocsIndexResponse'];
+export type DocPageResponse = Schemas['DocPageResponse'];
+export type DocsSearchResponse = Schemas['DocsSearchResponse'];
 
 export function createDevDocsApi(client: PixSimApiClient) {
   return {

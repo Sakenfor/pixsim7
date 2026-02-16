@@ -2,10 +2,12 @@
  * Game API Domain Client
  *
  * Provides typed access to game-related endpoints including worlds,
- * sessions, scenes, NPCs, quests, and inventory.
+ * sessions, scenes, NPCs, quests, inventory, and template resolution.
  */
 import type { PixSimApiClient } from '../client';
 import type {
+  ApiComponents,
+  ApiOperations,
   TemplateKind as SharedTemplateKind,
   ResolveTemplateResponse as SharedResolveTemplateResponse,
   ResolveBatchResponse as SharedResolveBatchResponse,
@@ -13,182 +15,95 @@ import type {
 } from '@pixsim7/shared.types';
 import { toCamelCaseShallow } from '@pixsim7/shared.helpers.core';
 
+type Schemas = ApiComponents['schemas'];
+type Ops = ApiOperations;
+
 // ===== World Types =====
 
-export interface GameWorldSummary {
-  id: number;
-  name: string;
-  created_at: string;
-  updated_at: string;
-}
+type CreateWorldRequest =
+  Ops['create_world_api_v1_game_worlds__post']['requestBody']['content']['application/json'];
+type UpdateWorldMetaRequest =
+  Ops['update_world_meta_api_v1_game_worlds__world_id__meta_put']['requestBody']['content']['application/json'];
+type AdvanceWorldTimeRequest =
+  Ops['advance_world_time_api_v1_game_worlds__world_id__advance_post']['requestBody']['content']['application/json'];
 
-export interface GameWorldDetail extends GameWorldSummary {
-  meta: Record<string, unknown>;
-  world_time: number;
-}
-
-export interface PaginatedWorldsResponse {
-  worlds: GameWorldSummary[];
-  total: number;
-  page: number;
-  per_page: number;
-}
-
-export interface WorldConfigResponse {
-  world_id: number;
-  stat_definitions: Record<string, unknown>;
-  relationship_types: string[];
-  flag_definitions: Record<string, unknown>;
-}
+export type GameWorldSummary = Schemas['GameWorldSummary'];
+export type GameWorldDetail = Schemas['GameWorldDetail'];
+export type PaginatedWorldsResponse = Schemas['PaginatedWorldsResponse'];
+export type WorldConfigResponse = Schemas['WorldConfigResponse'];
 
 // ===== Session Types =====
 
-export interface GameSessionSummary {
-  id: number;
-  scene_id: number;
-  world_time: number;
-  created_at: string;
-}
+type CreateSessionRequest =
+  Ops['create_session_api_v1_game_sessions__post']['requestBody']['content']['application/json'];
 
-export interface GameSessionDTO {
-  id: number;
-  scene_id: number;
-  world_id: number;
-  world_time: number;
-  flags: Record<string, unknown>;
-  relationships: Record<string, unknown>;
-  npc_states: Record<string, unknown>;
-  version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface SessionUpdatePayload {
-  flags?: Record<string, unknown>;
-  relationships?: Record<string, unknown>;
-  npc_states?: Record<string, unknown>;
-  expected_version?: number;
-}
+export type GameSessionDTO = Schemas['GameSessionResponse'];
+export type SessionUpdatePayload = Schemas['SessionUpdateRequest'];
+export type GameSessionSummary = Pick<GameSessionDTO, 'id' | 'scene_id' | 'world_time'>;
 
 // ===== Location Types =====
 
-export interface GameLocationSummary {
-  id: number;
-  name: string;
-  world_id: number;
-}
+type ReplaceHotspotsPayload =
+  Ops['replace_hotspots_api_v1_game_locations__location_id__hotspots_put']['requestBody']['content']['application/json'];
 
-export interface GameHotspotDTO {
-  id: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  type: string;
-  label?: string;
-  meta?: Record<string, unknown>;
-}
-
-export interface GameLocationDetail extends GameLocationSummary {
-  hotspots: GameHotspotDTO[];
-  meta: Record<string, unknown>;
-}
+export type GameLocationSummary = Schemas['GameLocationSummary'];
+export type GameHotspotInputDTO = Schemas['GameHotspotDTO-Input'];
+export type GameHotspotDTO = Schemas['GameHotspotDTO-Output'];
+export type GameLocationDetail = Schemas['GameLocationDetail'];
 
 // ===== NPC Types =====
 
-export interface GameNpcSummary {
-  id: number;
-  name: string;
-  world_id: number;
-}
+type NpcPresenceQuery =
+  Ops['get_npc_presence_api_v1_game_npcs_presence_get']['parameters']['query'];
 
-export interface GameNpcDetail extends GameNpcSummary {
-  meta: Record<string, unknown>;
-  expressions: NpcExpressionDTO[];
-}
-
-export interface NpcExpressionDTO {
-  id: string;
-  name: string;
-  asset_id?: number;
-}
-
-export interface NpcPresenceDTO {
-  npc_id: number;
-  location_id: number;
-  present: boolean;
-  schedule_source?: string;
-}
+export type GameNpcSummary = Schemas['NpcSummary'];
+export type GameNpcDetail = Schemas['GameNPC'];
+export type NpcExpressionDTO = Schemas['NpcExpressionDTO'];
+export type NpcPresenceDTO = Schemas['NpcPresenceDTO'];
 
 // ===== Scene Types =====
 
-export interface Scene {
-  id: number;
-  name: string;
-  world_id: number;
-  location_id?: number;
-  meta: Record<string, unknown>;
-}
+export type Scene = Schemas['SceneResponse'];
 
 // ===== Quest Types =====
 
-export interface QuestObjectiveDTO {
-  id: string;
-  description: string;
-  target?: number;
-  progress?: number;
-  completed: boolean;
-  optional?: boolean;
-}
+type ListQuestsQuery =
+  Ops['list_session_quests_api_v1_game_quests_sessions__session_id__quests_get']['parameters']['query'];
+type AddQuestRequest =
+  Ops['add_quest_to_session_api_v1_game_quests_sessions__session_id__quests_post']['requestBody']['content']['application/json'];
+type UpdateQuestStatusRequest =
+  Ops['update_quest_status_api_v1_game_quests_sessions__session_id__quests__quest_id__status_patch']['requestBody']['content']['application/json'];
 
-export interface QuestDTO {
-  quest_id: string;
-  session_id: number;
-  title: string;
-  description: string;
-  status: string;
-  objectives: QuestObjectiveDTO[];
-  metadata?: Record<string, unknown>;
-  created_at: string;
-  updated_at: string;
-}
+export type QuestObjectiveDTO = Schemas['QuestObjective'];
+export type QuestDTO = Schemas['Quest'];
 
 // ===== Inventory Types =====
 
-export interface InventoryItemDTO {
-  item_id: string;
-  session_id: number;
-  name: string;
-  quantity: number;
-  metadata?: Record<string, unknown>;
-}
+type AddInventoryItemRequest =
+  Ops['add_item_to_inventory_api_v1_game_inventory_sessions__session_id__items_post']['requestBody']['content']['application/json'];
+type RemoveInventoryItemRequest =
+  Ops['remove_item_from_inventory_api_v1_game_inventory_sessions__session_id__items__item_id__delete']['requestBody']['content']['application/json'];
 
-export interface InventoryStatsResponse {
-  total_items: number;
-  unique_items: number;
-  total_quantity: number;
-}
+export type InventoryItemDTO = Schemas['InventoryItem'];
+export type InventoryStatsResponse = Schemas['InventoryStatsResponse'];
+export type MessageResponse = Schemas['MessageResponse'];
 
 // ===== Template Resolution Types =====
+
+type ResolveTemplateRequest =
+  Ops['resolve_template_api_v1_game_links_resolve_post']['requestBody']['content']['application/json'];
+type ResolveBatchRequest =
+  Ops['resolve_batch_api_v1_game_links_resolve_batch_post']['requestBody']['content']['application/json'];
 
 export type TemplateKind = SharedTemplateKind;
 export type ResolveTemplateResponse = SharedResolveTemplateResponse;
 export type ResolveBatchResponse = SharedResolveBatchResponse;
 
-interface ResolveTemplateResponseDto {
-  resolved?: boolean;
+type ResolveTemplateResponseDto = Schemas['ResolveTemplateResponse'] & {
   found?: boolean;
-  runtime_kind?: string | null;
-  runtime_id?: number | null;
-  template_kind?: string;
-  template_id?: string;
-}
+};
 
-interface ResolveBatchResponseDto {
-  results: Record<string, ResolveTemplateResponseDto>;
-  resolved_count?: number;
-  total_count?: number;
-}
+type ResolveBatchResponseDto = Schemas['ResolveBatchResponse'];
 
 function normalizeResolveTemplateResponse(
   raw: ResolveTemplateResponseDto,
@@ -231,7 +146,7 @@ export function createGameApi(client: PixSimApiClient) {
 
     async listWorlds(): Promise<GameWorldSummary[]> {
       const response = await client.get<PaginatedWorldsResponse>('/game/worlds');
-      return response.worlds;
+      return [...response.worlds];
     },
 
     async getWorld(worldId: number): Promise<GameWorldDetail> {
@@ -239,11 +154,13 @@ export function createGameApi(client: PixSimApiClient) {
     },
 
     async createWorld(name: string, meta?: Record<string, unknown>): Promise<GameWorldDetail> {
-      return client.post<GameWorldDetail>('/game/worlds', { name, meta });
+      const request: CreateWorldRequest = { name, meta };
+      return client.post<GameWorldDetail>('/game/worlds', request);
     },
 
     async updateWorldMeta(worldId: number, meta: Record<string, unknown>): Promise<GameWorldDetail> {
-      return client.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, { meta });
+      const request: UpdateWorldMetaRequest = { meta };
+      return client.put<GameWorldDetail>(`/game/worlds/${worldId}/meta`, request);
     },
 
     async getWorldConfig(worldId: number): Promise<WorldConfigResponse> {
@@ -251,15 +168,23 @@ export function createGameApi(client: PixSimApiClient) {
     },
 
     async advanceWorldTime(worldId: number, deltaSeconds: number): Promise<GameWorldDetail> {
-      return client.post<GameWorldDetail>(`/game/worlds/${worldId}/advance`, {
-        delta_seconds: deltaSeconds,
-      });
+      const request: AdvanceWorldTimeRequest = { delta_seconds: deltaSeconds };
+      return client.post<GameWorldDetail>(`/game/worlds/${worldId}/advance`, request);
     },
 
     // ===== Sessions =====
 
-    async createSession(sceneId: number, flags?: Record<string, unknown>): Promise<GameSessionDTO> {
-      return client.post<GameSessionDTO>('/game/sessions', { scene_id: sceneId, flags });
+    async createSession(
+      sceneId: number,
+      flags?: Record<string, unknown>,
+      worldId?: number
+    ): Promise<GameSessionDTO> {
+      const request: CreateSessionRequest = {
+        scene_id: sceneId,
+        world_id: worldId,
+        flags,
+      };
+      return client.post<GameSessionDTO>('/game/sessions', request);
     },
 
     async getSession(sessionId: number): Promise<GameSessionDTO> {
@@ -273,21 +198,27 @@ export function createGameApi(client: PixSimApiClient) {
     // ===== Locations =====
 
     async listLocations(): Promise<GameLocationSummary[]> {
-      return client.get<GameLocationSummary[]>('/game/locations');
+      const response = await client.get<readonly GameLocationSummary[]>('/game/locations');
+      return [...response];
     },
 
     async getLocation(locationId: number): Promise<GameLocationDetail> {
       return client.get<GameLocationDetail>(`/game/locations/${locationId}`);
     },
 
-    async saveLocationHotspots(locationId: number, hotspots: GameHotspotDTO[]): Promise<GameLocationDetail> {
-      return client.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, { hotspots });
+    async saveLocationHotspots(
+      locationId: number,
+      hotspots: readonly GameHotspotInputDTO[]
+    ): Promise<GameLocationDetail> {
+      const request: ReplaceHotspotsPayload = { hotspots };
+      return client.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, request);
     },
 
     // ===== NPCs =====
 
     async listNpcs(): Promise<GameNpcSummary[]> {
-      return client.get<GameNpcSummary[]>('/game/npcs');
+      const response = await client.get<readonly GameNpcSummary[]>('/game/npcs');
+      return [...response];
     },
 
     async getNpc(npcId: number): Promise<GameNpcDetail> {
@@ -295,7 +226,7 @@ export function createGameApi(client: PixSimApiClient) {
     },
 
     async saveNpcMeta(npcId: number, meta: Record<string, unknown>): Promise<GameNpcDetail> {
-      return client.put<GameNpcDetail>(`/game/npcs/${npcId}/meta`, { meta });
+      return client.put<GameNpcDetail>(`/game/npcs/${npcId}`, { meta });
     },
 
     async getNpcPresence(params: {
@@ -303,7 +234,15 @@ export function createGameApi(client: PixSimApiClient) {
       world_id?: number;
       location_id?: number;
     }): Promise<NpcPresenceDTO[]> {
-      return client.get<NpcPresenceDTO[]>('/game/npcs/presence', { params });
+      const query: NpcPresenceQuery = {
+        world_time: params.world_time,
+        world_id: params.world_id,
+        location_id: params.location_id,
+      };
+      const response = await client.get<readonly NpcPresenceDTO[]>('/game/npcs/presence', {
+        params: query,
+      });
+      return [...response];
     },
 
     // ===== Scenes =====
@@ -315,55 +254,47 @@ export function createGameApi(client: PixSimApiClient) {
     // ===== Quests =====
 
     async listQuests(sessionId: number, status?: string): Promise<QuestDTO[]> {
-      return client.get<QuestDTO[]>(`/game/quests/sessions/${sessionId}/quests`, {
-        params: status ? { status } : undefined,
-      });
+      const params: ListQuestsQuery | undefined = status ? { status } : undefined;
+      const response = await client.get<readonly QuestDTO[]>(
+        `/game/quests/sessions/${sessionId}/quests`,
+        { params }
+      );
+      return [...response];
     },
 
     async getQuest(sessionId: number, questId: string): Promise<QuestDTO> {
       return client.get<QuestDTO>(`/game/quests/sessions/${sessionId}/quests/${questId}`);
     },
 
-    async addQuest(sessionId: number, questData: {
-      quest_id: string;
-      title: string;
-      description: string;
-      objectives: Array<{
-        id: string;
-        description: string;
-        target?: number;
-        optional?: boolean;
-      }>;
-      metadata?: Record<string, unknown>;
-    }): Promise<QuestDTO> {
+    async addQuest(sessionId: number, questData: AddQuestRequest): Promise<QuestDTO> {
       return client.post<QuestDTO>(`/game/quests/sessions/${sessionId}/quests`, questData);
     },
 
     async updateQuestStatus(sessionId: number, questId: string, status: string): Promise<QuestDTO> {
+      const request: UpdateQuestStatusRequest = { status };
       return client.patch<QuestDTO>(
         `/game/quests/sessions/${sessionId}/quests/${questId}/status`,
-        { status }
+        request
       );
     },
 
     // ===== Inventory =====
 
     async listInventoryItems(sessionId: number): Promise<InventoryItemDTO[]> {
-      return client.get<InventoryItemDTO[]>(`/game/inventory/sessions/${sessionId}/items`);
+      const response = await client.get<readonly InventoryItemDTO[]>(
+        `/game/inventory/sessions/${sessionId}/items`
+      );
+      return [...response];
     },
 
-    async addInventoryItem(sessionId: number, itemData: {
-      item_id: string;
-      name: string;
-      quantity?: number;
-      metadata?: Record<string, unknown>;
-    }): Promise<InventoryItemDTO> {
+    async addInventoryItem(sessionId: number, itemData: AddInventoryItemRequest): Promise<InventoryItemDTO> {
       return client.post<InventoryItemDTO>(`/game/inventory/sessions/${sessionId}/items`, itemData);
     },
 
-    async removeInventoryItem(sessionId: number, itemId: string, quantity?: number): Promise<{ message: string }> {
-      return client.delete<{ message: string }>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
-        data: quantity ? { quantity } : undefined,
+    async removeInventoryItem(sessionId: number, itemId: string, quantity?: number): Promise<MessageResponse> {
+      const payload: RemoveInventoryItemRequest = { quantity: quantity ?? 1 };
+      return client.delete<MessageResponse>(`/game/inventory/sessions/${sessionId}/items/${itemId}`, {
+        data: payload,
       });
     },
 
@@ -378,11 +309,12 @@ export function createGameApi(client: PixSimApiClient) {
       templateId: string,
       context?: Record<string, unknown>
     ): Promise<ResolveTemplateResponse> {
-      const raw = await client.post<ResolveTemplateResponseDto>('/game/links/resolve', {
+      const request: ResolveTemplateRequest = {
         template_kind: templateKind,
         template_id: templateId,
         context,
-      });
+      };
+      const raw = await client.post<ResolveTemplateResponseDto>('/game/links/resolve', request);
       return normalizeResolveTemplateResponse(raw, { templateKind, templateId });
     },
 
@@ -402,14 +334,15 @@ export function createGameApi(client: PixSimApiClient) {
         });
       }
 
-      const raw = await client.post<ResolveBatchResponseDto>('/game/links/resolve-batch', {
+      const request: ResolveBatchRequest = {
         refs: refs.map((ref) => ({
           template_kind: ref.templateKind,
           template_id: ref.templateId,
           context: ref.context,
         })),
         shared_context: sharedContext,
-      });
+      };
+      const raw = await client.post<ResolveBatchResponseDto>('/game/links/resolve-batch', request);
 
       const rawCamel = toCamelCaseShallow(raw) as {
         results?: Record<string, ResolveTemplateResponseDto>;

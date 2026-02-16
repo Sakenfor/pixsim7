@@ -31,6 +31,7 @@ export type CompletePairingResponse = ApiComponents['schemas']['CompletePairingR
 export type ExecutePresetResponse = ApiComponents['schemas']['ExecutePresetResponse'];
 export type TestActionsResponse = ApiComponents['schemas']['TestActionsResponse'];
 export type ClearExecutionsResponse = ApiComponents['schemas']['ClearExecutionsResponse'];
+export type ResetDeviceStatusResponse = ApiComponents['schemas']['ResetDeviceStatusResponse'];
 
 export type ListExecutionsQuery =
   ApiOperations['list_executions_api_v1_automation_executions_get']['parameters']['query'];
@@ -49,8 +50,8 @@ export function createAutomationApi(client: PixSimApiClient) {
       return client.post<DeviceScanResponse>('/automation/devices/scan');
     },
 
-    async resetDevice(deviceId: number): Promise<{ status: string; device_id: number; device_name: string; old_status: string; new_status: string }> {
-      return client.post<{ status: string; device_id: number; device_name: string; old_status: string; new_status: string }>(`/automation/devices/${deviceId}/reset`);
+    async resetDevice(deviceId: number): Promise<ResetDeviceStatusResponse> {
+      return client.post<ResetDeviceStatusResponse>(`/automation/devices/${deviceId}/reset`);
     },
 
     async completePairing(payload: CompletePairingRequest): Promise<CompletePairingResponse> {
@@ -151,4 +152,3 @@ export function createAutomationApi(client: PixSimApiClient) {
     },
   };
 }
-

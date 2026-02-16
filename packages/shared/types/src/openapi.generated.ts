@@ -1364,6 +1364,40 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/admin/codegen/run": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Run Codegen Task Endpoint */
+        readonly post: operations["run_codegen_task_endpoint_api_v1_admin_codegen_run_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/admin/codegen/tasks": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Codegen Tasks */
+        readonly get: operations["list_codegen_tasks_api_v1_admin_codegen_tasks_get"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/admin/events/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -8180,6 +8214,25 @@ export interface paths {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/game/worlds/projects/drafts": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Project Draft */
+        readonly get: operations["get_project_draft_api_v1_game_worlds_projects_drafts_get"];
+        /** Upsert Project Draft */
+        readonly put: operations["upsert_project_draft_api_v1_game_worlds_projects_drafts_put"];
+        readonly post?: never;
+        /** Delete Project Draft */
+        readonly delete: operations["delete_project_draft_api_v1_game_worlds_projects_drafts_delete"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/game/worlds/projects/import": {
         readonly parameters: {
             readonly query?: never;
@@ -8197,6 +8250,60 @@ export interface paths {
          *     - create_new_world
          */
         readonly post: operations["import_world_project_api_v1_game_worlds_projects_import_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/projects/snapshots": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** List Saved Projects */
+        readonly get: operations["list_saved_projects_api_v1_game_worlds_projects_snapshots_get"];
+        readonly put?: never;
+        /** Save Project Snapshot */
+        readonly post: operations["save_project_snapshot_api_v1_game_worlds_projects_snapshots_post"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/projects/snapshots/{project_id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** Get Saved Project */
+        readonly get: operations["get_saved_project_api_v1_game_worlds_projects_snapshots__project_id__get"];
+        readonly put?: never;
+        readonly post?: never;
+        /** Delete Saved Project */
+        readonly delete: operations["delete_saved_project_api_v1_game_worlds_projects_snapshots__project_id__delete"];
+        readonly options?: never;
+        readonly head?: never;
+        /** Rename Saved Project */
+        readonly patch: operations["rename_saved_project_api_v1_game_worlds_projects_snapshots__project_id__patch"];
+        readonly trace?: never;
+    };
+    readonly "/api/v1/game/worlds/projects/snapshots/{project_id}/duplicate": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /** Duplicate Saved Project */
+        readonly post: operations["duplicate_saved_project_api_v1_game_worlds_projects_snapshots__project_id__duplicate_post"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -12593,6 +12700,34 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * ArchitectureMetrics
+         * @description Backend architecture aggregate metrics.
+         */
+        readonly ArchitectureMetrics: {
+            /** Avg Sub Service Lines */
+            readonly avg_sub_service_lines: number;
+            /** Modernized Plugins */
+            readonly modernized_plugins: number;
+            /** Permission Usage */
+            readonly permission_usage?: {
+                readonly [key: string]: number;
+            };
+            /** Route Tags */
+            readonly route_tags?: {
+                readonly [key: string]: number;
+            };
+            /** Total Plugins */
+            readonly total_plugins: number;
+            /** Total Routes */
+            readonly total_routes: number;
+            /** Total Services */
+            readonly total_services: number;
+            /** Total Sub Services */
+            readonly total_sub_services: number;
+            /** Unique Permissions */
+            readonly unique_permissions: number;
+        };
+        /**
          * ArchiveAssetRequest
          * @description Request body for archive/unarchive operation.
          */
@@ -12856,6 +12991,21 @@ export interface components {
              */
             readonly searchable: boolean | null;
             /**
+             * Sha256
+             * @description Filter by content hash (exact match)
+             */
+            readonly sha256?: string | null;
+            /**
+             * Similar To
+             * @description Asset ID for visual similarity search (uses CLIP embeddings)
+             */
+            readonly similar_to?: number | null;
+            /**
+             * Similarity Threshold
+             * @description Min similarity 0-1, default 0.3
+             */
+            readonly similarity_threshold?: number | null;
+            /**
              * Sort By
              * @description Sort field
              */
@@ -13036,6 +13186,8 @@ export interface components {
             } | null;
             /** Remote Url */
             readonly remote_url?: string | null;
+            /** Sha256 */
+            readonly sha256?: string | null;
             /** Source Generation Id */
             readonly source_generation_id?: number | null;
             /** Stored Key */
@@ -13188,6 +13340,21 @@ export interface components {
              */
             readonly searchable: boolean | null;
             /**
+             * Sha256
+             * @description Filter by content hash (exact match)
+             */
+            readonly sha256?: string | null;
+            /**
+             * Similar To
+             * @description Asset ID for visual similarity search (uses CLIP embeddings)
+             */
+            readonly similar_to?: number | null;
+            /**
+             * Similarity Threshold
+             * @description Min similarity 0-1, default 0.3
+             */
+            readonly similarity_threshold?: number | null;
+            /**
              * Sort By
              * @description Sort field
              */
@@ -13322,6 +13489,41 @@ export interface components {
              * @description List of available LLM providers
              */
             readonly providers: readonly Record<string, unknown>[];
+        };
+        /**
+         * BackendArchitectureResponse
+         * @description Backend architecture map response.
+         */
+        readonly BackendArchitectureResponse: {
+            /** Capabilities */
+            readonly capabilities?: readonly components["schemas"]["CapabilityInfo"][];
+            readonly metrics: components["schemas"]["ArchitectureMetrics"];
+            /** Plugins */
+            readonly plugins?: readonly components["schemas"]["BackendPluginInfo"][];
+            /** Routes */
+            readonly routes?: readonly components["schemas"]["RouteInfo"][];
+            /** Services */
+            readonly services?: readonly components["schemas"]["ServiceInfo"][];
+            /** Version */
+            readonly version: string;
+        };
+        /**
+         * BackendPluginInfo
+         * @description Backend plugin manifest summary.
+         */
+        readonly BackendPluginInfo: {
+            /** Description */
+            readonly description: string;
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Path */
+            readonly path: string;
+            /** Permissions */
+            readonly permissions?: readonly string[];
+            /** Version */
+            readonly version: string;
         };
         /**
          * BackfillContentBlobsResponse
@@ -13660,6 +13862,17 @@ export interface components {
              * @example game-romance
              */
             readonly plugin_id: string;
+        };
+        /**
+         * BehaviorExtensionsResponse
+         * @description Behavior extension registry response.
+         */
+        readonly BehaviorExtensionsResponse: {
+            readonly conditions: components["schemas"]["ConditionRegistrySection"];
+            readonly effects: components["schemas"]["EffectRegistrySection"];
+            /** Registry Locked */
+            readonly registry_locked: boolean;
+            readonly simulation_configs: components["schemas"]["SimulationConfigRegistrySection"];
         };
         /**
          * BehaviorRegistryInfo
@@ -14029,6 +14242,28 @@ export interface components {
              */
             readonly pattern?: string | null;
         };
+        /**
+         * CapabilityInfo
+         * @description Capability API metadata.
+         */
+        readonly CapabilityInfo: {
+            /** Category */
+            readonly category: string;
+            /** Description */
+            readonly description: string;
+            /** Exists */
+            readonly exists: boolean;
+            /** File */
+            readonly file: string;
+            /** Methods */
+            readonly methods?: readonly string[];
+            /** Name */
+            readonly name: string;
+            /** Path */
+            readonly path: string;
+            /** Permission */
+            readonly permission: string;
+        };
         /** ChangeLocationAction */
         readonly ChangeLocationAction: {
             /** Targetlocationid */
@@ -14236,6 +14471,31 @@ export interface components {
             /** Status */
             readonly status: string;
         };
+        /** CodegenRunRequest */
+        readonly CodegenRunRequest: {
+            /**
+             * Check
+             * @default false
+             */
+            readonly check: boolean;
+            /** Task Id */
+            readonly task_id: string;
+        };
+        /** CodegenRunResponse */
+        readonly CodegenRunResponse: {
+            /** Duration Ms */
+            readonly duration_ms: number;
+            /** Exit Code */
+            readonly exit_code: number | null;
+            /** Ok */
+            readonly ok: boolean;
+            /** Stderr */
+            readonly stderr: string;
+            /** Stdout */
+            readonly stdout: string;
+            /** Task Id */
+            readonly task_id: string;
+        };
         /**
          * CodegenTaskDef
          * @description Plugin-contributed codegen task.
@@ -14257,6 +14517,26 @@ export interface components {
              * @default false
              */
             readonly supportsCheck: boolean;
+        };
+        /** CodegenTaskResponse */
+        readonly CodegenTaskResponse: {
+            /** Description */
+            readonly description: string;
+            /** Groups */
+            readonly groups?: readonly string[];
+            /** Id */
+            readonly id: string;
+            /** Script */
+            readonly script: string;
+            /** Supports Check */
+            readonly supports_check: boolean;
+        };
+        /** CodegenTasksResponse */
+        readonly CodegenTasksResponse: {
+            /** Tasks */
+            readonly tasks: readonly components["schemas"]["CodegenTaskResponse"][];
+            /** Total */
+            readonly total: number;
         };
         /** CompletePairingRequest */
         readonly CompletePairingRequest: {
@@ -14622,6 +14902,34 @@ export interface components {
              */
             readonly priority?: readonly string[];
         };
+        /**
+         * ConditionInfo
+         * @description Behavior condition metadata.
+         */
+        readonly ConditionInfo: {
+            /** Condition Id */
+            readonly condition_id: string;
+            /** Description */
+            readonly description?: string | null;
+            /** Plugin Id */
+            readonly plugin_id: string;
+            /** Required Context */
+            readonly required_context?: readonly string[];
+        };
+        /**
+         * ConditionRegistrySection
+         * @description Condition registry summary section.
+         */
+        readonly ConditionRegistrySection: {
+            /** By Plugin */
+            readonly by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /** List */
+            readonly list?: readonly components["schemas"]["ConditionInfo"][];
+            /** Total */
+            readonly total: number;
+        };
         /** ConfirmConceptsRequest */
         readonly ConfirmConceptsRequest: {
             /**
@@ -14637,6 +14945,30 @@ export interface components {
          * @enum {string}
          */
         readonly ConnectionMethod: "adb" | "uiautomator2";
+        /**
+         * ConsoleFieldDefinitionResponse
+         * @description Serializable console field definition.
+         */
+        readonly ConsoleFieldDefinitionResponse: {
+            /** Clickable */
+            readonly clickable: boolean;
+            /** Color */
+            readonly color: string;
+            /** Description */
+            readonly description?: string | null;
+            /** Name */
+            readonly name: string;
+            /** Pattern */
+            readonly pattern: string;
+        };
+        /**
+         * ConsoleFieldsResponse
+         * @description Response payload for console field metadata.
+         */
+        readonly ConsoleFieldsResponse: {
+            /** Fields */
+            readonly fields: readonly components["schemas"]["ConsoleFieldDefinitionResponse"][];
+        };
         /**
          * ConstraintSetSchema
          * @description Content constraints and rating
@@ -14758,6 +15090,26 @@ export interface components {
              * @default []
              */
             readonly updated_fields: readonly string[];
+        };
+        /**
+         * CreateAccountApiKeyResponse
+         * @description Response from creating an OpenAPI key for an account.
+         */
+        readonly CreateAccountApiKeyResponse: {
+            readonly account: components["schemas"]["AccountResponse"];
+            /**
+             * Already Exists
+             * @default false
+             */
+            readonly already_exists: boolean;
+            /** Api Key */
+            readonly api_key?: string | null;
+            /** Api Key Id */
+            readonly api_key_id?: number | null;
+            /** Api Key Name */
+            readonly api_key_name?: string | null;
+            /** Success */
+            readonly success: boolean;
         };
         /** CreateActionBlockRequest */
         readonly CreateActionBlockRequest: {
@@ -15256,6 +15608,38 @@ export interface components {
          * @enum {string}
          */
         readonly DeviceType: "bluestacks" | "mumu" | "nox" | "ld" | "genymotion" | "adb";
+        /**
+         * DevPixverseDryRunResponse
+         * @description Response payload for dev Pixverse dry-run endpoint.
+         */
+        readonly DevPixverseDryRunResponse: {
+            /** Account Id */
+            readonly account_id: number;
+            /** Existing Count */
+            readonly existing_count: number;
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Provider Id */
+            readonly provider_id: string;
+            /** Total Remote */
+            readonly total_remote: number;
+            /** Videos */
+            readonly videos: readonly components["schemas"]["DevPixverseDryRunVideoItem"][];
+        };
+        /**
+         * DevPixverseDryRunVideoItem
+         * @description Single video entry for dev Pixverse dry-run output.
+         */
+        readonly DevPixverseDryRunVideoItem: {
+            /** Already Imported */
+            readonly already_imported: boolean;
+            /** Raw */
+            readonly raw: Record<string, unknown>;
+            /** Video Id */
+            readonly video_id?: string | null;
+        };
         /** DevPromptFamilySummary */
         readonly DevPromptFamilySummary: {
             /** Category */
@@ -15380,6 +15764,81 @@ export interface components {
          */
         readonly DisabledReason: "mood_incompatible" | "npc_unavailable" | "npc_busy" | "time_incompatible" | "flag_required" | "flag_forbidden" | "cooldown_active" | "location_incompatible" | "stat_gating_failed" | "custom";
         /**
+         * DocPageResponse
+         * @description Single docs page payload.
+         */
+        readonly DocPageResponse: {
+            /** Ast */
+            readonly ast?: unknown;
+            /** Backlinks */
+            readonly backlinks?: readonly unknown[];
+            /** Frontmatter */
+            readonly frontMatter?: Record<string, unknown>;
+            /** Links */
+            readonly links?: readonly unknown[];
+            /** Markdown */
+            readonly markdown?: string | null;
+            /** Path */
+            readonly path: string;
+            /** Summary */
+            readonly summary?: string | null;
+            /** Title */
+            readonly title: string;
+            /** Visibility */
+            readonly visibility?: string | null;
+        };
+        /**
+         * DocsIndexResponse
+         * @description Indexed docs metadata.
+         */
+        readonly DocsIndexResponse: {
+            /** Entries */
+            readonly entries?: readonly Record<string, unknown>[];
+            /** Generatedat */
+            readonly generatedAt?: string | null;
+            /** Version */
+            readonly version: string;
+        };
+        /**
+         * DocsSearchResponse
+         * @description Search response for docs index.
+         */
+        readonly DocsSearchResponse: {
+            /** Query */
+            readonly query: string;
+            /** Results */
+            readonly results?: readonly Record<string, unknown>[];
+        };
+        /** DraftSummary */
+        readonly DraftSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Draft Source Project Id */
+            readonly draft_source_project_id?: number | null;
+            /** Id */
+            readonly id: number;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+            /** Source World Id */
+            readonly source_world_id?: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** DuplicateSavedGameProjectRequest */
+        readonly DuplicateSavedGameProjectRequest: {
+            /** Name */
+            readonly name: string;
+        };
+        /**
          * DurationRuleSchema
          * @description Duration constraints for generated content
          */
@@ -15399,6 +15858,34 @@ export interface components {
              * @description Target duration in seconds
              */
             readonly target?: number | null;
+        };
+        /**
+         * EffectInfo
+         * @description Behavior effect metadata.
+         */
+        readonly EffectInfo: {
+            /** Default Params */
+            readonly default_params?: Record<string, unknown>;
+            /** Description */
+            readonly description?: string | null;
+            /** Effect Id */
+            readonly effect_id: string;
+            /** Plugin Id */
+            readonly plugin_id: string;
+        };
+        /**
+         * EffectRegistrySection
+         * @description Effect registry summary section.
+         */
+        readonly EffectRegistrySection: {
+            /** By Plugin */
+            readonly by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /** List */
+            readonly list?: readonly components["schemas"]["EffectInfo"][];
+            /** Total */
+            readonly total: number;
         };
         /** EmbedBatchRequest */
         readonly EmbedBatchRequest: {
@@ -15492,6 +15979,50 @@ export interface components {
         readonly ErrorResponse: {
             /** Detail */
             readonly detail: string;
+        };
+        /**
+         * EventHandlerStats
+         * @description Registered event handler counts.
+         */
+        readonly EventHandlerStats: {
+            /** Registered Event Types */
+            readonly registered_event_types: number;
+            /** Wildcard Handlers */
+            readonly wildcard_handlers: number;
+        };
+        /**
+         * EventMetricSnapshot
+         * @description Event processing metrics snapshot.
+         */
+        readonly EventMetricSnapshot: {
+            /** By Type */
+            readonly by_type?: {
+                readonly [key: string]: number;
+            };
+            /**
+             * Total Events
+             * @default 0
+             */
+            readonly total_events: number;
+            /**
+             * Unique Types
+             * @default 0
+             */
+            readonly unique_types: number;
+        };
+        /**
+         * EventMetricsResponse
+         * @description Admin event metrics response.
+         */
+        readonly EventMetricsResponse: {
+            /** Error */
+            readonly error?: string | null;
+            /** Error Type */
+            readonly error_type?: string | null;
+            readonly handlers?: components["schemas"]["EventHandlerStats"] | null;
+            readonly metrics?: components["schemas"]["EventMetricSnapshot"] | null;
+            /** Timestamp */
+            readonly timestamp?: string | null;
         };
         /**
          * ExecuteInteractionRequest
@@ -16002,6 +16533,20 @@ export interface components {
             readonly name?: string | null;
         };
         /**
+         * FrontendArchitectureResponse
+         * @description Frontend architecture map response.
+         */
+        readonly FrontendArchitectureResponse: {
+            /** Entries */
+            readonly entries?: readonly components["schemas"]["FrontendFeatureEntry"][];
+            /** Error */
+            readonly error?: string | null;
+            /** Generatedat */
+            readonly generatedAt?: string | null;
+            /** Version */
+            readonly version: string;
+        };
+        /**
          * FrontendControlCenterDef
          * @description Control center plugin definition for frontend registration.
          *
@@ -16027,6 +16572,28 @@ export interface components {
             readonly features?: readonly string[];
             /** Id */
             readonly id: string;
+        };
+        /**
+         * FrontendFeatureEntry
+         * @description Frontend app-map feature entry.
+         */
+        readonly FrontendFeatureEntry: {
+            /** Backend */
+            readonly backend?: readonly string[] | null;
+            /** Docs */
+            readonly docs?: readonly string[] | null;
+            /** Frontend */
+            readonly frontend?: readonly string[] | null;
+            /** Id */
+            readonly id: string;
+            /** Label */
+            readonly label: string;
+            /** Notes */
+            readonly notes?: readonly string[] | null;
+            /** Routes */
+            readonly routes?: readonly string[] | null;
+            /** Sources */
+            readonly sources?: readonly string[] | null;
         };
         /**
          * FrontendGatingDef
@@ -18049,6 +18616,11 @@ export interface components {
              */
             readonly cache_control_max_age_seconds: number;
             /**
+             * Clip Embedding Command
+             * @description Shell command for CLIP embedding generation (or set CLIP_EMBEDDING_COMMAND env var)
+             */
+            readonly clip_embedding_command: string;
+            /**
              * Concurrency Limit
              * @description Maximum concurrent ingestion jobs
              */
@@ -18063,6 +18635,11 @@ export interface components {
              * @description Frame extraction upload behavior: 'source_provider', 'always', or 'never'
              */
             readonly frame_extraction_upload: string;
+            /**
+             * Generate Embeddings
+             * @description Generate CLIP embeddings for visual similarity search
+             */
+            readonly generate_embeddings: boolean;
             /**
              * Generate Previews
              * @description Generate preview derivatives
@@ -18116,12 +18693,16 @@ export interface components {
         readonly MediaSettingsUpdate: {
             /** Cache Control Max Age Seconds */
             readonly cache_control_max_age_seconds?: number | null;
+            /** Clip Embedding Command */
+            readonly clip_embedding_command?: string | null;
             /** Concurrency Limit */
             readonly concurrency_limit?: number | null;
             /** Default Upload Provider */
             readonly default_upload_provider?: string | null;
             /** Frame Extraction Upload */
             readonly frame_extraction_upload?: string | null;
+            /** Generate Embeddings */
+            readonly generate_embeddings?: boolean | null;
             /** Generate Previews */
             readonly generate_previews?: boolean | null;
             /** Generate Thumbnails */
@@ -18431,6 +19012,18 @@ export interface components {
             readonly total: number;
         };
         /**
+         * PluginListResponse
+         * @description Plugin list response grouped by plugin manager.
+         */
+        readonly pixsim7__backend__main__api__v1__admin_plugins__PluginListResponse: {
+            /** Feature Plugins */
+            readonly feature_plugins: readonly components["schemas"]["PluginListItem"][];
+            /** Route Plugins */
+            readonly route_plugins: readonly components["schemas"]["PluginListItem"][];
+            /** Total */
+            readonly total: number;
+        };
+        /**
          * AnalyzePromptRequest
          * @description Request model for analyzing arbitrary prompt text.
          */
@@ -18512,6 +19105,16 @@ export interface components {
             readonly updated_at: string;
             /** Username */
             readonly username: string;
+        };
+        /**
+         * PluginListResponse
+         * @description List of plugins response
+         */
+        readonly pixsim7__backend__main__shared__schemas__plugin_schemas__PluginListResponse: {
+            /** Plugins */
+            readonly plugins: readonly components["schemas"]["PluginResponse"][];
+            /** Total */
+            readonly total: number;
         };
         /**
          * UserResponse
@@ -18631,6 +19234,70 @@ export interface components {
             readonly provider_id: string;
         };
         /**
+         * PixverseSyncAssetsCategoryStats
+         * @description Creation stats for one media category.
+         */
+        readonly PixverseSyncAssetsCategoryStats: {
+            /** Created */
+            readonly created: number;
+            /** Skipped Existing */
+            readonly skipped_existing: number;
+        };
+        /**
+         * PixverseSyncAssetsResponse
+         * @description Response from Pixverse sync-assets endpoint.
+         */
+        readonly PixverseSyncAssetsResponse: {
+            /** Account Id */
+            readonly account_id: number;
+            readonly images: components["schemas"]["PixverseSyncAssetsCategoryStats"];
+            /** Provider Id */
+            readonly provider_id: string;
+            readonly videos: components["schemas"]["PixverseSyncAssetsCategoryStats"];
+        };
+        /**
+         * PixverseSyncDryRunCategory
+         * @description Dry-run summary for a single media category.
+         */
+        readonly PixverseSyncDryRunCategory: {
+            /** Existing Count */
+            readonly existing_count: number;
+            /** Items */
+            readonly items: readonly components["schemas"]["PixverseSyncDryRunItem"][];
+            /** Total Remote */
+            readonly total_remote: number;
+        };
+        /**
+         * PixverseSyncDryRunItem
+         * @description Single Pixverse remote item in dry-run output.
+         */
+        readonly PixverseSyncDryRunItem: {
+            /** Already Imported */
+            readonly already_imported: boolean;
+            /** Image Id */
+            readonly image_id?: string | null;
+            /** Raw */
+            readonly raw: Record<string, unknown>;
+            /** Video Id */
+            readonly video_id?: string | null;
+        };
+        /**
+         * PixverseSyncDryRunResponse
+         * @description Response from Pixverse sync dry-run endpoint.
+         */
+        readonly PixverseSyncDryRunResponse: {
+            /** Account Id */
+            readonly account_id: number;
+            readonly images?: components["schemas"]["PixverseSyncDryRunCategory"] | null;
+            /** Limit */
+            readonly limit: number;
+            /** Offset */
+            readonly offset: number;
+            /** Provider Id */
+            readonly provider_id: string;
+            readonly videos: components["schemas"]["PixverseSyncDryRunCategory"];
+        };
+        /**
          * PlayerContextSnapshotSchema
          * @description Player state snapshot for generation context
          */
@@ -18661,14 +19328,132 @@ export interface components {
             readonly type: "play_scene";
         };
         /**
-         * PluginListResponse
-         * @description List of plugins response
+         * PluginBehaviorExtensionMetrics
+         * @description Behavior extension metrics for a plugin.
          */
-        readonly PluginListResponse: {
-            /** Plugins */
-            readonly plugins: readonly components["schemas"]["PluginResponse"][];
-            /** Total */
-            readonly total: number;
+        readonly PluginBehaviorExtensionMetrics: {
+            /** Condition Evaluations */
+            readonly condition_evaluations: number;
+            /** Condition Failure Rate */
+            readonly condition_failure_rate: number;
+            /** Condition Failures */
+            readonly condition_failures: number;
+            /** Effect Applications */
+            readonly effect_applications: number;
+            /** Effect Failure Rate */
+            readonly effect_failure_rate: number;
+            /** Effect Failures */
+            readonly effect_failures: number;
+        };
+        /**
+         * PluginBehaviorExtensionsSummary
+         * @description Plugin-specific behavior extension IDs.
+         */
+        readonly PluginBehaviorExtensionsSummary: {
+            /** Conditions */
+            readonly conditions?: readonly string[];
+            /** Effects */
+            readonly effects?: readonly string[];
+        };
+        /**
+         * PluginDetailsResponse
+         * @description Detailed metadata for a single plugin.
+         */
+        readonly PluginDetailsResponse: {
+            /** Author */
+            readonly author?: string | null;
+            readonly behavior_extensions: components["schemas"]["PluginBehaviorExtensionsSummary"];
+            /** Dependencies */
+            readonly dependencies?: readonly string[];
+            /** Description */
+            readonly description?: string | null;
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Kind */
+            readonly kind: string;
+            readonly metrics?: components["schemas"]["PluginMetricsData"] | null;
+            /** Name */
+            readonly name: string;
+            /** Permissions */
+            readonly permissions?: readonly string[];
+            /** Plugin Id */
+            readonly plugin_id: string;
+            /** Requires Db */
+            readonly requires_db: boolean;
+            /** Requires Redis */
+            readonly requires_redis: boolean;
+            /** Version */
+            readonly version: string;
+        };
+        /**
+         * PluginEventHandlerMetrics
+         * @description Event handler metrics for a plugin.
+         */
+        readonly PluginEventHandlerMetrics: {
+            /** Calls */
+            readonly calls: number;
+            /** Failure Rate */
+            readonly failure_rate: number;
+            /** Failures */
+            readonly failures: number;
+        };
+        /**
+         * PluginHealthMetrics
+         * @description Health-related metrics for a plugin.
+         */
+        readonly PluginHealthMetrics: {
+            /** Is Healthy */
+            readonly is_healthy: boolean;
+            /** Last Check */
+            readonly last_check?: string | null;
+            /** Recent Errors */
+            readonly recent_errors?: readonly components["schemas"]["PluginRecentError"][];
+        };
+        /**
+         * PluginHealthResponse
+         * @description Plugin health overview response.
+         */
+        readonly PluginHealthResponse: {
+            /** Health Status */
+            readonly health_status?: {
+                readonly [key: string]: components["schemas"]["PluginHealthStatus"];
+            };
+            /** Overall Healthy */
+            readonly overall_healthy: boolean;
+            /** Unhealthy Plugins */
+            readonly unhealthy_plugins?: readonly string[];
+        };
+        /**
+         * PluginHealthStatus
+         * @description Health status entry for a plugin.
+         */
+        readonly PluginHealthStatus: {
+            /** Condition Failure Rate */
+            readonly condition_failure_rate: number;
+            /** Effect Failure Rate */
+            readonly effect_failure_rate: number;
+            /** Error Count */
+            readonly error_count: number;
+            /** Is Healthy */
+            readonly is_healthy: boolean;
+            /** Last Check */
+            readonly last_check?: string | null;
+            /** Request Error Rate */
+            readonly request_error_rate: number;
+        };
+        /**
+         * PluginListItem
+         * @description Lightweight plugin metadata.
+         */
+        readonly PluginListItem: {
+            /** Enabled */
+            readonly enabled: boolean;
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Version */
+            readonly version: string;
         };
         /**
          * PluginMetadata
@@ -18700,6 +19485,80 @@ export interface components {
              * @description Supported surfaces for scene views
              */
             readonly surfaces?: readonly string[];
+        };
+        /**
+         * PluginMetricsData
+         * @description Full metrics payload for a plugin.
+         */
+        readonly PluginMetricsData: {
+            readonly behavior_extensions: components["schemas"]["PluginBehaviorExtensionMetrics"];
+            readonly event_handlers: components["schemas"]["PluginEventHandlerMetrics"];
+            readonly health: components["schemas"]["PluginHealthMetrics"];
+            /** Plugin Id */
+            readonly plugin_id: string;
+            readonly requests: components["schemas"]["PluginRequestMetrics"];
+        };
+        /**
+         * PluginMetricsResponse
+         * @description All-plugin metrics response.
+         */
+        readonly PluginMetricsResponse: {
+            /** Plugins */
+            readonly plugins?: {
+                readonly [key: string]: components["schemas"]["PluginMetricsData"];
+            };
+            readonly summary: components["schemas"]["PluginMetricsSummary"];
+        };
+        /**
+         * PluginMetricsSummary
+         * @description Aggregated plugin metrics summary.
+         */
+        readonly PluginMetricsSummary: {
+            /** Overall Error Rate */
+            readonly overall_error_rate: number;
+            /** Total Errors */
+            readonly total_errors: number;
+            /** Total Plugins */
+            readonly total_plugins: number;
+            /** Total Requests */
+            readonly total_requests: number;
+            /** Unhealthy Count */
+            readonly unhealthy_count: number;
+            /** Unhealthy Plugins */
+            readonly unhealthy_plugins?: readonly string[];
+        };
+        /**
+         * PluginRecentError
+         * @description Recent plugin error entry.
+         */
+        readonly PluginRecentError: {
+            /** Context */
+            readonly context?: Record<string, unknown>;
+            /** Error Message */
+            readonly error_message: string;
+            /** Error Type */
+            readonly error_type: string;
+            /**
+             * Timestamp
+             * Format: date-time
+             */
+            readonly timestamp: string;
+        };
+        /**
+         * PluginRequestMetrics
+         * @description HTTP request metrics for a plugin.
+         */
+        readonly PluginRequestMetrics: {
+            /** Average Time Ms */
+            readonly average_time_ms: number;
+            /** Error Rate */
+            readonly error_rate: number;
+            /** Errors */
+            readonly errors: number;
+            /** Last Request */
+            readonly last_request?: string | null;
+            /** Total */
+            readonly total: number;
         };
         /**
          * PluginResponse
@@ -19764,6 +20623,11 @@ export interface components {
              */
             readonly quantity: number;
         };
+        /** RenameSavedGameProjectRequest */
+        readonly RenameSavedGameProjectRequest: {
+            /** Name */
+            readonly name: string;
+        };
         /** RenderTemplateRequest */
         readonly RenderTemplateRequest: {
             /** Prompt Text */
@@ -19782,6 +20646,45 @@ export interface components {
         readonly ReplaceHotspotsPayload: {
             /** Hotspots */
             readonly hotspots: readonly components["schemas"]["GameHotspotDTO-Input"][];
+        };
+        /**
+         * ResetDeviceClearedResponse
+         * @description Details about reset fields cleared on a device.
+         */
+        readonly ResetDeviceClearedResponse: {
+            /** Ad Session Started At */
+            readonly ad_session_started_at: boolean;
+            /** Assigned Account Id */
+            readonly assigned_account_id: boolean;
+            /** Is Watching Ad */
+            readonly is_watching_ad: boolean;
+        };
+        /**
+         * ResetDeviceStatusResponse
+         * @description Response from resetting device status.
+         */
+        readonly ResetDeviceStatusResponse: {
+            readonly cleared: components["schemas"]["ResetDeviceClearedResponse"];
+            /** Device Id */
+            readonly device_id: number;
+            /** Device Name */
+            readonly device_name: string;
+            /** New Status */
+            readonly new_status: string;
+            /** Old Status */
+            readonly old_status: string;
+            /** Status */
+            readonly status: string;
+        };
+        /**
+         * ResetPluginMetricsResponse
+         * @description Response for metrics reset requests.
+         */
+        readonly ResetPluginMetricsResponse: {
+            /** Message */
+            readonly message: string;
+            /** Status */
+            readonly status: string;
         };
         /**
          * ResolveBatchItem
@@ -19998,6 +20901,79 @@ export interface components {
              * @description Version to rollback to
              */
             readonly target_version_id: string;
+        };
+        /**
+         * RouteInfo
+         * @description FastAPI route metadata.
+         */
+        readonly RouteInfo: {
+            /** Methods */
+            readonly methods: readonly string[];
+            /** Name */
+            readonly name: string;
+            /** Path */
+            readonly path: string;
+            /** Tags */
+            readonly tags?: readonly string[];
+        };
+        /** SavedGameProjectDetail */
+        readonly SavedGameProjectDetail: {
+            readonly bundle: components["schemas"]["GameProjectBundle-Output"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Id */
+            readonly id: number;
+            /** Name */
+            readonly name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+            /** Source World Id */
+            readonly source_world_id?: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** SavedGameProjectSummary */
+        readonly SavedGameProjectSummary: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            readonly created_at: string;
+            /** Id */
+            readonly id: number;
+            /** Name */
+            readonly name: string;
+            /**
+             * Schema Version
+             * @default 1
+             */
+            readonly schema_version: number;
+            /** Source World Id */
+            readonly source_world_id?: number | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            readonly updated_at: string;
+        };
+        /** SaveGameProjectRequest */
+        readonly SaveGameProjectRequest: {
+            readonly bundle: components["schemas"]["GameProjectBundle-Input"];
+            /** Name */
+            readonly name: string;
+            /** Overwrite Project Id */
+            readonly overwrite_project_id?: number | null;
+            /** Source World Id */
+            readonly source_world_id?: number | null;
         };
         /** SceneEdge */
         readonly SceneEdge: {
@@ -20528,6 +21504,24 @@ export interface components {
             readonly success: boolean;
         };
         /**
+         * ServiceInfo
+         * @description Top-level backend service metadata.
+         */
+        readonly ServiceInfo: {
+            /** Description */
+            readonly description: string;
+            /** Id */
+            readonly id: string;
+            /** Name */
+            readonly name: string;
+            /** Path */
+            readonly path: string;
+            /** Sub Services */
+            readonly sub_services?: readonly components["schemas"]["SubServiceInfo"][];
+            /** Type */
+            readonly type: string;
+        };
+        /**
          * ServiceStatus
          * @description Service status information
          */
@@ -20821,6 +21815,34 @@ export interface components {
             readonly prompt: string;
             /** Provider Id */
             readonly provider_id: string;
+        };
+        /**
+         * SimulationConfigProviderInfo
+         * @description Simulation config provider metadata.
+         */
+        readonly SimulationConfigProviderInfo: {
+            /** Description */
+            readonly description?: string | null;
+            /** Plugin Id */
+            readonly plugin_id: string;
+            /** Priority */
+            readonly priority: number;
+            /** Provider Id */
+            readonly provider_id: string;
+        };
+        /**
+         * SimulationConfigRegistrySection
+         * @description Simulation config registry summary section.
+         */
+        readonly SimulationConfigRegistrySection: {
+            /** By Plugin */
+            readonly by_plugin?: {
+                readonly [key: string]: number;
+            };
+            /** Providers */
+            readonly providers?: readonly components["schemas"]["SimulationConfigProviderInfo"][];
+            /** Total */
+            readonly total: number;
         };
         /**
          * SqlQueryRequest
@@ -21225,6 +22247,22 @@ export interface components {
             readonly transitionType?: string | null;
         } & {
             readonly [key: string]: unknown;
+        };
+        /**
+         * SubServiceInfo
+         * @description Service decomposition metadata.
+         */
+        readonly SubServiceInfo: {
+            /** Exists */
+            readonly exists: boolean;
+            /** Lines */
+            readonly lines: number;
+            /** Name */
+            readonly name: string;
+            /** Path */
+            readonly path: string;
+            /** Responsibility */
+            readonly responsibility: string;
         };
         /**
          * SuggestedOntologyId
@@ -21822,6 +22860,63 @@ export interface components {
             readonly trigger?: string | null;
         };
         /**
+         * UnifiedArchitectureBackend
+         * @description Backend subsection for unified architecture response.
+         */
+        readonly UnifiedArchitectureBackend: {
+            /** Capabilities */
+            readonly capabilities?: readonly components["schemas"]["CapabilityInfo"][];
+            /** Plugins */
+            readonly plugins?: readonly components["schemas"]["BackendPluginInfo"][];
+            /** Routes */
+            readonly routes?: readonly components["schemas"]["RouteInfo"][];
+            /** Services */
+            readonly services?: readonly components["schemas"]["ServiceInfo"][];
+        };
+        /**
+         * UnifiedArchitectureMetrics
+         * @description Unified backend + frontend metrics.
+         */
+        readonly UnifiedArchitectureMetrics: {
+            /** Avg Sub Service Lines */
+            readonly avg_sub_service_lines: number;
+            /** Frontend Generated At */
+            readonly frontend_generated_at?: string | null;
+            /** Modernized Plugins */
+            readonly modernized_plugins: number;
+            /** Permission Usage */
+            readonly permission_usage?: {
+                readonly [key: string]: number;
+            };
+            /** Route Tags */
+            readonly route_tags?: {
+                readonly [key: string]: number;
+            };
+            /** Total Frontend Features */
+            readonly total_frontend_features: number;
+            /** Total Plugins */
+            readonly total_plugins: number;
+            /** Total Routes */
+            readonly total_routes: number;
+            /** Total Services */
+            readonly total_services: number;
+            /** Total Sub Services */
+            readonly total_sub_services: number;
+            /** Unique Permissions */
+            readonly unique_permissions: number;
+        };
+        /**
+         * UnifiedArchitectureResponse
+         * @description Combined backend and frontend architecture response.
+         */
+        readonly UnifiedArchitectureResponse: {
+            readonly backend: components["schemas"]["UnifiedArchitectureBackend"];
+            readonly frontend: components["schemas"]["FrontendArchitectureResponse"];
+            readonly metrics: components["schemas"]["UnifiedArchitectureMetrics"];
+            /** Version */
+            readonly version: string;
+        };
+        /**
          * UnifiedMoodGeneral
          * @description General mood portion of unified mood preview.
          */
@@ -22101,6 +23196,14 @@ export interface components {
             readonly with_upload_method: number;
             /** Without Upload Method */
             readonly without_upload_method: number;
+        };
+        /** UpsertDraftRequest */
+        readonly UpsertDraftRequest: {
+            readonly bundle: components["schemas"]["GameProjectBundle-Input"];
+            /** Draft Source Project Id */
+            readonly draft_source_project_id?: number | null;
+            /** Source World Id */
+            readonly source_world_id?: number | null;
         };
         /**
          * UserPreferencesResponse
@@ -23090,7 +24193,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["CreateAccountApiKeyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -23127,7 +24230,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["AccountResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24595,6 +25698,72 @@ export interface operations {
             };
         };
     };
+    readonly run_codegen_task_endpoint_api_v1_admin_codegen_run_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CodegenRunRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CodegenRunResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_codegen_tasks_api_v1_admin_codegen_tasks_get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["CodegenTasksResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly get_event_metrics_api_v1_admin_events_metrics_get: {
         readonly parameters: {
             readonly query?: never;
@@ -24612,7 +25781,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["EventMetricsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24689,7 +25858,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PluginDetailsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -24749,7 +25918,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["BehaviorExtensionsResponse"];
                 };
             };
         };
@@ -24789,7 +25958,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PluginHealthResponse"];
                 };
             };
         };
@@ -24809,7 +25978,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["pixsim7__backend__main__api__v1__admin_plugins__PluginListResponse"];
                 };
             };
         };
@@ -24829,7 +25998,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PluginMetricsResponse"];
                 };
             };
         };
@@ -24851,7 +26020,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PluginMetricsData"];
                 };
             };
             /** @description Validation Error */
@@ -24882,7 +26051,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ResetPluginMetricsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -27768,7 +28937,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ResetDeviceStatusResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29561,7 +30730,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["FrontendArchitectureResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29592,7 +30761,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["BackendArchitectureResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29623,7 +30792,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["UnifiedArchitectureResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29760,7 +30929,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["DocsIndexResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29795,7 +30964,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["DocPageResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29830,7 +30999,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": Record<string, unknown>;
+                    readonly "application/json": components["schemas"]["DocsSearchResponse"];
                 };
             };
             /** @description Validation Error */
@@ -29990,7 +31159,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["DevPixverseDryRunResponse"];
                 };
             };
             /** @description Validation Error */
@@ -36336,6 +37505,105 @@ export interface operations {
             };
         };
     };
+    readonly get_project_draft_api_v1_game_worlds_projects_drafts_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly draft_source_project_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SavedGameProjectDetail"] | null;
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly upsert_project_draft_api_v1_game_worlds_projects_drafts_put: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["UpsertDraftRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DraftSummary"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_project_draft_api_v1_game_worlds_projects_drafts_delete: {
+        readonly parameters: {
+            readonly query?: {
+                readonly draft_source_project_id?: number | null;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     readonly import_world_project_api_v1_game_worlds_projects_import_post: {
         readonly parameters: {
             readonly query?: never;
@@ -36358,6 +37626,213 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["GameProjectImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly list_saved_projects_api_v1_game_worlds_projects_snapshots_get: {
+        readonly parameters: {
+            readonly query?: {
+                readonly limit?: number;
+                readonly offset?: number;
+            };
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": readonly components["schemas"]["SavedGameProjectSummary"][];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly save_project_snapshot_api_v1_game_worlds_projects_snapshots_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SaveGameProjectRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SavedGameProjectSummary"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly get_saved_project_api_v1_game_worlds_projects_snapshots__project_id__get: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly project_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SavedGameProjectDetail"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly delete_saved_project_api_v1_game_worlds_projects_snapshots__project_id__delete: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly project_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly rename_saved_project_api_v1_game_worlds_projects_snapshots__project_id__patch: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly project_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RenameSavedGameProjectRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SavedGameProjectSummary"];
+                };
+            };
+            /** @description Validation Error */
+            readonly 422: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    readonly duplicate_saved_project_api_v1_game_worlds_projects_snapshots__project_id__duplicate_post: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                readonly authorization?: string | null;
+            };
+            readonly path: {
+                readonly project_id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DuplicateSavedGameProjectRequest"];
+            };
+        };
+        readonly responses: {
+            /** @description Successful Response */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SavedGameProjectSummary"];
                 };
             };
             /** @description Validation Error */
@@ -37027,7 +38502,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["ConsoleFieldsResponse"];
                 };
             };
         };
@@ -38158,7 +39633,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PluginListResponse"];
+                    readonly "application/json": components["schemas"]["pixsim7__backend__main__shared__schemas__plugin_schemas__PluginListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -38291,7 +39766,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": components["schemas"]["PluginListResponse"];
+                    readonly "application/json": components["schemas"]["pixsim7__backend__main__shared__schemas__plugin_schemas__PluginListResponse"];
                 };
             };
             /** @description Validation Error */
@@ -40340,7 +41815,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PixverseSyncAssetsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -40380,7 +41855,7 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content: {
-                    readonly "application/json": unknown;
+                    readonly "application/json": components["schemas"]["PixverseSyncDryRunResponse"];
                 };
             };
             /** @description Validation Error */

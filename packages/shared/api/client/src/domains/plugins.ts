@@ -1,99 +1,23 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 
-/**
- * Scene view specific metadata
- */
-export interface SceneViewMetadata {
-  scene_view_id: string;
-  surfaces: string[];
-  default: boolean;
-}
+type Schemas = ApiComponents['schemas'];
 
-/**
- * Control center specific metadata
- */
-export interface ControlCenterMetadata {
-  control_center_id: string;
-  display_name?: string | null;
-  features: string[];
-  preview?: string | null;
-  default: boolean;
-}
+export type SceneViewMetadata = Schemas['SceneViewMetadata'];
+export type ControlCenterMetadata = Schemas['ControlCenterMetadata'];
+export type PluginMetadata = Schemas['PluginMetadata'];
+export type PluginInfo = Schemas['PluginResponse'];
+export type PluginListResponse =
+  ApiOperations['list_plugins_api_v1_plugins_get']['responses'][200]['content']['application/json'];
+export type PluginStateResponse = Schemas['PluginStateResponse'];
+export type PluginSyncItem = Schemas['PluginSyncItem'];
+export type PluginSyncResponse = Schemas['PluginSyncResponse'];
 
-/**
- * Plugin metadata from backend
- *
- * Maps to `UnifiedPluginDescriptor.extensions` on frontend:
- * - scene_view → extensions.sceneView
- * - control_center → extensions.controlCenter
- */
-export interface PluginMetadata {
-  permissions: string[];
-  surfaces: string[];
-  default: boolean;
-  scene_view?: SceneViewMetadata | null;
-  control_center?: ControlCenterMetadata | null;
-}
-
-/**
- * Plugin info from backend catalog
- *
- * Use `fromBackendPlugin()` from `@lib/plugins/types` to convert
- * to the canonical `UnifiedPluginDescriptor` type.
- */
-export interface PluginInfo {
-  plugin_id: string;
-  name: string;
-  description: string | null;
-  version: string;
-  author: string | null;
-  icon: string | null;
-  family: string;
-  plugin_type: string;
-  tags: string[];
-  bundle_url: string | null;
-  manifest_url: string | null;
-  is_builtin: boolean;
-  is_required: boolean;
-  source: string;
-  is_enabled: boolean;
-  metadata: PluginMetadata;
-}
-
-export interface PluginListResponse {
-  plugins: PluginInfo[];
-  total: number;
-}
-
-export interface PluginStateResponse {
-  plugin_id: string;
-  is_enabled: boolean;
-  message: string;
-}
-
-export interface PluginSyncItem {
-  plugin_id: string;
-  name: string;
-  description?: string;
-  version?: string;
-  author?: string;
-  icon?: string;
-  family: string;
-  plugin_type?: string;
-  tags?: string[];
-  is_required?: boolean;
-  metadata?: Record<string, unknown>;
-}
-
-export interface PluginSyncRequest {
-  plugins: PluginSyncItem[];
-}
-
-export interface PluginSyncResponse {
-  created: number;
-  skipped: number;
-  created_plugin_ids: string[];
-}
+type PluginSyncRequestSchema = Schemas['PluginSyncRequest'];
+export type PluginSyncRequest =
+  Omit<PluginSyncRequestSchema, 'plugins'> & {
+    plugins: PluginSyncItem[];
+  };
 
 export function createPluginsApi(client: PixSimApiClient) {
   return {
@@ -105,14 +29,14 @@ export function createPluginsApi(client: PixSimApiClient) {
       const response = await client.get<PluginListResponse>('/plugins', {
         params: Object.keys(params).length ? params : undefined,
       });
-      return response.plugins;
+      return [...response.plugins];
     },
 
     async getEnabledPlugins(family?: string): Promise<PluginInfo[]> {
       const response = await client.get<PluginListResponse>('/plugins/enabled/list', {
         params: family ? { family } : undefined,
       });
-      return response.plugins;
+      return [...response.plugins];
     },
 
     async getPlugin(pluginId: string): Promise<PluginInfo> {

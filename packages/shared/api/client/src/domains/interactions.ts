@@ -7,6 +7,7 @@
  */
 import type { PixSimApiClient } from '../client';
 import type {
+  ApiComponents,
   InteractionParticipant as SharedInteractionParticipant,
   InteractionTarget as SharedInteractionTarget,
   InteractionInstance as SharedInteractionInstance,
@@ -16,6 +17,10 @@ import type {
   ExecuteInteractionResponse as SharedExecuteInteractionResponse,
 } from '@pixsim7/shared.types';
 import { toCamelCaseDeep } from '@pixsim7/shared.helpers.core';
+
+type Schemas = ApiComponents['schemas'];
+type ListInteractionsResponseDto = Schemas['ListInteractionsResponse'];
+type ExecuteInteractionResponseDto = Schemas['ExecuteInteractionResponse'];
 
 // ===== Canonical Shared Types =====
 
@@ -77,12 +82,12 @@ interface DialogueExecutionResponseDto {
   generationTimeMs?: number;
 }
 
-function normalizeListInteractionsResponse(raw: unknown): ListInteractionsResponse {
-  return toCamelCaseDeep(raw as Record<string, unknown>) as unknown as ListInteractionsResponse;
+function normalizeListInteractionsResponse(raw: ListInteractionsResponseDto): ListInteractionsResponse {
+  return toCamelCaseDeep(raw as unknown as Record<string, unknown>) as unknown as ListInteractionsResponse;
 }
 
-function normalizeExecuteInteractionResponse(raw: unknown): ExecuteInteractionResponse {
-  return toCamelCaseDeep(raw as Record<string, unknown>) as unknown as ExecuteInteractionResponse;
+function normalizeExecuteInteractionResponse(raw: ExecuteInteractionResponseDto): ExecuteInteractionResponse {
+  return toCamelCaseDeep(raw as unknown as Record<string, unknown>) as unknown as ExecuteInteractionResponse;
 }
 
 function normalizeDialogueExecutionResponse(raw: DialogueExecutionResponseDto): DialogueExecutionResponse {
@@ -107,7 +112,7 @@ export function createInteractionsApi(client: PixSimApiClient) {
      * List available interactions for a target.
      */
     async listInteractions(req: ListInteractionsRequest): Promise<ListInteractionsResponse> {
-      const raw = await client.post<unknown>('/game/interactions/list', req);
+      const raw = await client.post<ListInteractionsResponseDto>('/game/interactions/list', req);
       return normalizeListInteractionsResponse(raw);
     },
 
@@ -115,7 +120,7 @@ export function createInteractionsApi(client: PixSimApiClient) {
      * Execute an interaction.
      */
     async executeInteraction(req: ExecuteInteractionRequest): Promise<ExecuteInteractionResponse> {
-      const raw = await client.post<unknown>('/game/interactions/execute', req);
+      const raw = await client.post<ExecuteInteractionResponseDto>('/game/interactions/execute', req);
       return normalizeExecuteInteractionResponse(raw);
     },
 

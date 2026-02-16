@@ -2,108 +2,36 @@
  * Providers API Domain Client
  *
  * Provides typed access to AI provider management endpoints including
- * provider specs, accounts, API keys, and capability registry.
+ * provider specs and provider account management.
  */
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+
+type Schemas = ApiComponents['schemas'];
 
 // ===== Provider Types =====
 
-export interface ProviderSpec {
-  id: string;
-  name: string;
-  description?: string;
-  type: 'image' | 'video' | 'llm' | 'tts' | 'stt';
-  capabilities: string[];
-  config_schema?: Record<string, unknown>;
-  is_enabled: boolean;
-  priority: number;
-}
-
-export interface ProviderCapability {
-  id: string;
-  name: string;
-  description?: string;
-  provider_types: string[];
-  required_features?: string[];
-}
+export type ProviderSpec = Schemas['ProviderInfo'];
 
 // ===== Account Types =====
 
-export interface ProviderAccount {
-  id: number;
-  provider_id: string;
-  name: string;
-  is_active: boolean;
-  is_default: boolean;
-  config: Record<string, unknown>;
-  usage_stats?: AccountUsageStats;
-  created_at: string;
-  updated_at: string;
-}
+type ListAccountsQuery =
+  ApiOperations['list_accounts_api_v1_accounts_get']['parameters']['query'];
+type CreateAccountApiKeyQuery =
+  ApiOperations['create_account_api_key_api_v1_accounts__account_id__create_api_key_post']['parameters']['query'];
+type AccountStatsQuery =
+  ApiOperations['get_account_stats_api_v1_accounts__account_id__stats_get']['parameters']['query'];
+type PixverseStatusQuery =
+  ApiOperations['get_pixverse_status_api_v1_accounts__account_id__pixverse_status_get']['parameters']['query'];
 
-export interface AccountUsageStats {
-  total_requests: number;
-  total_tokens?: number;
-  total_cost_usd?: number;
-  last_used_at?: string;
-}
-
-export interface CreateAccountRequest {
-  provider_id: string;
-  name: string;
-  config: Record<string, unknown>;
-  is_default?: boolean;
-}
-
-export interface UpdateAccountRequest {
-  name?: string;
-  config?: Record<string, unknown>;
-  is_active?: boolean;
-  is_default?: boolean;
-}
-
-// ===== API Key Types =====
-
-export interface ApiKeyInfo {
-  id: number;
-  account_id: number;
-  name: string;
-  key_prefix: string;
-  is_active: boolean;
-  last_used_at?: string;
-  expires_at?: string;
-  created_at: string;
-}
-
-export interface CreateApiKeyRequest {
-  account_id: number;
-  name: string;
-  expires_in_days?: number;
-}
-
-export interface CreateApiKeyResponse {
-  key_info: ApiKeyInfo;
-  api_key: string; // Only returned on creation
-}
-
-// ===== Credits Types =====
-
-export interface AccountCredits {
-  account_id: number;
-  balance: number;
-  currency: string;
-  last_updated: string;
-}
-
-export interface CreditTransaction {
-  id: number;
-  account_id: number;
-  amount: number;
-  type: 'credit' | 'debit';
-  description: string;
-  reference_id?: string;
-  created_at: string;
-}
+export type ProviderAccount = Schemas['AccountResponse'];
+export type CreateAccountRequest = Schemas['AccountCreate'];
+export type UpdateAccountRequest = Schemas['AccountUpdate'];
+export type CreateApiKeyResponse = Schemas['CreateAccountApiKeyResponse'];
+export type SetAccountCreditRequest = Schemas['SetCreditRequest'];
+export type SetAccountCreditResponse = Schemas['AccountResponse'];
+export type AccountStatsResponse = Schemas['AccountStatsResponse'];
+export type PixverseStatusResponse = Schemas['PixverseStatusResponse'];
 
 // ===== Providers API Factory =====
 
@@ -111,37 +39,18 @@ export function createProvidersApi(client: PixSimApiClient) {
   return {
     // ===== Provider Specs =====
 
-    async listProviders(options?: {
-      type?: string;
-      enabled_only?: boolean;
-    }): Promise<ProviderSpec[]> {
-      const response = await client.get<{ providers: ProviderSpec[] }>('/providers', {
-        params: options,
-      });
-      return response.providers;
-    },
-
-    async getProvider(providerId: string): Promise<ProviderSpec> {
-      return client.get<ProviderSpec>(`/providers/${encodeURIComponent(providerId)}`);
-    },
-
-    async listCapabilities(): Promise<ProviderCapability[]> {
-      const response = await client.get<{ capabilities: ProviderCapability[] }>(
-        '/providers/capabilities'
-      );
-      return response.capabilities;
+    async listProviders(): Promise<ProviderSpec[]> {
+      const response = await client.get<readonly ProviderSpec[]>('/providers');
+      return [...response];
     },
 
     // ===== Accounts =====
 
-    async listAccounts(options?: {
-      provider_id?: string;
-      active_only?: boolean;
-    }): Promise<ProviderAccount[]> {
-      const response = await client.get<{ accounts: ProviderAccount[] }>('/accounts', {
+    async listAccounts(options?: ListAccountsQuery): Promise<ProviderAccount[]> {
+      const response = await client.get<readonly ProviderAccount[]>('/accounts', {
         params: options,
       });
-      return response.accounts;
+      return [...response];
     },
 
     async getAccount(accountId: number): Promise<ProviderAccount> {
@@ -156,66 +65,42 @@ export function createProvidersApi(client: PixSimApiClient) {
       return client.patch<ProviderAccount>(`/accounts/${accountId}`, data);
     },
 
-    async deleteAccount(accountId: number): Promise<{ message: string }> {
-      return client.delete<{ message: string }>(`/accounts/${accountId}`);
+    async deleteAccount(accountId: number): Promise<void> {
+      await client.delete<void>(`/accounts/${accountId}`);
     },
 
-    async setDefaultAccount(accountId: number): Promise<ProviderAccount> {
-      return client.post<ProviderAccount>(`/accounts/${accountId}/set-default`);
-    },
-
-    async testAccountConnection(accountId: number): Promise<{
-      success: boolean;
-      latency_ms?: number;
-      error?: string;
-    }> {
-      return client.post(`/accounts/${accountId}/test`);
-    },
-
-    // ===== API Keys =====
-
-    async listApiKeys(accountId: number): Promise<ApiKeyInfo[]> {
-      const response = await client.get<{ keys: ApiKeyInfo[] }>(
-        `/accounts/${accountId}/api-keys`
-      );
-      return response.keys;
-    },
-
-    async createApiKey(data: CreateApiKeyRequest): Promise<CreateApiKeyResponse> {
+    async createApiKey(
+      accountId: number,
+      options?: CreateAccountApiKeyQuery
+    ): Promise<CreateApiKeyResponse> {
       return client.post<CreateApiKeyResponse>(
-        `/accounts/${data.account_id}/api-keys`,
-        data
-      );
-    },
-
-    async revokeApiKey(accountId: number, keyId: number): Promise<{ message: string }> {
-      return client.delete<{ message: string }>(`/accounts/${accountId}/api-keys/${keyId}`);
-    },
-
-    // ===== Credits =====
-
-    async getAccountCredits(accountId: number): Promise<AccountCredits> {
-      return client.get<AccountCredits>(`/accounts/${accountId}/credits`);
-    },
-
-    async listCreditTransactions(accountId: number, options?: {
-      limit?: number;
-      offset?: number;
-      type?: 'credit' | 'debit';
-    }): Promise<CreditTransaction[]> {
-      const response = await client.get<{ transactions: CreditTransaction[] }>(
-        `/accounts/${accountId}/credits/transactions`,
+        `/accounts/${accountId}/create-api-key`,
+        undefined,
         { params: options }
       );
-      return response.transactions;
     },
 
-    async addCredits(accountId: number, data: {
-      amount: number;
-      description: string;
-      reference_id?: string;
-    }): Promise<AccountCredits> {
-      return client.post<AccountCredits>(`/accounts/${accountId}/credits/add`, data);
+    async setAccountCredit(
+      accountId: number,
+      data: SetAccountCreditRequest
+    ): Promise<SetAccountCreditResponse> {
+      return client.post<SetAccountCreditResponse>(`/accounts/${accountId}/credits`, data);
+    },
+
+    async getAccountStats(
+      accountId: number,
+      options?: AccountStatsQuery
+    ): Promise<AccountStatsResponse> {
+      return client.get<AccountStatsResponse>(`/accounts/${accountId}/stats`, { params: options });
+    },
+
+    async getPixverseStatus(
+      accountId: number,
+      options?: PixverseStatusQuery
+    ): Promise<PixverseStatusResponse> {
+      return client.get<PixverseStatusResponse>(`/accounts/${accountId}/pixverse-status`, {
+        params: options,
+      });
     },
   };
 }

@@ -1,18 +1,19 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 
-export type AccountResponse = ApiComponents['schemas']['AccountResponse'];
-export type AccountUpdate = ApiComponents['schemas']['AccountUpdate'];
-export type AccountStatus = ApiComponents['schemas']['AccountStatus'];
+type Schemas = ApiComponents['schemas'];
 
-export interface CreateApiKeyResponse {
-  success: boolean;
-  api_key_id?: number;
-  api_key_name?: string;
-  api_key?: string;
-  already_exists?: boolean;
-  account: AccountResponse;
-}
+export type AccountResponse = Schemas['AccountResponse'];
+export type AccountUpdate = Schemas['AccountUpdate'];
+export type AccountStatus = Schemas['AccountStatus'];
+export type CreateApiKeyResponse = Schemas['CreateAccountApiKeyResponse'];
+export type DevPixverseDryRunResponse = Schemas['DevPixverseDryRunResponse'];
+
+type DryRunPixverseSyncQuery =
+  ApiOperations['pixverse_sync_dry_run_api_v1_dev_pixverse_sync_dry_run_get']['parameters']['query'];
+type ConnectPixverseWithGoogleResponse =
+  ApiOperations['connect_pixverse_with_google_api_v1_accounts__account_id__connect_google_post']['responses'][200]['content']['application/json'];
+type PixverseGoogleConnectRequest = Schemas['PixverseGoogleConnectRequest'];
 
 export function createAccountsApi(client: PixSimApiClient) {
   return {
@@ -39,18 +40,17 @@ export function createAccountsApi(client: PixSimApiClient) {
 
     async dryRunPixverseSync(
       accountId: number,
-      options?: { limit?: number; offset?: number }
-    ): Promise<unknown> {
-      const params: Record<string, string | number> = { account_id: accountId };
-      if (options?.limit !== undefined) params.limit = options.limit;
-      if (options?.offset !== undefined) params.offset = options.offset;
-      return client.get<unknown>('/dev/pixverse-sync/dry-run', { params });
+      options?: Omit<DryRunPixverseSyncQuery, 'account_id'>
+    ): Promise<DevPixverseDryRunResponse> {
+      const params: DryRunPixverseSyncQuery = { account_id: accountId, ...(options || {}) };
+      return client.get<DevPixverseDryRunResponse>('/dev/pixverse-sync/dry-run', { params });
     },
 
     async connectPixverseWithGoogle(accountId: number): Promise<AccountResponse> {
-      const res = await client.post<{ account: AccountResponse }>(
+      const request: PixverseGoogleConnectRequest = { id_token: 'manual' };
+      const res = await client.post<ConnectPixverseWithGoogleResponse>(
         `/accounts/${accountId}/connect-google`,
-        { id_token: 'manual' }
+        request
       );
       return res.account;
     },
@@ -60,4 +60,3 @@ export function createAccountsApi(client: PixSimApiClient) {
     },
   };
 }
-

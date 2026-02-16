@@ -23,6 +23,7 @@ export { createLogsApi } from './logs';
 export { createPluginsApi } from './plugins';
 export { createPromptsApi } from './prompts';
 export { createProvidersApi } from './providers';
+export { createTagsApi } from './tags';
 export { createUserPreferencesApi } from './userPreferences';
 
 export type {
@@ -30,6 +31,7 @@ export type {
   AccountUpdate,
   AccountStatus,
   CreateApiKeyResponse,
+  DevPixverseDryRunResponse,
 } from './accounts';
 export type {
   ActionBlockSummary,
@@ -87,6 +89,7 @@ export type {
   ExecutePresetResponse,
   TestActionsResponse,
   ClearExecutionsResponse,
+  ResetDeviceStatusResponse,
   ListExecutionsQuery,
   ListLoopsQuery,
 } from './automation';
@@ -198,6 +201,7 @@ export type {
   GameSessionDTO,
   SessionUpdatePayload,
   GameLocationSummary,
+  GameHotspotInputDTO,
   GameHotspotDTO,
   GameLocationDetail,
   GameNpcSummary,
@@ -240,20 +244,20 @@ export type {
   PromptAnalytics,
   PromptComparison,
   SemanticPack,
-  PromptCategory,
 } from './prompts';
+
+// ===== Tags Types =====
+export type { TagSummary, TagListResponse, ListTagsQuery } from './tags';
 
 // ===== Providers Types =====
 export type {
   ProviderSpec,
-  ProviderCapability,
   ProviderAccount,
-  AccountUsageStats,
   CreateAccountRequest,
   UpdateAccountRequest,
-  ApiKeyInfo,
-  CreateApiKeyRequest,
   CreateApiKeyResponse as ProviderCreateApiKeyResponse,
-  AccountCredits,
-  CreditTransaction,
+  SetAccountCreditRequest,
+  SetAccountCreditResponse,
+  AccountStatsResponse,
+  PixverseStatusResponse,
 } from './providers';

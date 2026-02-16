@@ -1,116 +1,45 @@
 /**
  * Prompts API Domain Client
  *
- * Provides typed access to prompt management endpoints including
- * families, versions, variants, analytics, and semantic packs.
+ * Strict OpenAPI-backed client for prompt families, versions, variants,
+ * and semantic packs.
  */
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 
-// ===== Prompt Family Types =====
+type Schemas = ApiComponents['schemas'];
 
-export interface PromptFamilySummary {
-  id: number;
-  family_id: string;
-  name: string;
-  description?: string;
-  category?: string;
-  tags?: string[];
-  active_version_id?: number;
-  version_count: number;
-  created_at: string;
-  updated_at: string;
-}
+// ===== Prompt Types =====
 
-export interface PromptFamilyDetail extends PromptFamilySummary {
-  versions: PromptVersionSummary[];
-}
+export type PromptFamilySummary = Schemas['PromptFamilyResponse'];
+export type PromptFamilyDetail = Schemas['PromptFamilyResponse'];
+export type PromptVersionSummary = Schemas['PromptVersionResponse'];
+export type PromptVersionDetail = Schemas['PromptVersionResponse'];
+export type PromptVariant = Schemas['PromptVariantResponse'];
+export type VariantFeedback = Schemas['PromptVariantResponse'];
+export type PromptAnalytics =
+  ApiOperations['get_family_analytics_api_v1_prompts_families__family_id__analytics_get']['responses'][200]['content']['application/json'];
+export type PromptComparison =
+  ApiOperations['compare_versions_api_v1_prompts_versions_compare_get']['responses'][200]['content']['application/json'];
+export type SemanticPack = Schemas['SemanticPackManifest'];
 
-export interface PromptVersionSummary {
-  id: number;
-  version: number;
-  is_active: boolean;
-  created_at: string;
-  performance_score?: number;
-}
-
-export interface PromptVersionDetail extends PromptVersionSummary {
-  family_id: string;
-  template: string;
-  variables: Record<string, unknown>;
-  metadata?: Record<string, unknown>;
-}
-
-// ===== Prompt Variant Types =====
-
-export interface PromptVariant {
-  id: number;
-  version_id: number;
-  variant_key: string;
-  template: string;
-  variables?: Record<string, unknown>;
-  weight: number;
-  is_enabled: boolean;
-  created_at: string;
-}
-
-export interface VariantFeedback {
-  id: number;
-  variant_id: number;
-  rating: number;
-  feedback_type: string;
-  context?: Record<string, unknown>;
-  created_at: string;
-}
-
-// ===== Analytics Types =====
-
-export interface PromptAnalytics {
-  family_id: string;
-  total_executions: number;
-  avg_latency_ms: number;
-  success_rate: number;
-  by_version: Record<string, {
-    executions: number;
-    avg_latency_ms: number;
-    success_rate: number;
-  }>;
-}
-
-export interface PromptComparison {
-  version_a: number;
-  version_b: number;
-  diff: {
-    template_changes: string[];
-    variable_changes: string[];
-    performance_delta: number;
-  };
-}
-
-// ===== Semantic Pack Types =====
-
-export interface SemanticPack {
-  id: number;
-  pack_id: string;
-  name: string;
-  description?: string;
-  category?: string;
-  prompts: Record<string, string>;
-  variables?: Record<string, unknown>;
-  is_enabled: boolean;
-  priority: number;
-  created_at: string;
-  updated_at: string;
-}
-
-// ===== Category Types =====
-
-export interface PromptCategory {
-  id: string;
-  name: string;
-  description?: string;
-  parent_id?: string;
-  families_count: number;
-}
+type ListFamiliesQuery =
+  ApiOperations['list_families_api_v1_prompts_families_get']['parameters']['query'];
+type ListVersionsQuery =
+  ApiOperations['list_versions_api_v1_prompts_families__family_id__versions_get']['parameters']['query'];
+type CreatePromptFamilyRequestSchema = Schemas['CreatePromptFamilyRequest'];
+type CreatePromptVersionRequestSchema = Schemas['CreatePromptVersionRequest'];
+type ListPromptVariantsQuery =
+  ApiOperations['list_prompt_variants_for_version_api_v1_prompts_versions__version_id__variants_get']['parameters']['query'];
+type CreatePromptVariantRequestSchema = Schemas['CreatePromptVariantRequest'];
+type RatePromptVariantRequestSchema = Schemas['RatePromptVariantRequest'];
+type CompareVersionsQuery =
+  ApiOperations['compare_versions_api_v1_prompts_versions_compare_get']['parameters']['query'];
+type ListSemanticPacksQuery =
+  ApiOperations['list_semantic_packs_api_v1_semantic_packs_get']['parameters']['query'];
+type SemanticPackCreateRequestSchema = Schemas['SemanticPackCreateRequest'];
+type DeleteSemanticPackResponse =
+  ApiOperations['delete_semantic_pack_api_v1_semantic_packs__pack_id__delete']['responses'][200]['content']['application/json'];
 
 // ===== Prompts API Factory =====
 
@@ -118,152 +47,127 @@ export function createPromptsApi(client: PixSimApiClient) {
   return {
     // ===== Families =====
 
-    async listFamilies(options?: {
-      category?: string;
-      search?: string;
-      limit?: number;
-      offset?: number;
-    }): Promise<PromptFamilySummary[]> {
-      const response = await client.get<{ families: PromptFamilySummary[] }>('/prompts/families', {
+    async listFamilies(options?: ListFamiliesQuery): Promise<PromptFamilySummary[]> {
+      const response = await client.get<readonly PromptFamilySummary[]>('/prompts/families', {
         params: options,
       });
-      return response.families;
+      return [...response];
     },
 
     async getFamily(familyId: string): Promise<PromptFamilyDetail> {
       return client.get<PromptFamilyDetail>(`/prompts/families/${encodeURIComponent(familyId)}`);
     },
 
-    async createFamily(data: {
-      family_id: string;
-      name: string;
-      description?: string;
-      category?: string;
-      tags?: string[];
-      initial_template?: string;
-    }): Promise<PromptFamilyDetail> {
+    async createFamily(data: CreatePromptFamilyRequestSchema): Promise<PromptFamilyDetail> {
       return client.post<PromptFamilyDetail>('/prompts/families', data);
-    },
-
-    async updateFamily(familyId: string, data: {
-      name?: string;
-      description?: string;
-      category?: string;
-      tags?: string[];
-    }): Promise<PromptFamilyDetail> {
-      return client.patch<PromptFamilyDetail>(
-        `/prompts/families/${encodeURIComponent(familyId)}`,
-        data
-      );
     },
 
     // ===== Versions =====
 
-    async getVersion(versionId: number): Promise<PromptVersionDetail> {
-      return client.get<PromptVersionDetail>(`/prompts/versions/${versionId}`);
+    async listVersions(
+      familyId: string,
+      options?: ListVersionsQuery
+    ): Promise<PromptVersionSummary[]> {
+      const response = await client.get<readonly PromptVersionSummary[]>(
+        `/prompts/families/${encodeURIComponent(familyId)}/versions`,
+        { params: options }
+      );
+      return [...response];
     },
 
-    async createVersion(familyId: string, data: {
-      template: string;
-      variables?: Record<string, unknown>;
-      metadata?: Record<string, unknown>;
-      set_active?: boolean;
-    }): Promise<PromptVersionDetail> {
+    async getVersion(versionId: number | string): Promise<PromptVersionDetail> {
+      return client.get<PromptVersionDetail>(
+        `/prompts/versions/${encodeURIComponent(String(versionId))}`
+      );
+    },
+
+    async createVersion(
+      familyId: string,
+      data: CreatePromptVersionRequestSchema
+    ): Promise<PromptVersionDetail> {
       return client.post<PromptVersionDetail>(
         `/prompts/families/${encodeURIComponent(familyId)}/versions`,
         data
       );
     },
 
-    async setActiveVersion(familyId: string, versionId: number): Promise<PromptFamilyDetail> {
-      return client.post<PromptFamilyDetail>(
-        `/prompts/families/${encodeURIComponent(familyId)}/versions/${versionId}/activate`
-      );
-    },
-
     // ===== Variants =====
 
-    async listVariants(versionId: number): Promise<PromptVariant[]> {
-      const response = await client.get<{ variants: PromptVariant[] }>(
-        `/prompts/versions/${versionId}/variants`
+    async listVariants(
+      versionId: number | string,
+      options?: ListPromptVariantsQuery
+    ): Promise<PromptVariant[]> {
+      const response = await client.get<readonly PromptVariant[]>(
+        `/prompts/versions/${encodeURIComponent(String(versionId))}/variants`,
+        { params: options }
       );
-      return response.variants;
+      return [...response];
     },
 
-    async createVariant(versionId: number, data: {
-      variant_key: string;
-      template: string;
-      variables?: Record<string, unknown>;
-      weight?: number;
-    }): Promise<PromptVariant> {
-      return client.post<PromptVariant>(`/prompts/versions/${versionId}/variants`, data);
+    async createVariant(data: CreatePromptVariantRequestSchema): Promise<PromptVariant> {
+      return client.post<PromptVariant>('/prompts/variants', data);
     },
 
-    async submitVariantFeedback(variantId: number, feedback: {
-      rating: number;
-      feedback_type: string;
-      context?: Record<string, unknown>;
-    }): Promise<VariantFeedback> {
-      return client.post<VariantFeedback>(`/prompts/variants/${variantId}/feedback`, feedback);
+    async submitVariantFeedback(
+      variantId: number,
+      feedback: RatePromptVariantRequestSchema
+    ): Promise<VariantFeedback> {
+      return client.patch<VariantFeedback>(`/prompts/variants/${variantId}`, feedback);
     },
 
     // ===== Analytics =====
 
-    async getAnalytics(familyId: string, options?: {
-      start_date?: string;
-      end_date?: string;
-    }): Promise<PromptAnalytics> {
+    async getAnalytics(familyId: string): Promise<PromptAnalytics> {
       return client.get<PromptAnalytics>(
-        `/prompts/families/${encodeURIComponent(familyId)}/analytics`,
-        { params: options }
+        `/prompts/families/${encodeURIComponent(familyId)}/analytics`
       );
     },
 
-    async compareVersions(
-      familyId: string,
-      versionA: number,
-      versionB: number
-    ): Promise<PromptComparison> {
-      return client.get<PromptComparison>(
-        `/prompts/families/${encodeURIComponent(familyId)}/compare`,
-        { params: { version_a: versionA, version_b: versionB } }
-      );
+    async compareVersions(query: CompareVersionsQuery): Promise<PromptComparison> {
+      return client.get<PromptComparison>('/prompts/versions/compare', {
+        params: query,
+      });
     },
 
     // ===== Semantic Packs =====
 
-    async listSemanticPacks(options?: {
-      category?: string;
-      enabled_only?: boolean;
-    }): Promise<SemanticPack[]> {
-      const response = await client.get<{ packs: SemanticPack[] }>('/semantic-packs', {
+    async listSemanticPacks(options?: ListSemanticPacksQuery): Promise<SemanticPack[]> {
+      const response = await client.get<readonly SemanticPack[]>('/semantic-packs', {
         params: options,
       });
-      return response.packs;
+      return [...response];
     },
 
     async getSemanticPack(packId: string): Promise<SemanticPack> {
       return client.get<SemanticPack>(`/semantic-packs/${encodeURIComponent(packId)}`);
     },
 
-    async updateSemanticPack(packId: string, data: {
-      name?: string;
-      description?: string;
-      prompts?: Record<string, string>;
-      variables?: Record<string, unknown>;
-      is_enabled?: boolean;
-      priority?: number;
-    }): Promise<SemanticPack> {
-      return client.patch<SemanticPack>(`/semantic-packs/${encodeURIComponent(packId)}`, data);
+    async createOrUpdateSemanticPack(
+      data: SemanticPackCreateRequestSchema
+    ): Promise<SemanticPack> {
+      return client.post<SemanticPack>('/semantic-packs', data);
     },
 
-    // ===== Categories =====
+    async updateSemanticPack(
+      packId: string,
+      data: SemanticPackCreateRequestSchema
+    ): Promise<SemanticPack> {
+      if (data.id !== packId) {
+        throw new Error(
+          `Semantic pack ID mismatch: path "${packId}" does not match payload "${data.id}"`
+        );
+      }
+      return client.post<SemanticPack>('/semantic-packs', data);
+    },
 
-    async listCategories(): Promise<PromptCategory[]> {
-      const response = await client.get<{ categories: PromptCategory[] }>(
-        '/dev/prompts/categories'
+    async deleteSemanticPack(packId: string): Promise<DeleteSemanticPackResponse> {
+      return client.delete<DeleteSemanticPackResponse>(
+        `/semantic-packs/${encodeURIComponent(packId)}`
       );
-      return response.categories;
+    },
+
+    async deprecateSemanticPack(packId: string): Promise<SemanticPack> {
+      return client.post<SemanticPack>(`/semantic-packs/${encodeURIComponent(packId)}/deprecate`);
     },
   };
 }

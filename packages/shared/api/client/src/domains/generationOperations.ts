@@ -1,9 +1,7 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents } from '@pixsim7/shared.types';
 
-export interface GenerationOperationMetadataItem {
-  generation_type: string;
-  operation_type: string;
-}
+export type GenerationOperationMetadataItem = ApiComponents['schemas']['GenerationOperationMetadataItem'];
 
 export function createGenerationOperationsApi(client: PixSimApiClient) {
   return {
@@ -12,4 +10,3 @@ export function createGenerationOperationsApi(client: PixSimApiClient) {
     },
   };
 }
-

@@ -49,25 +49,13 @@ export function isKnownConceptKind(kind: string): kind is KnownConceptKind {
  * Includes all metadata needed for frontend role inference.
  * @deprecated Use ConceptResponse via getConcepts('role') for new code.
  */
-export interface RoleConceptResponse {
-  id: string;
-  label: string;
-  description: string;
-  color: string;
-  default_layer: number;
-  tags: string[];
-  slug_mappings: string[];
-  namespace_mappings: string[];
-}
+export type RoleConceptResponse = ApiComponents['schemas']['RoleConceptResponse'];
 
 /**
  * Response from GET /concepts/roles
  * @deprecated Use ConceptsListResponse via getConcepts('role') for new code.
  */
-export interface RolesListResponse {
-  roles: RoleConceptResponse[];
-  priority: string[];
-}
+export type RolesListResponse = ApiComponents['schemas']['RolesListResponse'];
 
 // ============================================================================
 // API Client

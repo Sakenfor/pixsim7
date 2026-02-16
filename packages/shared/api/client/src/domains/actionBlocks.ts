@@ -1,101 +1,57 @@
 import type { PixSimApiClient } from '../client';
+import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
 
-export interface ActionBlockSummary {
-  id: string;
-  block_id: string;
-  kind: string;
-  prompt: string;
-  description?: string | null;
-  package_name?: string | null;
-  source_type?: string | null;
-  role?: string | null;
-  category?: string | null;
-}
+type Schemas = ApiComponents['schemas'];
 
-export interface ActionBlockSearchQuery {
-  kind?: string;
-  complexity_level?: string;
-  package_name?: string;
-  source_type?: string;
-  is_public?: boolean;
-  location?: string;
-  mood?: string;
-  min_rating?: number;
-  limit?: number;
-  offset?: number;
-}
+export type ActionBlockSummary = Schemas['ActionBlockResponse'];
 
-export interface SimilarActionBlockQuery {
-  role?: string;
-  kind?: string;
-  category?: string;
-  limit?: number;
-  threshold?: number;
-}
+type ActionBlockSearchQuerySchema =
+  ApiOperations['search_action_blocks_api_v1_action_blocks_get']['parameters']['query'];
+export type ActionBlockSearchQuery = ActionBlockSearchQuerySchema;
 
-export interface SimilarActionBlocksByTextRequest extends SimilarActionBlockQuery {
-  text: string;
-  model_id?: string;
-}
+type SimilarActionBlockQuerySchema =
+  ApiOperations['find_similar_blocks_api_v1_action_blocks__block_id__similar_get']['parameters']['query'];
+export type SimilarActionBlockQuery = SimilarActionBlockQuerySchema;
 
-export interface SimilarActionBlockMatch {
-  id: string;
-  block_id: string;
-  kind: string;
-  role?: string | null;
-  category?: string | null;
-  prompt: string;
-  description?: string | null;
-  distance: number;
-  similarity_score: number;
-}
+export type SimilarActionBlocksByTextRequest = Schemas['SimilarByTextRequest'];
 
-export interface EmbedActionBlockQuery {
-  model_id?: string;
-  force?: boolean;
-}
+export type SimilarActionBlockMatch = Schemas['SimilarBlockResponse'];
 
-export interface EmbedActionBlockResponse {
-  success: boolean;
-  block_id: string;
-  embedding_model?: string | null;
-  has_embedding: boolean;
-}
-
-export interface EmbedActionBlocksBatchRequest {
-  model_id?: string;
-  force?: boolean;
-  role?: string;
-  kind?: string;
-}
-
-export interface EmbedActionBlocksBatchResponse {
-  embedded_count: number;
-  skipped_count: number;
-  total: number;
-  model_id: string;
-}
+type EmbedActionBlockQuerySchema =
+  ApiOperations['embed_block_api_v1_action_blocks__block_id__embed_post']['parameters']['query'];
+export type EmbedActionBlockQuery = EmbedActionBlockQuerySchema;
+export type EmbedActionBlockResponse =
+  ApiOperations['embed_block_api_v1_action_blocks__block_id__embed_post']['responses'][200]['content']['application/json'];
+export type EmbedActionBlocksBatchRequest = Schemas['EmbedBatchRequest'];
+export type EmbedActionBlocksBatchResponse =
+  ApiOperations['embed_blocks_batch_api_v1_action_blocks_embed_batch_post']['responses'][200]['content']['application/json'];
 
 export function createActionBlocksApi(client: PixSimApiClient) {
   return {
     async searchBlocks(query?: ActionBlockSearchQuery): Promise<ActionBlockSummary[]> {
-      return client.get<ActionBlockSummary[]>('/action-blocks', { params: query });
+      const response = await client.get<readonly ActionBlockSummary[]>('/action-blocks', { params: query });
+      return [...response];
     },
 
     async findSimilar(
       blockId: string,
       query?: SimilarActionBlockQuery
     ): Promise<SimilarActionBlockMatch[]> {
-      return client.get<SimilarActionBlockMatch[]>(
+      const response = await client.get<readonly SimilarActionBlockMatch[]>(
         `/action-blocks/${encodeURIComponent(blockId)}/similar`,
         { params: query }
       );
+      return [...response];
     },
 
     async findSimilarByText(
       request: SimilarActionBlocksByTextRequest
     ): Promise<SimilarActionBlockMatch[]> {
-      return client.post<SimilarActionBlockMatch[]>('/action-blocks/similar/by-text', request);
+      const response = await client.post<readonly SimilarActionBlockMatch[]>(
+        '/action-blocks/similar/by-text',
+        request
+      );
+      return [...response];
     },
 
     async embedBlock(
@@ -110,7 +66,7 @@ export function createActionBlocksApi(client: PixSimApiClient) {
     },
 
     async embedBatch(
-      request: EmbedActionBlocksBatchRequest = {}
+      request: EmbedActionBlocksBatchRequest
     ): Promise<EmbedActionBlocksBatchResponse> {
       return client.post<EmbedActionBlocksBatchResponse>('/action-blocks/embed/batch', request);
     },
