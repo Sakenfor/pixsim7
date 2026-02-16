@@ -35,6 +35,10 @@ dependencies:
   - pillow=10.2.0
   - imagehash=4.3.1
 
+  # ML / Embeddings (for CLIP visual similarity)
+  - pytorch::pytorch>=2.0
+  - numpy
+
   # Utilities
   - python-dotenv=1.0.0
 
@@ -55,6 +59,7 @@ dependencies:
     - pydantic-settings==2.1.0
     - arq==0.25.0
     - mistune==3.0.2
+    - open-clip-torch>=2.24.0
     # Editable provider SDKs (must exist at paths or remove these lines):
     - -e ../pixverse-py
     - -e ../sora-py

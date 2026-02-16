@@ -5,7 +5,7 @@ This folder centralizes code generation tooling for the workspace.
 ## Entrypoints
 
 - `tools/codegen/runner.ts`: unified runner for all codegen tasks
-- `tools/codegen/manifest.ts`: task registry consumed by `pnpm codegen` and the launcher
+- `tools/codegen/manifest.ts`: task registry consumed by `pnpm codegen` and backend admin APIs
 
 ## Common Commands
 
@@ -25,5 +25,5 @@ This folder centralizes code generation tooling for the workspace.
 
 ## Notes
 
-- The launcher UI reads `tools/codegen/manifest.ts` directly to list tasks.
+- Devtools/backend admin codegen controls use this manifest as the task source of truth.
 - Add new generators by editing the manifest and placing the script in this folder.

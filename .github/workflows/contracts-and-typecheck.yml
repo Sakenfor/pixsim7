@@ -1,0 +1,92 @@
+name: Contracts And Typecheck
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'pixsim7/backend/main/**'
+      - 'services/main-api/**'
+      - 'tools/codegen/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/contracts-and-typecheck.yml'
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+      - 'pixsim7/backend/main/**'
+      - 'services/main-api/**'
+      - 'tools/codegen/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/contracts-and-typecheck.yml'
+  workflow_dispatch:
+
+jobs:
+  contracts-and-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install backend deps for OpenAPI
+        run: |
+          python -m pip install --upgrade pip
+          grep -Ev '^(pixverse-py|sora-py)([[:space:]]|$)' pixsim7/backend/main/requirements.txt > /tmp/requirements-openapi-ci.txt
+          python -m pip install -r /tmp/requirements-openapi-ci.txt
+
+      - name: Start backend for OpenAPI check
+        run: |
+          nohup python -m uvicorn pixsim7.backend.main.main:app --host 127.0.0.1 --port 8000 --lifespan off > /tmp/main-api.log 2>&1 &
+          echo $! > /tmp/main-api.pid
+
+      - name: Wait for backend
+        run: |
+          for i in {1..45}; do
+            if curl -fsS http://127.0.0.1:8000/openapi.json >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend failed to expose /openapi.json"
+          cat /tmp/main-api.log || true
+          exit 1
+
+      - name: OpenAPI contract check
+        env:
+          OPENAPI_URL: http://127.0.0.1:8000/openapi.json
+        run: pnpm openapi:check
+
+      - name: App typecheck
+        run: npx tsc --noEmit --project apps/main/tsconfig.json
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f /tmp/main-api.pid ]; then
+            kill "$(cat /tmp/main-api.pid)" || true
+          fi

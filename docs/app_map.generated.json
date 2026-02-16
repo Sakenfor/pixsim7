@@ -1,20 +1,7 @@
 {
-  "version": "1.0.0",
-  "generatedAt": "2026-01-23T01:10:52.032Z",
+  "version": "2.0.0",
+  "generatedAt": "2026-02-14T16:13:26.403Z",
   "entries": [
-    {
-      "id": "arc-graph",
-      "label": "Arc Graph Editor",
-      "routes": [
-        "/arc-graph"
-      ],
-      "frontend": [
-        "apps/main/src/features/graph/"
-      ],
-      "sources": [
-        "modules"
-      ]
-    },
     {
       "id": "assets",
       "label": "Gallery",
@@ -24,8 +11,16 @@
       "frontend": [
         "apps/main/src/features/assets/"
       ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.assets",
+        "pixsim7.backend.main.api.v1.assets_bulk",
+        "pixsim7.backend.main.api.v1.assets_tags",
+        "pixsim7.backend.main.api.v1.assets_versions",
+        "pixsim7.backend.main.api.v1.assets_maintenance",
+        "pixsim7.backend.main.services.asset"
+      ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
     },
     {
@@ -37,59 +32,97 @@
       "frontend": [
         "apps/main/src/features/automation/"
       ],
+      "docs": [
+        "docs/backend/automation.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.automation",
+        "pixsim7.backend.main.api.v1.device_agents",
+        "pixsim7.backend.main.services.automation"
+      ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
     },
     {
       "id": "game",
-      "label": "Game World",
+      "label": "NPC Brain Lab",
       "routes": [
+        "/npc-brain-lab",
+        "/game-2d",
         "/game-world"
       ],
       "frontend": [
+        "apps/main/src/features/brainTools/",
+        "apps/main/src/features/simulation/",
         "apps/main/src/features/worldTools/"
       ],
+      "notes": [],
       "sources": [
-        "modules"
+        "modules",
+        "modules:appMap"
       ]
     },
     {
-      "id": "game-2d",
-      "label": "2D Game",
+      "id": "generation",
+      "label": "Generation",
       "routes": [
-        "/game-2d"
+        "/generate"
       ],
       "frontend": [
-        "apps/main/src/features/simulation/"
+        "apps/main/src/features/generation/"
+      ],
+      "docs": [
+        "docs/systems/generation/overview.md",
+        "docs/systems/generation/GENERATION_GUIDE.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.generations",
+        "pixsim7.backend.main.services.generation"
       ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
     },
     {
-      "id": "gizmo-lab",
+      "id": "gizmos",
       "label": "Gizmo Lab",
       "routes": [
         "/gizmo-lab"
       ],
       "frontend": [
-        "apps/main/src/features/gizmos/"
+        "apps/main/src/features/gizmos/",
+        "apps/main/src/lib/game/gizmos/",
+        "packages/interaction/gizmos/"
+      ],
+      "docs": [
+        "docs/ui/GIZMO_SURFACES_AND_DEBUG_DASHBOARDS.md"
       ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
     },
     {
       "id": "graph",
-      "label": "Graph View",
+      "label": "Arc Graph Editor",
       "routes": [
+        "/arc-graph",
         "/graph/:id"
       ],
       "frontend": [
         "apps/main/src/features/graph/"
       ],
+      "docs": [
+        "docs/game/NPC_RESPONSE_GRAPH_DESIGN.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.action_blocks",
+        "pixsim7.backend.main.api.v1.game_scenes",
+        "pixsim7.backend.main.api.v1.character_graph"
+      ],
+      "notes": [],
       "sources": [
+        "modules:appMap",
         "modules"
       ]
     },
@@ -120,7 +153,7 @@
       ]
     },
     {
-      "id": "interaction-studio",
+      "id": "interactions",
       "label": "Interaction Studio",
       "routes": [
         "/interaction-studio"
@@ -128,26 +161,22 @@
       "frontend": [
         "apps/main/src/features/interactions/"
       ],
+      "docs": [
+        "docs/narrative/INTERACTION_AUTHORING_GUIDE.md",
+        "docs/game/INTERACTION_PLUGIN_MANIFEST.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.npc_interactions",
+        "pixsim7.backend.main.api.v1.npc_state",
+        "pixsim7.backend.main.domain.game.interactions"
+      ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
     },
     {
-      "id": "npc-brain-lab",
-      "label": "NPC Brain Lab",
-      "routes": [
-        "/npc-brain-lab"
-      ],
-      "frontend": [
-        "apps/main/src/features/brainTools/"
-      ],
-      "sources": [
-        "modules"
-      ]
-    },
-    {
-      "id": "npc-portraits",
-      "label": "NPC Portraits",
+      "id": "npcs",
+      "label": "NPCs",
       "routes": [
         "/npc-portraits"
       ],
@@ -172,7 +201,7 @@
       ]
     },
     {
-      "id": "plugin-manager",
+      "id": "plugins",
       "label": "Plugins",
       "routes": [
         "/plugins"
@@ -180,8 +209,79 @@
       "frontend": [
         "apps/main/src/features/plugins/"
       ],
+      "docs": [
+        "docs/systems/plugins/PLUGIN_SYSTEM.md",
+        "docs/systems/plugins/PLUGIN_DEVELOPER_GUIDE.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.plugins",
+        "pixsim7.backend.main.infrastructure.plugins"
+      ],
       "sources": [
-        "modules"
+        "modules:appMap"
+      ]
+    },
+    {
+      "id": "prompt-lab",
+      "label": "Prompt Lab",
+      "routes": [
+        "/dev/prompt-lab"
+      ],
+      "frontend": [
+        "apps/main/src/features/devtools/",
+        "apps/main/src/features/prompts/"
+      ],
+      "docs": [
+        "docs/prompts/SEMANTIC_PACKS_IMPLEMENTATION.md",
+        "docs/prompts/PROMPT_SYSTEM_REVIEW.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.api.v1.prompts",
+        "pixsim7.backend.main.api.v1.semantic_packs",
+        "pixsim7.backend.main.api.v1.dev_prompt_categories"
+      ],
+      "sources": [
+        "modules:appMap"
+      ]
+    },
+    {
+      "id": "routine-graph",
+      "label": "Routine Graph Editor",
+      "routes": [
+        "/routine-graph"
+      ],
+      "frontend": [
+        "apps/main/src/features/routine-graph/"
+      ],
+      "docs": [
+        "docs/architecture/subsystems/npc-architecture.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.domain.game.behavior.routine_resolver",
+        "pixsim7.backend.main.domain.game.schemas.behavior",
+        "pixsim7.backend.main.api.v1.game_behavior"
+      ],
+      "sources": [
+        "modules:appMap"
+      ]
+    },
+    {
+      "id": "simulation",
+      "label": "Simulation Playground",
+      "routes": [
+        "/simulation"
+      ],
+      "frontend": [
+        "apps/main/src/features/simulation/"
+      ],
+      "docs": [
+        "docs/backend/simulation.md"
+      ],
+      "backend": [
+        "pixsim7.backend.main.services.simulation"
+      ],
+      "sources": [
+        "modules:appMap"
       ]
     },
     {
@@ -191,11 +291,1901 @@
         "/workspace"
       ],
       "frontend": [
-        "apps/main/src/features/workspace/"
+        "apps/main/src/features/workspace/",
+        "apps/main/src/lib/dockview/"
+      ],
+      "docs": [
+        "docs/architecture/README.md"
       ],
       "sources": [
-        "modules"
+        "modules:appMap"
       ]
+    }
+  ],
+  "panels": [
+    {
+      "id": "console",
+      "title": "Console",
+      "category": "dev",
+      "icon": "code",
+      "description": "Interactive command console for the pixsim namespace (Blender-style)",
+      "tags": [
+        "console",
+        "command",
+        "scripting",
+        "debug",
+        "developer"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/console/index.ts"
+    },
+    {
+      "id": "context-hub",
+      "title": "Context Hub",
+      "category": "dev",
+      "icon": "link",
+      "description": "Inspect active context providers and overrides",
+      "tags": [
+        "context",
+        "capabilities",
+        "debug"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/context-hub/index.ts"
+    },
+    {
+      "id": "dev-tools",
+      "title": "Dev Tools",
+      "category": "dev",
+      "icon": "code",
+      "description": "Developer tools and diagnostics",
+      "tags": [
+        "dev",
+        "debug",
+        "tools",
+        "diagnostics",
+        "developer"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/dev-tools/index.ts"
+    },
+    {
+      "id": "game",
+      "title": "Game",
+      "category": "game",
+      "icon": "gamepad",
+      "description": "Core Game View (Game2D) embedded in the workspace.",
+      "tags": [
+        "game",
+        "preview",
+        "play"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "coreEditorRole": "game-view",
+      "source": "apps/main/src/features/panels/domain/definitions/game/index.ts"
+    },
+    {
+      "id": "game-theming",
+      "title": "Game Theming",
+      "category": "game",
+      "icon": "palette",
+      "description": "Game theme and appearance customization",
+      "tags": [
+        "theming",
+        "customization",
+        "appearance"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/game-theming/index.ts"
+    },
+    {
+      "id": "interaction-studio",
+      "title": "Interaction Studio",
+      "category": "game",
+      "icon": "sparkles",
+      "description": "Design and prototype NPC interactions visually",
+      "tags": [
+        "interaction",
+        "npc",
+        "design",
+        "prototype"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "zone-panel",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/interaction-studio/index.ts"
+    },
+    {
+      "id": "world-context",
+      "title": "World Context",
+      "category": "game",
+      "icon": "map",
+      "description": "Select active world and location for the editor context.",
+      "tags": [
+        "world",
+        "location",
+        "context"
+      ],
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/world-context/index.ts"
+    },
+    {
+      "id": "world-visual-roles",
+      "title": "World Visual Roles",
+      "category": "game",
+      "icon": "user",
+      "description": "Bind gallery assets to world visual roles (portraits, POV, backgrounds)",
+      "tags": [
+        "world",
+        "assets",
+        "visual",
+        "binding",
+        "roles",
+        "portraits"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/world-visual-roles/index.ts"
+    },
+    {
+      "id": "composition-roles",
+      "title": "Composition Roles",
+      "category": "generation",
+      "icon": "layers",
+      "description": "Browse composition role definitions and tag mappings",
+      "tags": [
+        "composition",
+        "roles",
+        "tags",
+        "mappings",
+        "generation"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/composition-roles/index.ts"
+    },
+    {
+      "id": "quickGenerate",
+      "title": "Quick Generate",
+      "category": "generation",
+      "icon": "sparkles",
+      "description": "Quick generation panel that adapts to current context (asset or scene)",
+      "tags": [
+        "generation",
+        "helper",
+        "context-aware"
+      ],
+      "availableIn": [
+        "asset-viewer"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/quick-generate/index.ts"
+    },
+    {
+      "id": "quickgen-asset",
+      "title": "QuickGen Asset",
+      "category": "generation",
+      "icon": "image",
+      "description": "Asset input panel for quick generation workflows",
+      "tags": [
+        "generation",
+        "queue",
+        "asset",
+        "quickgen",
+        "control-center"
+      ],
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/quickgen-asset/index.ts"
+    },
+    {
+      "id": "quickgen-blocks",
+      "title": "QuickGen Blocks",
+      "category": "generation",
+      "icon": "grid",
+      "description": "Prompt companion blocks for quick generation",
+      "tags": [
+        "generation",
+        "prompt",
+        "blocks",
+        "quickgen",
+        "control-center"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/quickgen-blocks/index.ts"
+    },
+    {
+      "id": "quickgen-history",
+      "title": "QuickGen History",
+      "category": "generation",
+      "icon": "clock",
+      "description": "Asset history panel for quick generation workflows",
+      "tags": [
+        "generation",
+        "history",
+        "quickgen"
+      ],
+      "internal": true,
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/quickgen-history/index.ts"
+    },
+    {
+      "id": "quickgen-prompt",
+      "title": "QuickGen Prompt",
+      "category": "generation",
+      "icon": "edit",
+      "description": "Prompt editor for quick generation workflows",
+      "tags": [
+        "generation",
+        "prompt",
+        "quickgen",
+        "control-center"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/quickgen-prompt/index.ts"
+    },
+    {
+      "id": "quickgen-settings",
+      "title": "QuickGen Settings",
+      "category": "generation",
+      "icon": "settings",
+      "description": "Generation settings and Go button for quick workflows",
+      "tags": [
+        "generation",
+        "settings",
+        "quickgen",
+        "control-center"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/quickgen-settings/index.ts"
+    },
+    {
+      "id": "recent-generations",
+      "title": "Recent Assets",
+      "category": "generation",
+      "icon": "sparkles",
+      "description": "Browse recently generated assets",
+      "tags": [
+        "generation",
+        "recent",
+        "output"
+      ],
+      "internal": true,
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/recent-generations/index.ts"
+    },
+    {
+      "id": "edge-effects",
+      "title": "Edge Effects",
+      "category": "scene",
+      "icon": "zap",
+      "description": "Inspect and edit edge effects for the active scene graph.",
+      "tags": [
+        "scene",
+        "edges",
+        "effects",
+        "relationships",
+        "quests",
+        "inventory"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/edge-effects/index.ts"
+    },
+    {
+      "id": "scene",
+      "title": "Scene Builder",
+      "category": "scene",
+      "icon": "layoutGrid",
+      "description": "Build and edit individual scenes",
+      "tags": [
+        "scene",
+        "builder",
+        "editor"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/scene/index.ts"
+    },
+    {
+      "id": "scene-management",
+      "title": "Scene Management",
+      "category": "scene",
+      "icon": "folderTree",
+      "description": "Unified scene workflow management",
+      "tags": [
+        "scene",
+        "management",
+        "workflow",
+        "organization"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/scene-management/index.ts"
+    },
+    {
+      "id": "controlCenter",
+      "title": "Control Center",
+      "category": "system",
+      "icon": "sliders",
+      "description": "Control Center dock and generation modules",
+      "tags": [
+        "control-center",
+        "generation",
+        "modules"
+      ],
+      "internal": true,
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "dockview-container",
+      "defaultZone": "left",
+      "source": "apps/main/src/features/panels/domain/definitions/control-center/index.ts"
+    },
+    {
+      "id": "health",
+      "title": "Health",
+      "category": "system",
+      "icon": "heart",
+      "description": "System health and validation",
+      "tags": [
+        "health",
+        "monitoring",
+        "validation",
+        "diagnostics"
+      ],
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/health/index.ts"
+    },
+    {
+      "id": "providers",
+      "title": "Provider Settings",
+      "category": "system",
+      "icon": "plug",
+      "description": "API provider settings and configuration",
+      "tags": [
+        "providers",
+        "api",
+        "settings"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/providers/index.ts"
+    },
+    {
+      "id": "asset-tags",
+      "title": "Asset Tags",
+      "category": "tools",
+      "icon": "tag",
+      "description": "Manage tags for selected assets",
+      "tags": [
+        "tags",
+        "assets",
+        "metadata"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/asset-tags/index.tsx"
+    },
+    {
+      "id": "game-tools",
+      "title": "Game Tools",
+      "category": "tools",
+      "icon": "grid",
+      "description": "Browse world tools, interactions, HUD widgets, and dev plugins",
+      "tags": [
+        "game",
+        "tools",
+        "catalog",
+        "world",
+        "interactions",
+        "widgets"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/game-tools/index.ts"
+    },
+    {
+      "id": "gizmo-browser",
+      "title": "Gizmo Browser",
+      "category": "tools",
+      "icon": "grid",
+      "description": "Browse and select gizmos from the registry",
+      "tags": [
+        "gizmos",
+        "lab",
+        "browser"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "gizmo-lab"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/gizmo-browser/index.ts"
+    },
+    {
+      "id": "gizmo-lab",
+      "title": "Gizmo Lab",
+      "category": "tools",
+      "icon": "wrench",
+      "description": "Gizmo testing laboratory",
+      "tags": [
+        "gizmos",
+        "lab",
+        "experimental",
+        "testing"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "dockview-container",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/gizmo-lab/index.ts"
+    },
+    {
+      "id": "gizmo-playground",
+      "title": "Gizmo Playground",
+      "category": "tools",
+      "icon": "play",
+      "description": "Interactive playground for the selected gizmo",
+      "tags": [
+        "gizmos",
+        "lab",
+        "playground",
+        "canvas"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "gizmo-lab"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/gizmo-playground/index.ts"
+    },
+    {
+      "id": "hud-designer",
+      "title": "HUD Designer",
+      "category": "tools",
+      "icon": "layoutGrid",
+      "description": "Design HUD layouts using widget compositions",
+      "tags": [
+        "hud",
+        "designer",
+        "layout",
+        "ui",
+        "widgets"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/hud-designer/index.ts"
+    },
+    {
+      "id": "info",
+      "title": "Info",
+      "category": "tools",
+      "icon": "info",
+      "description": "Information panel that shows metadata for the current context",
+      "tags": [
+        "metadata",
+        "info",
+        "helper",
+        "context-aware"
+      ],
+      "availableIn": [
+        "asset-viewer"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/info/index.ts"
+    },
+    {
+      "id": "interactive-surface",
+      "title": "Interactive Surface",
+      "category": "tools",
+      "icon": "layers",
+      "description": "Interactive overlay for mask creation, annotations, and image tagging",
+      "tags": [
+        "interactive",
+        "surface",
+        "mask",
+        "annotation",
+        "inpaint",
+        "overlay"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/interactive-surface/index.ts"
+    },
+    {
+      "id": "mini-gallery",
+      "title": "Mini Gallery",
+      "category": "tools",
+      "icon": "image",
+      "description": "Compact gallery panel for browsing and filtering assets",
+      "tags": [
+        "gallery",
+        "assets",
+        "browse"
+      ],
+      "internal": false,
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": true,
+      "source": "apps/main/src/features/panels/domain/definitions/mini-gallery/index.ts"
+    },
+    {
+      "id": "model-inspector",
+      "title": "Model Inspector",
+      "category": "tools",
+      "icon": "package",
+      "description": "View 3D models, animations, and configure contact zones",
+      "tags": [
+        "3d",
+        "model",
+        "gltf",
+        "zones",
+        "tools",
+        "animation"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": true,
+      "source": "apps/main/src/features/panels/domain/definitions/model-inspector/index.ts"
+    },
+    {
+      "id": "npc-brain-lab",
+      "title": "NPC Brain Lab",
+      "category": "tools",
+      "icon": "bot",
+      "description": "NPC behavior testing and debugging",
+      "tags": [
+        "npc",
+        "ai",
+        "brain",
+        "behavior"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/npc-brain-lab/index.ts"
+    },
+    {
+      "id": "surface-workbench",
+      "title": "Surface Workbench",
+      "category": "tools",
+      "icon": "layoutGrid",
+      "description": "Inspect available surfaces (HUD, overlay, gizmo) for the active context",
+      "tags": [
+        "surfaces",
+        "hud",
+        "overlay",
+        "gizmo",
+        "editor"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/surface-workbench/index.ts"
+    },
+    {
+      "id": "template-library",
+      "title": "Template Library",
+      "category": "tools",
+      "icon": "library",
+      "description": "Browse and manage templates and runtime entities via the generic CRUD API. Create, edit, and delete location templates, item templates, NPCs, scenes, and more.",
+      "tags": [
+        "templates",
+        "library",
+        "crud",
+        "authoring",
+        "game-maker",
+        "entities"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "defaultZone": "left",
+      "source": "apps/main/src/features/panels/domain/definitions/template-library/index.ts"
+    },
+    {
+      "id": "tool-browser",
+      "title": "Tool Browser",
+      "category": "tools",
+      "icon": "mouse-pointer",
+      "description": "Browse and select interactive tools from the registry",
+      "tags": [
+        "tools",
+        "lab",
+        "browser"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "gizmo-lab"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/tool-browser/index.ts"
+    },
+    {
+      "id": "tool-playground",
+      "title": "Tool Playground",
+      "category": "tools",
+      "icon": "play",
+      "description": "Interactive playground for the selected tool",
+      "tags": [
+        "tools",
+        "lab",
+        "playground",
+        "canvas"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "gizmo-lab"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/tool-playground/index.ts"
+    },
+    {
+      "id": "panel-browser",
+      "title": "Panel Browser",
+      "category": "utilities",
+      "icon": "layoutGrid",
+      "description": "Browse all available panels and launch them docked or floating",
+      "tags": [
+        "panels",
+        "launcher",
+        "browser",
+        "utilities"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "workspace",
+        "control-center"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/panel-browser/index.ts"
+    },
+    {
+      "id": "settings",
+      "title": "Settings",
+      "category": "utilities",
+      "icon": "settings",
+      "description": "Application settings and preferences",
+      "tags": [
+        "settings",
+        "configuration",
+        "preferences"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/settings/index.ts"
+    },
+    {
+      "id": "shortcuts",
+      "title": "Shortcuts",
+      "category": "utilities",
+      "icon": "zap",
+      "description": "Quick navigation shortcuts to common areas",
+      "tags": [
+        "navigation",
+        "shortcuts",
+        "quick",
+        "links"
+      ],
+      "supportsCompactMode": true,
+      "supportsMultipleInstances": false,
+      "availableIn": [
+        "workspace",
+        "control-center"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/shortcuts/index.ts"
+    },
+    {
+      "id": "arc-graph",
+      "title": "Arc Graph",
+      "category": "workspace",
+      "icon": "fileText",
+      "description": "Manage story arcs, quests, and narrative flow",
+      "tags": [
+        "arc",
+        "graph",
+        "quest",
+        "narrative"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "zone-panel",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/arc-graph/index.tsx"
+    },
+    {
+      "id": "assetViewer",
+      "title": "Asset Viewer",
+      "category": "workspace",
+      "icon": "image",
+      "description": "Asset viewer with docked sub-panels",
+      "tags": [
+        "assets",
+        "viewer",
+        "media"
+      ],
+      "internal": true,
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "dockview-container",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/asset-viewer/index.ts"
+    },
+    {
+      "id": "gallery",
+      "title": "Gallery",
+      "category": "workspace",
+      "icon": "image",
+      "description": "Browse and manage project assets",
+      "tags": [
+        "assets",
+        "media",
+        "images"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "zone-panel",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/gallery/index.ts"
+    },
+    {
+      "id": "generations",
+      "title": "Generations",
+      "category": "workspace",
+      "icon": "sparkles",
+      "description": "Track and manage generation jobs",
+      "tags": [
+        "generations",
+        "jobs",
+        "status",
+        "monitoring",
+        "tracking"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/generations/index.ts"
+    },
+    {
+      "id": "graph",
+      "title": "Graph",
+      "category": "workspace",
+      "icon": "graph",
+      "description": "Visual node-based editor",
+      "tags": [
+        "graph",
+        "nodes",
+        "flow"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "zone-panel",
+      "defaultZone": "center",
+      "coreEditorRole": "flow-view",
+      "source": "apps/main/src/features/panels/domain/definitions/graph/index.ts"
+    },
+    {
+      "id": "inspector",
+      "title": "Inspector",
+      "category": "workspace",
+      "icon": "info",
+      "description": "Inspect and edit node properties",
+      "tags": [
+        "inspector",
+        "properties",
+        "details"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "source": "apps/main/src/features/panels/domain/definitions/inspector/index.ts"
+    },
+    {
+      "id": "media-preview",
+      "title": "Media Preview",
+      "category": "workspace",
+      "icon": "image",
+      "description": "Lightweight media preview panel for selected assets",
+      "tags": [
+        "media",
+        "preview",
+        "viewer"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": true,
+      "availableIn": [
+        "asset-viewer"
+      ],
+      "source": "apps/main/src/features/panels/domain/definitions/media-preview/index.ts"
+    },
+    {
+      "id": "project",
+      "title": "Project",
+      "category": "workspace",
+      "icon": "save",
+      "description": "Project-level save/load for world bundles and authoring extensions.",
+      "tags": [
+        "project",
+        "import",
+        "export",
+        "bundle",
+        "authoring"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "defaultZone": "left",
+      "source": "apps/main/src/features/panels/domain/definitions/project/index.ts"
+    },
+    {
+      "id": "routine-graph",
+      "title": "Routine Graph",
+      "category": "workspace",
+      "icon": "clock",
+      "description": "Design NPC daily routines and schedules",
+      "tags": [
+        "routine",
+        "graph",
+        "schedule",
+        "npc"
+      ],
+      "supportsCompactMode": false,
+      "supportsMultipleInstances": false,
+      "orchestrationType": "zone-panel",
+      "defaultZone": "center",
+      "source": "apps/main/src/features/panels/domain/definitions/routine-graph/index.ts"
+    }
+  ],
+  "modules": [
+    {
+      "id": "context-hub",
+      "name": "Context Hub",
+      "priority": 80,
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": true,
+      "hasPage": false,
+      "source": "apps/main/src/features/contextHub/module.ts"
+    },
+    {
+      "id": "graph-system",
+      "name": "Graph System Module",
+      "priority": 75,
+      "dependsOn": [
+        "plugin-bootstrap"
+      ],
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/graph/module.ts"
+    },
+    {
+      "id": "cubes",
+      "name": "Cubes Module",
+      "priority": 60,
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/cubes/module.ts"
+    },
+    {
+      "id": "gizmos",
+      "name": "Gizmos",
+      "priority": 60,
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/gizmos/module.ts"
+    },
+    {
+      "id": "interactions",
+      "name": "Interactions",
+      "priority": 60,
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/interactions/module.ts"
+    },
+    {
+      "id": "app-map",
+      "name": "App Map Module",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/devtools/module.ts"
+    },
+    {
+      "id": "automation",
+      "name": "Automation",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": true,
+      "route": "/automation",
+      "source": "apps/main/src/features/automation/module.ts"
+    },
+    {
+      "id": "control-center",
+      "name": "Control Center Module",
+      "priority": 50,
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "controlCenterPanelCount": 3,
+      "source": "apps/main/src/features/controlCenter/module.ts"
+    },
+    {
+      "id": "assets",
+      "name": "Gallery",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": true,
+      "route": "/assets",
+      "source": "apps/main/src/features/assets/module.ts"
+    },
+    {
+      "id": "gallery",
+      "name": "Gallery Module",
+      "hasInitialize": true,
+      "hasCleanup": false,
+      "hasIsReady": true,
+      "hasPage": false,
+      "controlCenterPanelCount": 1,
+      "source": "apps/main/src/features/gallery/module.ts"
+    },
+    {
+      "id": "game",
+      "name": "Game World",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": true,
+      "route": "/game-world",
+      "source": "apps/main/src/features/worldTools/module.ts"
+    },
+    {
+      "id": "generation",
+      "name": "Generation Module",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "source": "apps/main/src/features/generation/module.ts"
+    },
+    {
+      "id": "npcs",
+      "name": "NPCs",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": true,
+      "route": "/npc-portraits",
+      "source": "apps/main/src/features/npcs/module.ts"
+    },
+    {
+      "id": "plugins",
+      "name": "Plugins Module",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": false,
+      "controlCenterPanelCount": 1,
+      "source": "apps/main/src/features/plugins/module.ts"
+    },
+    {
+      "id": "workspace",
+      "name": "Scene Builder",
+      "hasInitialize": false,
+      "hasCleanup": false,
+      "hasIsReady": false,
+      "hasPage": true,
+      "route": "/workspace",
+      "controlCenterPanelCount": 1,
+      "source": "apps/main/src/features/workspace/module.ts"
+    }
+  ],
+  "stores": [
+    {
+      "name": "useAssetDetailStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/assetDetailStore.ts"
+    },
+    {
+      "name": "useAssetPickerStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/assetPickerStore.ts"
+    },
+    {
+      "name": "useAssetSelectionStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/assetSelectionStore.ts"
+    },
+    {
+      "name": "useAssetSettingsStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/assetSettingsStore.ts"
+    },
+    {
+      "name": "useAssetViewerStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/assetViewerStore.ts"
+    },
+    {
+      "name": "useDeleteModalStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/deleteModalStore.ts"
+    },
+    {
+      "name": "useLocalFolderSettingsStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/localFolderSettingsStore.ts"
+    },
+    {
+      "name": "useMediaSettingsStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/mediaSettingsStore.ts"
+    },
+    {
+      "name": "useQuickTagStore",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/lib/quickTagStore.ts"
+    },
+    {
+      "name": "useComponentSettingsStore",
+      "feature": "componentSettings",
+      "source": "apps/main/src/features/componentSettings/stores/componentSettingsStore.ts"
+    },
+    {
+      "name": "useContextHubOverridesStore",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/stores/contextHubOverridesStore.ts"
+    },
+    {
+      "name": "useContextHubSettingsStore",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/stores/contextHubSettingsStore.ts"
+    },
+    {
+      "name": "useControlCenterStore",
+      "feature": "controlCenter",
+      "source": "apps/main/src/features/controlCenter/stores/controlCenterStore.ts"
+    },
+    {
+      "name": "useCubeSettingsStore",
+      "feature": "cubes",
+      "source": "apps/main/src/features/cubes/stores/cubeSettingsStore.ts"
+    },
+    {
+      "name": "useGenerationHistoryStore",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/stores/generationHistoryStore.ts"
+    },
+    {
+      "name": "useGenerationPresetStore",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/stores/generationPresetStore.ts"
+    },
+    {
+      "name": "useGenerationsStore",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/stores/generationsStore.ts"
+    },
+    {
+      "name": "useGizmoLabStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/gizmoLabStore.ts"
+    },
+    {
+      "name": "useGizmoSurfaceStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/gizmoSurfaceStore.ts"
+    },
+    {
+      "name": "useInteractionStatsStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/interactionStatsStore.ts"
+    },
+    {
+      "name": "useSurfaceDimensionStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/surfaceDimensionStore.ts"
+    },
+    {
+      "name": "useToolConfigStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/toolConfigStore.ts"
+    },
+    {
+      "name": "useToolConsoleStore",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/lib/core/console.ts"
+    },
+    {
+      "name": "useArcGraphStore",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/arcGraphStore/index.ts"
+    },
+    {
+      "name": "useGraphStore",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/graphStore/index.ts"
+    },
+    {
+      "name": "useSelectionStore",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/selectionStore.ts"
+    },
+    {
+      "name": "useTemplateAnalyticsStore",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/templateAnalyticsStore.ts"
+    },
+    {
+      "name": "useTemplateStore",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/templatesStore.ts"
+    },
+    {
+      "name": "useHudLayoutStore",
+      "feature": "hud",
+      "source": "apps/main/src/features/hud/stores/hudLayoutStore.ts"
+    },
+    {
+      "name": "useIconSettingsStore",
+      "feature": "icons",
+      "source": "apps/main/src/features/icons/stores/iconSettingsStore.ts"
+    },
+    {
+      "name": "useAssetViewerOverlayStore",
+      "feature": "mediaViewer",
+      "source": "apps/main/src/features/mediaViewer/stores/assetViewerOverlayStore.ts"
+    },
+    {
+      "name": "usePanelConfigStore",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/stores/panelConfigStore.ts"
+    },
+    {
+      "name": "usePanelInstanceSettingsStore",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/stores/panelInstanceSettingsStore.ts"
+    },
+    {
+      "name": "usePoseBoardStore",
+      "feature": "poseBoard",
+      "source": "apps/main/src/features/poseBoard/stores/poseBoardStore.ts"
+    },
+    {
+      "name": "usePromptSettingsStore",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/stores/promptSettingsStore.ts"
+    },
+    {
+      "name": "useRoutineGraphSelectionStore",
+      "feature": "routine-graph",
+      "source": "apps/main/src/features/routine-graph/stores/selectionStore.ts"
+    },
+    {
+      "name": "useRoutineGraphStore",
+      "feature": "routine-graph",
+      "source": "apps/main/src/features/routine-graph/stores/routineGraphStore.ts"
+    },
+    {
+      "name": "useProjectIndexStore",
+      "feature": "scene",
+      "source": "apps/main/src/features/scene/stores/projectIndexStore.ts"
+    },
+    {
+      "name": "useProjectSessionStore",
+      "feature": "scene",
+      "source": "apps/main/src/features/scene/stores/projectSessionStore.ts"
+    },
+    {
+      "name": "useWorldContextStore",
+      "feature": "scene",
+      "source": "apps/main/src/features/scene/stores/worldContextStore.ts"
+    },
+    {
+      "name": "useModel3DStore",
+      "feature": "scene3d",
+      "source": "apps/main/src/features/scene3d/stores/model3DStore.ts"
+    },
+    {
+      "name": "usePanelInteractionSettingsStore",
+      "feature": "settings",
+      "source": "apps/main/src/features/settings/stores/panelInteractionSettingsStore.ts"
+    },
+    {
+      "name": "usePanelSettingsUiStore",
+      "feature": "settings",
+      "source": "apps/main/src/features/settings/stores/panelSettingsUiStore.ts"
+    },
+    {
+      "name": "useSettingsUiStore",
+      "feature": "settings",
+      "source": "apps/main/src/features/settings/stores/settingsUiStore.ts"
+    },
+    {
+      "name": "useThemeSettingsStore",
+      "feature": "theme",
+      "source": "apps/main/src/features/theme/stores/themeStore.ts"
+    },
+    {
+      "name": "useContextMenuHistoryStore",
+      "feature": "workspace",
+      "source": "apps/main/src/features/workspace/stores/contextMenuHistoryStore.ts"
+    },
+    {
+      "name": "useWorkspaceStore",
+      "feature": "workspace",
+      "source": "apps/main/src/features/workspace/stores/workspaceStore.ts"
+    }
+  ],
+  "hooks": [
+    {
+      "name": "useAsset",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useAsset.ts"
+    },
+    {
+      "name": "useAssetContextMenu",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/lib/assetContextResolver.ts"
+    },
+    {
+      "name": "useAssets",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useAssets.ts"
+    },
+    {
+      "name": "useAssetsController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useAssetsController.ts"
+    },
+    {
+      "name": "useAssetViewer",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useAssetViewer.ts"
+    },
+    {
+      "name": "useCloudSourceController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useFavoriteToggle",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useFavoriteToggle.ts"
+    },
+    {
+      "name": "useFilterMetadata",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useFilterMetadata.ts"
+    },
+    {
+      "name": "useFolderSourceController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useImportSourceController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useInfiniteScroll",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/components/shared/LoadMoreSection.tsx"
+    },
+    {
+      "name": "useLocalAssetPreview",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useLocalAssetPreview.ts"
+    },
+    {
+      "name": "useLocalFolders",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/stores/localFoldersStore.ts"
+    },
+    {
+      "name": "useLocalFoldersController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/hooks/useLocalFoldersController.ts"
+    },
+    {
+      "name": "useRegisterAssetContext",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/lib/assetContextResolver.ts"
+    },
+    {
+      "name": "useSourceController",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useSourceControllerOptional",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useSourceControllerType",
+      "feature": "assets",
+      "source": "apps/main/src/features/assets/context/SourceControllerContext.tsx"
+    },
+    {
+      "name": "useCapability",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useCapability.ts"
+    },
+    {
+      "name": "useContextHubHostId",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/contextHubContext.ts"
+    },
+    {
+      "name": "useContextHubState",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/contextHubContext.ts"
+    },
+    {
+      "name": "usePanelContext",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useCapability.ts"
+    },
+    {
+      "name": "useProjectContext",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useProjectContext.ts"
+    },
+    {
+      "name": "useProvideCapability",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useCapability.ts"
+    },
+    {
+      "name": "useUnifiedCapabilities",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useUnifiedCapabilities.ts"
+    },
+    {
+      "name": "useUnifiedCapability",
+      "feature": "contextHub",
+      "source": "apps/main/src/features/contextHub/hooks/useUnifiedCapabilities.ts"
+    },
+    {
+      "name": "useControlCenterLayout",
+      "feature": "controlCenter",
+      "source": "apps/main/src/features/controlCenter/hooks/useControlCenterLayout.ts"
+    },
+    {
+      "name": "useDockBehavior",
+      "feature": "controlCenter",
+      "source": "apps/main/src/features/controlCenter/components/hooks/useDockBehavior.ts"
+    },
+    {
+      "name": "useResizablePanels",
+      "feature": "controlCenter",
+      "source": "apps/main/src/features/controlCenter/components/hooks/useResizablePanels.ts"
+    },
+    {
+      "name": "useCubeAssetBinding",
+      "feature": "cubes",
+      "source": "apps/main/src/features/cubes/integration/contextHub.ts"
+    },
+    {
+      "name": "useCubeContext",
+      "feature": "cubes",
+      "source": "apps/main/src/features/cubes/integration/contextHub.ts"
+    },
+    {
+      "name": "useCuratorGalleryController",
+      "feature": "gallery",
+      "source": "apps/main/src/features/gallery/hooks/useCuratorGalleryController.ts"
+    },
+    {
+      "name": "useGallerySurfaceController",
+      "feature": "gallery",
+      "source": "apps/main/src/features/gallery/hooks/useGallerySurfaceController.ts"
+    },
+    {
+      "name": "useGenerationDevController",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationDevController.ts"
+    },
+    {
+      "name": "useGenerationPresets",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationPresets.ts"
+    },
+    {
+      "name": "useGenerationScopeStores",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationScope.tsx"
+    },
+    {
+      "name": "useGenerationStatus",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationStatus.ts"
+    },
+    {
+      "name": "useGenerationWebSocket",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationWebSocket.ts"
+    },
+    {
+      "name": "useGenerationWorkbench",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useGenerationWorkbench.ts"
+    },
+    {
+      "name": "useMediaCardGenerationStatus",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useMediaCardGenerationStatus.ts"
+    },
+    {
+      "name": "useMediaCardGenerationStatusBatch",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useMediaCardGenerationStatus.ts"
+    },
+    {
+      "name": "useMediaGenerationActions",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useMediaGenerationActions.ts"
+    },
+    {
+      "name": "useProvideGenerationWidget",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useProvideGenerationWidget.ts"
+    },
+    {
+      "name": "useQuickGenerateController",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useQuickGenerateController.ts"
+    },
+    {
+      "name": "useQuickGenPanelLayout",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useQuickGenPanelLayout.ts"
+    },
+    {
+      "name": "useQuickGenScopeSync",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useQuickGenScopeSync.ts"
+    },
+    {
+      "name": "useRecentGenerations",
+      "feature": "generation",
+      "source": "apps/main/src/features/generation/hooks/useRecentGenerations.ts"
+    },
+    {
+      "name": "useAllToolsWithOverrides",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/useToolWithOverrides.ts"
+    },
+    {
+      "name": "useEnabledGizmoSurfaces",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/gizmoSurfaceHooks.ts"
+    },
+    {
+      "name": "useIsSurfaceEnabled",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/gizmoSurfaceHooks.ts"
+    },
+    {
+      "name": "useSelectedGizmo",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/gizmoLabStore.ts"
+    },
+    {
+      "name": "useSelectedTool",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/stores/gizmoLabStore.ts"
+    },
+    {
+      "name": "useToggleSurface",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/gizmoSurfaceHooks.ts"
+    },
+    {
+      "name": "useToolHasOverrides",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/useToolWithOverrides.ts"
+    },
+    {
+      "name": "useToolInstanceWithOverrides",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/useToolWithOverrides.ts"
+    },
+    {
+      "name": "useToolWithOverrides",
+      "feature": "gizmos",
+      "source": "apps/main/src/features/gizmos/hooks/useToolWithOverrides.ts"
+    },
+    {
+      "name": "useArcGraphStoreCanRedo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/arcGraphStore/index.ts"
+    },
+    {
+      "name": "useArcGraphStoreCanUndo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/arcGraphStore/index.ts"
+    },
+    {
+      "name": "useArcGraphStoreRedo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/arcGraphStore/index.ts"
+    },
+    {
+      "name": "useArcGraphStoreUndo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/arcGraphStore/index.ts"
+    },
+    {
+      "name": "useGraphCapabilityBridge",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/lib/capabilities/useGraphCapabilityBridge.ts"
+    },
+    {
+      "name": "useGraphStoreCanRedo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/graphStore/index.ts"
+    },
+    {
+      "name": "useGraphStoreCanUndo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/graphStore/index.ts"
+    },
+    {
+      "name": "useGraphStoreRedo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/graphStore/index.ts"
+    },
+    {
+      "name": "useGraphStoreUndo",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/stores/graphStore/index.ts"
+    },
+    {
+      "name": "useLineageGraph",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/hooks/useLineageGraph.ts"
+    },
+    {
+      "name": "useNodeValidation",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/hooks/useSceneValidation.ts"
+    },
+    {
+      "name": "useSceneGraphPanelHandlers",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/components/scene-graph-v2/useSceneGraphPanelHandlers.ts"
+    },
+    {
+      "name": "useSceneValidation",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/hooks/useSceneValidation.ts"
+    },
+    {
+      "name": "useValidationContext",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/hooks/useValidationContext.ts"
+    },
+    {
+      "name": "useValidationContextOptional",
+      "feature": "graph",
+      "source": "apps/main/src/features/graph/hooks/useValidationContext.ts"
+    },
+    {
+      "name": "useActivePanelInZone",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "useInitializePanelSystem",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelSystemInitialization.ts"
+    },
+    {
+      "name": "useOpenPanels",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanel",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelActions",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelActions",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/lib/actions.ts"
+    },
+    {
+      "name": "usePanelGroup",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
+    },
+    {
+      "name": "usePanelGroups",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
+    },
+    {
+      "name": "usePanelGroupsByCategory",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelGroups.ts"
+    },
+    {
+      "name": "usePanelIdentity",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelState.ts"
+    },
+    {
+      "name": "usePanelIs",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelManagerEvents",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelManagerInstance",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelManagerState",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelPersistedState",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelState.ts"
+    },
+    {
+      "name": "usePanelSettingsHelpers",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/lib/panelSettingsHelpers.ts"
+    },
+    {
+      "name": "usePanelsInZone",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelState",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePanelStateObject",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelState.ts"
+    },
+    {
+      "name": "usePanelSystemInitialization",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelSystemInitialization.ts"
+    },
+    {
+      "name": "useResolveAllComponentSettings",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/lib/instanceSettingsResolver.ts"
+    },
+    {
+      "name": "useResolveComponentSettings",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/lib/instanceSettingsResolver.ts"
+    },
+    {
+      "name": "useResolvePanelSettings",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/lib/instanceSettingsResolver.ts"
+    },
+    {
+      "name": "useScopeInstanceId",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/components/scope/scopeInstanceContext.ts"
+    },
+    {
+      "name": "useZoneActions",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "useZoneState",
+      "feature": "panels",
+      "source": "apps/main/src/features/panels/hooks/usePanelManager.ts"
+    },
+    {
+      "name": "usePreviewScopeStores",
+      "feature": "preview",
+      "source": "apps/main/src/features/preview/hooks/usePreviewScope.tsx"
+    },
+    {
+      "name": "usePromptAiEdit",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/usePromptAiEdit.ts"
+    },
+    {
+      "name": "usePromptInspection",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/usePromptInspection.ts"
+    },
+    {
+      "name": "useQuickGenerateBindings",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/useQuickGenerateBindings.ts"
+    },
+    {
+      "name": "useSemanticActionBlocks",
+      "feature": "prompts",
+      "source": "apps/main/src/features/prompts/hooks/useSemanticActionBlocks.ts"
+    },
+    {
+      "name": "useAiProviders",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useAiProviders.ts"
+    },
+    {
+      "name": "useAspectRatios",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useCostEstimate",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useCostEstimate.ts"
+    },
+    {
+      "name": "useCostHints",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useGenerationPlugins",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useGenerationPlugins.tsx"
+    },
+    {
+      "name": "useOperationSpec",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "usePluginValidation",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useGenerationPlugins.tsx"
+    },
+    {
+      "name": "usePromptLimit",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useProviderAccounts",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderAccounts.ts"
+    },
+    {
+      "name": "useProviderCapabilities",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useProviderCapability",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useProviderCapacity",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderAccounts.ts"
+    },
+    {
+      "name": "useProviderFeature",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useProviderIdForModel",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderIdForModel.ts"
+    },
+    {
+      "name": "useProviderLimits",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useProviders",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviders.ts"
+    },
+    {
+      "name": "useProviderSpecs",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderSpecs.ts"
+    },
+    {
+      "name": "useQualityPresets",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useRenderPlugins",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useGenerationPlugins.tsx"
+    },
+    {
+      "name": "useSupportedOperations",
+      "feature": "providers",
+      "source": "apps/main/src/features/providers/hooks/useProviderCapabilities.ts"
+    },
+    {
+      "name": "useRoutineGraphRedo",
+      "feature": "routine-graph",
+      "source": "apps/main/src/features/routine-graph/stores/routineGraphStore.ts"
+    },
+    {
+      "name": "useRoutineGraphUndo",
+      "feature": "routine-graph",
+      "source": "apps/main/src/features/routine-graph/stores/routineGraphStore.ts"
+    },
+    {
+      "name": "useInteractionOverride",
+      "feature": "settings",
+      "source": "apps/main/src/features/settings/stores/panelInteractionSettingsStore.ts"
+    },
+    {
+      "name": "usePanelSettings",
+      "feature": "settings",
+      "source": "apps/main/src/features/settings/stores/panelInteractionSettingsStore.ts"
+    },
+    {
+      "name": "useSimulationRuns",
+      "feature": "simulation",
+      "source": "apps/main/src/features/simulation/components/useSimulationRuns.ts"
+    },
+    {
+      "name": "useSimulationScenarios",
+      "feature": "simulation",
+      "source": "apps/main/src/features/simulation/components/useSimulationScenarios.ts"
+    },
+    {
+      "name": "useSimulationTime",
+      "feature": "simulation",
+      "source": "apps/main/src/features/simulation/components/useSimulationTime.ts"
+    },
+    {
+      "name": "useApplyTheme",
+      "feature": "theme",
+      "source": "apps/main/src/features/theme/useApplyTheme.ts"
+    },
+    {
+      "name": "useWorkspacePresets",
+      "feature": "workspace",
+      "source": "apps/main/src/features/workspace/hooks/useWorkspacePresets.ts"
     }
   ]
 }
