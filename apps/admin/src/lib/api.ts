@@ -1,9 +1,6 @@
 import type {
   APIHealthResponse,
   BuildablesResponse,
-  CodegenTasksResponse,
-  CodegenRunRequest,
-  CodegenRunResponse,
   EventStatsResponse,
   LauncherSettings,
   LauncherSettingsUpdate,
@@ -15,10 +12,10 @@ import type {
   StatisticsResponse,
 } from './types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100';
+const LAUNCHER_API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8100';
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${LAUNCHER_API_BASE}${endpoint}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -70,17 +67,6 @@ export async function stopAllServices(graceful = true) {
 
 export async function getBuildables(): Promise<BuildablesResponse> {
   return request('/buildables');
-}
-
-export async function getCodegenTasks(): Promise<CodegenTasksResponse> {
-  return request('/codegen/tasks');
-}
-
-export async function runCodegenTask(payload: CodegenRunRequest): Promise<CodegenRunResponse> {
-  return request('/codegen/run', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
 }
 
 export async function getSettings(): Promise<LauncherSettings> {

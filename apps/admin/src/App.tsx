@@ -5,7 +5,6 @@ import { SmartDockviewBase } from '@pixsim7/shared.ui.dockview';
 import { AdminContext, type AdminContextValue, type LoadState } from './adminContext';
 import {
   getBuildables,
-  getCodegenTasks,
   getServiceDefinition,
   getServices,
   getSettings,
@@ -18,22 +17,19 @@ import {
 } from './lib/api';
 import type {
   BuildableDefinition,
-  CodegenTask,
   LauncherSettings,
   ServiceDefinition,
   ServiceState,
 } from './lib/types';
 import { BuildablesPanel } from './panels/BuildablesPanel';
-import { CodegenPanel } from './panels/CodegenPanel';
 import { EventsStatsPanel } from './panels/EventsStatsPanel';
 import { HealthPanel } from './panels/HealthPanel';
 import { LogsPanel } from './panels/LogsPanel';
-import { AppMapPanel } from './panels/AppMapPanel';
 import { ServiceInspectorPanel } from './panels/ServiceInspectorPanel';
 import { ServicesPanel } from './panels/ServicesPanel';
 import { SettingsPanel } from './panels/SettingsPanel';
 
-const DOCKVIEW_STORAGE_KEY = 'dockview:admin:v1';
+const DOCKVIEW_STORAGE_KEY = 'dockview:admin:v2';
 
 export default function App() {
   const [services, setServices] = useState<ServiceState[]>([]);
@@ -41,18 +37,15 @@ export default function App() {
   const [serviceDefinitionState, setServiceDefinitionState] = useState<Record<string, LoadState>>({});
   const [serviceDefinitionErrors, setServiceDefinitionErrors] = useState<Record<string, string>>({});
   const [buildables, setBuildables] = useState<BuildableDefinition[]>([]);
-  const [codegenTasks, setCodegenTasks] = useState<CodegenTask[]>([]);
   const [settings, setSettings] = useState<LauncherSettings | null>(null);
   const [settingsDraft, setSettingsDraft] = useState<LauncherSettings | null>(null);
 
   const [servicesState, setServicesState] = useState<LoadState>('idle');
   const [buildablesState, setBuildablesState] = useState<LoadState>('idle');
-  const [codegenState, setCodegenState] = useState<LoadState>('idle');
   const [settingsState, setSettingsState] = useState<LoadState>('idle');
 
   const [servicesError, setServicesError] = useState('');
   const [buildablesError, setBuildablesError] = useState('');
-  const [codegenError, setCodegenError] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [selectedServiceKey, setSelectedServiceKey] = useState<string | null>(null);
   const [lastServicesRefresh, setLastServicesRefresh] = useState<Date | null>(null);
@@ -109,19 +102,6 @@ export default function App() {
     }
   }, []);
 
-  const refreshCodegenTasks = useCallback(async () => {
-    setCodegenState('loading');
-    setCodegenError('');
-    try {
-      const response = await getCodegenTasks();
-      setCodegenTasks(response.tasks);
-      setCodegenState('idle');
-    } catch (error) {
-      setCodegenError(error instanceof Error ? error.message : 'Failed to load codegen tasks');
-      setCodegenState('error');
-    }
-  }, []);
-
   const refreshSettings = useCallback(async () => {
     setSettingsState('loading');
     setSettingsError('');
@@ -139,9 +119,8 @@ export default function App() {
   useEffect(() => {
     refreshServices();
     refreshBuildables();
-    refreshCodegenTasks();
     refreshSettings();
-  }, [refreshBuildables, refreshCodegenTasks, refreshServices, refreshSettings]);
+  }, [refreshBuildables, refreshServices, refreshSettings]);
 
   const startServiceAction = useCallback(
     async (serviceKey: string) => {
@@ -344,18 +323,23 @@ export default function App() {
     () => services.filter((service) => service.health === 'healthy').length,
     [services],
   );
+  const devtoolsUrl = useMemo(() => {
+    const raw = settings?.base_urls?.devtools?.trim() || '';
+    if (!raw) {
+      return '';
+    }
+    return raw.replace(/\/+$/, '');
+  }, [settings?.base_urls?.devtools]);
 
   const dockComponents = useMemo(
     () => ({
       services: ServicesPanel,
       serviceInspector: ServiceInspectorPanel,
       buildables: BuildablesPanel,
-      codegen: CodegenPanel,
       settings: SettingsPanel,
       logs: LogsPanel,
       health: HealthPanel,
       eventsStats: EventsStatsPanel,
-      appMap: AppMapPanel,
     }),
     [],
   );
@@ -379,16 +363,10 @@ export default function App() {
       position: { referencePanel: 'services', direction: 'right' },
     });
     api.addPanel({
-      id: 'codegen',
-      component: 'codegen',
-      title: 'Codegen',
-      position: { referencePanel: 'buildables', direction: 'below' },
-    });
-    api.addPanel({
       id: 'settings',
       component: 'settings',
       title: 'Settings',
-      position: { referencePanel: 'codegen', direction: 'below' },
+      position: { referencePanel: 'buildables', direction: 'below' },
     });
     api.addPanel({
       id: 'logs',
@@ -406,12 +384,6 @@ export default function App() {
       id: 'eventsStats',
       component: 'eventsStats',
       title: 'Events & Stats',
-      position: { referencePanel: 'logs', direction: 'within' },
-    });
-    api.addPanel({
-      id: 'appMap',
-      component: 'appMap',
-      title: 'App Map',
       position: { referencePanel: 'logs', direction: 'within' },
     });
   }, []);
@@ -453,10 +425,6 @@ export default function App() {
     buildablesState,
     buildablesError,
     refreshBuildables,
-    codegenTasks,
-    codegenState,
-    codegenError,
-    refreshCodegenTasks,
     settings,
     settingsDraft,
     settingsState,
@@ -481,7 +449,7 @@ export default function App() {
       <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-6 py-8">
         <header className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
-            <p className="section-title">PixSim Admin Console</p>
+            <p className="section-title">PixSim Launcher Admin Console</p>
             <h1 className="text-4xl font-semibold text-[var(--ink)]">
               Launcher status, buildables, and shared settings
             </h1>
@@ -493,7 +461,15 @@ export default function App() {
           <div className="flex flex-wrap gap-3">
             <span className="status-pill">{runningCount}/{services.length} running</span>
             <span className="status-pill">{healthyCount} healthy</span>
-            <span className="status-pill">API: {import.meta.env.VITE_API_URL || 'http://localhost:8100'}</span>
+            <span className="status-pill">Launcher API: {import.meta.env.VITE_API_URL || 'http://localhost:8100'}</span>
+            <span className="status-pill">
+              Backend API: {settings?.base_urls?.backend || 'configured via launcher settings'}
+            </span>
+            {devtoolsUrl ? (
+              <a className="ghost-button" href={devtoolsUrl} target="_blank" rel="noreferrer">
+                Open Devtools
+              </a>
+            ) : null}
           </div>
         </header>
 

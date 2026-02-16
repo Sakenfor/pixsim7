@@ -2,7 +2,6 @@ import { createContext, useContext } from 'react';
 
 import type {
   BuildableDefinition,
-  CodegenTask,
   LauncherSettings,
   ServiceDefinition,
   ServiceState,
@@ -31,11 +30,6 @@ export interface AdminContextValue {
   buildablesState: LoadState;
   buildablesError: string;
   refreshBuildables: () => Promise<void>;
-
-  codegenTasks: CodegenTask[];
-  codegenState: LoadState;
-  codegenError: string;
-  refreshCodegenTasks: () => Promise<void>;
 
   settings: LauncherSettings | null;
   settingsDraft: LauncherSettings | null;

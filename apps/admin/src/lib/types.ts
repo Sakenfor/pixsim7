@@ -112,14 +112,6 @@ export interface BuildableDefinition {
   tags?: string[];
 }
 
-export interface CodegenTask {
-  id: string;
-  description: string;
-  script: string;
-  supports_check?: boolean;
-  groups?: string[];
-}
-
 export interface ServicesResponse {
   services: ServiceState[];
   total: number;
@@ -128,25 +120,6 @@ export interface ServicesResponse {
 export interface BuildablesResponse {
   buildables: BuildableDefinition[];
   total: number;
-}
-
-export interface CodegenTasksResponse {
-  tasks: CodegenTask[];
-  total: number;
-}
-
-export interface CodegenRunRequest {
-  task_id: string;
-  check?: boolean;
-}
-
-export interface CodegenRunResponse {
-  task_id: string;
-  ok: boolean;
-  exit_code: number | null;
-  duration_ms: number;
-  stdout: string;
-  stderr: string;
 }
 
 // Logs API types
