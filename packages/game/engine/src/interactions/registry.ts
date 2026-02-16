@@ -619,7 +619,7 @@ export class InteractionRegistry {
 /**
  * Global registry instance
  */
-export const interactionRegistry = new InteractionRegistry({ duplicatePolicy: 'error' });
+export const interactionRegistry = new InteractionRegistry({ duplicatePolicy: 'warn' });
 
 /**
  * Execute an interaction by ID

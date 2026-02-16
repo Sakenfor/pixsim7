@@ -168,6 +168,9 @@ export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory =
   /** Sub-navigation items shown as a flyout in the ActivityBar */
   subNav?: SubNavItem[];
 
+  /** Panel ID whose settings surface in the ActivityBar gear flyout */
+  settingsPanelId?: string;
+
   /**
    * Dev Tool configuration (optional).
    * When defined, this module is auto-registered as a dev tool,

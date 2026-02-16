@@ -102,13 +102,59 @@ type ActionDocEntry = {
   sources?: string[];
 };
 
+type PanelRegistryEntry = {
+  id: string;
+  title: string;
+  category: string;
+  icon?: string;
+  description?: string;
+  tags?: string[];
+  order?: number;
+  internal?: boolean;
+  supportsCompactMode?: boolean;
+  supportsMultipleInstances?: boolean;
+  maxInstances?: number;
+  availableIn?: string[];
+  orchestrationType?: string;
+  defaultZone?: string;
+  coreEditorRole?: string;
+  source: string;
+};
+
+type ModuleRegistryEntry = {
+  id: string;
+  name: string;
+  priority?: number;
+  dependsOn?: string[];
+  hasInitialize: boolean;
+  hasCleanup: boolean;
+  hasIsReady: boolean;
+  hasPage: boolean;
+  route?: string;
+  controlCenterPanelCount?: number;
+  source: string;
+};
+
+type StoreEntry = {
+  name: string;
+  feature: string;
+  source: string;
+};
+
+type HookEntry = {
+  name: string;
+  feature: string;
+  source: string;
+};
+
 // =============================================================================
 // TypeScript Parsing Helpers
 // =============================================================================
 
 function readSource(filePath: string): ts.SourceFile {
   const text = fs.readFileSync(filePath, 'utf8');
-  return ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const kind = filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  return ts.createSourceFile(filePath, text, ts.ScriptTarget.Latest, true, kind);
 }
 
 function getPropNameText(name: ts.PropertyName): string | null {
@@ -167,6 +213,15 @@ function resolveBoolean(expr: ts.Expression | undefined): boolean | null {
   if (!expr) return null;
   if (expr.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (expr.kind === ts.SyntaxKind.FalseKeyword) return false;
+  return null;
+}
+
+function resolveNumber(expr: ts.Expression | undefined): number | null {
+  if (!expr) return null;
+  if (ts.isNumericLiteral(expr)) return Number(expr.text);
+  if (ts.isPrefixUnaryExpression(expr) && expr.operator === ts.SyntaxKind.MinusToken) {
+    if (ts.isNumericLiteral(expr.operand)) return -Number(expr.operand.text);
+  }
   return null;
 }
 
@@ -240,8 +295,10 @@ function parseJsDocAppMap(filePath: string): Map<string, JsDocAppMap> {
 
   for (const declaration of sourceFile.getVariableDeclarations()) {
     const name = declaration.getName();
+    if (typeof declaration.getJsDocs !== 'function') continue;
     const jsDocs = declaration.getJsDocs();
-    const statementDocs = declaration.getFirstAncestorByKind(SyntaxKind.VariableStatement)?.getJsDocs() ?? [];
+    const statement = declaration.getFirstAncestorByKind(SyntaxKind.VariableStatement);
+    const statementDocs = (statement && typeof statement.getJsDocs === 'function') ? statement.getJsDocs() : [];
     const docsToRead = jsDocs.length > 0 ? jsDocs : statementDocs;
 
     if (docsToRead.length === 0) continue;
@@ -820,22 +877,26 @@ function generateMarkdownTable(entries: AppMapEntry[]): string {
   return lines.join('\n');
 }
 
+function updateMarkdownSection(content: string, marker: string, table: string): string {
+  const startTag = `<!-- ${marker}:START -->`;
+  const endTag = `<!-- ${marker}:END -->`;
+
+  if (!content.includes(startTag)) {
+    throw new Error(`${startTag} marker not found in APP_MAP.md`);
+  }
+  if (!content.includes(endTag)) {
+    throw new Error(`${endTag} marker not found in APP_MAP.md`);
+  }
+
+  const escStart = startTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escEnd = endTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(${escStart})\\n[\\s\\S]*?(${escEnd})`);
+  return content.replace(pattern, `$1\n${table}\n$2`);
+}
+
 function updateAppMapMarkdown(table: string): string {
   const content = fs.readFileSync(APP_MAP_FILE, 'utf8');
-
-  // Check markers exist
-  if (!content.includes('<!-- APP_MAP:START -->')) {
-    throw new Error('APP_MAP:START marker not found in APP_MAP.md');
-  }
-  if (!content.includes('<!-- APP_MAP:END -->')) {
-    throw new Error('APP_MAP:END marker not found in APP_MAP.md');
-  }
-
-  // Replace content between markers
-  const pattern = /(<!-- APP_MAP:START -->)\n[\s\S]*?\n(<!-- APP_MAP:END -->)/;
-  const replacement = `$1\n${table}\n$2`;
-
-  return content.replace(pattern, replacement);
+  return updateMarkdownSection(content, 'APP_MAP', table);
 }
 
 // =============================================================================
@@ -886,6 +947,317 @@ function formatActionRegistry(actions: ActionDocEntry[]): string {
 }
 
 // =============================================================================
+// Panel Registry Extraction
+// =============================================================================
+
+const PANEL_DEFINITIONS_DIR = path.join(
+  PROJECT_ROOT,
+  'apps/main/src/features/panels/domain/definitions'
+);
+
+function getPanelDefinitionFiles(): string[] {
+  if (!fs.existsSync(PANEL_DEFINITIONS_DIR)) return [];
+  const files: string[] = [];
+  const entries = fs.readdirSync(PANEL_DEFINITIONS_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const dir = path.join(PANEL_DEFINITIONS_DIR, entry.name);
+    for (const ext of ['index.ts', 'index.tsx']) {
+      const filePath = path.join(dir, ext);
+      if (fs.existsSync(filePath)) {
+        files.push(filePath);
+        break;
+      }
+    }
+  }
+  return files;
+}
+
+function parsePanelDefinition(filePath: string): PanelRegistryEntry | null {
+  const source = readSource(filePath);
+  let result: PanelRegistryEntry | null = null;
+  const sourcePath = path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/');
+
+  const visit = (node: ts.Node) => {
+    if (result) return;
+
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      if (ts.isIdentifier(callee) && callee.text === 'definePanel' && node.arguments.length > 0) {
+        const arg = node.arguments[0];
+        if (ts.isObjectLiteralExpression(arg)) {
+          const id = resolveString(getObjectProp(arg, 'id'));
+          const title = resolveString(getObjectProp(arg, 'title'));
+          if (!id || !title) return;
+
+          const category = resolveString(getObjectProp(arg, 'category')) ?? 'tools';
+          const icon = resolveString(getObjectProp(arg, 'icon')) ?? undefined;
+          const description = resolveString(getObjectProp(arg, 'description')) ?? undefined;
+          const tags = resolveStringArray(getObjectProp(arg, 'tags')) ?? undefined;
+          const order = resolveNumber(getObjectProp(arg, 'order')) ?? undefined;
+          const internal = resolveBoolean(getObjectProp(arg, 'internal')) ?? undefined;
+          const supportsCompactMode = resolveBoolean(getObjectProp(arg, 'supportsCompactMode')) ?? undefined;
+          const supportsMultipleInstances = resolveBoolean(getObjectProp(arg, 'supportsMultipleInstances')) ?? undefined;
+          const maxInstances = resolveNumber(getObjectProp(arg, 'maxInstances')) ?? undefined;
+          const availableIn = resolveStringArray(getObjectProp(arg, 'availableIn')) ?? undefined;
+          const coreEditorRole = resolveString(getObjectProp(arg, 'coreEditorRole')) ?? undefined;
+
+          // Extract orchestration sub-object
+          let orchestrationType: string | undefined;
+          let defaultZone: string | undefined;
+          const orchExpr = getObjectProp(arg, 'orchestration');
+          if (orchExpr && ts.isObjectLiteralExpression(orchExpr)) {
+            orchestrationType = resolveString(getObjectProp(orchExpr, 'type')) ?? undefined;
+            defaultZone = resolveString(getObjectProp(orchExpr, 'defaultZone')) ?? undefined;
+          }
+
+          result = {
+            id, title, category, icon, description, tags, order, internal,
+            supportsCompactMode, supportsMultipleInstances, maxInstances,
+            availableIn, orchestrationType, defaultZone, coreEditorRole,
+            source: sourcePath,
+          };
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(source);
+  return result;
+}
+
+function generatePanelTable(panels: PanelRegistryEntry[]): string {
+  const lines = [
+    '| Panel | Category | Zone | Type | Available In | Flags | Description |',
+    '|-------|----------|------|------|-------------|-------|-------------|',
+  ];
+
+  for (const p of panels) {
+    const flags: string[] = [];
+    if (p.internal) flags.push('internal');
+    if (p.supportsMultipleInstances) flags.push('multi');
+    if (p.supportsCompactMode) flags.push('compact');
+    if (p.coreEditorRole) flags.push(`role:${p.coreEditorRole}`);
+
+    const zone = p.defaultZone ?? '-';
+    const type = p.orchestrationType ?? '-';
+    const availIn = p.availableIn?.join(', ') || '-';
+    const flagsStr = flags.length > 0 ? flags.join(', ') : '-';
+    const desc = p.description ? escapeMarkdown(p.description) : '-';
+
+    lines.push(`| ${p.title} | ${p.category} | ${zone} | ${type} | ${availIn} | ${flagsStr} | ${desc} |`);
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// Infrastructure Modules Extraction
+// =============================================================================
+
+function getModuleFiles(): string[] {
+  if (!fs.existsSync(FEATURES_DIR)) return [];
+  const files: string[] = [];
+  const entries = fs.readdirSync(FEATURES_DIR, { withFileTypes: true });
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const filePath = path.join(FEATURES_DIR, entry.name, 'module.ts');
+    if (fs.existsSync(filePath)) {
+      files.push(filePath);
+    }
+  }
+  return files;
+}
+
+function parseModuleDefinition(
+  filePath: string,
+  routesMap: Record<string, string>
+): ModuleRegistryEntry | null {
+  const source = readSource(filePath);
+  let result: ModuleRegistryEntry | null = null;
+  const sourcePath = path.relative(PROJECT_ROOT, filePath).replace(/\\/g, '/');
+
+  const visit = (node: ts.Node) => {
+    if (result) return;
+
+    if (ts.isVariableDeclaration(node) && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+      const obj = node.initializer;
+      const id = resolveString(getObjectProp(obj, 'id'));
+      const name = resolveString(getObjectProp(obj, 'name'));
+      if (!id || !name) return;
+
+      const priority = resolveNumber(getObjectProp(obj, 'priority')) ?? undefined;
+      const dependsOn = resolveStringArray(getObjectProp(obj, 'dependsOn')) ?? undefined;
+      const hasInitialize = getObjectProp(obj, 'initialize') !== undefined;
+      const hasCleanup = getObjectProp(obj, 'cleanup') !== undefined;
+      const hasIsReady = getObjectProp(obj, 'isReady') !== undefined;
+
+      const pageExpr = getObjectProp(obj, 'page');
+      const hasPage = pageExpr !== undefined;
+      let route: string | undefined;
+      if (pageExpr && ts.isObjectLiteralExpression(pageExpr)) {
+        route = resolveString(getObjectProp(pageExpr, 'route'), routesMap) ?? undefined;
+      }
+
+      const ccExpr = getObjectProp(obj, 'controlCenterPanels');
+      let controlCenterPanelCount: number | undefined;
+      if (ccExpr && ts.isArrayLiteralExpression(ccExpr)) {
+        controlCenterPanelCount = ccExpr.elements.length;
+      }
+
+      result = {
+        id, name, priority, dependsOn, hasInitialize, hasCleanup,
+        hasIsReady, hasPage, route, controlCenterPanelCount, source: sourcePath,
+      };
+    }
+
+    ts.forEachChild(node, visit);
+  };
+
+  visit(source);
+  return result;
+}
+
+function generateModulesTable(modules: ModuleRegistryEntry[]): string {
+  const lines = [
+    '| Module | Priority | Dependencies | Lifecycle | Route | CC Panels |',
+    '|--------|----------|-------------|-----------|-------|-----------|',
+  ];
+
+  for (const m of modules) {
+    const priority = m.priority != null ? String(m.priority) : '-';
+    const deps = m.dependsOn?.join(', ') || '-';
+
+    const lifecycle: string[] = [];
+    if (m.hasInitialize) lifecycle.push('init');
+    if (m.hasCleanup) lifecycle.push('cleanup');
+    if (m.hasIsReady) lifecycle.push('ready');
+    const lifecycleStr = lifecycle.length > 0 ? lifecycle.join(', ') : '-';
+
+    const route = m.route ? `\`${m.route}\`` : '-';
+    const cc = m.controlCenterPanelCount != null ? String(m.controlCenterPanelCount) : '-';
+
+    lines.push(`| ${m.name} | ${priority} | ${deps} | ${lifecycleStr} | ${route} | ${cc} |`);
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// Store Inventory
+// =============================================================================
+
+function scanStores(): StoreEntry[] {
+  const stores: StoreEntry[] = [];
+  const storePattern = /export const (use\w+Store)\s*=\s*create[<(]/;
+
+  const walk = (dir: string) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile() || !fullPath.endsWith('.ts')) continue;
+
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const lines = content.split('\n');
+      for (const line of lines) {
+        const match = line.match(storePattern);
+        if (match) {
+          const sourcePath = path.relative(PROJECT_ROOT, fullPath).replace(/\\/g, '/');
+          const featureMatch = sourcePath.match(/features\/([^/]+)\//);
+          stores.push({
+            name: match[1],
+            feature: featureMatch ? featureMatch[1] : 'unknown',
+            source: sourcePath,
+          });
+        }
+      }
+    }
+  };
+
+  walk(FEATURES_DIR);
+  return stores;
+}
+
+function generateStoresTable(stores: StoreEntry[]): string {
+  const lines = [
+    '| Store | Feature | Source |',
+    '|-------|---------|--------|',
+  ];
+
+  for (const s of stores) {
+    const source = s.source.replace('apps/main/src/', '');
+    lines.push(`| \`${s.name}\` | ${s.feature} | \`${source}\` |`);
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// Hook Index
+// =============================================================================
+
+function scanHooks(): HookEntry[] {
+  const hooks: HookEntry[] = [];
+  const hookPattern = /export (?:function|const) (use[A-Z]\w+)/;
+  const storePattern = /use\w+Store$/;
+
+  const walk = (dir: string) => {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!fullPath.endsWith('.ts') && !fullPath.endsWith('.tsx')) continue;
+
+      const content = fs.readFileSync(fullPath, 'utf8');
+      const lines = content.split('\n');
+      for (const line of lines) {
+        const match = line.match(hookPattern);
+        if (match) {
+          const name = match[1];
+          // Skip stores — they're in the store inventory
+          if (storePattern.test(name)) continue;
+
+          const sourcePath = path.relative(PROJECT_ROOT, fullPath).replace(/\\/g, '/');
+          const featureMatch = sourcePath.match(/features\/([^/]+)\//);
+          hooks.push({
+            name,
+            feature: featureMatch ? featureMatch[1] : 'unknown',
+            source: sourcePath,
+          });
+        }
+      }
+    }
+  };
+
+  walk(FEATURES_DIR);
+  return hooks;
+}
+
+function generateHooksTable(hooks: HookEntry[]): string {
+  const lines = [
+    '| Hook | Feature | Source |',
+    '|------|---------|--------|',
+  ];
+
+  for (const h of hooks) {
+    const source = h.source.replace('apps/main/src/', '');
+    lines.push(`| \`${h.name}\` | ${h.feature} | \`${source}\` |`);
+  }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
 // Main Generation Logic
 // =============================================================================
 
@@ -895,6 +1267,10 @@ export function generateAppMap(): {
   actionRegistryMd: string;
   entriesCount: number;
   actionsCount: number;
+  panelsCount: number;
+  modulesCount: number;
+  storesCount: number;
+  hooksCount: number;
   deprecationWarnings: string[];
   jsdocWarnings: string[];
 } {
@@ -923,14 +1299,35 @@ export function generateAppMap(): {
   const mergedCodeEntries = mergeCodeEntries(capabilityEntries, moduleEntries);
   const codeEntries = Array.from(mergedCodeEntries.values()).sort((a, b) => a.id.localeCompare(b.id));
 
-  // 3. Generate JSON output (for debugging/intermediate use)
+  // 3. Extract panels, modules, stores, hooks
+  const panels = getPanelDefinitionFiles()
+    .map(f => parsePanelDefinition(f))
+    .filter((p): p is PanelRegistryEntry => p !== null)
+    .sort((a, b) => a.category.localeCompare(b.category) || (a.order ?? 999) - (b.order ?? 999) || a.title.localeCompare(b.title));
+
+  const modules = getModuleFiles()
+    .map(f => parseModuleDefinition(f, routesMap))
+    .filter((m): m is ModuleRegistryEntry => m !== null)
+    .sort((a, b) => (b.priority ?? 50) - (a.priority ?? 50) || a.name.localeCompare(b.name));
+
+  const stores = scanStores()
+    .sort((a, b) => a.feature.localeCompare(b.feature) || a.name.localeCompare(b.name));
+
+  const hooks = scanHooks()
+    .sort((a, b) => a.feature.localeCompare(b.feature) || a.name.localeCompare(b.name));
+
+  // 4. Generate JSON output (for debugging/intermediate use)
   const generatedJson = JSON.stringify({
-    version: '1.0.0',
+    version: '2.0.0',
     generatedAt: new Date().toISOString(),
     entries: codeEntries,
+    panels,
+    modules,
+    stores,
+    hooks,
   }, null, 2) + '\n';
 
-  // 4. Load and merge with manual registry (deprecated - will be removed)
+  // 5. Load and merge with manual registry (deprecated - will be removed)
   const manualRegistry = loadManualRegistry();
   let finalEntries: AppMapEntry[];
   let deprecationWarnings: string[] = [];
@@ -942,11 +1339,17 @@ export function generateAppMap(): {
     finalEntries = codeEntries;
   }
 
-  // 5. Generate markdown table and update APP_MAP.md
+  // 6. Generate markdown table and update APP_MAP.md
   const table = generateMarkdownTable(finalEntries);
-  const appMapMd = updateAppMapMarkdown(table);
+  let appMapMd = updateAppMapMarkdown(table);
 
-  // 6. Generate action registry
+  // 7. Update new markdown sections
+  appMapMd = updateMarkdownSection(appMapMd, 'PANEL_REGISTRY', generatePanelTable(panels));
+  appMapMd = updateMarkdownSection(appMapMd, 'MODULES', generateModulesTable(modules));
+  appMapMd = updateMarkdownSection(appMapMd, 'STORES', generateStoresTable(stores));
+  appMapMd = updateMarkdownSection(appMapMd, 'HOOKS', generateHooksTable(hooks));
+
+  // 8. Generate action registry
   const mergedActions = mergeActionEntries(new Map(), actionEntries);
   const actions = Array.from(mergedActions.values()).sort((a, b) => a.id.localeCompare(b.id));
   const actionRegistryMd = formatActionRegistry(actions);
@@ -957,6 +1360,10 @@ export function generateAppMap(): {
     actionRegistryMd,
     entriesCount: finalEntries.length,
     actionsCount: actions.length,
+    panelsCount: panels.length,
+    modulesCount: modules.length,
+    storesCount: stores.length,
+    hooksCount: hooks.length,
     deprecationWarnings,
     jsdocWarnings,
   };
@@ -1053,6 +1460,10 @@ export function runAppMapGenerator(argv: string[] = process.argv) {
     console.log(`âœ“ Generated: ${path.relative(PROJECT_ROOT, ACTIONS_DOC_FILE)}`);
     console.log(`  Entries: ${outputs.entriesCount}`);
     console.log(`  Actions: ${outputs.actionsCount}`);
+    console.log(`  Panels: ${outputs.panelsCount}`);
+    console.log(`  Modules: ${outputs.modulesCount}`);
+    console.log(`  Stores: ${outputs.storesCount}`);
+    console.log(`  Hooks: ${outputs.hooksCount}`);
 
     // Show deprecation warnings for entries that should be migrated to module.ts
     if (outputs.deprecationWarnings.length > 0) {

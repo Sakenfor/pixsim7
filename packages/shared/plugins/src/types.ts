@@ -39,7 +39,8 @@ export type PluginFamily =
   | 'workspace-panel'
   | 'dock-widget'
   | 'gizmo-surface'
-  | 'panel-group';
+  | 'panel-group'
+  | 'overlay-widget';
 
 /**
  * Activation state - whether the plugin is currently active
@@ -253,6 +254,12 @@ export interface PluginMetadataExtensions {
     slots?: string[];
     presets?: string[];
     defaultScopes?: string[];
+  };
+  'overlay-widget': {
+    category?: string;
+    domain?: string;
+    surfaces?: string[];
+    icon?: string;
   };
 }
 
