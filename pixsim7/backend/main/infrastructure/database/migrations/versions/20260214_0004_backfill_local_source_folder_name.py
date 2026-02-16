@@ -29,9 +29,9 @@ def upgrade() -> None:
                 f->>'id' AS folder_id,
                 f->>'name' AS folder_name
             FROM users u,
-                 jsonb_array_elements(u.preferences->'localFolders') AS f
+                 jsonb_array_elements((u.preferences->'localFolders')::jsonb) AS f
             WHERE u.preferences->'localFolders' IS NOT NULL
-              AND jsonb_typeof(u.preferences->'localFolders') = 'array'
+              AND jsonb_typeof((u.preferences->'localFolders')::jsonb) = 'array'
         )
         UPDATE assets a
         SET upload_context = a.upload_context || jsonb_build_object('source_folder', fm.folder_name)

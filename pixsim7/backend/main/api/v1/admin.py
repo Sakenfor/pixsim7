@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import os
 import json
 import re
@@ -108,6 +108,28 @@ class SystemMetrics(BaseModel):
     disk_used_gb: float | None = None
     disk_total_gb: float | None = None
     disk_percent: float | None = None
+
+
+class EventHandlerStats(BaseModel):
+    """Registered event handler counts."""
+    registered_event_types: int
+    wildcard_handlers: int
+
+
+class EventMetricSnapshot(BaseModel):
+    """Event processing metrics snapshot."""
+    total_events: int = 0
+    by_type: Dict[str, int] = Field(default_factory=dict)
+    unique_types: int = 0
+
+
+class EventMetricsResponse(BaseModel):
+    """Admin event metrics response."""
+    timestamp: datetime | None = None
+    handlers: EventHandlerStats | None = None
+    metrics: EventMetricSnapshot | None = None
+    error: str | None = None
+    error_type: str | None = None
 
 
 class LogEntry(BaseModel):
@@ -331,7 +353,7 @@ async def get_system_metrics(admin: CurrentAdminUser):
 
 # ===== EVENT METRICS =====
 
-@router.get("/admin/events/metrics")
+@router.get("/admin/events/metrics", response_model=EventMetricsResponse)
 async def get_event_metrics(admin: CurrentAdminUser):
     """
     Get event processing metrics

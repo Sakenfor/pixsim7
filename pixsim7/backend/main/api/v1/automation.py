@@ -65,6 +65,23 @@ class StatusResponse(BaseModel):
     status: str
 
 
+class ResetDeviceClearedResponse(BaseModel):
+    """Details about reset fields cleared on a device."""
+    assigned_account_id: bool
+    is_watching_ad: bool
+    ad_session_started_at: bool
+
+
+class ResetDeviceStatusResponse(BaseModel):
+    """Response from resetting device status."""
+    status: str
+    device_id: int
+    device_name: str
+    old_status: str
+    new_status: str
+    cleared: ResetDeviceClearedResponse
+
+
 @router.get("/devices", response_model=List[AndroidDevice])
 async def list_devices(
     user: CurrentUser,
@@ -148,7 +165,7 @@ async def check_device_ads(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/devices/{device_id}/reset")
+@router.post("/devices/{device_id}/reset", response_model=ResetDeviceStatusResponse)
 async def reset_device_status(device_id: int, db: AsyncSession = Depends(get_db)):
     """
     Reset a stuck device back to ONLINE status.

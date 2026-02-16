@@ -55,6 +55,21 @@ def extract_flat_provider_params(canonical_params: dict) -> dict:
         # Already a scalar
         flat.setdefault("duration", duration_block)
 
+    # Extract asset-related top-level config keys that buildGenerationConfig
+    # places outside style.<provider> (they are CANONICAL_CONFIG_KEYS on the
+    # frontend).  Without these the regenerate flow loses source assets.
+    _ASSET_CONFIG_KEYS = (
+        "composition_assets",
+        "source_asset_id", "sourceAssetId",
+        "source_asset_ids", "sourceAssetIds",
+        "image_url", "image_urls",
+        "video_url",
+    )
+    for key in _ASSET_CONFIG_KEYS:
+        val = gen_config.get(key)
+        if val is not None and key not in flat:
+            flat[key] = val
+
     return flat
 
 

@@ -415,8 +415,8 @@ class SyntheticGenerationService:
         if duration:
             params["duration"] = duration
 
-        # Quality/resolution hints
-        for key in ["quality", "resolution", "aspect_ratio", "style"]:
+        # Quality/resolution/model hints
+        for key in ["quality", "resolution", "aspect_ratio", "style", "model"]:
             if meta.get(key):
                 params[key] = meta[key]
             elif customer_paths.get(key):
@@ -569,7 +569,7 @@ async def resolve_generation_context_from_metadata(
     )
     if duration:
         params["duration"] = duration
-    for key in ["quality", "resolution", "aspect_ratio", "style"]:
+    for key in ["quality", "resolution", "aspect_ratio", "style", "model"]:
         if meta.get(key):
             params[key] = meta[key]
         elif customer_paths.get(key):

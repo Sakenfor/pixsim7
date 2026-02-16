@@ -215,6 +215,20 @@ class LogQueryResponse(BaseModel):
     offset: int
 
 
+class ConsoleFieldDefinitionResponse(BaseModel):
+    """Serializable console field definition."""
+    name: str
+    color: str
+    clickable: bool
+    pattern: str
+    description: Optional[str] = None
+
+
+class ConsoleFieldsResponse(BaseModel):
+    """Response payload for console field metadata."""
+    fields: List[ConsoleFieldDefinitionResponse]
+
+
 # ===== Endpoints =====
 
 @router.post("/ingest", response_model=LogIngestResponse)
@@ -525,7 +539,7 @@ async def get_distinct(
         raise HTTPException(status_code=500, detail=f"Failed to get distinct values: {str(e)}")
 
 
-@router.get("/console-fields")
+@router.get("/console-fields", response_model=ConsoleFieldsResponse)
 async def get_console_fields():
     """Get console field metadata for clickable log rendering.
 

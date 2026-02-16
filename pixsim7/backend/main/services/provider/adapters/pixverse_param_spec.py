@@ -247,15 +247,8 @@ def build_operation_parameter_spec() -> dict:
         "description": "Image generation model",
         "group": "core",
     }
-    # Per-model quality options for image generation (from SDK)
-    image_quality_per_model = {}
-    if ImageModel is not None:
-        sdk_qualities = getattr(ImageModel, "QUALITIES", {})
-        # Normalize case: SDK uses "2K"/"4K", UI expects "2k"/"4k"
-        for model_name, qs in sdk_qualities.items():
-            image_quality_per_model[model_name] = [q.lower() for q in qs]
-    # Fallback if SDK not available
-    # Note: We show "2k"/"4k" in UI but normalize to "1440p"/"2160p" in map_parameters
+    # Per-model quality options for image generation (already built from SDK above)
+    # Fallback only if SDK iteration didn't populate anything
     if not image_quality_per_model:
         image_quality_per_model = {
             "qwen-image": ["720p", "1080p"],

@@ -152,7 +152,7 @@ Core routes:
 `game_reputation_preview`, `game_scenes`, `game_sessions`, `game_worlds`,
 `generations`, `interactions`, `lineage`, `llm_cache`, `logs`, `media`, `migrations`,
 `npc_state`, `pixverse_sync`, `plugins`, `prompts`,
-`prompts_git`, `providers`, `semantic_packs`, `services`, `stat_preview`,
+`prompts_git`, `providers`, `semantic_packs`, `services`, `stat_preview`, `codegen`,
 `tags`, `users`, `websocket`
 
 Dev tool routes:

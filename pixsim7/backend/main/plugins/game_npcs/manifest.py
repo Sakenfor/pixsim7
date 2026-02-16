@@ -5,8 +5,6 @@ Provides NPC management, expressions, schedules, and presence tracking.
 Converted from api/v1/game_npcs.py to plugin format.
 """
 
-from __future__ import annotations
-
 from typing import List, Optional, Dict, Any, Tuple
 
 from fastapi import APIRouter, HTTPException

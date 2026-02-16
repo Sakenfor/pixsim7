@@ -174,6 +174,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 error=str(billing_err),
                             )
 
+                        # Track failure stats on account
+                        account.total_videos_failed += 1
+                        account.failure_streak += 1
+                        account.success_rate = account.calculate_success_rate()
+
                         if account.current_processing_jobs > 0:
                             account.current_processing_jobs -= 1
 
@@ -199,6 +204,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 generation_id=generation.id,
                                 error=str(billing_err)
                             )
+
+                        # Track failure stats on account
+                        account.total_videos_failed += 1
+                        account.failure_streak += 1
+                        account.success_rate = account.calculate_success_rate()
 
                         # Decrement account's concurrent job count
                         if account.current_processing_jobs > 0:
@@ -272,6 +282,15 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     error=str(billing_err)
                                 )
 
+                            # Track generation stats on account
+                            account.total_videos_generated += 1
+                            account.videos_today += 1
+                            account.failure_streak = 0
+                            account.last_used = datetime.now(timezone.utc)
+                            if status_result.duration_sec:
+                                account.update_ema_generation_time(status_result.duration_sec)
+                            account.success_rate = account.calculate_success_rate()
+
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:
                                 account.current_processing_jobs -= 1
@@ -317,6 +336,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     generation_id=generation.id,
                                     error=str(billing_err)
                                 )
+
+                            # Track failure stats on account
+                            account.total_videos_failed += 1
+                            account.failure_streak += 1
+                            account.success_rate = account.calculate_success_rate()
 
                             # Decrement account's concurrent job count
                             if account.current_processing_jobs > 0:

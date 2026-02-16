@@ -3,8 +3,9 @@ Dev Docs API
 
 Provides indexed documentation with front-matter, AST, and link graph data.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.api.dependencies import get_current_user_optional
 from pixsim7.backend.main.domain.user import User
@@ -13,13 +14,39 @@ from pixsim7.backend.main.services.docs.indexer import get_docs_index, search_do
 router = APIRouter(prefix="/dev/docs", tags=["dev", "docs"])
 
 
+class DocsIndexResponse(BaseModel):
+    """Indexed docs metadata."""
+    version: str
+    generatedAt: Optional[str] = None
+    entries: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class DocPageResponse(BaseModel):
+    """Single docs page payload."""
+    path: str
+    title: str
+    summary: Optional[str] = None
+    frontMatter: Dict[str, Any] = Field(default_factory=dict)
+    visibility: Optional[str] = None
+    ast: Any = Field(default_factory=dict)
+    links: List[Any] = Field(default_factory=list)
+    backlinks: List[Any] = Field(default_factory=list)
+    markdown: Optional[str] = None
+
+
+class DocsSearchResponse(BaseModel):
+    """Search response for docs index."""
+    query: str
+    results: List[Dict[str, Any]] = Field(default_factory=list)
+
+
 def can_view_doc(visibility: Optional[str], user: Optional[User]) -> bool:
     if visibility == "admin":
         return bool(user and user.is_admin())
     return True
 
 
-@router.get("/index", response_model=Dict[str, Any])
+@router.get("/index", response_model=DocsIndexResponse)
 async def get_docs_index_endpoint(
     refresh: bool = Query(False),
     user: Optional[User] = Depends(get_current_user_optional),
@@ -38,7 +65,7 @@ async def get_docs_index_endpoint(
     }
 
 
-@router.get("/page", response_model=Dict[str, Any])
+@router.get("/page", response_model=DocPageResponse)
 async def get_doc_page(
     path: str = Query(...),
     include_markdown: bool = Query(False),
@@ -72,7 +99,7 @@ async def get_doc_page(
     return payload
 
 
-@router.get("/search", response_model=Dict[str, Any])
+@router.get("/search", response_model=DocsSearchResponse)
 async def search_docs_endpoint(
     q: str = Query(..., min_length=1),
     limit: int = Query(50, ge=1, le=200),

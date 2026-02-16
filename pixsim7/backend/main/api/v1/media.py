@@ -49,6 +49,10 @@ class MediaSettingsResponse(BaseModel):
     default_upload_provider: str = Field(
         description="Default provider for uploads when frame_extraction_upload is 'always'"
     )
+    generate_embeddings: bool = Field(description="Generate CLIP embeddings for visual similarity search")
+    clip_embedding_command: str = Field(
+        description="Shell command for CLIP embedding generation (or set CLIP_EMBEDDING_COMMAND env var)"
+    )
 
 
 class MediaSettingsUpdate(BaseModel):
@@ -66,6 +70,8 @@ class MediaSettingsUpdate(BaseModel):
     preview_size: Optional[list[int]] = None
     frame_extraction_upload: Optional[str] = None
     default_upload_provider: Optional[str] = None
+    generate_embeddings: Optional[bool] = None
+    clip_embedding_command: Optional[str] = None
 
 
 @router.get("/media/settings", response_model=MediaSettingsResponse)

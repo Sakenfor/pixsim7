@@ -18,6 +18,7 @@ from pixsim7.backend.main.shared.schemas.account_schemas import (
     AccountResponse,
     AccountBulkCreditUpdate,
     SetCreditRequest,
+    CreateAccountApiKeyResponse,
 )
 from pixsim7.backend.main.shared.jwt_utils import parse_jwt_token
 from pixsim7.backend.main.domain import AccountStatus
@@ -94,9 +95,9 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         has_cookies=bool(account.cookies),
         is_google_account=is_google_account,
         api_keys=sanitized_api_keys,
-        # Credits (normalized)
+        # Credits (normalized) — derive total from dict for guaranteed consistency
         credits=credits_dict,
-        total_credits=account.get_total_credits(),
+        total_credits=sum(credits_dict.values()),
         # Usage
         videos_today=account.videos_today,
         total_videos_generated=account.total_videos_generated,
@@ -627,7 +628,7 @@ async def delete_account(
 
 # ===== CREDIT MANAGEMENT =====
 
-@router.post("/accounts/{account_id}/credits")
+@router.post("/accounts/{account_id}/credits", response_model=AccountResponse)
 async def set_account_credit(
     account_id: int,
     request: SetCreditRequest,
@@ -668,7 +669,7 @@ async def set_account_credit(
 
 # ===== API KEY MANAGEMENT =====
 
-@router.post("/accounts/{account_id}/create-api-key")
+@router.post("/accounts/{account_id}/create-api-key", response_model=CreateAccountApiKeyResponse)
 async def create_account_api_key(
     account_id: int,
     user: CurrentUser,
@@ -733,4 +734,3 @@ async def create_account_api_key(
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             f"Failed to create API key: {str(e)}"
         )
-

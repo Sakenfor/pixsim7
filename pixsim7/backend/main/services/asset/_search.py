@@ -986,7 +986,10 @@ class AssetSearchMixin:
         if similar_to is not None:
             from sqlalchemy import select as sa_select
             result = await self.db.execute(
-                sa_select(Asset.embedding).where(Asset.id == similar_to)
+                sa_select(Asset.embedding).where(
+                    Asset.id == similar_to,
+                    Asset.user_id == user.id,
+                )
             )
             similar_to_embedding = result.scalar_one_or_none()
 

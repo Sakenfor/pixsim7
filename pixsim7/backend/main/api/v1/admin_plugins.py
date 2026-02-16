@@ -6,8 +6,10 @@ Provides admin endpoints for plugin observability, metrics, and health monitorin
 Phase 16.5: Plugin Observability & Failure Isolation
 """
 
+from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import Dict, Any, List, Optional, Tuple
+from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.infrastructure.plugins.observability import metrics_tracker
 from pixsim7.backend.main.infrastructure.plugins.behavior_registry import behavior_registry
@@ -20,6 +22,188 @@ from pixsim7.backend.main.infrastructure.plugins.frontend_manifest import (
 
 
 router = APIRouter(prefix="/admin/plugins", tags=["admin", "plugins"])
+
+
+# ===== RESPONSE SCHEMAS =====
+
+class PluginListItem(BaseModel):
+    """Lightweight plugin metadata."""
+    id: str
+    name: str
+    version: str
+    enabled: bool
+
+
+class PluginListResponse(BaseModel):
+    """Plugin list response grouped by plugin manager."""
+    feature_plugins: List[PluginListItem]
+    route_plugins: List[PluginListItem]
+    total: int
+
+
+class PluginRequestMetrics(BaseModel):
+    """HTTP request metrics for a plugin."""
+    total: int
+    errors: int
+    error_rate: float
+    average_time_ms: float
+    last_request: datetime | None = None
+
+
+class PluginBehaviorExtensionMetrics(BaseModel):
+    """Behavior extension metrics for a plugin."""
+    condition_evaluations: int
+    condition_failures: int
+    condition_failure_rate: float
+    effect_applications: int
+    effect_failures: int
+    effect_failure_rate: float
+
+
+class PluginEventHandlerMetrics(BaseModel):
+    """Event handler metrics for a plugin."""
+    calls: int
+    failures: int
+    failure_rate: float
+
+
+class PluginRecentError(BaseModel):
+    """Recent plugin error entry."""
+    timestamp: datetime
+    error_type: str
+    error_message: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PluginHealthMetrics(BaseModel):
+    """Health-related metrics for a plugin."""
+    is_healthy: bool
+    last_check: datetime | None = None
+    recent_errors: List[PluginRecentError] = Field(default_factory=list)
+
+
+class PluginMetricsData(BaseModel):
+    """Full metrics payload for a plugin."""
+    plugin_id: str
+    requests: PluginRequestMetrics
+    behavior_extensions: PluginBehaviorExtensionMetrics
+    event_handlers: PluginEventHandlerMetrics
+    health: PluginHealthMetrics
+
+
+class PluginMetricsSummary(BaseModel):
+    """Aggregated plugin metrics summary."""
+    total_plugins: int
+    total_requests: int
+    total_errors: int
+    overall_error_rate: float
+    unhealthy_plugins: List[str] = Field(default_factory=list)
+    unhealthy_count: int
+
+
+class PluginMetricsResponse(BaseModel):
+    """All-plugin metrics response."""
+    summary: PluginMetricsSummary
+    plugins: Dict[str, PluginMetricsData] = Field(default_factory=dict)
+
+
+class PluginHealthStatus(BaseModel):
+    """Health status entry for a plugin."""
+    is_healthy: bool
+    last_check: datetime | None = None
+    error_count: int
+    request_error_rate: float
+    condition_failure_rate: float
+    effect_failure_rate: float
+
+
+class PluginHealthResponse(BaseModel):
+    """Plugin health overview response."""
+    overall_healthy: bool
+    unhealthy_plugins: List[str] = Field(default_factory=list)
+    health_status: Dict[str, PluginHealthStatus] = Field(default_factory=dict)
+
+
+class ConditionInfo(BaseModel):
+    """Behavior condition metadata."""
+    condition_id: str
+    plugin_id: str
+    description: str | None = None
+    required_context: List[str] = Field(default_factory=list)
+
+
+class EffectInfo(BaseModel):
+    """Behavior effect metadata."""
+    effect_id: str
+    plugin_id: str
+    description: str | None = None
+    default_params: Dict[str, Any] = Field(default_factory=dict)
+
+
+class SimulationConfigProviderInfo(BaseModel):
+    """Simulation config provider metadata."""
+    provider_id: str
+    plugin_id: str
+    description: str | None = None
+    priority: int
+
+
+class ConditionRegistrySection(BaseModel):
+    """Condition registry summary section."""
+    total: int
+    by_plugin: Dict[str, int] = Field(default_factory=dict)
+    list: List[ConditionInfo] = Field(default_factory=list)
+
+
+class EffectRegistrySection(BaseModel):
+    """Effect registry summary section."""
+    total: int
+    by_plugin: Dict[str, int] = Field(default_factory=dict)
+    list: List[EffectInfo] = Field(default_factory=list)
+
+
+class SimulationConfigRegistrySection(BaseModel):
+    """Simulation config registry summary section."""
+    total: int
+    by_plugin: Dict[str, int] = Field(default_factory=dict)
+    providers: List[SimulationConfigProviderInfo] = Field(default_factory=list)
+
+
+class BehaviorExtensionsResponse(BaseModel):
+    """Behavior extension registry response."""
+    registry_locked: bool
+    conditions: ConditionRegistrySection
+    effects: EffectRegistrySection
+    simulation_configs: SimulationConfigRegistrySection
+
+
+class PluginBehaviorExtensionsSummary(BaseModel):
+    """Plugin-specific behavior extension IDs."""
+    conditions: List[str] = Field(default_factory=list)
+    effects: List[str] = Field(default_factory=list)
+
+
+class PluginDetailsResponse(BaseModel):
+    """Detailed metadata for a single plugin."""
+    plugin_id: str
+    name: str
+    version: str
+    description: str | None = None
+    author: str | None = None
+    kind: str
+    enabled: bool
+    permissions: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    requires_db: bool
+    requires_redis: bool
+    metrics: PluginMetricsData | None = None
+    behavior_extensions: PluginBehaviorExtensionsSummary
+
+
+class ResetPluginMetricsResponse(BaseModel):
+    """Response for metrics reset requests."""
+    status: str
+    message: str
 
 
 # ===== DEPENDENCIES =====
@@ -54,7 +238,7 @@ def set_plugin_managers(plugin_manager: PluginManager, routes_manager: PluginMan
 
 # ===== ENDPOINTS =====
 
-@router.get("/list")
+@router.get("/list", response_model=PluginListResponse)
 async def list_plugins(
     managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
 ):
@@ -76,7 +260,7 @@ async def list_plugins(
     }
 
 
-@router.get("/metrics")
+@router.get("/metrics", response_model=PluginMetricsResponse)
 async def get_plugin_metrics():
     """
     Get metrics for all plugins.
@@ -96,7 +280,7 @@ async def get_plugin_metrics():
     }
 
 
-@router.get("/metrics/{plugin_id}")
+@router.get("/metrics/{plugin_id}", response_model=PluginMetricsData)
 async def get_plugin_metrics_by_id(plugin_id: str):
     """
     Get metrics for a specific plugin.
@@ -115,7 +299,7 @@ async def get_plugin_metrics_by_id(plugin_id: str):
     return metrics.to_dict()
 
 
-@router.get("/health")
+@router.get("/health", response_model=PluginHealthResponse)
 async def get_plugin_health():
     """
     Get health status for all plugins.
@@ -145,7 +329,7 @@ async def get_plugin_health():
     }
 
 
-@router.get("/behavior-extensions")
+@router.get("/behavior-extensions", response_model=BehaviorExtensionsResponse)
 async def get_behavior_extensions():
     """
     Get all registered behavior extensions (conditions, effects, simulation configs).
@@ -199,7 +383,7 @@ async def get_behavior_extensions():
     }
 
 
-@router.get("/{plugin_id}/details")
+@router.get("/{plugin_id}/details", response_model=PluginDetailsResponse)
 async def get_plugin_details(
     plugin_id: str,
     managers: Tuple[PluginManager, Optional[PluginManager]] = Depends(get_plugin_managers)
@@ -255,7 +439,7 @@ async def get_plugin_details(
     }
 
 
-@router.post("/metrics/reset")
+@router.post("/metrics/reset", response_model=ResetPluginMetricsResponse)
 async def reset_plugin_metrics(plugin_id: Optional[str] = None):
     """
     Reset metrics for a plugin (or all plugins).

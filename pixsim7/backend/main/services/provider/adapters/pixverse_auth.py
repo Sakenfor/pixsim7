@@ -139,6 +139,12 @@ class PixverseAuthMixin:
 
         # Extract user details from the flat response (no "Resp" wrapper)
         # pixverse-py library already unwraps the Resp, so we get flat dict
+        if user_info_data:
+            logger.debug(
+                "pixverse_get_user_info_response_keys",
+                keys=list(user_info_data.keys()),
+            )
+
         email = user_info_data.get("Mail")  # Real email like "holyfruit19@hotmail.com"
         username = user_info_data.get("Username")  # Username like "holyfruit19"
         nickname = user_info_data.get("Nickname") or username
@@ -146,7 +152,10 @@ class PixverseAuthMixin:
 
         # Allow username as fallback if email is missing
         if not email and not username:
-            raise Exception("Email and Username not found in getUserInfo response")
+            raise Exception(
+                f"Email and Username not found in getUserInfo response "
+                f"(available keys: {list(user_info_data.keys())})"
+            )
 
         # Use username as email if email is missing
         if not email and username:

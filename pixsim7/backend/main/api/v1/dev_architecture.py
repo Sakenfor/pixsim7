@@ -16,6 +16,7 @@ Endpoints:
 from typing import Dict, List, Any, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel, Field
 import os
 import re
 import json
@@ -27,7 +28,121 @@ from pixsim7.backend.main.domain.user import User
 router = APIRouter(prefix="/dev/architecture", tags=["dev"])
 
 
-@router.get("/map", response_model=Dict[str, Any])
+class RouteInfo(BaseModel):
+    """FastAPI route metadata."""
+    path: str
+    methods: List[str]
+    name: str
+    tags: List[str] = Field(default_factory=list)
+
+
+class CapabilityInfo(BaseModel):
+    """Capability API metadata."""
+    name: str
+    file: str
+    category: str
+    description: str
+    methods: List[str] = Field(default_factory=list)
+    permission: str
+    exists: bool
+    path: str
+
+
+class SubServiceInfo(BaseModel):
+    """Service decomposition metadata."""
+    name: str
+    path: str
+    lines: int
+    responsibility: str
+    exists: bool
+
+
+class ServiceInfo(BaseModel):
+    """Top-level backend service metadata."""
+    id: str
+    name: str
+    path: str
+    type: str
+    description: str
+    sub_services: List[SubServiceInfo] = Field(default_factory=list)
+
+
+class BackendPluginInfo(BaseModel):
+    """Backend plugin manifest summary."""
+    id: str
+    name: str
+    version: str
+    description: str
+    permissions: List[str] = Field(default_factory=list)
+    path: str
+
+
+class ArchitectureMetrics(BaseModel):
+    """Backend architecture aggregate metrics."""
+    total_routes: int
+    route_tags: Dict[str, int] = Field(default_factory=dict)
+    total_services: int
+    total_sub_services: int
+    avg_sub_service_lines: int
+    total_plugins: int
+    unique_permissions: int
+    permission_usage: Dict[str, int] = Field(default_factory=dict)
+    modernized_plugins: int
+
+
+class BackendArchitectureResponse(BaseModel):
+    """Backend architecture map response."""
+    version: str
+    routes: List[RouteInfo] = Field(default_factory=list)
+    capabilities: List[CapabilityInfo] = Field(default_factory=list)
+    services: List[ServiceInfo] = Field(default_factory=list)
+    plugins: List[BackendPluginInfo] = Field(default_factory=list)
+    metrics: ArchitectureMetrics
+
+
+class FrontendFeatureEntry(BaseModel):
+    """Frontend app-map feature entry."""
+    id: str
+    label: str
+    routes: Optional[List[str]] = None
+    frontend: Optional[List[str]] = None
+    backend: Optional[List[str]] = None
+    docs: Optional[List[str]] = None
+    notes: Optional[List[str]] = None
+    sources: Optional[List[str]] = None
+
+
+class FrontendArchitectureResponse(BaseModel):
+    """Frontend architecture map response."""
+    version: str
+    generatedAt: Optional[str] = None
+    entries: List[FrontendFeatureEntry] = Field(default_factory=list)
+    error: Optional[str] = None
+
+
+class UnifiedArchitectureBackend(BaseModel):
+    """Backend subsection for unified architecture response."""
+    routes: List[RouteInfo] = Field(default_factory=list)
+    capabilities: List[CapabilityInfo] = Field(default_factory=list)
+    services: List[ServiceInfo] = Field(default_factory=list)
+    plugins: List[BackendPluginInfo] = Field(default_factory=list)
+
+
+class UnifiedArchitectureMetrics(ArchitectureMetrics):
+    """Unified backend + frontend metrics."""
+    total_frontend_features: int
+    frontend_generated_at: Optional[str] = None
+
+
+class UnifiedArchitectureResponse(BaseModel):
+    """Combined backend and frontend architecture response."""
+    version: str
+    backend: UnifiedArchitectureBackend
+    frontend: FrontendArchitectureResponse
+    metrics: UnifiedArchitectureMetrics
+
+
+@router.get("/map", response_model=BackendArchitectureResponse)
 async def get_architecture_map(
     db: AsyncSession = Depends(get_database),
     user: Optional[User] = Depends(get_current_user_optional),
@@ -403,7 +518,7 @@ def load_frontend_app_map() -> Dict[str, Any]:
     }
 
 
-@router.get("/frontend", response_model=Dict[str, Any])
+@router.get("/frontend", response_model=FrontendArchitectureResponse)
 async def get_frontend_architecture(
     user: Optional[User] = Depends(get_current_user_optional),
 ):
@@ -422,7 +537,7 @@ async def get_frontend_architecture(
     return load_frontend_app_map()
 
 
-@router.get("/unified", response_model=Dict[str, Any])
+@router.get("/unified", response_model=UnifiedArchitectureResponse)
 async def get_unified_architecture(
     db: AsyncSession = Depends(get_database),
     user: Optional[User] = Depends(get_current_user_optional),

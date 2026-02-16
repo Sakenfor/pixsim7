@@ -24,6 +24,45 @@ logger = get_logger()
 router = APIRouter(prefix="/providers/pixverse", tags=["pixverse", "sync"])
 
 
+class PixverseSyncDryRunItem(BaseModel):
+    """Single Pixverse remote item in dry-run output."""
+    video_id: Optional[str] = None
+    image_id: Optional[str] = None
+    already_imported: bool
+    raw: Dict[str, Any]
+
+
+class PixverseSyncDryRunCategory(BaseModel):
+    """Dry-run summary for a single media category."""
+    total_remote: int
+    existing_count: int
+    items: List[PixverseSyncDryRunItem]
+
+
+class PixverseSyncDryRunResponse(BaseModel):
+    """Response from Pixverse sync dry-run endpoint."""
+    provider_id: str
+    account_id: int
+    limit: int
+    offset: int
+    videos: PixverseSyncDryRunCategory
+    images: Optional[PixverseSyncDryRunCategory] = None
+
+
+class PixverseSyncAssetsCategoryStats(BaseModel):
+    """Creation stats for one media category."""
+    created: int
+    skipped_existing: int
+
+
+class PixverseSyncAssetsResponse(BaseModel):
+    """Response from Pixverse sync-assets endpoint."""
+    provider_id: str
+    account_id: int
+    videos: PixverseSyncAssetsCategoryStats
+    images: PixverseSyncAssetsCategoryStats
+
+
 def _extract_video_id(video: Dict[str, Any]) -> Optional[str]:
     """
     Best-effort extraction of a video ID from Pixverse video payload.
@@ -106,7 +145,7 @@ def _get_pixverse_provider_and_client(account: ProviderAccount):
     return provider, client
 
 
-@router.get("/accounts/{account_id}/sync-dry-run")
+@router.get("/accounts/{account_id}/sync-dry-run", response_model=PixverseSyncDryRunResponse)
 async def pixverse_sync_dry_run(
     account_id: int,
     limit: int = Query(50, ge=1, le=200, description="Max items to inspect"),
@@ -236,7 +275,7 @@ class SyncAssetsRequest(BaseModel):
     offset: int = Field(0, ge=0, description="Pagination offset")
 
 
-@router.post("/accounts/{account_id}/sync-assets")
+@router.post("/accounts/{account_id}/sync-assets", response_model=PixverseSyncAssetsResponse)
 async def sync_pixverse_assets(
     account_id: int,
     body: SyncAssetsRequest,

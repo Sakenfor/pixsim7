@@ -97,6 +97,16 @@ class SetCreditRequest(BaseModel):
     amount: int
 
 
+class CreateAccountApiKeyResponse(BaseModel):
+    """Response from creating an OpenAPI key for an account."""
+    success: bool
+    api_key_id: Optional[int] = None
+    api_key_name: Optional[str] = None
+    api_key: Optional[str] = None
+    already_exists: bool = False
+    account: AccountResponse
+
+
 class AccountBulkCreditUpdate(BaseModel):
     """Bulk update credits by email"""
     email: EmailStr

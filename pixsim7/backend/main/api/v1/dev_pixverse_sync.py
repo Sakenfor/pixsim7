@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel
 
 from pixsim7.backend.main.api.dependencies import get_current_user, get_database
 from pixsim7.backend.main.domain import Asset, User
@@ -22,6 +23,24 @@ logger = get_logger()
 router = APIRouter(prefix="/dev/pixverse-sync", tags=["dev", "pixverse"])
 
 
+class DevPixverseDryRunVideoItem(BaseModel):
+    """Single video entry for dev Pixverse dry-run output."""
+    video_id: Optional[str] = None
+    already_imported: bool
+    raw: Dict[str, Any]
+
+
+class DevPixverseDryRunResponse(BaseModel):
+    """Response payload for dev Pixverse dry-run endpoint."""
+    provider_id: str
+    account_id: int
+    limit: int
+    offset: int
+    total_remote: int
+    existing_count: int
+    videos: List[DevPixverseDryRunVideoItem]
+
+
 def _extract_video_id(video: Dict[str, Any]) -> Optional[str]:
     """
     Best-effort extraction of a video ID from Pixverse video payload.
@@ -33,7 +52,7 @@ def _extract_video_id(video: Dict[str, Any]) -> Optional[str]:
     return get_preferred_provider_asset_id(video, "video", fallback_id=None)
 
 
-@router.get("/dry-run")
+@router.get("/dry-run", response_model=DevPixverseDryRunResponse)
 async def pixverse_sync_dry_run(
     account_id: int = Query(..., description="ProviderAccount ID for Pixverse"),
     limit: int = Query(20, ge=1, le=100, description="Max videos to inspect"),

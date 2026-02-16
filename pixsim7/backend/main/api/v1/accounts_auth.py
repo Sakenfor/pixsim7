@@ -72,9 +72,9 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         has_api_key_paid=has_openapi_key,
         has_cookies=bool(account.cookies),
         is_google_account=is_google_account,
-        # Credits (normalized)
+        # Credits (normalized) — derive total from dict for guaranteed consistency
         credits=credits_dict,
-        total_credits=account.get_total_credits(),
+        total_credits=sum(credits_dict.values()),
         # Usage
         videos_today=account.videos_today,
         total_videos_generated=account.total_videos_generated,

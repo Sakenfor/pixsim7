@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import List, Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.game import GameProjectSnapshot, GameWorld
@@ -48,12 +49,17 @@ class GameProjectStorageService:
         *,
         owner_user_id: int,
         project_id: int,
+        include_drafts: bool = False,
     ) -> Optional[GameProjectSnapshot]:
+        filters = [
+            GameProjectSnapshot.id == project_id,
+            GameProjectSnapshot.owner_user_id == owner_user_id,
+        ]
+        if not include_drafts:
+            filters.append(GameProjectSnapshot.is_draft == False)  # noqa: E712
+
         result = await self.db.execute(
-            select(GameProjectSnapshot).where(
-                GameProjectSnapshot.id == project_id,
-                GameProjectSnapshot.owner_user_id == owner_user_id,
-            )
+            select(GameProjectSnapshot).where(*filters)
         )
         return result.scalar_one_or_none()
 
@@ -163,14 +169,17 @@ class GameProjectStorageService:
         source_world_id: Optional[int] = None,
         draft_source_project_id: Optional[int] = None,
     ) -> GameProjectSnapshot:
+        bundle_json = bundle.model_dump(mode="json")
+        schema_version = int(bundle.schema_version)
+
         existing = await self.get_latest_draft(
             owner_user_id=owner_user_id,
             draft_source_project_id=draft_source_project_id,
         )
 
         if existing:
-            existing.bundle = bundle.model_dump(mode="json")
-            existing.schema_version = int(bundle.schema_version)
+            existing.bundle = bundle_json
+            existing.schema_version = schema_version
             existing.source_world_id = source_world_id
             self.db.add(existing)
             await self.db.commit()
@@ -181,15 +190,34 @@ class GameProjectStorageService:
             owner_user_id=owner_user_id,
             name="[draft]",
             source_world_id=source_world_id,
-            schema_version=int(bundle.schema_version),
-            bundle=bundle.model_dump(mode="json"),
+            schema_version=schema_version,
+            bundle=bundle_json,
             is_draft=True,
             draft_source_project_id=draft_source_project_id,
         )
         self.db.add(draft)
-        await self.db.commit()
-        await self.db.refresh(draft)
-        return draft
+        try:
+            await self.db.commit()
+            await self.db.refresh(draft)
+            return draft
+        except IntegrityError:
+            # Another writer may have inserted the same unique draft scope in parallel.
+            await self.db.rollback()
+
+            existing = await self.get_latest_draft(
+                owner_user_id=owner_user_id,
+                draft_source_project_id=draft_source_project_id,
+            )
+            if not existing:
+                raise
+
+            existing.bundle = bundle_json
+            existing.schema_version = schema_version
+            existing.source_world_id = source_world_id
+            self.db.add(existing)
+            await self.db.commit()
+            await self.db.refresh(existing)
+            return existing
 
     async def get_latest_draft(
         self,
@@ -231,4 +259,5 @@ class GameProjectStorageService:
         await self.db.delete(draft)
         await self.db.commit()
         return True
+
 

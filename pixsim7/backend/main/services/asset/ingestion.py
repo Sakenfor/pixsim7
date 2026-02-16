@@ -214,6 +214,7 @@ class MediaSettings:
             "frame_extraction_upload": self.frame_extraction_upload,
             "default_upload_provider": self.default_upload_provider,
             "generate_embeddings": self.generate_embeddings,
+            "clip_embedding_command": self.clip_embedding_command,
         }
 
 
