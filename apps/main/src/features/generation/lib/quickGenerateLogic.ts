@@ -130,14 +130,19 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     if (!inputs || inputs.length === 0) return undefined;
     const overrideMediaType = options.mediaType;
     return inputs.map((item, index) => {
-      const tags = getTagStrings(item.asset);
-      const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
-      const defaultRole = index === 0 ? 'environment' : 'main_character';
+      let role: string;
+      if (item.roleOverride) {
+        role = item.roleOverride;
+      } else {
+        const tags = getTagStrings(item.asset);
+        const inferredRole = useCompositionPackageStore.getState().inferRoleFromTags(tags);
+        role = inferredRole ?? (index === 0 ? 'environment' : 'main_character');
+      }
       const mediaType = overrideMediaType ?? item.asset.mediaType ?? 'image';
       return {
         asset: `asset:${item.asset.id}`,
         layer: index,
-        role: inferredRole ?? defaultRole,
+        role,
         media_type: mediaType,
       };
     });

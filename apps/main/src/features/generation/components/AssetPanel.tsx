@@ -36,6 +36,7 @@ import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolve
 import { useQuickGenerateController } from '@features/prompts';
 import { useWorkspaceStore } from '@features/workspace';
 
+import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 import { OPERATION_METADATA } from '@/types/operations';
 
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
@@ -44,6 +45,9 @@ import { useGenerationsStore } from '../stores/generationsStore';
 
 import { FLEXIBLE_OPERATIONS, EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
 
+function getAssetTagStrings(asset: { tags?: Array<{ slug?: string; name?: string }> }): string[] {
+  return (asset.tags ?? []).map(t => t.slug ?? t.name ?? '').filter(Boolean);
+}
 
 export function AssetPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
@@ -102,6 +106,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const model = ctx?.model ?? (workbench.dynamicParams?.model as string | undefined);
   const paramSpecs = (ctx?.paramSpecs ?? workbench.allParamSpecs) as ParamSpec[];
   const storeUpdateLockedTimestamp = useInputStore(s => s.updateLockedTimestamp);
+  const storeUpdateRoleOverride = useInputStore(s => s.updateRoleOverride);
   const updateLockedTimestamp = ctxUpdateLockedTimestamp ?? storeUpdateLockedTimestamp;
   const storeInputs = useInputStore(s => s.inputsByOperation[operationType]?.items ?? EMPTY_INPUTS);
   const storeInputIndex = useInputStore(s => s.inputsByOperation[operationType]?.currentIndex ?? 1);
@@ -388,6 +393,42 @@ export function AssetPanel(props: QuickGenPanelProps) {
       container.removeEventListener('wheel', handler);
     };
   }, []);
+
+  const isFusionOperation = operationType === 'fusion';
+  const inferRoleFromTags = useCompositionPackageStore(s => s.inferRoleFromTags);
+
+  const buildFusionRoleOverlay = useCallback(
+    (item: InputItem, slotIdx: number) => {
+      if (!isFusionOperation) return undefined;
+      const resolvedRole =
+        item.roleOverride
+        ?? inferRoleFromTags?.(getAssetTagStrings(item.asset))
+        ?? (slotIdx === 0 ? 'environment' : 'main_character');
+      const isEnvironment = resolvedRole === 'environment';
+      return (
+        <button
+          type="button"
+          className="cq-badge-xs cq-inset-br absolute rounded-full bg-black/70 text-white pointer-events-auto cursor-pointer hover:bg-black/90 transition-colors"
+          title={isEnvironment ? 'Background — click to switch to Character' : 'Character — click to switch to Background'}
+          onClick={(e) => {
+            e.stopPropagation();
+            storeUpdateRoleOverride(
+              operationType,
+              item.id,
+              isEnvironment ? 'main_character' : 'environment',
+            );
+          }}
+        >
+          <Icon
+            name={isEnvironment ? 'image' : 'user'}
+            size={10}
+            color="#fff"
+          />
+        </button>
+      );
+    },
+    [isFusionOperation, inferRoleFromTags, storeUpdateRoleOverride, operationType],
+  );
 
   const hasAsset = displayAssets.length > 0;
   const isMultiAssetDisplay = operationMeta?.multiAssetMode === 'required' || displayAssets.length > 1;
@@ -829,6 +870,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     showPlayOverlay={showPlayOverlay}
                     clickToPlay={clickToPlay}
                     disableMotion={isSelected}
+                    overlay={buildFusionRoleOverlay(inputItem, idx)}
                     className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? 'grayscale' : ''}`}
                   />
                   <div className="cq-badge cq-inset-tl absolute bg-accent text-accent-text font-medium rounded">
@@ -904,6 +946,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
             enableHoverPreview={singleHoverPreview}
             showPlayOverlay={showPlayOverlay}
             clickToPlay={clickToPlay}
+            overlay={currentInput ? buildFusionRoleOverlay(currentInput, currentSlotIndex ?? 0) : undefined}
             className={isCurrentClamped ? 'grayscale' : ''}
           />
           {isCurrentClamped && (

@@ -19,6 +19,7 @@ export interface InputItem {
   queuedAt: string;
   slotIndex?: number;
   lockedTimestamp?: number; // Locked frame timestamp in seconds (for video assets)
+  roleOverride?: string; // e.g. 'environment' or 'main_character'
 }
 
 export interface OperationInputs {
@@ -46,6 +47,7 @@ export interface GenerationInputsState {
   clearInputs: (operationType: OperationType) => void;
   clearAllInputs: () => void;
   updateLockedTimestamp: (operationType: OperationType, inputId: string, timestamp: number | undefined) => void;
+  updateRoleOverride: (operationType: OperationType, inputId: string, role: string | undefined) => void;
   cycleInputs: (operationType: OperationType, direction?: 'next' | 'prev') => void;
   setInputIndex: (operationType: OperationType, index: number) => void;
   setArmedSlot: (operationType: OperationType, slotIndex?: number | null) => void;
@@ -402,6 +404,23 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
                   ...existing,
                   items: existing.items.map((item) =>
                     item.id === inputId ? { ...item, lockedTimestamp: timestamp } : item
+                  ),
+                },
+              },
+            };
+          });
+        },
+
+        updateRoleOverride: (operationType, inputId, role) => {
+          set((state) => {
+            const existing = getOperationInputs(state.inputsByOperation, operationType);
+            return {
+              inputsByOperation: {
+                ...state.inputsByOperation,
+                [operationType]: {
+                  ...existing,
+                  items: existing.items.map((item) =>
+                    item.id === inputId ? { ...item, roleOverride: role } : item
                   ),
                 },
               },
