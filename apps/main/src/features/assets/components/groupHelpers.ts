@@ -27,6 +27,16 @@ export type GroupPathEntry = {
   groupKey: string;
 };
 
+export type GroupSortKey = 'newest' | 'oldest' | 'most' | 'fewest' | 'name';
+
+export const GROUP_SORT_OPTIONS: { value: GroupSortKey; label: string }[] = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'most', label: 'Most items' },
+  { value: 'fewest', label: 'Fewest items' },
+  { value: 'name', label: 'Name A-Z' },
+];
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -181,4 +191,59 @@ export const selectGroupPreviewAssets = (assets: AssetModel[]) => {
       return false;
     })
     .slice(0, GROUP_PREVIEW_LIMIT);
+};
+
+// ---------------------------------------------------------------------------
+// Group sorting (pins "other" to the bottom)
+// ---------------------------------------------------------------------------
+
+export const sortGroups = (groups: AssetGroup[], sortKey: GroupSortKey): AssetGroup[] => {
+  const other: AssetGroup[] = [];
+  const rest: AssetGroup[] = [];
+  for (const g of groups) {
+    if (g.key === 'other' || g.key === 'ungrouped') {
+      other.push(g);
+    } else {
+      rest.push(g);
+    }
+  }
+  rest.sort((a, b) => {
+    switch (sortKey) {
+      case 'newest':
+        return b.latestTimestamp - a.latestTimestamp;
+      case 'oldest':
+        return a.latestTimestamp - b.latestTimestamp;
+      case 'most':
+        return b.count - a.count;
+      case 'fewest':
+        return a.count - b.count;
+      case 'name':
+        return a.label.localeCompare(b.label);
+      default:
+        return b.latestTimestamp - a.latestTimestamp;
+    }
+  });
+  return [...rest, ...other];
+};
+
+// ---------------------------------------------------------------------------
+// Relative time formatting
+// ---------------------------------------------------------------------------
+
+export const formatRelativeTime = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+  if (diff < 0) return 'just now';
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
 };

@@ -43,6 +43,18 @@ const FILTER_UI_CONFIG: Record<string, { icon?: string; order?: number; overflow
   provider_status: { icon: 'shield', order: 91, overflow: true },
 };
 
+/** Filters whose options are grouped into collapsible namespaces. */
+const GROUPED_FILTER_CONFIG: Record<string, {
+  separator: string;
+  ungroupedKey?: string;
+  rootLabel?: string;
+}> = {
+  tag:             { separator: ':', ungroupedKey: 'other' },
+  analysis_tags:   { separator: ':', ungroupedKey: 'other' },
+  source_path:     { separator: '/', rootLabel: '(root)' },
+  source_filename: { separator: '/', rootLabel: '(root)', ungroupedKey: 'other' },
+};
+
 /**
  * Group filter options by namespace parsed from a separator character.
  * @param separator  Character to split on (default `':'`)
@@ -393,19 +405,34 @@ function CollapsibleGroup({
   groupKey,
   label,
   showHeader,
-  count,
+  selectedCount,
+  totalCount,
+  onToggleAll,
   children,
 }: {
   filterKey: string;
   groupKey: string;
   label: string;
   showHeader: boolean;
-  count: number;
+  selectedCount: number;
+  totalCount: number;
+  onToggleAll?: () => void;
   children: ReactNode;
 }) {
   const collapsed = useCollapsedGroupsStore((s) => s.isCollapsed(filterKey, groupKey));
   const toggle = useCollapsedGroupsStore((s) => s.toggle);
   const setCollapsed = () => toggle(filterKey, groupKey);
+  const checkboxRef = useRef<HTMLInputElement>(null);
+
+  const allSelected = totalCount > 0 && selectedCount === totalCount;
+  const someSelected = selectedCount > 0 && selectedCount < totalCount;
+
+  // sync indeterminate (can't set via JSX attribute)
+  useLayoutEffect(() => {
+    if (checkboxRef.current) {
+      checkboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
 
   if (!showHeader) {
     return <div className="flex flex-col gap-1">{children}</div>;
@@ -413,28 +440,190 @@ function CollapsibleGroup({
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={setCollapsed}
-        className="flex items-center gap-1 w-full text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-      >
-        <Icon
-          name="chevronRight"
-          size={10}
-          className={`w-2.5 h-2.5 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
-        />
-        <span className="flex-1 text-left">{label}</span>
-        {count > 0 && (
-          <span className="text-[9px] px-1 rounded-full bg-accent/20 text-accent not-uppercase normal-case font-normal">
-            {count}
-          </span>
+      <div className="flex items-center gap-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95">
+        {onToggleAll && (
+          <input
+            ref={checkboxRef}
+            type="checkbox"
+            checked={allSelected}
+            onChange={onToggleAll}
+            className="accent-accent ml-0.5 flex-shrink-0 cursor-pointer"
+          />
         )}
-      </button>
+        <button
+          type="button"
+          onClick={setCollapsed}
+          className="flex items-center gap-1 flex-1 min-w-0 text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+        >
+          <Icon
+            name="chevronRight"
+            size={10}
+            className={`w-2.5 h-2.5 flex-shrink-0 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
+          />
+          <span className="flex-1 text-left truncate">{label}</span>
+          {selectedCount > 0 && (
+            <span className="text-[9px] px-1 rounded-full bg-accent/20 text-accent not-uppercase normal-case font-normal flex-shrink-0">
+              {selectedCount}
+            </span>
+          )}
+        </button>
+      </div>
       {!collapsed && (
         <div className="flex flex-col gap-1 pl-1">
           {children}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Enum filter sub-components (search + grouped / flat)
+// ---------------------------------------------------------------------------
+
+const SEARCH_THRESHOLD = 10;
+
+/** Presentable label for a group key (e.g. "other" → "Other") */
+function formatGroupLabel(key: string): string {
+  if (key === 'other') return 'Other';
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
+function GroupedEnumFilter({
+  filterKey,
+  groupCfg,
+  options,
+  selectedValues,
+  onChange,
+  renderOption,
+  renderMatchModeToggle,
+}: {
+  filterKey: string;
+  groupCfg: { separator: string; ungroupedKey?: string; rootLabel?: string };
+  options: FilterOptionValue[];
+  selectedValues: string[];
+  onChange: (value: string | boolean | number | string[] | undefined) => void;
+  renderOption: (opt: FilterOptionValue, stripNamespace: boolean) => ReactNode;
+  renderMatchModeToggle: () => ReactNode;
+}) {
+  const [search, setSearch] = useState('');
+  const showSearch = options.length >= SEARCH_THRESHOLD;
+  const needle = search.toLowerCase();
+
+  const filtered = useMemo(() => {
+    if (!needle) return options;
+    return options.filter(
+      (o) =>
+        o.value.toLowerCase().includes(needle) ||
+        (o.label && o.label.toLowerCase().includes(needle)),
+    );
+  }, [options, needle]);
+
+  const grouped = useMemo(
+    () => groupOptionsByNamespace(filtered, groupCfg.separator, groupCfg.ungroupedKey),
+    [filtered, groupCfg.separator, groupCfg.ungroupedKey],
+  );
+  const groups = useMemo(() => Array.from(grouped.entries()), [grouped]);
+  const showHeaders = groups.length > 1;
+
+  const toggleGroup = useCallback(
+    (groupValues: string[]) => {
+      const allSelected = groupValues.every((v) => selectedValues.includes(v));
+      if (allSelected) {
+        const drop = new Set(groupValues);
+        onChange(selectedValues.filter((v) => !drop.has(v)));
+      } else {
+        const combined = new Set([...selectedValues, ...groupValues]);
+        onChange(Array.from(combined));
+      }
+    },
+    [selectedValues, onChange],
+  );
+
+  return (
+    <div className="space-y-2">
+      {renderMatchModeToggle()}
+      {showSearch && (
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter..."
+          className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent"
+        />
+      )}
+      <div className="flex flex-col gap-0.5 max-h-[300px] overflow-y-auto">
+        {groups.length === 0 && search && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 px-1">No matches.</div>
+        )}
+        {groups.map(([namespace, nsOptions]) => {
+          const groupValues = nsOptions.map((o) => String(o.value));
+          const selectedInGroup = nsOptions.filter((o) =>
+            selectedValues.includes(String(o.value)),
+          ).length;
+          return (
+            <CollapsibleGroup
+              key={namespace}
+              filterKey={filterKey}
+              groupKey={namespace}
+              label={formatGroupLabel(namespace)}
+              showHeader={showHeaders}
+              selectedCount={selectedInGroup}
+              totalCount={nsOptions.length}
+              onToggleAll={showHeaders ? () => toggleGroup(groupValues) : undefined}
+            >
+              {nsOptions.map((opt) => renderOption(opt, showHeaders))}
+            </CollapsibleGroup>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FlatEnumFilter({
+  options,
+  renderOption,
+  renderMatchModeToggle,
+}: {
+  options: FilterOptionValue[];
+  selectedValues: string[];
+  renderOption: (opt: FilterOptionValue, stripNamespace: boolean) => ReactNode;
+  renderMatchModeToggle: () => ReactNode;
+}) {
+  const [search, setSearch] = useState('');
+  const showSearch = options.length >= SEARCH_THRESHOLD;
+  const needle = search.toLowerCase();
+
+  const filtered = useMemo(() => {
+    if (!needle) return options;
+    return options.filter(
+      (o) =>
+        o.value.toLowerCase().includes(needle) ||
+        (o.label && o.label.toLowerCase().includes(needle)),
+    );
+  }, [options, needle]);
+
+  return (
+    <div className="space-y-2">
+      {renderMatchModeToggle()}
+      {showSearch && (
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter..."
+          className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded px-2 py-1 text-xs text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-accent"
+        />
+      )}
+      <div className="flex flex-col gap-1">
+        {filtered.length === 0 && (
+          <div className="text-xs text-neutral-500 dark:text-neutral-400">
+            {search ? 'No matches.' : 'No options available.'}
+          </div>
+        )}
+        {filtered.map((opt) => renderOption(opt, false))}
+      </div>
     </div>
   );
 }
@@ -751,10 +940,9 @@ function FilterControl({
       );
 
     case 'enum': {
-      const isTagLike = key === 'tag' || key === 'analysis_tags';
-      const isFolderPath = key === 'source_path';
-      const shouldGroup = (isTagLike || isFolderPath) && options.length > 0;
-      const groupSeparator = isFolderPath ? '/' : ':';
+      const groupCfg = GROUPED_FILTER_CONFIG[key];
+      const shouldGroup = !!groupCfg && options.length > 0;
+      const groupSeparator = groupCfg?.separator ?? ':';
 
       const renderOption = (opt: FilterOptionValue, stripNamespace: boolean) => {
         const optValue = String(opt.value);
@@ -762,8 +950,14 @@ function FilterControl({
         let displayLabel: string;
         if (stripNamespace) {
           const parts = opt.value.split(groupSeparator);
-          const afterSep = parts.slice(1).join(groupSeparator);
-          displayLabel = afterSep || (isFolderPath ? '(root)' : opt.value);
+          if (parts.length > 1) {
+            // Has separator: strip namespace prefix, show the rest
+            const afterSep = parts.slice(1).join(groupSeparator);
+            displayLabel = afterSep || (groupCfg?.rootLabel ?? opt.value);
+          } else {
+            // No separator found: show the original value (e.g. bare filename)
+            displayLabel = opt.label || opt.value;
+          }
         } else {
           displayLabel = opt.label || opt.value;
         }
@@ -795,45 +989,26 @@ function FilterControl({
       };
 
       if (shouldGroup) {
-        const grouped = groupOptionsByNamespace(
-          options,
-          groupSeparator,
-          isFolderPath ? undefined : 'other',
-        );
-        const groups = Array.from(grouped.entries());
-        const showHeaders = groups.length > 1;
-
         return (
-          <div className="space-y-2">
-            {renderMatchModeToggle()}
-            <div className="flex flex-col gap-0.5 max-h-[300px] overflow-y-auto">
-              {groups.map(([namespace, nsOptions]) => (
-                <CollapsibleGroup
-                  key={namespace}
-                  filterKey={key}
-                  groupKey={namespace}
-                  label={namespace}
-                  showHeader={showHeaders}
-                  count={nsOptions.filter((o) => selectedValues.includes(String(o.value))).length}
-                >
-                  {nsOptions.map((opt) => renderOption(opt, showHeaders))}
-                </CollapsibleGroup>
-              ))}
-            </div>
-          </div>
+          <GroupedEnumFilter
+            filterKey={key}
+            groupCfg={groupCfg!}
+            options={options}
+            selectedValues={selectedValues}
+            onChange={onChange}
+            renderOption={renderOption}
+            renderMatchModeToggle={renderMatchModeToggle}
+          />
         );
       }
 
       return (
-        <div className="space-y-2">
-          {renderMatchModeToggle()}
-          <div className="flex flex-col gap-1">
-            {options.length === 0 && (
-              <div className="text-xs text-neutral-500 dark:text-neutral-400">No options available.</div>
-            )}
-            {options.map((opt) => renderOption(opt, false))}
-          </div>
-        </div>
+        <FlatEnumFilter
+          options={options}
+          selectedValues={selectedValues}
+          renderOption={renderOption}
+          renderMatchModeToggle={renderMatchModeToggle}
+        />
       );
     }
 

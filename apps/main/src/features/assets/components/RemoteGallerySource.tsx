@@ -43,6 +43,9 @@ import {
   formatGroupLabel,
   areScopesEqual,
   areGroupByStacksEqual,
+  sortGroups,
+  GROUP_SORT_OPTIONS,
+  type GroupSortKey,
   GROUP_PREVIEW_LIMIT,
   GROUP_PAGE_SIZE,
   DEFAULT_GROUP_BY_STACK,
@@ -62,6 +65,7 @@ function ParallelGroupSection({
   axisData,
   axisPage,
   groupView,
+  groupSort: sortKey,
   cardSize,
   onOpenGroup,
   onPageChange,
@@ -77,6 +81,7 @@ function ParallelGroupSection({
   };
   axisPage: number;
   groupView: GalleryGroupView;
+  groupSort: GroupSortKey;
   cardSize: number;
   onOpenGroup: (key: string) => void;
   onPageChange: (page: number) => void;
@@ -86,6 +91,7 @@ function ParallelGroupSection({
     return Math.max(1, Math.ceil(axisData.total / limit));
   }, [axisData.total, axisData.limit]);
   const hasMore = axisData.offset + axisData.groups.length < axisData.total;
+  const sortedGroups = useMemo(() => sortGroups(axisData.groups, sortKey), [axisData.groups, sortKey]);
   const showFolders = groupView === 'folders';
   const layoutSettings = { rowGap: 12, columnGap: 12 };
 
@@ -123,7 +129,7 @@ function ParallelGroupSection({
           <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>
         ) : axisData.error ? (
           <div className="text-sm text-red-500">{axisData.error}</div>
-        ) : axisData.groups.length > 0 ? (
+        ) : sortedGroups.length > 0 ? (
           showFolders ? (
             <div
               className="grid"
@@ -133,7 +139,7 @@ function ParallelGroupSection({
                 columnGap: `${layoutSettings.columnGap}px`,
               }}
             >
-              {axisData.groups.map((group) => (
+              {sortedGroups.map((group) => (
                 <GroupFolderTile
                   key={group.key}
                   group={group}
@@ -144,7 +150,7 @@ function ParallelGroupSection({
             </div>
           ) : (
             <div className="flex flex-col gap-2">
-              {axisData.groups.map((group) => (
+              {sortedGroups.map((group) => (
                 <GroupListRow
                   key={group.key}
                   group={group}
@@ -238,6 +244,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const [groupMenuOpen, setGroupMenuOpen] = useState(false);
   const groupMenuAnchorRef = useRef<HTMLButtonElement | null>(null);
   const [groupMenuRect, setGroupMenuRect] = useState<DOMRect | null>(null);
+  const [groupSort, setGroupSort] = useState<GroupSortKey>('newest');
 
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
@@ -542,17 +549,16 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   const groups = useMemo<AssetGroup[]>(() => {
     if (!groupData) return [];
     const labelGroupBy = currentGroupBy ?? groupByStack[0] ?? 'source';
-    return groupData.groups
-      .map((group) => ({
-        key: group.key,
-        label: formatGroupLabel(labelGroupBy, group.key, group.meta),
-        count: group.count,
-        previewAssets: fromAssetResponses(group.preview_assets || []),
-        latestTimestamp: Date.parse(group.latest_created_at) || 0,
-        meta: group.meta,
-      }))
-      .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
-  }, [groupData, currentGroupBy, groupByStack]);
+    const mapped = groupData.groups.map((group) => ({
+      key: group.key,
+      label: formatGroupLabel(labelGroupBy, group.key, group.meta),
+      count: group.count,
+      previewAssets: fromAssetResponses(group.preview_assets || []),
+      latestTimestamp: Date.parse(group.latest_created_at) || 0,
+      meta: group.meta,
+    }));
+    return sortGroups(mapped, groupSort);
+  }, [groupData, currentGroupBy, groupByStack, groupSort]);
   const groupTotalPages = useMemo(() => {
     if (!groupData) return 1;
     const limit = Math.max(1, groupData.limit || GROUP_PAGE_SIZE);
@@ -562,20 +568,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     if (!groupData) return false;
     return groupData.offset + groupData.groups.length < groupData.total;
   }, [groupData]);
-  const activeGroupEntry = useMemo<GroupPathEntry | null>(
-    () => (groupPath.length > 0 ? groupPath[groupPath.length - 1] : null),
-    [groupPath],
-  );
-  const activeGroupLabel = useMemo(() => {
-    if (!activeGroupEntry) return null;
-    return formatGroupLabel(activeGroupEntry.groupBy, activeGroupEntry.groupKey);
-  }, [activeGroupEntry]);
-  const groupBreadcrumb = useMemo(() => {
-    if (groupPath.length === 0) return null;
-    return groupPath
-      .map((entry) => formatGroupLabel(entry.groupBy, entry.groupKey))
-      .join(' / ');
-  }, [groupPath]);
   const isParallelMode = groupMode === 'multi' && groupMultiLayout === 'parallel' && groupByStack.length > 1;
   const showParallelGroups = hasGrouping && isParallelMode && groupPath.length === 0;
   const showGroupOverview = hasGrouping && !showParallelGroups && groupPath.length < groupByStack.length;
@@ -639,16 +631,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       listAssetGroups(request)
         .then((result) => {
           if (cancelled) return;
-          const parsedGroups: AssetGroup[] = result.groups
-            .map((g) => ({
-              key: g.key,
-              label: formatGroupLabel(axis, g.key, g.meta),
-              count: g.count,
-              previewAssets: fromAssetResponses(g.preview_assets || []),
-              latestTimestamp: Date.parse(g.latest_created_at) || 0,
-              meta: g.meta,
-            }))
-            .sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+          const parsedGroups: AssetGroup[] = result.groups.map((g) => ({
+            key: g.key,
+            label: formatGroupLabel(axis, g.key, g.meta),
+            count: g.count,
+            previewAssets: fromAssetResponses(g.preview_assets || []),
+            latestTimestamp: Date.parse(g.latest_created_at) || 0,
+            meta: g.meta,
+          }));
           setParallelData((prev) => ({
             ...prev,
             [axis]: {
@@ -737,6 +727,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       true,
     );
   }, [groupByStack, groupPath, groupView, groupScope, syncGroupInUrl]);
+
+  /** Navigate to an exact depth in the group path (0 = group overview). */
+  const navigateToGroupDepth = useCallback(
+    (depth: number) => {
+      syncGroupInUrl(
+        {
+          groupBy: groupByStack,
+          groupView,
+          groupScope,
+          groupPath: groupPath.slice(0, depth),
+          groupPage: 1,
+        },
+        true,
+      );
+    },
+    [groupByStack, groupPath, groupView, groupScope, syncGroupInUrl],
+  );
 
   const syncPageInUrl = useCallback((page: number, replace = true) => {
     const params = new URLSearchParams(window.location.search);
@@ -1260,6 +1267,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                         </option>
                       </select>
                     </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                        Sort
+                      </span>
+                      <select
+                        className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
+                        value={groupSort}
+                        onChange={(e) => setGroupSort(e.target.value as GroupSortKey)}
+                        disabled={!hasGrouping}
+                      >
+                        {GROUP_SORT_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </Dropdown>
               )}
@@ -1308,16 +1332,44 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       <div className="flex-1 overflow-auto mt-4">
         {hasGrouping && groupPath.length > 0 && (
           <div className="mb-4 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="font-medium">{groupBreadcrumb ?? activeGroupLabel}</span>
-              <span className="text-neutral-500 dark:text-neutral-400">
-                {controller.assets.length} items
-              </span>
-            </div>
+            <nav className="flex items-center gap-1 text-sm min-w-0 overflow-hidden">
+              <button
+                type="button"
+                onClick={navigateToGroupDepth.bind(null, 0)}
+                className="text-accent hover:underline flex-shrink-0"
+              >
+                Groups
+              </button>
+              {groupPath.map((entry, index) => {
+                const isLast = index === groupPath.length - 1;
+                const label = formatGroupLabel(entry.groupBy, entry.groupKey);
+                return (
+                  <span key={index} className="flex items-center gap-1 min-w-0">
+                    <span className="text-neutral-400 flex-shrink-0">/</span>
+                    {isLast ? (
+                      <span className="font-medium truncate">{label}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={navigateToGroupDepth.bind(null, index + 1)}
+                        className="text-accent hover:underline truncate"
+                      >
+                        {label}
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+              {isLeafGroup && (
+                <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0 ml-1">
+                  ({controller.assets.length} items)
+                </span>
+              )}
+            </nav>
             <button
               type="button"
               onClick={clearGroup}
-              className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors"
+              className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors flex-shrink-0 ml-2"
             >
               Back
             </button>
@@ -1333,6 +1385,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                 axisData={parallelData[axis] ?? { groups: [], total: 0, limit: GROUP_PAGE_SIZE, offset: 0, loading: true, error: null }}
                 axisPage={parallelPages[axis] ?? 1}
                 groupView={groupView}
+                groupSort={groupSort}
                 cardSize={cardSize}
                 onOpenGroup={(key) => openAxisGroup(axis, key)}
                 onPageChange={(page) => goToAxisPage(axis, page)}
@@ -1347,7 +1400,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           ) : groupError ? (
             <div className="text-sm text-red-500">{groupError}</div>
           ) : groups.length > 0 ? (
-            showGroupFolders ? (
+            <>
+            {groupData && groupData.total > 0 && (
+              <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+                {groupData.total} {groupData.total === 1 ? 'group' : 'groups'}
+                {currentGroupBy && <> by {GROUP_BY_LABELS[currentGroupBy]}</>}
+              </div>
+            )}
+            {showGroupFolders ? (
               <div
                 className="grid"
                 style={{
@@ -1376,7 +1436,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
                   />
                 ))}
               </div>
-            )
+            )}
+            </>
           ) : (
             <div className="text-sm text-neutral-500 dark:text-neutral-400">
               No groups available for this mode.

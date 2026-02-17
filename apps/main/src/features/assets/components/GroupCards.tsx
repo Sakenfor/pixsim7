@@ -9,7 +9,7 @@ import { useMediaThumbnail } from '@/hooks/useMediaThumbnail';
 import type { AssetModel } from '../hooks/useAssets';
 import { getAssetDisplayUrls } from '../models/asset';
 
-import { selectGroupPreviewAssets } from './groupHelpers';
+import { selectGroupPreviewAssets, formatRelativeTime } from './groupHelpers';
 import type { AssetGroup } from './groupHelpers';
 
 // ---------------------------------------------------------------------------
@@ -50,8 +50,11 @@ export function GroupFolderTile({
         <div className="font-semibold text-neutral-900 dark:text-neutral-100 truncate" style={{ fontSize: 'var(--cq-font-sm)' }}>
           {group.label}
         </div>
-        <div className="text-neutral-500 dark:text-neutral-400" style={{ fontSize: 'var(--cq-font-xs)' }}>
+        <div className="text-neutral-500 dark:text-neutral-400 truncate" style={{ fontSize: 'var(--cq-font-xs)' }}>
           {group.count} items
+          {group.latestTimestamp > 0 && (
+            <> &middot; {formatRelativeTime(group.latestTimestamp)}</>
+          )}
         </div>
       </div>
     </button>
@@ -104,8 +107,11 @@ export function GroupListRow({
     }
 
     parts.push(`${group.count} items`);
+    if (group.latestTimestamp > 0) {
+      parts.push(formatRelativeTime(group.latestTimestamp));
+    }
     return parts.filter(Boolean).join(' \u2022 ');
-  }, [group.count, group.meta]);
+  }, [group.count, group.latestTimestamp, group.meta]);
 
   return (
     <button
