@@ -389,15 +389,10 @@ class AssetCreationMixin:
             prompt_analysis: Analysis result with "tags_flat" or "tags" field
         """
         try:
-            # Get analysis tags - prefer tags_flat (flat strings), fallback to extracting from structured tags
-            analysis_tags = prompt_analysis.get("tags_flat", [])
+            # Get analysis tags - prefer tags_flat, then tags, then derive from candidates.
+            analysis_tags = self._extract_analysis_tags(prompt_analysis)
             if not analysis_tags:
-                # Fallback: try to extract from structured tags
-                raw_tags = prompt_analysis.get("tags", [])
-                if raw_tags and isinstance(raw_tags[0], dict):
-                    analysis_tags = [t.get("tag") for t in raw_tags if t.get("tag")]
-                else:
-                    analysis_tags = raw_tags
+                analysis_tags = self._derive_analysis_tags_from_candidates(prompt_analysis)
             if not analysis_tags:
                 return
 
@@ -407,7 +402,12 @@ class AssetCreationMixin:
                 return
 
             preferences = user.preferences or {}
-            analyzer_config = preferences.get("analyzer", self.DEFAULT_ANALYZER_SETTINGS)
+            raw_analyzer_config = preferences.get("analyzer")
+            analyzer_config = (
+                raw_analyzer_config
+                if isinstance(raw_analyzer_config, dict)
+                else self.DEFAULT_ANALYZER_SETTINGS
+            )
 
             # Check if auto-apply is enabled
             if not analyzer_config.get("auto_apply_tags", True):
@@ -415,10 +415,22 @@ class AssetCreationMixin:
 
             # Apply optional prefix
             prefix = analyzer_config.get("tag_prefix", "")
-            if prefix:
-                tags_to_apply = [f"{prefix}{tag}" for tag in analysis_tags]
-            else:
-                tags_to_apply = list(analysis_tags)
+            if not isinstance(prefix, str):
+                prefix = ""
+
+            tags_to_apply = []
+            for raw_tag in analysis_tags:
+                if not isinstance(raw_tag, str):
+                    continue
+                tag = raw_tag.strip()
+                if not tag:
+                    continue
+                tags_to_apply.append(f"{prefix}{tag}" if prefix else tag)
+            if not tags_to_apply:
+                return
+
+            # Preserve order while removing duplicates.
+            tags_to_apply = list(dict.fromkeys(tags_to_apply))
 
             from pixsim7.backend.main.services.tag_service import TagService
             tag_service = TagService(self.db)
@@ -428,6 +440,47 @@ class AssetCreationMixin:
 
         except Exception as e:
             logger.warning(f"Failed to apply analyzer tags to asset {asset_id}: {e}")
+
+    @staticmethod
+    def _extract_analysis_tags(prompt_analysis: dict) -> list[str]:
+        """Extract tag strings from tags_flat / tags fields."""
+        tags_flat = prompt_analysis.get("tags_flat")
+        if isinstance(tags_flat, list) and tags_flat:
+            return [tag for tag in tags_flat if isinstance(tag, str) and tag.strip()]
+
+        raw_tags = prompt_analysis.get("tags")
+        if not isinstance(raw_tags, list) or not raw_tags:
+            return []
+
+        extracted: list[str] = []
+        for item in raw_tags:
+            if isinstance(item, str):
+                if item.strip():
+                    extracted.append(item)
+                continue
+            if isinstance(item, dict):
+                value = item.get("tag")
+                if isinstance(value, str) and value.strip():
+                    extracted.append(value)
+        return extracted
+
+    @staticmethod
+    def _derive_analysis_tags_from_candidates(prompt_analysis: dict) -> list[str]:
+        """Best-effort derivation when tags/tags_flat are missing."""
+        candidates = prompt_analysis.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            return []
+
+        candidate_dicts = [item for item in candidates if isinstance(item, dict)]
+        if not candidate_dicts:
+            return []
+
+        try:
+            from pixsim7.backend.main.services.prompt.tag_derivation import derive_flat_tags
+
+            return derive_flat_tags(candidate_dicts)
+        except Exception:
+            return []
 
     def _extract_prompt_from_generation(self, generation, submission: ProviderSubmission) -> Optional[str]:
         """
