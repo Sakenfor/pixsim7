@@ -37,7 +37,7 @@ class OpenApiWorker(QThread):
         super().__init__(parent)
         self.operation = operation
         self.openapi_url = openapi_url
-        self.types_path = types_path or "packages/shared/types/src/openapi.generated.ts"
+        self.types_path = types_path or "packages/shared/api/client/src/generated/openapi"
 
     def run(self):
         try:
@@ -167,13 +167,8 @@ class OpenApiWorker(QThread):
         if not check_result[0]:
             return check_result
 
-        # Run with --check flag
-        code, out, err = self._run_pnpm([
-            "-s", "exec", "openapi-typescript",
-            self.openapi_url,
-            "-o", self.types_path,
-            "--check", "--alphabetize", "--immutable", "--empty-objects-unknown"
-        ], timeout=60)
+        # Run pnpm openapi:check (Orval-based freshness check)
+        code, out, err = self._run_pnpm(["-s", "openapi:check"], timeout=60)
 
         output_msg = ""
         if out:
@@ -184,7 +179,6 @@ class OpenApiWorker(QThread):
         if code == 0:
             return (True, f"✓ Types are up-to-date!\n\n{output_msg}")
         else:
-            # Exit code 1 from --check means types are stale
             return (False, f"⚠️ Types are NOT up-to-date (exit code {code}):\n\n{output_msg}")
 
 
@@ -218,7 +212,7 @@ class OpenApiToolsWidget(QWidget):
             self._openapi_url = f"http://localhost:{ports.backend}/openapi.json"
             display_info = f"localhost:{ports.backend}"
 
-        self._types_path = types_path or "packages/shared/types/src/openapi.generated.ts"
+        self._types_path = types_path or "packages/shared/api/client/src/generated/openapi"
         self._docs_url = self._openapi_url.replace('/openapi.json', '/docs')
 
         # Status indicator

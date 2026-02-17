@@ -1,29 +1,37 @@
 #!/usr/bin/env tsx
 /**
- * Generates TypeScript types from the running backend OpenAPI schema.
+ * Generates OpenAPI types via Orval (split output for modular API client/types).
  *
- * Default input:  http://localhost:8000/openapi.json
- * Default output: packages/shared/types/src/openapi.generated.ts
+ * Default input:
+ *   - http://localhost:8000/openapi.json
+ *   - OR OPENAPI_INPUT=<local JSON file path>
+ *
+ * Default output:
+ *   - Orval split output: packages/shared/api/client/src/generated/openapi
  *
  * Usage:
  *   pnpm openapi:gen          # Generate/overwrite types
- *   pnpm openapi:check        # Check if types are up-to-date (CI/pre-commit)
+ *   pnpm openapi:check        # Check if outputs are up-to-date (CI/pre-commit)
  *   pnpm openapi:gen -- --service main-api
+ *   pnpm openapi:gen -- --input ./path/to/openapi.json
  *
  * Optional env overrides:
+ *   OPENAPI_INPUT="./path/to/openapi.json"                      # Local JSON spec path
  *   OPENAPI_URL="http://localhost:8000/openapi.json"
- *   OPENAPI_TYPES_OUT="packages/shared/types/src/openapi.generated.ts"
+ *   OPENAPI_ORVAL_OUT="packages/shared/api/client/src/generated/openapi"
+ *   OPENAPI_ORVAL_MODE="tags-split"
+ *   OPENAPI_ORVAL_CLIENT="axios"
  *   OPENAPI_SERVICE="main-api"
  *   OPENAPI_SERVICES_ROOT="."
  *
  * Exit codes:
- *   0 - Success (or types are up-to-date in check mode)
- *   1 - Error or types are stale (in check mode)
+ *   0 - Success (or outputs are up-to-date in check mode)
+ *   1 - Error or outputs are stale (in check mode)
  */
 
 import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
 import * as path from 'node:path';
-
 type BackendServiceConfig = {
   id: string;
   base_url_env?: string;
@@ -35,6 +43,11 @@ type BackendServiceConfig = {
 };
 
 const MANIFEST_FILENAME = 'pixsim.service.json';
+const DEFAULT_OPENAPI_URL = 'http://localhost:8000/openapi.json';
+const DEFAULT_ORVAL_OUT = 'packages/shared/api/client/src/generated/openapi';
+const DEFAULT_ORVAL_MODE = 'tags-split';
+const DEFAULT_ORVAL_CLIENT = 'axios';
+
 const SKIP_DIRS = new Set([
   '.git',
   '.github',
@@ -198,12 +211,10 @@ async function resolveServiceConfig(
   servicesRoot: string,
   preferredId?: string
 ): Promise<BackendServiceConfig | null> {
-  const services = (await loadServiceConfigs(servicesRoot)).filter(
-    (service) => {
-      const type = (service.type ?? 'backend').toLowerCase();
-      return type === 'backend' || type === 'api';
-    }
-  );
+  const services = (await loadServiceConfigs(servicesRoot)).filter((service) => {
+    const type = (service.type ?? 'backend').toLowerCase();
+    return type === 'backend' || type === 'api';
+  });
 
   if (preferredId) {
     return services.find((service) => service.id === preferredId) ?? null;
@@ -216,9 +227,151 @@ async function resolveServiceConfig(
   );
 }
 
+function normalizeSlashes(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
+async function pathExists(pathname: string): Promise<boolean> {
+  try {
+    await fs.access(pathname);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+type DirCompareResult = {
+  equal: boolean;
+  reason?: string;
+};
+
+async function listFilesRecursive(root: string): Promise<string[]> {
+  const files: string[] = [];
+
+  async function walk(current: string) {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(fullPath);
+      } else if (entry.isFile()) {
+        files.push(normalizeSlashes(path.relative(root, fullPath)));
+      }
+    }
+  }
+
+  await walk(root);
+  files.sort();
+  return files;
+}
+
+async function compareDirectories(expectedDir: string, actualDir: string): Promise<DirCompareResult> {
+  const expectedExists = await pathExists(expectedDir);
+  const actualExists = await pathExists(actualDir);
+
+  if (!expectedExists) {
+    return { equal: false, reason: `expected directory does not exist: ${expectedDir}` };
+  }
+  if (!actualExists) {
+    return { equal: false, reason: `output directory does not exist: ${actualDir}` };
+  }
+
+  const expectedFiles = await listFilesRecursive(expectedDir);
+  const actualFiles = await listFilesRecursive(actualDir);
+
+  if (expectedFiles.length !== actualFiles.length) {
+    return {
+      equal: false,
+      reason: `file count mismatch (expected ${expectedFiles.length}, got ${actualFiles.length})`,
+    };
+  }
+
+  for (let i = 0; i < expectedFiles.length; i += 1) {
+    if (expectedFiles[i] !== actualFiles[i]) {
+      return {
+        equal: false,
+        reason: `file list mismatch at index ${i}: expected "${expectedFiles[i]}", got "${actualFiles[i]}"`,
+      };
+    }
+  }
+
+  for (const relPath of expectedFiles) {
+    const expectedContent = await fs.readFile(path.join(expectedDir, relPath), 'utf8');
+    const actualContent = await fs.readFile(path.join(actualDir, relPath), 'utf8');
+    if (expectedContent !== actualContent) {
+      return { equal: false, reason: `content mismatch in ${relPath}` };
+    }
+  }
+
+  return { equal: true };
+}
+
+async function runOrval(
+  source: string,
+  outputDir: string,
+  mode: string,
+  client: string
+): Promise<void> {
+  const mod: any = await import('orval');
+  const generate = mod?.generate ?? mod?.default?.generate ?? mod?.default;
+  if (typeof generate !== 'function') {
+    throw new Error('orval import failed; ensure `orval` is installed at the workspace root.');
+  }
+
+  await generate({
+    input: {
+      target: source,
+    },
+    output: {
+      target: path.join(outputDir, 'index.ts'),
+      schemas: path.join(outputDir, 'model'),
+      client,
+      mode,
+      clean: true,
+      prettier: false,
+    },
+  });
+}
+
+async function generateOrvalSplit(
+  source: string,
+  absOutDir: string,
+  outDir: string,
+  mode: string,
+  client: string,
+  isCheckMode: boolean
+): Promise<boolean> {
+  if (isCheckMode) {
+    const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-orval-check-'));
+    const tempOutDir = path.join(tempRoot, 'openapi');
+    try {
+      await runOrval(source, tempOutDir, mode, client);
+      const comparison = await compareDirectories(tempOutDir, absOutDir);
+      if (comparison.equal) {
+        console.log(`[ok] Orval split output is up-to-date: ${outDir}`);
+        return true;
+      }
+      console.error(`[stale] Orval split output is STALE: ${outDir}`);
+      if (comparison.reason) {
+        console.error(`  ${comparison.reason}`);
+      }
+      console.error('  Run `pnpm openapi:gen` to update it.');
+      return false;
+    } finally {
+      await fs.rm(tempRoot, { recursive: true, force: true });
+    }
+  }
+
+  await fs.mkdir(absOutDir, { recursive: true });
+  await runOrval(source, absOutDir, mode, client);
+  console.log(`[ok] Generated Orval split OpenAPI output: ${outDir}`);
+  return true;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const isCheckMode = args.includes('--check');
+  const inputArg = getArgValue('--input', args);
 
   const serviceId = getArgValue('--service', args) ?? process.env.OPENAPI_SERVICE;
   const servicesRoot =
@@ -231,65 +384,43 @@ async function main() {
     throw new Error(`OpenAPI service "${serviceId}" not found in ${servicesRoot}`);
   }
 
-  const openapiUrl =
+  const orvalOutDir = process.env.OPENAPI_ORVAL_OUT || DEFAULT_ORVAL_OUT;
+  const orvalMode = process.env.OPENAPI_ORVAL_MODE || DEFAULT_ORVAL_MODE;
+  const orvalClient = process.env.OPENAPI_ORVAL_CLIENT || DEFAULT_ORVAL_CLIENT;
+
+  const absOrvalOutDir = path.resolve(process.cwd(), orvalOutDir);
+
+  const openapiInput = inputArg || process.env.OPENAPI_INPUT;
+  const resolvedUrl =
     process.env.OPENAPI_URL ||
     (serviceConfig ? resolveOpenapiUrl(serviceConfig) : null) ||
-    'http://localhost:8000/openapi.json';
-  const outPath =
-    process.env.OPENAPI_TYPES_OUT ||
-    serviceConfig?.openapi_types_path ||
-    'packages/shared/types/src/openapi.generated.ts';
+    DEFAULT_OPENAPI_URL;
 
-  const absOutPath = path.resolve(process.cwd(), outPath);
+  let orvalSource = resolvedUrl;
 
-  // openapi-typescript is CommonJS (`export =`) so grab default-or-module.
-  const mod: any = await import('openapi-typescript');
-  const openapiTS = mod?.default ?? mod;
-  const astToString = mod?.astToString;
-  const COMMENT_HEADER = mod?.COMMENT_HEADER;
-
-  if (typeof openapiTS !== 'function' || typeof astToString !== 'function') {
-    throw new Error(
-      'openapi-typescript import failed; ensure `openapi-typescript` is installed at the workspace root.'
-    );
+  if (openapiInput) {
+    const absInputPath = path.resolve(process.cwd(), openapiInput);
+    const exists = await pathExists(absInputPath);
+    if (!exists) {
+      throw new Error(`OPENAPI_INPUT not found: ${absInputPath}`);
+    }
+    orvalSource = absInputPath;
+    console.log(`Using local OpenAPI spec: ${normalizeSlashes(openapiInput)}`);
+  } else {
+    console.log(`Using OpenAPI URL: ${resolvedUrl}`);
   }
 
-  const ast = await openapiTS(openapiUrl, {
-    alphabetize: true,
-    emptyObjectsUnknown: true,
-    immutable: true,
-  });
+  const orvalOk = await generateOrvalSplit(
+    orvalSource,
+    absOrvalOutDir,
+    orvalOutDir,
+    orvalMode,
+    orvalClient,
+    isCheckMode
+  );
 
-  const generated = String(COMMENT_HEADER || '') + astToString(ast);
-
-  if (isCheckMode) {
-    // Check mode: compare generated content with existing file
-    let existing = '';
-    try {
-      existing = await fs.readFile(absOutPath, 'utf8');
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
-        console.error(`?- OpenAPI types file does not exist: ${outPath}`);
-        console.error('  Run `pnpm openapi:gen` to generate it.');
-        process.exit(1);
-      }
-      throw err;
-    }
-
-    if (existing === generated) {
-      console.log(`?" OpenAPI types are up-to-date: ${outPath}`);
-      process.exit(0);
-    } else {
-      console.error(`?- OpenAPI types are STALE: ${outPath}`);
-      console.error('  The generated types differ from the current backend schema.');
-      console.error('  Run `pnpm openapi:gen` to update them.');
-      process.exit(1);
-    }
-  } else {
-    // Generate mode: write the file
-    await fs.mkdir(path.dirname(absOutPath), { recursive: true });
-    await fs.writeFile(absOutPath, generated, 'utf8');
-    console.log(`?" Generated OpenAPI types: ${outPath}`);
+  if (isCheckMode && !orvalOk) {
+    process.exit(1);
   }
 }
 

@@ -16,12 +16,12 @@
  * Type Alignment:
  * - Backend source: pixsim7/backend/main/domain/game/interactions/interactions.py
  * - These types mirror the Python Pydantic models for API compatibility
- * - OpenAPI types (ApiComponents['schemas']['InteractionSurface'] etc.) are auto-generated
- *   but may be stale. Run `pnpm openapi:gen` to regenerate after backend changes.
+ * - OpenAPI types are Orval-generated in @pixsim7/shared.api.client/model.
+ *   Run `pnpm openapi:gen` to regenerate after backend changes.
  * - Frontend extends backend types with 'ambient' surface (frontend-only)
  */
 
-import type { components } from './openapi.generated';
+import type { InteractionSurface as InteractionSurfaceSchema, DisabledReason } from '@pixsim7/shared.api.client/model';
 import type { EntityRef } from './ids';
 import type { GizmoConfig, GizmoSessionResult } from './gizmos';
 
@@ -33,7 +33,7 @@ import type { GizmoConfig, GizmoSessionResult } from './gizmos';
  * Backend interaction surface enum - from OpenAPI.
  * Values: 'inline' | 'dialogue' | 'scene' | 'notification' | 'menu'
  */
-export type InteractionSurface = components['schemas']['InteractionSurface'];
+export type InteractionSurface = InteractionSurfaceSchema;
 
 /**
  * Extended interaction surface - includes frontend-only values.
@@ -68,7 +68,7 @@ export type InteractionBranchIntent = BranchIntent;
  * flag_required, flag_forbidden, cooldown_active, location_incompatible,
  * stat_gating_failed, custom
  */
-export type InteractionDisabledReason = components['schemas']['DisabledReason'];
+export type InteractionDisabledReason = DisabledReason;
 
 // ===================
 // Gating Schema

@@ -3,44 +3,56 @@
 // This file re-exports types from the backend OpenAPI schema for type safety.
 // DO NOT add manual type definitions here - add them to the backend instead.
 
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type {
+  DeviceType,
+  ConnectionMethod,
+  DeviceStatus,
+  AutomationStatus,
+  LoopStatus,
+  LoopSelectionMode,
+  PresetExecutionMode,
+  AndroidDevice,
+  AppActionPreset,
+  AutomationExecution,
+  ExecutionLoop,
+} from '@pixsim7/shared.api.client/model';
 
 // =============================================================================
-// Backend Types (from OpenAPI)
+// Backend Types (from Orval-generated OpenAPI)
 // =============================================================================
 
 /** Device type: 'bluestacks' | 'mumu' | 'nox' | 'ld' | 'genymotion' | 'adb' */
-export type DeviceType = ApiComponents['schemas']['DeviceType'];
+export type { DeviceType };
 
 /** Connection method: 'adb' | 'uiautomator2' */
-export type ConnectionMethod = ApiComponents['schemas']['ConnectionMethod'];
+export type { ConnectionMethod };
 
 /** Device status: 'online' | 'offline' | 'busy' | 'error' */
-export type DeviceStatus = ApiComponents['schemas']['DeviceStatus'];
+export type { DeviceStatus };
 
 /** Automation status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' */
-export type AutomationStatus = ApiComponents['schemas']['AutomationStatus'];
+export type { AutomationStatus };
 
 /** Loop status: 'active' | 'paused' | 'stopped' | 'error' */
-export type LoopStatus = ApiComponents['schemas']['LoopStatus'];
+export type { LoopStatus };
 
 /** Loop selection mode: 'most_credits' | 'least_credits' | 'round_robin' | 'specific_accounts' */
-export type LoopSelectionMode = ApiComponents['schemas']['LoopSelectionMode'];
+export type { LoopSelectionMode };
 
 /** Preset execution mode: 'SINGLE' | 'SHARED_LIST' | 'PER_ACCOUNT' */
-export type PresetExecutionMode = ApiComponents['schemas']['PresetExecutionMode'];
+export type { PresetExecutionMode };
 
 /** Android device */
-export type AndroidDevice = ApiComponents['schemas']['AndroidDevice'];
+export type { AndroidDevice };
 
 /** App action preset */
-export type AppActionPreset = ApiComponents['schemas']['AppActionPreset'];
+export type { AppActionPreset };
 
 /** Automation execution */
-export type AutomationExecution = ApiComponents['schemas']['AutomationExecution'];
+export type { AutomationExecution };
 
 /** Execution loop */
-export type ExecutionLoop = ApiComponents['schemas']['ExecutionLoop'];
+export type { ExecutionLoop };
 
 // =============================================================================
 // Frontend-Only Types (not in backend)

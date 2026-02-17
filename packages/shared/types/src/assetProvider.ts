@@ -11,9 +11,7 @@
  */
 
 import type { GenerationStrategy } from './generation';
-import type { components } from './openapi.generated';
-
-type MediaType = components['schemas']['MediaType'];
+import type { MediaType } from '@pixsim7/shared.api.client/model';
 
 // ============================================================================
 // Asset Types

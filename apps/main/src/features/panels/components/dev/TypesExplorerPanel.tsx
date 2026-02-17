@@ -435,29 +435,21 @@ function OpenAPIView() {
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-300">
-          Available Type Exports
+          Import Patterns (Orval-generated)
         </h3>
         <div className="space-y-2">
           <div className="p-3 bg-neutral-800 rounded-md">
-            <code className="text-xs font-mono text-emerald-400">ApiPaths</code>
+            <code className="text-xs font-mono text-emerald-400">@pixsim7/shared.api.client/model</code>
             <p className="text-xs text-neutral-400 mt-1">
-              All API endpoint paths with their HTTP methods
+              Individual model types (request/response DTOs, enums)
             </p>
           </div>
           <div className="p-3 bg-neutral-800 rounded-md">
             <code className="text-xs font-mono text-emerald-400">
-              ApiComponents
+              @pixsim7/shared.api.client/domains
             </code>
             <p className="text-xs text-neutral-400 mt-1">
-              Reusable schema components (request/response DTOs)
-            </p>
-          </div>
-          <div className="p-3 bg-neutral-800 rounded-md">
-            <code className="text-xs font-mono text-emerald-400">
-              ApiOperations
-            </code>
-            <p className="text-xs text-neutral-400 mt-1">
-              Operation definitions with parameters and responses
+              Domain API helpers with typed request functions
             </p>
           </div>
         </div>
@@ -467,10 +459,8 @@ function OpenAPIView() {
         <h3 className="text-sm font-semibold text-neutral-300">Usage Example</h3>
         <pre className="p-3 bg-neutral-800 rounded-md text-xs font-mono overflow-x-auto">
           <code className="text-neutral-300">
-            {`import type { ApiComponents } from '@pixsim7/shared.types';
-
-type AssetResponse = ApiComponents['schemas']['AssetResponse'];
-type GenerationJob = ApiComponents['schemas']['GenerationJobResponse'];`}
+            {`import type { AssetResponse, GenerationResponse } from '@pixsim7/shared.api.client/model';
+import type { MediaType } from '@pixsim7/shared.types';`}
           </code>
         </pre>
       </section>
@@ -483,14 +473,13 @@ type GenerationJob = ApiComponents['schemas']['GenerationJobResponse'];`}
           <p>To explore the full OpenAPI schema:</p>
           <ul className="list-disc list-inside space-y-1 ml-2">
             <li>
-              View the source file:{' '}
+              View the model barrel:{' '}
               <code className="text-neutral-300">
-                packages/shared/types/src/openapi.generated.ts
+                packages/shared/api/client/src/generated/openapi/model/
               </code>
             </li>
             <li>
-              Use your IDE's "Go to Definition" on{' '}
-              <code className="text-neutral-300">ApiComponents</code>
+              Use your IDE's "Go to Definition" on any imported type
             </li>
             <li>
               Visit the backend's{' '}
@@ -510,14 +499,11 @@ type GenerationJob = ApiComponents['schemas']['GenerationJobResponse'];`}
         <p>
           Source:{' '}
           <code className="text-neutral-400">
-            packages/shared/types/src/openapi.generated.ts
+            packages/shared/api/client/src/generated/openapi/model/
           </code>
         </p>
         <p className="mt-1">
           Regenerate: <code className="text-neutral-400">pnpm openapi:gen</code>
-        </p>
-        <p className="mt-1">
-          File size: ~30,000 lines (paths, components, operations)
         </p>
       </div>
     </div>

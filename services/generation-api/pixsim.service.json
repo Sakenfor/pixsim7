@@ -20,7 +20,7 @@
   "health_endpoint": "/health",
   "docs_endpoint": "/docs",
   "openapi_endpoint": "/openapi.json",
-  "openapi_types_path": "packages/shared/types/src/openapi.generated.ts",
+  "openapi_types_path": "packages/shared/api/client/src/generated/openapi",
   "depends_on": ["db"],
   "tags": ["api", "generation", "ai", "microservice", "chrome-extension", "automation", "lightweight"],
   "provides": ["generations", "prompts", "providers", "analytics", "auth", "accounts", "automation"],

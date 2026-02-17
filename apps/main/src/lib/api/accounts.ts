@@ -6,7 +6,7 @@
  */
 import { createAccountsApi } from '@pixsim7/shared.api.client/domains';
 import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/shared.api.client/domains';
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type { AccountStatsResponse, InvitedAccountsResponse } from '@pixsim7/shared.api.client/model';
 
 import { logEvent } from '@lib/utils/logging';
 
@@ -14,9 +14,8 @@ import { pixsimClient } from './client';
 
 export type { AccountResponse, AccountUpdate, AccountStatus, CreateApiKeyResponse } from '@pixsim7/shared.api.client/domains';
 
-// OpenAPI-generated types
-export type AccountStatsResponse = ApiComponents['schemas']['AccountStatsResponse'];
-export type InvitedAccountsResponse = ApiComponents['schemas']['InvitedAccountsResponse'];
+// Re-exported from Orval-generated types
+export type { AccountStatsResponse, InvitedAccountsResponse };
 
 const accountsApi = createAccountsApi(pixsimClient);
 

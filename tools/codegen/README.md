@@ -23,6 +23,13 @@ This folder centralizes code generation tooling for the workspace.
 - `tools/codegen/generate-upload-context.ts`
 - `tools/codegen/run-plugin-codegen.ts`
 
+### OpenAPI Generator Notes
+
+- The OpenAPI generator uses Orval to produce split output: `packages/shared/api/client/src/generated/openapi`
+- You can use a local spec file instead of a live backend:
+  - `pnpm openapi:gen -- --input ./path/to/openapi.json`
+  - or `OPENAPI_INPUT=./path/to/openapi.json`
+
 ## Notes
 
 - Devtools/backend admin codegen controls use this manifest as the task source of truth.

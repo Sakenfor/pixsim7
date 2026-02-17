@@ -4,7 +4,24 @@
  * Wraps the shared domain client with app-specific helpers and additional endpoints.
  */
 import { createGameApi } from '@pixsim7/shared.api.client/domains';
-import { IDs, ApiComponents } from '@pixsim7/shared.types';
+import type {
+  PaginatedWorldsResponse,
+  WorldConfigResponse,
+  InventoryStatsResponse,
+} from '@pixsim7/shared.api.client/domains';
+import type {
+  GameProjectBundleInput,
+  GameProjectImportResponse,
+  MessageResponse,
+  SavedGameProjectSummary,
+  SavedGameProjectDetail,
+  SaveGameProjectRequest,
+  RenameSavedGameProjectRequest,
+  DuplicateSavedGameProjectRequest,
+  UpsertDraftRequest,
+  DraftSummary,
+} from '@pixsim7/shared.api.client/model';
+import { IDs } from '@pixsim7/shared.types';
 
 import type {
   Scene,
@@ -39,20 +56,12 @@ import { pixsimClient } from './client';
 // Create shared domain API instance
 const gameApi = createGameApi(pixsimClient);
 
-// OpenAPI-generated types
-export type PaginatedWorldsResponse = ApiComponents['schemas']['PaginatedWorldsResponse'];
-export type WorldConfigResponse = ApiComponents['schemas']['WorldConfigResponse'];
-export type InventoryStatsResponse = ApiComponents['schemas']['InventoryStatsResponse'];
-export type MessageResponse = ApiComponents['schemas']['MessageResponse'];
+// Re-exported from Orval-generated types
+export type { PaginatedWorldsResponse, WorldConfigResponse, InventoryStatsResponse, MessageResponse };
 
 // Project bundle import/export
-export type GameProjectBundle = ApiComponents['schemas']['GameProjectBundle-Input'];
-export type GameProjectImportResponse = ApiComponents['schemas']['GameProjectImportResponse'];
-export type SavedGameProjectSummary = ApiComponents['schemas']['SavedGameProjectSummary'];
-export type SavedGameProjectDetail = ApiComponents['schemas']['SavedGameProjectDetail'];
-export type SaveGameProjectRequest = ApiComponents['schemas']['SaveGameProjectRequest'];
-export type RenameSavedGameProjectRequest = ApiComponents['schemas']['RenameSavedGameProjectRequest'];
-export type DuplicateSavedGameProjectRequest = ApiComponents['schemas']['DuplicateSavedGameProjectRequest'];
+export type GameProjectBundle = GameProjectBundleInput;
+export type { GameProjectImportResponse, SavedGameProjectSummary, SavedGameProjectDetail, SaveGameProjectRequest, RenameSavedGameProjectRequest, DuplicateSavedGameProjectRequest };
 
 // Re-export types for backward compatibility
 export type {
@@ -357,8 +366,7 @@ export async function deleteSavedGameProject(projectId: number): Promise<void> {
 // Project Draft API (autosave / recovery)
 // =============================================================================
 
-export type UpsertDraftRequest = ApiComponents['schemas']['UpsertDraftRequest'];
-export type DraftSummary = ApiComponents['schemas']['DraftSummary'];
+export type { UpsertDraftRequest, DraftSummary };
 
 export async function upsertProjectDraft(
   request: UpsertDraftRequest,

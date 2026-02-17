@@ -6,7 +6,7 @@
  * Use these for documentation and optional dev-time validation only.
  */
 
-import type { CompositionAsset, ApiComponents } from '@pixsim7/shared.types';
+import type { CompositionAsset, MediaType } from '@pixsim7/shared.types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Common Parameter Types
@@ -126,7 +126,7 @@ export type OperationType = typeof OPERATION_TYPES[number];
  * Note: Operation metadata only uses 'image' | 'video' for input/output,
  * but the full type is preserved for type safety with backend responses.
  */
-export type MediaType = ApiComponents['schemas']['MediaType'];
+export type { MediaType };
 
 export type MultiAssetMode = 'single' | 'optional' | 'required';
 

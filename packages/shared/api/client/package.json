@@ -21,6 +21,10 @@
       "import": "./src/browser/index.ts",
       "require": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
+    },
+    "./model": {
+      "import": "./src/generated/openapi/model/index.ts",
+      "types": "./src/generated/openapi/model/index.ts"
     }
   },
   "files": ["src", "dist"],

@@ -3,13 +3,16 @@ OpenAPI Freshness Checker
 
 Checks if generated TypeScript types are up-to-date with the live OpenAPI schema.
 Used by the launcher GUI to show freshness status on service cards.
+
+Delegates to `pnpm openapi:check` for actual freshness verification.
 """
 import hashlib
 import json
 import os
-import re
+import subprocess
+import sys
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional
 from dataclasses import dataclass
 
 try:
@@ -36,43 +39,13 @@ class OpenAPICheckResult:
 
 
 def _compute_schema_hash(schema_json: str) -> str:
-    """Compute a stable hash of an OpenAPI schema.
-
-    Normalizes the JSON to ensure consistent hashing regardless of
-    formatting differences.
-    """
+    """Compute a stable hash of an OpenAPI schema."""
     try:
-        # Parse and re-serialize to normalize formatting
         parsed = json.loads(schema_json)
         normalized = json.dumps(parsed, sort_keys=True, separators=(',', ':'))
         return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]
     except json.JSONDecodeError:
-        # Fall back to raw hash if not valid JSON
         return hashlib.sha256(schema_json.encode('utf-8')).hexdigest()[:16]
-
-
-def _extract_schema_from_generated(types_content: str) -> Optional[str]:
-    """Extract the embedded schema hash or compute from the generated types.
-
-    The openapi-typescript generator includes the source URL and we can
-    use the content itself for comparison since it's deterministically
-    generated from the schema.
-    """
-    # Compute hash of the generated content (excluding comments that may vary)
-    # Strip the header comment block and hash the rest
-    lines = types_content.split('\n')
-    content_lines = []
-    in_header = True
-    for line in lines:
-        if in_header and (line.startswith('/**') or line.startswith(' *') or line.startswith(' */')):
-            continue
-        if in_header and not line.strip():
-            continue
-        in_header = False
-        content_lines.append(line)
-
-    content = '\n'.join(content_lines)
-    return hashlib.sha256(content.encode('utf-8')).hexdigest()[:16]
 
 
 def check_openapi_freshness(
@@ -82,9 +55,12 @@ def check_openapi_freshness(
 ) -> OpenAPICheckResult:
     """Check if generated types are fresh compared to live OpenAPI schema.
 
+    Uses the Orval model directory for checking. The types_path should point
+    to packages/shared/api/client/src/generated/openapi or similar.
+
     Args:
         openapi_url: URL to fetch OpenAPI JSON (e.g., http://localhost:8000/openapi.json)
-        types_path: Path to generated types file (relative to ROOT)
+        types_path: Path to generated Orval output directory (relative to ROOT)
         timeout: HTTP request timeout in seconds
 
     Returns:
@@ -93,25 +69,25 @@ def check_openapi_freshness(
     import urllib.request
     import urllib.error
 
-    # Resolve types path
-    abs_types_path = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
+    # Resolve types path — check the model barrel file
+    abs_types_dir = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
+    model_barrel = os.path.join(abs_types_dir, 'model', 'index.ts')
 
-    # Check if types file exists
-    if not os.path.exists(abs_types_path):
+    if not os.path.exists(model_barrel):
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Types file not found: {types_path}"
+            message=f"Model barrel not found: {model_barrel}"
         )
 
-    # Read and hash the types file
+    # Compute hash of existing model barrel as file_hash
     try:
-        with open(abs_types_path, 'r', encoding='utf-8') as f:
-            types_content = f.read()
-        file_hash = _extract_schema_from_generated(types_content)
+        with open(model_barrel, 'r', encoding='utf-8') as f:
+            barrel_content = f.read()
+        file_hash = hashlib.sha256(barrel_content.encode('utf-8')).hexdigest()[:16]
     except Exception as e:
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Failed to read types file: {e}"
+            message=f"Failed to read model barrel: {e}"
         )
 
     # Fetch live OpenAPI schema
@@ -133,15 +109,10 @@ def check_openapi_freshness(
             file_hash=file_hash
         )
 
-    # Hash the live schema
     live_hash = _compute_schema_hash(live_schema)
 
-    # To properly compare, we need to regenerate the types and compare.
-    # Since that's expensive, we use a simpler heuristic:
-    # - Store the schema hash in a cache file alongside the types
-    # - Compare current schema hash with cached hash
-
-    cache_path = abs_types_path + '.schema-hash'
+    # Check schema hash cache
+    cache_path = os.path.join(abs_types_dir, '.schema-hash')
     cached_hash = None
 
     if os.path.exists(cache_path):
@@ -159,7 +130,6 @@ def check_openapi_freshness(
             file_hash=file_hash
         )
     elif cached_hash is None:
-        # No cache - can't determine freshness without regenerating
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
             message="No schema cache - run 'pnpm openapi:gen' to establish baseline",
@@ -185,8 +155,8 @@ def update_schema_cache(openapi_url: str, types_path: str, timeout: float = 2.0)
     """
     import urllib.request
 
-    abs_types_path = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
-    cache_path = abs_types_path + '.schema-hash'
+    abs_types_dir = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
+    cache_path = os.path.join(abs_types_dir, '.schema-hash')
 
     try:
         req = urllib.request.Request(openapi_url, method='GET')
@@ -195,6 +165,7 @@ def update_schema_cache(openapi_url: str, types_path: str, timeout: float = 2.0)
 
         live_hash = _compute_schema_hash(live_schema)
 
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         with open(cache_path, 'w') as f:
             f.write(live_hash)
 

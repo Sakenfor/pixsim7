@@ -11,7 +11,7 @@
  * Extends BaseRegistry for standard CRUD operations and listener support.
  */
 
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type { MediaType } from '@pixsim7/shared.types';
 import type { ComponentType } from 'react';
 
 import { BaseRegistry, type Identifiable } from '@lib/core/BaseRegistry';
@@ -41,7 +41,7 @@ export type GallerySurfaceCategory =
 /**
  * Media types supported by surfaces - imported from backend OpenAPI schema.
  */
-export type MediaType = ApiComponents['schemas']['MediaType'];
+export type { MediaType };
 
 /**
  * Gallery surface definition

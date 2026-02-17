@@ -6,9 +6,9 @@
  *
  * This file contains two categories of types:
  *
- * 1. **API DTOs (aliased from OpenAPI)**: Types that match backend Pydantic models.
- *    These are aliased from `openapi.generated.ts` to avoid duplication.
- *    Look for: `export type Foo = ApiComponents['schemas']['Foo']`
+ * 1. **API DTOs (aliased from Orval)**: Types that match backend Pydantic models.
+ *    These are imported from `@pixsim7/shared.api.client/model` (Orval-generated).
+ *    Look for: `export type Foo = ...` with an Orval import.
  *
  * 2. **Frontend-only types**: Types used only in frontend/game engine that have no
  *    backend equivalent. These are defined directly here.
@@ -16,17 +16,30 @@
  *
  * ## Avoiding Drift
  *
- * When adding new types, check if they exist in OpenAPI first:
- *   grep "readonly YourTypeName:" packages/shared/types/src/openapi.generated.ts
+ * When adding new types, check if they exist in the Orval model barrel first:
+ *   grep "export \* from" packages/shared/api/client/src/generated/openapi/model/index.ts
  *
- * If they do, alias them instead of duplicating.
- *
- * TODO: Add a lint rule or test to detect when a manually-defined interface
- * shares a name with an OpenAPI schema (drift detection).
+ * If they do, import them instead of duplicating.
  */
 
 import type { NpcId, WorldId, SessionId, LocationId, SceneId } from './ids';
-import type { components as ApiComponents } from './openapi.generated';
+import type {
+  EntityRef,
+  GameSessionResponse,
+  GameWorldDetail,
+  GameWorldSummary,
+  InventoryItem,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  NpcSummary,
+  NpcSurfacePackageDTO,
+  PickpocketRequest,
+  PickpocketResponse,
+  Quest,
+  QuestObjective,
+  SensualTouchRequest,
+  SensualTouchResponse,
+} from '@pixsim7/shared.api.client/model';
 
 // ===================
 // Spatial Model Types [frontend-only]
@@ -417,8 +430,6 @@ export type GameObject =
 // Location Types (API DTOs aliased from OpenAPI)
 // ===================
 
-type EntityRef = ApiComponents['schemas']['EntityRef'];
-
 export interface GameLocationSummary {
   id: number;
   name: string;
@@ -532,8 +543,8 @@ export interface NpcSlot2d {
 // NPC Types (API DTOs aliased from OpenAPI)
 // ===================
 
-// Aliased from OpenAPI - matches backend NpcSummary
-export type GameNpcSummary = ApiComponents['schemas']['NpcSummary'];
+// Aliased from Orval - matches backend NpcSummary
+export type GameNpcSummary = NpcSummary;
 
 /**
  * [frontend-only] NPC detail for single NPC views
@@ -550,17 +561,15 @@ export interface GameNpcDetail extends GameNpcSummary {
   relationshipLevel?: number;
 }
 
-// Aliased from OpenAPI
-export type NpcExpressionDTO = ApiComponents['schemas']['NpcExpressionDTO'];
-export type NpcPresenceDTO = ApiComponents['schemas']['NpcPresenceDTO'];
-export type NpcSurfacePackage = ApiComponents['schemas']['NpcSurfacePackageDTO'];
+// Aliased from Orval
+export type { NpcExpressionDTO, NpcPresenceDTO };
+export type NpcSurfacePackage = NpcSurfacePackageDTO;
 
 // ===================
 // World Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export type GameWorldSummary = ApiComponents['schemas']['GameWorldSummary'];
-export type GameWorldDetail = ApiComponents['schemas']['GameWorldDetail'];
+export type { GameWorldSummary, GameWorldDetail };
 
 // ===================
 // Relationship Tier / Intimacy ID Types [frontend-only]
@@ -1136,8 +1145,8 @@ export interface ActorPresence {
 // Session Types
 // ===================
 
-// Aliased from OpenAPI (named GameSessionResponse in backend)
-export type GameSessionDTO = ApiComponents['schemas']['GameSessionResponse'];
+// Aliased from Orval (named GameSessionResponse in backend)
+export type GameSessionDTO = GameSessionResponse;
 
 // ----- Frontend-only session flag types -----
 
@@ -1207,23 +1216,20 @@ export interface SessionUpdatePayload {
 // Stealth/Interaction Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export type PickpocketRequest = ApiComponents['schemas']['PickpocketRequest'];
-export type PickpocketResponse = ApiComponents['schemas']['PickpocketResponse'];
-export type SensualTouchRequest = ApiComponents['schemas']['SensualTouchRequest'];
-export type SensualTouchResponse = ApiComponents['schemas']['SensualTouchResponse'];
+export type { PickpocketRequest, PickpocketResponse, SensualTouchRequest, SensualTouchResponse };
 
 // ===================
 // Quest Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export type QuestObjectiveDTO = ApiComponents['schemas']['QuestObjective'];
-export type QuestDTO = ApiComponents['schemas']['Quest'];
+export type QuestObjectiveDTO = QuestObjective;
+export type QuestDTO = Quest;
 
 // ===================
 // Inventory Types (API DTOs aliased from OpenAPI)
 // ===================
 
-export type InventoryItemDTO = ApiComponents['schemas']['InventoryItem'];
+export type InventoryItemDTO = InventoryItem;
 
 // ===================
 // Relationship Preview Types [frontend-only]
