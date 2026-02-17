@@ -50,7 +50,7 @@ export function AssetInput() {
       try {
         const response = await listAssets({
           q: query || undefined,
-          filters: { media_type: 'image' },
+          filters: { media_type: ['image', 'video'] },
           limit: 12,
         });
         setResults(fromAssetResponses(response.assets));
@@ -66,9 +66,13 @@ export function AssetInput() {
 
   const handleSelect = useCallback((asset: AssetModel) => {
     const urls = getAssetDisplayUrls(asset);
-    const url = urls.mainUrl || urls.previewUrl || urls.thumbnailUrl;
+    // Prefer still-image URLs for video assets because playground overlay uses <img>.
+    const url =
+      asset.mediaType === 'video'
+        ? (urls.previewUrl || urls.thumbnailUrl || urls.mainUrl)
+        : (urls.mainUrl || urls.previewUrl || urls.thumbnailUrl);
     if (url) {
-      setAsset(asset.id, url);
+      setAsset(asset.id, url, asset.mediaType === 'video' ? 'video' : 'image');
       setSelectedAsset(asset);
     }
     setIsOpen(false);
@@ -147,7 +151,7 @@ export function AssetInput() {
 
       {isOpen && !isLoading && results.length === 0 && query.trim() && (
         <div className="absolute z-50 left-0 right-0 mt-1 py-3 text-center text-xs text-neutral-400 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg">
-          No images found
+          No assets found
         </div>
       )}
     </div>

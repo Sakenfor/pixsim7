@@ -18,6 +18,8 @@ export interface DetectionInput {
   assetId?: number;
   /** Asset URL (for backend detectors) */
   assetUrl?: string;
+  /** Optional media type hint for detector-specific routing/defaults */
+  mediaType?: 'image' | 'video';
 }
 
 export interface DetectedZones {

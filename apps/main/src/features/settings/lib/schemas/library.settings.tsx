@@ -20,10 +20,8 @@ import { usePanelConfigStore, type GalleryPanelSettings, type GalleryGroupMultiL
 
 import { pixsimClient } from '@/lib/api';
 
-import { ContentBlobManagement } from '../../components/shared/ContentBlobManagement';
 import { LocalFoldersStatus } from '../../components/shared/LocalFoldersStatus';
-import { SHAManagement } from '../../components/shared/SHAManagement';
-import { StorageSync } from '../../components/shared/StorageSync';
+import { MaintenanceDashboard } from '../../components/shared/MaintenanceDashboard';
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
 
 const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
@@ -130,24 +128,6 @@ const displayTab: SettingTab = {
           label: 'Prevent Disk Cache',
           description: 'Keep thumbnails in memory only. Reduces Chrome cache on disk but uses more RAM.',
           defaultValue: false,
-        },
-      ],
-    },
-    {
-      id: 'visual-similarity',
-      title: 'Visual Similarity',
-      description: 'Client-side defaults for "Similar content" asset discovery.',
-      fields: [
-        {
-          id: 'visualSimilarityThreshold',
-          type: 'range',
-          label: 'Default Similarity Threshold',
-          description: 'Higher values are stricter and return fewer, closer matches.',
-          min: 0.1,
-          max: 1.0,
-          step: 0.05,
-          defaultValue: 0.3,
-          format: (v: number) => v.toFixed(2),
         },
       ],
     },
@@ -411,44 +391,15 @@ const maintenanceTab: SettingTab = {
   icon: '🔧',
   groups: [
     {
-      id: 'sha-hashes',
-      title: 'SHA256 Hashes',
-      description: 'Compute hashes for duplicate detection.',
+      id: 'maintenance-dashboard',
+      title: 'Maintenance',
       showWhen: adminOnly,
       fields: [
         {
-          id: 'sha-management-widget',
+          id: 'maintenance-dashboard-widget',
           type: 'custom',
-          label: 'SHA256 Hashes',
-          component: SHAManagement,
-        },
-      ],
-    },
-    {
-      id: 'storage-sync',
-      title: 'Storage System',
-      description: 'Content-addressed storage status.',
-      showWhen: adminOnly,
-      fields: [
-        {
-          id: 'storage-sync-widget',
-          type: 'custom',
-          label: 'Storage System',
-          component: StorageSync,
-        },
-      ],
-    },
-    {
-      id: 'content-blobs',
-      title: 'Content Dedup',
-      description: 'Link assets to global content records for future deduplication.',
-      showWhen: adminOnly,
-      fields: [
-        {
-          id: 'content-blob-widget',
-          type: 'custom',
-          label: 'Content Dedup',
-          component: ContentBlobManagement,
+          label: 'Maintenance',
+          component: MaintenanceDashboard,
         },
       ],
     },
@@ -473,8 +424,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
   // Media settings (local)
   const preventDiskCache = useMediaSettingsStore((s) => s.preventDiskCache);
   const setPreventDiskCache = useMediaSettingsStore((s) => s.setPreventDiskCache);
-  const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
-  const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
 
   // Gallery panel config settings (grouping layout)
   const galleryPanelConfig = usePanelConfigStore((s) => s.panelConfigs.gallery);
@@ -526,7 +475,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
 
       // Local media settings
       if (fieldId === 'preventDiskCache') return preventDiskCache;
-      if (fieldId === 'visualSimilarityThreshold') return visualSimilarityThreshold;
 
       // Gallery panel config settings
       if (fieldId === 'groupMultiLayout') return gallerySettings.groupMultiLayout ?? 'stack';
@@ -569,10 +517,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       // Local media settings
       if (fieldId === 'preventDiskCache') {
         setPreventDiskCache(value);
-        return;
-      }
-      if (fieldId === 'visualSimilarityThreshold') {
-        setVisualSimilarityThreshold(value);
         return;
       }
 
@@ -626,7 +570,6 @@ function useLibrarySettingsStoreAdapter(): SettingStoreAdapter {
       qualityMode,
       preferOriginal,
       preventDiskCache,
-      visualSimilarityThreshold,
       groupMultiLayout: gallerySettings.groupMultiLayout ?? 'stack',
       lf_autoHashOnSelect,
       lf_autoCheckBackend,

@@ -12,61 +12,11 @@ import {
 } from '@pixsim7/shared.types';
 import { useEffect, useState } from 'react';
 
-import { FALLBACK_PROMPT_ANALYZERS } from '@lib/analyzers';
-import { listPromptAnalyzers, type AnalyzerInfo } from '@lib/api/analyzers';
 import { pixsimClient } from '@lib/api/client';
 
 import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
-
-/**
- * Custom component for analyzer selection (needs async data)
- */
-function AnalyzerSelector({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-}) {
-  const [analyzers, setAnalyzers] = useState<AnalyzerInfo[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    listPromptAnalyzers()
-      .then((res) => {
-        setAnalyzers([...res.analyzers]);
-        setLoading(false);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch analyzers:', err);
-        setAnalyzers(FALLBACK_PROMPT_ANALYZERS);
-        setLoading(false);
-      });
-  }, []);
-
-  return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled || loading}
-      className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed max-w-[200px]"
-    >
-      {loading ? (
-        <option>Loading...</option>
-      ) : (
-        analyzers.map((analyzer) => (
-          <option key={analyzer.id} value={analyzer.id}>
-            {analyzer.name}
-          </option>
-        ))
-      )}
-    </select>
-  );
-}
 
 const analysisTab: SettingTab = {
   id: 'analysis',
@@ -75,8 +25,9 @@ const analysisTab: SettingTab = {
   groups: [
     {
       id: 'prompt-analysis',
-      title: 'Prompt Analysis',
-      description: 'Control how prompts are analyzed and stored when creating generations.',
+      title: 'Prompt Analysis Behavior',
+      description:
+        'Control prompt analysis behavior. Default analyzer selection lives in Analysis > Runtime Defaults.',
       fields: [
         {
           id: 'autoAnalyze',
@@ -84,14 +35,6 @@ const analysisTab: SettingTab = {
           label: 'Auto-analyze prompts',
           description: 'Automatically analyze prompts when creating generations',
           defaultValue: true,
-        },
-        {
-          id: 'defaultAnalyzer',
-          type: 'custom',
-          label: 'Default Analyzer',
-          description: 'Which analyzer to use for prompt parsing',
-          component: AnalyzerSelector,
-          defaultValue: 'simple',
         },
       ],
     },
@@ -307,7 +250,6 @@ const semanticTab: SettingTab = {
 function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
   const {
     autoAnalyze,
-    defaultAnalyzer,
     autoExtractBlocks,
     extractionThreshold,
     defaultCurationStatus,
@@ -317,7 +259,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     semanticThreshold,
     semanticLimit,
     setAutoAnalyze,
-    setDefaultAnalyzer,
     setAutoExtractBlocks,
     setExtractionThreshold,
     setDefaultCurationStatus,
@@ -336,7 +277,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       }
       switch (fieldId) {
         case 'autoAnalyze': return autoAnalyze;
-        case 'defaultAnalyzer': return defaultAnalyzer;
         case 'autoExtractBlocks': return autoExtractBlocks;
         case 'extractionThreshold': return extractionThreshold.toString();
         case 'defaultCurationStatus': return defaultCurationStatus;
@@ -355,7 +295,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
       }
       switch (fieldId) {
         case 'autoAnalyze': setAutoAnalyze(value); break;
-        case 'defaultAnalyzer': setDefaultAnalyzer(value); break;
         case 'autoExtractBlocks': setAutoExtractBlocks(value); break;
         case 'extractionThreshold': setExtractionThreshold(parseInt(value, 10)); break;
         case 'defaultCurationStatus': setDefaultCurationStatus(value); break;
@@ -367,7 +306,6 @@ function usePromptSettingsStoreAdapter(): SettingStoreAdapter {
     },
     getAll: () => ({
       autoAnalyze,
-      defaultAnalyzer,
       autoExtractBlocks,
       extractionThreshold: extractionThreshold.toString(),
       defaultCurationStatus,

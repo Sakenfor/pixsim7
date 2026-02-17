@@ -15,28 +15,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 
 import { getUserPreferences, updatePreferenceKey } from '@/lib/api/userPreferences';
-import type { AutoTagsPreferences, AnalyzerPreferences } from '@/lib/api/userPreferences';
+import type {
+  AutoTagsPreferences,
+  AnalyzerPreferences,
+  TagDisplayPreferences,
+} from '@/lib/api/userPreferences';
 
 import { settingsSchemaRegistry, type SettingTab, type SettingStoreAdapter } from '../core';
-
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface TagDisplayPreferences {
-  /** Default namespace when creating tags without specifying one */
-  default_namespace?: string;
-  /** Namespaces to show first in tag lists */
-  favorite_namespaces?: string[];
-  /** Namespaces to hide from the UI */
-  hidden_namespaces?: string[];
-  /** What happens when clicking a tag */
-  click_action?: 'filter' | 'add_to_search' | 'copy';
-  /** Show tag usage counts in lists */
-  show_usage_counts?: boolean;
-  /** Group tags by namespace in displays */
-  group_by_namespace?: boolean;
-}
 
 // =============================================================================
 // Defaults (must match backend DEFAULT_AUTO_TAGS and DEFAULT_ANALYZER_SETTINGS)
@@ -64,7 +49,6 @@ const DEFAULT_AUTO_TAGS: AutoTagsPreferences = {
 };
 
 const DEFAULT_ANALYZER: AnalyzerPreferences = {
-  default_id: 'prompt:simple',
   auto_apply_tags: true,
   tag_prefix: '',
 };
@@ -230,21 +214,10 @@ const analysisTab: SettingTab = {
   groups: [
     {
       id: 'analyzer',
-      title: 'Prompt Analysis',
-      description: 'Extract tags from generation prompts automatically.',
+      title: 'Analyzer Tags',
+      description:
+        'Configure how analyzer-derived tags are applied. Analyzer selection lives in Analysis > Runtime Defaults.',
       fields: [
-        {
-          id: 'analyzer.default_id',
-          type: 'select',
-          label: 'Default Analyzer',
-          description: 'Analyzer to use for prompt analysis.',
-          defaultValue: 'prompt:simple',
-          options: [
-            { value: 'prompt:simple', label: 'Simple (rule-based, fast)' },
-            { value: 'prompt:claude', label: 'Claude (AI-powered, accurate)' },
-            { value: 'prompt:openai', label: 'OpenAI (AI-powered)' },
-          ],
-        },
         {
           id: 'analyzer.auto_apply_tags',
           type: 'toggle',

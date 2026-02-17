@@ -1,10 +1,15 @@
 /**
  * Analysis Settings Module
  *
- * Manage analyzer instances (LLM/vision analyzers with custom providers and models).
+ * Manage default analyzer selection and advanced analyzer overrides.
  */
 import { useState, useEffect, useCallback } from 'react';
 
+import {
+  DEFAULT_ASSET_ANALYZER_ID,
+  DEFAULT_PROMPT_ANALYZER_ID,
+  useAnalyzerSettingsStore,
+} from '@lib/analyzers';
 import {
   listAnalyzers,
   listAnalyzerInstances,
@@ -16,6 +21,9 @@ import {
   type CreateAnalyzerInstanceRequest,
   type UpdateAnalyzerInstanceRequest,
 } from '@lib/api/analyzers';
+
+import { useMediaSettingsStore } from '@features/assets';
+import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
@@ -42,6 +50,7 @@ const INITIAL_FORM_STATE: FormState = {
   priority: 0,
   config: '{}',
 };
+const DEFAULT_VISUAL_SIMILARITY_THRESHOLD = 0.3;
 
 /** Mask sensitive config values for display */
 function maskConfigValue(key: string, value: unknown): string {
@@ -417,6 +426,7 @@ export function AnalyzersSettings() {
   const [instances, setInstances] = useState<AnalyzerInstance[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [formMode, setFormMode] = useState<FormMode>('create');
@@ -425,6 +435,26 @@ export function AnalyzersSettings() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+
+  const defaultPromptAnalyzer = usePromptSettingsStore((s) => s.defaultAnalyzer);
+  const setDefaultPromptAnalyzer = usePromptSettingsStore((s) => s.setDefaultAnalyzer);
+  const defaultImageAnalyzer = useAnalyzerSettingsStore((s) => s.defaultImageAnalyzer);
+  const setDefaultImageAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultImageAnalyzer);
+  const defaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.defaultVideoAnalyzer);
+  const setDefaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultVideoAnalyzer);
+  const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
+  const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
+
+  const promptAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'prompt');
+  const assetAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'asset');
+  const hasPromptDefaultOption = promptAnalyzers.some((analyzer) => analyzer.id === defaultPromptAnalyzer);
+  const hasImageDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultImageAnalyzer);
+  const hasVideoDefaultOption = assetAnalyzers.some((analyzer) => analyzer.id === defaultVideoAnalyzer);
+  const isAtRecommendedDefaults =
+    defaultPromptAnalyzer === DEFAULT_PROMPT_ANALYZER_ID &&
+    defaultImageAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
+    defaultVideoAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
+    Math.abs(visualSimilarityThreshold - DEFAULT_VISUAL_SIMILARITY_THRESHOLD) < 0.001;
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -483,6 +513,13 @@ export function AnalyzersSettings() {
     setFormState(INITIAL_FORM_STATE);
     setEditingId(null);
     setFormError(null);
+  };
+
+  const handleResetDefaults = () => {
+    setDefaultPromptAnalyzer(DEFAULT_PROMPT_ANALYZER_ID);
+    setDefaultImageAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
+    setDefaultVideoAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
+    setVisualSimilarityThreshold(DEFAULT_VISUAL_SIMILARITY_THRESHOLD);
   };
 
   const handleSubmit = async () => {
@@ -588,20 +625,13 @@ export function AnalyzersSettings() {
   return (
     <div className="flex-1 overflow-auto p-4 space-y-4 text-xs text-neutral-800 dark:text-neutral-100">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div>
         <div>
-          <h2 className="text-sm font-semibold">Analyzer Instances</h2>
+          <h2 className="text-sm font-semibold">Analysis Settings</h2>
           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
-            Override analyzer configuration per-provider (model, API key, custom params).
+            Choose defaults for analysis workflows. Advanced per-provider/model overrides are optional.
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          disabled={showForm}
-          className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
-        >
-          + New Instance
-        </button>
       </div>
 
       {/* Credential bridge info */}
@@ -611,55 +641,303 @@ export function AnalyzersSettings() {
         for custom overrides (different model, base URL, or provider-specific config).
       </div>
 
-      {/* Error banner */}
-      {error && instances.length > 0 && (
-        <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-[11px] text-red-700 dark:text-red-300">
-          {error}
-        </div>
-      )}
+      {/* Status */}
+      <section className="space-y-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Status
+        </h3>
+        <div className="grid gap-3 md:grid-cols-5 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
+          <div className="space-y-1">
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Prompt Default</div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px]">{defaultPromptAnalyzer}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                hasPromptDefaultOption
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+              }`}>
+                {hasPromptDefaultOption ? 'valid' : 'missing'}
+              </span>
+            </div>
+          </div>
 
-      {/* Create/Edit Form */}
-      {showForm && (
-        <InstanceForm
-          mode={formMode}
-          formState={formState}
-          analyzers={analyzers}
-          isSubmitting={isSubmitting}
-          error={formError}
-          onChange={handleFormChange}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-        />
-      )}
+          <div className="space-y-1">
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Image Default</div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px]">{defaultImageAnalyzer}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                hasImageDefaultOption
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+              }`}>
+                {hasImageDefaultOption ? 'valid' : 'missing'}
+              </span>
+            </div>
+          </div>
 
-      {/* Instances List */}
-      {instances.length === 0 ? (
-        <div className="p-4 bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-700 rounded text-center">
-          <p className="text-neutral-600 dark:text-neutral-400 text-[11px]">
-            No analyzer instances configured.
-          </p>
-          <p className="text-neutral-500 dark:text-neutral-500 text-[10px] mt-1">
-            LLM analyzers use your Provider Settings credentials by default.
-            Create an instance only if you need custom overrides.
-          </p>
+          <div className="space-y-1">
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Video Default</div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px]">{defaultVideoAnalyzer}</span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                hasVideoDefaultOption
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+                  : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+              }`}>
+                {hasVideoDefaultOption ? 'valid' : 'missing'}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Registered Analyzers</div>
+            <div className="text-[11px] text-neutral-700 dark:text-neutral-300">
+              {promptAnalyzers.length} prompt / {assetAnalyzers.length} asset
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">Similarity Default</div>
+            <div className="font-mono text-[11px] text-neutral-700 dark:text-neutral-300">
+              {visualSimilarityThreshold.toFixed(2)}
+            </div>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-2">
-          {instances
-            .sort((a, b) => b.priority - a.priority)
-            .map(instance => (
-              <InstanceCard
-                key={instance.id}
-                instance={instance}
+        <div className="flex justify-end">
+          <button
+            onClick={handleResetDefaults}
+            disabled={isAtRecommendedDefaults}
+            className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
+          >
+            Reset to Recommended
+          </button>
+        </div>
+      </section>
+
+      {/* Runtime defaults */}
+      <section className="space-y-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+          Default Analyzer Selection
+        </h3>
+        <div className="grid gap-3 md:grid-cols-4 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+              Prompt Analyzer
+            </label>
+            <select
+              value={defaultPromptAnalyzer}
+              onChange={(e) => setDefaultPromptAnalyzer(e.target.value)}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              {!hasPromptDefaultOption && (
+                <option value={defaultPromptAnalyzer}>Unavailable: {defaultPromptAnalyzer}</option>
+              )}
+              {promptAnalyzers.length === 0 && hasPromptDefaultOption && (
+                <option value={defaultPromptAnalyzer}>{defaultPromptAnalyzer}</option>
+              )}
+              {promptAnalyzers.map((analyzer) => (
+                <option key={analyzer.id} value={analyzer.id}>
+                  {analyzer.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+              <span className="font-semibold">Used by:</span> Prompt parsing and tag extraction in generation workflows.
+            </p>
+            {!hasPromptDefaultOption && (
+              <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                Selected analyzer is not currently registered.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+              Image Analyzer
+            </label>
+            <select
+              value={defaultImageAnalyzer}
+              onChange={(e) => setDefaultImageAnalyzer(e.target.value)}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              {!hasImageDefaultOption && (
+                <option value={defaultImageAnalyzer}>Unavailable: {defaultImageAnalyzer}</option>
+              )}
+              {assetAnalyzers.length === 0 && hasImageDefaultOption && (
+                <option value={defaultImageAnalyzer}>{defaultImageAnalyzer}</option>
+              )}
+              {assetAnalyzers.map((analyzer) => (
+                <option key={analyzer.id} value={analyzer.id}>
+                  {analyzer.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+              <span className="font-semibold">Used by:</span> Image-focused asset-analysis tools (zone detection and similar flows).
+            </p>
+            {!hasImageDefaultOption && (
+              <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                Selected analyzer is not currently registered.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+              Video Analyzer
+            </label>
+            <select
+              value={defaultVideoAnalyzer}
+              onChange={(e) => setDefaultVideoAnalyzer(e.target.value)}
+              className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
+            >
+              {!hasVideoDefaultOption && (
+                <option value={defaultVideoAnalyzer}>Unavailable: {defaultVideoAnalyzer}</option>
+              )}
+              {assetAnalyzers.length === 0 && hasVideoDefaultOption && (
+                <option value={defaultVideoAnalyzer}>{defaultVideoAnalyzer}</option>
+              )}
+              {assetAnalyzers.map((analyzer) => (
+                <option key={analyzer.id} value={analyzer.id}>
+                  {analyzer.name}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+              <span className="font-semibold">Used by:</span> Video-focused asset-analysis workflows and future video tooling.
+            </p>
+            {!hasVideoDefaultOption && (
+              <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                Selected analyzer is not currently registered.
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+              Default Similarity Threshold
+            </label>
+            <input
+              type="range"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={visualSimilarityThreshold}
+              onChange={(e) => setVisualSimilarityThreshold(parseFloat(e.target.value))}
+              className="w-full"
+            />
+            <div className="text-[11px] font-mono text-neutral-700 dark:text-neutral-300">
+              {visualSimilarityThreshold.toFixed(2)}
+            </div>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+              <span className="font-semibold">Used by:</span> Similar Content search defaults (higher = stricter).
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Advanced overrides */}
+      <section className="space-y-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+              Advanced Overrides (Provider/Model)
+            </h3>
+            <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-1">
+              Optional per-provider/per-model analyzer instances. Most users can leave this collapsed.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {showAdvanced && (
+              <button
+                onClick={handleCreate}
+                disabled={showForm}
+                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-neutral-300 disabled:cursor-not-allowed text-white rounded text-xs transition-colors"
+              >
+                + New Instance
+              </button>
+            )}
+            <button
+              onClick={() => {
+                if (showAdvanced) {
+                  handleCancel();
+                }
+                setShowAdvanced((prev) => !prev);
+              }}
+              className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 text-neutral-700 dark:text-neutral-300 transition-colors"
+            >
+              {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
+            </button>
+          </div>
+        </div>
+
+        {showAdvanced && (
+          <>
+            {error && instances.length > 0 && (
+              <div className="p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded text-[11px] text-red-700 dark:text-red-300">
+                {error}
+              </div>
+            )}
+
+            {showForm && (
+              <InstanceForm
+                mode={formMode}
+                formState={formState}
                 analyzers={analyzers}
-                onEdit={() => handleEdit(instance)}
-                onDelete={() => handleDelete(instance)}
-                onToggle={() => handleToggle(instance)}
-                isDeleting={deletingIds.has(instance.id)}
+                isSubmitting={isSubmitting}
+                error={formError}
+                onChange={handleFormChange}
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
               />
-            ))}
-        </div>
-      )}
+            )}
+
+            {instances.length === 0 ? (
+              <div className="p-4 bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-700 rounded text-center">
+                <p className="text-neutral-600 dark:text-neutral-400 text-[11px]">
+                  No analyzer instances configured.
+                </p>
+                <p className="text-neutral-500 dark:text-neutral-500 text-[10px] mt-1">
+                  LLM analyzers use your Provider Settings credentials by default.
+                  Create an instance only if you need custom overrides.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {instances
+                  .sort((a, b) => b.priority - a.priority)
+                  .map(instance => (
+                    <InstanceCard
+                      key={instance.id}
+                      instance={instance}
+                      analyzers={analyzers}
+                      onEdit={() => handleEdit(instance)}
+                      onDelete={() => handleDelete(instance)}
+                      onToggle={() => handleToggle(instance)}
+                      isDeleting={deletingIds.has(instance.id)}
+                    />
+                  ))}
+              </div>
+            )}
+
+            <section className="space-y-2 pt-2">
+              <h4 className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+                About Advanced Overrides
+              </h4>
+              <div className="text-[10px] text-neutral-600 dark:text-neutral-400 space-y-2">
+                <p>
+                  Analyzer instances let you configure custom providers, models, and API keys for analyzers.
+                  This is useful for using your own API credentials or switching between models.
+                </p>
+                <p>
+                  Instances are checked in priority order (highest first). The first enabled instance
+                  that matches the analyzer type will be used.
+                </p>
+              </div>
+            </section>
+          </>
+        )}
+      </section>
 
       {/* Info Section */}
       <section className="space-y-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
@@ -703,22 +981,6 @@ export function AnalyzersSettings() {
         </div>
       </section>
 
-      {/* Help Section */}
-      <section className="space-y-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-          About Analyzer Instances
-        </h3>
-        <div className="text-[10px] text-neutral-600 dark:text-neutral-400 space-y-2">
-          <p>
-            Analyzer instances let you configure custom providers, models, and API keys for analyzers.
-            This is useful for using your own API credentials or switching between different models.
-          </p>
-          <p>
-            Instances are checked in priority order (highest first). The first enabled instance
-            that matches the analyzer type will be used.
-          </p>
-        </div>
-      </section>
     </div>
   );
 }
@@ -733,7 +995,7 @@ settingsRegistry.register({
   subSections: [
     {
       id: 'instances',
-      label: 'Instances',
+      label: 'Defaults & Overrides',
       component: AnalyzersSettings,
     },
   ],

@@ -32,6 +32,8 @@ interface GizmoLabState {
   assetId: number | null;
   /** Loaded asset image URL */
   assetUrl: string | null;
+  /** Loaded asset media type (image/video) */
+  assetMediaType: 'image' | 'video' | null;
   /** Zones detected on the loaded asset */
   detectedZones: NpcBodyZone[];
   /** Currently selected detector */
@@ -50,7 +52,7 @@ interface GizmoLabActions {
 
   // ===== Asset + Detection =====
 
-  setAsset: (id: number, url: string) => void;
+  setAsset: (id: number, url: string, mediaType?: 'image' | 'video') => void;
   clearAsset: () => void;
   setDetectorId: (id: string) => void;
   runDetection: (image: HTMLImageElement) => Promise<void>;
@@ -65,6 +67,7 @@ export const useGizmoLabStore = create<GizmoLabState & GizmoLabActions>((set, ge
 
   assetId: null,
   assetUrl: null,
+  assetMediaType: null,
   detectedZones: [],
   activeDetectorId: 'preset',
   isDetecting: false,
@@ -75,13 +78,14 @@ export const useGizmoLabStore = create<GizmoLabState & GizmoLabActions>((set, ge
   setGizmoFilter: (category) => set({ gizmoFilter: category }),
   setToolFilter: (type) => set({ toolFilter: type }),
 
-  setAsset: (id, url) => set({ assetId: id, assetUrl: url, detectedZones: [], detectionError: null }),
-  clearAsset: () => set({ assetId: null, assetUrl: null, detectedZones: [], detectionError: null }),
+  setAsset: (id, url, mediaType = 'image') =>
+    set({ assetId: id, assetUrl: url, assetMediaType: mediaType, detectedZones: [], detectionError: null }),
+  clearAsset: () => set({ assetId: null, assetUrl: null, assetMediaType: null, detectedZones: [], detectionError: null }),
   setDetectorId: (id) => set({ activeDetectorId: id }),
   setDetectedZones: (zones) => set({ detectedZones: zones }),
 
   runDetection: async (image) => {
-    const { activeDetectorId, assetId, assetUrl } = get();
+    const { activeDetectorId, assetId, assetUrl, assetMediaType } = get();
     const detector = zoneDetectorRegistry.get(activeDetectorId);
     if (!detector) {
       set({ detectionError: `Unknown detector: ${activeDetectorId}` });
@@ -91,7 +95,12 @@ export const useGizmoLabStore = create<GizmoLabState & GizmoLabActions>((set, ge
     set({ isDetecting: true, detectionError: null });
 
     try {
-      const result = await detector.detect({ image, assetId: assetId ?? undefined, assetUrl: assetUrl ?? undefined });
+      const result = await detector.detect({
+        image,
+        assetId: assetId ?? undefined,
+        assetUrl: assetUrl ?? undefined,
+        mediaType: assetMediaType ?? undefined,
+      });
       set({ detectedZones: result.zones, isDetecting: false });
     } catch (err) {
       set({

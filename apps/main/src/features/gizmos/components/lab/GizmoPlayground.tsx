@@ -35,6 +35,11 @@ export function GizmoPlayground() {
   const [imageLoaded, setImageLoaded] = useState(false);
 
   const detectors = useMemo(() => zoneDetectorRegistry.list(), []);
+  const activeDetector = useMemo(
+    () => zoneDetectorRegistry.get(activeDetectorId) ?? null,
+    [activeDetectorId]
+  );
+  const canRunWithoutLoadedImage = activeDetector?.kind === 'server';
 
   // Reset image state when URL changes
   useEffect(() => {
@@ -46,17 +51,17 @@ export function GizmoPlayground() {
   }, []);
 
   const handleDetect = useCallback(() => {
-    if (imageRef.current && imageLoaded) {
+    if (imageRef.current && (imageLoaded || canRunWithoutLoadedImage)) {
       runDetection(imageRef.current);
     }
-  }, [runDetection, imageLoaded]);
+  }, [runDetection, imageLoaded, canRunWithoutLoadedImage]);
 
   // Auto-detect when detector changes or image loads
   useEffect(() => {
-    if (imageLoaded && imageRef.current) {
+    if ((imageLoaded || canRunWithoutLoadedImage) && imageRef.current) {
       runDetection(imageRef.current);
     }
-  }, [activeDetectorId, imageLoaded, runDetection]);
+  }, [activeDetectorId, imageLoaded, runDetection, canRunWithoutLoadedImage]);
 
   const gizmoConfig = useMemo((): SceneGizmoConfig | null => {
     if (!selectedGizmo) return null;
@@ -109,7 +114,7 @@ export function GizmoPlayground() {
           </select>
           <button
             onClick={handleDetect}
-            disabled={isDetecting || !imageLoaded}
+            disabled={isDetecting || (!imageLoaded && !canRunWithoutLoadedImage)}
             className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDetecting ? (

@@ -52,7 +52,6 @@ class AssetCreationMixin:
 
     # Default analyzer settings
     DEFAULT_ANALYZER_SETTINGS = {
-        "default_id": "prompt:simple",  # Default analyzer for prompts
         "auto_apply_tags": True,        # Apply analysis tags to generated assets
         "tag_prefix": "",               # Optional prefix for analysis tags (e.g., "prompt:")
     }
@@ -200,8 +199,12 @@ class AssetCreationMixin:
             duration_sec=duration_sec,  # None for images
             sync_status=SyncStatus.REMOTE,
             source_generation_id=generation.id,
+            operation_type=generation.operation_type.value if generation.operation_type else None,
+            reproducible_hash=getattr(generation, 'reproducible_hash', None),
+            prompt_version_id=getattr(generation, 'prompt_version_id', None),
             provider_uploads={submission.provider_id: provider_asset_id},
             media_metadata=metadata,
+            prompt=prompt_text,
             prompt_analysis=prompt_analysis_result,
             created_at=datetime.now(timezone.utc),
         )
