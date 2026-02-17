@@ -10,7 +10,6 @@ export default defineConfig({
     react(),
     tsconfigPaths({
       projects: [
-        path.resolve(__dirname, '../main/tsconfig.app.json'),
         path.resolve(__dirname, './tsconfig.app.json'),
       ],
     }),
@@ -21,7 +20,6 @@ export default defineConfig({
       strict: false,
       allow: [
         path.resolve(__dirname, '.'),
-        path.resolve(__dirname, '../main'),
         path.resolve(__dirname, '../../packages'),
       ],
     },

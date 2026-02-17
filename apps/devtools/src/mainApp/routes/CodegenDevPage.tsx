@@ -7,8 +7,8 @@ import {
   type CodegenRunResponse,
   type CodegenTask,
 } from '@devtools/mainApp/codegenApi';
-import { Icon } from '@devtools/mainApp/icon';
-import { isAdminUser } from '@devtools/mainApp/userRoles';
+import { Icon } from '@devtools/mainApp/lib/icons';
+import { canRunCodegen } from '@devtools/mainApp/userRoles';
 import { useAuthStore } from '@devtools/mainApp/authStore';
 
 type RunState = 'idle' | 'loading' | 'error';
@@ -50,7 +50,7 @@ function getRequestedTaskIdFromQuery(): string {
 
 export function CodegenDev() {
   const user = useAuthStore((s) => s.user);
-  const canRunCodegen = isAdminUser(user);
+  const canAccessCodegen = canRunCodegen(user);
   const requestedTaskId = useMemo(getRequestedTaskIdFromQuery, []);
 
   const [tasks, setTasks] = useState<CodegenTask[]>([]);
@@ -69,7 +69,7 @@ export function CodegenDev() {
   );
 
   const loadTasks = useCallback(async () => {
-    if (!canRunCodegen) {
+    if (!canAccessCodegen) {
       return;
     }
     setTasksLoading(true);
@@ -92,7 +92,7 @@ export function CodegenDev() {
     } finally {
       setTasksLoading(false);
     }
-  }, [canRunCodegen, requestedTaskId]);
+  }, [canAccessCodegen, requestedTaskId]);
 
   useEffect(() => {
     void loadTasks();
@@ -136,7 +136,7 @@ export function CodegenDev() {
     [selectedTaskId],
   );
 
-  if (!canRunCodegen) {
+  if (!canAccessCodegen) {
     return (
       <div className="mx-auto max-w-5xl p-6 space-y-4 content-with-dock min-h-screen">
         <header className="border-b border-neutral-200 dark:border-neutral-800 pb-4">
@@ -145,7 +145,7 @@ export function CodegenDev() {
             Code Generation
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-            Admin access is required to run backend codegen tasks.
+            The <code>devtools.codegen</code> permission is required to run backend codegen tasks.
           </p>
         </header>
       </div>
@@ -162,7 +162,7 @@ export function CodegenDev() {
               Code Generation
             </h1>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Execute tasks from <code>tools/codegen/manifest.ts</code> through backend admin APIs.
+              Execute tasks from <code>tools/codegen/manifest.ts</code> through backend devtools APIs.
             </p>
           </div>
           <button

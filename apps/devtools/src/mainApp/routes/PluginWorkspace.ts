@@ -1,1 +1,0 @@
-export { PluginWorkspaceRoute } from './PluginWorkspacePage';
