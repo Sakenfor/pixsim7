@@ -419,6 +419,68 @@ async def _load_source_path_options(
     ]
 
 
+def _build_source_video_expr() -> Any:
+    """Computed expression: folder/filename (or just filename if no folder)."""
+    folder = Asset.upload_context["source_folder"].astext
+    filename = Asset.upload_context["source_filename"].astext
+    return case(
+        (
+            (folder.isnot(None)) & (folder != ""),
+            folder + literal("/") + filename,
+        ),
+        else_=filename,
+    )
+
+
+async def _load_source_video_options(
+    db: AsyncSession,
+    user: Any,
+    include_counts: bool,
+    context: dict[str, Any] | None,
+    limit: Optional[int],
+) -> list[tuple[str, Optional[str], Optional[int]]]:
+    video_expr = _build_source_video_expr()
+    filters = [
+        Asset.user_id == user.id,
+        Asset.is_archived == False,
+        Asset.upload_method == "video_capture",
+        Asset.upload_context["source_filename"].astext.isnot(None),
+        Asset.upload_context["source_filename"].astext != "",
+    ]
+    if context:
+        filters.extend(asset_filter_registry.build_filter_conditions(context, exclude_key="source_filename"))
+
+    if include_counts:
+        stmt = (
+            select(video_expr.label("video"), func.count(Asset.id).label("count"))
+            .where(*filters)
+            .group_by(video_expr)
+            .order_by(func.count(Asset.id).desc())
+        )
+        if limit:
+            stmt = stmt.limit(limit)
+        result = await db.execute(stmt)
+        return [
+            (row.video, row.video, row.count)
+            for row in result.all()
+            if row.video
+        ]
+
+    stmt = (
+        select(distinct(video_expr).label("video"))
+        .where(*filters)
+        .order_by(video_expr.asc())
+    )
+    if limit:
+        stmt = stmt.limit(limit)
+    result = await db.execute(stmt)
+    return [
+        (row.video, row.video, None)
+        for row in result.all()
+        if row.video
+    ]
+
+
 asset_filter_registry = AssetFilterRegistry()
 
 
@@ -492,6 +554,19 @@ def register_default_asset_filters() -> None:
             column=_build_source_path_expr(),
             option_loader=_load_source_path_options,
             depends_on={"upload_method": {"local"}},
+            multi=True,
+        )
+    )
+    asset_filter_registry.register(
+        FilterSpec(
+            key="source_filename",
+            type="enum",
+            label="Source Video",
+            description="Source video grouped by folder",
+            option_source="custom",
+            column=_build_source_video_expr(),
+            option_loader=_load_source_video_options,
+            depends_on={"upload_method": {"video_capture"}},
             multi=True,
         )
     )

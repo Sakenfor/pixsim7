@@ -91,8 +91,7 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
         "source_filename": {
           "type": "string",
           "label": "Source Video",
-          "description": "Source video file name",
-          "filterable": true
+          "description": "Source video file name"
         },
         "source_asset_id": {
           "type": "number",

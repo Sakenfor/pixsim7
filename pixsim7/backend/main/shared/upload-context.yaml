@@ -65,7 +65,6 @@ upload_methods:
         type: string
         label: Source Video
         description: Source video file name
-        filterable: true
       source_asset_id:
         type: number
         label: Source Asset
