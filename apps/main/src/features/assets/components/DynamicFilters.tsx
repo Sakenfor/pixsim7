@@ -276,11 +276,15 @@ export function DynamicFilters({
           filter.key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
         const isPinned = pinnedKeys.includes(filter.key);
+        // When idle, the button stays at icon-width and the label floats
+        // separately with pointer-events-none so it doesn't block neighbors.
+        const isInFlow = hasSelection || isOpen;
 
         return (
           <div
             key={filter.key}
-            className="relative group flex-none"
+            className={`relative group flex-none ${isInFlow ? '' : 'w-7 h-7'}`}
+            style={!isInFlow && isVisible ? { zIndex: 30 } : undefined}
             onMouseEnter={() => openHover(filter.key)}
             onMouseLeave={() => closeHover(filter.key)}
             onContextMenu={(e) => {
@@ -304,13 +308,13 @@ export function DynamicFilters({
                   return next;
                 })
               }
-              className={`relative z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs overflow-hidden transition-[max-width,background-color,border-color] duration-200 ${
+              className={`${isInFlow ? 'relative' : 'absolute left-0 top-0 w-7 justify-center'} z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
                 hasSelection
                   ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
                   : isOpen
-                    ? 'max-w-[320px] border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
-                    : 'max-w-7 border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 group-hover:max-w-[320px] group-focus-within:max-w-[320px] group-hover:border-neutral-300 dark:group-hover:border-neutral-600'
-              } ${hasSelection ? 'max-w-[320px]' : ''}`}
+                    ? 'border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
+                    : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+              }`}
             >
               <span className="relative flex-shrink-0">
                 <Icon
@@ -324,36 +328,51 @@ export function DynamicFilters({
                   </span>
                 )}
               </span>
-              <span
-                className={`font-medium whitespace-nowrap overflow-hidden transition-all duration-200 ${
-                  isOpen || hasSelection
-                    ? 'max-w-[240px] opacity-100'
-                    : 'max-w-0 opacity-0 group-hover:max-w-[240px] group-hover:opacity-100 group-focus-within:max-w-[240px] group-focus-within:opacity-100'
-                }`}
-              >
-                {displayLabel}
-              </span>
-              {isPinned && (
+              {isInFlow && (
+                <span className="font-medium whitespace-nowrap">
+                  {displayLabel}
+                </span>
+              )}
+              {isInFlow && isPinned && (
                 <span className="flex-shrink-0 text-accent">
                   <Icon name="pin" size={10} className="w-2.5 h-2.5" />
                 </span>
               )}
+              {isInFlow && (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePin(filter.key);
+                  }}
+                  className={`flex-shrink-0 cursor-pointer transition-opacity duration-150 ${
+                    isPinned
+                      ? 'opacity-0'
+                      : 'opacity-0 hover:!opacity-100'
+                  }`}
+                >
+                  <Icon name="pin" size={10} className="w-2.5 h-2.5" />
+                </span>
+              )}
+            </button>
+            {/* Floating label — pointer-events-none so the mouse passes through to neighbors */}
+            {!isInFlow && (
               <span
-                role="button"
-                tabIndex={-1}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePin(filter.key);
-                }}
-                className={`flex-shrink-0 cursor-pointer transition-opacity duration-150 ${
-                  isPinned
-                    ? 'opacity-0'
-                    : 'opacity-0 group-hover:opacity-60 hover:!opacity-100'
+                className={`absolute left-[27px] top-0 z-20 h-7 inline-flex items-center gap-1 pl-1 pr-1.5 rounded-r border border-l-0 text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-150 text-neutral-700 dark:text-neutral-200 ${
+                  isVisible
+                    ? 'opacity-100 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900'
+                    : 'opacity-0 border-transparent'
                 }`}
               >
-                <Icon name="pin" size={10} className="w-2.5 h-2.5" />
+                {displayLabel}
+                {isPinned && (
+                  <span className="text-accent">
+                    <Icon name="pin" size={10} className="w-2.5 h-2.5" />
+                  </span>
+                )}
               </span>
-            </button>
+            )}
             <FilterDropdown
               anchorEl={triggerRefs.current.get(filter.key) || null}
               visible={isVisible}
