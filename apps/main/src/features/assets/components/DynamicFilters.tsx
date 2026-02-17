@@ -14,6 +14,7 @@ import { Icon } from '@lib/icons';
 import type { AssetFilters } from '../hooks/useAssets';
 import { useFilterMetadata } from '../hooks/useFilterMetadata';
 import type { FilterDefinition, FilterOptionValue } from '../lib/api';
+import { useCollapsedGroupsStore } from '../stores/collapsedGroupsStore';
 import { usePinnedFiltersStore } from '../stores/pinnedFiltersStore';
 
 /**
@@ -388,17 +389,23 @@ export function DynamicFilters({
 // ---------------------------------------------------------------------------
 
 function CollapsibleGroup({
+  filterKey,
+  groupKey,
   label,
   showHeader,
   count,
   children,
 }: {
+  filterKey: string;
+  groupKey: string;
   label: string;
   showHeader: boolean;
   count: number;
   children: ReactNode;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useCollapsedGroupsStore((s) => s.isCollapsed(filterKey, groupKey));
+  const toggle = useCollapsedGroupsStore((s) => s.toggle);
+  const setCollapsed = () => toggle(filterKey, groupKey);
 
   if (!showHeader) {
     return <div className="flex flex-col gap-1">{children}</div>;
@@ -408,7 +415,7 @@ function CollapsibleGroup({
     <div>
       <button
         type="button"
-        onClick={() => setCollapsed((prev) => !prev)}
+        onClick={setCollapsed}
         className="flex items-center gap-1 w-full text-[10px] uppercase tracking-wider text-neutral-500 dark:text-neutral-400 font-semibold px-1 py-1 sticky top-0 bg-white/95 dark:bg-neutral-900/95 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
       >
         <Icon
@@ -481,11 +488,11 @@ function OverflowMenu({ filters, metadata, values, onChange, hasSelection }: Ove
       </button>
       {open && rect && createPortal(
         <div
+          className="z-popover"
           style={{
             position: 'fixed',
             left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
             top: rect.bottom + 6,
-            zIndex: 60,
           }}
         >
           <Dropdown
@@ -620,11 +627,11 @@ function FilterDropdown({
 
   return createPortal(
     <div
+      className="z-popover"
       style={{
         position: 'fixed',
         left,
         top,
-        zIndex: 60,
       }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
@@ -803,6 +810,8 @@ function FilterControl({
               {groups.map(([namespace, nsOptions]) => (
                 <CollapsibleGroup
                   key={namespace}
+                  filterKey={key}
+                  groupKey={namespace}
                   label={namespace}
                   showHeader={showHeaders}
                   count={nsOptions.filter((o) => selectedValues.includes(String(o.value))).length}

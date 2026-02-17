@@ -344,15 +344,13 @@ export function CompactAssetCard({
           <>
             {/* Backdrop to close on click outside */}
             <div
-              className="fixed inset-0"
-              style={{ zIndex: 99998 }}
+              className="fixed inset-0 z-modal-backdrop"
               onClick={() => { setShowQueueGrid(false); setPopupPosition(null); }}
             />
             {/* Grid using fixed position with edge detection */}
             <div
-              className="fixed p-2 bg-neutral-900 rounded-lg shadow-2xl border border-neutral-600"
+              className="fixed p-2 bg-neutral-900 rounded-lg shadow-2xl border border-neutral-600 z-popover"
               style={{
-                zIndex: 99999,
                 display: 'grid',
                 gridTemplateColumns: `repeat(${queueItems.length <= 4 ? 2 : queueItems.length <= 9 ? 3 : 4}, 80px)`,
                 gap: '6px',

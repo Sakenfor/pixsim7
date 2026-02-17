@@ -91,7 +91,7 @@ export function SettingsFlyout({ panelId, children }: SettingsFlyoutProps) {
         panel &&
         createPortal(
           <div
-            className="fixed z-50 w-[320px] max-h-[min(600px,80vh)] overflow-y-auto rounded-lg border border-neutral-700/60 bg-neutral-900/95 p-3 shadow-xl backdrop-blur-sm"
+            className="fixed z-popover w-[320px] max-h-[min(600px,80vh)] overflow-y-auto rounded-lg border border-neutral-700/60 bg-neutral-900/95 p-3 shadow-xl backdrop-blur-sm"
             style={{ top: rect.top - 8, left: rect.right + 8 }}
             onMouseEnter={handlers.onMouseEnter}
             onMouseLeave={handlers.onMouseLeave}

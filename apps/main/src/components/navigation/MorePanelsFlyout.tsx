@@ -121,7 +121,7 @@ function FlyoutContent({
 
   return (
     <div
-      className="fixed z-50 py-2 w-[220px] max-h-[min(500px,80vh)] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col"
+      className="fixed z-popover py-2 w-[220px] max-h-[min(500px,80vh)] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col"
       style={{ top: maxTop, left }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}

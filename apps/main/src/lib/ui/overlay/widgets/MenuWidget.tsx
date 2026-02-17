@@ -348,7 +348,7 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
                 bg-white dark:bg-neutral-800
                 border border-neutral-200 dark:border-neutral-700
                 rounded-lg shadow-lg
-                py-1 z-50
+                py-1 z-popover
                 overflow-hidden
               `}
               style={(() => {

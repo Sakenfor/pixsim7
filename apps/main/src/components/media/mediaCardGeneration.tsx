@@ -6,8 +6,9 @@
  * Split from mediaCardWidgets.tsx for better separation of concerns.
  */
 
-import { ActionHintBadge, ButtonGroup, type ButtonGroupItem, useToastStore } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, type ButtonGroupItem, IconButton, useHoverExpand, useToastStore } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 
 import { getAsset, getAssetGenerationContext } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
@@ -18,6 +19,7 @@ import { createMenuWidget, type MenuItem, type BadgeWidgetConfig } from '@lib/ui
 import { createBadgeWidget } from '@lib/ui/overlay';
 
 import { fromAssetResponse, toSelectedAsset, type AssetModel } from '@features/assets';
+import { CompactAssetCard } from '@features/assets/components/shared';
 import {
   CAP_GENERATION_WIDGET,
   useCapability,
@@ -183,6 +185,121 @@ function hasAssetInputs(params: Record<string, unknown>): boolean {
 }
 
 /**
+ * Nested hover-expand that lazy-loads source asset thumbnails from the
+ * generation context.  Rendered inside the regenerate button's expand panel.
+ * Uses a portal so the popup escapes parent stacking contexts.
+ */
+function SourceAssetsPreview({ assetId, operationType, addInput }: {
+  assetId: number;
+  operationType: OperationType;
+  addInput: (opts: { asset: AssetModel; operationType: OperationType }) => void;
+}) {
+  const { isExpanded, handlers } = useHoverExpand({ expandDelay: 120, collapseDelay: 200 });
+  const [assets, setAssets] = useState<AssetModel[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const fetchedRef = useRef(false);
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Recalculate portal position when expanded
+  useEffect(() => {
+    if (isExpanded && rowRef.current) {
+      const rect = rowRef.current.getBoundingClientRect();
+      setPopupPos({ x: rect.right + 8, y: rect.top + rect.height / 2 });
+    }
+  }, [isExpanded]);
+
+  // Fetch source assets on first expand
+  useEffect(() => {
+    if (!isExpanded || fetchedRef.current) return;
+    fetchedRef.current = true;
+    setLoading(true);
+
+    (async () => {
+      try {
+        const ctx = await getAssetGenerationContext(assetId);
+        const { sourceAssetIds } = parseGenerationContext(ctx, operationType);
+        if (sourceAssetIds.length === 0) {
+          setAssets([]);
+          return;
+        }
+        const results = await Promise.allSettled(
+          sourceAssetIds.map((id) => getAsset(id)),
+        );
+        setAssets(
+          results
+            .map((r) => (r.status === 'fulfilled' ? fromAssetResponse(r.value) : null))
+            .filter((a): a is AssetModel => !!a),
+        );
+      } catch {
+        setAssets([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [isExpanded, assetId, operationType]);
+
+  return (
+    <div className="relative" {...handlers} ref={rowRef}>
+      <div className="w-36 h-8 px-3 text-xs text-white hover:bg-white/15 rounded-b-xl transition-colors flex items-center gap-2 cursor-default">
+        <Icon name="image" size={12} />
+        <span className="flex-1">Source Assets</span>
+        <Icon name="chevronRight" size={10} className="opacity-50" />
+      </div>
+
+      {isExpanded && popupPos && createPortal(
+        <div
+          className="fixed rounded-lg bg-neutral-900/95 backdrop-blur-sm shadow-2xl border border-white/10 p-1.5 z-popover"
+          style={{ left: popupPos.x, top: popupPos.y, transform: 'translateY(-50%)' }}
+          {...handlers}
+        >
+          {loading ? (
+            <div className="flex items-center justify-center h-20 w-20">
+              <Icon name="loader" size={14} className="animate-spin text-white/60" />
+            </div>
+          ) : assets && assets.length > 0 ? (
+            <div className="flex gap-1.5">
+              {assets.map((asset) => (
+                <div key={asset.id} className="w-20 h-20 shrink-0">
+                  <CompactAssetCard
+                    asset={asset}
+                    hideFooter
+                    aspectSquare
+                    enableHoverPreview={asset.mediaType === 'video'}
+                    showPlayOverlay={false}
+                    hoverActions={
+                      <div className="flex items-center gap-1">
+                        <IconButton
+                          size="lg"
+                          rounded="full"
+                          icon={<Icon name="zap" size={12} />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addInput({ asset, operationType });
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700"
+                          style={{ color: '#fff' }}
+                          title="Add to input"
+                        />
+                      </div>
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-2 py-1 text-[10px] text-white/40 whitespace-nowrap">
+              No source assets
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/**
  * Content component for the generation button group.
  * Handles smart action, menu, slot picker, and regenerate functionality.
  */
@@ -312,6 +429,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       if (providerId) {
         sessionStore.setProvider(providerId);
       }
+
+      // Sync settings store's active operation type BEFORE setting params,
+      // so setDynamicParams saves to the correct paramsPerOperation key.
+      // Without this, the useEffect in useGenerationWorkbench that syncs
+      // activeOperationType fires after render and overwrites our params
+      // with stale/empty values for the new operation type.
+      settingsStore.setActiveOperationType(nextOperationType);
 
       sessionStore.setPrompt(prompt);
       settingsStore.setDynamicParams(dynamicParams);
@@ -503,6 +627,41 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     scopedScopeId,
     widgetContext,
     hydrateWidgetGenerationState,
+  ]);
+
+  const [isInsertingPrompt, setIsInsertingPrompt] = useState(false);
+
+  const handleInsertPromptOnly = useCallback(async () => {
+    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isInsertingPrompt) return;
+
+    setIsInsertingPrompt(true);
+    try {
+      const ctx = await getAssetGenerationContext(id);
+      const { prompt } = parseGenerationContext(ctx, operationType);
+
+      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+      const sessionStore = getGenerationSessionStore(scopeId).getState();
+      sessionStore.setPrompt(prompt);
+
+      widgetContext?.setOpen(true);
+    } catch (error) {
+      console.error('Failed to insert prompt:', error);
+      useToastStore.getState().addToast({
+        type: 'error',
+        message: 'Failed to load prompt.',
+        duration: 4000,
+      });
+    } finally {
+      setIsInsertingPrompt(false);
+    }
+  }, [
+    id,
+    data.sourceGenerationId,
+    data.hasGenerationContext,
+    isInsertingPrompt,
+    operationType,
+    scopedScopeId,
+    widgetContext,
   ]);
 
   // Handler for extending video with the same prompt
@@ -728,6 +887,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   };
 
   const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
+
+  // Check if the asset's original operation type accepts media input
+  // (e.g. image_to_video does, text_to_image does not)
+  const assetOpType = data.operationType as OperationType | null | undefined;
+  const assetAcceptsInput = assetOpType
+    ? (OPERATION_METADATA[assetOpType]?.acceptsInput?.length ?? 0) > 0
+    : false;
   const menuItems = useMemo<MenuItem[]>(() => {
     const items = buildGenerationMenuItems(id, mediaType, actions);
 
@@ -861,11 +1027,11 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       title: 'Regenerate (run same generation again)',
       disabled: isRegenerating,
       expandContent: (
-        <div className="flex flex-col overflow-hidden rounded-full bg-accent/95 backdrop-blur-sm shadow-2xl">
+        <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl">
           <button
             onClick={handleLoadToQuickGen}
-            className="w-36 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2"
-            title="Load this generation into Quick Generate"
+            className="w-36 h-8 px-3 text-xs text-white hover:bg-white/15 rounded-t-xl transition-colors flex items-center gap-2"
+            title="Load everything into Quick Generate"
             disabled={isLoadingSource}
             type="button"
           >
@@ -876,10 +1042,27 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
             )}
             <span>Load to Quick Gen</span>
           </button>
+          <button
+            onClick={handleInsertPromptOnly}
+            className={`w-36 h-8 px-3 text-xs text-white hover:bg-white/15 transition-colors flex items-center gap-2 ${assetAcceptsInput ? '' : 'rounded-b-xl'}`}
+            title="Insert only the prompt"
+            disabled={isInsertingPrompt}
+            type="button"
+          >
+            {isInsertingPrompt ? (
+              <Icon name="loader" size={12} className="animate-spin" />
+            ) : (
+              <Icon name="fileText" size={12} />
+            )}
+            <span>Insert Prompt</span>
+          </button>
+          {assetAcceptsInput && (
+            <SourceAssetsPreview assetId={id} operationType={operationType} addInput={addInput} />
+          )}
         </div>
       ),
       expandDelay: 150,
-      collapseDelay: 150,
+      collapseDelay: 200,
     });
   }
 

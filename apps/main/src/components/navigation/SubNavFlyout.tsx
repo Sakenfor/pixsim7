@@ -48,7 +48,7 @@ export function SubNavFlyout({ items, route, children }: SubNavFlyoutProps) {
         rect &&
         createPortal(
           <div
-            className="fixed z-50 py-1.5 min-w-[160px] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm"
+            className="fixed z-popover py-1.5 min-w-[160px] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm"
             style={{ top: rect.top, left: rect.right + 4 }}
             onMouseEnter={handlers.onMouseEnter}
             onMouseLeave={handlers.onMouseLeave}

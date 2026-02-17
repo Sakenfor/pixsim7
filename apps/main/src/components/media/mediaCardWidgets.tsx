@@ -30,7 +30,7 @@ import {
 
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
-import { useTagAutocomplete } from '@features/assets/lib/useTagAutocomplete';
+import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
@@ -83,6 +83,12 @@ export interface MediaCardOverlayData {
   // Favorite state
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
+  // Info popover fields
+  prompt?: string | null;
+  operationType?: string | null;
+  model?: string | null;
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -388,11 +394,159 @@ export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget
 }
 
 /**
- * Create tags tooltip widget
- * Uses REACTIVE function-based content for dynamic tag display
+ * Tabbed content component for the info popover.
+ * Shows Info tab (generation details) and Tags tab (all tags as pills).
+ */
+function InfoPopoverContent({ data }: { data: MediaCardOverlayData }) {
+  const [tab, setTab] = useState<'info' | 'tags'>('info');
+
+  const hasGenInfo = !!(data.prompt || data.operationType);
+
+  // Format relative time
+  const relativeTime = (() => {
+    if (!data.createdAt) return undefined;
+    const diff = Date.now() - new Date(data.createdAt).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    return `${Math.floor(days / 30)}mo ago`;
+  })();
+
+  // Dimensions string
+  const dims = data.width && data.height ? `${data.width}\u00d7${data.height}` : undefined;
+
+  // Split tags into user vs system
+  const userTags = (data.tags || []).filter((t: string) => t.startsWith('user:'));
+  const systemTags = (data.tags || []).filter((t: string) => !t.startsWith('user:'));
+
+  return (
+    <div className="min-w-[220px]" onClick={(e) => e.stopPropagation()}>
+      {/* Tab bar */}
+      <div className="flex gap-3 border-b border-neutral-200 dark:border-neutral-700 mb-2 px-0.5">
+        <button
+          className={`pb-1 text-xs font-medium transition-colors ${
+            tab === 'info'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+          }`}
+          onClick={() => setTab('info')}
+        >
+          Info
+        </button>
+        <button
+          className={`pb-1 text-xs font-medium transition-colors ${
+            tab === 'tags'
+              ? 'text-accent border-b-2 border-accent'
+              : 'text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300'
+          }`}
+          onClick={() => setTab('tags')}
+        >
+          Tags{data.tags?.length ? ` (${data.tags.length})` : ''}
+        </button>
+      </div>
+
+      {/* Info tab */}
+      {tab === 'info' && (
+        <div className="space-y-1.5 text-xs">
+          {hasGenInfo ? (
+            <>
+              {data.prompt && (
+                <div>
+                  <span className="text-neutral-400">Prompt</span>
+                  <p
+                    className="mt-0.5 font-mono text-[11px] text-neutral-600 dark:text-neutral-300 leading-snug line-clamp-3"
+                    title={data.prompt}
+                  >
+                    {data.prompt}
+                  </p>
+                </div>
+              )}
+              {data.operationType && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-neutral-400">Operation</span>
+                  <span className="font-medium text-neutral-700 dark:text-neutral-200">{data.operationType}</span>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-neutral-400 italic">No generation info</p>
+          )}
+          {data.model && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-neutral-400">Model</span>
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{data.model}</span>
+            </div>
+          )}
+          {dims && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-neutral-400">Dimensions</span>
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{dims}</span>
+            </div>
+          )}
+          {data.providerId && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-neutral-400">Provider</span>
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{data.providerId}</span>
+            </div>
+          )}
+          {relativeTime && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-neutral-400">Created</span>
+              <span className="font-medium text-neutral-700 dark:text-neutral-200">{relativeTime}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Tags tab */}
+      {tab === 'tags' && (
+        <div className="space-y-2 text-xs">
+          {data.tags && data.tags.length > 0 ? (
+            <>
+              {userTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {userTags.map((tag: string) => (
+                    <span
+                      key={tag}
+                      className="inline-block px-1.5 py-0.5 rounded bg-accent/15 text-accent text-[11px]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {systemTags.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {systemTags.map((tag: string) => (
+                    <span
+                      key={tag}
+                      className="inline-block px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 text-[11px]"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-neutral-400 italic">No tags</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Create info popover widget (bottom-left)
+ * Tabbed popover showing generation info and tags
  * Settings are read from overlayWidgetSettingsStore for user customization
  */
-export function createTagsTooltip(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
+export function createInfoPopover(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
   const { badgeConfig, presetCapabilities } = props;
 
   // Skip if preset capabilities indicate no tags tooltip
@@ -408,36 +562,22 @@ export function createTagsTooltip(props: MediaCardResolvedProps): OverlayWidget<
   const settings = getOverlayWidgetSettings<TooltipWidgetSettings>('tooltip');
 
   return createTooltipWidget({
-    id: 'technical-tags',
+    id: 'info-popover',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
     visibility: { trigger: 'hover-container' },
-    // REACTIVE: Function computes content from fresh data
-    content: (data) => {
-      // Filter technical tags dynamically
-      const technicalTags = (data.tags || []).filter((tag: string) =>
-        tag.includes('_url') ||
-        tag.includes('_id') ||
-        tag.includes('from_') ||
-        tag === 'user_upload'
-      );
-
-      return {
-        title: 'Technical Tags',
-        icon: 'code',
-        description: technicalTags.length > 0 ? technicalTags : ['No technical tags'],
-      };
-    },
+    content: (data) => ({
+      custom: <InfoPopoverContent data={data} />,
+    }),
     trigger: {
       type: 'icon',
       icon: 'info',
       className: '!bg-accent/20 !text-accent',
     },
-    // Apply user settings
     placement: settings.placement,
     showArrow: settings.showArrow,
     delay: settings.delay,
-    maxWidth: settings.maxWidth,
-    rich: settings.rich,
+    maxWidth: 300,
+    rich: true,
     priority: 30,
   });
 }
@@ -473,15 +613,21 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const { isExpanded, handlers } = useHoverExpand({ expandDelay: 200, collapseDelay: 150 });
   const [inputValue, setInputValue] = useState('');
   const [inputFocused, setInputFocused] = useState(false);
+  const [selectedNamespace, setSelectedNamespace] = useState('user');
+  const [nsDropdownOpen, setNsDropdownOpen] = useState(false);
   const [applying, setApplying] = useState(false);
   const [flash, setFlash] = useState<'success' | 'error' | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const blurTimeoutRef = useRef<number>(0);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
 
-  const { results, loading, parsedNamespace, parsedQuery, hasExplicitNamespace } =
-    useTagAutocomplete(inputValue, { enabled: isExpanded && inputFocused });
+  const { results, loading, parsedQuery, hasExplicitNamespace } =
+    useTagAutocomplete(inputValue, { enabled: isExpanded && inputFocused, namespaceOverride: selectedNamespace });
+
+  // Typed namespace (from colon syntax) takes priority over dropdown selection
+  const activeNamespace = hasExplicitNamespace ? typedNamespace : selectedNamespace;
 
   useEffect(() => {
     if (isExpanded && triggerRef.current) {
@@ -533,7 +679,10 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && inputValue.trim()) {
-      const slug = normalizeTagInput(inputValue);
+      // If user typed an explicit namespace, normalizeTagInput handles it.
+      // Otherwise, prepend the selected namespace from the dropdown.
+      const raw = hasExplicitNamespace ? inputValue : `${selectedNamespace}:${inputValue}`;
+      const slug = normalizeTagInput(raw);
       if (!slug) return;
       addTag(slug);
     }
@@ -564,7 +713,7 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
         : 'Set quick tags';
 
   const showAutocomplete = inputValue.trim().length > 0 && inputFocused;
-  const placeholder = hasExplicitNamespace ? 'tag_name' : `${parsedNamespace}:tag_name`;
+  const placeholder = hasExplicitNamespace ? 'tag_name' : 'tag_name';
 
   return (
     <div className="relative" {...handlers}>
@@ -595,13 +744,15 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
 
       {isExpanded && triggerRect && createPortal(
         <div
-          className="fixed min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-50"
+          className="fixed min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-popover"
           style={{
             top: triggerRect.bottom + 4,
             left: triggerRect.right,
             transform: 'translateX(-100%)',
           }}
           {...handlers}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {/* Active defaults summary */}
           {hasAny && (
@@ -646,19 +797,26 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
             </div>
           )}
 
-          {/* Namespace badge + text input */}
+          {/* Namespace picker + text input */}
           <div className="px-2 py-1.5 border-t border-neutral-100 dark:border-neutral-700">
-            <div className="flex items-center gap-1">
-              <span
-                className={`shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded ${
+            <div className="flex items-center gap-1 relative">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => setNsDropdownOpen((v) => !v)}
+                className={`shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded cursor-pointer select-none transition-colors ${
                   hasExplicitNamespace
                     ? 'bg-accent/20 text-accent'
-                    : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-500 dark:text-neutral-400'
+                    : nsDropdownOpen
+                      ? 'bg-accent/15 text-accent'
+                      : 'bg-neutral-200 dark:bg-neutral-600 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-300 dark:hover:bg-neutral-500'
                 }`}
+                title="Change namespace"
               >
-                {parsedNamespace}:
-              </span>
+                {activeNamespace}:
+              </button>
               <input
+                ref={inputRef}
                 type="text"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
@@ -668,6 +826,35 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
                 placeholder={placeholder}
                 className="flex-1 min-w-0 px-1.5 py-1 text-xs rounded bg-neutral-100 dark:bg-neutral-700 text-neutral-800 dark:text-neutral-200 placeholder:text-neutral-400 outline-none focus:ring-1 focus:ring-accent"
               />
+              {/* Namespace dropdown */}
+              {nsDropdownOpen && (
+                <div className="absolute top-full left-0 mt-1 w-[120px] max-h-[140px] overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded shadow-lg z-10 py-0.5">
+                  {TAG_NAMESPACES.map((ns) => (
+                    <button
+                      key={ns}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setSelectedNamespace(ns);
+                        setNsDropdownOpen(false);
+                        // Strip any typed namespace prefix so the dropdown selection takes effect
+                        if (hasExplicitNamespace) {
+                          const colonIdx = inputValue.indexOf(':');
+                          setInputValue(colonIdx >= 0 ? inputValue.slice(colonIdx + 1) : inputValue);
+                        }
+                        inputRef.current?.focus();
+                      }}
+                      className={`w-full px-2 py-1 text-left text-[11px] transition-colors
+                        ${ns === activeNamespace
+                          ? 'text-accent font-medium bg-accent/10'
+                          : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                        }`}
+                    >
+                      {ns}:
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
@@ -702,14 +889,15 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
                 <button
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    const slug = normalizeTagInput(inputValue);
+                    const raw = hasExplicitNamespace ? inputValue : `${selectedNamespace}:${inputValue}`;
+                    const slug = normalizeTagInput(raw);
                     if (slug) handleAutocompleteClick(slug);
                   }}
                   className="w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors text-neutral-700 dark:text-neutral-300"
                 >
                   <Icon name="plus" size={11} className="shrink-0 text-accent" />
                   <span className="truncate">
-                    Create <span className="font-mono text-accent">{parsedNamespace}:{parsedQuery}</span>
+                    Create <span className="font-mono text-accent">{activeNamespace}:{parsedQuery}</span>
                   </span>
                 </button>
               )}
@@ -777,7 +965,7 @@ export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): Ov
     createProviderWidget(props),
     createVideoScrubber(props),
     createUploadButton(props),
-    createTagsTooltip(props),
+    createInfoPopover(props),
     createQuickAddButton(),
     createGenerationButtonGroup(props),
   ];

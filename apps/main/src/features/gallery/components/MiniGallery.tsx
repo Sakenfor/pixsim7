@@ -199,9 +199,8 @@ function MiniGalleryItem({
 
       {showSlotPicker && slotPickerExpanded && slotPickerPos && createPortal(
         <div
-          className="fixed pb-4"
+          className="fixed pb-4 z-popover"
           style={{
-            zIndex: 99999,
             left: slotPickerPos.x,
             bottom: window.innerHeight - slotPickerPos.y,
             transform: 'translateX(-50%)',

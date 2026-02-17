@@ -26,11 +26,11 @@ export function PresetContextMenu({
 }: PresetContextMenuProps) {
   return createPortal(
     <div
+      className="z-popover"
       style={{
         position: 'fixed',
         left: menu.x,
         top: menu.y,
-        zIndex: 60,
       }}
     >
       <Dropdown
