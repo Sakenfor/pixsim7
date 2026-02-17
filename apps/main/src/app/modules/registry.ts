@@ -179,6 +179,14 @@ class ModuleRegistry {
     }
   }
 
+  /**
+   * Notify subscribers that derived module data may have changed.
+   * Use after populating external registries that modules read via getters.
+   */
+  invalidate() {
+    this.notifyListeners();
+  }
+
   get<T extends Module>(id: string): T | undefined {
     return this.modules.get(id) as T | undefined;
   }

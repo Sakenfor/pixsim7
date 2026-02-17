@@ -30,6 +30,8 @@ import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels
 import { useWorkspaceStore } from '@features/workspace';
 
 
+import { moduleRegistry } from '@app/modules';
+
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
 import { Icon, IconBadge } from '../lib/icons';
 
@@ -51,7 +53,10 @@ export function AssetsRoute() {
 
   // Register all sources once
   useEffect(() => {
-    registerAssetSources().then(() => setSourcesRegistered(true));
+    registerAssetSources().then(() => {
+      moduleRegistry.invalidate();
+      setSourcesRegistered(true);
+    });
   }, []);
 
   // Shared layout state for all sources

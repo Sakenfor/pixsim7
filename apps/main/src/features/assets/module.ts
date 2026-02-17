@@ -4,6 +4,8 @@ import { lazy } from 'react';
 import { registerState } from '@lib/capabilities';
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
+import { getAllAssetSources } from '@features/gallery';
+
 import type { Module } from '@app/modules/types';
 
 // === Assets Actions ===
@@ -90,10 +92,12 @@ export const assetsModule: Module = {
     capabilityCategory: 'management',
     featureId: 'assets',
     featured: true,
-    subNav: [
-      { id: 'remote-gallery', label: 'Remote Gallery', icon: 'globe', param: { key: 'source', value: 'remote-gallery' } },
-      { id: 'local-fs', label: 'Local Folders', icon: 'folder', param: { key: 'source', value: 'local-fs' } },
-    ],
+    subNav: () => getAllAssetSources().map((src) => ({
+      id: src.id,
+      label: src.label,
+      icon: src.icon,
+      param: { key: 'source', value: src.id },
+    })),
     settingsPanelId: 'gallery',
     component: lazy(() => import('../../routes/Assets').then(m => ({ default: m.AssetsRoute }))),
     actions: [openGalleryAction, uploadAssetAction, searchAssetsAction],

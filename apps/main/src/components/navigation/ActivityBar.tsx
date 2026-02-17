@@ -84,7 +84,8 @@ function NavButton({
 }) {
   const navigate = useNavigate();
   const [hovered, setHovered] = useState(false);
-  const hasSubNav = page.subNav && page.subNav.length > 0;
+  const subNavItems = typeof page.subNav === 'function' ? page.subNav() : page.subNav;
+  const hasSubNav = subNavItems != null && subNavItems.length > 0;
   const hasGear = !!page.settingsPanelId;
 
   const handleClick = useCallback(() => {
@@ -126,7 +127,7 @@ function NavButton({
 
   if (hasSubNav) {
     return (
-      <SubNavFlyout items={page.subNav!} route={page.route}>
+      <SubNavFlyout items={subNavItems!} route={page.route}>
         {button}
       </SubNavFlyout>
     );

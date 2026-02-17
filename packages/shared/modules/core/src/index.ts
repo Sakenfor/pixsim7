@@ -165,8 +165,8 @@ export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory =
    */
   appMap?: AppMapMetadata;
 
-  /** Sub-navigation items shown as a flyout in the ActivityBar */
-  subNav?: SubNavItem[];
+  /** Sub-navigation items shown as a flyout in the ActivityBar (static array or getter) */
+  subNav?: SubNavItem[] | (() => SubNavItem[]);
 
   /** Panel ID whose settings surface in the ActivityBar gear flyout */
   settingsPanelId?: string;
