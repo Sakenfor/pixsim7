@@ -37,12 +37,10 @@ upload_methods:
         type: string
         label: Folder Name
         description: Local folder display name
-        filterable: true
       source_subfolder:
         type: string
         label: Subfolder
         description: Subfolder name within the source folder
-        filterable: true
       source_relative_path:
         type: string
         label: Source Path
@@ -63,7 +61,6 @@ upload_methods:
         type: string
         label: Source Folder
         description: Top-level folder for local video captures
-        filterable: true
       source_filename:
         type: string
         label: Source Video

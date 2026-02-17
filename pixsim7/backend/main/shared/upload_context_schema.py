@@ -55,14 +55,12 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
         "source_folder": {
           "type": "string",
           "label": "Folder Name",
-          "description": "Local folder display name",
-          "filterable": true
+          "description": "Local folder display name"
         },
         "source_subfolder": {
           "type": "string",
           "label": "Subfolder",
-          "description": "Subfolder name within the source folder",
-          "filterable": true
+          "description": "Subfolder name within the source folder"
         },
         "source_relative_path": {
           "type": "string",
@@ -88,8 +86,7 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
         "source_folder": {
           "type": "string",
           "label": "Source Folder",
-          "description": "Top-level folder for local video captures",
-          "filterable": true
+          "description": "Top-level folder for local video captures"
         },
         "source_filename": {
           "type": "string",

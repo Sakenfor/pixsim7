@@ -734,7 +734,6 @@ const copySubmenuAction: MenuAction = {
 
 /** uploadContext-based "More from..." keys */
 const MORE_FROM_CONTEXT_KEYS = [
-  { key: 'source_folder', label: 'Same folder', icon: 'folder' },
   { key: 'source_site', label: 'Same site', icon: 'globe' },
   { key: 'source_filename', label: 'Same source video', icon: 'video' },
 ] as const;
@@ -743,8 +742,26 @@ function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
   const items: MenuAction[] = [];
   const uc = asset.uploadContext;
 
-  // Upload-context entries (folder, site, source video)
+  // Upload-context entries (folder path, site, source video)
   if (uc && typeof uc === 'object') {
+    // Unified folder path for local uploads
+    const folder = uc.source_folder;
+    if (folder) {
+      const subfolder = uc.source_subfolder;
+      const sourcePath = subfolder ? `${folder}/${subfolder}` : String(folder);
+      items.push({
+        id: 'asset:more-from:source_path',
+        label: `Same folder: ${sourcePath}`,
+        icon: 'folder',
+        execute: () => {
+          useRelatedAssetsStore.getState().open(
+            `Same folder: ${sourcePath}`,
+            { source_path: sourcePath },
+          );
+        },
+      });
+    }
+
     for (const { key, label, icon } of MORE_FROM_CONTEXT_KEYS) {
       const value = uc[key];
       if (!value) continue;
@@ -815,11 +832,11 @@ function buildMoreFromChildren(asset: AssetModel): MenuAction[] {
   if (asset.sha256) {
     items.push({
       id: 'asset:more-from:sha256',
-      label: `Exact duplicates (#${asset.sha256.slice(0, 8)})`,
+      label: `Same content (#${asset.sha256.slice(0, 8)})`,
       icon: 'copy',
       execute: () => {
         useRelatedAssetsStore.getState().open(
-          `Exact duplicates (#${asset.sha256!.slice(0, 8)}...)`,
+          `Same content (#${asset.sha256!.slice(0, 8)}...)`,
           { sha256: asset.sha256! },
         );
       },
