@@ -26,9 +26,13 @@ import {
   updatePreferenceKey,
   type AnalyzerPreferences,
 } from '@lib/api/userPreferences';
+import { isAdminUser } from '@lib/auth/userRoles';
 
-import { useMediaSettingsStore } from '@features/assets';
+import { useMediaSettingsStore, type ServerMediaSettings } from '@features/assets';
 import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
+
+import { pixsimClient } from '@/lib/api';
+import { useAuthStore } from '@/stores/authStore';
 
 import { settingsRegistry } from '../../lib/core/registry';
 
@@ -457,6 +461,10 @@ export function AnalyzersSettings() {
   const setDefaultVideoAnalyzer = useAnalyzerSettingsStore((s) => s.setDefaultVideoAnalyzer);
   const visualSimilarityThreshold = useMediaSettingsStore((s) => s.visualSimilarityThreshold);
   const setVisualSimilarityThreshold = useMediaSettingsStore((s) => s.setVisualSimilarityThreshold);
+  const serverSettings = useMediaSettingsStore((s) => s.serverSettings);
+  const setServerSettings = useMediaSettingsStore((s) => s.setServerSettings);
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminUser(user);
 
   const promptAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'prompt');
   const assetAnalyzers = analyzers.filter((analyzer) => analyzer.target === 'asset');
@@ -468,6 +476,31 @@ export function AnalyzersSettings() {
     defaultImageAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
     defaultVideoAnalyzer === DEFAULT_ASSET_ANALYZER_ID &&
     Math.abs(visualSimilarityThreshold - DEFAULT_VISUAL_SIMILARITY_THRESHOLD) < 0.001;
+
+  // Fetch server media settings (for embedding controls)
+  useEffect(() => {
+    if (!serverSettings) {
+      pixsimClient.get<ServerMediaSettings>('/media/settings')
+        .then(setServerSettings)
+        .catch((err) => console.error('Failed to fetch media settings:', err));
+    }
+  }, [serverSettings, setServerSettings]);
+
+  const updateMediaSetting = useCallback(
+    async (key: keyof ServerMediaSettings, value: ServerMediaSettings[keyof ServerMediaSettings]) => {
+      if (!serverSettings) return;
+      const prev = serverSettings;
+      setServerSettings({ ...serverSettings, [key]: value });
+      try {
+        const updated = await pixsimClient.patch<ServerMediaSettings>('/media/settings', { [key]: value });
+        setServerSettings(updated);
+      } catch (err) {
+        console.error('Failed to update media setting:', err);
+        setServerSettings(prev);
+      }
+    },
+    [serverSettings, setServerSettings]
+  );
 
   // Fetch data
   const fetchData = useCallback(async () => {
@@ -937,6 +970,62 @@ export function AnalyzersSettings() {
           </div>
         </div>
       </section>
+
+      {/* Visual Embeddings */}
+      {isAdmin && (
+        <section className="space-y-2 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
+            Visual Embeddings
+          </h3>
+          <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+            CLIP embeddings enable "Similar content" search. Embeddings are generated during ingestion for both images and videos (using their thumbnail frame).
+          </p>
+          <div className="grid gap-3 md:grid-cols-2 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
+            <div className="space-y-1">
+              <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                Generate Embeddings
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={serverSettings?.generate_embeddings ?? false}
+                  onChange={(e) => updateMediaSetting('generate_embeddings', e.target.checked)}
+                  disabled={!serverSettings}
+                  className="sr-only peer"
+                />
+                <div
+                  className={`w-9 h-5 rounded-full peer peer-checked:after:translate-x-4 after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all relative ${
+                    serverSettings?.generate_embeddings ? 'bg-blue-500' : 'bg-neutral-300 dark:bg-neutral-700'
+                  }`}
+                />
+                <span className="text-[11px] text-neutral-700 dark:text-neutral-300">
+                  {serverSettings?.generate_embeddings ? 'Enabled' : 'Disabled'}
+                </span>
+              </label>
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                Generate CLIP embeddings during asset ingestion for "Similar content" searches.
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
+                CLIP Embedding Command
+              </label>
+              <input
+                type="text"
+                value={serverSettings?.clip_embedding_command ?? ''}
+                onChange={(e) => updateMediaSetting('clip_embedding_command', e.target.value)}
+                disabled={!serverSettings?.generate_embeddings}
+                placeholder="python tools/clip_embed.py"
+                className="w-full px-2 py-1.5 text-[11px] font-mono border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600 disabled:opacity-50"
+              />
+              <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                Command that accepts JSON on stdin and returns embeddings on stdout.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Advanced overrides */}
       <section className="space-y-3 pt-4 border-t border-neutral-200 dark:border-neutral-700">

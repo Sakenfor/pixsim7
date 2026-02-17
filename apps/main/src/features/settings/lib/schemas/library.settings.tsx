@@ -260,30 +260,6 @@ const downloadsTab: SettingTab = {
         },
       ],
     },
-    {
-      id: 'visual-embeddings',
-      title: 'Visual Embeddings',
-      description: 'Server-side CLIP embedding generation used for visual similarity search.',
-      showWhen: adminOnly,
-      fields: [
-        {
-          id: 'generate_embeddings',
-          type: 'toggle',
-          label: 'Generate Embeddings',
-          description: 'Generate CLIP embeddings during ingestion for "Similar content" search.',
-          defaultValue: false,
-        },
-        {
-          id: 'clip_embedding_command',
-          type: 'text',
-          label: 'CLIP Embedding Command',
-          description: 'Command that accepts JSON stdin and returns embeddings JSON on stdout.',
-          defaultValue: '',
-          placeholder: 'python tools/clip_embed.py',
-          disabled: (values) => !values.generate_embeddings,
-        },
-      ],
-    },
   ],
 };
 
