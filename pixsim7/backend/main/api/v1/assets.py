@@ -1892,6 +1892,11 @@ async def extract_frame(
                     provider_id=target_provider_id,
                     error=str(upload_error),
                 )
+                # Refresh asset so response includes upload failure in last_upload_status_by_provider
+                try:
+                    frame_asset = await asset_service.get_asset(frame_asset.id)
+                except Exception:
+                    pass
 
         return AssetResponse.model_validate(frame_asset)
 

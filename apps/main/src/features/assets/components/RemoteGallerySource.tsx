@@ -961,11 +961,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               if (a.mediaType !== 'video') return;
               try {
                 // Don't pass provider_id - let backend decide based on settings
-                await extractFrame({
+                const frameAsset = await extractFrame({
                   video_asset_id: a.id,
                   timestamp,
                 });
                 resetAssets();
+                const uploadStatuses = frameAsset.last_upload_status_by_provider;
+                if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
+                  alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
+                }
               } catch (err: any) {
                 const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
                 alert(`Failed to extract frame: ${detail}`);
@@ -975,11 +979,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               if (a.mediaType !== 'video') return;
               try {
                 // Don't pass provider_id - let backend decide based on settings
-                await extractFrame({
+                const frameAsset = await extractFrame({
                   video_asset_id: a.id,
                   last_frame: true,
                 });
                 resetAssets();
+                const uploadStatuses = frameAsset.last_upload_status_by_provider;
+                if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
+                  alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
+                }
               } catch (err: any) {
                 const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
                 alert(`Failed to extract last frame: ${detail}`);

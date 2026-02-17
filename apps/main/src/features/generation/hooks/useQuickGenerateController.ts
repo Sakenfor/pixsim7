@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
-import { extractFrame, fromAssetResponse, getAssetDisplayUrls } from '@features/assets';
+import { extractFrame, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
@@ -18,6 +18,16 @@ import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
 
+
+/** Throw if the extracted frame failed to upload to any provider (no usable provider_uploads). */
+function assertFrameUploadSucceeded(frame: AssetModel) {
+  const statuses = frame.lastUploadStatusByProvider;
+  const hasUploadError = statuses && Object.values(statuses).some(s => s === 'error');
+  const hasSuccessfulUpload = frame.providerUploads && Object.keys(frame.providerUploads).length > 0;
+  if (hasUploadError && !hasSuccessfulUpload) {
+    throw new Error('Frame extracted but upload to provider failed. The frame cannot be used for generation until it is uploaded — try re-uploading from the gallery.');
+  }
+}
 
 /** Record assets used for a generation in the history store */
 function recordInputHistory(operationType: string, inputs: any[]) {
@@ -148,36 +158,32 @@ export function useQuickGenerateController() {
     return { currentInputs, currentInput, transitionInputs };
   }
 
+  /** If the input has a locked timestamp on a video, extract the frame and return its id. Otherwise null. */
+  async function maybeExtractFrame(input: any): Promise<number | null> {
+    if (input.lockedTimestamp === undefined || input.asset.mediaType !== 'video') return null;
+    const frame = fromAssetResponse(await extractFrame({
+      video_asset_id: input.asset.id,
+      timestamp: input.lockedTimestamp,
+    }));
+    assertFrameUploadSucceeded(frame);
+    return frame.id;
+  }
+
   /** Extract frames for video inputs, mutating dynamicParams in-place */
   async function applyFrameExtraction(
     dynamicParams: Record<string, any>,
     currentInput: any,
     transitionInputs: any[],
   ) {
-    if (operationType === 'image_to_video' && currentInput) {
-      if (currentInput.lockedTimestamp !== undefined && currentInput.asset.mediaType === 'video') {
-        const extractedFrame = fromAssetResponse(await extractFrame({
-          video_asset_id: currentInput.asset.id,
-          timestamp: currentInput.lockedTimestamp,
-        }));
-        dynamicParams.source_asset_id = extractedFrame.id;
-      }
+    if (currentInput) {
+      const frameId = await maybeExtractFrame(currentInput);
+      if (frameId !== null) dynamicParams.source_asset_id = frameId;
     }
 
-    if (operationType === 'video_transition' && transitionInputs.length > 0) {
-      const extractedAssetIds: number[] = [];
-      for (const item of transitionInputs) {
-        if (item.lockedTimestamp !== undefined && item.asset.mediaType === 'video') {
-          const extractedFrame = fromAssetResponse(await extractFrame({
-            video_asset_id: item.asset.id,
-            timestamp: item.lockedTimestamp,
-          }));
-          extractedAssetIds.push(extractedFrame.id);
-        } else {
-          extractedAssetIds.push(item.asset.id);
-        }
-      }
-      dynamicParams.source_asset_ids = extractedAssetIds;
+    if (transitionInputs.length > 0) {
+      dynamicParams.source_asset_ids = await Promise.all(
+        transitionInputs.map(async item => await maybeExtractFrame(item) ?? item.asset.id),
+      );
     }
   }
 
