@@ -9,7 +9,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AnalysisGatewaySvc
-from pixsim7.backend.main.domain.assets.analysis import AnalyzerType, AnalysisStatus
+from pixsim7.backend.main.domain.assets.analysis import AnalysisStatus
 from pixsim7.backend.main.shared.errors import ResourceNotFoundError, InvalidOperationError
 
 router = APIRouter()
@@ -19,13 +19,14 @@ router = APIRouter()
 
 class CreateAnalysisRequest(BaseModel):
     """Request to create a new asset analysis"""
-    analyzer_type: AnalyzerType = Field(
-        ...,
-        description="Type of analysis to perform"
-    )
-    provider_id: str = Field(
-        ...,
-        description="Provider to use for analysis (e.g., 'openai', 'anthropic')"
+    analyzer_id: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description=(
+            "Analyzer ID to execute (e.g., 'asset:object-detection'). "
+            "If omitted, resolves from user analyzer defaults by media type."
+        ),
     )
     prompt: Optional[str] = Field(
         None,
@@ -34,10 +35,6 @@ class CreateAnalysisRequest(BaseModel):
     params: Optional[Dict[str, Any]] = Field(
         None,
         description="Additional parameters for the analysis"
-    )
-    analyzer_version: Optional[str] = Field(
-        None,
-        description="Version of the analyzer to use"
     )
     priority: int = Field(
         5,
@@ -52,8 +49,8 @@ class AnalysisResponse(BaseModel):
     id: int
     asset_id: int
     user_id: int
-    analyzer_type: str
-    analyzer_version: Optional[str]
+    analyzer_id: str
+    model_id: Optional[str]
     provider_id: str
     prompt: Optional[str]
     params: Dict[str, Any]
@@ -105,11 +102,9 @@ async def create_analysis(
         analysis = await analysis_service.create_analysis(
             user=user,
             asset_id=asset_id,
-            analyzer_type=request.analyzer_type,
-            provider_id=request.provider_id,
+            analyzer_id=request.analyzer_id,
             prompt=request.prompt,
             params=request.params,
-            analyzer_version=request.analyzer_version,
             priority=request.priority,
         )
 
@@ -117,8 +112,8 @@ async def create_analysis(
             id=analysis.id,
             asset_id=analysis.asset_id,
             user_id=analysis.user_id,
-            analyzer_type=analysis.analyzer_type.value,
-            analyzer_version=analysis.analyzer_version,
+            analyzer_id=analysis.analyzer_id,
+            model_id=analysis.model_id,
             provider_id=analysis.provider_id,
             prompt=analysis.prompt,
             params=analysis.params or {},
@@ -143,7 +138,7 @@ async def list_asset_analyses(
     req: Request,
     user: CurrentUser,
     analysis_gateway: AnalysisGatewaySvc,
-    analyzer_type: Optional[AnalyzerType] = Query(None, description="Filter by analyzer type"),
+    analyzer_id: Optional[str] = Query(None, description="Filter by analyzer ID"),
     status: Optional[AnalysisStatus] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results to return"),
 ):
@@ -160,7 +155,7 @@ async def list_asset_analyses(
             params={
                 k: v
                 for k, v in {
-                    "analyzer_type": analyzer_type.value if analyzer_type else None,
+                    "analyzer_id": analyzer_id,
                     "status": status.value if status else None,
                     "limit": limit,
                 }.items()
@@ -174,7 +169,7 @@ async def list_asset_analyses(
         analyses = await analysis_service.get_analyses_for_asset(
             asset_id=asset_id,
             user=user,
-            analyzer_type=analyzer_type,
+            analyzer_id=analyzer_id,
             status=status,
             limit=limit,
         )
@@ -184,8 +179,8 @@ async def list_asset_analyses(
                 id=a.id,
                 asset_id=a.asset_id,
                 user_id=a.user_id,
-                analyzer_type=a.analyzer_type.value,
-                analyzer_version=a.analyzer_version,
+                analyzer_id=a.analyzer_id,
+                model_id=a.model_id,
                 provider_id=a.provider_id,
                 prompt=a.prompt,
                 params=a.params or {},
@@ -243,8 +238,8 @@ async def get_analysis(
             id=analysis.id,
             asset_id=analysis.asset_id,
             user_id=analysis.user_id,
-            analyzer_type=analysis.analyzer_type.value,
-            analyzer_version=analysis.analyzer_version,
+            analyzer_id=analysis.analyzer_id,
+            model_id=analysis.model_id,
             provider_id=analysis.provider_id,
             prompt=analysis.prompt,
             params=analysis.params or {},
@@ -289,8 +284,8 @@ async def cancel_analysis(
             id=analysis.id,
             asset_id=analysis.asset_id,
             user_id=analysis.user_id,
-            analyzer_type=analysis.analyzer_type.value,
-            analyzer_version=analysis.analyzer_version,
+            analyzer_id=analysis.analyzer_id,
+            model_id=analysis.model_id,
             provider_id=analysis.provider_id,
             prompt=analysis.prompt,
             params=analysis.params or {},

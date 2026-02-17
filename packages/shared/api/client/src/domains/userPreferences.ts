@@ -78,8 +78,12 @@ export interface AutoTagsPreferences {
  * Analyzer preferences for prompt analysis.
  */
 export interface AnalyzerPreferences {
-  /** Default analyzer ID (e.g., "prompt:simple", "prompt:claude") */
-  default_id?: string;
+  /** Default prompt analyzer ID (e.g., "prompt:simple", "prompt:claude") */
+  prompt_default_id?: string;
+  /** Default asset analyzer ID for image media */
+  asset_default_image_id?: string;
+  /** Default asset analyzer ID for video media */
+  asset_default_video_id?: string;
   /** Apply analysis tags to generated assets */
   auto_apply_tags?: boolean;
   /** Prefix for analysis tags (e.g., "prompt:" -> "prompt:has:character") */

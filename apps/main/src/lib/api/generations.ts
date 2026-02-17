@@ -14,8 +14,6 @@ import type {
 } from '@pixsim7/shared.api.client/domains';
 import { toSnakeCaseDeep } from '@pixsim7/shared.helpers.core';
 
-import { usePromptSettingsStore } from '@features/prompts';
-
 import { pixsimClient } from './client';
 
 export type {
@@ -49,21 +47,11 @@ const generationsApi = createGenerationsApi(pixsimClient);
 
 /**
  * Create a new generation
- *
- * Automatically includes analyzer_id from prompt settings if not explicitly provided.
  */
 export async function createGeneration(
   request: CreateGenerationRequest
 ): Promise<GenerationResponse> {
-  // Auto-include analyzer_id from settings if not provided and auto-analyze is enabled
-  const settings = usePromptSettingsStore.getState();
-  const enrichedRequest = { ...request };
-
-  if (!enrichedRequest.analyzer_id && settings.autoAnalyze) {
-    enrichedRequest.analyzer_id = settings.defaultAnalyzer;
-  }
-
-  return generationsApi.createGeneration(toSnakeCaseDeep(enrichedRequest));
+  return generationsApi.createGeneration(toSnakeCaseDeep(request));
 }
 
 /**

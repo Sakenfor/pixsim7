@@ -11,7 +11,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt import PromptVersionService
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry
+from pixsim7.backend.main.services.analysis.analyzer_defaults import (
+    DEFAULT_PROMPT_ANALYZER_ID,
+    normalize_analyzer_id_for_target,
+    resolve_prompt_default_analyzer_id,
+)
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
 from pixsim7.backend.main.services.analysis.analyzer_preset_service import (
     AnalyzerPresetService,
 )
@@ -421,7 +426,13 @@ async def validate_version(
 class AnalyzePromptRequest(BaseModel):
     """Request for prompt analysis preview."""
     text: str = Field(..., min_length=1, max_length=10000, description="Prompt text to analyze")
-    analyzer_id: Optional[str] = Field(None, description="Analyzer ID (default: prompt:simple)")
+    analyzer_id: Optional[str] = Field(
+        None,
+        description=(
+            "Analyzer ID. If omitted, resolves from user analyzer preferences "
+            "(fallback: prompt:simple)."
+        ),
+    )
     preset_id: Optional[str] = Field(
         None,
         description="Optional analyzer preset ID (tags_only, blocks_tags, etc.)",
@@ -467,7 +478,17 @@ async def analyze_prompt(
 
     service = PromptAnalysisService(db)
 
-    analyzer_id = request.analyzer_id or "prompt:simple"
+    requested_analyzer_id = request.analyzer_id
+    analyzer_id = normalize_analyzer_id_for_target(
+        requested_analyzer_id,
+        AnalyzerTarget.PROMPT,
+        require_enabled=False,
+    )
+    if not analyzer_id:
+        if requested_analyzer_id:
+            analyzer_id = DEFAULT_PROMPT_ANALYZER_ID
+        else:
+            analyzer_id = resolve_prompt_default_analyzer_id(getattr(user, "preferences", None))
     provider_id = None
     model_id = None
     instance_config = None
@@ -485,7 +506,15 @@ async def analyze_prompt(
         if not instance:
             raise HTTPException(status_code=404, detail="Analyzer instance not found")
 
-        analyzer_id = instance.analyzer_id or analyzer_id
+        instance_analyzer_id = normalize_analyzer_id_for_target(
+            instance.analyzer_id,
+            AnalyzerTarget.PROMPT,
+            require_enabled=False,
+        )
+        if instance_analyzer_id:
+            analyzer_id = instance_analyzer_id
+        elif instance.analyzer_id:
+            analyzer_id = DEFAULT_PROMPT_ANALYZER_ID
         provider_id = instance.provider_id
         model_id = instance.model_id
         instance_config = instance.config

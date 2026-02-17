@@ -19,7 +19,7 @@ from pixsim7.backend.main.domain import (
 )
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
-from pixsim7.backend.main.services.prompt.parser import analyze_prompt
+from pixsim7.backend.main.services.prompt.analysis import PromptAnalysisService
 from pixsim_logging import get_logger
 
 if TYPE_CHECKING:
@@ -171,7 +171,12 @@ class AssetCreationMixin:
         # Fallback: analyze if we have text but no existing analysis
         if prompt_analysis_result is None and prompt_text:
             try:
-                prompt_analysis_result = await analyze_prompt(prompt_text)
+                prompt_analysis_service = PromptAnalysisService(self.db)
+                prompt_analysis_result = await prompt_analysis_service.analyze(
+                    prompt_text,
+                    analyzer_id=None,
+                    user_id=generation.user_id,
+                )
             except Exception as e:
                 logger.warning(f"Failed to analyze prompt for generation {generation.id}: {e}")
 

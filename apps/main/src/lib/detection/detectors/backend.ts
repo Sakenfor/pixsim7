@@ -10,8 +10,6 @@
 import type { ZoneDetector, DetectionInput, DetectedZones } from '@pixsim7/shared.detection.core';
 import type { NpcBodyZone } from '@pixsim7/shared.types';
 
-import { DEFAULT_ASSET_ANALYZER_ID, resolveAnalyzerId, useAnalyzerSettingsStore } from '@lib/analyzers';
-
 const POLL_INTERVAL = 1000;
 const MAX_POLLS = 60;
 
@@ -37,29 +35,10 @@ type AnalysisResult = {
 };
 
 async function submitAndPoll(
-  assetId: number,
-  mediaType?: 'image' | 'video'
+  assetId: number
 ): Promise<{ zones: NpcBodyZone[]; confidence: number }> {
   const { pixsimClient } = await import('@lib/api/client');
-  let effectiveMediaType: 'image' | 'video' | undefined = mediaType;
-  if (!effectiveMediaType) {
-    try {
-      const asset = await pixsimClient.get<{ media_type?: string }>(`/assets/${assetId}`);
-      if (asset.media_type === 'image' || asset.media_type === 'video') {
-        effectiveMediaType = asset.media_type;
-      }
-    } catch {
-      // Best-effort only: fall back to image default if media type lookup fails.
-    }
-  }
-
-  const configuredAnalyzerId = useAnalyzerSettingsStore
-    .getState()
-    .getDefaultAssetAnalyzer(effectiveMediaType);
-  const analyzerId = resolveAnalyzerId(configuredAnalyzerId || DEFAULT_ASSET_ANALYZER_ID);
-
   const analysis = await pixsimClient.post<AnalysisSubmission>(`/assets/${assetId}/analyze`, {
-    analyzer_id: analyzerId,
     params: { mode: 'body_zones' },
   });
 
@@ -103,7 +82,7 @@ export const backendDetector: ZoneDetector = {
       throw new Error('Backend detector requires an assetId');
     }
 
-    const { zones, confidence } = await submitAndPoll(input.assetId, input.mediaType);
+    const { zones, confidence } = await submitAndPoll(input.assetId);
 
     return {
       zones,

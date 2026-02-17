@@ -64,6 +64,18 @@ class AnalyzerPreferences(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    prompt_default_id: str | None = Field(
+        default=None,
+        description="Default prompt analyzer ID (e.g., 'prompt:simple')",
+    )
+    asset_default_image_id: str | None = Field(
+        default=None,
+        description="Default asset analyzer ID for image media",
+    )
+    asset_default_video_id: str | None = Field(
+        default=None,
+        description="Default asset analyzer ID for video media",
+    )
     auto_apply_tags: bool | None = None
     tag_prefix: str | None = None
 

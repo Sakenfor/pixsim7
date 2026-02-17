@@ -21,7 +21,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from pixsim7.backend.main.domain.prompt import PromptVersion
-from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerKind
+from pixsim7.backend.main.services.analysis.analyzer_defaults import (
+    DEFAULT_PROMPT_ANALYZER_ID,
+    normalize_analyzer_id_for_target,
+    resolve_prompt_default_analyzer_id,
+)
+from pixsim7.backend.main.services.prompt.parser import (
+    analyzer_registry,
+    AnalyzerKind,
+    AnalyzerTarget,
+)
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
 from pixsim7.backend.main.services.prompt.semantic_context import (
     PromptSemanticContext,
@@ -106,7 +115,10 @@ class PromptAnalysisService:
                 "analyzer_id": "prompt:simple"
             }
         """
-        analyzer_id = analyzer_id or "prompt:simple"
+        analyzer_id = await self._resolve_effective_prompt_analyzer_id(
+            analyzer_id=analyzer_id,
+            user_id=user_id,
+        )
         normalized = text.strip()
 
         logger.debug(f"Analyzing prompt with {analyzer_id}, len={len(normalized)}")
@@ -180,7 +192,10 @@ class PromptAnalysisService:
         if precomputed_analysis:
             effective_analyzer = precomputed_analysis.get("source", "composition")
         else:
-            effective_analyzer = analyzer_id or "prompt:simple"
+            effective_analyzer = await self._resolve_effective_prompt_analyzer_id(
+                analyzer_id=analyzer_id,
+                user_id=user_id,
+            )
 
         normalized = text.strip()
         prompt_hash = self._compute_hash(normalized)
@@ -285,7 +300,10 @@ class PromptAnalysisService:
         if not self.db:
             raise RuntimeError("Database session required for reanalyze_version")
 
-        analyzer_id = analyzer_id or "prompt:simple"
+        analyzer_id = await self._resolve_effective_prompt_analyzer_id(
+            analyzer_id=analyzer_id,
+            user_id=user_id,
+        )
 
         result = await self.db.execute(
             select(PromptVersion).where(PromptVersion.id == version_id)
@@ -310,6 +328,47 @@ class PromptAnalysisService:
         await self.db.flush()
 
         return version
+
+    async def _resolve_effective_prompt_analyzer_id(
+        self,
+        *,
+        analyzer_id: Optional[str],
+        user_id: Optional[int],
+    ) -> str:
+        if analyzer_id:
+            resolved = normalize_analyzer_id_for_target(
+                analyzer_id,
+                AnalyzerTarget.PROMPT,
+                require_enabled=False,
+            )
+            if resolved:
+                return resolved
+
+            logger.warning(
+                "Unknown prompt analyzer '%s', falling back to %s",
+                analyzer_id,
+                DEFAULT_PROMPT_ANALYZER_ID,
+            )
+            return DEFAULT_PROMPT_ANALYZER_ID
+
+        user_preferences = await self._load_user_preferences(user_id)
+        return resolve_prompt_default_analyzer_id(user_preferences)
+
+    async def _load_user_preferences(self, user_id: Optional[int]) -> Optional[Dict[str, Any]]:
+        """Load users.preferences dict for analyzer-default resolution."""
+        if not user_id or not self.db:
+            return None
+
+        try:
+            from pixsim7.backend.main.domain import User
+
+            user = await self.db.get(User, user_id)
+            if not user or not isinstance(user.preferences, dict):
+                return None
+            return user.preferences
+        except Exception as e:
+            logger.warning(f"Failed to load preferences for user {user_id}: {e}")
+            return None
 
     async def _run_analyzer(
         self,

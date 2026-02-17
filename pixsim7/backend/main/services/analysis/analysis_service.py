@@ -20,8 +20,12 @@ from pixsim7.backend.main.domain import (
 from pixsim7.backend.main.domain.assets.analysis import (
     AssetAnalysis,
     AnalysisStatus,
-    AnalyzerType,
 )
+from pixsim7.backend.main.services.analysis.analyzer_defaults import (
+    resolve_asset_default_analyzer_id,
+)
+from pixsim7.backend.main.services.analysis.analyzer_instance_service import AnalyzerInstanceService
+from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
 from pixsim7.backend.main.shared.errors import (
     ResourceNotFoundError,
     InvalidOperationError,
@@ -57,11 +61,9 @@ class AnalysisService:
         self,
         user: User,
         asset_id: int,
-        analyzer_type: AnalyzerType,
-        provider_id: str,
+        analyzer_id: Optional[str] = None,
         prompt: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        analyzer_version: Optional[str] = None,
         priority: int = 5,
     ) -> AssetAnalysis:
         """
@@ -70,11 +72,10 @@ class AnalysisService:
         Args:
             user: User creating the analysis
             asset_id: ID of the asset to analyze
-            analyzer_type: Type of analysis to perform
-            provider_id: Provider to use for analysis
+            analyzer_id: Analyzer ID to execute. If omitted, resolves from
+                user analyzer preferences by media type.
             prompt: Optional prompt for the analysis
             params: Optional additional parameters
-            analyzer_version: Optional version of the analyzer
             priority: Job priority (0=highest, 10=lowest)
 
         Returns:
@@ -89,12 +90,26 @@ class AnalysisService:
         if asset.user_id != user.id:
             raise InvalidOperationError("Cannot analyze assets owned by other users")
 
+        effective_analyzer_id = analyzer_id.strip() if isinstance(analyzer_id, str) else None
+        if not effective_analyzer_id:
+            media_type = asset.media_type.value if hasattr(asset.media_type, "value") else asset.media_type
+            effective_analyzer_id = resolve_asset_default_analyzer_id(
+                getattr(user, "preferences", None),
+                media_type=media_type,
+            )
+
+        resolved_analyzer_id, provider_id, model_id = await self._resolve_execution_config(
+            user_id=user.id,
+            asset=asset,
+            analyzer_id=effective_analyzer_id,
+        )
+
         # Create analysis record
         analysis = AssetAnalysis(
             user_id=user.id,
             asset_id=asset_id,
-            analyzer_type=analyzer_type,
-            analyzer_version=analyzer_version,
+            analyzer_id=resolved_analyzer_id,
+            model_id=model_id,
             provider_id=provider_id,
             prompt=prompt,
             params=params or {},
@@ -110,7 +125,7 @@ class AnalysisService:
 
         logger.info(
             f"Analysis {analysis.id} created for asset {asset_id} "
-            f"(type={analyzer_type.value}, provider={provider_id})"
+            f"(analyzer={resolved_analyzer_id}, provider={provider_id})"
         )
 
         # Emit event
@@ -118,7 +133,7 @@ class AnalysisService:
             "analysis_id": analysis.id,
             "asset_id": asset_id,
             "user_id": user.id,
-            "analyzer_type": analyzer_type.value,
+            "analyzer_id": resolved_analyzer_id,
             "provider_id": provider_id,
         })
 
@@ -254,7 +269,7 @@ class AnalysisService:
         self,
         asset_id: int,
         user: User,
-        analyzer_type: Optional[AnalyzerType] = None,
+        analyzer_id: Optional[str] = None,
         status: Optional[AnalysisStatus] = None,
         limit: int = 50,
     ) -> List[AssetAnalysis]:
@@ -264,7 +279,7 @@ class AnalysisService:
         Args:
             asset_id: Asset ID
             user: User requesting (for authorization)
-            analyzer_type: Optional filter by analyzer type
+            analyzer_id: Optional filter by analyzer ID
             status: Optional filter by status
             limit: Maximum results to return
 
@@ -283,8 +298,8 @@ class AnalysisService:
             .limit(limit)
         )
 
-        if analyzer_type:
-            query = query.where(AssetAnalysis.analyzer_type == analyzer_type)
+        if analyzer_id:
+            query = query.where(AssetAnalysis.analyzer_id == analyzer_id)
         if status:
             query = query.where(AssetAnalysis.status == status)
 
@@ -325,3 +340,53 @@ class AnalysisService:
         if not asset:
             raise ResourceNotFoundError(f"Asset {asset_id} not found")
         return asset
+
+    async def _resolve_execution_config(
+        self,
+        *,
+        user_id: int,
+        asset: Asset,
+        analyzer_id: str,
+    ) -> tuple[str, str, Optional[str]]:
+        """Resolve canonical analyzer ID, provider ID, and model ID."""
+        canonical_id = analyzer_registry.resolve_legacy(analyzer_id)
+        analyzer = analyzer_registry.get(canonical_id)
+        if not analyzer:
+            raise InvalidOperationError(f"Analyzer '{analyzer_id}' is not registered")
+        if not analyzer.enabled:
+            raise InvalidOperationError(f"Analyzer '{canonical_id}' is disabled")
+        if analyzer.target != AnalyzerTarget.ASSET:
+            raise InvalidOperationError(
+                f"Analyzer '{canonical_id}' is not an asset analyzer"
+            )
+
+        instance_service = AnalyzerInstanceService(self.db)
+        instances = await instance_service.list_instances(
+            owner_user_id=user_id,
+            analyzer_id=canonical_id,
+            enabled_only=True,
+        )
+
+        selected_instance = max(
+            instances,
+            key=lambda item: (item.priority, item.id or 0),
+            default=None,
+        )
+
+        provider_id = (
+            selected_instance.provider_id
+            if selected_instance is not None
+            else analyzer.provider_id or asset.provider_id
+        )
+        if not provider_id:
+            raise InvalidOperationError(
+                f"Analyzer '{canonical_id}' has no resolved provider"
+            )
+
+        model_id = (
+            selected_instance.model_id
+            if selected_instance is not None
+            else analyzer.model_id
+        )
+
+        return canonical_id, provider_id, model_id

@@ -21,6 +21,11 @@ import {
   type CreateAnalyzerInstanceRequest,
   type UpdateAnalyzerInstanceRequest,
 } from '@lib/api/analyzers';
+import {
+  getUserPreferences,
+  updatePreferenceKey,
+  type AnalyzerPreferences,
+} from '@lib/api/userPreferences';
 
 import { useMediaSettingsStore } from '@features/assets';
 import { usePromptSettingsStore } from '@features/prompts/stores/promptSettingsStore';
@@ -51,6 +56,12 @@ const INITIAL_FORM_STATE: FormState = {
   config: '{}',
 };
 const DEFAULT_VISUAL_SIMILARITY_THRESHOLD = 0.3;
+
+function normalizeAnalyzerSetting(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const trimmed = value.trim();
+  return trimmed || fallback;
+}
 
 /** Mask sensitive config values for display */
 function maskConfigValue(key: string, value: unknown): string {
@@ -435,6 +446,8 @@ export function AnalyzersSettings() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deletingIds, setDeletingIds] = useState<Set<number>>(new Set());
+  const [isSavingDefaults, setIsSavingDefaults] = useState(false);
+  const [defaultsError, setDefaultsError] = useState<string | null>(null);
 
   const defaultPromptAnalyzer = usePromptSettingsStore((s) => s.defaultAnalyzer);
   const setDefaultPromptAnalyzer = usePromptSettingsStore((s) => s.setDefaultAnalyzer);
@@ -461,22 +474,84 @@ export function AnalyzersSettings() {
     try {
       setIsLoading(true);
       setError(null);
-      const [analyzersRes, instancesRes] = await Promise.all([
+      const [analyzersRes, instancesRes, preferences] = await Promise.all([
         listAnalyzers(),
         listAnalyzerInstances({ include_disabled: true }),
+        getUserPreferences(),
       ]);
       setAnalyzers([...analyzersRes.analyzers]);
       setInstances([...instancesRes.instances]);
+
+      const prefs = (preferences.analyzer as AnalyzerPreferences | undefined) ?? {};
+
+      setDefaultPromptAnalyzer(
+        normalizeAnalyzerSetting(prefs.prompt_default_id, DEFAULT_PROMPT_ANALYZER_ID)
+      );
+      setDefaultImageAnalyzer(
+        normalizeAnalyzerSetting(prefs.asset_default_image_id, DEFAULT_ASSET_ANALYZER_ID)
+      );
+      setDefaultVideoAnalyzer(
+        normalizeAnalyzerSetting(prefs.asset_default_video_id, DEFAULT_ASSET_ANALYZER_ID)
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [setDefaultImageAnalyzer, setDefaultPromptAnalyzer, setDefaultVideoAnalyzer]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const persistAnalyzerPreferences = useCallback(
+    async (updates: Partial<AnalyzerPreferences>) => {
+      setDefaultsError(null);
+      setIsSavingDefaults(true);
+      try {
+        const currentPreferences = await getUserPreferences();
+        const currentAnalyzerPreferences =
+          (currentPreferences.analyzer as AnalyzerPreferences | undefined) ?? {};
+        const nextPreferences: AnalyzerPreferences = {
+          ...currentAnalyzerPreferences,
+          ...updates,
+        };
+        await updatePreferenceKey('analyzer', nextPreferences);
+      } catch (err) {
+        setDefaultsError(err instanceof Error ? err.message : 'Failed to save analyzer defaults');
+      } finally {
+        setIsSavingDefaults(false);
+      }
+    },
+    []
+  );
+
+  const handlePromptDefaultChange = useCallback(
+    (value: string) => {
+      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_PROMPT_ANALYZER_ID);
+      setDefaultPromptAnalyzer(nextValue);
+      void persistAnalyzerPreferences({ prompt_default_id: nextValue });
+    },
+    [persistAnalyzerPreferences, setDefaultPromptAnalyzer]
+  );
+
+  const handleImageDefaultChange = useCallback(
+    (value: string) => {
+      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_ASSET_ANALYZER_ID);
+      setDefaultImageAnalyzer(nextValue);
+      void persistAnalyzerPreferences({ asset_default_image_id: nextValue });
+    },
+    [persistAnalyzerPreferences, setDefaultImageAnalyzer]
+  );
+
+  const handleVideoDefaultChange = useCallback(
+    (value: string) => {
+      const nextValue = normalizeAnalyzerSetting(value, DEFAULT_ASSET_ANALYZER_ID);
+      setDefaultVideoAnalyzer(nextValue);
+      void persistAnalyzerPreferences({ asset_default_video_id: nextValue });
+    },
+    [persistAnalyzerPreferences, setDefaultVideoAnalyzer]
+  );
 
   // Form handlers
   const handleFormChange = useCallback((updates: Partial<FormState>) => {
@@ -515,12 +590,23 @@ export function AnalyzersSettings() {
     setFormError(null);
   };
 
-  const handleResetDefaults = () => {
+  const handleResetDefaults = useCallback(() => {
     setDefaultPromptAnalyzer(DEFAULT_PROMPT_ANALYZER_ID);
     setDefaultImageAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
     setDefaultVideoAnalyzer(DEFAULT_ASSET_ANALYZER_ID);
     setVisualSimilarityThreshold(DEFAULT_VISUAL_SIMILARITY_THRESHOLD);
-  };
+    void persistAnalyzerPreferences({
+      prompt_default_id: DEFAULT_PROMPT_ANALYZER_ID,
+      asset_default_image_id: DEFAULT_ASSET_ANALYZER_ID,
+      asset_default_video_id: DEFAULT_ASSET_ANALYZER_ID,
+    });
+  }, [
+    persistAnalyzerPreferences,
+    setDefaultImageAnalyzer,
+    setDefaultPromptAnalyzer,
+    setDefaultVideoAnalyzer,
+    setVisualSimilarityThreshold,
+  ]);
 
   const handleSubmit = async () => {
     try {
@@ -706,12 +792,22 @@ export function AnalyzersSettings() {
         <div className="flex justify-end">
           <button
             onClick={handleResetDefaults}
-            disabled={isAtRecommendedDefaults}
+            disabled={isAtRecommendedDefaults || isSavingDefaults}
             className="px-3 py-1.5 text-[11px] rounded bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 disabled:opacity-50 disabled:cursor-not-allowed text-neutral-700 dark:text-neutral-300 transition-colors"
           >
             Reset to Recommended
           </button>
         </div>
+        {isSavingDefaults && (
+          <p className="text-[10px] text-neutral-500 dark:text-neutral-400 text-right">
+            Saving analyzer defaults...
+          </p>
+        )}
+        {defaultsError && (
+          <p className="text-[10px] text-red-700 dark:text-red-400 text-right">
+            Failed to save analyzer defaults: {defaultsError}
+          </p>
+        )}
       </section>
 
       {/* Runtime defaults */}
@@ -719,6 +815,9 @@ export function AnalyzersSettings() {
         <h3 className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
           Default Analyzer Selection
         </h3>
+        <p className="text-[10px] text-neutral-500 dark:text-neutral-400">
+          These defaults are saved in your account preferences and used by backend analysis flows when analyzer IDs are omitted.
+        </p>
         <div className="grid gap-3 md:grid-cols-4 p-3 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50/60 dark:bg-neutral-900/40">
           <div className="space-y-1">
             <label className="block text-[10px] font-semibold text-neutral-700 dark:text-neutral-300">
@@ -726,7 +825,8 @@ export function AnalyzersSettings() {
             </label>
             <select
               value={defaultPromptAnalyzer}
-              onChange={(e) => setDefaultPromptAnalyzer(e.target.value)}
+              onChange={(e) => handlePromptDefaultChange(e.target.value)}
+              disabled={isSavingDefaults}
               className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
             >
               {!hasPromptDefaultOption && (
@@ -757,7 +857,8 @@ export function AnalyzersSettings() {
             </label>
             <select
               value={defaultImageAnalyzer}
-              onChange={(e) => setDefaultImageAnalyzer(e.target.value)}
+              onChange={(e) => handleImageDefaultChange(e.target.value)}
+              disabled={isSavingDefaults}
               className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
             >
               {!hasImageDefaultOption && (
@@ -788,7 +889,8 @@ export function AnalyzersSettings() {
             </label>
             <select
               value={defaultVideoAnalyzer}
-              onChange={(e) => setDefaultVideoAnalyzer(e.target.value)}
+              onChange={(e) => handleVideoDefaultChange(e.target.value)}
+              disabled={isSavingDefaults}
               className="w-full px-2 py-1.5 text-[11px] border rounded bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-600"
             >
               {!hasVideoDefaultOption && (
