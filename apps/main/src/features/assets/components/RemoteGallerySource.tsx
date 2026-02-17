@@ -1308,7 +1308,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           </div>
           <FilterPresetBar
             currentFilters={controller.filters}
-            onLoadPreset={(filters) => setFilters(filters)}
+            onLoadPreset={(filters) => controller.replaceFilters(filters)}
           />
           <div>
             <DynamicFilters

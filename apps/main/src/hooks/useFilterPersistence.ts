@@ -37,6 +37,8 @@ export interface UseFilterPersistenceResult<T> {
   filters: T;
   /** Update filters (merges partial updates) */
   setFilters: (partial: Partial<T>) => void;
+  /** Replace entire filter state (resets to initialFilters then applies overrides) */
+  replaceFilters: (next: Partial<T>) => void;
   /** Reset filters to initial values */
   resetFilters: () => void;
   /** Helper to read initial value from URL or session */
@@ -246,6 +248,15 @@ export function useFilterPersistence<T extends Record<string, any>>(
     [persistFilters]
   );
 
+  const replaceFilters = useCallback(
+    (next: Partial<T>) => {
+      const replaced = { ...initialFilters, ...next };
+      setFiltersState(replaced);
+      persistFilters(replaced);
+    },
+    [initialFilters, persistFilters]
+  );
+
   const resetFilters = useCallback(() => {
     setFiltersState(initialFilters);
     persistFilters(initialFilters);
@@ -338,6 +349,7 @@ export function useFilterPersistence<T extends Record<string, any>>(
   return {
     filters,
     setFilters,
+    replaceFilters,
     resetFilters,
     initFromUrl,
   };

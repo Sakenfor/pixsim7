@@ -155,7 +155,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   } = useMediaGenerationActions();
 
   // Filter persistence
-  const { filters, setFilters } = useFilterPersistence({
+  const { filters, setFilters, replaceFilters } = useFilterPersistence({
     sessionKey: SESSION_KEY,
     initialFilters: {
       q: '',
@@ -467,6 +467,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     // Filters
     filters,
     setFilters,
+    replaceFilters,
 
     // Data
     assets: items,
