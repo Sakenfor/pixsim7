@@ -146,7 +146,15 @@ export {
   useOverlayWidgetSettings,
   getOverlayWidgetSettings,
   updateOverlayWidgetSettings,
+  getContextVisibility,
+  DEFAULT_OVERLAY_VISIBILITY,
+  CONFIGURABLE_WIDGET_IDS,
+  WIDGET_LABELS,
   type WidgetSettings,
+  type WidgetVisibilityMode,
+  type OverlayContextId,
+  type ConfigurableWidgetId,
+  type OverlayVisibilitySettings,
 } from './overlayWidgetSettingsStore';
 
 // Settings schema registration

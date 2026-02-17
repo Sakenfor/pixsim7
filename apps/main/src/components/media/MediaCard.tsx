@@ -33,12 +33,18 @@ import {
   mergeConfigurations,
 } from '@lib/ui/overlay';
 import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
+import {
+  useOverlayWidgetSettingsStore,
+  CONFIGURABLE_WIDGET_IDS,
+  type ConfigurableWidgetId,
+} from '@lib/widgets';
 
 import { type AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
 import { CAP_ASSET, useContextHubSettingsStore, useProvideCapability } from '@features/contextHub';
 
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
+
 
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
 
@@ -166,6 +172,10 @@ export interface MediaCardResolvedProps extends MediaCardRuntimeProps {
   hasGenerationContext?: boolean;
   /** Whether this asset is favorited (has user:favorite tag) */
   isFavorite?: boolean;
+  /** Generation prompt text */
+  prompt?: string | null;
+  /** Operation type (e.g. "image_to_video") */
+  operationType?: string | null;
 }
 
 // ─── Asset-first path (new) ────────────────────────────────────────────────
@@ -219,6 +229,8 @@ export function MediaCard(props: MediaCardProps) {
     contextMenuAsset,
     contextMenuSelection,
   } = resolved;
+
+  const getVisibility = useOverlayWidgetSettingsStore((s) => s.getContextVisibility);
 
   const contextMenu = useContextMenuOptional();
   const enableMediaCardContextMenu = useContextHubSettingsStore(
@@ -376,14 +388,31 @@ export function MediaCard(props: MediaCardProps) {
         ...result,
         widgets: result.widgets.filter((w) => {
           if (capabilities.skipUploadButton && w.id === 'upload-button') return false;
-          if (capabilities.skipTagsTooltip && w.id === 'technical-tags') return false;
+          if (capabilities.skipTagsTooltip && w.id === 'info-popover') return false;
           return true;
         }),
       };
     }
 
+    // Apply per-context visibility settings from overlayWidgetSettingsStore
+    const configurableSet = new Set<string>(CONFIGURABLE_WIDGET_IDS);
+    result = {
+      ...result,
+      widgets: result.widgets
+        .filter((w) => {
+          if (!configurableSet.has(w.id)) return true;
+          return getVisibility('gallery', w.id as ConfigurableWidgetId) !== 'hidden';
+        })
+        .map((w) => {
+          if (!configurableSet.has(w.id)) return w;
+          const mode = getVisibility('gallery', w.id as ConfigurableWidgetId);
+          const trigger = mode === 'always' ? 'always' : 'hover-container';
+          return { ...w, visibility: { ...w.visibility, trigger: trigger as any } };
+        }),
+    };
+
     return result;
-  }, [resolved, customWidgets, customOverlayConfig, overlayPresetId]);
+  }, [resolved, customWidgets, customOverlayConfig, overlayPresetId, getVisibility]);
 
   // Video source for overlay widgets (scrubbing, etc.)
   const overlayVideoSrc =
@@ -417,6 +446,12 @@ export function MediaCard(props: MediaCardProps) {
     // Favorite state
     isFavorite: resolved.isFavorite,
     onToggleFavorite: resolved.onToggleFavorite,
+    // Info popover
+    prompt: resolved.prompt,
+    operationType: resolved.operationType,
+    model: resolved.contextMenuAsset?.model,
+    width: resolved.width,
+    height: resolved.height,
   };
 
   return (

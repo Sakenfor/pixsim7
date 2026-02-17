@@ -19,11 +19,12 @@ import { createPortal } from 'react-dom';
 
 import { useAssetAutoContextMenu } from '@lib/dockview';
 import { Icon } from '@lib/icons';
-import { VideoScrubWidgetRenderer } from '@lib/ui/overlay';
+import { OverlayContainer, VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
+import { useOverlayWidgetsForAsset } from '@/components/media/hooks/useOverlayWidgetsForAsset';
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
@@ -195,6 +196,12 @@ export function CompactAssetCard({
   // Context menu: automatic registration with type-specific preset
   const contextMenuProps = useAssetAutoContextMenu(asset);
 
+  // Shared overlay widgets (favorite, quick-tag, etc.) from overlay context settings
+  const { overlayConfig, overlayData } = useOverlayWidgetsForAsset({
+    asset,
+    context: 'compact',
+  });
+
   return (
     <div
       className={`relative rounded-md border-2 ${statusColor} bg-white dark:bg-neutral-900 overflow-hidden ${fillHeight ? 'h-full flex flex-col' : ''} ${onClick ? 'cursor-pointer' : ''} group/card ${className}`}
@@ -209,7 +216,9 @@ export function CompactAssetCard({
         </div>
       )}
 
-      <div
+      <OverlayContainer
+        configuration={overlayConfig}
+        data={overlayData}
         className={`relative bg-neutral-100 dark:bg-neutral-800 cq-scale ${
           fillHeight ? 'h-full' : (aspectSquare || !isVideo ? 'aspect-square' : 'aspect-video')
         }`}
@@ -386,7 +395,7 @@ export function CompactAssetCard({
           </>,
           document.body
         )}
-      </div>
+      </OverlayContainer>
 
       {/* Footer with basic info */}
       {!hideFooter && (

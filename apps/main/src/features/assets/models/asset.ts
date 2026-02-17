@@ -77,6 +77,11 @@ export interface AssetModel {
   userId: number;
   width?: number | null;
 
+  // Provenance fields (first-class columns)
+  prompt?: string | null;
+  operationType?: string | null;
+  reproducibleHash?: string | null;
+
   // Versioning fields
   /** UUID of version family (null = standalone asset, not versioned) */
   versionFamilyId?: string | null;
@@ -171,6 +176,11 @@ export function fromAssetResponse(response: AssetResponse): AssetModel {
     userId: response.user_id,
     width: response.width,
 
+    // Provenance fields
+    prompt: (response as any).prompt ?? null,
+    operationType: (response as any).operation_type ?? null,
+    reproducibleHash: (response as any).reproducible_hash ?? null,
+
     // Versioning fields
     versionFamilyId: response.version_family_id ?? null,
     versionNumber: response.version_number ?? null,
@@ -209,6 +219,7 @@ export function toViewerAsset(asset: AssetModel): ViewerAsset {
     source: 'gallery',
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     hasGenerationContext: asset.hasGenerationContext ?? false,
+    _assetModel: asset,
     metadata: {
       description: asset.description ?? undefined,
       tags: asset.tags?.map((t) => t.name),

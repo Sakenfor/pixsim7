@@ -8,8 +8,11 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+import { OverlayContainer } from '@lib/ui/overlay';
+
 import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
+import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
 import { useProvideRegionAnnotations } from '../capabilities';
 import { useMediaOverlayHost } from '../overlays';
 import type { ViewerPanelContext } from '../types';
@@ -95,6 +98,14 @@ export function MediaPanel({ context }: MediaPanelProps) {
     navigatePrev,
     navigateNext,
   } = resolvedContext;
+
+  // Shared overlay widgets for the viewer (favorite, generation bar, etc.)
+  const assetModel = asset?._assetModel ?? null;
+  const viewerOverlay = useOverlayWidgetsForAsset({
+    asset: assetModel,
+    context: 'viewer',
+  });
+  const hasViewerOverlay = !!assetModel;
 
   const {
     overlays: availableOverlays,
@@ -191,26 +202,53 @@ export function MediaPanel({ context }: MediaPanelProps) {
         />
 
         {/* Media/overlay display */}
-        <div className="flex-1 min-w-0 relative flex flex-col">
-          {ActiveMain && (
-            <div className="absolute inset-0 z-10">
-              <ActiveMain
-                asset={asset}
-                settings={settings}
-                onCaptureFrame={captureFrame}
-                captureDisabled={isCapturing}
-              />
-            </div>
-          )}
-          <MediaDisplay
-            asset={asset}
-            settings={settings}
-            fitMode={fitMode}
-            zoom={zoom}
-            videoRef={videoRef}
-            imageRef={imageRef}
-          />
-        </div>
+        {hasViewerOverlay ? (
+          <OverlayContainer
+            configuration={viewerOverlay.overlayConfig}
+            data={viewerOverlay.overlayData}
+            className="flex-1 min-w-0 relative flex flex-col"
+          >
+            {ActiveMain && (
+              <div className="absolute inset-0 z-10">
+                <ActiveMain
+                  asset={asset}
+                  settings={settings}
+                  onCaptureFrame={captureFrame}
+                  captureDisabled={isCapturing}
+                />
+              </div>
+            )}
+            <MediaDisplay
+              asset={asset}
+              settings={settings}
+              fitMode={fitMode}
+              zoom={zoom}
+              videoRef={videoRef}
+              imageRef={imageRef}
+            />
+          </OverlayContainer>
+        ) : (
+          <div className="flex-1 min-w-0 relative flex flex-col">
+            {ActiveMain && (
+              <div className="absolute inset-0 z-10">
+                <ActiveMain
+                  asset={asset}
+                  settings={settings}
+                  onCaptureFrame={captureFrame}
+                  captureDisabled={isCapturing}
+                />
+              </div>
+            )}
+            <MediaDisplay
+              asset={asset}
+              settings={settings}
+              fitMode={fitMode}
+              zoom={zoom}
+              videoRef={videoRef}
+              imageRef={imageRef}
+            />
+          </div>
+        )}
 
         {ActiveSidebar && (
           <ActiveSidebar

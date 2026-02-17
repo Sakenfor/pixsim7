@@ -35,6 +35,8 @@ export interface ViewerAsset {
   sourceGenerationId?: number;
   /** True when asset has generation context (from record or metadata) */
   hasGenerationContext?: boolean;
+  /** Full AssetModel for overlay widgets (gallery source only, not persisted) */
+  _assetModel?: import('../models/asset').AssetModel;
   /** Additional metadata */
   metadata?: {
     description?: string;
@@ -214,7 +216,10 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       name: 'asset_viewer_v2',
       partialize: (state) => ({
         settings: state.settings,
-        currentAsset: state.currentAsset,
+        // Strip _assetModel from currentAsset before persisting (large, non-serializable)
+        currentAsset: state.currentAsset
+          ? { ...state.currentAsset, _assetModel: undefined }
+          : state.currentAsset,
         mode: state.mode,
         showMetadata: state.showMetadata,
         // Note: assetList and currentIndex are not persisted as the list can be
