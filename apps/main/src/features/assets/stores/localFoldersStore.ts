@@ -6,6 +6,7 @@ import { useAuthStore } from '@pixsim7/shared.auth.core';
 import { create } from 'zustand';
 
 import { getUserPreferences, updatePreferenceKey } from '@lib/api/userPreferences';
+import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 
 import type { FolderCandidate, FolderSourceMetadata } from '../types/assetCandidate';
 
@@ -91,15 +92,10 @@ type LocalFoldersState = {
   dismissMissingFolders: () => void;
 };
 
-// --- minimal IndexedDB helpers ---
-const DB_VERSION = 2; // Bumped for AssetCandidate migration
-const DB_NAME = 'ps7_local_folders';
+// --- IndexedDB via shared helpers ---
 const STORAGE_KEY_PREFIX = 'ps7_local_folders';
 
-function getUserNamespace(): string {
-  const userId = useAuthStore.getState().user?.id;
-  return userId ? `user_${userId}` : 'anonymous';
-}
+const idbStore = createIdbKvStore('ps7_local_folders', 2);
 
 function getAnonymousNamespace(): string {
   return 'anonymous';
@@ -238,7 +234,7 @@ async function getFoldersFromBackend(): Promise<SyncedFolderMeta[]> {
 
   try {
     const prefs = await getUserPreferences();
-    const synced = prefs?.preferences?.[BACKEND_PREF_KEY] as SyncedFolderMeta[] | undefined;
+    const synced = prefs?.[BACKEND_PREF_KEY] as SyncedFolderMeta[] | undefined;
     return synced ?? [];
   } catch (e) {
     console.warn('[LocalFolders] Failed to get folders from backend:', e);
@@ -259,49 +255,13 @@ export async function getMissingFolderNames(): Promise<string[]> {
     .map(f => f.name);
 }
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (event) => {
-      const db = req.result;
-      const oldVersion = (event as IDBVersionChangeEvent).oldVersion;
-
-      // Version 1: Initial schema
-      if (oldVersion < 1) {
-        if (!db.objectStoreNames.contains('kv')) {
-          db.createObjectStore('kv');
-        }
-      }
-
-      // Version 2: AssetCandidate migration
-      // Data migration happens in code when loading - no schema changes needed
-      // (kv store is schema-less, just stores JSON)
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-}
-
+// Thin wrappers so call-sites stay unchanged
 async function idbGet<T>(key: string): Promise<T | undefined> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('kv', 'readonly');
-    const store = tx.objectStore('kv');
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result as T | undefined);
-    req.onerror = () => reject(req.error);
-  });
+  return idbStore.get<T>(key);
 }
 
 async function idbSet<T>(key: string, value: T): Promise<void> {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('kv', 'readwrite');
-    const store = tx.objectStore('kv');
-    store.put(value, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  return idbStore.set<T>(key, value);
 }
 
 function isFSASupported() {
@@ -612,7 +572,7 @@ function scheduleHashCacheFlush(folderId: string): void {
  */
 async function debugLocalFolders(): Promise<void> {
   try {
-    const db = await openDB();
+    const db = await idbStore.openDB();
     const tx = db.transaction('kv', 'readonly');
     const store = tx.objectStore('kv');
 
@@ -826,10 +786,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
     }
     // Remove cached assets for this folder
     try {
-      const db = await openDB();
-      const tx = db.transaction('kv', 'readwrite');
-      const store = tx.objectStore('kv');
-      store.delete(getAssetsKey(id));
+      await idbStore.remove(getAssetsKey(id));
     } catch (e) {
       console.warn('Failed to remove cached assets', e);
     }
