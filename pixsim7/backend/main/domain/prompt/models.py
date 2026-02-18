@@ -8,7 +8,7 @@ Core models for prompt versioning and reusable blocks:
 """
 from typing import Optional, Dict, Any, List
 from datetime import datetime
-from sqlmodel import SQLModel, Field, Column, Index
+from sqlmodel import SQLModel, Field, Column, ForeignKey, Index
 from sqlalchemy import JSON, Text, String
 from uuid import UUID, uuid4
 import hashlib
@@ -287,7 +287,7 @@ class PromptBlock(SQLModel, table=True):
 
     Lifecycle: raw → reviewed → curated
     """
-    __tablename__ = "prompt_blocks"
+    __tablename__ = "action_blocks"
 
     # Primary Identity
     id: UUID = Field(
@@ -434,8 +434,12 @@ class PromptBlock(SQLModel, table=True):
     )
     source_version_id: Optional[UUID] = Field(
         default=None,
-        foreign_key="prompt_versions.id",
-        index=True,
+        sa_column=Column(
+            ForeignKey("prompt_versions.id"),
+            name="prompt_version_id",
+            index=True,
+            nullable=True,
+        ),
         description="If extracted from a prompt version, link to source"
     )
     analyzer_id: Optional[str] = Field(
@@ -556,7 +560,7 @@ class PromptBlock(SQLModel, table=True):
         Index("idx_prompt_block_source_type", "source_type"),
         Index("idx_prompt_block_created", "created_at"),
         Index("idx_prompt_block_role_category_status", "role", "category", "curation_status"),
-        Index("idx_prompt_block_source_version", "source_type", "source_version_id"),
+        Index("idx_prompt_block_source_version", "source_type", "prompt_version_id"),
     )
 
     def __repr__(self) -> str:
@@ -564,7 +568,7 @@ class PromptBlock(SQLModel, table=True):
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to JSON-compatible dict (for export/API)."""
-        result = {
+        result: Dict[str, Any] = {
             "id": self.block_id,
             "kind": self.kind,
             "prompt": self.text,
@@ -613,3 +617,114 @@ class PromptBlock(SQLModel, table=True):
             result["intensityProgression"] = self.intensity_progression
 
         return result
+
+
+class BlockTemplate(SQLModel, table=True):
+    """
+    Reusable template for composing prompts from random block selections.
+
+    A template defines ordered slots, each with constraints (role, category, tags, etc.).
+    "Rolling" a template queries matching PromptBlock records per slot, randomly picks
+    one for each, and composes the result.
+
+    Slots are stored as embedded JSON — they are always loaded/saved with their template
+    and never queried independently.
+    """
+    __tablename__ = "block_templates"
+
+    id: Optional[UUID] = Field(
+        default_factory=uuid4,
+        primary_key=True,
+        description="Unique template identifier"
+    )
+
+    # Identity
+    name: str = Field(
+        max_length=255,
+        description="Human-readable template name"
+    )
+    slug: str = Field(
+        max_length=100,
+        unique=True,
+        index=True,
+        description="URL-safe identifier: 'romantic-park-scene'"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text),
+        description="Detailed description of what this template produces"
+    )
+
+    # Slot definitions (embedded JSON array)
+    slots: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description=(
+            "Ordered slot definitions. Each slot: "
+            "{slot_index, label, role, category, kind, complexity_min, complexity_max, "
+            "package_name, tag_constraints, min_rating, selection_strategy, weight, "
+            "optional, fallback_text, exclude_block_ids}"
+        )
+    )
+
+    # Composition
+    composition_strategy: str = Field(
+        default="sequential",
+        max_length=50,
+        description="How selected blocks are combined: sequential, layered, merged"
+    )
+
+    # Organization
+    package_name: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        index=True,
+        description="Package/library grouping"
+    )
+    tags: List[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="Template tags for search/filtering"
+    )
+
+    # Access
+    is_public: bool = Field(
+        default=True,
+        index=True,
+        description="Is this template publicly available?"
+    )
+    created_by: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="User/system that created this template"
+    )
+
+    # Usage tracking
+    roll_count: int = Field(
+        default=0,
+        description="Number of times this template has been rolled"
+    )
+
+    # Flexible metadata
+    template_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="template_metadata"),
+        description="Additional flexible metadata"
+    )
+
+    # Timestamps
+    created_at: datetime = Field(
+        default_factory=utcnow,
+        index=True
+    )
+    updated_at: datetime = Field(
+        default_factory=utcnow
+    )
+
+    __table_args__ = (
+        Index("idx_block_template_package_public", "package_name", "is_public"),
+        Index("idx_block_template_created", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BlockTemplate(id={self.id}, slug='{self.slug}', slots={len(self.slots)})>"

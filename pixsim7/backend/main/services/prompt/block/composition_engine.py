@@ -46,7 +46,7 @@ def derive_analysis_from_blocks(
     for block in blocks:
         analysis_candidate = {
             "role": block.block_metadata.get("role") or _infer_role_from_block(block),
-            "text": block.prompt,
+            "text": block.text,
             "source_type": "composition",
         }
         # Include category if available (LLM analyzers add this)
@@ -236,7 +236,7 @@ class BlockCompositionEngine:
 
         parts = []
         for i, block in enumerate(blocks):
-            parts.append(block.prompt)
+            parts.append(block.text)
 
             # Add separator (except after last block)
             if i < len(blocks) - 1:
@@ -307,7 +307,7 @@ class BlockCompositionEngine:
         for category in layered_order:
             if categories[category]:
                 for block in categories[category]:
-                    parts.append(block.prompt)
+                    parts.append(block.text)
                 parts.append(" ")  # Space between categories
 
         return " ".join(parts).strip()
@@ -431,7 +431,7 @@ class BlockCompositionEngine:
             id=uuid4(),
             block_id=composite_id,
             kind=composite_kind,
-            prompt=assembled_prompt,
+            text=assembled_prompt,
             tags=merged_tags,
             complexity_level=complexity,
             char_count=char_count,
@@ -508,7 +508,7 @@ class BlockCompositionEngine:
                         "block_string_id": comp_block.block_id,
                         "compatibility_score": score,
                         "reason": f"Compatible with {seed_block.block_id}",
-                        "preview": comp_block.prompt[:100] + "..."
+                        "preview": comp_block.text[:100] + "..."
                     })
 
         # Sort by score and limit
