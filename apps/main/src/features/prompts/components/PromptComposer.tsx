@@ -13,6 +13,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { useWorkspaceStore } from '@features/workspace';
+
 import { useApi } from '@/hooks/useApi';
 import { getPromptRoleBadgeClass, getPromptRoleLabel } from '@/lib/promptRoleUi';
 import {
@@ -27,6 +29,8 @@ import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
+import { RoleBadge } from './shared/RoleBadge';
+import { TemplatePickerDropdown } from './templates/TemplatePickerDropdown';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -104,6 +108,7 @@ export function PromptComposer({
   minHeight,
 }: PromptComposerProps) {
   const api = useApi();
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
   const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
@@ -477,6 +482,16 @@ export function PromptComposer({
             >
               Blocks — Inline
             </DropdownItem>
+            <DropdownDivider />
+            <DropdownItem
+              icon={<Icon name="shuffle" size={14} />}
+              onClick={() => {
+                openFloatingPanel('template-builder');
+                setShowLayoutMenu(false);
+              }}
+            >
+              Template Builder
+            </DropdownItem>
           </Dropdown>
         </div>
 
@@ -527,6 +542,11 @@ export function PromptComposer({
                 </button>
               </>
             )}
+
+            <TemplatePickerDropdown
+              onUsePrompt={onChange}
+              disabled={disabled}
+            />
 
             <div className="relative">
               <button
@@ -693,10 +713,7 @@ export function PromptComposer({
                         contentClassName="block"
                         summary={
                           <span className="flex items-center gap-2">
-                            <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300">
-                              <span className={clsx('w-1.5 h-1.5 rounded-full', badgeColor)} />
-                              {getPromptRoleLabel(block.role)}
-                            </span>
+                            <RoleBadge role={block.role} colorOverrides={promptRoleColors} />
                             <span className="text-[11px] text-neutral-500 dark:text-neutral-400 truncate">
                               {summaryText}
                             </span>

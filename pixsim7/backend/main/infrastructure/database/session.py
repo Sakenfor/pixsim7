@@ -125,12 +125,19 @@ def _stamp_utc_on_refresh_flush(target, flush_context, attrs):
 
 
 def _naive_datetimes(params):
-    """Strip tzinfo from every datetime in a parameter tuple.
+    """Strip tzinfo from every datetime in a parameter collection.
 
     asyncpg is strict: it rejects tz-aware datetimes for TIMESTAMP columns.
     For TIMESTAMPTZ columns asyncpg accepts naive datetimes and assumes UTC,
     so stripping is safe for both column types.
+
+    Handles tuple (positional params) and dict (named params) formats.
     """
+    if isinstance(params, dict):
+        return {
+            k: v.replace(tzinfo=None) if isinstance(v, datetime) and v.tzinfo is not None else v
+            for k, v in params.items()
+        }
     return tuple(
         p.replace(tzinfo=None) if isinstance(p, datetime) and p.tzinfo is not None else p
         for p in params
@@ -142,7 +149,15 @@ def _strip_tz_from_params(conn, cursor, statement, parameters, context, executem
     """Ensure all datetime query parameters are naive (UTC) for asyncpg."""
     if parameters:
         if executemany:
-            parameters = [_naive_datetimes(p) for p in parameters]
+            # Traditional executemany: parameters is a list of row-tuples/dicts.
+            # SQLAlchemy 2.x insertmanyvalues: parameters may be a flat tuple of
+            # scalar values even with executemany=True.  Detect which format we
+            # received by checking whether the first element is itself a collection.
+            first = parameters[0] if isinstance(parameters, (list, tuple)) and parameters else None
+            if isinstance(first, (tuple, list, dict)):
+                parameters = [_naive_datetimes(p) if p is not None else p for p in parameters]
+            else:
+                parameters = _naive_datetimes(parameters)
         else:
             parameters = _naive_datetimes(parameters)
     return statement, parameters

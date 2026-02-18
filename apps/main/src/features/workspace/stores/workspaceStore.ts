@@ -178,7 +178,8 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
         const api = resolveWorkspaceDockview().api;
         if (!api) {
-          console.warn(`[restorePanel] Workspace dockview not available`);
+          // Dockview not mounted (e.g. not on workspace route) — open floating instead
+          get().openFloatingPanel(panelId);
           return;
         }
 
