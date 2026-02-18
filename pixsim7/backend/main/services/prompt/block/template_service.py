@@ -160,6 +160,18 @@ class BlockTemplateService:
 
         return query
 
+    # ── Metadata ──────────────────────────────────────────────────────────
+
+    async def list_package_names(self) -> List[str]:
+        """Return distinct non-null package names from prompt blocks."""
+        result = await self.db.execute(
+            select(PromptBlock.package_name)
+            .where(PromptBlock.package_name.isnot(None))
+            .distinct()
+            .order_by(PromptBlock.package_name)
+        )
+        return [r for (r,) in result.all()]
+
     # ── Preview ───────────────────────────────────────────────────────────
 
     async def count_matching_blocks(self, slot: Dict[str, Any]) -> int:

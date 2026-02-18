@@ -268,3 +268,12 @@ async def preview_slot(
         slot=request.slot.model_dump(),
         limit=request.limit,
     )
+
+
+@router.get("/meta/packages", response_model=List[str])
+async def list_block_packages(
+    db: AsyncSession = Depends(get_db),
+):
+    """List distinct package names from prompt blocks."""
+    service = BlockTemplateService(db)
+    return await service.list_package_names()

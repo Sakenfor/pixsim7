@@ -5,8 +5,9 @@
  * with add/remove/reorder, and save functionality.
  */
 import clsx from 'clsx';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
+import { listBlockPackages } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 
 import { OPERATION_TYPES } from '@/types/operations';
@@ -42,6 +43,11 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [packageNames, setPackageNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    void listBlockPackages().then(setPackageNames).catch(() => {});
+  }, []);
 
   const handleAddSlot = useCallback(() => {
     addDraftSlot(createEmptySlot(draftSlots.length));
@@ -90,7 +96,9 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
       {/* Template meta */}
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Name</span>
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+            <Icon name="edit" size={9} /> Name
+          </span>
           <input
             type="text"
             value={name}
@@ -100,7 +108,9 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
           />
         </label>
         <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Slug</span>
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+            <Icon name="link" size={9} /> Slug
+          </span>
           <input
             type="text"
             value={slug}
@@ -111,7 +121,9 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
         </label>
       </div>
       <label className="space-y-0.5">
-        <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Description</span>
+        <span className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+          <Icon name="fileText" size={9} /> Description
+        </span>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -122,11 +134,13 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
       </label>
       <div className="grid grid-cols-2 gap-2">
         <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Composition strategy</span>
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+            <Icon name="layers" size={9} /> Composition strategy
+          </span>
           <select
             value={strategy}
             onChange={(e) => setStrategy(e.target.value)}
-            className="w-full text-sm px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
+            className="w-full text-sm px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none"
           >
             <option value="sequential">Sequential</option>
             <option value="layered">Layered</option>
@@ -134,11 +148,13 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
           </select>
         </label>
         <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">Target operation</span>
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+            <Icon name="zap" size={9} /> Target operation
+          </span>
           <select
             value={targetOperation}
             onChange={(e) => setTargetOperation(e.target.value)}
-            className="w-full text-sm px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
+            className="w-full text-sm px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none"
           >
             <option value="">Any</option>
             {OPERATION_TYPES.map((op) => (
@@ -151,8 +167,8 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
       {/* Slots */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300">
-            Slots ({draftSlots.length})
+          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+            <Icon name="layers" size={12} /> Slots ({draftSlots.length})
           </span>
           <button
             type="button"
@@ -173,6 +189,7 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
             onRemove={removeDraftSlot}
             onMoveUp={i > 0 ? () => reorderDraftSlot(i, i - 1) : undefined}
             onMoveDown={i < draftSlots.length - 1 ? () => reorderDraftSlot(i, i + 1) : undefined}
+            packageNames={packageNames}
           />
         ))}
 
@@ -195,6 +212,7 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
           'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50',
         )}
       >
+        <Icon name={saving ? 'refresh' : 'save'} size={12} className={clsx('inline mr-1', saving && 'animate-spin')} />
         {saving ? 'Saving...' : activeTemplate ? 'Update template' : 'Create template'}
       </button>
     </div>

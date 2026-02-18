@@ -3,7 +3,7 @@
  *
  * Edits role, category, kind, tags, complexity range, optional toggle,
  * fallback text, and selection strategy. Shows live matching block count
- * via the previewSlot API.
+ * via the previewSlot API. Collapsible to save space.
  */
 import clsx from 'clsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -21,12 +21,18 @@ interface TemplateSlotEditorProps {
   onRemove: (index: number) => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
+  packageNames?: string[];
   disabled?: boolean;
 }
 
 const ROLES = ['character', 'action', 'setting', 'mood', 'romance', 'camera', 'other'];
 const INTENTS = ['generate', 'preserve', 'modify', 'add', 'remove'];
 const COMPLEXITY_LEVELS = ['simple', 'moderate', 'complex', 'very_complex'];
+
+const selectCls =
+  'w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none';
+const inputCls =
+  'w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none';
 
 export function TemplateSlotEditor({
   slot,
@@ -35,10 +41,12 @@ export function TemplateSlotEditor({
   onRemove,
   onMoveUp,
   onMoveDown,
+  packageNames,
   disabled = false,
 }: TemplateSlotEditorProps) {
   const [preview, setPreview] = useState<SlotPreviewResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const update = useCallback(
@@ -67,191 +75,258 @@ export function TemplateSlotEditor({
     };
   }, [slot.role, slot.category, slot.kind, slot.package_name, slot.complexity_min, slot.complexity_max, slot.min_rating]);
 
+  // Summary line for collapsed state
+  const summary = [
+    slot.role,
+    slot.category,
+    slot.kind,
+    slot.intent,
+    slot.package_name,
+  ].filter(Boolean).join(' / ') || 'unconstrained';
+
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 space-y-2">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+      {/* Header — always visible */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 bg-neutral-50 dark:bg-neutral-800/60 cursor-pointer select-none"
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        <Icon
+          name={collapsed ? 'chevronRight' : 'chevronDown'}
+          size={12}
+          className="text-neutral-400 shrink-0"
+        />
+        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 shrink-0">
           #{index + 1}
         </span>
-        <input
-          type="text"
-          value={slot.label}
-          onChange={(e) => update({ label: e.target.value })}
-          placeholder="Slot label..."
-          disabled={disabled}
-          className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
-        />
-        <div className="flex items-center gap-1">
+        <span className="text-sm text-neutral-700 dark:text-neutral-200 truncate flex-1">
+          {slot.label || <span className="italic text-neutral-400">Untitled slot</span>}
+        </span>
+        <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate max-w-[140px]">
+          {summary}
+        </span>
+
+        {/* Match count badge */}
+        {preview != null && !previewLoading && (
+          <span className={clsx(
+            'text-[10px] tabular-nums px-1.5 py-0.5 rounded-full shrink-0',
+            preview.count > 0
+              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+              : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+          )}>
+            {preview.count}
+          </span>
+        )}
+        {previewLoading && (
+          <Icon name="refresh" size={10} className="animate-spin text-neutral-400 shrink-0" />
+        )}
+
+        {/* Action buttons — stop propagation so clicks don't toggle collapse */}
+        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
           {onMoveUp && (
-            <button type="button" onClick={onMoveUp} disabled={disabled} className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40" title="Move up">
-              <Icon name="arrowUp" size={12} />
+            <button type="button" onClick={onMoveUp} disabled={disabled} className="p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40" title="Move up">
+              <Icon name="arrowUp" size={11} />
             </button>
           )}
           {onMoveDown && (
-            <button type="button" onClick={onMoveDown} disabled={disabled} className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40" title="Move down">
-              <Icon name="arrowDown" size={12} />
+            <button type="button" onClick={onMoveDown} disabled={disabled} className="p-1 rounded text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40" title="Move down">
+              <Icon name="arrowDown" size={11} />
             </button>
           )}
-          <button type="button" onClick={() => onRemove(index)} disabled={disabled} className="p-1 rounded text-red-600 hover:text-red-700 dark:text-red-400 disabled:opacity-40" title="Remove slot">
-            <Icon name="trash2" size={12} />
+          <button type="button" onClick={() => onRemove(index)} disabled={disabled} className="p-1 rounded text-red-500/70 hover:text-red-600 dark:text-red-400/70 dark:hover:text-red-400 disabled:opacity-40" title="Remove slot">
+            <Icon name="trash2" size={11} />
           </button>
         </div>
       </div>
 
-      {/* Constraint fields */}
-      <div className="grid grid-cols-2 gap-2">
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Role</span>
-          <select
-            value={slot.role ?? ''}
-            onChange={(e) => update({ role: e.target.value || null })}
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          >
-            <option value="">Any</option>
-            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Category</span>
-          <input
-            type="text"
-            value={slot.category ?? ''}
-            onChange={(e) => update({ category: e.target.value || null })}
-            placeholder="e.g. entrance"
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          />
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Kind</span>
-          <select
-            value={slot.kind ?? ''}
-            onChange={(e) => update({ kind: e.target.value || null })}
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          >
-            <option value="">Any</option>
-            <option value="single_state">single_state</option>
-            <option value="transition">transition</option>
-          </select>
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Intent</span>
-          <select
-            value={slot.intent ?? ''}
-            onChange={(e) => update({ intent: e.target.value || null })}
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          >
-            <option value="">Any</option>
-            {INTENTS.map((i) => <option key={i} value={i}>{i}</option>)}
-          </select>
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Package</span>
-          <input
-            type="text"
-            value={slot.package_name ?? ''}
-            onChange={(e) => update({ package_name: e.target.value || null })}
-            placeholder="e.g. bench_park"
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          />
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Complexity min</span>
-          <select
-            value={slot.complexity_min ?? ''}
-            onChange={(e) => update({ complexity_min: e.target.value || null })}
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          >
-            <option value="">Any</option>
-            {COMPLEXITY_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </label>
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Complexity max</span>
-          <select
-            value={slot.complexity_max ?? ''}
-            onChange={(e) => update({ complexity_max: e.target.value || null })}
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          >
-            <option value="">Any</option>
-            {COMPLEXITY_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </label>
-      </div>
+      {/* Body — collapsible */}
+      {!collapsed && (
+        <div className="p-3 space-y-2 border-t border-neutral-100 dark:border-neutral-700/60">
+          {/* Label */}
+          <label className="flex items-center gap-2">
+            <Icon name="tag" size={11} className="text-neutral-400 shrink-0" />
+            <input
+              type="text"
+              value={slot.label}
+              onChange={(e) => update({ label: e.target.value })}
+              placeholder="Slot label..."
+              disabled={disabled}
+              className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+            />
+          </label>
 
-      {/* Strategy + optional row */}
-      <div className="flex items-center gap-3 text-xs">
-        <label className="flex items-center gap-1">
-          <span className="text-[10px] text-neutral-500">Strategy</span>
-          <select
-            value={slot.selection_strategy}
-            onChange={(e) => update({ selection_strategy: e.target.value as 'uniform' | 'weighted_rating' })}
-            disabled={disabled}
-            className="text-xs px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent"
-          >
-            <option value="uniform">Uniform</option>
-            <option value="weighted_rating">Weighted (rating)</option>
-          </select>
-        </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={slot.optional}
-            onChange={(e) => update({ optional: e.target.checked })}
-            disabled={disabled}
-            className="rounded"
-          />
-          <span className="text-neutral-600 dark:text-neutral-300">Optional</span>
-        </label>
-      </div>
-
-      {/* Fallback text */}
-      {slot.optional || (
-        <label className="space-y-0.5">
-          <span className="text-[10px] text-neutral-500">Fallback text (if no matches)</span>
-          <input
-            type="text"
-            value={slot.fallback_text ?? ''}
-            onChange={(e) => update({ fallback_text: e.target.value || null })}
-            placeholder="Literal text to use..."
-            disabled={disabled}
-            className="w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none"
-          />
-        </label>
-      )}
-
-      {/* Preview */}
-      <div className="space-y-1.5">
-        <div className="flex items-center gap-2 text-[10px] text-neutral-500 dark:text-neutral-400">
-          {previewLoading ? (
-            <Icon name="refresh" size={10} className="animate-spin" />
-          ) : preview ? (
-            <span className={clsx(preview.count === 0 && 'text-amber-600 dark:text-amber-400')}>
-              {preview.count} matching block{preview.count === 1 ? '' : 's'}
-            </span>
-          ) : null}
-        </div>
-        {preview && preview.samples.length > 0 && (
-          <div className="space-y-1">
-            {preview.samples.map((s) => (
-              <PromptBlockRow
-                key={s.id}
-                role={s.role}
-                text={s.prompt_preview}
-                maxChars={80}
-                meta={s.block_id}
+          {/* Constraint fields */}
+          <div className="grid grid-cols-2 gap-2">
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="user" size={9} /> Role
+              </span>
+              <select
+                value={slot.role ?? ''}
+                onChange={(e) => update({ role: e.target.value || null })}
+                disabled={disabled}
+                className={selectCls}
+              >
+                <option value="">Any</option>
+                {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="layers" size={9} /> Category
+              </span>
+              <input
+                type="text"
+                value={slot.category ?? ''}
+                onChange={(e) => update({ category: e.target.value || null })}
+                placeholder="e.g. entrance"
+                disabled={disabled}
+                className={inputCls}
               />
-            ))}
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="box" size={9} /> Kind
+              </span>
+              <select
+                value={slot.kind ?? ''}
+                onChange={(e) => update({ kind: e.target.value || null })}
+                disabled={disabled}
+                className={selectCls}
+              >
+                <option value="">Any</option>
+                <option value="single_state">single_state</option>
+                <option value="transition">transition</option>
+              </select>
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="target" size={9} /> Intent
+              </span>
+              <select
+                value={slot.intent ?? ''}
+                onChange={(e) => update({ intent: e.target.value || null })}
+                disabled={disabled}
+                className={selectCls}
+              >
+                <option value="">Any</option>
+                {INTENTS.map((i) => <option key={i} value={i}>{i}</option>)}
+              </select>
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="package" size={9} /> Package
+              </span>
+              {packageNames && packageNames.length > 0 ? (
+                <select
+                  value={slot.package_name ?? ''}
+                  onChange={(e) => update({ package_name: e.target.value || null })}
+                  disabled={disabled}
+                  className={selectCls}
+                >
+                  <option value="">Any</option>
+                  {packageNames.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={slot.package_name ?? ''}
+                  onChange={(e) => update({ package_name: e.target.value || null })}
+                  placeholder="e.g. bench_park"
+                  disabled={disabled}
+                  className={inputCls}
+                />
+              )}
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="sliders" size={9} /> Complexity min
+              </span>
+              <select
+                value={slot.complexity_min ?? ''}
+                onChange={(e) => update({ complexity_min: e.target.value || null })}
+                disabled={disabled}
+                className={selectCls}
+              >
+                <option value="">Any</option>
+                {COMPLEXITY_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </label>
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="sliders" size={9} /> Complexity max
+              </span>
+              <select
+                value={slot.complexity_max ?? ''}
+                onChange={(e) => update({ complexity_max: e.target.value || null })}
+                disabled={disabled}
+                className={selectCls}
+              >
+                <option value="">Any</option>
+                {COMPLEXITY_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </label>
           </div>
-        )}
-      </div>
+
+          {/* Strategy + optional row */}
+          <div className="flex items-center gap-3 text-xs">
+            <label className="flex items-center gap-1">
+              <Icon name="shuffle" size={10} className="text-neutral-400" />
+              <select
+                value={slot.selection_strategy}
+                onChange={(e) => update({ selection_strategy: e.target.value as 'uniform' | 'weighted_rating' })}
+                disabled={disabled}
+                className="text-xs px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
+              >
+                <option value="uniform">Uniform</option>
+                <option value="weighted_rating">Weighted (rating)</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={slot.optional}
+                onChange={(e) => update({ optional: e.target.checked })}
+                disabled={disabled}
+                className="rounded"
+              />
+              <span className="text-neutral-600 dark:text-neutral-300">Optional</span>
+            </label>
+          </div>
+
+          {/* Fallback text */}
+          {slot.optional || (
+            <label className="space-y-0.5">
+              <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                <Icon name="alertCircle" size={9} /> Fallback text (if no matches)
+              </span>
+              <input
+                type="text"
+                value={slot.fallback_text ?? ''}
+                onChange={(e) => update({ fallback_text: e.target.value || null })}
+                placeholder="Literal text to use..."
+                disabled={disabled}
+                className={inputCls}
+              />
+            </label>
+          )}
+
+          {/* Preview */}
+          {preview && preview.samples.length > 0 && (
+            <div className="space-y-1">
+              {preview.samples.map((s) => (
+                <PromptBlockRow
+                  key={s.id}
+                  role={s.role}
+                  text={s.prompt_preview}
+                  maxChars={80}
+                  meta={s.block_id}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
