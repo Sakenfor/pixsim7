@@ -22,6 +22,7 @@ async function getSettings() {
     pixsim7Token: null,
     autoImport: false,
     defaultUploadProvider: 'pixverse',
+    skipDedup: false,
   });
   return result;
 }

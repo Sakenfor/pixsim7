@@ -349,6 +349,7 @@
       const resolvedUrl = await resolveMediaUrl(mediaUrl, isVideo, imgElement);
 
       const provider = providerId || settings.defaultUploadProvider || 'pixverse';
+      const startTime = Date.now();
       const res = await chrome.runtime.sendMessage({
         action: 'uploadMediaFromUrl',
         mediaUrl: resolvedUrl,
@@ -357,12 +358,20 @@
         // get the default backend behavior (ensure_asset=True). Callers can
         // override via options.ensureAsset.
         ensureAsset: options.ensureAsset,
+        // Respect shared skipDedup setting (toggled in video player)
+        skipDedup: settings.skipDedup || false,
       });
       if (res && res.success) {
         const providerSucceeded = res.providerSucceeded;
         const kindLabel = isVideo ? 'Video' : 'Image';
+        const elapsed = Date.now() - startTime;
+        const note = res.data?.note || '';
+        const wasDeduplicated = note.includes('phash') || note.includes('Reused') || elapsed < 200;
+
         if (providerSucceeded === false) {
           showToast(`${kindLabel} saved to PixSim7; provider upload failed. See gallery for details.`, false);
+        } else if (wasDeduplicated) {
+          showToast(`${kindLabel} already exists (reused)`, true);
         } else {
           showToast(`${kindLabel} saved to PixSim7 (${provider})`, true);
         }
@@ -370,6 +379,34 @@
         showToast(res?.error || 'Upload failed', false);
       }
     } catch (e) { showToast(e.message || 'Upload error', false); }
+  }
+
+  /**
+   * Save media to backend as asset only (no provider upload)
+   */
+  async function uploadAssetOnly(mediaUrl, isVideo = false) {
+    try {
+      const settings = await getSettings();
+      if (!settings.pixsim7Token) { showToast('Login to PixSim7 first', false); return; }
+
+      const imgElement = !isVideo ? currentImg : null;
+      const resolvedUrl = await resolveMediaUrl(mediaUrl, isVideo, imgElement);
+      const kindLabel = isVideo ? 'Video' : 'Image';
+      showToast(`Saving ${kindLabel.toLowerCase()} to assets...`, true);
+
+      const res = await chrome.runtime.sendMessage({
+        action: 'uploadMediaFromUrl',
+        mediaUrl: resolvedUrl,
+        ensureAsset: true,
+        skipProvider: true,
+        skipDedup: settings.skipDedup || false,
+      });
+      if (res && res.success) {
+        showToast(`${kindLabel} saved to assets`, true);
+      } else {
+        showToast(res?.error || 'Save failed', false);
+      }
+    } catch (e) { showToast(e.message || 'Save error', false); }
   }
 
   /**
@@ -543,13 +580,21 @@
       const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
       if (prov && src) await upload(src, prov, isVideo);
     });
-    // Middle-click: extract last frame and upload to Pixverse
+    // Middle-click: save to backend as asset only (no provider upload)
+    // Alt+Middle-click on video: extract last frame
     badgeEl.addEventListener('auxclick', async (e) => {
       if (e.button !== 1) return; // Only middle click
       e.preventDefault(); e.stopPropagation();
-      if (currentVideo && currentVideo.src) {
+
+      if (e.altKey && currentVideo && currentVideo.src) {
         await extractLastFrameAndUpload(currentVideo);
+        return;
       }
+
+      const isVideo = !!(currentVideo && currentVideo.src);
+      const src = isVideo ? currentVideo.src : (currentImg && currentImg.src);
+      if (!src) return;
+      await uploadAssetOnly(src, isVideo);
     });
     return badgeEl;
   }
@@ -692,13 +737,15 @@
       badgeEl.title = `Sync to PixSim7 (${idType}: ${idDisplay})`;
     } else if (isVideo) {
       badgeEl.innerHTML = '<span style="font-size:12px">🎥</span><span>PixSim7</span>';
-      badgeEl.title = 'Click: Save video | Shift+Click: Capture frame | Middle/Alt+Click: Upload last frame';
+      badgeEl.title = 'Click: Save video | Shift+Click: Capture frame | Middle: Asset only | Alt+Middle: Last frame';
     } else if (isFileUrl) {
       badgeEl.innerHTML = '<span style="font-size:12px">📁</span><span>PixSim7</span>';
-      badgeEl.title = 'Upload local image to PixSim7';
+      badgeEl.title = 'Click: Upload | Middle: Asset only';
     } else {
       badgeEl.innerHTML = '<span style="font-size:12px">⬆</span><span>PixSim7</span>';
-      badgeEl.title = isBlobUrl ? 'Save image to PixSim7 (from blob)' : 'Save image to PixSim7';
+      badgeEl.title = isBlobUrl
+        ? 'Click: Save (from blob) | Middle: Asset only'
+        : 'Click: Upload to provider | Middle: Asset only';
     }
   }
 

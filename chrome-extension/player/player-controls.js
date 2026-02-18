@@ -153,6 +153,8 @@ import {
       state.containVideo = false;
       state.skipDedup = false;
     }
+    // Sync skipDedup to chrome.storage.local so badge uploads also respect it
+    chrome.storage.local.set({ skipDedup: state.skipDedup });
     applyPlayerSettings();
   }
 
@@ -213,6 +215,8 @@ import {
     elements.skipDedupCheck.addEventListener('change', () => {
       state.skipDedup = elements.skipDedupCheck.checked;
       savePlayerSettings();
+      // Sync to chrome.storage.local so badge uploads also respect this setting
+      chrome.storage.local.set({ skipDedup: state.skipDedup });
     });
   }
 

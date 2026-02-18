@@ -554,7 +554,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'uploadMediaFromUrl' || message.action === 'uploadImageFromUrl') {
       (async () => {
         try {
-          const { imageUrl, mediaUrl, providerId, ensureAsset, uploadMethod, uploadContext, skipDedup } = message;
+          const { imageUrl, mediaUrl, providerId, ensureAsset, uploadMethod, uploadContext, skipDedup, skipProvider } = message;
           const url = mediaUrl || imageUrl; // Support both param names
           const settings = await getSettings();
           if (!settings.pixsim7Token) throw new Error('Not logged in');
@@ -572,7 +572,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             },
             body: JSON.stringify({
               url,
-              provider_id: providerId || settings.defaultUploadProvider || 'pixverse',
+              provider_id: skipProvider ? null : (providerId || settings.defaultUploadProvider || 'pixverse'),
               // Default to true to preserve existing semantics for callers that
               // don't specify ensureAsset (local asset even if provider fails).
               ensure_asset: ensureAsset === false ? false : true,
