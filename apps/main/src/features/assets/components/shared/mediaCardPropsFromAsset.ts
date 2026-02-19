@@ -34,6 +34,8 @@ export type AssetMediaCardProps = Pick<
   | 'sourceGenerationId'
   | 'hasGenerationContext'
   | 'isFavorite'
+  | 'prompt'
+  | 'operationType'
 >;
 
 /**
@@ -62,5 +64,7 @@ export function mediaCardPropsFromAsset(asset: AssetModel): AssetMediaCardProps 
     sourceGenerationId: asset.sourceGenerationId ?? undefined,
     hasGenerationContext: asset.hasGenerationContext ?? false,
     isFavorite: asset.tags?.some((t) => t.slug === FAVORITE_TAG_SLUG) ?? false,
+    prompt: asset.prompt ?? undefined,
+    operationType: asset.operationType ?? undefined,
   };
 }

@@ -14,8 +14,10 @@ export interface UploadAssetOptions {
   file: File | Blob;
   /** Filename for the upload */
   filename: string;
-  /** Target provider ID */
-  providerId: string;
+  /** Target save mode */
+  saveTarget?: 'provider' | 'library';
+  /** Target provider ID (required when saveTarget='provider') */
+  providerId?: string;
   /** Upload method identifier */
   uploadMethod: string;
   /** Optional upload context metadata */
@@ -46,6 +48,7 @@ export async function uploadAsset(options: UploadAssetOptions): Promise<UploadAs
   const {
     file,
     filename,
+    saveTarget,
     providerId,
     uploadMethod,
     uploadContext,
@@ -53,9 +56,19 @@ export async function uploadAsset(options: UploadAssetOptions): Promise<UploadAs
     sourceRelativePath,
   } = options;
 
+  const resolvedSaveTarget: 'provider' | 'library' =
+    saveTarget ?? (providerId ? 'provider' : 'library');
+
+  if (resolvedSaveTarget === 'provider' && !providerId) {
+    throw new Error('providerId is required when saveTarget is "provider".');
+  }
+
   const form = new FormData();
   form.append('file', file, filename);
-  form.append('provider_id', providerId);
+  form.append('save_target', resolvedSaveTarget);
+  if (providerId) {
+    form.append('provider_id', providerId);
+  }
   form.append('upload_method', uploadMethod);
 
   if (sourceFolderId) {

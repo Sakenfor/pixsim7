@@ -86,7 +86,11 @@ type LocalFoldersState = {
   updateAssetUploadStatus: (
     assetKey: string,
     status: 'success' | 'error',
-    note?: string
+    note?: string,
+    metadata?: {
+      providerId?: string;
+      assetId?: number;
+    }
   ) => Promise<void>;
   /** Clear the missing folders warning */
   dismissMissingFolders: () => void;
@@ -312,6 +316,7 @@ type UploadRecord = {
   status: 'success';
   note?: string;
   provider_id?: string;
+  asset_id?: number;
   uploaded_at?: number;
 };
 
@@ -836,6 +841,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         last_upload_status: existing.last_upload_status,
         last_upload_note: existing.last_upload_note,
         last_upload_at: existing.last_upload_at,
+        last_upload_provider_id: existing.last_upload_provider_id,
+        last_upload_asset_id: existing.last_upload_asset_id,
       };
     });
 
@@ -909,7 +916,7 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
   },
 
   // Task 104: Update upload history for an asset and persist to cache
-  updateAssetUploadStatus: async (assetKey, status, note) => {
+  updateAssetUploadStatus: async (assetKey, status, note, metadata) => {
     const asset = get().assets[assetKey];
     if (!asset) return;
 
@@ -919,6 +926,8 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       last_upload_status: status,
       last_upload_note: note,
       last_upload_at: Date.now(),
+      last_upload_provider_id: metadata?.providerId ?? asset.last_upload_provider_id,
+      last_upload_asset_id: metadata?.assetId ?? asset.last_upload_asset_id,
     };
 
     set(s => ({

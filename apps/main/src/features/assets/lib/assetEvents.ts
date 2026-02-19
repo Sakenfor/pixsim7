@@ -11,12 +11,14 @@ type AssetEventCallback = (asset: AssetResponse) => void;
 type AssetUpdateCallback = (asset: AssetResponse) => void;
 type AssetDeleteCallback = (assetId: number | string) => void;
 type RetryCallback = () => void;
+type OpenToolsPanelCallback = (assetIds: number[]) => void;
 
 class AssetEventEmitter {
   private listeners: Set<AssetEventCallback> = new Set();
   private updateListeners: Set<AssetUpdateCallback> = new Set();
   private deleteListeners: Set<AssetDeleteCallback> = new Set();
   private retryListeners: Set<RetryCallback> = new Set();
+  private openToolsPanelListeners: Set<OpenToolsPanelCallback> = new Set();
 
   /**
    * Subscribe to new asset events
@@ -110,6 +112,30 @@ class AssetEventEmitter {
         callback();
       } catch (err) {
         console.error('[AssetEvents] Retry listener error:', err);
+      }
+    });
+  }
+
+  /**
+   * Subscribe to open-tools-panel events
+   */
+  subscribeToOpenToolsPanel(callback: OpenToolsPanelCallback): () => void {
+    this.openToolsPanelListeners.add(callback);
+    return () => {
+      this.openToolsPanelListeners.delete(callback);
+    };
+  }
+
+  /**
+   * Emit open-tools-panel event to select assets and show the tools panel
+   */
+  emitOpenToolsPanel(assetIds: number[]): void {
+    console.log('[AssetEvents] Open tools panel for assets:', assetIds);
+    this.openToolsPanelListeners.forEach((callback) => {
+      try {
+        callback(assetIds);
+      } catch (err) {
+        console.error('[AssetEvents] Open tools panel listener error:', err);
       }
     });
   }

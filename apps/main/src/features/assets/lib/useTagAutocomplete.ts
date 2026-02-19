@@ -62,6 +62,8 @@ export function parseTagInput(raw: string): ParsedTagInput {
 export interface UseTagAutocompleteOptions {
   enabled?: boolean;
   limit?: number;
+  /** Override namespace for API filtering (from dropdown picker). Typed colon syntax takes priority. */
+  namespaceOverride?: string;
 }
 
 export interface UseTagAutocompleteResult {
@@ -76,13 +78,20 @@ export function useTagAutocomplete(
   inputText: string,
   options: UseTagAutocompleteOptions = {},
 ): UseTagAutocompleteResult {
-  const { enabled = true, limit = DEFAULT_LIMIT } = options;
+  const { enabled = true, limit = DEFAULT_LIMIT, namespaceOverride } = options;
 
   const [results, setResults] = useState<TagSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const requestIdRef = useRef(0);
 
   const parsed = parseTagInput(inputText);
+
+  // Typed colon syntax takes priority; otherwise use dropdown override (if not default)
+  const effectiveNs = parsed.hasExplicitNamespace
+    ? parsed.namespace
+    : namespaceOverride && namespaceOverride !== DEFAULT_NAMESPACE
+      ? namespaceOverride
+      : undefined;
 
   useEffect(() => {
     if (!enabled || parsed.query.length < MIN_CHARS) {
@@ -99,7 +108,7 @@ export function useTagAutocomplete(
       try {
         const response = await listTags({
           q: parsed.query,
-          namespace: parsed.hasExplicitNamespace ? parsed.namespace : undefined,
+          namespace: effectiveNs,
           limit,
         });
 
@@ -117,7 +126,7 @@ export function useTagAutocomplete(
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [enabled, parsed.query, parsed.namespace, parsed.hasExplicitNamespace, limit]);
+  }, [enabled, parsed.query, effectiveNs, limit]);
 
   return {
     results,

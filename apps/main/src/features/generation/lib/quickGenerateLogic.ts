@@ -57,6 +57,29 @@ function resolvePromptClampLimit(maxChars?: number): number | undefined {
     : normalized;
 }
 
+function asPositiveAssetId(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return undefined;
+  }
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : undefined;
+}
+
+function resolveAssetUrlFromInput(asset: Partial<InputItem['asset']>): string | undefined {
+  const candidates = [
+    asset.remoteUrl,
+    asset.fileUrl,
+    asset.previewUrl,
+    asset.thumbnailUrl,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
 /**
  * Build and validate a generation request for QuickGenerateModule.
  *
@@ -92,13 +115,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     // allowVideoFallback controls whether activeAsset fallback accepts videos
     // Default to false - only explicit input slots should accept videos
     const allowVideoFallback = options.allowVideoFallback ?? false;
-    let sourceAssetId = dynamicParams.source_asset_id;
+    let sourceAssetId = asPositiveAssetId(dynamicParams.source_asset_id);
     const inputAssetId =
       currentInput && (
         currentInput.asset.mediaType === 'image' ||
         (allowVideo && currentInput.asset.mediaType === 'video')
       )
-        ? currentInput.asset.id
+        ? asPositiveAssetId(currentInput.asset.id)
         : undefined;
 
     if (inputAssetId) {
@@ -110,7 +133,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       // Only allow video fallback if explicitly enabled (e.g., for video_extend)
       // For image_to_video, activeAsset fallback should only accept images
       if (isImage || (allowVideoFallback && isVideo)) {
-        sourceAssetId = activeAsset.id;
+        sourceAssetId = asPositiveAssetId(activeAsset.id);
       }
     }
 
@@ -126,10 +149,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   const resolveCompositionAssetsFromInputs = (
     inputs: InputItem[] | undefined,
     options: { mediaType?: 'image' | 'video' } = {},
-  ): Array<{ asset: string; layer: number; role: string; media_type?: string }> | undefined => {
+  ): Array<{ asset?: string; url?: string; layer: number; role: string; media_type?: string }> | undefined => {
     if (!inputs || inputs.length === 0) return undefined;
     const overrideMediaType = options.mediaType;
-    return inputs.map((item, index) => {
+    const resolved = inputs.map((item, index) => {
       let role: string;
       if (item.roleOverride) {
         role = item.roleOverride;
@@ -139,13 +162,23 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         role = inferredRole ?? (index === 0 ? 'environment' : 'main_character');
       }
       const mediaType = overrideMediaType ?? item.asset.mediaType ?? 'image';
+      const assetId = asPositiveAssetId(item.asset.id);
+      const url = assetId ? undefined : resolveAssetUrlFromInput(item.asset);
+      if (!assetId && !url) {
+        return null;
+      }
       return {
-        asset: `asset:${item.asset.id}`,
+        ...(assetId ? { asset: `asset:${assetId}` } : {}),
+        ...(url ? { url } : {}),
         layer: index,
         role,
         media_type: mediaType,
       };
     });
+    const nonEmpty = resolved.filter(
+      (entry): entry is { asset?: string; url?: string; layer: number; role: string; media_type?: string } => !!entry,
+    );
+    return nonEmpty.length > 0 ? nonEmpty : undefined;
   };
 
   const buildCompositionAssetsFromIds = (
@@ -157,13 +190,19 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     }
   ): Array<{ asset: string; role: string; layer?: number; media_type?: string }> => {
     const { role, mediaType, includeLayer = true } = options;
-    return ids.map((id, index) => ({
+    const resolvedIds = ids
+      .map((id) => asPositiveAssetId(id))
+      .filter((id): id is number => !!id);
+    return resolvedIds.map((id, index) => ({
       asset: `asset:${id}`,
       role,
       ...(includeLayer ? { layer: index } : {}),
       ...(mediaType ? { media_type: mediaType } : {}),
     }));
   };
+
+  const queuedImageCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
+  const queuedVideoCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'video' });
 
   if ((operationType === 'text_to_video' || operationType === 'text_to_image') && !trimmedPrompt) {
     return {
@@ -181,10 +220,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       ? dynamicParams.source_asset_ids
       : undefined;
     const inputSourceIds = operationInputs.length > 0
-      ? operationInputs.map((item) => item.asset.id)
+      ? operationInputs
+        .map((item) => asPositiveAssetId(item.asset.id))
+        .filter((id): id is number => !!id)
       : undefined;
+    const hasQueuedCompositionAssets = !!(queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0);
 
-    let resolvedSourceIds = paramsSourceIds ?? inputSourceIds;
+    let resolvedSourceIds = paramsSourceIds ?? (inputSourceIds && inputSourceIds.length > 0 ? inputSourceIds : undefined);
 
     if (!resolvedSourceIds && !explicitCompositionAssets) {
       const fallbackId = resolveSingleSourceAssetId();
@@ -193,7 +235,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    if (!resolvedSourceIds && !explicitCompositionAssets) {
+    if (!resolvedSourceIds && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
       return {
         error: 'No image selected. Select an image from the gallery to transform.',
         finalPrompt: trimmedPrompt,
@@ -221,10 +263,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       ? dynamicParams.source_asset_ids
       : undefined;
     const inputSourceIds = operationInputs.length > 0
-      ? operationInputs.map((item) => item.asset.id)
+      ? operationInputs
+        .map((item) => asPositiveAssetId(item.asset.id))
+        .filter((id): id is number => !!id)
       : undefined;
+    const hasQueuedCompositionAssets = !!(queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0);
 
-    let resolvedSourceIds = paramsSourceIds ?? inputSourceIds;
+    let resolvedSourceIds = paramsSourceIds ?? (inputSourceIds && inputSourceIds.length > 0 ? inputSourceIds : undefined);
 
     if (!resolvedSourceIds && !explicitCompositionAssets) {
       // allowVideo: true - input slot can have video
@@ -235,7 +280,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       }
     }
 
-    if (!resolvedSourceIds && !explicitCompositionAssets) {
+    if (!resolvedSourceIds && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
       return {
         error: 'No images selected. Add an image from the gallery to fuse.',
         finalPrompt: trimmedPrompt,
@@ -252,13 +297,14 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
+    const hasQueuedCompositionAssets = !!(queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0);
     // allowVideo: true - input slot can have video (for frame extraction)
     // allowVideoFallback: false - don't fallback to a video from gallery selection
     const sourceAssetId = explicitCompositionAssets
       ? undefined
       : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: false });
 
-    if ((explicitCompositionAssets || sourceAssetId) && !trimmedPrompt) {
+    if ((explicitCompositionAssets || sourceAssetId || hasQueuedCompositionAssets) && !trimmedPrompt) {
       return {
         error: 'Please enter a prompt describing the motion/action for Image to Video.',
         finalPrompt: trimmedPrompt,
@@ -276,12 +322,13 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
+    const hasQueuedCompositionAssets = !!(queuedVideoCompositionAssets && queuedVideoCompositionAssets.length > 0);
     // allowVideo: true, allowVideoFallback: true - video_extend needs a video source
     const sourceAssetId = explicitCompositionAssets
       ? undefined
       : resolveSingleSourceAssetId({ allowVideo: true, allowVideoFallback: true });
 
-    if (!sourceAssetId && !explicitCompositionAssets) {
+    if (!sourceAssetId && !explicitCompositionAssets && !hasQueuedCompositionAssets) {
       return {
         error: 'No video selected. Click "Video Extend" on a gallery video to extend it.',
         finalPrompt: trimmedPrompt,
@@ -300,10 +347,16 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       Array.isArray(dynamicParams.composition_assets) && dynamicParams.composition_assets.length > 0
         ? dynamicParams.composition_assets
         : undefined;
+    const queuedTransitionCompositionAssets = queuedImageCompositionAssets;
     const transitionSourceIds = Array.isArray(dynamicParams.source_asset_ids) && dynamicParams.source_asset_ids.length > 0
       ? dynamicParams.source_asset_ids
-      : operationInputs.map((item) => item.asset.id);
-    const assetCount = explicitCompositionAssets?.length ?? transitionSourceIds.length;
+      : operationInputs
+        .map((item) => asPositiveAssetId(item.asset.id))
+        .filter((id): id is number => !!id);
+    const assetCount =
+      explicitCompositionAssets?.length
+      ?? queuedTransitionCompositionAssets?.length
+      ?? transitionSourceIds.length;
     const validPrompts = prompts.map(s => s.trim()).filter(Boolean);
 
     if (!assetCount) {
@@ -342,7 +395,12 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       );
     }
 
-    if (!explicitCompositionAssets && !dynamicParams.source_asset_ids && transitionSourceIds.length) {
+    if (
+      !explicitCompositionAssets
+      && !queuedTransitionCompositionAssets
+      && !dynamicParams.source_asset_ids
+      && transitionSourceIds.length
+    ) {
       inferredSourceAssetIds = transitionSourceIds;
     }
   }
@@ -368,7 +426,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_image') {
-    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
+    const inputCompositionAssets = queuedImageCompositionAssets;
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
@@ -391,7 +449,10 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'fusion') {
-    const inputCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
+    // Simple mode when no input has an explicit role override
+    const fusionHasRoles = operationInputs.some((item) => !!item.roleOverride);
+
+    const inputCompositionAssets = queuedImageCompositionAssets;
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
@@ -410,19 +471,38 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
         }));
       }
     }
+
+    // Simple mode: strip roles so backend/SDK use flat @1/@2 references
+    if (!fusionHasRoles && Array.isArray(params.composition_assets)) {
+      params.composition_assets = params.composition_assets.map((entry: any) => {
+        if (!entry || typeof entry !== 'object') {
+          return entry;
+        }
+        const next = { ...entry };
+        delete next.role;
+        return next;
+      });
+    }
   }
 
   if (operationType === 'video_transition') {
     if (!params.composition_assets) {
-      const sourceIds = Array.isArray(params.source_asset_ids)
-        ? params.source_asset_ids
-        : [];
-      if (sourceIds.length > 0) {
-        params.composition_assets = buildCompositionAssetsFromIds(sourceIds, {
+      if (queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0) {
+        params.composition_assets = queuedImageCompositionAssets.map((entry) => ({
+          ...entry,
           role: 'transition_input',
-          mediaType: 'image',
-          includeLayer: true,
-        });
+        }));
+      } else {
+        const sourceIds = Array.isArray(params.source_asset_ids)
+          ? params.source_asset_ids
+          : [];
+        if (sourceIds.length > 0) {
+          params.composition_assets = buildCompositionAssetsFromIds(sourceIds, {
+            role: 'transition_input',
+            mediaType: 'image',
+            includeLayer: true,
+          });
+        }
       }
     }
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
@@ -432,22 +512,36 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
   }
 
   if (operationType === 'image_to_video') {
-    if (!params.composition_assets && params.source_asset_id) {
-      params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
-        role: 'source_image',
-        mediaType: 'image',
-        includeLayer: false,
-      });
+    if (!params.composition_assets) {
+      if (queuedImageCompositionAssets && queuedImageCompositionAssets.length > 0) {
+        params.composition_assets = queuedImageCompositionAssets.map((entry) => ({
+          ...entry,
+          role: 'source_image',
+        }));
+      } else if (params.source_asset_id) {
+        params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
+          role: 'source_image',
+          mediaType: 'image',
+          includeLayer: false,
+        });
+      }
     }
   }
 
   if (operationType === 'video_extend') {
-    if (!params.composition_assets && params.source_asset_id) {
-      params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
-        role: 'source_video',
-        mediaType: 'video',
-        includeLayer: false,
-      });
+    if (!params.composition_assets) {
+      if (queuedVideoCompositionAssets && queuedVideoCompositionAssets.length > 0) {
+        params.composition_assets = queuedVideoCompositionAssets.map((entry) => ({
+          ...entry,
+          role: 'source_video',
+        }));
+      } else if (params.source_asset_id) {
+        params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
+          role: 'source_video',
+          mediaType: 'video',
+          includeLayer: false,
+        });
+      }
     }
   }
 

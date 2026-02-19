@@ -175,6 +175,28 @@ export const generationPreset: OverlayPreset = {
 };
 
 /**
+ * Local Folders
+ *
+ * Keeps upload/info runtime widgets while enabling generation menu controls.
+ */
+export const localFoldersPreset: OverlayPreset = {
+  id: 'media-card-local-folders',
+  name: 'Local Folders',
+  icon: 'L',
+  category: 'media',
+  capabilities: {
+    showsGenerationMenu: true,
+  },
+  configuration: {
+    id: 'media-card-local-folders',
+    name: 'Local Folders',
+    description: 'Local-folder cards with upload + generation actions',
+    spacing: 'normal',
+    widgets: [],
+  },
+};
+
+/**
  * Review Mode
  *
  * Focused on content review and curation
@@ -284,6 +306,7 @@ export const mediaCardPresets: OverlayPreset[] = [
   compactPreset,
   detailedPreset,
   focusPreset,
+  localFoldersPreset,
   generationPreset,
   reviewPreset,
 ];

@@ -9,12 +9,15 @@ import { useAuthStore } from '@pixsim7/shared.auth.core';
 import type { SourceIdentity } from '@pixsim7/shared.sources.core';
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
-import { uploadAsset } from '@lib/api/upload';
+import { uploadAsset, type UploadAssetResponse } from '@lib/api/upload';
 
 import { usePersistentState } from '@/hooks/usePersistentState';
 import { useViewer } from '@/hooks/useViewer';
 import type { LocalFoldersController, SourceInfo, ViewMode } from '@/types/localSources';
 
+import { assignTags, getAsset } from '../lib/api';
+import { assetEvents } from '../lib/assetEvents';
+import { FAVORITE_TAG_SLUG } from '../lib/favoriteTag';
 import { setHashWorkerPoolSize } from '../lib/hashWorkerManager';
 import {
   checkHashesAgainstBackend,
@@ -153,6 +156,7 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Upload state
   const [uploadStatus, setUploadStatus] = useState<Record<string, 'idle' | 'uploading' | 'success' | 'error'>>({});
   const [uploadNotes, setUploadNotes] = useState<Record<string, string | undefined>>({});
+  const [favoriteStatus, setFavoriteStatus] = useState<Record<string, boolean>>({});
 
   // Load persisted folders on mount (only after auth is ready)
   useEffect(() => {
@@ -724,14 +728,17 @@ export function useLocalFoldersController(): LocalFoldersController {
     // Load preview after navigation (viewerAsset will be updated by hook)
   }, [navigateViewerBase]);
 
-  // Upload one asset
-  const uploadOne = async (keyOrAsset: string | LocalAsset) => {
+  const uploadOneInternal = useCallback(async (
+    keyOrAsset: string | LocalAsset,
+    options?: { saveTarget?: 'provider' | 'library' },
+  ): Promise<UploadAssetResponse | null> => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
-    if (!asset) return;
-    if (!providerId) {
-      alert('Select a provider');
-      return;
-    }
+    if (!asset) return null;
+    const saveTarget: 'provider' | 'library' =
+      options?.saveTarget ?? (providerId ? 'provider' : 'library');
+    const targetProviderId = saveTarget === 'provider'
+      ? (providerId || 'local')
+      : 'local';
 
     setUploadStatus(s => ({ ...s, [asset.key]: 'uploading' }));
 
@@ -750,11 +757,13 @@ export function useLocalFoldersController(): LocalFoldersController {
       const data = await uploadAsset({
         file,
         filename: asset.name,
-        providerId,
+        saveTarget,
+        providerId: saveTarget === 'provider' ? (providerId || undefined) : undefined,
         uploadMethod: 'local',
         uploadContext: {
           client: 'web_app',
           feature: 'local_folders',
+          save_target: saveTarget,
           ...(folderName ? { source_folder: folderName } : undefined),
         },
         sourceFolderId: asset.folderId,
@@ -762,6 +771,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       });
 
       const note = data?.note;
+      const uploadedAssetId = typeof data?.asset_id === 'number' ? data.asset_id : undefined;
 
       setUploadNotes(n => ({ ...n, [asset.key]: note }));
       setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
@@ -770,13 +780,18 @@ export function useLocalFoldersController(): LocalFoldersController {
         await setUploadRecordByHash(sha256, {
           status: 'success',
           note,
-          provider_id: providerId,
+          provider_id: targetProviderId,
+          asset_id: uploadedAssetId,
           uploaded_at: Date.now(),
         });
       }
 
       // Task 104: Persist upload success to cache
-      await updateAssetUploadStatus(asset.key, 'success', note);
+      await updateAssetUploadStatus(asset.key, 'success', note, {
+        providerId: targetProviderId,
+        assetId: uploadedAssetId,
+      });
+      return data;
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : 'Upload failed';
 
@@ -785,8 +800,49 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       // Task 104: Persist upload failure to cache
       await updateAssetUploadStatus(asset.key, 'error', errorMsg);
+      throw e;
     }
-  };
+  }, [
+    assetsRecord,
+    providerId,
+    getFileForAsset,
+    updateAssetHash,
+    rawFolders,
+    setUploadRecordByHash,
+    updateAssetUploadStatus,
+  ]);
+
+  // Upload one asset
+  const uploadOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
+    await uploadOneInternal(keyOrAsset);
+  }, [uploadOneInternal]);
+
+  const toggleFavoriteOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
+    const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
+    if (!asset) return;
+
+    let targetAssetId = asset.last_upload_asset_id;
+    if (!targetAssetId) {
+      const uploadResult = await uploadOneInternal(asset, { saveTarget: 'library' });
+      targetAssetId = uploadResult?.asset_id;
+    }
+    if (!targetAssetId) {
+      throw new Error('Failed to resolve a library asset ID for favorite toggle.');
+    }
+
+    const current = await getAsset(targetAssetId);
+    const isCurrentlyFavorite = current.tags?.some((tag) => tag.slug === FAVORITE_TAG_SLUG) ?? false;
+    const updated = await assignTags(
+      targetAssetId,
+      isCurrentlyFavorite
+        ? { remove: [FAVORITE_TAG_SLUG] }
+        : { add: [FAVORITE_TAG_SLUG] },
+    );
+
+    const isNowFavorite = updated.tags?.some((tag) => tag.slug === FAVORITE_TAG_SLUG) ?? false;
+    setFavoriteStatus((state) => ({ ...state, [asset.key]: isNowFavorite }));
+    assetEvents.emitAssetUpdated(updated);
+  }, [assetsRecord, uploadOneInternal]);
 
   // Refresh all folders
   const refresh = useCallback(async () => {
@@ -853,6 +909,8 @@ export function useLocalFoldersController(): LocalFoldersController {
     uploadStatus,
     uploadNotes,
     uploadOne,
+    favoriteStatus,
+    toggleFavoriteOne,
     supported,
     adding,
     loading,
@@ -868,4 +926,3 @@ export function useLocalFoldersController(): LocalFoldersController {
     hashFolder,
   };
 }
-

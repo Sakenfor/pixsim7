@@ -4,9 +4,7 @@ import { Icon } from '@lib/icons';
 import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 
 
-import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import {
-  useClientFilters,
   type ClientFilterDef,
 } from '@features/gallery/lib/useClientFilters';
 import { useProviderAccounts } from '@features/providers/hooks/useProviderAccounts';
@@ -19,6 +17,8 @@ import {
 
 
 import { AssetGallery } from '@/components/media/AssetGallery';
+
+import { ClientFilteredGallerySection } from './shared/ClientFilteredGallerySection';
 
 // ---------------------------------------------------------------------------
 // Scan result cache
@@ -217,15 +217,6 @@ export function ProviderLibraryPanel({
     if (!scanResult) return [];
     return toLibraryItems(scanResult);
   }, [scanResult]);
-
-  // Client-side filters
-  const {
-    filteredItems,
-    filterState,
-    setFilter,
-    resetFilters,
-    derivedOptions,
-  } = useClientFilters(libraryItems, FILTER_DEFS);
 
   // Stats
   const stats = useMemo(() => {
@@ -426,17 +417,6 @@ export function ProviderLibraryPanel({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {/* Filter bar */}
-        {libraryItems.length > 0 && (
-          <ClientFilterBar
-            defs={FILTER_DEFS}
-            filterState={filterState}
-            derivedOptions={derivedOptions}
-            onFilterChange={setFilter}
-            onReset={resetFilters}
-          />
-        )}
-
         {/* Gallery */}
         {!scanResult && !scanning && (
           <div className="flex items-center justify-center h-[60vh] text-neutral-500 dark:text-neutral-400">
@@ -458,26 +438,34 @@ export function ProviderLibraryPanel({
         )}
 
         {scanResult && !scanning && (
-          <AssetGallery<LibraryItem>
-            assets={filteredItems}
-            getAssetKey={getAssetKey}
-            getPreviewUrl={getPreviewUrl}
-            loadPreview={loadPreview}
-            getMediaType={getMediaType}
-            getDescription={getDescription}
-            getTags={getTags}
-            getUploadState={getUploadState}
-            layout={layout}
-            cardSize={cardSize}
-            emptyState={
-              <div className="flex items-center justify-center h-[40vh] text-neutral-500 dark:text-neutral-400">
-                <div className="text-center">
-                  <Icon name="search" size={48} className="mx-auto mb-4 text-neutral-400" />
-                  <p className="text-sm">No items match the current filters.</p>
-                </div>
-              </div>
-            }
-          />
+          <ClientFilteredGallerySection<LibraryItem>
+            items={libraryItems}
+            filterDefs={FILTER_DEFS}
+            filterBarClassName="mb-3"
+          >
+            {(filteredItems) => (
+              <AssetGallery<LibraryItem>
+                assets={filteredItems}
+                getAssetKey={getAssetKey}
+                getPreviewUrl={getPreviewUrl}
+                loadPreview={loadPreview}
+                getMediaType={getMediaType}
+                getDescription={getDescription}
+                getTags={getTags}
+                getUploadState={getUploadState}
+                layout={layout}
+                cardSize={cardSize}
+                emptyState={
+                  <div className="flex items-center justify-center h-[40vh] text-neutral-500 dark:text-neutral-400">
+                    <div className="text-center">
+                      <Icon name="search" size={48} className="mx-auto mb-4 text-neutral-400" />
+                      <p className="text-sm">No items match the current filters.</p>
+                    </div>
+                  </div>
+                }
+              />
+            )}
+          </ClientFilteredGallerySection>
         )}
       </div>
     </div>

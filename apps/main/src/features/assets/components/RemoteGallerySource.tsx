@@ -8,8 +8,8 @@ import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
 import { getMediaCardPreset } from '@lib/ui/overlay';
 
-import { GalleryToolsPanel } from '@features/gallery';
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
+import { galleryToolSelectors } from '@features/gallery/lib/registry';
 import {
   usePanelConfigStore,
   type GalleryGroupBy,
@@ -28,6 +28,7 @@ import { MediaCard } from '@/components/media/MediaCard';
 import type { AssetFilters } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
+import { assetEvents } from '../lib/assetEvents';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
@@ -248,7 +249,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
-  const [showToolsPanel, setShowToolsPanel] = useState(false);
+  const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
 
   // Get overlay configuration from preset
   const overlayConfig = useMemo(() => {
@@ -256,6 +257,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     const preset = getMediaCardPreset(overlayPresetId);
     return preset?.configuration;
   }, [overlayPresetId]);
+
+  // Collapse tool when all assets are deselected
+  useEffect(() => {
+    if (controller.selectedAssetIds.size === 0) {
+      setExpandedToolId(null);
+    }
+  }, [controller.selectedAssetIds.size]);
+
+  // Subscribe to open-tools-panel events (from context menu)
+  useEffect(() => {
+    return assetEvents.subscribeToOpenToolsPanel((assetIds) => {
+      controller.selectAll(assetIds.map((id) => ({ id })));
+      // Auto-expand the first tool registered for this surface
+      const tools = galleryToolSelectors.getBySurface('assets-default');
+      setExpandedToolId(tools[0]?.id ?? null);
+    });
+  }, [controller.selectAll]);
 
   useLayoutEffect(() => {
     if (!groupMenuOpen || !groupMenuAnchorRef.current) {
@@ -855,18 +873,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
   // Handle asset selection for gallery tools
   const toggleAssetSelection = (assetId: number | string) => {
-    const idStr = String(assetId);
-    controller.toggleAssetSelection(idStr);
-
-    const newSelection = new Set(controller.selectedAssetIds);
-    if (newSelection.has(idStr)) {
-      newSelection.add(idStr);
-    } else {
-      newSelection.delete(idStr);
-    }
-    if (newSelection.size > 0 && !showToolsPanel) {
-      setShowToolsPanel(true);
-    }
+    controller.toggleAssetSelection(String(assetId));
   };
 
   // Render cards
@@ -1320,12 +1327,57 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           </div>
         </div>
 
-        {/* Gallery Tools Panel */}
-        {showToolsPanel && !controller.isSelectionMode && (
-          <div className="mb-4">
-            <GalleryToolsPanel context={galleryContext} surfaceId="assets-default" />
-          </div>
-        )}
+        {/* Inline gallery tools strip */}
+        {controller.selectedAssetIds.size > 0 && !controller.isSelectionMode && (() => {
+          const visibleTools = galleryToolSelectors.getVisibleForSurface('assets-default', galleryContext);
+          const selCount = controller.selectedAssetIds.size;
+          const expandedTool = expandedToolId ? visibleTools.find(t => t.id === expandedToolId) : null;
+          return (
+            <>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {/* Selection count badge */}
+                <span className="inline-flex items-center h-7 px-2.5 rounded border border-accent/50 bg-accent/10 text-xs font-medium text-accent tabular-nums">
+                  {selCount} selected
+                </span>
+                {/* Tool chips */}
+                {visibleTools.map(tool => {
+                  const isActive = expandedToolId === tool.id;
+                  return (
+                    <button
+                      key={tool.id}
+                      type="button"
+                      onClick={() => setExpandedToolId(isActive ? null : tool.id)}
+                      className={`inline-flex items-center gap-1.5 h-7 px-2 rounded border text-xs transition-[background-color,border-color] duration-200 ${
+                        isActive
+                          ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
+                          : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+                      }`}
+                    >
+                      {tool.icon && <Icon name={tool.icon as any} size={13} />}
+                      <span>{tool.name}</span>
+                      <Icon name={isActive ? 'chevronUp' : 'chevronDown'} size={11} className="opacity-50" />
+                    </button>
+                  );
+                })}
+                {/* Clear selection */}
+                <button
+                  type="button"
+                  onClick={() => controller.clearSelection()}
+                  className="inline-flex items-center justify-center h-7 w-7 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+                  title="Clear selection"
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+              {/* Expanded tool content */}
+              {expandedTool && (
+                <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-white dark:bg-neutral-900/60">
+                  {expandedTool.render(galleryContext)}
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Scrollable gallery */}

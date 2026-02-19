@@ -150,6 +150,16 @@ export interface AssetGalleryProps<T> {
   onUpload?: (asset: T) => Promise<void>;
 
   /**
+   * Function to get favorite state for an asset.
+   */
+  getIsFavorite?: (asset: T) => boolean;
+
+  /**
+   * Callback when favorite toggle is requested.
+   */
+  onToggleFavorite?: (asset: T) => Promise<void> | void;
+
+  /**
    * Callback when an asset is selected (for multi-select mode).
    */
   onSelect?: (asset: T, selected: boolean) => void;
@@ -224,6 +234,12 @@ export interface AssetGalleryProps<T> {
   actions?: MediaCardActions;
 
   /**
+   * Optional per-asset actions override.
+   * When provided, this takes precedence over the static `actions` prop.
+   */
+  getActions?: (asset: T) => MediaCardActions | undefined;
+
+  /**
    * Overlay preset ID for MediaCard.
    */
   overlayPresetId?: string;
@@ -289,6 +305,8 @@ function GalleryItem({
   uploadProgress,
   onOpen,
   onUpload,
+  isFavorite,
+  onToggleFavorite,
   hashStatus,
   lazyLoadRootMargin,
   badgeConfig,
@@ -310,6 +328,8 @@ function GalleryItem({
   uploadProgress?: number;
   onOpen?: (resolvedPreviewUrl?: string) => void;
   onUpload?: () => Promise<void>;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => Promise<void> | void;
   hashStatus?: 'unique' | 'duplicate' | 'hashing';
   lazyLoadRootMargin: string;
   badgeConfig?: MediaCardBadgeConfig;
@@ -346,6 +366,8 @@ function GalleryItem({
         uploadState={uploadState}
         uploadProgress={uploadProgress}
         onUploadClick={onUpload ? async () => { await onUpload(); } : undefined}
+        isFavorite={isFavorite}
+        onToggleFavorite={onToggleFavorite}
         badgeConfig={badgeConfig}
         actions={actions}
         overlayPresetId={overlayPresetId}
@@ -376,9 +398,11 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHeight,
     getUploadState,
     getUploadProgress,
+    getIsFavorite,
     getHashStatus,
     onOpen,
     onUpload,
+    onToggleFavorite,
     layout = 'masonry',
     cardSize = 'medium',
     rowGap = 16,
@@ -442,7 +466,9 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
       const height = getHeight?.(asset);
       const uploadState = getUploadState?.(asset);
       const uploadProgress = getUploadProgress?.(asset);
+      const isFavorite = getIsFavorite?.(asset);
       const hashStatus = getHashStatus?.(asset);
+      const assetActions = getActions?.(asset) ?? actions;
 
       return (
         <GalleryItem
@@ -460,12 +486,14 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           height={height}
           uploadState={uploadState}
           uploadProgress={uploadProgress}
+          isFavorite={isFavorite}
           hashStatus={hashStatus}
           onOpen={onOpen ? (resolvedPreviewUrl) => onOpen(asset, resolvedPreviewUrl) : undefined}
           onUpload={onUpload ? () => onUpload(asset) : undefined}
+          onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(asset) : undefined}
           lazyLoadRootMargin={lazyLoadRootMargin}
           badgeConfig={badgeConfig}
-          actions={actions}
+          actions={assetActions}
           overlayPresetId={overlayPresetId}
         />
       );
@@ -484,13 +512,16 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHeight,
     getUploadState,
     getUploadProgress,
+    getIsFavorite,
     getHashStatus,
     loadPreview,
     onOpen,
     onUpload,
+    onToggleFavorite,
     lazyLoadRootMargin,
     badgeConfig,
     actions,
+    getActions,
     overlayPresetId,
   ]);
 

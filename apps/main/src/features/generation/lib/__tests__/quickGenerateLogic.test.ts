@@ -138,6 +138,27 @@ describe('buildGenerationRequest', () => {
     });
   });
 
+  it('builds composition_assets from queued local URLs when backend IDs are unavailable', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_image',
+      prompt: 'Blend these',
+      operationInputs: [
+        {
+          id: 'local-a',
+          asset: { id: -1, mediaType: 'image', previewUrl: 'blob:local-image-1' },
+          queuedAt: '',
+        },
+      ] as any,
+      dynamicParams: {},
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.composition_assets).toEqual([
+      { url: 'blob:local-image-1', layer: 0, role: 'environment', media_type: 'image' },
+    ]);
+  });
+
   it('assigns default roles to composition_assets (first=environment, others=main_character)', () => {
     const context = createBaseContext({
       operationType: 'image_to_image',
@@ -322,5 +343,47 @@ describe('buildGenerationRequest', () => {
       { asset: 'asset:7', role: 'source_image', media_type: 'image' },
     ]);
     expect(result.params).not.toHaveProperty('image_url');
+  });
+
+  it('uses queued local URLs as source_image composition assets for image_to_video', () => {
+    const context = createBaseContext({
+      operationType: 'image_to_video',
+      prompt: 'animate this',
+      dynamicParams: {},
+      operationInputs: [
+        {
+          id: 'local-i2v',
+          asset: { id: -42, mediaType: 'image', previewUrl: 'blob:local-i2v' },
+          queuedAt: '',
+        },
+      ] as any,
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.composition_assets).toEqual([
+      { url: 'blob:local-i2v', layer: 0, role: 'source_image', media_type: 'image' },
+    ]);
+  });
+
+  it('accepts queued local URLs for video_extend without requiring backend IDs', () => {
+    const context = createBaseContext({
+      operationType: 'video_extend',
+      prompt: '',
+      dynamicParams: {},
+      operationInputs: [
+        {
+          id: 'local-extend',
+          asset: { id: -9, mediaType: 'video', previewUrl: 'blob:local-video' },
+          queuedAt: '',
+        },
+      ] as any,
+    });
+
+    const result = buildGenerationRequest(context);
+    expect(result.error).toBeUndefined();
+    expect(result.params?.composition_assets).toEqual([
+      { url: 'blob:local-video', layer: 0, role: 'source_video', media_type: 'video' },
+    ]);
   });
 });

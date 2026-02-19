@@ -22,6 +22,7 @@ export { RelatedAssetsModal } from './components/RelatedAssetsModal';
 
 export { LocalFoldersPanel } from './components/LocalFoldersPanel';
 export { LocalFoldersSource } from './components/LocalFoldersSource';
+export { ProviderLibrarySource } from './components/ProviderLibrarySource';
 export { RemoteGallerySource } from './components/RemoteGallerySource';
 export { TreeFolderView } from './components/TreeFolderView';
 

@@ -40,3 +40,7 @@ export {
   type CompactAssetCardProps,
   type ThumbnailGridItem,
 } from './CompactAssetCard';
+
+export {
+  ClientFilteredGallerySection,
+} from './ClientFilteredGallerySection';

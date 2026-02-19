@@ -211,7 +211,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
   // Multi-select state
-  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, isSelected } = useSelection();
+  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, selectAll, isSelected } = useSelection();
 
   // Handle asset selection for picker mode
   const handleSelectAsset = useCallback((asset: AssetModel) => {
@@ -493,6 +493,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     selectedAssetIds,
     toggleAssetSelection,
     clearSelection,
+    selectAll,
 
     // Viewer
     viewerAsset,

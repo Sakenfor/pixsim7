@@ -330,7 +330,7 @@ function TreeNodeView({
         )}
         <button
           onClick={() => onUpload?.(asset)}
-          disabled={!providerId || status === 'uploading'}
+          disabled={status === 'uploading'}
           className={`px-2 py-1 text-xs rounded ${
             status === 'success' ? 'bg-green-600 text-white' :
             status === 'error' ? 'bg-red-600 text-white' :
@@ -341,7 +341,7 @@ function TreeNodeView({
             status === 'success' ? 'Uploaded successfully' :
             status === 'error' ? 'Upload failed' :
             status === 'uploading' ? 'Uploading...' :
-            'Upload to provider'
+            (providerId ? 'Upload to provider' : 'Add to library')
           }
         >
           {status === 'uploading' ? '...' : status === 'success' ? '✓' : status === 'error' ? '✗' : '↑'}

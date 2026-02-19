@@ -60,3 +60,10 @@ export {
 
 // Re-export from lib/core (former lib/gallery)
 export * from './lib/core';
+
+// ============================================================================
+// Lib - Client-side Filters
+// ============================================================================
+
+export { useClientFilters, type ClientFilterDef, type ClientFilterValue } from './lib/useClientFilters';
+export { ClientFilterBar } from './components/ClientFilterBar';

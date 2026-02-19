@@ -46,6 +46,18 @@ async function registerSourceTypes() {
     useController: useLocalFoldersController,
   });
 
+  // Provider library type
+  const { ProviderLibrarySource } = await import('@features/assets');
+  registerSourceType({
+    typeId: 'provider-library',
+    name: 'Provider Library',
+    icon: 'cloud',
+    category: 'cloud',
+    description: 'Browse and import assets from connected provider accounts',
+    component: ProviderLibrarySource,
+    controllerType: 'base',
+  });
+
   // Future types will be registered here in Phase 3:
   // registerSourceType({
   //   typeId: 'google-drive',
@@ -66,7 +78,7 @@ async function registerSourceTypes() {
  */
 async function createStaticInstances() {
   // Dynamic imports to avoid circular dependency
-  const { RemoteGallerySource, LocalFoldersSource } = await import('@features/assets');
+  const { RemoteGallerySource, LocalFoldersSource, ProviderLibrarySource } = await import('@features/assets');
 
   // Remote gallery instance: "PixSim Assets"
   registerAssetSource({
@@ -84,5 +96,14 @@ async function createStaticInstances() {
     icon: 'folder',
     kind: 'local',
     component: LocalFoldersSource,
+  });
+
+  // Provider library instance: "Provider Library"
+  registerAssetSource({
+    id: getDefaultInstanceId('provider-library'),
+    label: 'Provider Library',
+    icon: 'cloud',
+    kind: 'cloud',
+    component: ProviderLibrarySource,
   });
 }

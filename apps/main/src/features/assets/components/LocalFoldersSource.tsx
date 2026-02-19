@@ -27,7 +27,7 @@ export function LocalFoldersSource({ layout, cardSize }: LocalFoldersSourceProps
 
   return (
     <SourceControllerProvider controller={controller} controllerType="folder">
-      <LocalFoldersPanel layout={layout} cardSize={cardSize} />
+      <LocalFoldersPanel controller={controller} layout={layout} cardSize={cardSize} />
     </SourceControllerProvider>
   );
 }

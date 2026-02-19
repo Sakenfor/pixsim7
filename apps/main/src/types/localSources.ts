@@ -35,6 +35,7 @@ export type ViewMode = 'grid' | 'tree' | 'list';
  * - PreviewCapability: previews, loadPreview, revokePreview
  * - ViewerCapability: viewerAsset, openViewer, closeViewer, navigateViewer
  * - UploadCapability: providerId, setProviderId, uploadStatus, uploadNotes, uploadOne
+ * - Local extensions: favoriteStatus, toggleFavoriteOne
  * - FolderCapability: folders, addFolder, removeFolder, refreshFolder, selectedFolderPath, setSelectedFolderPath
  * - ViewModeCapability: viewMode, setViewMode
  * - FeatureFlagsCapability: supported
@@ -80,5 +81,8 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   restoreMissingFolder: (folderName: string) => Promise<void>;
   /** Dismiss the missing folders warning */
   dismissMissingFolders: () => void;
-}
 
+  // Local favorites (maps local asset key -> favorite state in backend library)
+  favoriteStatus: Record<string, boolean>;
+  toggleFavoriteOne: (asset: LocalAsset | string) => Promise<void>;
+}
