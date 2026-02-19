@@ -279,6 +279,30 @@ class ProviderAccount(SQLModel, table=True):
 
         return True
 
+    def is_operationally_available(self) -> bool:
+        """
+        Check if account can accept jobs based on operational limits only.
+
+        Skips credit and status checks — intended for user-selected preferred
+        accounts where the user explicitly wants to use this account regardless
+        of credit balance (e.g. for 0-cost operations).
+
+        Still enforces cooldown, daily limit, and concurrency constraints.
+        """
+        if self.status not in (AccountStatus.ACTIVE, AccountStatus.EXHAUSTED):
+            return False
+
+        if self.cooldown_until and datetime.now(timezone.utc) < self.cooldown_until:
+            return False
+
+        if self.max_daily_videos and self.videos_today >= self.max_daily_videos:
+            return False
+
+        if self.current_processing_jobs >= self.max_concurrent_jobs:
+            return False
+
+        return True
+
     def has_capacity(self) -> bool:
         """
         Check if account has capacity for additional jobs

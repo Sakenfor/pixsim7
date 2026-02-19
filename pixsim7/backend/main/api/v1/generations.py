@@ -339,6 +339,9 @@ async def get_generation(
     - Prompt configuration
     - Result asset (if completed)
     """
+    from sqlmodel import select
+    from pixsim7.backend.main.domain.providers import ProviderAccount
+
     try:
         proxy = await generation_gateway.proxy(
             req,
@@ -353,6 +356,17 @@ async def get_generation(
         response = GenerationResponse.model_validate(generation)
         latest_payloads = await _get_latest_submission_payloads(db, [generation.id])
         response.latest_submission_payload = latest_payloads.get(generation.id)
+
+        # Populate account_email for UI display (same as list endpoint)
+        if generation.account_id:
+            result = await db.execute(
+                select(ProviderAccount.email)
+                .where(ProviderAccount.id == generation.account_id)
+            )
+            email = result.scalar_one_or_none()
+            if email:
+                response.account_email = email
+
         return response
     except ResourceNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))

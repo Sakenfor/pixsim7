@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { getGeneration } from '@lib/api/generations';
 
+import { fromGenerationResponse } from '../models';
 import { useGenerationsStore, isGenerationTerminal, generationsSelectors } from '../stores/generationsStore';
 
 export interface UseGenerationStatusOptions {
@@ -67,7 +68,7 @@ export function useGenerationStatus(
         max: maxIntervalMs,
         backoffStartMs,
         onFetch: (data) => {
-          addOrUpdateGeneration(data);
+          addOrUpdateGeneration(fromGenerationResponse(data));
           setLoading(false);
           setError(null);
         },

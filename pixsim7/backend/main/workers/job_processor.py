@@ -407,20 +407,21 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             MAX_ACCOUNT_RETRIES = 10
             account = None
 
-            # Try preferred account first (user-selected)
+            # Try preferred account first (user-selected).
+            # When the user explicitly selects an account, honor that choice
+            # without requiring credits — some operations are free (0-cost models),
+            # and the provider API will reject with a clear error if credits are
+            # actually needed but unavailable.
             if not account and getattr(generation, 'preferred_account_id', None) and not generation.account_id:
                 try:
                     pref_account = await db.get(ProviderAccount, generation.preferred_account_id)
-                    if pref_account and pref_account.is_available() and pref_account.provider_id == generation.provider_id:
+                    if pref_account and pref_account.is_operationally_available() and pref_account.provider_id == generation.provider_id:
                         await account_service.reserve_account(pref_account.id)
-                        credits_data = await refresh_account_credits(pref_account, account_service, gen_logger)
-                        if credits_data and has_sufficient_credits(credits_data):
-                            account = pref_account
-                            gen_logger.info("preferred_account_used", account_id=account.id)
-                            debug.worker("preferred_account_used", account_id=account.id)
-                        else:
-                            await account_service.release_account(pref_account.id)
-                            gen_logger.info("preferred_account_no_credits", account_id=pref_account.id)
+                        account = pref_account
+                        gen_logger.info("preferred_account_used", account_id=account.id)
+                        debug.worker("preferred_account_used", account_id=account.id)
+                    elif pref_account:
+                        gen_logger.info("preferred_account_unavailable", account_id=pref_account.id)
                 except Exception as e:
                     gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
 

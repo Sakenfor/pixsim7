@@ -28,9 +28,7 @@ import {
 import {
   getStatusConfig,
   getStatusBadgeClasses,
-  getGenerationInputStore,
   getGenerationSessionStore,
-  getGenerationSettingsStore,
 } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
@@ -401,7 +399,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
   const hydrateWidgetGenerationState = useCallback(
     async (options: {
-      scopeId: string;
       operationType: OperationType;
       providerId?: string;
       prompt: string;
@@ -410,7 +407,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       triggerGenerate?: boolean;
     }): Promise<boolean> => {
       const {
-        scopeId,
         operationType: nextOperationType,
         providerId,
         prompt,
@@ -419,9 +415,12 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         triggerGenerate = false,
       } = options;
 
-      const sessionStore = getGenerationSessionStore(scopeId).getState();
-      const settingsStore = getGenerationSettingsStore(scopeId).getState();
-      const inputStore = getGenerationInputStore(scopeId).getState();
+      // Use the scoped stores directly — getGenerationSettingsStore('global')
+      // creates a separate store from the singleton useGenerationSettingsStore,
+      // so we must use the stores from scope context to read/write the correct state.
+      const sessionStore = (useSessionStore as any).getState();
+      const settingsStore = (useSettingsStore as any).getState();
+      const inputStore = (useInputStore as any).getState();
 
       sessionStore.setOperationType(nextOperationType);
       widgetContext?.setOperationType?.(nextOperationType);
@@ -454,7 +453,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
       return false;
     },
-    [widgetContext],
+    [widgetContext, useSessionStore, useSettingsStore, useInputStore],
   );
 
   const submitDirectGeneration = useCallback(
@@ -497,17 +496,17 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     [addOrUpdateGeneration, setWatchingGeneration],
   );
 
-  // Quick generate using the widget's scoped stores (not the controller's global stores).
-  // This ensures the button reads the settings the user actually sees in the active
-  // generation widget (Control Center or Viewer Quick Gen).
+  // Quick generate using the scoped stores from context (not getGenerationSettingsStore).
+  // For the global scope, getGenerationSettingsStore('global') creates a separate store
+  // from the singleton useGenerationSettingsStore, so we must use the stores from scope
+  // context to read the correct settings (including advanced settings the user configured).
   const handleQuickGenerate = useCallback(async () => {
     if (isQuickGenerating) return;
     setIsQuickGenerating(true);
 
     try {
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
-      const sessionState = getGenerationSessionStore(scopeId).getState();
-      const settingsState = getGenerationSettingsStore(scopeId).getState();
+      const sessionState = (useSessionStore as any).getState();
+      const settingsState = (useSettingsStore as any).getState();
 
       const { operationType: widgetOp, prompt, providerId } = sessionState;
       const dynamicParams = settingsState.params || {};
@@ -565,8 +564,8 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     }
   }, [
     isQuickGenerating,
-    widgetContext?.scopeId,
-    scopedScopeId,
+    useSessionStore,
+    useSettingsStore,
     inputAsset,
     submitDirectGeneration,
   ]);
@@ -586,7 +585,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         sourceAssetIds,
       } = parseGenerationContext(ctx, operationType);
 
-      const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
       const sourceParams = (params && typeof params === 'object')
         ? (params as Record<string, unknown>)
         : {};
@@ -601,7 +599,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       }
 
       await hydrateWidgetGenerationState({
-        scopeId,
         operationType: resolvedOperationType,
         providerId,
         prompt,
@@ -624,8 +621,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     data.hasGenerationContext,
     isLoadingSource,
     operationType,
-    scopedScopeId,
-    widgetContext,
     hydrateWidgetGenerationState,
   ]);
 
@@ -665,27 +660,28 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   ]);
 
   // Handler for extending video with the same prompt
-  const handleExtendWithSamePrompt = useCallback(async () => {
-    if ((!data.sourceGenerationId && !data.hasGenerationContext) || isExtending) return;
-    if (mediaType !== 'video') return;
+  const handleExtendVideo = useCallback(async (promptSource: 'same' | 'active') => {
+    if (isExtending || mediaType !== 'video') return;
+    if (promptSource === 'same' && !data.sourceGenerationId && !data.hasGenerationContext) return;
 
     setIsExtending(true);
 
     try {
-      // Fetch generation context (from record or metadata)
       const ctx = await getAssetGenerationContext(id);
-      const { params: originalParams, providerId, prompt } = parseGenerationContext(ctx, operationType);
+      const { params: originalParams, providerId, prompt: originalPrompt } = parseGenerationContext(ctx, operationType);
 
-      // Build params for video_extend: reuse the original generation's
-      // model/quality/settings and set the current asset as extend source.
+      // Use the active widget prompt or the original generation prompt
+      let prompt = originalPrompt;
+      if (promptSource === 'active') {
+        const scopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+        prompt = getGenerationSessionStore(scopeId).getState().prompt || '';
+      }
+
       const extendParams = {
         ...stripInputParams(originalParams as Record<string, unknown>),
         source_asset_id: id,
-        // Let backend resolve original_video_id from canonical asset metadata.
-        // Card-level providerAssetId can be stale/ambiguous and break extend.
       };
 
-      // Build the generation request
       const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', 'video_extend');
       const maxChars = resolvePromptLimitFromSpec(
         providerId,
@@ -737,7 +733,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         providerId,
         prompt: buildResult.finalPrompt,
         params: extendSubmitParams,
-        successMessage: 'Extending video...',
+        successMessage: promptSource === 'active' ? 'Extending video with active prompt...' : 'Extending video...',
       });
     } catch (error) {
       console.error('Failed to extend video:', error);
@@ -757,8 +753,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     operationType,
     id,
     inputAsset,
+    widgetContext?.scopeId,
+    scopedScopeId,
     submitDirectGeneration,
   ]);
+
+  const handleExtendWithSamePrompt = useCallback(() => handleExtendVideo('same'), [handleExtendVideo]);
+  const handleExtendWithActivePrompt = useCallback(() => handleExtendVideo('active'), [handleExtendVideo]);
 
   // Handler for regenerating (re-run the exact same generation)
   const handleRegenerate = useCallback(async () => {
@@ -919,15 +920,26 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     }
 
     if (mediaType === 'video' && hasGenContext) {
-      items.unshift({
-        id: 'extend-same-prompt-now',
-        label: 'Extend Same Prompt Now',
-        icon: 'arrowRight',
-        onClick: () => {
-          void handleExtendWithSamePrompt();
+      items.unshift(
+        {
+          id: 'extend-active-prompt-now',
+          label: 'Extend Active Prompt',
+          icon: 'edit',
+          onClick: () => {
+            void handleExtendWithActivePrompt();
+          },
+          disabled: isExtending,
         },
-        disabled: isExtending,
-      });
+        {
+          id: 'extend-same-prompt-now',
+          label: 'Extend Same Prompt',
+          icon: 'arrowRight',
+          onClick: () => {
+            void handleExtendWithSamePrompt();
+          },
+          disabled: isExtending,
+        },
+      );
     }
 
     return items;
@@ -941,6 +953,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     handleRegenerate,
     isRegenerating,
     handleExtendWithSamePrompt,
+    handleExtendWithActivePrompt,
     isExtending,
   ]);
 
@@ -1009,8 +1022,34 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
         <Icon name="arrowRight" size={14} />
       ),
       onClick: handleExtendWithSamePrompt,
-      title: 'Extend video with same prompt',
+      title: 'Extend video',
       disabled: isExtending,
+      expandContent: (
+        <div className="flex flex-col rounded-xl bg-accent/95 backdrop-blur-sm shadow-2xl">
+          <button
+            onClick={() => { void handleExtendWithSamePrompt(); }}
+            className="w-40 h-8 px-3 text-xs text-white hover:bg-white/15 rounded-t-xl transition-colors flex items-center gap-2"
+            title="Extend using the original generation prompt"
+            disabled={isExtending}
+            type="button"
+          >
+            <Icon name="rotateCcw" size={12} />
+            <span>Same Prompt</span>
+          </button>
+          <button
+            onClick={() => { void handleExtendWithActivePrompt(); }}
+            className="w-40 h-8 px-3 text-xs text-white hover:bg-white/15 rounded-b-xl transition-colors flex items-center gap-2"
+            title="Extend using the prompt currently in the generation widget"
+            disabled={isExtending}
+            type="button"
+          >
+            <Icon name="edit" size={12} />
+            <span>Active Prompt</span>
+          </button>
+        </div>
+      ),
+      expandDelay: 150,
+      collapseDelay: 200,
     });
   }
 
