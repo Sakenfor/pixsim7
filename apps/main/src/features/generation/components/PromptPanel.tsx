@@ -114,7 +114,7 @@ export function PromptPanel(props: QuickGenPanelProps) {
   useProvideCapability<PromptBoxContext>(
     CAP_PROMPT_BOX,
     {
-      id: `quickgen-prompt:${panelInstanceId}`,
+      id: `quickgen-prompt:${dockviewId ?? 'default'}:${panelInstanceId}`,
       label: promptBoxLabel,
       priority: 50,
       getValue: () => ({
