@@ -1,15 +1,26 @@
 """
 Remaker provider adapter (web internal API)
 
-Implements Remaker's inpainting flow using the same endpoints the website uses:
-- POST /api/pai/v4/ai-inpainting/create-job
-- GET  /api/pai/v4/ai-inpainting/get-job/{job_id}
+Supports two modes, both under IMAGE_TO_IMAGE:
+
+1. **Photo-editor** (mask present):
+   - POST /api/pai/v4/ai-photo-editor/create-job
+   - GET  /api/pai/v4/ai-photo-editor/get-job/{job_id}
+   - Processing status code: 300006
+   - Fields: image, mask, prompt, task_type (sd/flux), turnstile_token
+
+2. **Prompt-editor** (no mask):
+   - POST /api/pai/v4/prompt-editor/create-job
+   - GET  /api/pai/v4/prompt-editor/get-job/{job_id}
+   - Processing status code: 300013
+   - Fields: image_files, prompt, task_type, aspect_ratio, image_resolution
 
 Notes:
 - Remaker uses a raw JWT token in the `authorization` header (no "Bearer " prefix).
 - The site also sends `product-serial` and `product-code` headers; we persist those
   on ProviderAccount.provider_metadata and forward them on each request.
 - Inpaint masks are PNG images where white = inpaint and black = preserve.
+- Mode is auto-detected by mask presence in parameters.
 
 This is a "web internal API" provider - it replays the same requests the browser makes.
 Adding similar providers requires:
@@ -24,21 +35,19 @@ import os
 from typing import Any, Dict, Optional, TYPE_CHECKING
 from urllib.parse import urlparse
 
-import httpx
-
 from pixsim_logging import get_logger
 from pixsim7.backend.main.domain import OperationType, ProviderStatus, Generation
 from pixsim7.backend.main.domain.providers import ProviderAccount
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
 from pixsim7.backend.main.shared.asset_refs import extract_asset_id
 from pixsim7.backend.main.services.provider.base import (
-    Provider,
     GenerationResult,
     ProviderStatusResult,
     AuthenticationError,
     ProviderError,
     UnsupportedOperationError,
 )
+from pixsim7.backend.main.services.provider.adapters.web_api_base import WebApiProvider
 
 if TYPE_CHECKING:
     from pixsim7.backend.main.domain.providers.schemas import ProviderManifest
@@ -58,23 +67,25 @@ def _get_remaker_manifest() -> "ProviderManifest":
             id="remaker",
             name="Remaker.ai",
             version="0.1.0",
-            description="Remaker.ai inpainting provider (web internal API replay)",
+            description="Remaker.ai photo-editor & prompt-editor provider (web internal API replay)",
             author="PixSim7",
             kind=ProviderKind.VIDEO,
             enabled=True,
             requires_credentials=True,
             domains=["remaker.ai", "api.remaker.ai"],
             credit_types=["web"],  # Remaker only has web credits
-            status_mapping_notes="100000=success, 300006=processing, other=failed",
+            status_mapping_notes="100000=success, 300006=photo-editor processing, 300013=prompt-editor processing, other=failed",
         )
     return _REMAKER_MANIFEST
 
 
-class RemakerProvider(Provider):
+class RemakerProvider(WebApiProvider):
     """
-    Remaker inpaint provider.
+    Remaker provider supporting photo-editor and prompt-editor modes.
 
-    Currently supports IMAGE_TO_IMAGE in "inpaint" mode.
+    Both modes operate under IMAGE_TO_IMAGE. Mode is auto-detected:
+    - Mask present → photo-editor (image + mask + prompt + model choice)
+    - No mask → prompt-editor (image + prompt + model + aspect ratio + resolution)
     """
 
     API_BASE = "https://api.remaker.ai"
@@ -107,36 +118,37 @@ class RemakerProvider(Provider):
         account: Optional[ProviderAccount] = None,
     ) -> Dict[str, Any]:
         """
-        Resolve Remaker inpaint inputs to local filesystem paths.
+        Resolve Remaker inputs to local filesystem paths.
 
-        Remaker's create-job endpoint is multipart and requires two files:
-        - original image (jpeg)
-        - mask image (png)
-
-        The mapped payload stores sources as strings (URL/path/asset ref).
-        This method resolves those sources to local paths, downloading remote
-        URLs to temp files when needed, and returns an execute-only params dict.
+        Both modes need the original image resolved. Photo-editor mode
+        additionally resolves the mask image.
         """
         original_source = mapped_params.get("original_image_source")
-        mask_source = mapped_params.get("mask_source")
         file_extension = mapped_params.get("file_extension")
+        mode = mapped_params.get("mode", "photo-editor")
 
         original_path, original_temps = await resolve_source_fn(
             original_source,
             generation.user_id,
             ".jpg",
         )
-        mask_path, mask_temps = await resolve_source_fn(
-            mask_source,
-            generation.user_id,
-            ".png",
-        )
 
-        temps = [*original_temps, *mask_temps]
+        temps = list(original_temps)
 
         resolved: Dict[str, Any] = dict(mapped_params)
         resolved["original_image_path"] = original_path
-        resolved["mask_path"] = mask_path
+
+        if mode == "photo-editor":
+            mask_source = mapped_params.get("mask_source")
+            if mask_source:
+                mask_path, mask_temps = await resolve_source_fn(
+                    mask_source,
+                    generation.user_id,
+                    ".png",
+                )
+                temps.extend(mask_temps)
+                resolved["mask_path"] = mask_path
+
         resolved["_temp_paths"] = temps
 
         if file_extension and isinstance(file_extension, str) and not file_extension.startswith("."):
@@ -146,6 +158,25 @@ class RemakerProvider(Provider):
 
     # ===== PARAMETER MAPPING =====
 
+    @staticmethod
+    def _extract_image_source(params: Dict[str, Any]) -> Optional[str]:
+        """Extract the first image source from composition_assets."""
+        composition_assets = params.get("composition_assets")
+        if not isinstance(composition_assets, list):
+            return None
+        assets = coerce_composition_assets(composition_assets)
+        for item in assets:
+            item_media_type = item.get("media_type")
+            if item_media_type and item_media_type != "image":
+                continue
+            asset_value = item.get("asset")
+            url_value = item.get("url")
+            if asset_value:
+                return asset_value
+            elif url_value and isinstance(url_value, str):
+                return url_value
+        return None
+
     def map_parameters(self, operation_type: OperationType, params: Dict[str, Any]) -> Dict[str, Any]:
         if operation_type not in self.supported_operations:
             raise UnsupportedOperationError(self.provider_id, operation_type.value)
@@ -154,52 +185,40 @@ class RemakerProvider(Provider):
         if not prompt or not str(prompt).strip():
             raise ProviderError("Remaker requires a non-empty prompt")
 
-        # Extract original image source from composition_assets
-        # Don't resolve asset refs here - prepare_execution_params will handle resolution
-        original_image_source = None
-        composition_assets = params.get("composition_assets")
-        if isinstance(composition_assets, list):
-            assets = coerce_composition_assets(composition_assets)
-            for item in assets:
-                # Filter to images only
-                item_media_type = item.get("media_type")
-                if item_media_type and item_media_type != "image":
-                    continue
-
-                # Get the source - either asset ref or URL
-                # resolve_source_fn in prepare_execution_params handles both
-                asset_value = item.get("asset")
-                url_value = item.get("url")
-
-                if asset_value:
-                    # Could be "asset:123" or a numeric ID - pass through for resolution
-                    original_image_source = asset_value
-                    break
-                elif url_value and isinstance(url_value, str):
-                    original_image_source = url_value
-                    break
-
+        original_image_source = self._extract_image_source(params)
         if not original_image_source:
             raise ProviderError("Remaker requires 'composition_assets' with at least one image entry")
-
-        # Extra fields for inpaint. We keep these provider-specific to avoid changing
-        # core OperationType semantics.
-        mask_source = params.get("mask_url") or params.get("mask_source") or params.get("mask")
-        if not mask_source:
-            raise ProviderError("Remaker inpaint requires 'mask_url' (PNG mask)")
 
         file_extension = params.get("file_extension")
         if file_extension and isinstance(file_extension, str) and not file_extension.startswith("."):
             file_extension = f".{file_extension}"
 
-        return {
-            "prompt": prompt,
-            "original_image_source": original_image_source,
-            "mask_source": mask_source,
-            "file_extension": file_extension,
-        }
+        # Auto-detect mode by mask presence
+        mask_source = params.get("mask_url") or params.get("mask_source") or params.get("mask")
 
-    def _headers_for_account(self, account: ProviderAccount) -> Dict[str, str]:
+        if mask_source:
+            # Photo-editor mode: image + mask + prompt + model choice
+            return {
+                "mode": "photo-editor",
+                "prompt": prompt,
+                "original_image_source": original_image_source,
+                "mask_source": mask_source,
+                "task_type": params.get("task_type", "sd"),
+                "file_extension": file_extension,
+            }
+        else:
+            # Prompt-editor mode: image + prompt (no mask)
+            return {
+                "mode": "prompt-editor",
+                "prompt": prompt,
+                "original_image_source": original_image_source,
+                "task_type": params.get("task_type", "sd"),
+                "aspect_ratio": params.get("aspect_ratio", "match_input_image"),
+                "image_resolution": params.get("image_resolution", "2K"),
+                "file_extension": file_extension,
+            }
+
+    def _build_headers(self, account: ProviderAccount) -> Dict[str, str]:
         token = account.jwt_token
         if not token:
             raise AuthenticationError(self.provider_id, "Missing account jwt_token")
@@ -230,72 +249,116 @@ class RemakerProvider(Provider):
         if operation_type not in self.supported_operations:
             raise UnsupportedOperationError(self.provider_id, operation_type.value)
 
-        headers = self._headers_for_account(account)
+        mode = params.get("mode", "photo-editor")
+        temp_paths = list(params.get("_temp_paths") or [])
 
+        try:
+            if mode == "prompt-editor":
+                return await self._execute_prompt_editor(account, params)
+            else:
+                return await self._execute_photo_editor(account, params)
+        finally:
+            self._cleanup_temps(temp_paths)
+
+    async def _execute_photo_editor(
+        self, account: ProviderAccount, params: Dict[str, Any]
+    ) -> GenerationResult:
+        """Submit a photo-editor job (image + optional mask + prompt + model)."""
         prompt = params.get("prompt")
         original_path = params.get("original_image_path")
         mask_path = params.get("mask_path")
+        task_type = params.get("task_type", "sd")
         file_extension = params.get("file_extension")
-        temp_paths = list(params.get("_temp_paths") or [])
 
-        if not original_path or not mask_path:
+        if not original_path:
             raise ProviderError(
-                "Remaker execute requires resolved file paths: 'original_image_path' and 'mask_path'"
+                "Remaker photo-editor requires resolved file path: 'original_image_path'"
             )
 
-        # Determine file_extension if caller didn't provide it.
         if not file_extension:
             _, ext = os.path.splitext(str(original_path))
             file_extension = ext or ".jpg"
 
-        create_url = f"{self.API_BASE}/api/pai/v4/ai-inpainting/create-job"
+        create_url = f"{self.API_BASE}/api/pai/v4/ai-photo-editor/create-job"
+        img_content_type = "image/jpeg" if file_extension.lower() in {".jpg", ".jpeg"} else "application/octet-stream"
 
-        try:
-            with open(mask_path, "rb") as mask_f, open(original_path, "rb") as img_f:
-                files = {
-                    "mask_file": ("blob", mask_f, "image/png"),
-                    "original_image_file": (
-                        os.path.basename(str(original_path)) or f"input{file_extension}",
-                        img_f,
-                        "image/jpeg" if file_extension.lower() in {".jpg", ".jpeg"} else "application/octet-stream",
-                    ),
-                }
-                data = {
-                    "prompt": prompt,
-                    "file_extension": file_extension,
-                }
+        file_fields = {
+            "image": (
+                os.path.basename(str(original_path)) or f"input{file_extension}",
+                original_path,
+                img_content_type,
+            ),
+            "mask": ("mask.png", mask_path, "image/png") if mask_path else None,
+        }
+        data = {
+            "prompt": prompt,
+            "task_type": task_type,
+            "turnstile_token": "",
+        }
 
-                async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
-                    resp = await client.post(create_url, headers=headers, data=data, files=files)
-                    resp.raise_for_status()
-                    payload = resp.json()
+        payload = await self._submit_multipart(account, create_url, data, file_fields)
+        return self._parse_create_response(payload)
 
-            code = payload.get("code")
-            if code != 100000:
-                msg = (payload.get("message") or {}).get("en") or str(payload.get("message") or payload)
-                raise ProviderError(f"Remaker create-job failed (code={code}): {msg}")
+    async def _execute_prompt_editor(
+        self, account: ProviderAccount, params: Dict[str, Any]
+    ) -> GenerationResult:
+        """Submit a prompt-editor job (image + prompt, no mask)."""
+        prompt = params.get("prompt")
+        original_path = params.get("original_image_path")
+        task_type = params.get("task_type", "sd")
+        aspect_ratio = params.get("aspect_ratio", "match_input_image")
+        image_resolution = params.get("image_resolution", "2K")
+        file_extension = params.get("file_extension")
 
-            job_id = ((payload.get("result") or {}) or {}).get("job_id")
-            if not job_id:
-                raise ProviderError(f"Remaker create-job missing job_id: {payload}")
-
-            return GenerationResult(
-                provider_job_id=str(job_id),
-                status=ProviderStatus.PENDING,
-                metadata={"provider_status": code},
+        if not original_path:
+            raise ProviderError(
+                "Remaker prompt-editor requires resolved file path: 'original_image_path'"
             )
-        except httpx.HTTPStatusError as e:
-            raise ProviderError(f"Remaker create-job HTTP error: {e.response.status_code}") from e
-        except httpx.HTTPError as e:
-            raise ProviderError(f"Remaker create-job network error: {e}") from e
-        finally:
-            # Clean up any temp downloads created by the orchestrator.
-            for path in temp_paths:
-                try:
-                    if path and os.path.exists(path):
-                        os.remove(path)
-                except Exception:
-                    pass
+
+        if not file_extension:
+            _, ext = os.path.splitext(str(original_path))
+            file_extension = ext or ".jpg"
+
+        create_url = f"{self.API_BASE}/api/pai/v4/prompt-editor/create-job"
+        img_content_type = "image/jpeg" if file_extension.lower() in {".jpg", ".jpeg"} else "application/octet-stream"
+
+        file_fields = {
+            "image_files": (
+                os.path.basename(str(original_path)) or f"input{file_extension}",
+                original_path,
+                img_content_type,
+            ),
+        }
+        data = {
+            "prompt": prompt,
+            "task_type": task_type,
+            "aspect_ratio": aspect_ratio,
+            "image_resolution": image_resolution,
+        }
+
+        payload = await self._submit_multipart(account, create_url, data, file_fields)
+        result = self._parse_create_response(payload)
+        # Prefix job_id so check_status routes to the correct poll endpoint
+        result.provider_job_id = f"pe:{result.provider_job_id}"
+        return result
+
+    @staticmethod
+    def _parse_create_response(payload: Dict[str, Any]) -> GenerationResult:
+        """Parse Remaker create-job response (shared between modes)."""
+        code = payload.get("code")
+        if code != 100000:
+            msg = (payload.get("message") or {}).get("en") or str(payload.get("message") or payload)
+            raise ProviderError(f"Remaker create-job failed (code={code}): {msg}")
+
+        job_id = (payload.get("result") or {}).get("job_id")
+        if not job_id:
+            raise ProviderError(f"Remaker create-job missing job_id: {payload}")
+
+        return GenerationResult(
+            provider_job_id=str(job_id),
+            status=ProviderStatus.PENDING,
+            metadata={"provider_status": code},
+        )
 
     async def check_status(
         self,
@@ -303,23 +366,20 @@ class RemakerProvider(Provider):
         provider_job_id: str,
         operation_type: Optional[OperationType] = None,
     ) -> ProviderStatusResult:
-        headers = self._headers_for_account(account)
-        url = f"{self.API_BASE}/api/pai/v4/ai-inpainting/get-job/{provider_job_id}"
+        # Route to correct poll endpoint based on job_id prefix
+        if provider_job_id.startswith("pe:"):
+            real_job_id = provider_job_id[3:]
+            url = f"{self.API_BASE}/api/pai/v4/prompt-editor/get-job/{real_job_id}"
+            processing_code = 300013
+        else:
+            real_job_id = provider_job_id
+            url = f"{self.API_BASE}/api/pai/v4/ai-photo-editor/get-job/{real_job_id}"
+            processing_code = 300006
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-                resp = await client.get(url, headers=headers)
-                resp.raise_for_status()
-                payload = resp.json()
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in (401, 403):
-                raise AuthenticationError(self.provider_id, f"HTTP {e.response.status_code}") from e
-            raise ProviderError(f"Remaker get-job HTTP error: {e.response.status_code}") from e
-        except httpx.HTTPError as e:
-            raise ProviderError(f"Remaker get-job network error: {e}") from e
+        payload = await self._fetch_json(account, url)
 
         code = payload.get("code")
-        if code == 300006:
+        if code == processing_code:
             return ProviderStatusResult(
                 status=ProviderStatus.PROCESSING,
                 metadata={"provider_status": code},
@@ -362,6 +422,93 @@ class RemakerProvider(Provider):
             metadata={"provider_status": code},
             provider_video_id=provider_job_id,
         )
+
+    def get_operation_parameter_spec(self) -> dict:
+        # -- Per-model option maps (Pixverse pattern) --
+        all_ratios = ["match_input_image", "1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
+        flux_ratios = ["1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
+        aspect_per_model = {
+            "sd": all_ratios,
+            "flux": flux_ratios,
+        }
+        resolution_per_model = {
+            "sd": ["1K", "2K", "4K"],
+            "flux": ["1024"],
+        }
+        credits_per_model = {
+            "sd": 6,
+            "flux": 2,
+        }
+
+        return {
+            OperationType.IMAGE_TO_IMAGE.value: {
+                "parameters": [
+                    {
+                        "name": "prompt",
+                        "type": "string",
+                        "required": True,
+                        "default": None,
+                        "enum": None,
+                        "description": "Edit instruction or inpainting prompt",
+                        "group": "core",
+                    },
+                    {
+                        "name": "composition_assets",
+                        "type": "composition_assets",
+                        "required": True,
+                        "default": None,
+                        "enum": None,
+                        "description": "Source image",
+                        "group": "core",
+                    },
+                    {
+                        "name": "mask_url",
+                        "type": "string",
+                        "required": False,
+                        "default": None,
+                        "enum": None,
+                        "description": "Inpaint mask (PNG). With mask → photo-editor, without → prompt-editor.",
+                        "group": "core",
+                    },
+                    {
+                        "name": "task_type",
+                        "type": "enum",
+                        "required": False,
+                        "default": "sd",
+                        "enum": ["sd", "flux"],
+                        "description": "Model: Seedream 4 (sd) or Flux",
+                        "group": "core",
+                        "metadata": {
+                            "credits_per_option": credits_per_model,
+                        },
+                    },
+                    {
+                        "name": "aspect_ratio",
+                        "type": "enum",
+                        "required": False,
+                        "default": "match_input_image",
+                        "enum": all_ratios,
+                        "description": "Aspect ratio (prompt-editor mode only)",
+                        "group": "prompt-editor",
+                        "metadata": {
+                            "per_model_options": aspect_per_model,
+                        },
+                    },
+                    {
+                        "name": "image_resolution",
+                        "type": "enum",
+                        "required": False,
+                        "default": "2K",
+                        "enum": ["1K", "2K", "4K", "1024"],
+                        "description": "Output resolution (prompt-editor mode only)",
+                        "group": "prompt-editor",
+                        "metadata": {
+                            "per_model_options": resolution_per_model,
+                        },
+                    },
+                ]
+            }
+        }
 
     def compute_actual_credits(self, generation, actual_duration: Optional[float] = None) -> Optional[int]:
         # Remaker credits are provider-specific and currently not modeled in PixSim7.
