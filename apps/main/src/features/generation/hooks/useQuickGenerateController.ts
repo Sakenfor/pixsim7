@@ -58,12 +58,20 @@ function recordInputHistory(operationType: string, inputs: any[]) {
  * This keeps QuickGenerateModule focused on rendering/layout.
  */
 export function useQuickGenerateController() {
-  const { useSessionStore, useInputStore } = useGenerationScopeStores();
+  const { useSettingsStore, useSessionStore, useInputStore } = useGenerationScopeStores();
 
   // Generation session state (scoped)
   const operationType = useSessionStore((s) => s.operationType);
-  const providerId = useSessionStore((s) => s.providerId);
+  const storeProviderId = useSessionStore((s) => s.providerId);
   const generating = useSessionStore((s) => s.generating);
+
+  // Resolve provider from model when session store doesn't have an explicit one.
+  // This matches what useGenerationWorkbench shows in the UI.
+  const currentModel = useSettingsStore((s) => s.params?.model) as string | undefined;
+  const modelProviderId = currentModel
+    ? providerCapabilityRegistry.getProviderIdForModel(currentModel)
+    : undefined;
+  const providerId = storeProviderId ?? modelProviderId;
 
   const setProvider = useSessionStore((s) => s.setProvider);
   const setOperationType = useSessionStore((s) => s.setOperationType);
@@ -254,6 +262,7 @@ export function useQuickGenerateController() {
       const { currentInputs, currentInput, transitionInputs } = getInputState();
       const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
       const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
+      console.log('[controller.generate] provider=%s preferred_account_id=%s', providerId, dynamicParams.preferred_account_id ?? 'auto');
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 

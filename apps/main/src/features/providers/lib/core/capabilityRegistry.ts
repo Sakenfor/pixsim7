@@ -12,6 +12,7 @@
  */
 
 import { pixsimClient } from '@lib/api/client';
+
 import type { ProviderCapability, ProviderInfo, ProviderLimits, CostHints } from './types';
 
 export interface CapabilityRegistryConfig {
@@ -156,6 +157,29 @@ export class ProviderCapabilityRegistry {
       this.fetchCapabilities().catch(console.error);
     }
     return Array.from(this.capabilities.values());
+  }
+
+  /**
+   * Resolve which provider owns a given model name.
+   * Searches all provider operation_specs for a model enum that matches.
+   */
+  getProviderIdForModel(model: string | undefined): string | undefined {
+    if (!model) return undefined;
+    const normalized = model.toLowerCase();
+    for (const capability of this.getAllCapabilities()) {
+      const specs = capability.operation_specs;
+      if (!specs) continue;
+      for (const opSpec of Object.values(specs)) {
+        const params = (opSpec as any)?.parameters ?? [];
+        const modelParam = params.find((p: any) => p.name === 'model');
+        const enumValues = modelParam?.enum ?? [];
+        if (!Array.isArray(enumValues)) continue;
+        if (enumValues.some((e: any) => typeof e === 'string' && normalized.startsWith(e.toLowerCase()))) {
+          return capability.provider_id;
+        }
+      }
+    }
+    return undefined;
   }
 
   /**

@@ -21,6 +21,10 @@ import { getFallbackOperation, type OperationType } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { createPendingGeneration } from '../models';
+import {
+  getGenerationSessionStore,
+  getGenerationSettingsStore,
+} from '../stores/generationScopeStores';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 import { useGenerationScopeStores } from './useGenerationScope';
@@ -159,7 +163,8 @@ export function useMediaGenerationActions() {
   const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
 
   // Quick generate - immediately triggers generation with an asset
-  // Uses current scoped settings (provider, model, params, etc.)
+  // Uses the active generation widget's settings (provider, model, params, etc.)
+  // Falls back to local scope stores if no widget is active.
   // Mirrors the controller.generate() flow but with the clicked asset as sole input
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean }) => {
@@ -170,13 +175,27 @@ export function useMediaGenerationActions() {
           selectAssetFromSummary(asset);
         }
 
-        // Read current state from scoped stores
-        // Using getState() to get fresh values in the callback
-        const sessionState = (useSessionStore as any).getState();
-        const settingsState = (useSettingsStore as any).getState();
+        // Read from the active generation widget's scope (e.g. control center)
+        // so quick generate respects provider/account/settings the user sees.
+        // Falls back to local scope if no widget is active.
+        const widgetScopeId = widgetContext?.scopeId;
+        const resolvedSessionStore = widgetScopeId
+          ? getGenerationSessionStore(widgetScopeId)
+          : useSessionStore;
+        const resolvedSettingsStore = widgetScopeId
+          ? getGenerationSettingsStore(widgetScopeId)
+          : useSettingsStore;
+        const sessionState = (resolvedSessionStore as any).getState();
+        const settingsState = (resolvedSettingsStore as any).getState();
 
-        const { operationType, prompt, providerId } = sessionState;
+        const { operationType, prompt, providerId: storeProviderId } = sessionState;
         const dynamicParams = settingsState.params || {};
+        // Resolve provider from model when session store doesn't have an explicit one
+        const modelProviderId = dynamicParams.model
+          ? providerCapabilityRegistry.getProviderIdForModel(dynamicParams.model as string)
+          : undefined;
+        const providerId = storeProviderId ?? modelProviderId;
+        console.log('[quickGenerate] scopeId=%s provider=%s preferred_account_id=%s', widgetScopeId ?? 'local', providerId, dynamicParams.preferred_account_id ?? 'auto');
         const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
         const maxChars = resolvePromptLimitForModel(
           providerId,
@@ -256,6 +275,7 @@ export function useMediaGenerationActions() {
       addInputs,
       currentOperationType,
       selectAssetFromSummary,
+      widgetContext,
       useSessionStore,
       useSettingsStore,
       addOrUpdateGeneration,

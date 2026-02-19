@@ -188,8 +188,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       const sessionState = (useSessionStore as any).getState();
       const settingsState = (useSettingsStore as any).getState();
 
-      const { operationType: widgetOp, prompt, providerId } = sessionState;
+      const { operationType: widgetOp, prompt, providerId: storeProviderId } = sessionState;
       const dynamicParams = settingsState.params || {};
+      // Resolve provider from model when session store has no explicit provider
+      const modelProviderId = dynamicParams.model
+        ? providerCapabilityRegistry.getProviderIdForModel(dynamicParams.model as string)
+        : undefined;
+      const providerId = storeProviderId ?? modelProviderId;
 
       const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', widgetOp);
       const maxChars = resolvePromptLimitFromSpec(

@@ -163,6 +163,9 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   const restExtra = { ...((req.extraParams || {}) as Record<string, any>) };
   const preferred_account_id = restExtra.preferred_account_id;
   delete restExtra.preferred_account_id;
+  if (preferred_account_id || req.providerId) {
+    console.log('[generateAsset] provider=%s preferred_account_id=%s', req.providerId, preferred_account_id ?? 'auto');
+  }
   // Prevent stale param state from overriding the canonical prompt argument.
   delete restExtra.prompt;
 
