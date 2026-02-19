@@ -415,13 +415,24 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             if not account and getattr(generation, 'preferred_account_id', None) and not generation.account_id:
                 try:
                     pref_account = await db.get(ProviderAccount, generation.preferred_account_id)
-                    if pref_account and pref_account.is_operationally_available() and pref_account.provider_id == generation.provider_id:
-                        await account_service.reserve_account(pref_account.id)
-                        account = pref_account
-                        gen_logger.info("preferred_account_used", account_id=account.id)
-                        debug.worker("preferred_account_used", account_id=account.id)
+                    if pref_account and pref_account.provider_id == generation.provider_id:
+                        # For user-selected preferred accounts, only check hard
+                        # blockers (disabled/cooldown/daily limit).  Skip concurrency
+                        # check — the provider will queue or reject, and the safety
+                        # net requeues on auth/quota errors.
+                        skip_reason = pref_account.get_operational_skip_reason()
+                        if skip_reason is None:
+                            await account_service.reserve_account(pref_account.id)
+                            account = pref_account
+                            gen_logger.info("preferred_account_used", account_id=account.id)
+                            debug.worker("preferred_account_used", account_id=account.id)
+                        else:
+                            gen_logger.info("preferred_account_unavailable", account_id=pref_account.id, reason=skip_reason)
                     elif pref_account:
-                        gen_logger.info("preferred_account_unavailable", account_id=pref_account.id)
+                        gen_logger.info("preferred_account_provider_mismatch",
+                                        account_id=pref_account.id,
+                                        account_provider=pref_account.provider_id,
+                                        generation_provider=generation.provider_id)
                 except Exception as e:
                     gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
 

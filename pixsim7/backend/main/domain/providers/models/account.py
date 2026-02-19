@@ -303,6 +303,25 @@ class ProviderAccount(SQLModel, table=True):
 
         return True
 
+    def get_operational_skip_reason(self) -> Optional[str]:
+        """
+        Return a reason string if the account cannot accept jobs, or None if OK.
+
+        Only checks hard blockers (status, cooldown, daily limit).
+        Does NOT check concurrency — the provider handles queuing/rejection
+        and the worker safety net requeues on auth/quota errors.
+        """
+        if self.status not in (AccountStatus.ACTIVE, AccountStatus.EXHAUSTED):
+            return f"status={self.status.value}"
+
+        if self.cooldown_until and datetime.now(timezone.utc) < self.cooldown_until:
+            return f"cooldown_until={self.cooldown_until.isoformat()}"
+
+        if self.max_daily_videos and self.videos_today >= self.max_daily_videos:
+            return f"daily_limit={self.max_daily_videos},used={self.videos_today}"
+
+        return None
+
     def has_capacity(self) -> bool:
         """
         Check if account has capacity for additional jobs
