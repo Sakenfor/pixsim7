@@ -245,6 +245,18 @@ def has_sufficient_credits(credits_data: dict, min_credits: int = 1) -> bool:
     return False
 
 
+def is_unlimited_model(account: ProviderAccount, model: str | None) -> bool:
+    """Check if the model is in the account's unlimited image models list.
+
+    Unlimited models (e.g. qwen-image on Pro plans) don't consume credits,
+    so credit checks should be bypassed for them.
+    """
+    if not model or not account.provider_metadata:
+        return False
+    unlimited = account.provider_metadata.get("plan_unlimited_image_models", [])
+    return model in unlimited
+
+
 async def _release_account_reservation(
     *,
     account_service: AccountService,
@@ -436,22 +448,25 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 except Exception as e:
                     gen_logger.warning("preferred_account_failed", account_id=generation.preferred_account_id, error=str(e))
 
-            # Try to reuse previous account on retry
+            # Resolve model name for unlimited-model credit bypass
+            gen_params = generation.canonical_params or generation.raw_params or {}
+            gen_model = gen_params.get("model")
+
+            # Try to reuse previous account on retry.
+            # Use operational check (skip credit/status gate) — the original
+            # attempt already consumed credits, and the provider will reject
+            # with a clear error if credits are actually needed.
             if generation.account_id:
                 try:
                     prev_account = await db.get(ProviderAccount, generation.account_id)
-                    if prev_account and prev_account.is_available():
-                        # Try to reserve the same account
+                    if prev_account and prev_account.is_operationally_available():
                         await account_service.reserve_account(prev_account.id)
-                        credits_data = await refresh_account_credits(prev_account, account_service, gen_logger)
-                        if credits_data and has_sufficient_credits(credits_data):
-                            account = prev_account
-                            gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                            debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                        else:
-                            # Previous account has no credits, release and try another
-                            await account_service.release_account(prev_account.id)
-                            gen_logger.info("account_reuse_no_credits", account_id=prev_account.id)
+                        account = prev_account
+                        gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                        debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                    elif prev_account:
+                        skip_reason = prev_account.get_operational_skip_reason()
+                        gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
                 except Exception as e:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
@@ -462,7 +477,8 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     try:
                         acct = await account_service.select_and_reserve_account(
                             provider_id=generation.provider_id,
-                            user_id=generation.user_id
+                            user_id=generation.user_id,
+                            include_exhausted=bool(gen_model),  # unlimited models may live on 0-credit accounts
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
@@ -471,7 +487,9 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         raise  # Propagate - no more accounts to try
 
                 async def verify_credits(acct: ProviderAccount) -> bool:
-                    """Check if account has sufficient credits."""
+                    """Check if account has sufficient credits (skip for unlimited models)."""
+                    if is_unlimited_model(acct, gen_model):
+                        return True
                     credits_data = await refresh_account_credits(acct, account_service, gen_logger)
                     return not (credits_data and not has_sufficient_credits(credits_data))
 

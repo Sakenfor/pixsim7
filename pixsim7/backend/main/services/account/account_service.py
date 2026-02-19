@@ -162,6 +162,7 @@ class AccountService:
         self,
         provider_id: str,
         user_id: Optional[int] = None,
+        include_exhausted: bool = False,
     ) -> ProviderAccount:
         """
         Atomically select and reserve an account.
@@ -172,6 +173,8 @@ class AccountService:
         Args:
             provider_id: Provider ID (e.g., "pixverse")
             user_id: User ID (optional, for private accounts)
+            include_exhausted: Also consider EXHAUSTED accounts (for unlimited
+                models that don't consume credits)
 
         Returns:
             Reserved account with incremented concurrency counter
@@ -181,10 +184,16 @@ class AccountService:
         """
         now = datetime.now(timezone.utc)
 
+        # Status filter: ACTIVE only, or also EXHAUSTED for unlimited models
+        if include_exhausted:
+            status_filter = ProviderAccount.status.in_([AccountStatus.ACTIVE, AccountStatus.EXHAUSTED])
+        else:
+            status_filter = (ProviderAccount.status == AccountStatus.ACTIVE)
+
         # Build query with row-level locking
         query = select(ProviderAccount).where(
             ProviderAccount.provider_id == provider_id,
-            ProviderAccount.status == AccountStatus.ACTIVE,
+            status_filter,
             ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs,
             (ProviderAccount.cooldown_until == None) | (ProviderAccount.cooldown_until < now),
         )

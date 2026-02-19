@@ -590,11 +590,11 @@ class PixverseCreditsMixin:
     ) -> Dict[str, Any]:
         """Apply plan details to account.
 
-        Sets max_concurrent_jobs based on plan type:
-        - plan_type=0 (Basic/Free): 2 concurrent jobs
-        - plan_type>=1 (Pro/Premium): 5 concurrent jobs
+        Sets max_concurrent_jobs from the plan's ``gen_simultaneously``
+        field (falls back to 2 free / 5 pro if the field is missing).
 
-        Also stores plan details in provider_metadata for reference.
+        Also stores plan details in provider_metadata for reference,
+        including off-peak/preview discounts and unlimited image models.
 
         Args:
             account: Provider account to update
@@ -610,11 +610,15 @@ class PixverseCreditsMixin:
         plan_name = plan_details.get("plan_name", "Unknown")
         is_pro = plan_type >= 1
 
-        # Set max_concurrent_jobs based on plan type
-        new_max_concurrent = (
-            PIXVERSE_PRO_MAX_CONCURRENT_JOBS if is_pro
-            else PIXVERSE_FREE_MAX_CONCURRENT_JOBS
-        )
+        # Use provider-reported concurrency limit, fall back to hardcoded defaults
+        gen_simultaneously = plan_details.get("gen_simultaneously")
+        if gen_simultaneously and isinstance(gen_simultaneously, int) and gen_simultaneously > 0:
+            new_max_concurrent = gen_simultaneously
+        else:
+            new_max_concurrent = (
+                PIXVERSE_PRO_MAX_CONCURRENT_JOBS if is_pro
+                else PIXVERSE_FREE_MAX_CONCURRENT_JOBS
+            )
         account.max_concurrent_jobs = new_max_concurrent
 
         # Store plan details in provider_metadata
@@ -625,6 +629,12 @@ class PixverseCreditsMixin:
         metadata["plan_qualities"] = plan_details.get("qualities", [])
         metadata["plan_batch_generation"] = plan_details.get("batch_generation", 0)
         metadata["plan_off_peak"] = plan_details.get("off_peak", 0)
+        metadata["plan_off_peak_discount"] = plan_details.get("off_peak_discount")
+        metadata["plan_preview_mode"] = plan_details.get("preview_mode", 0)
+        metadata["plan_preview_mode_discount"] = plan_details.get("preview_mode_discount")
+        metadata["plan_unlimited_image_models"] = plan_details.get("unlimited_image_models", [])
+        metadata["plan_external_models"] = plan_details.get("external_models", [])
+        metadata["plan_gen_simultaneously"] = gen_simultaneously
         metadata["plan_synced_at"] = datetime.now(timezone.utc).isoformat()
         account.provider_metadata = metadata
 
