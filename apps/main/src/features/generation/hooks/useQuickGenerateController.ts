@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
-import { extractFrame, fromAssetResponse, getAssetDisplayUrls, type AssetModel } from '@features/assets';
+import { extractFrame, fromAssetResponse, getAssetDisplayUrls, toSelectedAsset, type AssetModel } from '@features/assets';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
@@ -200,6 +200,7 @@ export function useQuickGenerateController() {
     dynamicParams: Record<string, any>,
     operationInputs: any[],
     currentInput: any,
+    overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset> },
   ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
@@ -212,7 +213,7 @@ export function useQuickGenerateController() {
       operationInputs,
       prompts: bindings.prompts,
       transitionDurations: bindings.transitionDurations,
-      activeAsset: bindings.lastSelectedAsset,
+      activeAsset: overrides?.activeAsset ?? bindings.lastSelectedAsset,
       currentInput,
       maxChars,
     });
@@ -262,7 +263,6 @@ export function useQuickGenerateController() {
       const { currentInputs, currentInput, transitionInputs } = getInputState();
       const effectiveInputs = options?.overrideOperationInputs ?? currentInputs;
       const dynamicParams = { ...bindings.dynamicParams, ...options?.overrideDynamicParams };
-      console.log('[controller.generate] provider=%s preferred_account_id=%s', providerId, dynamicParams.preferred_account_id ?? 'auto');
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
@@ -462,6 +462,55 @@ export function useQuickGenerateController() {
     setGenerating,
   ]);
 
+  /**
+   * Generate using current settings with a specific asset as sole input.
+   * Used by media card quick-generate buttons to delegate to the controller
+   * instead of duplicating the generation logic.
+   */
+  async function generateWithAsset(asset: AssetModel) {
+    resetForGeneration();
+
+    try {
+      const dynamicParams = { ...bindings.dynamicParams };
+
+      // Create an InputItem for the asset
+      const inputItem = {
+        id: `quick-${asset.id}-${Date.now()}`,
+        asset,
+        queuedAt: new Date().toISOString(),
+        lockedTimestamp: undefined,
+      };
+
+      await applyFrameExtraction(dynamicParams, inputItem, []);
+
+      const request = buildRequest(
+        dynamicParams,
+        [inputItem],
+        inputItem,
+        { activeAsset: toSelectedAsset(asset, 'gallery') },
+      );
+      if ('error' in request) {
+        setError(request.error);
+        return;
+      }
+
+      const genId = await submitOne(request);
+      setGenerationId(genId);
+      setWatchingGeneration(genId);
+      recordInputHistory(operationType, [inputItem]);
+
+      logEvent('INFO', 'generation_created', {
+        generationId: genId,
+        operationType,
+        providerId: providerId || 'pixverse',
+        status: 'pending',
+        source: 'generateWithAsset',
+      });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return {
     // Core control center state
     operationType,
@@ -486,6 +535,7 @@ export function useQuickGenerateController() {
 
     // Actions
     generate,
+    generateWithAsset,
     generateBurst,
     generateEach,
   };

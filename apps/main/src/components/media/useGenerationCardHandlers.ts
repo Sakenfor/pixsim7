@@ -27,6 +27,7 @@ import { providerCapabilityRegistry } from '@features/providers';
 import type { OperationType } from '@/types/operations';
 import { getFallbackOperation } from '@/types/operations';
 
+
 import {
   hasAssetInputs,
   resolvePromptLimitFromSpec,
@@ -176,68 +177,13 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     [addOrUpdateGeneration, setWatchingGeneration],
   );
 
-  // Quick generate using the scoped stores from context (not getGenerationSettingsStore).
-  // For the global scope, getGenerationSettingsStore('global') creates a separate store
-  // from the singleton useGenerationSettingsStore, so we must use the stores from scope
-  // context to read the correct settings (including advanced settings the user configured).
+  // Quick generate: delegates to the controller's generateWithAsset method,
+  // which uses the full generation pipeline (provider resolution, param building, etc.)
   const handleQuickGenerate = useCallback(async () => {
-    if (isQuickGenerating) return;
+    if (isQuickGenerating || !widgetContext?.generateWithAsset) return;
     setIsQuickGenerating(true);
-
     try {
-      const sessionState = (useSessionStore as any).getState();
-      const settingsState = (useSettingsStore as any).getState();
-
-      const { operationType: widgetOp, prompt, providerId: storeProviderId } = sessionState;
-      const dynamicParams = settingsState.params || {};
-      // Resolve provider from model when session store has no explicit provider
-      const modelProviderId = dynamicParams.model
-        ? providerCapabilityRegistry.getProviderIdForModel(dynamicParams.model as string)
-        : undefined;
-      const providerId = storeProviderId ?? modelProviderId;
-
-      const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', widgetOp);
-      const maxChars = resolvePromptLimitFromSpec(
-        providerId,
-        dynamicParams?.model as string | undefined,
-        opSpec,
-      );
-
-      const inputItem = {
-        id: `quick-${inputAsset.id}-${Date.now()}`,
-        asset: inputAsset,
-        queuedAt: new Date().toISOString(),
-        lockedTimestamp: undefined,
-      };
-
-      const buildResult = buildGenerationRequest({
-        operationType: widgetOp,
-        prompt: prompt || '',
-        dynamicParams,
-        operationInputs: [inputItem],
-        prompts: [],
-        transitionDurations: [],
-        maxChars,
-        activeAsset: toSelectedAsset(inputAsset, 'gallery'),
-        currentInput: inputItem,
-      });
-
-      if (buildResult.error || !buildResult.params) {
-        useToastStore.getState().addToast({
-          type: 'error',
-          message: buildResult.error ?? 'Failed to build generation request',
-          duration: 4000,
-        });
-        return;
-      }
-
-      await submitDirectGeneration({
-        operationType: widgetOp,
-        providerId,
-        prompt: buildResult.finalPrompt,
-        params: buildResult.params,
-        successMessage: 'Generating...',
-      });
+      await widgetContext.generateWithAsset(inputAsset);
     } catch (err) {
       useToastStore.getState().addToast({
         type: 'error',
@@ -247,13 +193,7 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
     } finally {
       setIsQuickGenerating(false);
     }
-  }, [
-    isQuickGenerating,
-    useSessionStore,
-    useSettingsStore,
-    inputAsset,
-    submitDirectGeneration,
-  ]);
+  }, [isQuickGenerating, widgetContext, inputAsset]);
 
   const handleLoadToQuickGen = useCallback(async () => {
     if ((!data.sourceGenerationId && !data.hasGenerationContext) || isLoadingSource) return;

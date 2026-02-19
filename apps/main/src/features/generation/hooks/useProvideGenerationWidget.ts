@@ -46,6 +46,7 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       operationType: controller.operationType,
       setOperationType: controller.setOperationType,
       generate: controller.generate,
+      generateWithAsset: controller.generateWithAsset,
       addInput: scopedAddInput,
       addInputs: scopedAddInputs,
       widgetId: config.widgetId,
@@ -57,6 +58,7 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
       controller.operationType,
       controller.setOperationType,
       controller.generate,
+      controller.generateWithAsset,
       scopedAddInput,
       scopedAddInputs,
       config.widgetId,
@@ -75,6 +77,10 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
     [generationWidgetValue, widgetProviderId, config.label, config.priority],
   );
 
+  // Local: ensures this widget wins within its own scope (resolveProvider walks local → root,
+  // takes first getBest — so local registration gives scope-proximity semantics).
+  // Root: makes the widget discoverable from sibling scopes (e.g. gallery) that don't have
+  // a direct parent-chain relationship.
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue]);
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
     scope: 'root',

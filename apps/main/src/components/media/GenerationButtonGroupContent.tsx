@@ -278,7 +278,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     isExtending,
   ]);
 
-  const hasQuickGenerate = !!actions?.onQuickAdd;
+  const hasQuickGenerate = !!actions?.onQuickAdd && !!widgetContext?.generateWithAsset;
 
   // Build button group items
   const supportsSlots = operationMetadata?.multiAssetMode !== 'single';

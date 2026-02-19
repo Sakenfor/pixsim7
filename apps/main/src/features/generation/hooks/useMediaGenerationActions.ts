@@ -1,7 +1,6 @@
 import { useToastStore } from '@pixsim7/shared.ui';
 import { useCallback, useMemo } from 'react';
 
-
 import { extractErrorMessage } from '@lib/api/errorHandling';
 
 import type { AssetModel } from '@features/assets';
@@ -12,20 +11,8 @@ import {
   type GenerationWidgetContext,
   useCapability,
 } from '@features/contextHub';
-import type { InputItem } from '@features/generation';
-import { generateAsset } from '@features/generation/lib/api';
-import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
-import { providerCapabilityRegistry } from '@features/providers';
 
-import { getFallbackOperation, type OperationType } from '@/types/operations';
-import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
-
-import { createPendingGeneration } from '../models';
-import {
-  getGenerationSessionStore,
-  getGenerationSettingsStore,
-} from '../stores/generationScopeStores';
-import { useGenerationsStore } from '../stores/generationsStore';
+import type { OperationType } from '@/types/operations';
 
 import { useGenerationScopeStores } from './useGenerationScope';
 
@@ -50,7 +37,7 @@ import { useGenerationScopeStores } from './useGenerationScope';
  */
 export function useMediaGenerationActions() {
   // Use scoped stores for scope-aware generation settings
-  const { useSessionStore, useSettingsStore, useInputStore } = useGenerationScopeStores();
+  const { useSessionStore, useInputStore } = useGenerationScopeStores();
   const scopedAddInputs = useInputStore((s) => s.addInputs);
 
   // Read operation type from scoped session store
@@ -158,111 +145,27 @@ export function useMediaGenerationActions() {
     [addInputs, currentOperationType, selectAssetFromSummary],
   );
 
-  // Generations store for seeding new generations
-  const addOrUpdateGeneration = useGenerationsStore((s) => s.addOrUpdate);
-  const setWatchingGeneration = useGenerationsStore((s) => s.setWatchingGeneration);
-
-  // Quick generate - immediately triggers generation with an asset
-  // Uses the active generation widget's settings (provider, model, params, etc.)
-  // Falls back to local scope stores if no widget is active.
-  // Mirrors the controller.generate() flow but with the clicked asset as sole input
+  // Quick generate - delegates to the controller's generateWithAsset method
+  // which uses the full generation pipeline (provider resolution, param building, etc.)
   const quickGenerate = useCallback(
     async (asset: AssetModel, options?: { addToQueue?: boolean }) => {
+      // Optionally add to inputs (default: no)
+      if (options?.addToQueue) {
+        addInputs({ assets: [asset], operationType: currentOperationType });
+        selectAssetFromSummary(asset);
+      }
+
+      if (!widgetContext?.generateWithAsset) {
+        useToastStore.getState().addToast({
+          type: 'error',
+          message: 'No generation widget available for quick generate',
+          duration: 4000,
+        });
+        return;
+      }
+
       try {
-        // Optionally add to inputs (default: no)
-        if (options?.addToQueue) {
-          addInputs({ assets: [asset], operationType: currentOperationType });
-          selectAssetFromSummary(asset);
-        }
-
-        // Read from the active generation widget's scope (e.g. control center)
-        // so quick generate respects provider/account/settings the user sees.
-        // Falls back to local scope if no widget is active.
-        const widgetScopeId = widgetContext?.scopeId;
-        const resolvedSessionStore = widgetScopeId
-          ? getGenerationSessionStore(widgetScopeId)
-          : useSessionStore;
-        const resolvedSettingsStore = widgetScopeId
-          ? getGenerationSettingsStore(widgetScopeId)
-          : useSettingsStore;
-        const sessionState = (resolvedSessionStore as any).getState();
-        const settingsState = (resolvedSettingsStore as any).getState();
-
-        const { operationType, prompt, providerId: storeProviderId } = sessionState;
-        const dynamicParams = settingsState.params || {};
-        // Resolve provider from model when session store doesn't have an explicit one
-        const modelProviderId = dynamicParams.model
-          ? providerCapabilityRegistry.getProviderIdForModel(dynamicParams.model as string)
-          : undefined;
-        const providerId = storeProviderId ?? modelProviderId;
-        console.log('[quickGenerate] scopeId=%s provider=%s preferred_account_id=%s', widgetScopeId ?? 'local', providerId, dynamicParams.preferred_account_id ?? 'auto');
-        const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
-        const maxChars = resolvePromptLimitForModel(
-          providerId,
-          dynamicParams?.model as string | undefined,
-          opSpec?.parameters,
-        );
-
-        // Create a proper InputItem for the asset (mirrors what the input store creates)
-        const inputItem: InputItem = {
-          id: `quick-${asset.id}-${Date.now()}`,
-          asset,
-          queuedAt: new Date().toISOString(),
-          lockedTimestamp: undefined,
-        };
-
-        // Build the generation request with the asset as the sole input.
-        // Pass it both as operationInputs (for multi-asset resolution like
-        // composition_assets) and as currentInput (for single-asset resolution
-        // like source_asset_id). Don't manually inject source_asset_id — let
-        // buildGenerationRequest resolve it through its normal chain.
-        const buildResult = buildGenerationRequest({
-          operationType,
-          prompt: prompt || '',
-          dynamicParams,
-          operationInputs: [inputItem],
-          prompts: [],
-          transitionDurations: [],
-          maxChars,
-          activeAsset: toSelectedAsset(asset, 'gallery'),
-          currentInput: inputItem,
-        });
-
-        if (buildResult.error || !buildResult.params) {
-          useToastStore.getState().addToast({
-            type: 'error',
-            message: buildResult.error ?? 'Failed to build generation request',
-            duration: 4000,
-          });
-          return;
-        }
-
-        // Use getFallbackOperation like the controller does
-        const hasAssetInput =
-          Array.isArray(buildResult.params.composition_assets) &&
-          buildResult.params.composition_assets.length > 0;
-        const effectiveOperationType = getFallbackOperation(operationType, hasAssetInput);
-
-        const result = await generateAsset({
-          prompt: buildResult.finalPrompt,
-          providerId,
-          operationType: effectiveOperationType,
-          extraParams: buildResult.params,
-        });
-
-        // Seed the generations store
-        const genId = result.job_id;
-
-        addOrUpdateGeneration(createPendingGeneration({
-          id: genId,
-          operationType: effectiveOperationType,
-          providerId,
-          finalPrompt: buildResult.finalPrompt,
-          params: buildResult.params,
-          status: result.status || 'pending',
-        }));
-
-        setWatchingGeneration(genId);
+        await widgetContext.generateWithAsset(asset);
       } catch (err) {
         useToastStore.getState().addToast({
           type: 'error',
@@ -271,16 +174,7 @@ export function useMediaGenerationActions() {
         });
       }
     },
-    [
-      addInputs,
-      currentOperationType,
-      selectAssetFromSummary,
-      widgetContext,
-      useSessionStore,
-      useSettingsStore,
-      addOrUpdateGeneration,
-      setWatchingGeneration,
-    ],
+    [addInputs, currentOperationType, selectAssetFromSummary, widgetContext],
   );
 
   return {

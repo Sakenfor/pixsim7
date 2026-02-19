@@ -299,6 +299,8 @@ export interface GenerationWidgetContext {
     assets: AssetModel[];
     operationType: OperationType;
   }) => void;
+  /** Generate using current settings with a specific asset as sole input */
+  generateWithAsset?: (asset: AssetModel) => void | Promise<void>;
   /** Unique identifier for this widget instance */
   widgetId: string;
 }
