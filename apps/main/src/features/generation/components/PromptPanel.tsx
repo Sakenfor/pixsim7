@@ -20,7 +20,7 @@ import {
   QUICKGEN_PROMPT_COMPONENT_ID,
   QUICKGEN_PROMPT_DEFAULTS,
 } from '@features/generation/lib/quickGenerateComponentSettings';
-import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
+import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, GENERATION_SCOPE_ID } from '@features/panels';
 import { PromptComposer, useQuickGenerateController } from '@features/prompts';
 
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
@@ -37,7 +37,6 @@ export function PromptPanel(props: QuickGenPanelProps) {
   const dockviewId = useDockviewId();
   const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
-  const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   // Get workbench for fallback model and paramSpecs when no context provided
   const workbench = useGenerationWorkbench({ operationType: controller.operationType });
@@ -108,11 +107,15 @@ export function PromptPanel(props: QuickGenPanelProps) {
     });
   }, [hasTransitionPrompt, setPrompt, setTransitionPrompts, transitionCount, transitionIndex]);
 
+  const promptBoxLabel = dockviewId
+    ? dockviewId.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim()
+    : 'Prompt';
+
   useProvideCapability<PromptBoxContext>(
     CAP_PROMPT_BOX,
     {
       id: `quickgen-prompt:${panelInstanceId}`,
-      label: 'Prompt Box',
+      label: promptBoxLabel,
       priority: 50,
       getValue: () => ({
         prompt: promptValue,
@@ -123,8 +126,9 @@ export function PromptPanel(props: QuickGenPanelProps) {
       }),
     },
     [promptValue, handlePromptChange, maxChars, providerId, operationType, panelInstanceId],
-    { scope: capabilityScope },
+    { scope: 'root' },
   );
+
 
   return (
     <div className="h-full w-full p-2 flex flex-col gap-2">

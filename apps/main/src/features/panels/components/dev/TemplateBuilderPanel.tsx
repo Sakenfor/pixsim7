@@ -3,6 +3,7 @@
  *
  * Lists existing templates, allows creating/editing templates,
  * and rolling prompts directly from the panel.
+ * Uses useCapabilityAll to discover all prompt boxes across dockview groups.
  */
 import { useCallback, useEffect, useState } from 'react';
 
@@ -11,7 +12,7 @@ import { Icon } from '@lib/icons';
 
 import {
   CAP_PROMPT_BOX,
-  useCapability,
+  useCapabilityAll,
   type PromptBoxContext,
 } from '@features/contextHub';
 import { TemplateBuilder } from '@features/prompts/components/templates/TemplateBuilder';
@@ -36,7 +37,21 @@ export function TemplateBuilderPanel() {
   const lastRollResult = useBlockTemplateStore((s) => s.lastRollResult);
   const rolling = useBlockTemplateStore((s) => s.rolling);
 
-  const { value: promptBox } = useCapability<PromptBoxContext>(CAP_PROMPT_BOX);
+  // All prompt boxes across all dockview groups
+  const allPromptBoxes = useCapabilityAll<PromptBoxContext>(CAP_PROMPT_BOX);
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
+
+  // Auto-select first provider, clear if selected is gone
+  useEffect(() => {
+    if (allPromptBoxes.length === 0) {
+      setSelectedProviderId(null);
+    } else if (!selectedProviderId || !allPromptBoxes.some((p) => p.provider.id === selectedProviderId)) {
+      setSelectedProviderId(allPromptBoxes[0].provider.id ?? null);
+    }
+  }, [allPromptBoxes, selectedProviderId]);
+
+  const selectedEntry = allPromptBoxes.find((p) => p.provider.id === selectedProviderId) ?? null;
+  const selectedBox = selectedEntry?.value ?? null;
 
   const [view, setView] = useState<PanelView>('list');
 
@@ -73,6 +88,25 @@ export function TemplateBuilderPanel() {
     [roll],
   );
 
+  const [rollingAndGoing, setRollingAndGoing] = useState(false);
+
+  const handleRollAndGo = useCallback(
+    async (templateId?: string) => {
+      const id = templateId ?? activeTemplate?.id;
+      if (!id || !selectedBox?.setPrompt) return;
+      setRollingAndGoing(true);
+      try {
+        const result = await roll(id);
+        if (result?.assembled_prompt) {
+          selectedBox.setPrompt(result.assembled_prompt);
+        }
+      } finally {
+        setRollingAndGoing(false);
+      }
+    },
+    [activeTemplate?.id, selectedBox, roll],
+  );
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -87,20 +121,45 @@ export function TemplateBuilderPanel() {
             <Icon name="arrowLeft" size={14} />
           </button>
         )}
-        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200 shrink-0">
           {view === 'list' ? 'Block Templates' : view === 'edit' ? (activeTemplate ? 'Edit Template' : 'New Template') : 'Roll Result'}
         </h2>
-        {promptBox && (
-          <span className="flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400 ml-auto">
-            <Icon name="link" size={10} />
-            Prompt connected
-          </span>
-        )}
+
+        {/* Prompt box target selector */}
+        <div className="flex items-center gap-1 ml-auto">
+          {allPromptBoxes.length > 0 ? (
+            <>
+              <Icon name="link" size={10} className="text-emerald-500 shrink-0" />
+              {allPromptBoxes.length === 1 ? (
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 truncate max-w-[120px]">
+                  {allPromptBoxes[0].provider.label || 'Connected'}
+                </span>
+              ) : (
+                <select
+                  value={selectedProviderId ?? ''}
+                  onChange={(e) => setSelectedProviderId(e.target.value)}
+                  className="text-[10px] px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-emerald-600 dark:text-emerald-400 outline-none max-w-[130px]"
+                >
+                  {allPromptBoxes.map((entry) => (
+                    <option key={entry.provider.id} value={entry.provider.id ?? ''}>
+                      {entry.provider.label}{entry.value?.operationType ? ` (${entry.value.operationType.replace(/_/g, ' ')})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </>
+          ) : (
+            <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
+              No prompt box
+            </span>
+          )}
+        </div>
+
         {view === 'list' && (
           <button
             type="button"
             onClick={handleNew}
-            className={`${promptBox ? '' : 'ml-auto '}text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800`}
+            className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 shrink-0"
           >
             <Icon name="plus" size={10} className="inline mr-1" />
             New
@@ -130,11 +189,22 @@ export function TemplateBuilderPanel() {
                     {t.name}
                   </span>
                   <div className="flex items-center gap-1">
+                    {selectedBox && (
+                      <button
+                        type="button"
+                        onClick={() => handleRollAndGo(t.id)}
+                        disabled={rollingAndGoing}
+                        className="p-1 rounded text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300 disabled:opacity-50"
+                        title="Roll & send to prompt"
+                      >
+                        <Icon name="zap" size={14} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleRoll(t.id)}
                       className="p-1 rounded text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200"
-                      title="Roll"
+                      title="Roll (preview)"
                     >
                       <Icon name="shuffle" size={14} />
                     </button>
@@ -173,14 +243,18 @@ export function TemplateBuilderPanel() {
         )}
 
         {view === 'edit' && (
-          <TemplateBuilder onSaved={() => setView('list')} />
+          <TemplateBuilder
+            onSaved={() => setView('list')}
+            onRollAndGo={selectedBox ? () => handleRollAndGo() : undefined}
+            rollingAndGoing={rollingAndGoing}
+          />
         )}
 
         {view === 'roll' && lastRollResult && (
           <TemplateRollResult
             result={lastRollResult}
-            onUsePrompt={promptBox?.setPrompt}
-            maxChars={promptBox?.maxChars}
+            onUsePrompt={selectedBox?.setPrompt}
+            maxChars={selectedBox?.maxChars}
             onReroll={() => {
               if (lastRollResult.metadata.template_id) {
                 void roll(lastRollResult.metadata.template_id);

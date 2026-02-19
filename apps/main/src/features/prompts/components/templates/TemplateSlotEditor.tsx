@@ -46,7 +46,7 @@ export function TemplateSlotEditor({
 }: TemplateSlotEditorProps) {
   const [preview, setPreview] = useState<SlotPreviewResult | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const update = useCallback(

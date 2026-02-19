@@ -21,10 +21,12 @@ import { TemplateSlotEditor } from './TemplateSlotEditor';
 
 interface TemplateBuilderProps {
   onSaved?: () => void;
+  onRollAndGo?: () => void;
+  rollingAndGoing?: boolean;
   className?: string;
 }
 
-export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
+export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, className }: TemplateBuilderProps) {
   const activeTemplate = useBlockTemplateStore((s) => s.activeTemplate);
   const draftSlots = useBlockTemplateStore((s) => s.draftSlots);
   const addDraftSlot = useBlockTemplateStore((s) => s.addDraftSlot);
@@ -203,18 +205,34 @@ export function TemplateBuilder({ onSaved, className }: TemplateBuilderProps) {
       {/* Save */}
       {error && <div className="text-xs text-red-600 dark:text-red-400">{error}</div>}
 
-      <button
-        type="button"
-        onClick={handleSave}
-        disabled={saving || !name.trim() || !slug.trim()}
-        className={clsx(
-          'px-3 py-1.5 rounded text-sm font-medium transition-colors',
-          'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50',
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving || !name.trim() || !slug.trim()}
+          className={clsx(
+            'px-3 py-1.5 rounded text-sm font-medium transition-colors',
+            'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50',
+          )}
+        >
+          <Icon name={saving ? 'refresh' : 'save'} size={12} className={clsx('inline mr-1', saving && 'animate-spin')} />
+          {saving ? 'Saving...' : activeTemplate ? 'Update template' : 'Create template'}
+        </button>
+        {onRollAndGo && activeTemplate && (
+          <button
+            type="button"
+            onClick={onRollAndGo}
+            disabled={rollingAndGoing}
+            className={clsx(
+              'px-3 py-1.5 rounded text-sm font-medium transition-colors',
+              'bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50',
+            )}
+          >
+            <Icon name={rollingAndGoing ? 'refresh' : 'zap'} size={12} className={clsx('inline mr-1', rollingAndGoing && 'animate-spin')} />
+            {rollingAndGoing ? 'Rolling...' : 'Roll & Go'}
+          </button>
         )}
-      >
-        <Icon name={saving ? 'refresh' : 'save'} size={12} className={clsx('inline mr-1', saving && 'animate-spin')} />
-        {saving ? 'Saving...' : activeTemplate ? 'Update template' : 'Create template'}
-      </button>
+      </div>
     </div>
   );
 }

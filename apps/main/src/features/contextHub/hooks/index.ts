@@ -1,4 +1,4 @@
-export { useCapability, useProvideCapability, usePanelContext } from "./useCapability";
+export { useCapability, useCapabilityAll, useProvideCapability, usePanelContext } from "./useCapability";
 export { useProjectContext } from "./useProjectContext";
 export {
   useUnifiedCapabilities,

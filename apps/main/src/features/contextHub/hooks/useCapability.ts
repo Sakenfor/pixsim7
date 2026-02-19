@@ -125,6 +125,48 @@ export function useCapability<T>(key: CapabilityKey): CapabilitySnapshot<T> {
   return snapshot;
 }
 
+/**
+ * Return all providers for a capability key across the entire hub chain.
+ * Useful when multiple providers may exist (e.g., multiple prompt boxes)
+ * and the consumer wants to let the user pick one.
+ */
+export function useCapabilityAll<T>(key: CapabilityKey): Array<{ provider: CapabilityProvider<T>; value: T }> {
+  const hub = useContextHubState();
+  const registries = useMemo(() => getRegistryChain(hub), [hub]);
+  const lastRef = useRef<Array<{ provider: CapabilityProvider<T>; value: T }>>([]);
+
+  const result = useSyncExternalStore(
+    (onStoreChange) => {
+      const unsubs = registries.map((r) => r.subscribe(onStoreChange));
+      return () => unsubs.forEach((fn) => fn());
+    },
+    () => {
+      const all: Array<{ provider: CapabilityProvider<T>; value: T }> = [];
+      let current = hub;
+      while (current) {
+        const providers = current.registry.getAll<T>(key);
+        for (const p of providers) {
+          if (p.isAvailable && !p.isAvailable()) continue;
+          all.push({ provider: p, value: p.getValue() });
+        }
+        current = current.parent;
+      }
+      // Stable reference if content is the same
+      const last = lastRef.current;
+      if (
+        last.length === all.length &&
+        last.every((l, i) => l.provider === all[i].provider && shallowEqual(l.value, all[i].value))
+      ) {
+        return last;
+      }
+      lastRef.current = all;
+      return all;
+    },
+  );
+
+  return result;
+}
+
 export function useProvideCapability<T>(
   key: CapabilityKey,
   provider: CapabilityProvider<T>,
@@ -140,7 +182,7 @@ export function useProvideCapability<T>(
     description: provider.description,
     priority: provider.priority,
     exposeToContextMenu: provider.exposeToContextMenu,
-    isAvailable: () => providerRef.current.isAvailable?.(),
+    isAvailable: () => providerRef.current.isAvailable?.() ?? true,
     getValue: () => providerRef.current.getValue(),
   });
   const stableProvider = stableProviderRef.current;

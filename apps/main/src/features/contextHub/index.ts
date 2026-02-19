@@ -1,7 +1,7 @@
 export { ContextHubHost } from "./components/ContextHubHost";
 export { useContextHubState, useContextHubHostId } from "./hooks/contextHubContext";
 export type { ContextHubState } from "./hooks/contextHubContext";
-export { useCapability, useProvideCapability, usePanelContext } from "./hooks";
+export { useCapability, useCapabilityAll, useProvideCapability, usePanelContext } from "./hooks";
 export { useProjectContext } from "./hooks";
 export {
   CAP_ASSET,
