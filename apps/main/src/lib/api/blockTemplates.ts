@@ -13,6 +13,8 @@ export type {
   RollResult,
   SlotPreviewResult,
   TemplateSlot,
+  CharacterBinding,
+  CharacterBindings,
   CreateTemplateRequest,
   UpdateTemplateRequest,
   RollTemplateRequest,

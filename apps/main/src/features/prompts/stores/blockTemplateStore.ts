@@ -10,6 +10,7 @@ import type {
   BlockTemplateDetail,
   RollResult,
   TemplateSlot,
+  CharacterBindings,
 } from '@lib/api/blockTemplates';
 import {
   listTemplates,
@@ -31,6 +32,7 @@ interface BlockTemplateState {
 
   // Draft editing
   draftSlots: TemplateSlot[];
+  draftCharacterBindings: CharacterBindings;
 
   // Last roll result
   lastRollResult: RollResult | null;
@@ -47,6 +49,11 @@ interface BlockTemplateState {
   updateDraftSlot: (index: number, slot: TemplateSlot) => void;
   removeDraftSlot: (index: number) => void;
   reorderDraftSlot: (fromIndex: number, toIndex: number) => void;
+
+  // Character bindings management
+  setDraftCharacterBindings: (bindings: CharacterBindings) => void;
+  setDraftCharacterBinding: (role: string, characterId: string) => void;
+  removeDraftCharacterBinding: (role: string) => void;
 
   // Template CRUD
   saveTemplate: (data: {
@@ -97,6 +104,7 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   activeTemplate: null,
   activeLoading: false,
   draftSlots: [],
+  draftCharacterBindings: {},
   lastRollResult: null,
   rolling: false,
 
@@ -117,6 +125,7 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
       set({
         activeTemplate: template,
         draftSlots: template.slots ?? [],
+        draftCharacterBindings: template.character_bindings ?? {},
       });
     } finally {
       set({ activeLoading: false });
@@ -127,6 +136,7 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
     set({
       activeTemplate: template,
       draftSlots: template?.slots ?? [],
+      draftCharacterBindings: template?.character_bindings ?? {},
     });
   },
 
@@ -162,12 +172,32 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
     set({ draftSlots: next });
   },
 
+  setDraftCharacterBindings: (bindings) => set({ draftCharacterBindings: bindings }),
+
+  setDraftCharacterBinding: (role, characterId) => {
+    const { draftCharacterBindings } = get();
+    set({
+      draftCharacterBindings: {
+        ...draftCharacterBindings,
+        [role]: { character_id: characterId },
+      },
+    });
+  },
+
+  removeDraftCharacterBinding: (role) => {
+    const { draftCharacterBindings } = get();
+    const next = { ...draftCharacterBindings };
+    delete next[role];
+    set({ draftCharacterBindings: next });
+  },
+
   saveTemplate: async (data) => {
-    const { draftSlots } = get();
+    const { draftSlots, draftCharacterBindings } = get();
     const template = await createTemplate({
       ...data,
       slots: draftSlots,
       composition_strategy: data.composition_strategy ?? 'sequential',
+      character_bindings: draftCharacterBindings,
     });
     // Refresh list
     void get().fetchTemplates();
@@ -176,10 +206,11 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   },
 
   updateTemplate: async (id, data) => {
-    const { draftSlots } = get();
+    const { draftSlots, draftCharacterBindings } = get();
     const template = await apiUpdateTemplate(id, {
       ...data,
       slots: draftSlots,
+      character_bindings: draftCharacterBindings,
     });
     if (template) {
       set({ activeTemplate: template });
@@ -200,9 +231,11 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   },
 
   roll: async (templateId, seed) => {
+    const { draftCharacterBindings } = get();
     set({ rolling: true });
     try {
-      const result = await rollTemplate(templateId, { seed });
+      const bindings = Object.keys(draftCharacterBindings).length > 0 ? draftCharacterBindings : undefined;
+      const result = await rollTemplate(templateId, { seed, character_bindings: bindings });
       set({ lastRollResult: result });
       return result;
     } catch {

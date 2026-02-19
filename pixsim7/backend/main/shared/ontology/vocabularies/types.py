@@ -133,6 +133,20 @@ class PartDef:
 
 
 @dataclass
+class SpeciesDef:
+    """A species definition with anatomy/movement mappings."""
+    id: str
+    label: str
+    category: str = ""  # mammal, humanoid, fantasy
+    anatomy_map: Dict[str, str] = field(default_factory=dict)
+    movement_verbs: List[str] = field(default_factory=list)
+    pronoun_set: Dict[str, str] = field(default_factory=dict)
+    default_stance: str = "standing"
+    keywords: List[str] = field(default_factory=list)
+    source: str = "core"
+
+
+@dataclass
 class InfluenceRegionDef:
     """An influence region definition (areas for applying effects)."""
     id: str
@@ -254,6 +268,7 @@ __all__ = [
     "RatingDef",
     "LocationDef",
     "PartDef",
+    "SpeciesDef",
     "InfluenceRegionDef",
     "SpatialDef",
     "CameraDef",

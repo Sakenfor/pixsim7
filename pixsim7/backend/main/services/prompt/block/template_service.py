@@ -17,6 +17,9 @@ from pixsim7.backend.main.domain.prompt import PromptBlock, BlockTemplate
 from pixsim7.backend.main.services.prompt.block.composition_engine import (
     derive_analysis_from_blocks,
 )
+from pixsim7.backend.main.services.prompt.block.character_expander import (
+    CharacterBindingExpander,
+)
 
 
 # Complexity levels ordered for range filtering
@@ -213,6 +216,7 @@ class BlockTemplateService:
         *,
         seed: Optional[int] = None,
         exclude_block_ids: Optional[List[UUID]] = None,
+        character_bindings: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Roll a template: select random blocks per slot and compose a prompt."""
         template = await self.get_template(template_id)
@@ -318,6 +322,19 @@ class BlockTemplateService:
 
             derived_analysis = derive_analysis_from_blocks(selected_blocks, assembled_prompt)
 
+        # Character binding expansion
+        effective_bindings = character_bindings or (template.character_bindings if template.character_bindings else None) or {}
+        characters_resolved: Dict[str, str] = {}
+        if effective_bindings and assembled_prompt:
+            from pixsim7.backend.main.services.characters.character import CharacterService
+            char_service = CharacterService(self.db)
+            expander = CharacterBindingExpander(char_service.get_character_by_id)
+            expansion = await expander.expand(assembled_prompt, effective_bindings, rng)
+            assembled_prompt = expansion["expanded_text"]
+            characters_resolved = expansion["characters_resolved"]
+            for err in expansion.get("expansion_errors", []):
+                warnings.append(f"Character expansion: {err}")
+
         # Increment roll count
         template.roll_count = (template.roll_count or 0) + 1
         await self.db.commit()
@@ -338,6 +355,8 @@ class BlockTemplateService:
                 "composition_strategy": template.composition_strategy,
                 "seed": seed,
                 "roll_count": template.roll_count,
+                "character_bindings": effective_bindings if effective_bindings else None,
+                "characters_resolved": characters_resolved if characters_resolved else None,
             },
         }
 

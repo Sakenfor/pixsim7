@@ -42,6 +42,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     RatingDef,
     LocationDef,
     PartDef,
+    SpeciesDef,
     InfluenceRegionDef,
     SpatialDef,
     CameraDef,
@@ -112,6 +113,11 @@ def get_part(part_id: str) -> Optional[PartDef]:
     return get_registry().get_part(part_id)
 
 
+def get_species(species_id: str) -> Optional[SpeciesDef]:
+    """Get a species by ID."""
+    return get_registry().get_species(species_id)
+
+
 def get_influence_region(region_id: str) -> Optional[InfluenceRegionDef]:
     """Get an influence region by ID."""
     return get_registry().get_influence_region(region_id)
@@ -154,6 +160,7 @@ __all__ = [
     "RatingDef",
     "LocationDef",
     "PartDef",
+    "SpeciesDef",
     "InfluenceRegionDef",
     "SpatialDef",
     "CameraDef",
@@ -180,6 +187,7 @@ __all__ = [
     "get_rating",
     "get_location",
     "get_part",
+    "get_species",
     "get_influence_region",
     "get_spatial",
     "get_camera",

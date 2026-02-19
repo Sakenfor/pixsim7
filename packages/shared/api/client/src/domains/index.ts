@@ -6,7 +6,9 @@
  */
 
 export { createAccountsApi } from './accounts';
+export { createCodegenApi } from './codegen';
 export { createActionBlocksApi } from './actionBlocks';
+export { createBlockTemplatesApi } from './blockTemplates';
 export { createAdminApi } from './admin';
 export { createAnalyzersApi } from './analyzers';
 export { createAssetsApi } from './assets';
@@ -33,6 +35,20 @@ export type {
   CreateApiKeyResponse,
   DevPixverseDryRunResponse,
 } from './accounts';
+export type {
+  BlockTemplateSummary,
+  BlockTemplateDetail,
+  RollResult,
+  SlotPreviewResult,
+  TemplateSlot,
+  CharacterBinding,
+  CharacterBindings,
+  CreateTemplateRequest,
+  UpdateTemplateRequest,
+  RollTemplateRequest,
+  ListTemplatesQuery,
+} from './blockTemplates';
+
 export type {
   ActionBlockSummary,
   ActionBlockSearchQuery,
@@ -131,10 +147,8 @@ export type {
 } from './plugins';
 
 export type {
-  DebugPreferences,
-  DevToolsPreferences,
-  DevToolSettingValue,
   UserPreferences,
+  UpdateUserPreferencesRequest,
   UserPreferencesResponse,
 } from './userPreferences';
 
@@ -248,6 +262,14 @@ export type {
 
 // ===== Tags Types =====
 export type { TagSummary, TagListResponse, ListTagsQuery } from './tags';
+
+// ===== Codegen Types =====
+export type {
+  CodegenTask,
+  CodegenTasksResponse,
+  CodegenRunRequest,
+  CodegenRunResponse,
+} from './codegen';
 
 // ===== Providers Types =====
 export type {

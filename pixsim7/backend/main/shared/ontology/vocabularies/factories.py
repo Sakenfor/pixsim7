@@ -16,6 +16,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     RatingDef,
     LocationDef,
     PartDef,
+    SpeciesDef,
     InfluenceRegionDef,
     SpatialDef,
     CameraDef,
@@ -158,6 +159,21 @@ def make_part(id: str, data: Dict[str, Any], source: str) -> PartDef:
     )
 
 
+def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
+    """Create a SpeciesDef from YAML data."""
+    return SpeciesDef(
+        id=id,
+        label=data.get("label", ""),
+        category=data.get("category", ""),
+        anatomy_map=data.get("anatomy_map", {}),
+        movement_verbs=data.get("movement_verbs", []),
+        pronoun_set=data.get("pronoun_set", {}),
+        default_stance=data.get("default_stance", "standing"),
+        keywords=data.get("keywords", []),
+        source=source,
+    )
+
+
 def make_influence_region(id: str, data: Dict[str, Any], source: str) -> InfluenceRegionDef:
     """Create an InfluenceRegionDef from YAML data."""
     return InfluenceRegionDef(
@@ -224,6 +240,7 @@ __all__ = [
     "make_rating",
     "make_location",
     "make_part",
+    "make_species",
     "make_influence_region",
     "make_spatial",
     "make_camera",

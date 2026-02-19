@@ -21,6 +21,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.types import (
     RatingDef,
     LocationDef,
     PartDef,
+    SpeciesDef,
     InfluenceRegionDef,
     SpatialDef,
     CameraDef,
@@ -50,6 +51,7 @@ class VocabularyRegistry:
         "rating": "ratings",
         "role": "roles",
         "part": "parts",
+        "species": "species",
         "influence_region": "influence_regions",
         "spatial": "spatial",
         "camera": "camera",
@@ -654,6 +656,9 @@ class VocabularyRegistry:
     def get_part(self, part_id: str) -> Optional[PartDef]:
         return self.get("parts", part_id)
 
+    def get_species(self, species_id: str) -> Optional[SpeciesDef]:
+        return self.get("species", species_id)
+
     def get_influence_region(self, region_id: str) -> Optional[InfluenceRegionDef]:
         return self.get("influence_regions", region_id)
 
@@ -693,6 +698,9 @@ class VocabularyRegistry:
 
     def all_parts(self) -> List[PartDef]:
         return self.all_of("parts")
+
+    def all_species(self) -> List[SpeciesDef]:
+        return self.all_of("species")
 
     def all_influence_regions(self) -> List[InfluenceRegionDef]:
         return self.all_of("influence_regions")

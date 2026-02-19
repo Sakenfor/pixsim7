@@ -15,6 +15,8 @@ from .extraction_config import (
 )
 from .fit_scoring import compute_block_asset_fit
 from .tagging import normalize_tags
+from .template_service import BlockTemplateService
+from .character_expander import CharacterBindingExpander
 
 __all__ = [
     "ActionBlockService",
@@ -28,4 +30,6 @@ __all__ = [
     "ExtractionConfig",
     "compute_block_asset_fit",
     "normalize_tags",
+    "BlockTemplateService",
+    "CharacterBindingExpander",
 ]

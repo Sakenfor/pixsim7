@@ -712,6 +712,13 @@ class BlockTemplate(SQLModel, table=True):
         description="Additional flexible metadata"
     )
 
+    # Character bindings (role name -> {character_id: str})
+    character_bindings: Dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, name="character_bindings"),
+        description="Maps role names to Character entities for {{role}} expansion"
+    )
+
     # Timestamps
     created_at: datetime = Field(
         default_factory=utcnow,

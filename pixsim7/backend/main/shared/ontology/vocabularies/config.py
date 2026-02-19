@@ -31,6 +31,7 @@ from pixsim7.backend.main.shared.ontology.vocabularies.factories import (
     make_rating,
     make_location,
     make_part,
+    make_species,
     make_influence_region,
     make_spatial,
     make_camera,
@@ -94,6 +95,13 @@ VOCAB_CONFIGS: Dict[str, VocabTypeConfig] = {
         yaml_file="anatomy.yaml",
         yaml_key="parts",
         factory=make_part,
+        keywords_attr="keywords",
+    ),
+    "species": VocabTypeConfig(
+        name="species",
+        yaml_file="species.yaml",
+        yaml_key="species",
+        factory=make_species,
         keywords_attr="keywords",
     ),
     "influence_regions": VocabTypeConfig(

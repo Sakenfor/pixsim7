@@ -50,6 +50,7 @@ class CreateTemplateRequest(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_public: bool = True
     template_metadata: Dict[str, Any] = Field(default_factory=dict)
+    character_bindings: Dict[str, Any] = Field(default_factory=dict)
 
 
 class UpdateTemplateRequest(BaseModel):
@@ -61,11 +62,13 @@ class UpdateTemplateRequest(BaseModel):
     tags: Optional[List[str]] = None
     is_public: Optional[bool] = None
     template_metadata: Optional[Dict[str, Any]] = None
+    character_bindings: Optional[Dict[str, Any]] = None
 
 
 class RollTemplateRequest(BaseModel):
     seed: Optional[int] = Field(None, description="Random seed for reproducibility")
     exclude_block_ids: Optional[List[UUID]] = Field(None, description="Block IDs to exclude globally")
+    character_bindings: Optional[Dict[str, Any]] = Field(None, description="Override character bindings for this roll")
 
 
 class PreviewSlotRequest(BaseModel):
@@ -86,6 +89,7 @@ class TemplateResponse(BaseModel):
     created_by: Optional[str] = None
     roll_count: int = 0
     template_metadata: Dict[str, Any] = Field(default_factory=dict)
+    character_bindings: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -251,6 +255,7 @@ async def roll_template(
         template_id,
         seed=request.seed,
         exclude_block_ids=request.exclude_block_ids,
+        character_bindings=request.character_bindings,
     )
     if not result.get("success"):
         raise HTTPException(404, result.get("error", "Roll failed"))

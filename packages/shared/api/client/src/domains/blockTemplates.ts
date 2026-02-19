@@ -5,6 +5,8 @@ import type {
   RollResult,
   SlotPreviewResult,
   TemplateSlot,
+  CharacterBinding,
+  CharacterBindings,
 } from '@pixsim7/shared.types';
 
 export type {
@@ -13,6 +15,8 @@ export type {
   RollResult,
   SlotPreviewResult,
   TemplateSlot,
+  CharacterBinding,
+  CharacterBindings,
 };
 
 export interface CreateTemplateRequest {
@@ -25,6 +29,7 @@ export interface CreateTemplateRequest {
   tags?: string[];
   is_public?: boolean;
   template_metadata?: Record<string, unknown>;
+  character_bindings?: CharacterBindings;
 }
 
 export interface UpdateTemplateRequest {
@@ -36,11 +41,13 @@ export interface UpdateTemplateRequest {
   tags?: string[];
   is_public?: boolean;
   template_metadata?: Record<string, unknown>;
+  character_bindings?: CharacterBindings;
 }
 
 export interface RollTemplateRequest {
   seed?: number;
   exclude_block_ids?: string[];
+  character_bindings?: CharacterBindings;
 }
 
 export interface ListTemplatesQuery {

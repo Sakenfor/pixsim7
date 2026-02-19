@@ -35,6 +35,9 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
   const reorderDraftSlot = useBlockTemplateStore((s) => s.reorderDraftSlot);
   const saveTemplate = useBlockTemplateStore((s) => s.saveTemplate);
   const updateTemplate = useBlockTemplateStore((s) => s.updateTemplate);
+  const draftCharacterBindings = useBlockTemplateStore((s) => s.draftCharacterBindings);
+  const setDraftCharacterBinding = useBlockTemplateStore((s) => s.setDraftCharacterBinding);
+  const removeDraftCharacterBinding = useBlockTemplateStore((s) => s.removeDraftCharacterBinding);
 
   const [name, setName] = useState(activeTemplate?.name ?? '');
   const [slug, setSlug] = useState(activeTemplate?.slug ?? '');
@@ -164,6 +167,63 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
             ))}
           </select>
         </label>
+      </div>
+
+      {/* Character Bindings */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+            <Icon name="user" size={12} /> Character Bindings ({Object.keys(draftCharacterBindings).length})
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const role = `role_${Object.keys(draftCharacterBindings).length}`;
+              setDraftCharacterBinding(role, '');
+            }}
+            className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <Icon name="plus" size={10} className="inline mr-1" />
+            Add binding
+          </button>
+        </div>
+        {Object.entries(draftCharacterBindings).map(([role, binding]) => (
+          <div key={role} className="flex items-center gap-2">
+            <input
+              type="text"
+              value={role}
+              placeholder="role name"
+              onChange={(e) => {
+                const newRole = e.target.value;
+                if (newRole && newRole !== role) {
+                  removeDraftCharacterBinding(role);
+                  setDraftCharacterBinding(newRole, binding.character_id);
+                }
+              }}
+              className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+            />
+            <input
+              type="text"
+              value={binding.character_id}
+              placeholder="character_id"
+              onChange={(e) => setDraftCharacterBinding(role, e.target.value)}
+              className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+            />
+            <button
+              type="button"
+              onClick={() => removeDraftCharacterBinding(role)}
+              className="text-neutral-400 hover:text-red-500"
+              title="Remove binding"
+            >
+              <Icon name="x" size={14} />
+            </button>
+          </div>
+        ))}
+        {Object.keys(draftCharacterBindings).length === 0 && (
+          <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center py-2">
+            {'No bindings. Use {{role}} and {{role.attr}} in blocks to reference characters.'}
+          </div>
+        )}
       </div>
 
       {/* Slots */}

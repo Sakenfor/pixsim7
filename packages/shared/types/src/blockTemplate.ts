@@ -40,11 +40,20 @@ export interface BlockTemplateSummary {
   created_at: string;
 }
 
+/** A single character binding: maps a role to a character */
+export interface CharacterBinding {
+  character_id: string;
+}
+
+/** Character bindings map: role name -> binding */
+export type CharacterBindings = Record<string, CharacterBinding>;
+
 /** Full block template detail */
 export interface BlockTemplateDetail extends BlockTemplateSummary {
   slots: TemplateSlot[];
   created_by?: string | null;
   template_metadata: Record<string, unknown>;
+  character_bindings: CharacterBindings;
   updated_at: string;
 }
 
@@ -79,6 +88,8 @@ export interface RollResult {
     composition_strategy: string;
     seed?: number | null;
     roll_count: number;
+    character_bindings?: CharacterBindings | null;
+    characters_resolved?: Record<string, string> | null;
   };
 }
 

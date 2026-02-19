@@ -1,0 +1,84 @@
+# Species Vocabulary
+# Anatomy/movement mappings per species for character binding expansion
+version: "1.0.0"
+
+species:
+  species:human:
+    label: "Human"
+    category: humanoid
+    anatomy_map:
+      limbs: "hands"
+      grip: "fingers"
+      stance: "standing upright"
+      feet: "feet"
+      forelimbs: "arms"
+      tail: ""
+      muzzle: ""
+      pelt: ""
+    movement_verbs: [walks, steps, strides, runs, jogs, paces]
+    pronoun_set:
+      subject: "they"
+      object: "them"
+      possessive: "their"
+    default_stance: "standing upright"
+    keywords: [human, person, man, woman]
+
+  species:canine:
+    label: "Canine"
+    category: mammal
+    anatomy_map:
+      limbs: "paws"
+      grip: "jaws"
+      stance: "all fours"
+      feet: "paws"
+      forelimbs: "forelegs"
+      tail: "tail"
+      muzzle: "muzzle"
+      pelt: "fur"
+    movement_verbs: [trots, pads, lopes, bounds, scampers, gallops]
+    pronoun_set:
+      subject: "it"
+      object: "it"
+      possessive: "its"
+    default_stance: "all fours"
+    keywords: [canine, dog, wolf, hound, puppy]
+
+  species:feline:
+    label: "Feline"
+    category: mammal
+    anatomy_map:
+      limbs: "paws"
+      grip: "claws"
+      stance: "all fours"
+      feet: "paws"
+      forelimbs: "forelegs"
+      tail: "tail"
+      muzzle: "muzzle"
+      pelt: "fur"
+    movement_verbs: [prowls, slinks, pounces, stalks, leaps, creeps]
+    pronoun_set:
+      subject: "it"
+      object: "it"
+      possessive: "its"
+    default_stance: "all fours"
+    keywords: [feline, cat, lion, tiger, panther, kitten]
+
+  species:equine:
+    label: "Equine"
+    category: mammal
+    anatomy_map:
+      limbs: "hooves"
+      grip: "teeth"
+      stance: "all fours"
+      feet: "hooves"
+      forelimbs: "forelegs"
+      tail: "tail"
+      muzzle: "muzzle"
+      pelt: "coat"
+    movement_verbs: [trots, canters, gallops, prances, walks, charges]
+    pronoun_set:
+      subject: "it"
+      object: "it"
+      possessive: "its"
+    default_stance: "all fours"
+    keywords: [equine, horse, mare, stallion, pony, foal]
