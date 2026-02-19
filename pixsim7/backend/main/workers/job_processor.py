@@ -453,20 +453,22 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             gen_model = gen_params.get("model")
 
             # Try to reuse previous account on retry.
-            # Use operational check (skip credit/status gate) — the original
-            # attempt already consumed credits, and the provider will reject
-            # with a clear error if credits are actually needed.
+            # Skip credit AND concurrency checks — the generation already had
+            # a slot on this account, and the preferred path may have pushed it
+            # past the concurrency limit.  Only hard blockers (disabled/cooldown/
+            # daily limit) prevent reuse.
             if generation.account_id:
                 try:
                     prev_account = await db.get(ProviderAccount, generation.account_id)
-                    if prev_account and prev_account.is_operationally_available():
-                        await account_service.reserve_account(prev_account.id)
-                        account = prev_account
-                        gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                        debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                    elif prev_account:
+                    if prev_account:
                         skip_reason = prev_account.get_operational_skip_reason()
-                        gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
+                        if skip_reason is None:
+                            await account_service.reserve_account(prev_account.id)
+                            account = prev_account
+                            gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                            debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                        else:
+                            gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
                 except Exception as e:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
