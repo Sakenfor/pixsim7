@@ -6,12 +6,13 @@
  */
 
 import clsx from 'clsx';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 
-import { Icon } from '@lib/icons';
+import { Icon, type IconName } from '@lib/icons';
 
 import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared/CompactAssetCard';
+import { useTagAutocomplete } from '@features/assets/lib/useTagAutocomplete';
 import {
   useAssetSetStore,
   type AssetSet,
@@ -58,7 +59,130 @@ function AssetSearchAdder({ onAdd }: { onAdd: (asset: AssetModel) => void }) {
   );
 }
 
+// ── Tag picker with autocomplete ──────────────────────────────────────
+
+function TagPicker({
+  selected,
+  onChangeTags,
+}: {
+  selected: string[];
+  onChangeTags: (tags: string[]) => void;
+}) {
+  const [input, setInput] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const { results, loading } = useTagAutocomplete(input, { enabled: open && input.length > 0 });
+
+  // Close on click outside
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const addTag = useCallback(
+    (tag: string) => {
+      const normalized = tag.trim().toLowerCase();
+      if (normalized && !selected.includes(normalized)) {
+        onChangeTags([...selected, normalized]);
+      }
+      setInput('');
+    },
+    [selected, onChangeTags],
+  );
+
+  const removeTag = useCallback(
+    (tag: string) => onChangeTags(selected.filter((t) => t !== tag)),
+    [selected, onChangeTags],
+  );
+
+  return (
+    <div ref={wrapperRef} className="flex flex-col gap-1">
+      <span className="text-[10px] text-neutral-500 font-medium">Tags</span>
+      {/* Selected tag chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selected.map((tag) => (
+            <span
+              key={tag}
+              className="inline-flex items-center gap-1 pl-1.5 pr-0.5 py-0.5 rounded-md bg-accent/15 text-accent text-[10px] font-medium"
+            >
+              {tag}
+              <button
+                type="button"
+                onClick={() => removeTag(tag)}
+                className="p-0.5 rounded hover:bg-accent/25"
+              >
+                <Icon name="x" size={8} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      {/* Autocomplete input */}
+      <div className="relative">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => { setInput(e.target.value); setOpen(true); }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && input.trim()) {
+              e.preventDefault();
+              addTag(input);
+            }
+            if (e.key === 'Backspace' && !input && selected.length > 0) {
+              removeTag(selected[selected.length - 1]);
+            }
+          }}
+          placeholder={selected.length > 0 ? 'Add more…' : 'Search tags…'}
+          className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
+        />
+        {open && (results.length > 0 || loading) && (
+          <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white dark:bg-neutral-800 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[160px] overflow-y-auto">
+            {results.map((tag) => {
+              const fullTag = `${tag.namespace}:${tag.name}`;
+              const isSelected = selected.includes(fullTag);
+              return (
+                <button
+                  key={fullTag}
+                  type="button"
+                  onClick={() => { addTag(fullTag); setOpen(false); }}
+                  className={clsx(
+                    'w-full flex items-center gap-2 px-2.5 py-1.5 text-[11px] text-left',
+                    isSelected
+                      ? 'text-accent font-medium bg-accent/5'
+                      : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+                  )}
+                >
+                  <Icon name="tag" size={10} className="text-neutral-400 shrink-0" />
+                  <span className="text-neutral-400">{tag.namespace}:</span>
+                  <span className="truncate">{tag.display_name ?? tag.name}</span>
+                  {isSelected && <Icon name="check" size={10} className="ml-auto text-accent shrink-0" />}
+                </button>
+              );
+            })}
+            {loading && (
+              <div className="px-2.5 py-1.5 text-[10px] text-neutral-400">Searching…</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Smart set filter editor ────────────────────────────────────────────
+
+const MEDIA_TYPE_OPTIONS: { value: string; label: string; icon: IconName }[] = [
+  { value: '', label: 'Any', icon: 'layers' },
+  { value: 'image', label: 'Image', icon: 'image' },
+  { value: 'video', label: 'Video', icon: 'film' },
+  { value: 'audio', label: 'Audio', icon: 'audio' },
+];
 
 function SmartFilterEditor({
   filters,
@@ -67,46 +191,58 @@ function SmartFilterEditor({
   filters: AssetFilters;
   onChange: (filters: AssetFilters) => void;
 }) {
+  const selectedTags = useMemo(() => {
+    if (!filters.tag) return [];
+    return Array.isArray(filters.tag) ? filters.tag : [filters.tag];
+  }, [filters.tag]);
+
+  const currentMediaType = (Array.isArray(filters.media_type) ? filters.media_type[0] : filters.media_type) ?? '';
+
   return (
-    <div className="flex flex-col gap-2">
-      <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-neutral-500 font-medium">Tags (comma-separated)</span>
-        <input
-          type="text"
-          value={Array.isArray(filters.tag) ? filters.tag.join(', ') : (filters.tag ?? '')}
-          onChange={(e) => {
-            const tags = e.target.value.split(',').map((t) => t.trim()).filter(Boolean);
-            onChange({ ...filters, tag: tags.length > 0 ? tags : undefined });
-          }}
-          placeholder="e.g. background, landscape"
-          className="px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
-        />
-      </label>
+    <div className="flex flex-col gap-2.5">
+      {/* Tag picker with autocomplete */}
+      <TagPicker
+        selected={selectedTags}
+        onChangeTags={(tags) => onChange({ ...filters, tag: tags.length > 0 ? tags : undefined })}
+      />
 
-      <label className="flex flex-col gap-0.5">
+      {/* Media type toggle pills */}
+      <div className="flex flex-col gap-0.5">
         <span className="text-[10px] text-neutral-500 font-medium">Media Type</span>
-        <select
-          value={(Array.isArray(filters.media_type) ? filters.media_type[0] : filters.media_type) ?? ''}
-          onChange={(e) => onChange({ ...filters, media_type: (e.target.value || undefined) as AssetFilters['media_type'] })}
-          className="px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
-        >
-          <option value="">Any</option>
-          <option value="image">Image</option>
-          <option value="video">Video</option>
-          <option value="audio">Audio</option>
-        </select>
-      </label>
+        <div className="flex gap-1">
+          {MEDIA_TYPE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange({ ...filters, media_type: (opt.value || undefined) as AssetFilters['media_type'] })}
+              className={clsx(
+                'flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors',
+                currentMediaType === opt.value
+                  ? 'bg-accent text-accent-text'
+                  : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700',
+              )}
+            >
+              <Icon name={opt.icon} size={11} />
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <label className="flex flex-col gap-0.5">
-        <span className="text-[10px] text-neutral-500 font-medium">Search query</span>
-        <input
-          type="text"
-          value={filters.q ?? ''}
-          onChange={(e) => onChange({ ...filters, q: e.target.value || undefined })}
-          placeholder="Optional keyword filter"
-          className="px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
-        />
-      </label>
+      {/* Search query */}
+      <div className="flex flex-col gap-0.5">
+        <span className="text-[10px] text-neutral-500 font-medium">Search</span>
+        <div className="relative">
+          <Icon name="search" size={11} className="absolute left-2 top-1/2 -translate-y-1/2 text-neutral-400" />
+          <input
+            type="text"
+            value={filters.q ?? ''}
+            onChange={(e) => onChange({ ...filters, q: e.target.value || undefined })}
+            placeholder="Keyword filter…"
+            className="w-full pl-6 pr-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700"
+          />
+        </div>
+      </div>
     </div>
   );
 }

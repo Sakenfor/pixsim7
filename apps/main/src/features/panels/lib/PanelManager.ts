@@ -126,7 +126,12 @@ export class PanelManager {
   // ==================== Panel Operations ====================
 
   /**
-   * Open a panel
+   * Open a panel.
+   *
+   * Delegates to the workspace store so the panel is actually mounted
+   * in the dockview (or opened as a floating panel when no dockview is
+   * available).  Internal bookkeeping (isOpen, zone, interaction rules)
+   * is still maintained here for consumers that subscribe to panel state.
    */
   openPanel(panelId: string, options: OpenPanelOptions = {}): void {
     const panel = this.panels.get(panelId);
@@ -158,6 +163,24 @@ export class PanelManager {
     }
 
     this.notifyStateListeners();
+
+    // Actually mount the panel via the workspace dockview.
+    // Only delegate when the workspace dockview is mounted — during early
+    // init restorePanel would fall back to openFloatingPanel which causes
+    // unwanted popups on page refresh.
+    const workspaceDockview = this.panels.get('workspace')?.dockview;
+    if (workspaceDockview?.isReady) {
+      // Lazy import to avoid circular dependency (workspace → panels → workspace).
+      import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
+        if (options.zone === 'floating') {
+          useWorkspaceStore.getState().openFloatingPanel(panelId);
+        } else {
+          useWorkspaceStore.getState().restorePanel(panelId);
+        }
+      }).catch(() => {
+        // Workspace store not available
+      });
+    }
   }
 
   /**

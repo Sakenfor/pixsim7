@@ -166,11 +166,13 @@ function OperationIconButton({
   );
 }
 
+import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
+import { panelManager } from '@features/panels/lib/PanelManager';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
 
 import { OPERATION_METADATA } from '@/types/operations';
@@ -179,10 +181,8 @@ import {
   EACH_STRATEGIES,
   SET_STRATEGIES,
   isSetStrategy,
-  type EachStrategy,
   type CombinationStrategy,
 } from '../lib/combinationStrategies';
-import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { PresetSelector } from './PresetSelector';
@@ -375,25 +375,44 @@ function EachSplitButton({
         >
           {showProgress ? `${queueProgress.queued}/${queueProgress.total}` : current.shortLabel}
         </button>
-        {/* Arrow area — open strategy picker */}
-        <button
-          ref={triggerRef}
-          onClick={handleToggle}
-          disabled={disabled}
-          className={clsx(
-            'px-1 py-1.5 rounded-r-lg text-[11px] font-semibold text-white border-l border-white/20',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-            disabled
-              ? 'bg-neutral-400'
-              : needsSet
-                ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
-          )}
-          style={{ transition: 'none', animation: 'none' }}
-          title="Select combination strategy"
-        >
-          <Icon name="chevronDown" size={10} className={clsx(open && 'rotate-180')} />
-        </button>
+        {/* Right column: arrow + sets shortcut */}
+        <div className="flex flex-col">
+          {/* Arrow area — open strategy picker */}
+          <button
+            ref={triggerRef}
+            onClick={handleToggle}
+            disabled={disabled}
+            className={clsx(
+              'px-1 py-1 rounded-tr-lg text-[11px] font-semibold text-white border-l border-white/20',
+              'disabled:opacity-50 disabled:cursor-not-allowed',
+              disabled
+                ? 'bg-neutral-400'
+                : needsSet
+                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
+            )}
+            style={{ transition: 'none', animation: 'none' }}
+            title="Select combination strategy"
+          >
+            <Icon name="chevronDown" size={10} className={clsx(open && 'rotate-180')} />
+          </button>
+          {/* Open Asset Sets panel */}
+          <button
+            onClick={() => panelManager.openPanel('asset-sets')}
+            className={clsx(
+              'px-1 py-0.5 rounded-br-lg text-white/70 hover:text-white border-l border-t border-white/20',
+              disabled
+                ? 'bg-neutral-400'
+                : needsSet
+                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
+                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
+            )}
+            style={{ transition: 'none', animation: 'none' }}
+            title="Manage asset sets"
+          >
+            <Icon name="layers" size={8} />
+          </button>
+        </div>
       </div>
 
       <Dropdown
