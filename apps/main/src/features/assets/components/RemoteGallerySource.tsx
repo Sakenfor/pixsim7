@@ -1,4 +1,4 @@
-import { Button, Dropdown } from '@pixsim7/shared.ui';
+import { Button } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -30,13 +30,15 @@ import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer } from '../hooks/useAssetViewer';
 import { assetEvents } from '../lib/assetEvents';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
-import { GROUP_BY_LABELS, GROUP_BY_UI_VALUES, normalizeGroupBySelection } from '../lib/groupBy';
+import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses } from '../models/asset';
+import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 
 import { DynamicFilters } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
+import { GroupBreadcrumb } from './GroupBreadcrumb';
 import { GroupFolderTile, GroupListRow } from './GroupCards';
 import {
   parsePageParam,
@@ -45,7 +47,6 @@ import {
   areScopesEqual,
   areGroupByStacksEqual,
   sortGroups,
-  GROUP_SORT_OPTIONS,
   type GroupSortKey,
   GROUP_PREVIEW_LIMIT,
   GROUP_PAGE_SIZE,
@@ -55,7 +56,10 @@ import {
   type AssetGroup,
   type GroupPathEntry,
 } from './groupHelpers';
-import { PageJumpPopover } from './PageJumpPopover';
+import { GroupingMenuDropdown } from './GroupingMenuDropdown';
+import { BottomPagination } from './shared/BottomPagination';
+import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
+import { PaginationStrip } from './shared/PaginationStrip';
 
 
 // ---------------------------------------------------------------------------
@@ -238,7 +242,16 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     requestOverrides: groupSearchOverrides,
   });
   const { providers } = useProviders();
-  const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
+  const { openGalleryAsset, updateGalleryList } = useAssetViewer({ source: 'gallery' });
+  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
+
+  // Keep the viewer's navigation list in sync with the gallery's current assets
+  useEffect(() => {
+    if (isViewerOpen && controller.assets.length > 0) {
+      updateGalleryList(controller.assets);
+    }
+  }, [isViewerOpen, controller.assets, updateGalleryList]);
+
   const [groupData, setGroupData] = useState<AssetGroupListResponse | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
   const [groupError, setGroupError] = useState<string | null>(null);
@@ -594,11 +607,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     if (showGroupOverview) return [];
     return controller.assets;
   }, [controller.assets, showGroupOverview]);
-  const groupSummary = useMemo(() => {
-    if (groupByStack.length === 0) return 'Grouping: None';
-    return `Grouping: ${groupByStack.map((value) => GROUP_BY_LABELS[value]).join(' > ')}`;
-  }, [groupByStack]);
-
   // ---------------------------------------------------------------------------
   // Parallel mode state & data fetching
   // ---------------------------------------------------------------------------
@@ -932,6 +940,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
 
           const actions = {
             ...baseActions,
+            onReuploadDone: () => resetAssets(),
             onReupload: async () => {
               let targetProviderId = filterProviderId;
 
@@ -1057,244 +1066,43 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             </div>
 
             {/* Page-based pagination controls */}
-
-
-
             {showParallelGroups ? null : showGroupOverview ? (
-              <div className="h-7 inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 overflow-hidden text-xs">
-                <button
-                  onClick={() => goToGroupPage(groupPage - 1)}
-                  disabled={groupLoading || groupPage <= 1}
-                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Previous group page"
-                >
-                  &lsaquo;
-                </button>
-                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
-                <PageJumpPopover
-                  currentPage={groupPage}
-                  totalPages={groupTotalPages}
-                  loading={groupLoading}
-                  onGoToPage={goToGroupPage}
-                  borderless
-                />
-                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
-                <button
-                  onClick={() => goToGroupPage(groupPage + 1)}
-                  disabled={groupLoading || !groupHasMore}
-                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Next group page"
-                >
-                  &rsaquo;
-                </button>
-              </div>
+              <PaginationStrip
+                currentPage={groupPage}
+                totalPages={groupTotalPages}
+                hasMore={groupHasMore}
+                loading={groupLoading}
+                onPageChange={goToGroupPage}
+                prevTitle="Previous group page"
+                nextTitle="Next group page"
+              />
             ) : (
-              <div className="h-7 inline-flex items-center rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 overflow-hidden text-xs">
-                <button
-                  onClick={() => goToPage(controller.currentPage - 1)}
-                  disabled={controller.loading || controller.currentPage <= 1}
-                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Previous page"
-                >
-                  &lsaquo;
-                </button>
-                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
-                <PageJumpPopover
-                  currentPage={controller.currentPage}
-                  totalPages={controller.totalPages}
-                  hasMore={controller.hasMore}
-                  loading={controller.loading}
-                  onGoToPage={goToPage}
-                  borderless
-                />
-                <div className="w-px h-4 bg-neutral-200 dark:bg-neutral-700" />
-                <button
-                  onClick={() => goToPage(controller.currentPage + 1)}
-                  disabled={controller.loading || !controller.hasMore}
-                  className="h-full w-6 inline-flex items-center justify-center text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  title="Next page"
-                >
-                  &rsaquo;
-                </button>
-              </div>
+              <PaginationStrip
+                currentPage={controller.currentPage}
+                totalPages={controller.totalPages}
+                hasMore={controller.hasMore}
+                loading={controller.loading}
+                onPageChange={goToPage}
+              />
             )}
 
             {/* Grouping */}
-            <div className="flex items-center gap-2">
-              <button
-                ref={groupMenuAnchorRef}
-                type="button"
-                onClick={() => setGroupMenuOpen((prev) => !prev)}
-                title={groupSummary}
-                aria-label={groupSummary}
-                className={`relative inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
-                  hasGrouping
-                    ? 'bg-accent/10 border-accent/50 text-accent'
-                    : 'bg-white dark:bg-neutral-900/60 border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
-                }`}
-              >
-                <Icon
-                  name="layers"
-                  size={14}
-                  className={hasGrouping ? 'text-accent' : ''}
-                />
-                {groupByStack.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 text-[8px] leading-none px-0.5 min-w-[12px] text-center rounded-full bg-accent text-accent-text">
-                    {groupByStack.length}
-                  </span>
-                )}
-              </button>
-              {groupMenuOpen && groupMenuRect && (
-                <Dropdown
-                  isOpen={groupMenuOpen}
-                  onClose={() => setGroupMenuOpen(false)}
-                  positionMode="fixed"
-                  anchorPosition={{
-                    x: Math.max(
-                      8,
-                      Math.min(
-                        groupMenuRect.left,
-                        window.innerWidth - 320 - 8
-                      )
-                    ),
-                    y: groupMenuRect.bottom + 8,
-                  }}
-                  minWidth="280px"
-                  className="max-w-[360px]"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-                        Grouping
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleGroupBy('none')}
-                        className="text-[11px] text-accent hover:underline"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                          Mode
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {(['single', 'multi'] as GalleryGroupMode[]).map((mode) => (
-                            <button
-                              key={mode}
-                              type="button"
-                              onClick={() => handleGroupModeChange(mode)}
-                              className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                groupMode === mode
-                                  ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                                  : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
-                              }`}
-                            >
-                              {mode === 'single' ? 'Single' : 'Multi'}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {groupMode === 'multi' && groupByStack.length > 1 && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                            Layout
-                          </span>
-                          <div className="flex items-center gap-1">
-                            {(['stack', 'parallel'] as GalleryGroupMultiLayout[]).map((layout) => (
-                              <button
-                                key={layout}
-                                type="button"
-                                onClick={() => updatePanelSettings('gallery', { groupMultiLayout: layout })}
-                                className={`px-2 py-1 text-xs rounded border transition-colors ${
-                                  groupMultiLayout === layout
-                                    ? 'bg-neutral-900 border-neutral-900 text-white dark:bg-neutral-100 dark:border-neutral-100 dark:text-neutral-900'
-                                    : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 hover:border-accent-muted'
-                                }`}
-                              >
-                                {layout === 'stack' ? 'Stack' : 'Parallel'}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleGroupBy('none')}
-                          className={`px-2 py-1 text-xs rounded border transition-colors ${
-                            groupByStack.length === 0
-                              ? 'bg-accent border-accent text-accent-text'
-                              : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-accent-muted'
-                          }`}
-                        >
-                          None
-                        </button>
-                        {GROUP_BY_UI_VALUES.map((value) => {
-                          const index = groupByStack.indexOf(value);
-                          const selected = index >= 0;
-                          return (
-                            <button
-                              key={value}
-                              type="button"
-                              onClick={() => toggleGroupBy(value)}
-                              className={`px-2 py-1 text-xs rounded border transition-colors inline-flex items-center gap-1 ${
-                                selected
-                                  ? 'bg-accent border-accent text-accent-text'
-                                  : 'bg-white dark:bg-neutral-700 border-neutral-300 dark:border-neutral-600 text-neutral-700 dark:text-neutral-200 hover:border-accent-muted'
-                              }`}
-                            >
-                              <span>{GROUP_BY_LABELS[value]}</span>
-                              {groupMode === 'multi' && selected && (
-                                <span className="text-[10px] px-1 rounded-full bg-white/20">
-                                  {index + 1}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                        View
-                      </span>
-                      <select
-                        className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
-                        value={groupView}
-                        onChange={(e) => handleGroupViewChange(e.target.value as GalleryGroupView)}
-                        disabled={!hasGrouping}
-                      >
-                        <option value="inline">List</option>
-                        <option value="folders">Folders</option>
-                        <option value="panel" disabled>
-                          Panel (soon)
-                        </option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                        Sort
-                      </span>
-                      <select
-                        className="flex-1 px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 focus:outline-none focus:ring-2 focus:ring-accent"
-                        value={groupSort}
-                        onChange={(e) => setGroupSort(e.target.value as GroupSortKey)}
-                        disabled={!hasGrouping}
-                      >
-                        {GROUP_SORT_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </Dropdown>
-              )}
-            </div>
+            <GroupingMenuDropdown
+              groupMenuAnchorRef={groupMenuAnchorRef}
+              groupMenuOpen={groupMenuOpen}
+              setGroupMenuOpen={setGroupMenuOpen}
+              groupMenuRect={groupMenuRect}
+              groupByStack={groupByStack}
+              groupMode={groupMode}
+              groupMultiLayout={groupMultiLayout}
+              groupView={groupView}
+              groupSort={groupSort}
+              toggleGroupBy={toggleGroupBy}
+              handleGroupModeChange={handleGroupModeChange}
+              handleGroupViewChange={handleGroupViewChange}
+              setGroupSort={setGroupSort}
+              onMultiLayoutChange={(layout) => updatePanelSettings('gallery', { groupMultiLayout: layout })}
+            />
 
             {/* Divider */}
             <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-700" />
@@ -1328,104 +1136,28 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
         </div>
 
         {/* Inline gallery tools strip */}
-        {controller.selectedAssetIds.size > 0 && !controller.isSelectionMode && (() => {
-          const visibleTools = galleryToolSelectors.getVisibleForSurface('assets-default', galleryContext);
-          const selCount = controller.selectedAssetIds.size;
-          const expandedTool = expandedToolId ? visibleTools.find(t => t.id === expandedToolId) : null;
-          return (
-            <>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {/* Selection count badge */}
-                <span className="inline-flex items-center h-7 px-2.5 rounded border border-accent/50 bg-accent/10 text-xs font-medium text-accent tabular-nums">
-                  {selCount} selected
-                </span>
-                {/* Tool chips */}
-                {visibleTools.map(tool => {
-                  const isActive = expandedToolId === tool.id;
-                  return (
-                    <button
-                      key={tool.id}
-                      type="button"
-                      onClick={() => setExpandedToolId(isActive ? null : tool.id)}
-                      className={`inline-flex items-center gap-1.5 h-7 px-2 rounded border text-xs transition-[background-color,border-color] duration-200 ${
-                        isActive
-                          ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
-                          : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
-                      }`}
-                    >
-                      {tool.icon && <Icon name={tool.icon as any} size={13} />}
-                      <span>{tool.name}</span>
-                      <Icon name={isActive ? 'chevronUp' : 'chevronDown'} size={11} className="opacity-50" />
-                    </button>
-                  );
-                })}
-                {/* Clear selection */}
-                <button
-                  type="button"
-                  onClick={() => controller.clearSelection()}
-                  className="inline-flex items-center justify-center h-7 w-7 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-                  title="Clear selection"
-                >
-                  <Icon name="x" size={13} />
-                </button>
-              </div>
-              {/* Expanded tool content */}
-              {expandedTool && (
-                <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 bg-white dark:bg-neutral-900/60">
-                  {expandedTool.render(galleryContext)}
-                </div>
-              )}
-            </>
-          );
-        })()}
+        {controller.selectedAssetIds.size > 0 && !controller.isSelectionMode && (
+          <GalleryToolsStrip
+            selectedCount={controller.selectedAssetIds.size}
+            surfaceId="assets-default"
+            galleryContext={galleryContext}
+            expandedToolId={expandedToolId}
+            onExpandedToolChange={setExpandedToolId}
+            onClearSelection={controller.clearSelection}
+          />
+        )}
       </div>
 
       {/* Scrollable gallery */}
       <div className="flex-1 overflow-auto mt-4">
         {hasGrouping && groupPath.length > 0 && (
-          <div className="mb-4 flex items-center justify-between bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-700 rounded px-3 py-2">
-            <nav className="flex items-center gap-1 text-sm min-w-0 overflow-hidden">
-              <button
-                type="button"
-                onClick={navigateToGroupDepth.bind(null, 0)}
-                className="text-accent hover:underline flex-shrink-0"
-              >
-                Groups
-              </button>
-              {groupPath.map((entry, index) => {
-                const isLast = index === groupPath.length - 1;
-                const label = formatGroupLabel(entry.groupBy, entry.groupKey);
-                return (
-                  <span key={index} className="flex items-center gap-1 min-w-0">
-                    <span className="text-neutral-400 flex-shrink-0">/</span>
-                    {isLast ? (
-                      <span className="font-medium truncate">{label}</span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={navigateToGroupDepth.bind(null, index + 1)}
-                        className="text-accent hover:underline truncate"
-                      >
-                        {label}
-                      </button>
-                    )}
-                  </span>
-                );
-              })}
-              {isLeafGroup && (
-                <span className="text-neutral-500 dark:text-neutral-400 flex-shrink-0 ml-1">
-                  ({controller.assets.length} items)
-                </span>
-              )}
-            </nav>
-            <button
-              type="button"
-              onClick={clearGroup}
-              className="px-2 py-1 text-xs border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 transition-colors flex-shrink-0 ml-2"
-            >
-              Back
-            </button>
-          </div>
+          <GroupBreadcrumb
+            groupPath={groupPath}
+            isLeafGroup={isLeafGroup}
+            itemCount={controller.assets.length}
+            onNavigateToDepth={navigateToGroupDepth}
+            onBack={clearGroup}
+          />
         )}
 
         {showParallelGroups ? (
@@ -1515,51 +1247,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           </div>
         )}
         {/* Bottom pagination controls (duplicate of top for convenience) */}
-
         {showParallelGroups ? null : showGroupOverview ? (
-          <div className="pt-4 pb-8 flex justify-center">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => goToGroupPage(groupPage - 1)}
-                disabled={groupLoading || groupPage <= 1}
-                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Prev
-              </button>
-              <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
-                Group page {groupPage} of {groupTotalPages}
-              </span>
-              <button
-                onClick={() => goToGroupPage(groupPage + 1)}
-                disabled={groupLoading || !groupHasMore}
-                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <BottomPagination
+            currentPage={groupPage}
+            totalPages={groupTotalPages}
+            hasMore={groupHasMore}
+            loading={groupLoading}
+            onPageChange={goToGroupPage}
+            label="Group page"
+          />
         ) : (
-          <div className="pt-4 pb-8 flex justify-center">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => goToPage(controller.currentPage - 1)}
-                disabled={controller.loading || controller.currentPage <= 1}
-                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Prev
-              </button>
-              <span className="text-sm text-neutral-600 dark:text-neutral-400 px-2">
-                Page {controller.currentPage} of {controller.hasMore ? `${controller.totalPages}+` : controller.totalPages}
-              </span>
-              <button
-                onClick={() => goToPage(controller.currentPage + 1)}
-                disabled={controller.loading || !controller.hasMore}
-                className="px-3 py-1.5 text-sm border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <BottomPagination
+            currentPage={controller.currentPage}
+            totalPages={controller.totalPages}
+            hasMore={controller.hasMore}
+            loading={controller.loading}
+            onPageChange={goToPage}
+          />
         )}
       </div>
     </div>

@@ -5,6 +5,9 @@
  * - GalleryFilters: Filter controls (search, media type, sort)
  * - LoadMoreSection: Button or infinite scroll pagination
  * - AssetGrid: Grid layouts with presets
+ * - PaginationStrip: Compact toolbar pagination chip (prev / page-jump / next)
+ * - BottomPagination: Centered bottom page nav (Prev | Page X of Y | Next)
+ * - GalleryToolsStrip: Inline selection tools (badge + tool chips + expanded content)
  */
 
 export {
@@ -44,3 +47,18 @@ export {
 export {
   ClientFilteredGallerySection,
 } from './ClientFilteredGallerySection';
+
+export {
+  PaginationStrip,
+  type PaginationStripProps,
+} from './PaginationStrip';
+
+export {
+  BottomPagination,
+  type BottomPaginationProps,
+} from './BottomPagination';
+
+export {
+  GalleryToolsStrip,
+  type GalleryToolsStripProps,
+} from './GalleryToolsStrip';

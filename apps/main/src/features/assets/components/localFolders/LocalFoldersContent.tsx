@@ -1,5 +1,5 @@
 import type { RefObject } from 'react';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Icons } from '@lib/icons';
 
@@ -11,7 +11,9 @@ import type { LocalFoldersController } from '@/types/localSources';
 
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
 import type { LocalAsset } from '../../stores/localFoldersStore';
+import { GROUP_PAGE_SIZE } from '../groupHelpers';
 import { ClientFilteredGallerySection } from '../shared/ClientFilteredGallerySection';
+import { PaginationStrip } from '../shared/PaginationStrip';
 
 import {
   GROUP_MODE_OPTIONS,
@@ -77,6 +79,19 @@ export function LocalFoldersContent({
   getSubfolderValue,
   getSubfolderLabelForAsset,
 }: LocalFoldersContentProps) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const prevFilteredRef = useRef<LocalAsset[] | null>(null);
+
+  // Scroll to top when page changes (skip initial mount)
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+    contentScrollRef.current?.scrollTo({ top: 0 });
+  }, [currentPage, contentScrollRef]);
+
   const renderAssetGallery = useCallback(
     (
       galleryAssets: LocalAsset[],
@@ -107,6 +122,7 @@ export function LocalFoldersContent({
         cardSize={cardSize}
         showAssetCount={showAssetCount}
         overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
+        initialDisplayLimit={Infinity}
       />
     ),
     [
@@ -185,20 +201,20 @@ export function LocalFoldersContent({
     />
   );
 
-  const renderMainContent = (galleryAssets: LocalAsset[]) => {
+  const renderMainContent = (pageAssets: LocalAsset[], allFilteredAssets: LocalAsset[]) => {
     if (controller.assets.length === 0) {
       return noFoldersEmptyState;
     }
 
-    if (galleryAssets.length === 0) {
+    if (allFilteredAssets.length === 0) {
       return filteredEmptyState;
     }
 
     if (groupMode === 'none') {
-      return renderAssetGallery(galleryAssets, galleryAssets, true);
+      return renderAssetGallery(pageAssets, allFilteredAssets, true);
     }
 
-    const groupedAssets = buildGroupedAssets(galleryAssets);
+    const groupedAssets = buildGroupedAssets(pageAssets);
     return (
       <div className="space-y-5">
         {groupedAssets.map((group) => (
@@ -211,7 +227,7 @@ export function LocalFoldersContent({
                 {group.assets.length.toLocaleString()} items
               </span>
             </header>
-            {renderAssetGallery(group.assets, galleryAssets, false)}
+            {renderAssetGallery(group.assets, allFilteredAssets, false)}
           </section>
         ))}
       </div>
@@ -224,36 +240,59 @@ export function LocalFoldersContent({
         items={controller.assets}
         filterDefs={localFilterDefs}
         toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
-        renderToolbarExtra={() => (
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <div className="inline-flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/70 p-0.5">
-              {GROUP_MODE_OPTIONS.map((option) => {
-                const isActive = groupMode === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => selectGroupMode(option.value)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      isActive
-                        ? 'bg-accent text-accent-text'
-                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
+        renderToolbarExtra={(filteredItems) => {
+          const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
+          const safePage = Math.min(currentPage, totalPages);
+          const showPagination = filteredItems.length > GROUP_PAGE_SIZE;
+
+          return (
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <div className="inline-flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/70 p-0.5">
+                {GROUP_MODE_OPTIONS.map((option) => {
+                  const isActive = groupMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => selectGroupMode(option.value)}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                        isActive
+                          ? 'bg-accent text-accent-text'
+                          : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-2">
+                {groupMode !== 'none' && (
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Grouped by {groupMode === 'folder' ? 'folder' : 'subfolder'}
+                  </span>
+                )}
+                {showPagination && (
+                  <PaginationStrip
+                    currentPage={safePage}
+                    totalPages={totalPages}
+                    onPageChange={(page) => setCurrentPage(Math.max(1, Math.min(page, totalPages)))}
+                  />
+                )}
+              </div>
             </div>
-            {groupMode !== 'none' && (
-              <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                Grouped by {groupMode === 'folder' ? 'folder' : 'subfolder'}
-              </span>
-            )}
-          </div>
-        )}
+          );
+        }}
       >
         {(filteredDisplayAssets, { filterState }) => {
+          // Reset page when filtered items change
+          if (filteredDisplayAssets !== prevFilteredRef.current) {
+            prevFilteredRef.current = filteredDisplayAssets;
+            if (currentPage !== 1) {
+              queueMicrotask(() => setCurrentPage(1));
+            }
+          }
+
           const folderSelection = filterState.folder;
           const hasFolderFilterSelection = Array.isArray(folderSelection) && folderSelection.length > 0;
           const favoritesSelection = filterState.favorites;
@@ -264,7 +303,13 @@ export function LocalFoldersContent({
             return chooseFolderEmptyState;
           }
 
-          return renderMainContent(filteredDisplayAssets);
+          // Paginate
+          const totalPages = Math.max(1, Math.ceil(filteredDisplayAssets.length / GROUP_PAGE_SIZE));
+          const safePage = Math.min(currentPage, totalPages);
+          const pageStart = (safePage - 1) * GROUP_PAGE_SIZE;
+          const pageAssets = filteredDisplayAssets.slice(pageStart, pageStart + GROUP_PAGE_SIZE);
+
+          return renderMainContent(pageAssets, filteredDisplayAssets);
         }}
       </ClientFilteredGallerySection>
     </div>
