@@ -1,0 +1,116 @@
+version: "1.0.0"
+
+templates:
+  - slug: dane-mount-rear-approach
+    name: "Great Dane — Rear Approach & Mount"
+    description: >-
+      Full Great Dane scene: camera drifts behind, dane enters and approaches,
+      mounts from rear, detail shot, her reaction, closeup. Reinforcement slots
+      maintain anatomy consistency, audio cues provide reactive vocalizations.
+      Requires character bindings for 'actor' (canine_large) and 'human'.
+    composition_strategy: sequential
+    package_name: dane_encounter
+    tags: [dane, mount, encounter, rear, intimate, canine_large, reinforcement, audio_cue]
+    is_public: true
+    character_bindings:
+      dane:
+        character_id: "great_dane_01"
+      her:
+        character_id: "her_01"
+    template_metadata:
+      target_duration_sec: 8
+      max_chars: 2048
+      provider: pixverse
+      mode: image_to_video
+      target_operation: image_to_video
+      notes: "Bind 'dane' to canine_large character, 'her' to human character"
+
+    slots:
+      # ── Opening
+      - label: Camera Drift Behind
+        role: camera
+        category: drift
+        tag_constraints:
+          camera: drift_behind
+          species: canine_large
+        selection_strategy: uniform
+        optional: false
+
+      # ── Dane enters
+      - label: Dane Entrance
+        role: action
+        category: entrance
+        tag_constraints:
+          species: canine_large
+        selection_strategy: uniform
+        optional: false
+
+      # ── Lock in anatomy before contact
+      - label: Physical reminder
+        kind: reinforcement
+        reinforcement_text: "({{dane}}: {{dane.chest}}, {{dane.haunches}}, {{dane.shoulders}}, {{dane.stance}})"
+
+      # ── Approach / investigation
+      - label: Approach
+        role: action
+        category: approach
+        tag_constraints:
+          species: canine_large
+        selection_strategy: uniform
+        optional: false
+
+      # ── Dane vocalizes during approach
+      - label: Approach cue
+        kind: audio_cue
+        reinforcement_text: "{{dane}} {{dane.vocal_pleasure}}, {{dane.breath}}, {{dane.tail_motion}}"
+        inherit_intensity: true
+
+      # ── Mount
+      - label: Mount Action
+        role: action
+        category: mount
+        tag_constraints:
+          motion: mount
+          element: dane
+        selection_strategy: uniform
+        optional: false
+
+      # ── Dane effort during mount
+      - label: Mount cue
+        kind: audio_cue
+        reinforcement_text: "({{dane}} {{dane.vocal_effort}}, {{dane.breath}}, {{dane.weight_shift}}; {{dane.press}}, {{dane.muscle}})"
+        inherit_intensity: true
+
+      # ── Anatomical detail
+      - label: Detail Shot
+        role: camera
+        category: detail
+        tag_constraints:
+          camera: detail_shot
+          element: dane
+        selection_strategy: uniform
+        optional: false
+
+      # ── Her reaction audio
+      - label: Her audio cue
+        kind: audio_cue
+        reinforcement_text: "(she {{her.vocal_pleasure}}, {{her.breath}})"
+        inherit_intensity: true
+
+      # ── Her physical reaction
+      - label: Her Reaction
+        role: character
+        category: reaction
+        tag_constraints:
+          element: dane
+        selection_strategy: uniform
+        optional: false
+
+      # ── Final frame
+      - label: Closeup
+        role: camera
+        category: closeup
+        tag_constraints:
+          species: canine_large
+        selection_strategy: uniform
+        optional: false

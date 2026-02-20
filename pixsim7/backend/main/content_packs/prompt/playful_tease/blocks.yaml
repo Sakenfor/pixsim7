@@ -1,0 +1,103 @@
+version: "1.0.0"
+package_name: playful_tease
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: soft_cinema
+  duration_sec: 1.0
+  created_by: content_pack
+
+blocks:
+  - block_id: pt_hold_attitude_01
+    role: character
+    category: hold_attitude
+    kind: single_state
+    text: >-
+      She holds her stance with a slight confident shift in weight,
+      barely moving, her expression settles into a knowing smirk
+      aimed directly at camera, the faintest beginning of a lateral
+      sway, everything deliberate and unhurried
+    tags:
+      tone: playful
+      scene_type: tease
+      motion: subtle
+      temporal_position: opening
+    complexity_level: simple
+    description: "Opening hold — maintains source-image pose with subtle attitude shift"
+
+  - block_id: pt_sway_left_01
+    role: action
+    category: sway
+    kind: single_state
+    text: >-
+      Her hips shift into a slow exaggerated sway to the left,
+      the movement theatrical and arrogant, her chin follows with
+      a slight tilt, she owns the frame, the sway is smooth and
+      deliberate like she is performing for an audience of one
+    tags:
+      tone: playful
+      scene_type: tease
+      motion: sway_left
+      direction: left
+      intensity: 3
+    complexity_level: moderate
+    description: "Sway left — theatrical hip movement with arrogant body language"
+
+  - block_id: pt_sway_right_camera_01
+    role: action
+    category: sway_camera
+    kind: single_state
+    text: >-
+      The sway rolls back to the right with a teasing rhythm,
+      she bites her lower lip briefly holding eye contact,
+      camera begins a subtle slow push-in tightening the frame
+      around her, emphasizing the playful confidence in her body language
+    tags:
+      tone: playful
+      scene_type: tease
+      motion: sway_right
+      direction: right
+      camera: push_in
+      intensity: 4
+    complexity_level: moderate
+    description: "Sway right with camera push-in — peak tease moment"
+
+  - block_id: pt_dog_enters_01
+    role: action
+    category: interruption_entry
+    kind: transition
+    text: >-
+      A dog trots into frame from the right just behind her hip,
+      tail wagging, camera subtly widens to accommodate the new subject,
+      her sway falters as something catches her peripheral vision,
+      the dog's head pushes forward curiously past her side
+    tags:
+      tone: playful
+      scene_type: tease
+      element: dog_interruption
+      motion: enter_frame
+      camera: widen
+      intensity: 5
+    complexity_level: moderate
+    description: "Dog enters frame from right — disrupts the tease, camera widens"
+
+  - block_id: pt_interrupted_reaction_01
+    role: action
+    category: reaction
+    kind: single_state
+    text: >-
+      She half-turns with surprised eyes breaking the composed tease,
+      the dog nudges against her leg, camera holds the wider frame
+      capturing both, she tries to recover her arrogant pose but
+      a genuine laugh breaks through as the dog demands attention
+    tags:
+      tone: playful
+      scene_type: tease
+      element: dog_interruption
+      motion: reaction
+      camera: hold_wide
+      intensity: 4
+    complexity_level: moderate
+    description: "Interrupted reaction — arrogant facade breaks into genuine laugh"

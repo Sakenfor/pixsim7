@@ -1,0 +1,62 @@
+version: "1.0.0"
+
+templates:
+  - slug: arrogant-tease-dog-interrupt
+    name: "Arrogant Tease — Dog Interruption"
+    description: >-
+      Playful i2v scene (~5s): woman teases camera with arrogant
+      hip sway, then a dog trots in from behind disrupting her
+      composure. Optimized for Pixverse image-to-video.
+    composition_strategy: sequential
+    package_name: playful_tease
+    tags: [playful, tease, dog, interruption, i2v, 5s]
+    is_public: true
+    template_metadata:
+      target_duration_sec: 5
+      max_chars: 2048
+      provider: pixverse
+      mode: image_to_video
+
+    slots:
+      - label: Hold & Attitude
+        role: character
+        category: hold_attitude
+        tag_constraints:
+          tone: playful
+          scene_type: tease
+        selection_strategy: uniform
+        optional: false
+
+      - label: Sway Left
+        role: action
+        category: sway
+        tag_constraints:
+          tone: playful
+          direction: left
+        selection_strategy: uniform
+        optional: false
+
+      - label: Sway Right + Camera
+        role: action
+        category: sway_camera
+        tag_constraints:
+          tone: playful
+          camera: push_in
+        selection_strategy: uniform
+        optional: false
+
+      - label: Dog Enters
+        role: action
+        category: interruption_entry
+        tag_constraints:
+          element: dog_interruption
+        selection_strategy: uniform
+        optional: false
+
+      - label: Interrupted Reaction
+        role: action
+        category: reaction
+        tag_constraints:
+          element: dog_interruption
+        selection_strategy: uniform
+        optional: false

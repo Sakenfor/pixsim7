@@ -1,0 +1,65 @@
+version: "1.0.0"
+
+characters:
+  - character_id: great_dane_01
+    name: "Great Dane"
+    display_name: "the Great Dane"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "tall, powerful, muscular"
+      height: "32 inches at the shoulder"
+      coat: "short, sleek blue-grey coat"
+      eyes: "dark amber"
+      ears: "natural, uncropped, folded"
+      distinguishing_marks: []
+
+    personality_traits:
+      demeanor: "confident, deliberate"
+      intelligence: "perceptive"
+      temperament: "calm intensity"
+
+    behavioral_patterns:
+      movement_style: "unhurried, powerful strides"
+      social_behavior: "assertive"
+
+    voice_profile:
+      voice_type: "deep, resonant"
+      breathing: "heavy, rhythmic"
+      signature_sounds: ["low rumble", "deep huff"]
+
+    tags:
+      pack: dane_encounter
+      role: dane
+
+  - character_id: her_01
+    name: "Her"
+    display_name: "she"
+    category: human
+    species: human
+    archetype: reactive
+    render_style: realistic
+
+    visual_traits:
+      build: "slender"
+      hair: "dark, shoulder-length"
+      skin: "fair"
+
+    personality_traits:
+      demeanor: "yielding"
+      temperament: "responsive"
+
+    behavioral_patterns:
+      movement_style: "fluid"
+      social_behavior: "receptive"
+
+    voice_profile:
+      voice_type: "soft"
+      breathing: "quickening"
+
+    tags:
+      pack: dane_encounter
+      role: her

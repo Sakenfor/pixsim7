@@ -1,0 +1,298 @@
+version: "1.0.0"
+
+templates:
+  # ═══════════════════════════════════════════════════════════════════
+  # Hotel Lobby — three-layer depth with two placed characters
+  # ═══════════════════════════════════════════════════════════════════
+  - slug: hotel-lobby-behind-subject
+    name: "Hotel Lobby — Porter Close, Man Far"
+    description: >-
+      Image edit: preserves subject in foreground, builds a hotel lobby behind,
+      places a porter close behind and a distracted man in the far background.
+      Three-layer depth with bright natural indoor lighting.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, hotel, lobby, three_layer, depth, preserve_subject]
+    is_public: true
+    character_bindings:
+      placed_character:
+        character_id: ""
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+
+    slots:
+      # ── Subject preservation ────────────────────────────────────
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        selection_strategy: uniform
+        optional: false
+
+      # ── Environment ─────────────────────────────────────────────
+      - label: Background scene
+        role: environment
+        category: scene_build
+        tag_constraints:
+          location: hotel_lobby
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — porter close behind ─────────────────────────
+      - label: Porter placement
+        role: placement
+        category: depth
+        tag_constraints:
+          depth: close
+          placement: behind
+        selection_strategy: uniform
+        optional: false
+
+      - label: Porter description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: porter
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — man far background ──────────────────────────
+      - label: Man placement
+        role: placement
+        category: depth
+        tag_constraints:
+          depth: far
+        selection_strategy: uniform
+        optional: false
+
+      - label: Man description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: bystander
+        selection_strategy: uniform
+        optional: false
+
+      # ── Lighting ────────────────────────────────────────────────
+      - label: Key light
+        role: lighting
+        category: key
+        tag_constraints:
+          key_light: ceiling
+        selection_strategy: uniform
+        optional: false
+
+      - label: Fill light
+        role: lighting
+        category: fill
+        tag_constraints:
+          fill_light: warm_bounce
+        selection_strategy: uniform
+        optional: true
+        fallback_text: "Allow the background to be slightly softer than the foreground."
+
+      # ── Composition ─────────────────────────────────────────────
+      - label: Layer order
+        role: composition
+        category: layer_order
+        tag_constraints:
+          depth_layers: 3
+        selection_strategy: uniform
+        optional: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Undercity Thief — medieval wardrobe rework, game-stylized rendering
+  # ═══════════════════════════════════════════════════════════════════
+  - slug: undercity-thief-corridor
+    name: "Undercity Thief — Medieval Rework, Low Angle"
+    description: >-
+      Image edit: preserves subject pose, reworks clothing to medieval thief
+      aesthetic, places in undercity corridor with oil-lamp lighting,
+      game-stylized rendering, partial male presence at midground.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, medieval, thief, undercity, game_stylized, low_angle]
+    is_public: true
+    character_bindings: {}
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+
+    slots:
+      # ── Subject preservation ────────────────────────────────────
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        selection_strategy: uniform
+        optional: false
+
+      # ── Style — wardrobe rework ─────────────────────────────────
+      - label: Wardrobe style
+        role: style
+        category: wardrobe
+        tag_constraints:
+          aesthetic: medieval_thief
+        selection_strategy: uniform
+        optional: false
+
+      # ── Camera ──────────────────────────────────────────────────
+      - label: Camera angle
+        role: camera
+        category: angle
+        tag_constraints:
+          camera_angle: low
+        selection_strategy: uniform
+        optional: false
+
+      - label: Field of view
+        role: camera
+        category: fov
+        tag_constraints:
+          fov: narrow
+        selection_strategy: uniform
+        optional: false
+
+      # ── Environment ─────────────────────────────────────────────
+      - label: Background scene
+        role: environment
+        category: scene_build
+        tag_constraints:
+          location: undercity_corridor
+        selection_strategy: uniform
+        optional: false
+
+      # ── Lighting ────────────────────────────────────────────────
+      - label: Key light
+        role: lighting
+        category: key
+        tag_constraints:
+          key_light: oil_lamp
+        selection_strategy: uniform
+        optional: false
+
+      - label: Fill light
+        role: lighting
+        category: fill
+        tag_constraints:
+          fill_light: cool_slit
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — partial male presence ───────────────────────
+      - label: Male presence
+        role: placement
+        category: depth
+        tag_constraints:
+          visibility: partial
+        selection_strategy: uniform
+        optional: true
+        fallback_text: ""
+
+      - label: Presence description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: male_presence
+        selection_strategy: uniform
+        optional: true
+        fallback_text: ""
+
+      # ── Style — rendering & tone ────────────────────────────────
+      - label: Rendering style
+        role: style
+        category: rendering
+        tag_constraints:
+          rendering: game_stylized
+        selection_strategy: uniform
+        optional: false
+
+      - label: Atmosphere
+        role: style
+        category: atmosphere
+        tag_constraints:
+          atmosphere: predator
+        selection_strategy: uniform
+        optional: false
+
+      # ── Composition ─────────────────────────────────────────────
+      - label: Layer order
+        role: composition
+        category: layer_order
+        tag_constraints:
+          depth_layers: 3
+        selection_strategy: uniform
+        optional: false
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Generic scene swap — minimal, two-layer
+  # ═══════════════════════════════════════════════════════════════════
+  - slug: scene-swap-two-layer
+    name: "Scene Swap — Preserve Subject, New Background"
+    description: >-
+      Generic image edit: preserves subject in foreground, replaces background.
+      Two-layer depth. Picks random background and lighting.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, scene_swap, two_layer, preserve_subject]
+    is_public: true
+    character_bindings: {}
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+
+    slots:
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        selection_strategy: uniform
+        optional: false
+
+      - label: Background scene
+        role: environment
+        category: scene_build
+        selection_strategy: uniform
+        optional: false
+
+      - label: Key light
+        role: lighting
+        category: key
+        selection_strategy: uniform
+        optional: false
+
+      - label: Layer order
+        role: composition
+        category: layer_order
+        tag_constraints:
+          depth_layers: 2
+        selection_strategy: uniform
+        optional: false

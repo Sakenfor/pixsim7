@@ -1,5 +1,5 @@
 """
-API tests for admin codegen endpoints.
+API tests for devtools codegen endpoints.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import pytest
 try:
     import httpx
     from fastapi import FastAPI, HTTPException
-    from pixsim7.backend.main.api.dependencies import get_current_admin_user
+    from pixsim7.backend.main.api.dependencies import CODEGEN_PERMISSION, get_current_codegen_user
     from pixsim7.backend.main.api.v1.codegen import router
     from pixsim7.backend.main.domain.user import User
     from pixsim7.backend.main.services.codegen.runner import CodegenRunResult, CodegenTask
@@ -21,17 +21,19 @@ except ImportError:
     IMPORTS_AVAILABLE = False
 
 
-def _mock_user(*, admin: bool = False) -> MagicMock:
+def _mock_user(*, permissions: list[str] | None = None) -> MagicMock:
+    granted = set(permissions or [])
     user = MagicMock(spec=User)
     user.id = 1
     user.username = "testuser"
-    user.role = "admin" if admin else "user"
+    user.role = "user"
+    user.permissions = list(granted)
     user.is_active = True
-    user.is_admin.return_value = admin
+    user.has_permission.side_effect = lambda permission: permission in granted
     return user
 
 
-def _app(*, authenticated: bool = True, admin: bool = False) -> FastAPI:
+def _app(*, authenticated: bool = True, can_codegen: bool = False) -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
 
@@ -39,15 +41,18 @@ def _app(*, authenticated: bool = True, admin: bool = False) -> FastAPI:
         async def _deny():
             raise HTTPException(status_code=401, detail="Not authenticated")
 
-        app.dependency_overrides[get_current_admin_user] = _deny
-    elif not admin:
+        app.dependency_overrides[get_current_codegen_user] = _deny
+    elif not can_codegen:
         async def _forbidden():
-            raise HTTPException(status_code=403, detail="Admin access required")
+            raise HTTPException(
+                status_code=403,
+                detail=f"Missing required permission: {CODEGEN_PERMISSION}",
+            )
 
-        app.dependency_overrides[get_current_admin_user] = _forbidden
+        app.dependency_overrides[get_current_codegen_user] = _forbidden
     else:
-        user = _mock_user(admin=admin)
-        app.dependency_overrides[get_current_admin_user] = lambda: user
+        user = _mock_user(permissions=[CODEGEN_PERMISSION])
+        app.dependency_overrides[get_current_codegen_user] = lambda: user
 
     return app
 
@@ -60,10 +65,10 @@ def _client(app: FastAPI):
 
 
 @pytest.mark.skipif(not IMPORTS_AVAILABLE, reason="Dependencies not available")
-class TestAdminCodegenEndpoints:
+class TestDevtoolsCodegenEndpoints:
     @pytest.mark.asyncio
     async def test_list_codegen_tasks(self):
-        app = _app(authenticated=True, admin=True)
+        app = _app(authenticated=True, can_codegen=True)
         mock_tasks = [
             CodegenTask(
                 id="app-map",
@@ -76,7 +81,7 @@ class TestAdminCodegenEndpoints:
 
         with patch("pixsim7.backend.main.api.v1.codegen.load_codegen_tasks", return_value=mock_tasks):
             async with _client(app) as c:
-                response = await c.get("/api/v1/admin/codegen/tasks")
+                response = await c.get("/api/v1/devtools/codegen/tasks")
 
         assert response.status_code == 200
         payload = response.json()
@@ -86,7 +91,7 @@ class TestAdminCodegenEndpoints:
 
     @pytest.mark.asyncio
     async def test_run_codegen_task(self):
-        app = _app(authenticated=True, admin=True)
+        app = _app(authenticated=True, can_codegen=True)
         result = CodegenRunResult(
             task_id="app-map",
             ok=True,
@@ -99,7 +104,7 @@ class TestAdminCodegenEndpoints:
         with patch("pixsim7.backend.main.api.v1.codegen.run_codegen_task", return_value=result):
             async with _client(app) as c:
                 response = await c.post(
-                    "/api/v1/admin/codegen/run",
+                    "/api/v1/devtools/codegen/run",
                     json={"task_id": "app-map", "check": True},
                 )
 
@@ -111,7 +116,7 @@ class TestAdminCodegenEndpoints:
 
     @pytest.mark.asyncio
     async def test_run_codegen_task_rejects_unknown_task(self):
-        app = _app(authenticated=True, admin=True)
+        app = _app(authenticated=True, can_codegen=True)
 
         with patch(
             "pixsim7.backend.main.api.v1.codegen.run_codegen_task",
@@ -119,7 +124,7 @@ class TestAdminCodegenEndpoints:
         ):
             async with _client(app) as c:
                 response = await c.post(
-                    "/api/v1/admin/codegen/run",
+                    "/api/v1/devtools/codegen/run",
                     json={"task_id": "missing-task", "check": False},
                 )
 
@@ -127,12 +132,12 @@ class TestAdminCodegenEndpoints:
         assert "Unknown codegen task" in response.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_run_codegen_task_requires_admin(self):
-        app = _app(authenticated=True, admin=False)
+    async def test_run_codegen_task_requires_permission(self):
+        app = _app(authenticated=True, can_codegen=False)
 
         async with _client(app) as c:
             response = await c.post(
-                "/api/v1/admin/codegen/run",
+                "/api/v1/devtools/codegen/run",
                 json={"task_id": "app-map", "check": False},
             )
 
@@ -144,7 +149,7 @@ class TestAdminCodegenEndpoints:
 
         async with _client(app) as c:
             response = await c.post(
-                "/api/v1/admin/codegen/run",
+                "/api/v1/devtools/codegen/run",
                 json={"task_id": "app-map", "check": False},
             )
 
