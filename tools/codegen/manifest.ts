@@ -24,7 +24,7 @@ export const CODEGEN_TASKS: CodegenTask[] = [
   },
   {
     id: 'openapi',
-    description: 'Generate OpenAPI types from running backend',
+    description: 'Generate OpenAPI artifacts (Orval split output)',
     script: 'tools/codegen/generate-openapi-types.ts',
     supportsCheck: true,
     groups: ['types'],

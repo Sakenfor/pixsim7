@@ -7,7 +7,7 @@
  *   - OR OPENAPI_INPUT=<local JSON file path>
  *
  * Default output:
- *   - Orval split output: packages/shared/api/client/src/generated/openapi
+ *   - Orval split output: packages/shared/api/model/src/generated/openapi
  *
  * Usage:
  *   pnpm openapi:gen          # Generate/overwrite types
@@ -18,7 +18,8 @@
  * Optional env overrides:
  *   OPENAPI_INPUT="./path/to/openapi.json"                      # Local JSON spec path
  *   OPENAPI_URL="http://localhost:8000/openapi.json"
- *   OPENAPI_ORVAL_OUT="packages/shared/api/client/src/generated/openapi"
+ *   OPENAPI_ORVAL_OUT="packages/shared/api/model/src/generated/openapi"
+ *   OPENAPI_TYPES_OUT="packages/shared/api/model/src/generated/openapi"   # Legacy alias (backward compat)
  *   OPENAPI_ORVAL_MODE="tags-split"
  *   OPENAPI_ORVAL_CLIENT="axios"
  *   OPENAPI_SERVICE="main-api"
@@ -44,9 +45,10 @@ type BackendServiceConfig = {
 
 const MANIFEST_FILENAME = 'pixsim.service.json';
 const DEFAULT_OPENAPI_URL = 'http://localhost:8000/openapi.json';
-const DEFAULT_ORVAL_OUT = 'packages/shared/api/client/src/generated/openapi';
+const DEFAULT_ORVAL_OUT = 'packages/shared/api/model/src/generated/openapi';
 const DEFAULT_ORVAL_MODE = 'tags-split';
 const DEFAULT_ORVAL_CLIENT = 'axios';
+const DIR_COMPARE_IGNORE = new Set(['.schema-hash']);
 
 const SKIP_DIRS = new Set([
   '.git',
@@ -255,6 +257,9 @@ async function listFilesRecursive(root: string): Promise<string[]> {
       if (entry.isDirectory()) {
         await walk(fullPath);
       } else if (entry.isFile()) {
+        if (DIR_COMPARE_IGNORE.has(entry.name)) {
+          continue;
+        }
         files.push(normalizeSlashes(path.relative(root, fullPath)));
       }
     }
@@ -331,6 +336,13 @@ async function runOrval(
       prettier: false,
     },
   });
+
+  const modelBarrel = path.join(outputDir, 'model', 'index.ts');
+  if (!(await pathExists(modelBarrel))) {
+    throw new Error(
+      `Orval generation did not produce model outputs at ${normalizeSlashes(modelBarrel)}`
+    );
+  }
 }
 
 async function generateOrvalSplit(
@@ -362,8 +374,16 @@ async function generateOrvalSplit(
     }
   }
 
-  await fs.mkdir(absOutDir, { recursive: true });
-  await runOrval(source, absOutDir, mode, client);
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'pixsim7-orval-gen-'));
+  const tempOutDir = path.join(tempRoot, 'openapi');
+  try {
+    await runOrval(source, tempOutDir, mode, client);
+    await fs.mkdir(path.dirname(absOutDir), { recursive: true });
+    await fs.rm(absOutDir, { recursive: true, force: true });
+    await fs.cp(tempOutDir, absOutDir, { recursive: true });
+  } finally {
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
   console.log(`[ok] Generated Orval split OpenAPI output: ${outDir}`);
   return true;
 }
@@ -384,7 +404,12 @@ async function main() {
     throw new Error(`OpenAPI service "${serviceId}" not found in ${servicesRoot}`);
   }
 
-  const orvalOutDir = process.env.OPENAPI_ORVAL_OUT || DEFAULT_ORVAL_OUT;
+  const legacyTypesOut = process.env.OPENAPI_TYPES_OUT;
+  const orvalOutDir =
+    process.env.OPENAPI_ORVAL_OUT ||
+    legacyTypesOut ||
+    serviceConfig?.openapi_types_path ||
+    DEFAULT_ORVAL_OUT;
   const orvalMode = process.env.OPENAPI_ORVAL_MODE || DEFAULT_ORVAL_MODE;
   const orvalClient = process.env.OPENAPI_ORVAL_CLIENT || DEFAULT_ORVAL_CLIENT;
 

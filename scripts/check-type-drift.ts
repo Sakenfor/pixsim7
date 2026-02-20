@@ -18,7 +18,7 @@ const TYPES_DIR = path.join(__dirname, '../packages/shared/types/src');
 const GAME_TS = path.join(TYPES_DIR, 'game.ts');
 const MODEL_BARREL = path.join(
   __dirname,
-  '../packages/shared/api/client/src/generated/openapi/model/index.ts'
+  '../packages/shared/api/model/src/generated/openapi/model/index.ts'
 );
 
 function extractManualInterfaces(content: string): string[] {
@@ -74,7 +74,7 @@ function main() {
       console.log(`  - ${name}`);
     }
     console.log('\nConsider importing these from Orval instead of duplicating:');
-    console.log("  import type { Foo } from '@pixsim7/shared.api.client/model';");
+    console.log("  import type { Foo } from '@pixsim7/shared.api.model';");
     console.log('\nOr mark them as [frontend-only] if they intentionally differ.');
     process.exit(1);
   }

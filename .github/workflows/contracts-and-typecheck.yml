@@ -59,6 +59,11 @@ jobs:
           grep -Ev '^(pixverse-py|sora-py)([[:space:]]|$)' pixsim7/backend/main/requirements.txt > /tmp/requirements-openapi-ci.txt
           python -m pip install -r /tmp/requirements-openapi-ci.txt
 
+      - name: Backend boundary checks
+        run: |
+          python pixsim7/backend/main/scripts/check_import_boundaries.py
+          python pixsim7/backend/main/scripts/check_cross_domain_fks.py
+
       - name: Start backend for OpenAPI check
         run: |
           nohup python -m uvicorn pixsim7.backend.main.main:app --host 127.0.0.1 --port 8000 --lifespan off > /tmp/main-api.log 2>&1 &

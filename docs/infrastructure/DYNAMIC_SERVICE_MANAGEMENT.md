@@ -1,4 +1,4 @@
-﻿# Dynamic Service Management in Launcher
+# Dynamic Service Management in Launcher
 
 The launcher discovers services from manifest files and builds the UI/process graph from those manifests. There is no central `services.json` anymore.
 
@@ -75,7 +75,7 @@ Backend (pixsim.service.json):
     "health_endpoint": "/health",
     "docs_endpoint": "/docs",
     "openapi_endpoint": "/openapi.json",
-    "openapi_types_path": "apps/main/src/shared/api/generation.ts",
+    "openapi_types_path": "packages/shared/api/model/src/generated/openapi",
     "depends_on": ["db"],
     "enabled": true
   }
@@ -129,3 +129,4 @@ The OpenAPI scripts read manifests for `openapi_endpoint` and `openapi_types_pat
 - `scripts/gen_openapi_docs.py`
 
 No central registry file is required.
+

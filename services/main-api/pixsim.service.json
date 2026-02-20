@@ -30,9 +30,10 @@
   "health_endpoint": "/health",
   "docs_endpoint": "/docs",
   "openapi_endpoint": "/openapi.json",
-  "openapi_types_path": "packages/shared/api/client/src/generated/openapi",
+  "openapi_types_path": "packages/shared/api/model/src/generated/openapi",
   "depends_on": ["db"],
   "tags": ["core", "api", "game"],
   "auto_start": true,
   "enabled": true
 }
+

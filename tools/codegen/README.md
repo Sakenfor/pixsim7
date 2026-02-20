@@ -25,7 +25,7 @@ This folder centralizes code generation tooling for the workspace.
 
 ### OpenAPI Generator Notes
 
-- The OpenAPI generator uses Orval to produce split output: `packages/shared/api/client/src/generated/openapi`
+- The OpenAPI generator uses Orval to produce split output: `packages/shared/api/model/src/generated/openapi`
 - You can use a local spec file instead of a live backend:
   - `pnpm openapi:gen -- --input ./path/to/openapi.json`
   - or `OPENAPI_INPUT=./path/to/openapi.json`
