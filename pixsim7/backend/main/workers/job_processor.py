@@ -63,6 +63,19 @@ NON_RETRYABLE_ERROR_PATTERNS = (
 # This gives a chance for manual re-auth while allowing other accounts to run.
 AUTH_FAILURE_COOLDOWN_SECONDS = 300
 
+# Cooldown applied when an account hits its concurrent job limit.
+CONCURRENT_COOLDOWN_SECONDS = 30
+
+# Max times a pinned-account generation will be deferred waiting for a
+# concurrent slot before giving up.
+MAX_PINNED_CONCURRENT_RETRIES = 12
+
+# After this fraction of MAX_PINNED_CONCURRENT_RETRIES, a generation will
+# check for siblings (other pending generations targeting the same account)
+# and yield by using a longer defer if any exist.
+PINNED_YIELD_THRESHOLD_RATIO = 0.5
+PINNED_YIELD_DEFER_MULTIPLIER = 3
+
 
 def _is_non_retryable_error(error: Exception) -> bool:
     """Check if an error should NOT be retried by ARQ.
@@ -115,6 +128,12 @@ def _is_auth_rotation_error(error: Exception) -> bool:
         "authentication failed for provider",
     )
     return any(marker in message for marker in session_markers)
+
+
+def _is_pinned_account(generation: Generation, account: ProviderAccount) -> bool:
+    """Return True when the account is the user's explicitly-pinned choice."""
+    pref = getattr(generation, 'preferred_account_id', None)
+    return pref is not None and pref == account.id
 
 
 def _get_max_tries() -> int:
@@ -367,6 +386,86 @@ async def _requeue_generation_for_account_rotation(
         return None
 
 
+async def _defer_pinned_generation(
+    *,
+    db: AsyncSession,
+    generation: Generation,
+    generation_id: int,
+    account_id: int,
+    defer_seconds: int,
+    reason: str,
+    gen_logger,
+) -> dict | None:
+    """
+    Reset a pinned generation to PENDING and re-enqueue with a delay.
+
+    Used when the pinned account is temporarily at capacity (concurrent limit).
+    Returns requeue payload on success; None on failure so the caller can fall
+    through to standard failure handling.
+    """
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+        from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+        generation.retry_count = (generation.retry_count or 0) + 1
+        generation.status = GenStatus.PENDING
+        generation.started_at = None
+        generation.account_id = None
+        await db.commit()
+        await db.refresh(generation)
+
+        arq_pool = await get_arq_pool()
+        await arq_pool.enqueue_job(
+            "process_generation",
+            generation_id=generation.id,
+            _defer_by=timedelta(seconds=defer_seconds),
+        )
+
+        gen_logger.info(
+            "generation_deferred_pinned",
+            generation_id=generation.id,
+            account_id=account_id,
+            retry_attempt=generation.retry_count,
+            defer_seconds=defer_seconds,
+            reason=reason,
+        )
+
+        return {
+            "status": "requeued",
+            "reason": reason,
+            "generation_id": generation_id,
+            "retry_attempt": generation.retry_count,
+        }
+    except Exception as requeue_err:
+        gen_logger.error(
+            "generation_requeue_failed",
+            error=str(requeue_err),
+            generation_id=generation.id,
+        )
+        return None
+
+
+async def _count_pending_pinned_siblings(
+    db: AsyncSession,
+    preferred_account_id: int,
+    exclude_generation_id: int,
+) -> int:
+    """Count other PENDING generations targeting the same preferred account."""
+    from sqlalchemy import select, func
+    from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+    count = await db.scalar(
+        select(func.count())
+        .select_from(Generation)
+        .where(
+            Generation.preferred_account_id == preferred_account_id,
+            Generation.status == GenStatus.PENDING,
+            Generation.id != exclude_generation_id,
+        )
+    )
+    return count or 0
+
+
 async def process_generation(ctx: dict, generation_id: int) -> dict:
     """
     Process a single generation.
@@ -471,6 +570,28 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
                 except Exception as e:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
+
+            # Pinned account guard: if user explicitly selected an account
+            # and it couldn't be used, fail rather than silently using a
+            # different account from the pool.
+            if not account and getattr(generation, 'preferred_account_id', None):
+                pref_id = generation.preferred_account_id
+                gen_logger.warning(
+                    "preferred_account_pinned_unavailable",
+                    account_id=pref_id,
+                    generation_id=generation_id,
+                )
+                debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
+                await generation_service.mark_failed(
+                    generation_id,
+                    f"Selected account #{pref_id} is temporarily unavailable",
+                )
+                get_health_tracker().increment_failed()
+                return {
+                    "status": "failed",
+                    "reason": "preferred_account_unavailable",
+                    "generation_id": generation_id,
+                }
 
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
@@ -618,26 +739,29 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_quota_exhausted",
-                        log_event="generation_requeued_for_different_account",
-                        account_log_field="exhausted_account_id",
-                        gen_logger=gen_logger,
-                    )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                    # Don't rotate away from a pinned account — let standard
+                    # retry/failure handling inform the user.
+                    if not _is_pinned_account(generation, account):
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_quota_exhausted",
+                            log_event="generation_requeued_for_different_account",
+                            account_log_field="exhausted_account_id",
+                            gen_logger=gen_logger,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                    # Fall through to mark as failed if requeue fails or pinned
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
                     await _apply_account_cooldown(
                         db=db,
                         account=account,
-                        cooldown_seconds=30,
+                        cooldown_seconds=CONCURRENT_COOLDOWN_SECONDS,
                         gen_logger=gen_logger,
                         event_name="account_cooldown_concurrent_limit",
                     )
@@ -646,19 +770,70 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_concurrent_limit",
-                        log_event="generation_requeued_concurrent_limit",
-                        account_log_field="previous_account_id",
-                        gen_logger=gen_logger,
-                    )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                    if _is_pinned_account(generation, account):
+                        # Pinned account at capacity — wait for a slot to free
+                        # up instead of rotating to a different account.
+                        current_retries = getattr(generation, 'retry_count', 0) or 0
+                        if current_retries < MAX_PINNED_CONCURRENT_RETRIES:
+                            base_defer = CONCURRENT_COOLDOWN_SECONDS + 5
+                            defer_seconds = base_defer
+                            reason = "pinned_account_concurrent_wait"
+
+                            # Fairness: once past the yield threshold, check if
+                            # other generations are queued for the same account.
+                            # If so, back off with a longer delay so fresher
+                            # generations get a turn at the available slots.
+                            yield_threshold = int(
+                                MAX_PINNED_CONCURRENT_RETRIES * PINNED_YIELD_THRESHOLD_RATIO
+                            )
+                            if current_retries >= yield_threshold:
+                                siblings = await _count_pending_pinned_siblings(
+                                    db, generation.preferred_account_id, generation.id,
+                                )
+                                if siblings > 0:
+                                    defer_seconds = base_defer * PINNED_YIELD_DEFER_MULTIPLIER
+                                    reason = "pinned_account_concurrent_yield"
+                                    gen_logger.info(
+                                        "pinned_concurrent_yielding",
+                                        generation_id=generation.id,
+                                        retry_count=current_retries,
+                                        siblings_pending=siblings,
+                                        defer_seconds=defer_seconds,
+                                    )
+
+                            defer_result = await _defer_pinned_generation(
+                                db=db,
+                                generation=generation,
+                                generation_id=generation_id,
+                                account_id=account.id,
+                                defer_seconds=defer_seconds,
+                                reason=reason,
+                                gen_logger=gen_logger,
+                            )
+                            if defer_result:
+                                return defer_result
+                            # Fall through to standard failure if defer fails
+                        else:
+                            gen_logger.warning(
+                                "pinned_concurrent_max_retries",
+                                generation_id=generation.id,
+                                retry_count=current_retries,
+                            )
+                            # Fall through to standard failure
+                    else:
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_concurrent_limit",
+                            log_event="generation_requeued_concurrent_limit",
+                            account_log_field="previous_account_id",
+                            gen_logger=gen_logger,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                    # Fall through to standard failure if requeue fails
 
                 # Session/auth failure on one account - cool it down and retry with another account.
                 elif _is_auth_rotation_error(e):
