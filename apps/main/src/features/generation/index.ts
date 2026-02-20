@@ -62,7 +62,7 @@ export type {
   GenerationSessionState,
   GenerationSessionStoreHook,
 } from './stores/generationSessionStore';
-export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore } from './stores/generationScopeStores';
+export { getGenerationSessionStore, getGenerationSettingsStore, getGenerationInputStore, getRegisteredInputStores } from './stores/generationScopeStores';
 export {
   useGenerationsStore,
   generationsSelectors,

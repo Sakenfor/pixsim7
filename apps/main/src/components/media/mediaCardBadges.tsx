@@ -6,27 +6,82 @@
  * Split from mediaCardWidgets.tsx for better separation of concerns.
  */
 
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useGenerationInputStore } from '@features/generation/stores/generationInputStore';
+import type { GenerationInputStoreHook } from '@features/generation/stores/generationInputStore';
+import { getRegisteredInputStores } from '@features/generation/stores/generationScopeStores';
 
-import { OPERATION_METADATA, OPERATION_TYPES } from '@/types/operations';
+import { OPERATION_METADATA, OPERATION_TYPES, type OperationType } from '@/types/operations';
 
 import type { MediaCardResolvedProps } from './MediaCard';
 import type { MediaCardOverlayData } from './mediaCardWidgets';
 
 /**
+ * Collect all input stores: the global singleton + any scoped stores.
+ */
+function collectAllInputStores(): GenerationInputStoreHook[] {
+  const scoped = getRegisteredInputStores();
+  // Deduplicate: the global singleton may also appear in the scoped map
+  if (scoped.includes(useGenerationInputStore as unknown as GenerationInputStoreHook)) {
+    return scoped;
+  }
+  return [useGenerationInputStore as unknown as GenerationInputStoreHook, ...scoped];
+}
+
+/**
+ * Find all operations across all input stores that contain the given asset.
+ */
+function findMatchingOperations(stores: GenerationInputStoreHook[], assetId: number): OperationType[] {
+  const seen = new Set<OperationType>();
+  for (const store of stores) {
+    const { inputsByOperation } = store.getState();
+    for (const opType of OPERATION_TYPES) {
+      if (!seen.has(opType) && inputsByOperation[opType]?.items.some((item) => item.asset.id === assetId)) {
+        seen.add(opType);
+      }
+    }
+  }
+  return Array.from(seen);
+}
+
+/**
+ * Hook that subscribes to all input stores (global + scoped) and returns
+ * the operation types the asset is queued in.
+ */
+function useAssetInAllInputStores(assetId: number): OperationType[] {
+  const [matchOps, setMatchOps] = useState<OperationType[]>([]);
+  const prevRef = useRef<OperationType[]>([]);
+
+  useEffect(() => {
+    const check = () => {
+      const stores = collectAllInputStores();
+      const next = findMatchingOperations(stores, assetId);
+      const prev = prevRef.current;
+      if (prev.length === next.length && prev.every((op, i) => op === next[i])) return;
+      prevRef.current = next;
+      setMatchOps(next);
+    };
+
+    check();
+
+    const stores = collectAllInputStores();
+    const unsubs = stores.map((store) => store.subscribe(check));
+    return () => unsubs.forEach((fn) => fn());
+  }, [assetId]);
+
+  return matchOps;
+}
+
+/**
  * Badge showing when an asset is queued in generation inputs
  */
 export function QueueStatusBadge({ assetId }: { assetId: number }) {
-  const inputsByOperation = useGenerationInputStore((s) => s.inputsByOperation);
-  const matchOperations = OPERATION_TYPES.filter((operationType) =>
-    inputsByOperation[operationType]?.items.some((item) => item.asset.id === assetId),
-  );
+  const matchOperations = useAssetInAllInputStores(assetId);
 
   if (matchOperations.length === 0) return null;
 

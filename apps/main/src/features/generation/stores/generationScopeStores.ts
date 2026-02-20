@@ -48,3 +48,11 @@ export function getGenerationInputStore(scopeId: string): GenerationInputStoreHo
   inputStores.set(scopeId, store);
   return store;
 }
+
+/**
+ * Returns all registered scoped input stores (does NOT include the global singleton).
+ * Combine with useGenerationInputStore for full coverage.
+ */
+export function getRegisteredInputStores(): GenerationInputStoreHook[] {
+  return Array.from(inputStores.values());
+}
