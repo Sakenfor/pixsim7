@@ -23,6 +23,7 @@ import { assetEvents } from '@features/assets/lib/assetEvents';
 import { useCaptureRegionStore, type AssetRegion } from '@features/mediaViewer';
 
 import { findActiveRegion, type MediaOverlayId } from '../../overlays';
+import { resolveViewerAssetProviderId } from '../../utils/providerResolution';
 
 export type CaptureAction = 'clipboard' | 'upload';
 
@@ -82,17 +83,7 @@ export function useFrameCapture({
   // Resolve the provider ID for upload
   const resolveCaptureProviderId = useCallback((): string | null => {
     if (!asset) return null;
-    const providerId = asset.metadata?.providerId;
-    if (providerId) return providerId;
-    if (asset.source !== 'local') return null;
-    try {
-      const raw = localStorage.getItem('ps7_localFolders_providerId');
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return typeof parsed === 'string' ? parsed : null;
-    } catch {
-      return null;
-    }
+    return resolveViewerAssetProviderId(asset);
   }, [asset]);
 
   const buildCaptureFilenameFromSource = useCallback(
@@ -180,14 +171,6 @@ export function useFrameCapture({
   const captureFrame = useCallback(async (action: CaptureAction = 'upload') => {
     if (!asset || (asset.type !== 'video' && asset.type !== 'image')) return;
 
-    if (action === 'upload') {
-      const providerId = resolveCaptureProviderId();
-      if (!providerId) {
-        toast.error('Select a provider to capture.');
-        return;
-      }
-    }
-
     // Determine source element and dimensions based on asset type
     const isVideo = asset.type === 'video';
     const video = videoRef.current;
@@ -234,7 +217,8 @@ export function useFrameCapture({
       }
 
       // Upload action
-      const providerId = resolveCaptureProviderId()!;
+      const providerId = resolveCaptureProviderId();
+      const saveTarget: 'provider' | 'library' = providerId ? 'provider' : 'library';
       const sourceUrl = asset.fullUrl || asset.url || undefined;
       const sourceFilename = getFilenameFromUrl(sourceUrl) || asset.name || null;
       const frameTime = isVideo ? video!.currentTime : 0;
@@ -242,6 +226,7 @@ export function useFrameCapture({
         client: 'web_app',
         feature: 'asset_viewer_capture',
         source: 'asset_viewer',
+        save_target: saveTarget,
         frame_time: frameTime,
         has_region: Boolean(captureRegion),
       };
@@ -280,7 +265,8 @@ export function useFrameCapture({
       const uploadResult = await uploadAsset({
         file: blob,
         filename: buildCaptureFilenameFromSource(sourceFilename, frameTime),
-        providerId,
+        saveTarget,
+        providerId: providerId || undefined,
         uploadMethod,
         uploadContext,
       });
@@ -297,7 +283,10 @@ export function useFrameCapture({
         }
       }
 
-      const successMessage = isVideo ? 'Frame captured to library.' : 'Cropped image saved to library.';
+      const successMessage =
+        saveTarget === 'provider'
+          ? (isVideo ? 'Frame captured and uploaded.' : 'Cropped image uploaded.')
+          : (isVideo ? 'Frame captured to library.' : 'Cropped image saved to library.');
       toast.success(successMessage);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Capture failed.';
@@ -310,8 +299,6 @@ export function useFrameCapture({
     captureRegion,
     renderCaptureBlob,
     buildCaptureFilenameFromSource,
-    getFilenameFromUrl,
-    getSourceSiteFromUrl,
     resolveCaptureProviderId,
     toast,
     videoRef,

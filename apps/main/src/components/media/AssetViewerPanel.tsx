@@ -41,6 +41,8 @@ export function AssetViewerPanel() {
   const canNavigatePrev = useAssetViewerStore(selectCanNavigatePrev);
   const canNavigateNext = useAssetViewerStore(selectCanNavigateNext);
 
+  const scopes = useAssetViewerStore((s) => s.scopes);
+  const activeScopeId = useAssetViewerStore((s) => s.activeScopeId);
   const closeViewer = useAssetViewerStore((s) => s.closeViewer);
   const toggleFullscreen = useAssetViewerStore((s) => s.toggleFullscreen);
   const navigatePrev = useAssetViewerStore((s) => s.navigatePrev);
@@ -274,10 +276,15 @@ export function AssetViewerPanel() {
       )}
 
       {/* Bottom bar */}
-      <div className="flex-shrink-0 flex items-center justify-center p-4 bg-gradient-to-t from-black/80 to-transparent absolute bottom-0 left-0 right-0">
+      <div className="flex-shrink-0 flex items-center justify-center gap-3 p-4 bg-gradient-to-t from-black/80 to-transparent absolute bottom-0 left-0 right-0">
         <span className="text-white/70 text-sm">
           {currentIndex + 1} / {assetListLength}
         </span>
+        {activeScopeId && scopes[activeScopeId] && (
+          <span className="text-white/40 text-xs">
+            {scopes[activeScopeId].label}
+          </span>
+        )}
       </div>
 
       {/* Metadata sidebar (fullscreen) */}

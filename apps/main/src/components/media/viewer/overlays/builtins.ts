@@ -1,9 +1,5 @@
-import {
-  AnnotationOverlayMain,
-  AnnotationOverlayToolbar,
-  AnnotationOverlaySidebar,
-} from './builtins/annotationOverlay';
-import { CaptureOverlayMain, CaptureOverlayToolbar } from './builtins/captureOverlay';
+import { AnnotationOverlayMain } from './builtins/annotationOverlay';
+import { CaptureOverlayMain } from './builtins/captureOverlay';
 import { MaskOverlayMain } from './builtins/maskOverlay';
 import { PoseBoardOverlayMain } from './builtins/poseOverlay';
 import { registerMediaOverlay } from './registry';
@@ -17,8 +13,6 @@ registerMediaOverlay({
   priority: 10,
   tone: 'green',
   Main: AnnotationOverlayMain,
-  Toolbar: AnnotationOverlayToolbar,
-  Sidebar: AnnotationOverlaySidebar,
 });
 
 registerMediaOverlay({
@@ -54,5 +48,4 @@ registerMediaOverlay({
   tone: 'amber',
   isAvailable: (asset) => asset.type === 'video' || asset.type === 'image',
   Main: CaptureOverlayMain,
-  Toolbar: CaptureOverlayToolbar,
 });

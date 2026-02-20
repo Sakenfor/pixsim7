@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
   useEffect,
+  useLayoutEffect,
   useCallback,
   useMemo,
   forwardRef,
@@ -259,12 +260,13 @@ export const InteractiveImageSurface = forwardRef<
     [interactive, createSurfacePointerEvent, handlers]
   );
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      if (!interactive || !handlers.onWheel) return;
+  // Native non-passive wheel listener so preventDefault can block page scroll
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!interactive || !handlers.onWheel) return;
 
       const rect = canvas.getBoundingClientRect();
       const screen: ScreenPoint = {
@@ -275,18 +277,25 @@ export const InteractiveImageSurface = forwardRef<
       const normalized = transform.screenToNormalized(screen);
       const withinBounds = transform.isWithinBounds(normalized);
 
+      if (withinBounds) {
+        e.preventDefault();
+      }
+
       const wheelEvent: SurfaceWheelEvent = {
-        nativeEvent: e.nativeEvent,
+        nativeEvent: e,
         screen,
         normalized,
         deltaY: e.deltaY,
         withinBounds,
+        imageRect: transform.getImageRect(),
       };
 
       handlers.onWheel(wheelEvent);
-    },
-    [interactive, transform, handlers]
-  );
+    };
+
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, [interactive, transform, handlers]);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -487,13 +496,14 @@ export const InteractiveImageSurface = forwardRef<
     }
   }, [state, renderLayer, renderElement, renderElementDefault]);
 
-  // Redraw on state change
-  useEffect(() => {
+  // Redraw on state change (useLayoutEffect prevents one-frame flash where
+  // the image has repositioned but canvas strokes still show at old positions)
+  useLayoutEffect(() => {
     redrawCanvas();
   }, [redrawCanvas]);
 
   // Sync canvas size with container
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -601,7 +611,6 @@ export const InteractiveImageSurface = forwardRef<
         onPointerUp={handlePointerUp}
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
-        onWheel={handleWheel}
         onDoubleClick={handleDoubleClick}
       />
 

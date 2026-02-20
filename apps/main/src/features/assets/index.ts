@@ -50,7 +50,7 @@ export type { AssetFilters, AssetModel } from './hooks/useAssets';
 
 export { useAssetsController } from './hooks/useAssetsController';
 
-export { useAssetViewer } from './hooks/useAssetViewer';
+export { useAssetViewer, useViewerScopeSync } from './hooks/useAssetViewer';
 
 export { useFavoriteToggle, FAVORITE_TAG_SLUG, toggleFavoriteTag } from './hooks/useFavoriteToggle';
 
@@ -108,6 +108,7 @@ export {
   selectIsViewerOpen,
   selectCanNavigatePrev,
   selectCanNavigateNext,
+  type NavigationScope,
   type ViewerAsset,
   type ViewerMode,
   type ViewerSettings,
@@ -127,6 +128,16 @@ export {
   getEffectiveServerSettings,
   type ServerMediaSettings,
 } from './stores/mediaSettingsStore';
+
+export {
+  useAssetSetStore,
+  type AssetSet,
+  type ManualAssetSet,
+  type SmartAssetSet,
+  type AssetSetKind,
+} from './stores/assetSetStore';
+
+export { resolveAssetSet, assetModelsToInputItems } from './lib/assetSetResolver';
 
 // ============================================================================
 // Lib - Asset Actions & API

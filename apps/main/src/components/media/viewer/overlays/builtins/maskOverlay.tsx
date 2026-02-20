@@ -12,9 +12,17 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { getAsset } from '@lib/api/assets';
 import { uploadAsset } from '@lib/api/upload';
-import { Icon } from '@lib/icons';
 
 import type { ViewerAsset } from '@features/assets';
+import {
+  OverlaySidePanel,
+  SideSection,
+  SideDivider,
+  SideToolButton,
+  SideSlider,
+  SideIconButton,
+  SidePrimaryButton,
+} from '../shared/OverlaySidePanel';
 import { assetEvents } from '@features/assets/lib/assetEvents';
 import { useGenerationScopeStores } from '@features/generation';
 
@@ -416,7 +424,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const cursor = state.mode === 'draw' || state.mode === 'erase' ? 'crosshair' : 'grab';
 
   return (
-    <div className="absolute inset-0 flex">
+    <div className="absolute inset-0 flex bg-surface-inset">
       <MaskSidePanel />
       <div className="flex-1 min-w-0 relative">
         <InteractiveImageSurface
@@ -438,10 +446,6 @@ const TOOL_MODES = [
   { mode: 'erase' as const, icon: 'xCircle' as const, label: 'Erase', shortcut: 'E' },
   { mode: 'view' as const, icon: 'eye' as const, label: 'View', shortcut: 'V' },
 ];
-
-function SectionDivider() {
-  return <div className="h-px bg-th/10 mx-1" />;
-}
 
 function MaskSidePanel() {
   const {
@@ -465,80 +469,33 @@ function MaskSidePanel() {
   } = useMaskOverlayStore();
 
   return (
-    <div className="w-36 flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 border-r border-th/10 text-xs select-none">
-      {/* ── Tools ── */}
-      <div className="px-2 flex flex-col gap-1">
-        <span className="text-[10px] text-th-muted uppercase tracking-wider">Tools</span>
+    <OverlaySidePanel>
+      <SideSection label="Tools">
         {TOOL_MODES.map(({ mode: m, icon, label, shortcut }) => (
-          <button
+          <SideToolButton
             key={m}
-            onClick={() => setMode(m)}
-            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded transition-colors ${
-              mode === m
-                ? 'bg-accent text-accent-text'
-                : 'text-th-secondary hover:bg-surface-elevated'
-            }`}
+            icon={icon}
+            label={label}
+            active={mode === m}
             title={`${label} (${shortcut})`}
-          >
-            <Icon name={icon} size={14} />
-            <span>{label}</span>
-          </button>
+            onClick={() => setMode(m)}
+          />
         ))}
-      </div>
+      </SideSection>
 
-      <SectionDivider />
+      <SideDivider />
 
-      {/* ── Brush ── */}
-      <div className="px-2 flex flex-col gap-1.5">
-        <span className="text-[10px] text-th-muted uppercase tracking-wider">Brush</span>
-        <label className="flex flex-col gap-0.5 text-th-secondary">
-          <span className="text-[10px]">Size</span>
-          <input
-            type="range"
-            min={0.005}
-            max={0.15}
-            step={0.005}
-            value={brushSize}
-            onChange={(e) => setBrushSize(Number(e.target.value))}
-            className="w-full h-1 accent-accent"
-          />
-        </label>
-        <label className="flex flex-col gap-0.5 text-th-secondary">
-          <span className="text-[10px]">Opacity</span>
-          <input
-            type="range"
-            min={0.1}
-            max={1}
-            step={0.1}
-            value={brushOpacity}
-            onChange={(e) => setBrushOpacity(Number(e.target.value))}
-            className="w-full h-1 accent-accent"
-          />
-        </label>
-      </div>
+      <SideSection label="Brush" className="gap-1.5">
+        <SideSlider label="Size" value={brushSize} min={0.005} max={0.15} step={0.005} onChange={setBrushSize} />
+        <SideSlider label="Opacity" value={brushOpacity} min={0.1} max={1} step={0.1} onChange={setBrushOpacity} />
+      </SideSection>
 
-      <SectionDivider />
+      <SideDivider />
 
-      {/* ── Actions ── */}
-      <div className="px-2 flex flex-col gap-1">
-        <span className="text-[10px] text-th-muted uppercase tracking-wider">Actions</span>
+      <SideSection label="Actions">
         <div className="flex items-center gap-1">
-          <button
-            onClick={undo}
-            disabled={!canUndo}
-            className="flex items-center justify-center w-8 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Undo (Ctrl+Z)"
-          >
-            <Icon name="undo" size={14} />
-          </button>
-          <button
-            onClick={redo}
-            disabled={!canRedo}
-            className="flex items-center justify-center w-8 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            title="Redo (Ctrl+Shift+Z)"
-          >
-            <Icon name="redo" size={14} />
-          </button>
+          <SideIconButton icon="undo" title="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo} />
+          <SideIconButton icon="redo" title="Redo (Ctrl+Shift+Z)" disabled={!canRedo} onClick={redo} />
           <button
             onClick={clearLayer}
             disabled={!hasContent}
@@ -548,45 +505,29 @@ function MaskSidePanel() {
             Clear
           </button>
         </div>
-      </div>
+      </SideSection>
 
-      {/* ── Zoom (conditional) ── */}
       {isZoomed && (
         <>
-          <SectionDivider />
+          <SideDivider />
           <div className="px-2 flex items-center gap-1.5">
             <span className="text-th-secondary text-[11px] tabular-nums">
               {Math.round(zoom * 100)}%
             </span>
-            <button
-              onClick={resetView}
-              className="flex items-center justify-center w-7 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary transition-colors"
-              title="Fit to view (0)"
-            >
-              <Icon name="maximize2" size={14} />
-            </button>
+            <SideIconButton icon="maximize2" title="Fit to view (0)" onClick={resetView} />
           </div>
         </>
       )}
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* ── Save ── */}
-      <div className="px-2">
-        <button
-          onClick={exportMask}
-          disabled={!hasContent || isSaving}
-          className={`w-full py-2 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-            hasContent && !isSaving
-              ? 'bg-accent hover:bg-accent-hover text-accent-text'
-              : 'bg-th/10 text-th-muted'
-          }`}
-          title="Save mask and attach to generation"
-        >
-          {isSaving ? 'Saving...' : 'Save Mask'}
-        </button>
-      </div>
-    </div>
+      <SidePrimaryButton
+        disabled={!hasContent || isSaving}
+        title="Save mask and attach to generation"
+        onClick={exportMask}
+      >
+        {isSaving ? 'Saving...' : 'Save Mask'}
+      </SidePrimaryButton>
+    </OverlaySidePanel>
   );
 }

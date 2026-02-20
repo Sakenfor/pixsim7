@@ -92,6 +92,8 @@ export interface SurfaceWheelEvent {
   normalized: NormalizedPoint;
   deltaY: number;
   withinBounds: boolean;
+  /** Image rect in screen pixels (for zoom-to-cursor math) */
+  imageRect: { x: number; y: number; width: number; height: number };
 }
 
 // ============================================================================

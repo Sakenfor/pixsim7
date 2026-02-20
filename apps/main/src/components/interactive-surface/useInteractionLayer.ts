@@ -23,7 +23,9 @@ import type {
   ViewState,
   NormalizedPoint,
   NormalizedRect,
+  ScreenPoint,
   SurfacePointerEvent,
+  SurfaceWheelEvent,
   SurfaceEventHandlers,
   HistoryEntry,
 } from './types';
@@ -85,6 +87,7 @@ export interface UseInteractionLayerReturn {
   // View management
   setZoom: (zoom: number) => void;
   setPan: (pan: { x: number; y: number }) => void;
+  setView: (updates: Partial<Pick<ViewState, 'zoom' | 'pan'>>) => void;
   setFitMode: (mode: ViewState['fitMode']) => void;
   resetView: () => void;
 
@@ -171,6 +174,15 @@ export function useInteractionLayer(
   const lastPointRef = useRef<NormalizedPoint | null>(null);
   /** Layers snapshot taken BEFORE stroke starts, used by pushHistory on pointer-up */
   const preStrokeLayersRef = useRef<InteractionLayer[] | null>(null);
+
+  // View ref (avoids stale closures in pointer/wheel handlers)
+  const viewRef = useRef<ViewState>(view);
+  viewRef.current = view;
+
+  // Pan tracking
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef<ScreenPoint>({ x: 0, y: 0 });
+  const panStartViewRef = useRef<ScreenPoint>({ x: 0, y: 0 });
 
   // ============================================================================
   // Computed State
@@ -297,6 +309,16 @@ export function useInteractionLayer(
 
   const resetView = useCallback(() => {
     setViewState(DEFAULT_VIEW_STATE);
+  }, []);
+
+  /** Atomic zoom+pan setter — prevents double-render flash when both change. */
+  const setView = useCallback((updates: Partial<Pick<ViewState, 'zoom' | 'pan'>>) => {
+    setViewState((prev) => {
+      const next = { ...prev };
+      if (updates.zoom !== undefined) next.zoom = Math.max(0.1, Math.min(10, updates.zoom));
+      if (updates.pan !== undefined) next.pan = updates.pan;
+      return next;
+    });
   }, []);
 
   // ============================================================================
@@ -439,17 +461,34 @@ export function useInteractionLayer(
   }, []);
 
   // ============================================================================
-  // Drawing Handlers
+  // Drawing & Pan/Zoom Handlers
   // ============================================================================
+
+  // Ref that always has the latest mode so pointer handlers don't go stale
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   const handlePointerDown = useCallback(
     (event: SurfacePointerEvent) => {
+      const native = event.nativeEvent;
+      const currentMode = modeRef.current;
+
+      // View mode OR middle-mouse in any mode → start pan
+      if (currentMode === 'view' || native.button === 1) {
+        isPanningRef.current = true;
+        panStartRef.current = { x: native.clientX, y: native.clientY };
+        panStartViewRef.current = { ...viewRef.current.pan };
+        return;
+      }
+
+      // Left-button only for drawing / points
+      if (native.button !== 0) return;
       if (!event.withinBounds) return;
 
       const activeLayer = layers.find((l) => l.id === activeLayerId);
       if (!activeLayer || activeLayer.locked) return;
 
-      if (mode === 'draw' || mode === 'erase') {
+      if (currentMode === 'draw' || currentMode === 'erase') {
         isDrawingRef.current = true;
         lastPointRef.current = event.normalized;
         // Snapshot layers BEFORE adding the stroke so undo can restore this state
@@ -468,7 +507,7 @@ export function useInteractionLayer(
             },
           ],
           tool: { ...tool },
-          isErase: mode === 'erase',
+          isErase: currentMode === 'erase',
         };
 
         currentStrokeRef.current = stroke;
@@ -479,7 +518,7 @@ export function useInteractionLayer(
             l.id === activeLayerId ? { ...l, elements: [...l.elements, stroke] } : l
           )
         );
-      } else if (mode === 'point') {
+      } else if (currentMode === 'point') {
         addElement(activeLayerId!, {
           type: 'point',
           visible: true,
@@ -488,13 +527,29 @@ export function useInteractionLayer(
         } as Omit<PointElement, 'id' | 'layerId'>);
       }
     },
-    [mode, tool, layers, activeLayerId, addElement]
+    [tool, layers, activeLayerId, addElement]
   );
 
   const handlePointerMove = useCallback(
     (event: SurfacePointerEvent) => {
+      // Pan handling
+      if (isPanningRef.current) {
+        const native = event.nativeEvent;
+        const dx = native.clientX - panStartRef.current.x;
+        const dy = native.clientY - panStartRef.current.y;
+        setView({
+          pan: {
+            x: panStartViewRef.current.x + dx,
+            y: panStartViewRef.current.y + dy,
+          },
+        });
+        return;
+      }
+
+      // Drawing handling
       if (!isDrawingRef.current || !currentStrokeRef.current) return;
-      if (!event.withinBounds && mode !== 'draw' && mode !== 'erase') return;
+      const currentMode = modeRef.current;
+      if (!event.withinBounds && currentMode !== 'draw' && currentMode !== 'erase') return;
 
       const stroke = currentStrokeRef.current;
       const newPoint = {
@@ -521,11 +576,17 @@ export function useInteractionLayer(
 
       lastPointRef.current = event.normalized;
     },
-    [mode, tool.pressureSensitive, activeLayerId]
+    [tool.pressureSensitive, activeLayerId, setView]
   );
 
   const handlePointerUp = useCallback(
     (event: SurfacePointerEvent) => {
+      // End pan
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        return;
+      }
+
       void event;
       if (!isDrawingRef.current) return;
 
@@ -548,6 +609,35 @@ export function useInteractionLayer(
       }
     },
     [pushHistory, onStrokeComplete]
+  );
+
+  // ── Wheel → zoom centered on cursor ──────────────────────────────────
+
+  const handleWheel = useCallback(
+    (event: SurfaceWheelEvent) => {
+      if (!event.withinBounds) return;
+
+      const { zoom: currentZoom, pan } = viewRef.current;
+      const { imageRect, normalized } = event;
+
+      // Zoom factor: scroll down = zoom out, scroll up = zoom in
+      const factor = event.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const newZoom = Math.max(0.1, Math.min(10, currentZoom * factor));
+      const dz = newZoom - currentZoom;
+
+      // fitW/fitH = displayed image size at zoom 1
+      const fitW = imageRect.width / currentZoom;
+      const fitH = imageRect.height / currentZoom;
+
+      // Keep point under cursor stationary
+      const newPan = {
+        x: pan.x - fitW * dz * (normalized.x - 0.5),
+        y: pan.y - fitH * dz * (normalized.y - 0.5),
+      };
+
+      setView({ zoom: newZoom, pan: newPan });
+    },
+    [setView],
   );
 
   // ============================================================================
@@ -705,8 +795,9 @@ export function useInteractionLayer(
       onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
+      onWheel: handleWheel,
     }),
-    [handlePointerDown, handlePointerMove, handlePointerUp]
+    [handlePointerDown, handlePointerMove, handlePointerUp, handleWheel]
   );
 
   // ============================================================================
@@ -737,6 +828,7 @@ export function useInteractionLayer(
     // View
     setZoom,
     setPan,
+    setView,
     setFitMode,
     resetView,
 

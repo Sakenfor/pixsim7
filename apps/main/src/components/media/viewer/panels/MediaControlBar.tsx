@@ -5,9 +5,19 @@
  * Overlay tool toggles have moved to ViewerToolStrip.
  */
 
+import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
+import { useRef, useState } from 'react';
+
 import { Icon } from '@lib/icons';
 
 import type { FitMode } from './MediaDisplay';
+
+export interface ScopeItem {
+  id: string;
+  label: string;
+  count: number;
+  active: boolean;
+}
 
 interface MediaControlBarProps {
   // Navigation
@@ -39,6 +49,11 @@ interface MediaControlBarProps {
   showCapture?: boolean;
   captureDisabled?: boolean;
   onCaptureFrame?: () => void;
+
+  // Scope switcher
+  scopeLabel?: string;
+  scopes?: ScopeItem[];
+  onSwitchScope?: (id: string) => void;
 }
 
 export function MediaControlBar({
@@ -60,11 +75,18 @@ export function MediaControlBar({
   showCapture,
   captureDisabled,
   onCaptureFrame,
+  scopeLabel,
+  scopes,
+  onSwitchScope,
 }: MediaControlBarProps) {
+  const [scopeDropdownOpen, setScopeDropdownOpen] = useState(false);
+  const scopeTriggerRef = useRef<HTMLButtonElement>(null);
+  const hasMultipleScopes = scopes && scopes.length > 1;
+
   return (
     <div className="flex-shrink-0 border-t border-neutral-200 dark:border-neutral-700">
       <div className="flex items-center justify-between px-3 py-1.5">
-        {/* Left: Navigation */}
+        {/* Left: Navigation + scope */}
         <div className="flex items-center gap-2">
           <button
             onClick={onNavigatePrev}
@@ -85,6 +107,50 @@ export function MediaControlBar({
           >
             <Icon name="chevronRight" size={16} />
           </button>
+
+          {/* Scope switcher */}
+          {scopeLabel && (
+            <>
+              <div className="h-3.5 w-px bg-neutral-200 dark:bg-neutral-700 mx-0.5" />
+              {hasMultipleScopes ? (
+                <div className="relative">
+                  <button
+                    ref={scopeTriggerRef}
+                    onClick={() => setScopeDropdownOpen((prev) => !prev)}
+                    className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400 transition-colors"
+                    title="Switch navigation scope"
+                  >
+                    <span className="truncate max-w-[140px]">{scopeLabel}</span>
+                    <Icon name="chevronDown" size={10} />
+                  </button>
+                  <Dropdown
+                    isOpen={scopeDropdownOpen}
+                    onClose={() => setScopeDropdownOpen(false)}
+                    position="top-left"
+                    minWidth="160px"
+                    triggerRef={scopeTriggerRef}
+                  >
+                    {scopes!.map((scope) => (
+                      <DropdownItem
+                        key={scope.id}
+                        onClick={() => {
+                          onSwitchScope?.(scope.id);
+                          setScopeDropdownOpen(false);
+                        }}
+                        icon={scope.active ? <Icon name="check" size={10} /> : <span className="w-[10px]" />}
+                      >
+                        {scope.label}
+                      </DropdownItem>
+                    ))}
+                  </Dropdown>
+                </div>
+              ) : (
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 truncate max-w-[140px]">
+                  {scopeLabel}
+                </span>
+              )}
+            </>
+          )}
         </div>
 
         {/* Center: Zoom controls */}

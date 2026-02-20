@@ -1,38 +1,62 @@
-import { Dropdown, DropdownItem } from '@pixsim7/shared.ui';
-import { useMemo, useCallback, useRef, useState } from 'react';
+import { useMemo, useCallback } from 'react';
 
+import { Icon } from '@lib/icons';
 
 import { useCaptureRegionStore } from '@features/mediaViewer';
 
 import type { CaptureAction } from '../../panels/hooks/useFrameCapture';
 import { RegionAnnotationOverlay } from '../../panels/RegionAnnotationOverlay';
+import { findActiveRegion, getRegionPixelDimensions, useRegionStoreSelectors } from '../index';
 import {
-  getToolbarButtonClass,
-  TOOLBAR_BUTTON_BASE,
-  TOOLBAR_BUTTON_INACTIVE,
-  TOOLBAR_BUTTON_DISABLED,
-  findActiveRegion,
-  getRegionPixelDimensions,
-  useRegionStoreSelectors,
-} from '../index';
+  OverlaySidePanel,
+  SideSection,
+  SideDivider,
+  SideToolButton,
+  SidePrimaryButton,
+} from '../shared/OverlaySidePanel';
 import type { MediaOverlayComponentProps } from '../types';
 
-export function CaptureOverlayMain({ asset, settings }: MediaOverlayComponentProps) {
-  return (
-    <RegionAnnotationOverlay
-      asset={asset}
-      settings={settings}
-      useRegionStore={useCaptureRegionStore}
-    />
-  );
-}
-
-export function CaptureOverlayToolbar({
+export function CaptureOverlayMain({
   asset,
+  settings,
   onCaptureFrame,
   captureDisabled,
   mediaDimensions,
 }: MediaOverlayComponentProps) {
+  return (
+    <div className="absolute inset-0 flex bg-surface-inset">
+      <CaptureSidePanel
+        asset={asset}
+        onCaptureFrame={onCaptureFrame}
+        captureDisabled={captureDisabled}
+        mediaDimensions={mediaDimensions}
+      />
+      <div className="flex-1 min-w-0 relative">
+        <RegionAnnotationOverlay
+          asset={asset}
+          settings={settings}
+          useRegionStore={useCaptureRegionStore}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── CaptureSidePanel ──────────────────────────────────────────────────
+
+interface CaptureSidePanelProps {
+  asset: MediaOverlayComponentProps['asset'];
+  onCaptureFrame?: (action?: CaptureAction) => void;
+  captureDisabled?: boolean;
+  mediaDimensions?: { width: number; height: number };
+}
+
+function CaptureSidePanel({
+  asset,
+  onCaptureFrame,
+  captureDisabled,
+  mediaDimensions,
+}: CaptureSidePanelProps) {
   const {
     regions,
     regionCount,
@@ -42,10 +66,6 @@ export function CaptureOverlayToolbar({
     clearRegions,
   } = useRegionStoreSelectors(useCaptureRegionStore, asset.id);
 
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const chevronRef = useRef<HTMLButtonElement>(null);
-
-  // Calculate pixel dimensions for selected/active capture region
   const regionPixelDimensions = useMemo(() => {
     const activeRegion = findActiveRegion(regions, selectedRegionId);
     if (!activeRegion?.bounds || activeRegion.type !== 'rect') return null;
@@ -55,97 +75,88 @@ export function CaptureOverlayToolbar({
   const isVideo = asset.type === 'video';
   const canCapture = Boolean(onCaptureFrame) && (asset.type === 'video' || asset.type === 'image');
 
-  const handleAction = useCallback((action: CaptureAction) => {
-    setIsDropdownOpen(false);
-    onCaptureFrame?.(action);
-  }, [onCaptureFrame]);
+  const handleAction = useCallback(
+    (action: CaptureAction) => onCaptureFrame?.(action),
+    [onCaptureFrame],
+  );
 
   return (
-    <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
-      <span className="text-neutral-400 mr-2">Region:</span>
+    <OverlaySidePanel>
+      <SideSection label="Region">
+        <SideToolButton
+          icon="square"
+          label="Rect"
+          active={drawingMode === 'rect'}
+          title="Draw capture rectangle"
+          onClick={() => setDrawingMode('rect')}
+        />
+        <SideToolButton
+          icon="pencil"
+          label="Poly"
+          active={drawingMode === 'polygon'}
+          title="Draw polygon capture region"
+          onClick={() => setDrawingMode('polygon')}
+        />
+        <SideToolButton
+          icon="mousePointer"
+          label="Select"
+          active={drawingMode === 'select'}
+          title="Select a capture region"
+          onClick={() => setDrawingMode('select')}
+        />
+      </SideSection>
 
-      <button
-        onClick={() => setDrawingMode('rect')}
-        className={getToolbarButtonClass(drawingMode === 'rect')}
-        title="Draw capture rectangle"
-      >
-        Rect
-      </button>
-      <button
-        onClick={() => setDrawingMode('polygon')}
-        className={getToolbarButtonClass(drawingMode === 'polygon')}
-        title="Draw polygon capture region, double-click to finish"
-      >
-        Poly
-      </button>
-      <button
-        onClick={() => setDrawingMode('select')}
-        className={getToolbarButtonClass(drawingMode === 'select')}
-        title="Select a capture region"
-      >
-        Select
-      </button>
+      <SideDivider />
 
-      <button
-        onClick={clearRegions}
-        disabled={regionCount === 0}
-        className={`${TOOLBAR_BUTTON_BASE} ${TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title="Clear capture regions"
-      >
-        Clear
-      </button>
+      <SideSection label="Actions">
+        <button
+          onClick={clearRegions}
+          disabled={regionCount === 0}
+          className="flex items-center gap-2 w-full px-2 py-1.5 rounded text-th-secondary hover:bg-surface-elevated disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Clear capture regions"
+        >
+          Clear
+        </button>
+      </SideSection>
 
       {regionPixelDimensions && (
-        <span className="text-neutral-400 ml-2" title="Capture region size in pixels">
-          {regionPixelDimensions.width} x {regionPixelDimensions.height}
-        </span>
+        <>
+          <SideDivider />
+          <SideSection label="Info">
+            <span className="text-th-secondary text-[11px] tabular-nums">
+              {regionPixelDimensions.width} × {regionPixelDimensions.height} px
+            </span>
+          </SideSection>
+        </>
       )}
 
       <div className="flex-1" />
 
-      <span className="text-neutral-500 text-[10px]">
-        {drawingMode === 'rect' && 'Drag to draw rectangle'}
-        {drawingMode === 'polygon' && 'Click points, double-click to finish'}
-        {drawingMode === 'select' && 'Click region to select'}
-      </span>
-
-      {/* Split button: main action + dropdown chevron */}
-      <div className="relative flex">
-        <button
-          onClick={() => handleAction('clipboard')}
-          disabled={!canCapture || captureDisabled}
-          className={`${TOOLBAR_BUTTON_BASE} rounded-r-none ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-          title="Copy to clipboard"
-        >
+      <SidePrimaryButton
+        variant="success"
+        disabled={!canCapture || captureDisabled}
+        title="Copy to clipboard"
+        onClick={() => handleAction('clipboard')}
+      >
+        <span className="flex items-center justify-center gap-1.5">
+          <Icon name="camera" size={13} />
           {isVideo ? 'Capture' : 'Crop'}
-        </button>
-        <button
-          ref={chevronRef}
-          onClick={() => setIsDropdownOpen((o) => !o)}
-          disabled={!canCapture || captureDisabled}
-          className={`${TOOLBAR_BUTTON_BASE} rounded-l-none border-l border-emerald-700 px-1 ${canCapture ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-          title="More capture actions"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-            <path d="M2 3.5L5 7L8 3.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        </span>
+      </SidePrimaryButton>
 
-        <Dropdown
-          isOpen={isDropdownOpen}
-          onClose={() => setIsDropdownOpen(false)}
-          position="bottom-right"
-          triggerRef={chevronRef}
-          minWidth="170px"
+      <div className="px-2">
+        <button
+          onClick={() => handleAction('upload')}
+          disabled={!canCapture || captureDisabled}
+          className="w-full py-1.5 rounded text-[11px] text-th-secondary hover:text-th hover:bg-surface-elevated disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          title="Upload to provider"
         >
-          <DropdownItem onClick={() => handleAction('clipboard')}>
-            Copy to clipboard
-          </DropdownItem>
-          <DropdownItem onClick={() => handleAction('upload')} variant="success">
+          <span className="flex items-center justify-center gap-1.5">
+            <Icon name="upload" size={12} />
             Upload to provider
-          </DropdownItem>
-        </Dropdown>
+          </span>
+        </button>
       </div>
-    </div>
+    </OverlaySidePanel>
   );
 }

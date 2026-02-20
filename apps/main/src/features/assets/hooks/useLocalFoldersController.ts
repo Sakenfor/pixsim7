@@ -730,14 +730,15 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   const uploadOneInternal = useCallback(async (
     keyOrAsset: string | LocalAsset,
-    options?: { saveTarget?: 'provider' | 'library' },
+    options?: { saveTarget?: 'provider' | 'library'; providerId?: string },
   ): Promise<UploadAssetResponse | null> => {
     const asset = typeof keyOrAsset === 'string' ? assetsRecord[keyOrAsset] : keyOrAsset;
     if (!asset) return null;
+    const effectiveProviderId = options?.providerId ?? providerId;
     const saveTarget: 'provider' | 'library' =
-      options?.saveTarget ?? (providerId ? 'provider' : 'library');
+      options?.saveTarget ?? (effectiveProviderId ? 'provider' : 'library');
     const targetProviderId = saveTarget === 'provider'
-      ? (providerId || 'local')
+      ? (effectiveProviderId || 'local')
       : 'local';
 
     setUploadStatus(s => ({ ...s, [asset.key]: 'uploading' }));
@@ -758,7 +759,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         file,
         filename: asset.name,
         saveTarget,
-        providerId: saveTarget === 'provider' ? (providerId || undefined) : undefined,
+        providerId: saveTarget === 'provider' ? (effectiveProviderId || undefined) : undefined,
         uploadMethod: 'local',
         uploadContext: {
           client: 'web_app',
@@ -815,6 +816,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Upload one asset
   const uploadOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
     await uploadOneInternal(keyOrAsset);
+  }, [uploadOneInternal]);
+
+  // Upload one asset to a specific provider
+  const uploadOneToProvider = useCallback(async (keyOrAsset: string | LocalAsset, targetProviderId: string) => {
+    await uploadOneInternal(keyOrAsset, { saveTarget: 'provider', providerId: targetProviderId });
   }, [uploadOneInternal]);
 
   const toggleFavoriteOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -909,6 +915,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     uploadStatus,
     uploadNotes,
     uploadOne,
+    uploadOneToProvider,
     favoriteStatus,
     toggleFavoriteOne,
     supported,

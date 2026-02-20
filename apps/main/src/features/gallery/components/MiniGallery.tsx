@@ -7,7 +7,8 @@ import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
-import { useAssetViewerStore, toViewerAsset, toViewerAssets } from '@features/assets';
+import { useAssetViewerStore, selectIsViewerOpen, toViewerAsset, toViewerAssets } from '@features/assets';
+import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
@@ -327,6 +328,14 @@ function MiniGalleryContent({
   const acceptsInput = OPERATION_METADATA[operationType]?.acceptsInput ?? [];
   const canAcceptAssets = acceptsInput.length > 0;
   const openViewer = useAssetViewerStore((s) => s.openViewer);
+  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
+
+  // Register mini-gallery scope for viewer navigation
+  const viewerItems = useMemo(() => toViewerAssets(displayItems), [displayItems]);
+  const miniScopeLabel = context?.sourceLabel
+    ? `${context.sourceLabel} (${displayItems.length})`
+    : `Gallery (${displayItems.length})`;
+  useViewerScopeSync('mini-gallery', miniScopeLabel, viewerItems, isViewerOpen);
 
   // Track which assets are currently being resolved
   const [resolvingIds, setResolvingIds] = useState<Set<number>>(new Set());
@@ -359,7 +368,7 @@ function MiniGalleryContent({
     (asset: AssetModel) => {
       const viewerAsset = toViewerAsset(asset);
       const viewerList = displayItems.length > 0 ? toViewerAssets(displayItems) : undefined;
-      openViewer(viewerAsset, viewerList);
+      openViewer(viewerAsset, viewerList, 'mini-gallery');
     },
     [openViewer, displayItems],
   );

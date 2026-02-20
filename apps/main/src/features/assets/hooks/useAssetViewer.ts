@@ -5,11 +5,34 @@
  * Converts various asset formats to the unified ViewerAsset format.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 
 import { type AssetModel, toViewerAsset, toViewerAssets } from '../models/asset';
-import { useAssetViewerStore, type ViewerAsset } from '../stores/assetViewerStore';
+import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
 import type { LocalAsset } from '../stores/localFoldersStore';
+
+/**
+ * Registers a navigation scope with the asset viewer while the component is mounted.
+ * Automatically unregisters on unmount or when disabled.
+ */
+export function useViewerScopeSync(
+  scopeId: string,
+  label: string,
+  assets: ViewerAsset[],
+  enabled: boolean,
+) {
+  const registerScope = useAssetViewerStore((s) => s.registerScope);
+  const unregisterScope = useAssetViewerStore((s) => s.unregisterScope);
+
+  useEffect(() => {
+    if (enabled && assets.length > 0) {
+      registerScope(scopeId, label, assets);
+    }
+    return () => {
+      unregisterScope(scopeId);
+    };
+  }, [enabled, scopeId, label, assets, registerScope, unregisterScope]);
+}
 
 interface UseAssetViewerOptions {
   source: 'gallery' | 'local';
@@ -62,7 +85,7 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
     (asset: AssetModel, allAssets?: AssetModel[]) => {
       const viewerAsset = toViewerAsset(asset);
       const viewerList = allAssets ? toViewerAssets(allAssets) : undefined;
-      openViewer(viewerAsset, viewerList);
+      openViewer(viewerAsset, viewerList, 'gallery');
     },
     [openViewer]
   );
@@ -82,7 +105,7 @@ export function useAssetViewer(options: UseAssetViewerOptions) {
       const viewerList = allAssets?.map((a) =>
         localAssetToViewer(a, previews?.[a.key])
       );
-      openViewer(viewerAsset, viewerList);
+      openViewer(viewerAsset, viewerList, 'local');
     },
     [openViewer, localAssetToViewer]
   );

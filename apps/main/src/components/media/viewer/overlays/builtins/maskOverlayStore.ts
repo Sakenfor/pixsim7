@@ -19,6 +19,8 @@ export interface MaskOverlayStoreState {
   canRedo: boolean;
   hasContent: boolean;
   isSaving: boolean;
+  zoom: number;
+  isZoomed: boolean;
 
   // ── Callbacks (registered by Main, called by Toolbar) ───────────────
   setMode: (mode: InteractionMode) => void;
@@ -28,13 +30,14 @@ export interface MaskOverlayStoreState {
   redo: () => void;
   clearLayer: () => void;
   exportMask: () => Promise<void>;
+  resetView: () => void;
 
   // ── Internal sync method ────────────────────────────────────────────
   _syncState: (partial: Partial<Pick<MaskOverlayStoreState,
-    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving'
+    'mode' | 'brushSize' | 'brushOpacity' | 'canUndo' | 'canRedo' | 'hasContent' | 'isSaving' | 'zoom' | 'isZoomed'
   >>) => void;
   _registerCallbacks: (cbs: Pick<MaskOverlayStoreState,
-    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask'
+    'setMode' | 'setBrushSize' | 'setBrushOpacity' | 'undo' | 'redo' | 'clearLayer' | 'exportMask' | 'resetView'
   >) => void;
 }
 
@@ -49,6 +52,8 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   canRedo: false,
   hasContent: false,
   isSaving: false,
+  zoom: 1,
+  isZoomed: false,
 
   setMode: noop,
   setBrushSize: noop,
@@ -57,6 +62,7 @@ export const useMaskOverlayStore = create<MaskOverlayStoreState>((set) => ({
   redo: noop,
   clearLayer: noop,
   exportMask: noopAsync,
+  resetView: noop,
 
   _syncState: (partial) => set(partial),
   _registerCallbacks: (cbs) => set(cbs),

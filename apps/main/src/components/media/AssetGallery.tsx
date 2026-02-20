@@ -160,6 +160,12 @@ export interface AssetGalleryProps<T> {
   onToggleFavorite?: (asset: T) => Promise<void> | void;
 
   /**
+   * Upload to a specific provider (used by right-click menu in upload widget).
+   * providerId === 'library' means library-only upload.
+   */
+  onUploadToProvider?: (asset: T, providerId: string) => Promise<void>;
+
+  /**
    * Callback when an asset is selected (for multi-select mode).
    */
   onSelect?: (asset: T, selected: boolean) => void;
@@ -305,6 +311,7 @@ function GalleryItem({
   uploadProgress,
   onOpen,
   onUpload,
+  onUploadToProvider,
   isFavorite,
   onToggleFavorite,
   hashStatus,
@@ -328,6 +335,7 @@ function GalleryItem({
   uploadProgress?: number;
   onOpen?: (resolvedPreviewUrl?: string) => void;
   onUpload?: () => Promise<void>;
+  onUploadToProvider?: (id: number, providerId: string) => Promise<void>;
   isFavorite?: boolean;
   onToggleFavorite?: () => Promise<void> | void;
   hashStatus?: 'unique' | 'duplicate' | 'hashing';
@@ -366,6 +374,7 @@ function GalleryItem({
         uploadState={uploadState}
         uploadProgress={uploadProgress}
         onUploadClick={onUpload ? async () => { await onUpload(); } : undefined}
+        onUploadToProvider={onUploadToProvider}
         isFavorite={isFavorite}
         onToggleFavorite={onToggleFavorite}
         badgeConfig={badgeConfig}
@@ -402,6 +411,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHashStatus,
     onOpen,
     onUpload,
+    onUploadToProvider,
     onToggleFavorite,
     layout = 'masonry',
     cardSize = 'medium',
@@ -413,6 +423,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     // groupBy - reserved for future use
     badgeConfig,
     actions,
+    getActions,
     overlayPresetId,
     emptyState,
     showAssetCount = true,
@@ -490,6 +501,9 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           hashStatus={hashStatus}
           onOpen={onOpen ? (resolvedPreviewUrl) => onOpen(asset, resolvedPreviewUrl) : undefined}
           onUpload={onUpload ? () => onUpload(asset) : undefined}
+          onUploadToProvider={onUploadToProvider
+            ? (_id, pid) => onUploadToProvider(asset, pid)
+            : undefined}
           onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(asset) : undefined}
           lazyLoadRootMargin={lazyLoadRootMargin}
           badgeConfig={badgeConfig}
@@ -517,6 +531,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     loadPreview,
     onOpen,
     onUpload,
+    onUploadToProvider,
     onToggleFavorite,
     lazyLoadRootMargin,
     badgeConfig,

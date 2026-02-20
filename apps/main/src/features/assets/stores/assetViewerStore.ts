@@ -18,6 +18,11 @@ export type ViewerMode = 'side' | 'fullscreen' | 'closed';
  */
 export type GalleryQualityMode = 'thumbnail' | 'preview' | 'auto';
 
+export interface NavigationScope {
+  label: string;
+  assets: ViewerAsset[];
+}
+
 export interface ViewerAsset {
   /** Unique identifier */
   id: string | number;
@@ -81,10 +86,14 @@ interface AssetViewerState {
   settings: ViewerSettings;
   /** Whether metadata panel is visible */
   showMetadata: boolean;
+  /** Registered navigation scopes */
+  scopes: Record<string, NavigationScope>;
+  /** Currently active scope id */
+  activeScopeId: string | null;
 
   // Actions
-  /** Open viewer with an asset */
-  openViewer: (asset: ViewerAsset, assetList?: ViewerAsset[]) => void;
+  /** Open viewer with an asset, optionally setting the initial scope */
+  openViewer: (asset: ViewerAsset, assetList?: ViewerAsset[], scopeId?: string) => void;
   /** Close viewer */
   closeViewer: () => void;
   /** Set viewer mode */
@@ -103,6 +112,12 @@ interface AssetViewerState {
   updateSettings: (settings: Partial<ViewerSettings>) => void;
   /** Update asset list (for when list changes while viewing) */
   updateAssetList: (assetList: ViewerAsset[]) => void;
+  /** Register a navigation scope (upserts). If active scope, syncs assetList. */
+  registerScope: (id: string, label: string, assets: ViewerAsset[]) => void;
+  /** Unregister a navigation scope. Falls back to first remaining if active. */
+  unregisterScope: (id: string) => void;
+  /** Switch to a different scope, swapping assetList and preserving position. */
+  switchScope: (id: string) => void;
 }
 
 const defaultSettings: ViewerSettings = {
@@ -124,11 +139,20 @@ export const useAssetViewerStore = create<AssetViewerState>()(
       currentIndex: -1,
       settings: defaultSettings,
       showMetadata: false,
+      scopes: {},
+      activeScopeId: null,
 
-      openViewer: (asset, assetList) => {
+      openViewer: (asset, assetList, scopeId) => {
         const { settings } = get();
         const list = assetList || [asset];
         const index = list.findIndex((a) => a.id === asset.id);
+
+        const initialScopes: Record<string, NavigationScope> = {};
+        let initialScopeId: string | null = null;
+        if (scopeId) {
+          initialScopes[scopeId] = { label: scopeId, assets: list };
+          initialScopeId = scopeId;
+        }
 
         set({
           currentAsset: asset,
@@ -136,6 +160,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           assetList: list,
           currentIndex: index >= 0 ? index : 0,
           showMetadata: settings.showMetadata,
+          scopes: initialScopes,
+          activeScopeId: initialScopeId,
         });
       },
 
@@ -145,6 +171,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           mode: 'closed',
           assetList: [],
           currentIndex: -1,
+          scopes: {},
+          activeScopeId: null,
         });
       },
 
@@ -211,6 +239,85 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           set({ assetList });
         }
       },
+
+      registerScope: (id, label, assets) => {
+        const { scopes, activeScopeId, currentAsset } = get();
+        const nextScopes = { ...scopes, [id]: { label, assets } };
+        const updates: Partial<AssetViewerState> = { scopes: nextScopes };
+
+        // If this is the active scope, sync the asset list
+        if (id === activeScopeId) {
+          updates.assetList = assets;
+          if (currentAsset) {
+            const idx = assets.findIndex((a) => a.id === currentAsset.id);
+            updates.currentIndex = idx >= 0 ? idx : 0;
+          }
+        }
+
+        // If no active scope yet, activate this one
+        if (!activeScopeId) {
+          updates.activeScopeId = id;
+          updates.assetList = assets;
+          if (currentAsset) {
+            const idx = assets.findIndex((a) => a.id === currentAsset.id);
+            updates.currentIndex = idx >= 0 ? idx : 0;
+          }
+        }
+
+        set(updates);
+      },
+
+      unregisterScope: (id) => {
+        const { scopes, activeScopeId } = get();
+        const { [id]: _, ...remaining } = scopes;
+        const updates: Partial<AssetViewerState> = { scopes: remaining };
+
+        if (id === activeScopeId) {
+          const remainingIds = Object.keys(remaining);
+          if (remainingIds.length > 0) {
+            const fallbackId = remainingIds[0];
+            const fallbackScope = remaining[fallbackId];
+            updates.activeScopeId = fallbackId;
+            updates.assetList = fallbackScope.assets;
+            const { currentAsset } = get();
+            if (currentAsset) {
+              const idx = fallbackScope.assets.findIndex((a) => a.id === currentAsset.id);
+              updates.currentIndex = idx >= 0 ? idx : 0;
+            }
+          } else {
+            updates.activeScopeId = null;
+            // Keep current assetList as-is when no scopes remain
+          }
+        }
+
+        set(updates);
+      },
+
+      switchScope: (id) => {
+        const { scopes, currentAsset } = get();
+        const scope = scopes[id];
+        if (!scope) return;
+
+        const updates: Partial<AssetViewerState> = {
+          activeScopeId: id,
+          assetList: scope.assets,
+        };
+
+        if (currentAsset) {
+          const idx = scope.assets.findIndex((a) => a.id === currentAsset.id);
+          if (idx >= 0) {
+            updates.currentIndex = idx;
+          } else {
+            // Current asset not in new scope — jump to first asset
+            updates.currentIndex = 0;
+            if (scope.assets.length > 0) {
+              updates.currentAsset = scope.assets[0];
+            }
+          }
+        }
+
+        set(updates);
+      },
     }),
     {
       name: 'asset_viewer_v2',
@@ -222,9 +329,9 @@ export const useAssetViewerStore = create<AssetViewerState>()(
           : state.currentAsset,
         mode: state.mode,
         showMetadata: state.showMetadata,
-        // Note: assetList and currentIndex are not persisted as the list can be
-        // large. Navigation context is reconstructed when the user interacts
-        // with the gallery again.
+        // Note: assetList, currentIndex, scopes, and activeScopeId are not
+        // persisted as the list can be large. Navigation context is
+        // reconstructed when the user interacts with the gallery again.
       }),
     }
   )
