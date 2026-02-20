@@ -240,10 +240,16 @@ export function LocalFoldersContent({
         items={controller.assets}
         filterDefs={localFilterDefs}
         toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
-        renderToolbarExtra={(filteredItems) => {
+        renderToolbarExtra={(filteredItems, { filterState: toolbarFilterState }) => {
+          const folderSel = toolbarFilterState.folder;
+          const hasFolderFilter = Array.isArray(folderSel) && folderSel.length > 0;
+          const favSel = toolbarFilterState.favorites;
+          const hasFavFolderScope = Array.isArray(favSel) && favSel.includes('folders') && favoriteFoldersSet.size > 0;
+          const hasFolderScope = hasFolderFilter || hasFavFolderScope;
+
           const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
           const safePage = Math.min(currentPage, totalPages);
-          const showPagination = filteredItems.length > GROUP_PAGE_SIZE;
+          const showPagination = hasFolderScope && filteredItems.length > GROUP_PAGE_SIZE;
 
           return (
             <div className="mt-2 flex items-center justify-between gap-3">

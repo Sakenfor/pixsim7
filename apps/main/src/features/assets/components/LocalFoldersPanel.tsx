@@ -9,7 +9,8 @@ import { useProviders } from '@features/providers';
 
 import type { LocalFoldersController } from '@/types/localSources';
 
-import { useAssetViewer } from '../hooks/useAssetViewer';
+import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
+import { useAssetViewerStore, selectIsViewerOpen, type ViewerAsset } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../stores/localFoldersStore';
 
@@ -134,10 +135,17 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     }),
     [folderNames, controller.providerId]
   );
-  const { openLocalAsset } = useAssetViewer({
+  const { openLocalAsset, localAssetToViewer } = useAssetViewer({
     source: 'local',
     localMetadataResolver,
   });
+  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
+
+  const localViewerAssets = useMemo<ViewerAsset[]>(
+    () => controller.assets.map((a) => localAssetToViewer(a, controller.previews?.[a.key])),
+    [controller.assets, controller.previews, localAssetToViewer],
+  );
+  useViewerScopeSync('local', `Local (${controller.assets.length})`, localViewerAssets, isViewerOpen);
 
   const contentScrollScope = ALL_ASSETS_SCROLL_SCOPE;
 
@@ -451,7 +459,7 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
         )}
       </div>
 
-      <div className="flex-1 min-h-0 px-6">
+      <div className="flex-1 min-h-0 flex flex-col px-6">
         {/* Main content */}
         <LocalFoldersContent
           controller={controller}
