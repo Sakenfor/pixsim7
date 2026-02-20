@@ -6,7 +6,7 @@ roles:
     label: "Mood"
     description: "Emotional tone or atmosphere"
     priority: 50
-    composition_role: role:style_reference
+    composition_role: role:materials:atmosphere
     # Only unambiguous emotional descriptors — words like "soft", "gentle",
     # "tense", "intense" etc. are too context-dependent for keyword matching
     # (they often describe lighting, textures, terrain).  The full set remains

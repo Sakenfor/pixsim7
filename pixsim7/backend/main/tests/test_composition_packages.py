@@ -120,7 +120,7 @@ def test_list_packages_includes_core():
     assert core_pkg.label == "Core Composition"
     assert len(core_pkg.roles) > 0
 
-    # Verify core roles exist
+    # Verify core roles exist (hierarchical IDs)
     role_ids = [r.id for r in core_pkg.roles]
-    assert "main_character" in role_ids
-    assert "environment" in role_ids
+    assert "entities:main_character" in role_ids
+    assert "world:environment" in role_ids

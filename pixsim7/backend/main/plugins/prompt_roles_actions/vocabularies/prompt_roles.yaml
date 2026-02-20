@@ -6,7 +6,7 @@ roles:
     label: "Action"
     description: "Actions, movement, behaviors, or interactions"
     priority: 30
-    composition_role: role:effect
+    composition_role: role:animation:action
     keywords:
       - enter
       - enters

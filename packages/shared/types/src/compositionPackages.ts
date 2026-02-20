@@ -29,6 +29,12 @@ export interface CompositionRoleDefinition {
   /** Tags for filtering and asset matching */
   tags: string[];
 
+  /** Parent group ID (e.g., 'entities' for 'entities:main_character') */
+  parent?: string;
+
+  /** Whether this is a group entry (true) vs a leaf role (false) */
+  isGroup?: boolean;
+
   /** Exact tag slugs that map to this role */
   slugMappings?: string[];
 

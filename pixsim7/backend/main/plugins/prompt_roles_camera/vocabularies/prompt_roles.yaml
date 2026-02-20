@@ -6,7 +6,7 @@ roles:
     label: "Camera"
     description: "Camera and shot instructions"
     priority: 10
-    composition_role: role:effect
+    composition_role: role:camera:angle
     keywords:
       - camera
       - shot

@@ -6,7 +6,7 @@ roles:
     label: "Setting"
     description: "Environment, location, or time of day"
     priority: 40
-    composition_role: role:environment
+    composition_role: role:world:environment
     keywords:
       - forest
       - woods

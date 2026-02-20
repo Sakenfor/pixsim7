@@ -4,7 +4,7 @@ Generic concept response schemas.
 These schemas support the unified ConceptRef system where all concept kinds
 share a common structure. Group names and metadata come from providers.
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, computed_field
 
 
@@ -87,7 +87,7 @@ class RoleConceptResponse(BaseModel):
     New code should use the generic ConceptResponse via /concepts/{kind}.
     """
 
-    id: str = Field(description="Role ID (e.g., 'main_character', 'environment')")
+    id: str = Field(description="Role ID (e.g., 'entities:main_character', 'world:environment')")
     label: str = Field(description="Human-readable label")
     description: str = Field(description="Role description")
     color: str = Field(description="Tailwind color name for UI badges")
@@ -95,6 +95,8 @@ class RoleConceptResponse(BaseModel):
         default=0, description="Layer order (0=background, higher=foreground)"
     )
     tags: List[str] = Field(default_factory=list, description="Tags for filtering")
+    parent: Optional[str] = Field(default=None, description="Parent group ID (e.g., 'entities')")
+    is_group: bool = Field(default=False, description="Whether this is a group entry vs leaf role")
     slug_mappings: List[str] = Field(
         default_factory=list,
         description="Exact tag slugs that map to this role (e.g., 'bg', 'char:hero')",

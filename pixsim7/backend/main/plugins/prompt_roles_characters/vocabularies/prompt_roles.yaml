@@ -6,7 +6,7 @@ roles:
     label: "Character"
     description: "Descriptions of people, creatures, or beings"
     priority: 20
-    composition_role: role:main_character
+    composition_role: role:entities:main_character
     keywords:
       - werewolf
       - vampire

@@ -47,6 +47,8 @@ class RoleDef:
     slots: SlotBinding = field(default_factory=SlotBinding)
     tags: List[str] = field(default_factory=list)
     aliases: List[str] = field(default_factory=list)
+    parent: Optional[str] = None
+    is_group: bool = False
     source: str = "core"
 
 
@@ -144,6 +146,9 @@ class SpeciesDef:
     default_stance: str = "standing"
     keywords: List[str] = field(default_factory=list)
     source: str = "core"
+    # Generic modifier registry — populated by factory from existing fields
+    # plus any extra word_lists/modifiers in YAML.  Keyed by attr name.
+    modifiers: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

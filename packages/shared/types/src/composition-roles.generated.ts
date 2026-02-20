@@ -16,7 +16,7 @@
  * Canonical composition roles from core vocab.
  * @see compositionPackageStore.roles for runtime API with plugin roles
  */
-export const COMPOSITION_ROLES = ["main_character","companion","environment","prop","style_reference","effect"] as const;
+export const COMPOSITION_ROLES = ["entities","entities:subject","entities:main_character","entities:companion","entities:placed","entities:prop","world","world:environment","world:setting","camera","camera:angle","camera:fov","camera:composition","lighting","lighting:key","lighting:fill","materials","materials:wardrobe","materials:rendering","materials:atmosphere","materials:romance","animation","animation:action","animation:pose"] as const;
 
 /**
  * Core composition role type, derived from vocab.
@@ -35,12 +35,30 @@ export type RoleId = ImageCompositionRole | (string & {});
  * @see compositionPackageStore.getRoleDescription() for runtime API
  */
 export const ROLE_DESCRIPTIONS = {
-  "main_character": "Primary subject/character in the scene",
-  "companion": "Supporting characters (NPCs, pets, monsters)",
-  "environment": "Background, setting, location",
-  "prop": "Objects, vehicles, items",
-  "style_reference": "Style/aesthetic reference images",
-  "effect": "Lighting, camera, visual effects"
+  "entities": "Things in the scene — characters, creatures, objects",
+  "entities:subject": "Preservation-locked reference subject for image-edit",
+  "entities:main_character": "Primary subject/character in the scene",
+  "entities:companion": "Supporting characters (NPCs, pets, monsters)",
+  "entities:placed": "Positioned secondary character in the scene",
+  "entities:prop": "Objects, vehicles, items",
+  "world": "The space, location, and broader setting",
+  "world:environment": "Background, setting, location",
+  "world:setting": "Broader location, time period, or world context",
+  "camera": "Viewpoint and framing controls",
+  "camera:angle": "Viewpoint direction (low angle, bird's eye, etc.)",
+  "camera:fov": "Field of view / focal length",
+  "camera:composition": "Layer ordering, depth arrangement",
+  "lighting": "Light sources and illumination",
+  "lighting:key": "Primary light source",
+  "lighting:fill": "Secondary/fill light source",
+  "materials": "Visual treatment, style, and aesthetic",
+  "materials:wardrobe": "Clothing, armor, accessories",
+  "materials:rendering": "Render style, art direction, aesthetic reference",
+  "materials:atmosphere": "Emotional tone, mood, ambiance",
+  "materials:romance": "Intimate/romantic visual treatment",
+  "animation": "Movement, behavior, and pose directives",
+  "animation:action": "Actions, interactions, movement behaviors",
+  "animation:pose": "Static pose or body position"
 } as const satisfies Record<ImageCompositionRole, string>;
 
 /**
@@ -48,12 +66,30 @@ export const ROLE_DESCRIPTIONS = {
  * @see compositionPackageStore.getRoleColor() for runtime API
  */
 export const ROLE_COLORS = {
-  "main_character": "blue",
-  "companion": "purple",
-  "environment": "green",
-  "prop": "orange",
-  "style_reference": "pink",
-  "effect": "cyan"
+  "entities": "blue",
+  "entities:subject": "blue",
+  "entities:main_character": "blue",
+  "entities:companion": "blue",
+  "entities:placed": "blue",
+  "entities:prop": "blue",
+  "world": "green",
+  "world:environment": "green",
+  "world:setting": "green",
+  "camera": "slate",
+  "camera:angle": "slate",
+  "camera:fov": "slate",
+  "camera:composition": "slate",
+  "lighting": "amber",
+  "lighting:key": "amber",
+  "lighting:fill": "amber",
+  "materials": "pink",
+  "materials:wardrobe": "pink",
+  "materials:rendering": "pink",
+  "materials:atmosphere": "pink",
+  "materials:romance": "pink",
+  "animation": "cyan",
+  "animation:action": "cyan",
+  "animation:pose": "cyan"
 } as const satisfies Record<ImageCompositionRole, string>;
 
 /**
@@ -61,12 +97,30 @@ export const ROLE_COLORS = {
  * @see compositionPackageStore.roles for runtime API
  */
 export const ROLE_DEFAULT_LAYERS = {
-  "main_character": 1,
-  "companion": 1,
-  "environment": 0,
-  "prop": 1,
-  "style_reference": 0,
-  "effect": 2
+  "entities": 1,
+  "entities:subject": 1,
+  "entities:main_character": 1,
+  "entities:companion": 1,
+  "entities:placed": 1,
+  "entities:prop": 1,
+  "world": 0,
+  "world:environment": 0,
+  "world:setting": 0,
+  "camera": 2,
+  "camera:angle": 2,
+  "camera:fov": 2,
+  "camera:composition": 2,
+  "lighting": 2,
+  "lighting:key": 2,
+  "lighting:fill": 2,
+  "materials": 0,
+  "materials:wardrobe": 0,
+  "materials:rendering": 0,
+  "materials:atmosphere": 0,
+  "materials:romance": 0,
+  "animation": 2,
+  "animation:action": 2,
+  "animation:pose": 2
 } as const satisfies Record<ImageCompositionRole, number>;
 
 /**
@@ -74,35 +128,124 @@ export const ROLE_DEFAULT_LAYERS = {
  * @see compositionPackageStore.roles for runtime API
  */
 export const ROLE_TAGS = {
-  "main_character": [
+  "entities": [
+    "character",
+    "subject",
+    "object"
+  ],
+  "entities:subject": [
+    "subject",
+    "preserve",
+    "lock"
+  ],
+  "entities:main_character": [
     "character",
     "subject",
     "primary"
   ],
-  "companion": [
+  "entities:companion": [
     "character",
     "secondary",
     "npc"
   ],
-  "environment": [
-    "background",
-    "setting",
-    "location"
+  "entities:placed": [
+    "character",
+    "placed",
+    "positioned"
   ],
-  "prop": [
+  "entities:prop": [
     "object",
     "item",
     "prop"
   ],
-  "style_reference": [
+  "world": [
+    "background",
+    "setting",
+    "location"
+  ],
+  "world:environment": [
+    "background",
+    "setting",
+    "location"
+  ],
+  "world:setting": [
+    "setting",
+    "world",
+    "period"
+  ],
+  "camera": [
+    "camera",
+    "viewpoint",
+    "framing"
+  ],
+  "camera:angle": [
+    "camera",
+    "angle",
+    "viewpoint"
+  ],
+  "camera:fov": [
+    "camera",
+    "fov",
+    "lens"
+  ],
+  "camera:composition": [
+    "camera",
+    "composition",
+    "depth"
+  ],
+  "lighting": [
+    "lighting",
+    "light"
+  ],
+  "lighting:key": [
+    "lighting",
+    "key",
+    "primary"
+  ],
+  "lighting:fill": [
+    "lighting",
+    "fill",
+    "secondary"
+  ],
+  "materials": [
     "style",
-    "reference",
+    "material",
     "aesthetic"
   ],
-  "effect": [
-    "effect",
-    "lighting",
-    "camera"
+  "materials:wardrobe": [
+    "wardrobe",
+    "clothing",
+    "outfit"
+  ],
+  "materials:rendering": [
+    "style",
+    "reference",
+    "aesthetic",
+    "rendering"
+  ],
+  "materials:atmosphere": [
+    "mood",
+    "atmosphere",
+    "tone"
+  ],
+  "materials:romance": [
+    "romance",
+    "intimate"
+  ],
+  "animation": [
+    "animation",
+    "movement",
+    "action"
+  ],
+  "animation:action": [
+    "action",
+    "interaction",
+    "movement"
+  ],
+  "animation:pose": [
+    "pose",
+    "position",
+    "stance"
   ]
 } as const satisfies Record<ImageCompositionRole, readonly string[]>;
 
@@ -112,17 +255,17 @@ export const ROLE_TAGS = {
  * @see compositionPackageStore.slugToRole for runtime API
  */
 export const SLUG_TO_COMPOSITION_ROLE = {
-  "bg": "environment",
-  "role:bg": "environment",
-  "role:environment": "environment",
-  "role:setting": "environment",
-  "char:hero": "main_character",
-  "pov:player": "main_character",
-  "role:char": "main_character",
-  "role:character": "main_character",
-  "char:npc": "companion",
-  "char:monster": "companion",
-  "comic_frame": "style_reference"
+  "bg": "world:environment",
+  "role:bg": "world:environment",
+  "role:environment": "world:environment",
+  "role:setting": "world:setting",
+  "char:hero": "entities:main_character",
+  "pov:player": "entities:main_character",
+  "role:char": "entities:main_character",
+  "role:character": "entities:main_character",
+  "char:npc": "entities:companion",
+  "char:monster": "entities:companion",
+  "comic_frame": "materials:rendering"
 } as const satisfies Record<string, ImageCompositionRole>;
 
 /**
@@ -131,23 +274,23 @@ export const SLUG_TO_COMPOSITION_ROLE = {
  * @see compositionPackageStore.namespaceToRole for runtime API
  */
 export const NAMESPACE_TO_COMPOSITION_ROLE = {
-  "character": "main_character",
-  "person": "main_character",
-  "npc": "main_character",
-  "animal": "companion",
-  "creature": "companion",
-  "object": "prop",
-  "prop": "prop",
-  "vehicle": "prop",
-  "location": "environment",
-  "environment": "environment",
-  "setting": "environment",
-  "background": "environment",
-  "scene": "environment",
-  "place": "environment",
-  "style": "style_reference",
-  "lighting": "effect",
-  "camera": "effect"
+  "character": "entities:main_character",
+  "person": "entities:main_character",
+  "npc": "entities:main_character",
+  "animal": "entities:companion",
+  "creature": "entities:companion",
+  "object": "entities:prop",
+  "prop": "entities:prop",
+  "vehicle": "entities:prop",
+  "location": "world:environment",
+  "environment": "world:environment",
+  "setting": "world:environment",
+  "background": "world:environment",
+  "scene": "world:environment",
+  "place": "world:environment",
+  "style": "materials:rendering",
+  "lighting": "lighting:key",
+  "camera": "camera:angle"
 } as const satisfies Record<string, ImageCompositionRole>;
 
 /**
@@ -155,7 +298,42 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = {
  * When multiple tags map to different roles, pick the highest priority.
  * @see compositionPackageStore.priority for runtime API
  */
-export const COMPOSITION_ROLE_PRIORITY = ["main_character","companion","prop","style_reference","effect","environment"] as const satisfies readonly ImageCompositionRole[];
+export const COMPOSITION_ROLE_PRIORITY = ["entities:subject","entities:main_character","entities:companion","entities:placed","entities:prop","materials:rendering","materials:wardrobe","materials:atmosphere","materials:romance","camera:angle","camera:fov","camera:composition","lighting:key","lighting:fill","animation:action","animation:pose","world:environment","world:setting"] as const satisfies readonly ImageCompositionRole[];
+
+/**
+ * Group role IDs (top-level categories, not assignable to assets).
+ */
+export const ROLE_GROUPS = ["entities","world","camera","lighting","materials","animation"] as const;
+
+/**
+ * Leaf role IDs (assignable to assets).
+ */
+export const LEAF_COMPOSITION_ROLES = ["entities:subject","entities:main_character","entities:companion","entities:placed","entities:prop","world:environment","world:setting","camera:angle","camera:fov","camera:composition","lighting:key","lighting:fill","materials:wardrobe","materials:rendering","materials:atmosphere","materials:romance","animation:action","animation:pose"] as const;
+
+/**
+ * Leaf role → parent group mapping.
+ * e.g. "entities:main_character" → "entities"
+ */
+export const ROLE_PARENTS = {
+  "entities:subject": "entities",
+  "entities:main_character": "entities",
+  "entities:companion": "entities",
+  "entities:placed": "entities",
+  "entities:prop": "entities",
+  "world:environment": "world",
+  "world:setting": "world",
+  "camera:angle": "camera",
+  "camera:fov": "camera",
+  "camera:composition": "camera",
+  "lighting:key": "lighting",
+  "lighting:fill": "lighting",
+  "materials:wardrobe": "materials",
+  "materials:rendering": "materials",
+  "materials:atmosphere": "materials",
+  "materials:romance": "materials",
+  "animation:action": "animation",
+  "animation:pose": "animation"
+} as const satisfies Partial<Record<ImageCompositionRole, string>>;
 
 /**
  * Infer composition role from a single tag string.

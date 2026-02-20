@@ -44,6 +44,12 @@ class CompositionRoleDefinition:
     tags: List[str] = field(default_factory=list)
     """Tags for filtering and asset matching"""
 
+    parent: Optional[str] = None
+    """Parent group ID (e.g., 'entities' for 'entities:main_character'), None for groups/flat roles"""
+
+    is_group: bool = False
+    """Whether this is a group entry (True) vs a leaf role (False)"""
+
     # Optional inference mappings (for auto-detecting role from asset tags)
     slug_mappings: List[str] = field(default_factory=list)
     """Exact tag slugs that map to this role (e.g., ['pov:hands', 'role:pov_hands'])"""

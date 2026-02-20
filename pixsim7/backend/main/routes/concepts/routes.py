@@ -39,6 +39,8 @@ def _role_to_concept_response(role: CompositionRoleDefinition) -> RoleConceptRes
         color=role.color,
         default_layer=role.default_layer,
         tags=list(role.tags),
+        parent=role.parent,
+        is_group=role.is_group,
         slug_mappings=list(role.slug_mappings),
         namespace_mappings=list(role.namespace_mappings),
     )

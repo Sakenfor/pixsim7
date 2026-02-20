@@ -6,7 +6,7 @@ roles:
     label: "Romance"
     description: "Romantic or intimate content"
     priority: 60
-    composition_role: role:style_reference
+    composition_role: role:materials:romance
     keywords:
       - kiss
       - kisses

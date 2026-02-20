@@ -43,6 +43,13 @@ def make_slot(id: str, data: Dict[str, Any], source: str) -> SlotDef:
 def make_role(id: str, data: Dict[str, Any], source: str) -> RoleDef:
     """Create a RoleDef from YAML data."""
     slots_data = data.get("slots", {})
+    is_group = data.get("is_group", False)
+    parent = data.get("parent")
+    # Auto-derive parent from ID convention: role:entities:main_character → role:entities
+    if parent is None and not is_group:
+        bare = id[5:] if id.startswith("role:") else id
+        if ":" in bare:
+            parent = "role:" + bare.split(":")[0]
     return RoleDef(
         id=id,
         label=data.get("label", ""),
@@ -56,6 +63,8 @@ def make_role(id: str, data: Dict[str, Any], source: str) -> RoleDef:
         ),
         tags=data.get("tags", []),
         aliases=data.get("aliases", []),
+        parent=parent,
+        is_group=is_group,
         source=source,
     )
 
@@ -161,16 +170,44 @@ def make_part(id: str, data: Dict[str, Any], source: str) -> PartDef:
 
 def make_species(id: str, data: Dict[str, Any], source: str) -> SpeciesDef:
     """Create a SpeciesDef from YAML data."""
+    from pixsim7.backend.main.shared.ontology.vocabularies.modifiers import (
+        FixedValue,
+        GradedList,
+        PronounSet,
+        hydrate_modifier,
+    )
+
+    anatomy_map = data.get("anatomy_map", {})
+    movement_verbs = data.get("movement_verbs", [])
+    pronoun_set = data.get("pronoun_set", {})
+    default_stance = data.get("default_stance", "standing")
+
+    # Build unified modifier dict from existing fields
+    modifiers: Dict[str, Any] = {}
+    for key, val in anatomy_map.items():
+        modifiers[key] = FixedValue(val)
+    if movement_verbs:
+        modifiers["movement"] = GradedList(movement_verbs)
+    if default_stance:
+        modifiers["stance"] = FixedValue(default_stance)
+    if pronoun_set:
+        modifiers["pronoun"] = PronounSet(pronoun_set)
+
+    # Hydrate extra word_lists from YAML (pure YAML extensibility)
+    for key, val in data.get("word_lists", {}).items():
+        modifiers[key] = hydrate_modifier(val)
+
     return SpeciesDef(
         id=id,
         label=data.get("label", ""),
         category=data.get("category", ""),
-        anatomy_map=data.get("anatomy_map", {}),
-        movement_verbs=data.get("movement_verbs", []),
-        pronoun_set=data.get("pronoun_set", {}),
-        default_stance=data.get("default_stance", "standing"),
+        anatomy_map=anatomy_map,
+        movement_verbs=movement_verbs,
+        pronoun_set=pronoun_set,
+        default_stance=default_stance,
         keywords=data.get("keywords", []),
         source=source,
+        modifiers=modifiers,
     )
 
 

@@ -1,10 +1,34 @@
-# Composition Roles Vocabulary
-# Defines what role an image plays in a composition
-# Replaces: composition-roles.yaml
-version: "1.0.0"
+# Composition Roles Vocabulary — Hierarchical
+# Two-level hierarchy: group (Level 1) + leaf (Level 2)
+# Old flat IDs preserved as aliases for backward compatibility.
+version: "2.0.0"
 
 roles:
-  role:main_character:
+  # =========================================================================
+  # ENTITIES (blue) — things in the scene
+  # =========================================================================
+  role:entities:
+    label: "Entities"
+    description: "Things in the scene — characters, creatures, objects"
+    color: blue
+    is_group: true
+    default_layer: 1
+    default_influence: content
+    tags: [character, subject, object]
+
+  role:entities:subject:
+    label: "Subject"
+    description: "Preservation-locked reference subject for image-edit"
+    color: blue
+    default_layer: 1
+    default_influence: content
+    slots:
+      provides: [slot:focal_subject]
+      requires: []
+    tags: [subject, preserve, lock]
+    aliases: [subject]
+
+  role:entities:main_character:
     label: "Main Character"
     description: "Primary subject/character in the scene"
     color: blue
@@ -14,21 +38,57 @@ roles:
       provides: [slot:focal_subject, slot:character_presence]
       requires: []
     tags: [character, subject, primary]
-    aliases: [character, char, hero, subject]
+    aliases: [main_character, character, char, hero]
 
-  role:companion:
+  role:entities:companion:
     label: "Companion"
     description: "Supporting characters (NPCs, pets, monsters)"
-    color: purple
+    color: blue
     default_layer: 1
     default_influence: content
     slots:
       provides: [slot:secondary_subject, slot:character_presence]
       requires: []
     tags: [character, secondary, npc]
-    aliases: [npc, companion, monster]
+    aliases: [companion, npc, monster]
 
-  role:environment:
+  role:entities:placed:
+    label: "Placed Character"
+    description: "Positioned secondary character in the scene"
+    color: blue
+    default_layer: 1
+    default_influence: content
+    slots:
+      provides: [slot:secondary_subject, slot:character_presence]
+      requires: [slot:spatial_context]
+    tags: [character, placed, positioned]
+    aliases: []
+
+  role:entities:prop:
+    label: "Prop"
+    description: "Objects, vehicles, items"
+    color: blue
+    default_layer: 1
+    default_influence: content
+    slots:
+      provides: [slot:scene_prop]
+      requires: [slot:spatial_context]
+    tags: [object, item, prop]
+    aliases: [prop, object, vehicle]
+
+  # =========================================================================
+  # WORLD (green) — the space/location
+  # =========================================================================
+  role:world:
+    label: "World"
+    description: "The space, location, and broader setting"
+    color: green
+    is_group: true
+    default_layer: 0
+    default_influence: content
+    tags: [background, setting, location]
+
+  role:world:environment:
     label: "Environment"
     description: "Background, setting, location"
     color: green
@@ -40,82 +100,250 @@ roles:
     tags: [background, setting, location]
     aliases: [environment, setting, background, bg, scene]
 
-  role:prop:
-    label: "Prop"
-    description: "Objects, vehicles, items"
-    color: orange
-    default_layer: 1
+  role:world:setting:
+    label: "Setting"
+    description: "Broader location, time period, or world context"
+    color: green
+    default_layer: 0
     default_influence: content
     slots:
-      provides: [slot:scene_prop]
-      requires: [slot:spatial_context]
-    tags: [object, item, prop]
-    aliases: [prop, object, vehicle]
+      provides: [slot:scene_setting]
+      requires: []
+    tags: [setting, world, period]
+    aliases: []
 
-  role:style_reference:
-    label: "Style Reference"
-    description: "Style/aesthetic reference images"
+  # =========================================================================
+  # CAMERA (slate) — viewpoint
+  # =========================================================================
+  role:camera:
+    label: "Camera"
+    description: "Viewpoint and framing controls"
+    color: slate
+    is_group: true
+    default_layer: 2
+    default_influence: blend
+    tags: [camera, viewpoint, framing]
+
+  role:camera:angle:
+    label: "Camera Angle"
+    description: "Viewpoint direction (low angle, bird's eye, etc.)"
+    color: slate
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [camera, angle, viewpoint]
+    aliases: []
+
+  role:camera:fov:
+    label: "Field of View"
+    description: "Field of view / focal length"
+    color: slate
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [camera, fov, lens]
+    aliases: []
+
+  role:camera:composition:
+    label: "Composition"
+    description: "Layer ordering, depth arrangement"
+    color: slate
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [camera, composition, depth]
+    aliases: []
+
+  # =========================================================================
+  # LIGHTING (amber) — light sources
+  # =========================================================================
+  role:lighting:
+    label: "Lighting"
+    description: "Light sources and illumination"
+    color: amber
+    is_group: true
+    default_layer: 2
+    default_influence: blend
+    tags: [lighting, light]
+
+  role:lighting:key:
+    label: "Key Light"
+    description: "Primary light source"
+    color: amber
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [lighting, key, primary]
+    aliases: [lighting]
+
+  role:lighting:fill:
+    label: "Fill Light"
+    description: "Secondary/fill light source"
+    color: amber
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [lighting, fill, secondary]
+    aliases: []
+
+  # =========================================================================
+  # MATERIALS (pink) — visual treatment
+  # =========================================================================
+  role:materials:
+    label: "Materials"
+    description: "Visual treatment, style, and aesthetic"
+    color: pink
+    is_group: true
+    default_layer: 0
+    default_influence: style
+    tags: [style, material, aesthetic]
+
+  role:materials:wardrobe:
+    label: "Wardrobe"
+    description: "Clothing, armor, accessories"
     color: pink
     default_layer: 0
     default_influence: style
     slots:
       provides: [slot:aesthetic_guidance]
       requires: []
-    tags: [style, reference, aesthetic]
-    aliases: [style, style_reference, reference]
+    tags: [wardrobe, clothing, outfit]
+    aliases: []
 
-  role:effect:
-    label: "Effect"
-    description: "Lighting, camera, visual effects"
+  role:materials:rendering:
+    label: "Rendering Style"
+    description: "Render style, art direction, aesthetic reference"
+    color: pink
+    default_layer: 0
+    default_influence: style
+    slots:
+      provides: [slot:aesthetic_guidance]
+      requires: []
+    tags: [style, reference, aesthetic, rendering]
+    aliases: [style_reference, style, reference]
+
+  role:materials:atmosphere:
+    label: "Atmosphere"
+    description: "Emotional tone, mood, ambiance"
+    color: pink
+    default_layer: 0
+    default_influence: style
+    slots:
+      provides: [slot:aesthetic_guidance]
+      requires: []
+    tags: [mood, atmosphere, tone]
+    aliases: []
+
+  role:materials:romance:
+    label: "Romance"
+    description: "Intimate/romantic visual treatment"
+    color: pink
+    default_layer: 0
+    default_influence: style
+    slots:
+      provides: [slot:aesthetic_guidance]
+      requires: []
+    tags: [romance, intimate]
+    aliases: []
+
+  # =========================================================================
+  # ANIMATION (cyan) — movement/behavior
+  # =========================================================================
+  role:animation:
+    label: "Animation"
+    description: "Movement, behavior, and pose directives"
+    color: cyan
+    is_group: true
+    default_layer: 2
+    default_influence: blend
+    tags: [animation, movement, action]
+
+  role:animation:action:
+    label: "Action"
+    description: "Actions, interactions, movement behaviors"
     color: cyan
     default_layer: 2
     default_influence: blend
     slots:
       provides: [slot:visual_effect]
       requires: []
-    tags: [effect, lighting, camera]
-    aliases: [effect, lighting]
+    tags: [action, interaction, movement]
+    aliases: [effect]
+
+  role:animation:pose:
+    label: "Pose"
+    description: "Static pose or body position"
+    color: cyan
+    default_layer: 2
+    default_influence: blend
+    slots:
+      provides: [slot:visual_effect]
+      requires: []
+    tags: [pose, position, stance]
+    aliases: []
 
 # Priority order for role selection (highest first)
-# When an asset has multiple tags mapping to different roles, pick highest priority
+# Groups are excluded — only leaf roles participate in conflict resolution
 priority:
-  - role:main_character
-  - role:companion
-  - role:prop
-  - role:style_reference
-  - role:effect
-  - role:environment
+  - role:entities:subject
+  - role:entities:main_character
+  - role:entities:companion
+  - role:entities:placed
+  - role:entities:prop
+  - role:materials:rendering
+  - role:materials:wardrobe
+  - role:materials:atmosphere
+  - role:materials:romance
+  - role:camera:angle
+  - role:camera:fov
+  - role:camera:composition
+  - role:lighting:key
+  - role:lighting:fill
+  - role:animation:action
+  - role:animation:pose
+  - role:world:environment
+  - role:world:setting
 
 # Tag slug -> role mapping (exact match)
 slug_mappings:
-  bg: role:environment
-  "role:bg": role:environment
-  "role:environment": role:environment
-  "role:setting": role:environment
-  "char:hero": role:main_character
-  "pov:player": role:main_character
-  "role:char": role:main_character
-  "role:character": role:main_character
-  "char:npc": role:companion
-  "char:monster": role:companion
-  comic_frame: role:style_reference
+  bg: role:world:environment
+  "role:bg": role:world:environment
+  "role:environment": role:world:environment
+  "role:setting": role:world:setting
+  "char:hero": role:entities:main_character
+  "pov:player": role:entities:main_character
+  "role:char": role:entities:main_character
+  "role:character": role:entities:main_character
+  "char:npc": role:entities:companion
+  "char:monster": role:entities:companion
+  comic_frame: role:materials:rendering
 
 # Tag namespace -> role mapping (prefix match)
 namespace_mappings:
-  character: role:main_character
-  person: role:main_character
-  npc: role:main_character
-  animal: role:companion
-  creature: role:companion
-  object: role:prop
-  prop: role:prop
-  vehicle: role:prop
-  location: role:environment
-  environment: role:environment
-  setting: role:environment
-  background: role:environment
-  scene: role:environment
-  place: role:environment
-  style: role:style_reference
-  lighting: role:effect
-  camera: role:effect
+  character: role:entities:main_character
+  person: role:entities:main_character
+  npc: role:entities:main_character
+  animal: role:entities:companion
+  creature: role:entities:companion
+  object: role:entities:prop
+  prop: role:entities:prop
+  vehicle: role:entities:prop
+  location: role:world:environment
+  environment: role:world:environment
+  setting: role:world:environment
+  background: role:world:environment
+  scene: role:world:environment
+  place: role:world:environment
+  style: role:materials:rendering
+  lighting: role:lighting:key
+  camera: role:camera:angle

@@ -73,8 +73,10 @@ const rolesData = data.roles as Record<string, {
   default_layer?: number;
   defaultLayer?: number;
   tags?: string[];
+  is_group?: boolean;
 }>;
-const roles = Object.keys(rolesData).map((role) => normalizeRoleId(role));
+const allRoleIds = Object.keys(rolesData).map((role) => normalizeRoleId(role));
+const roles = allRoleIds;
 const descriptions = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.description])
 );
@@ -90,6 +92,18 @@ const defaultLayers = Object.fromEntries(
 const roleTags = Object.fromEntries(
   Object.entries(rolesData).map(([k, v]) => [normalizeRoleId(k), v.tags ?? []])
 );
+
+// Hierarchical metadata
+const roleGroups = allRoleIds.filter((id) => rolesData[`role:${id}`]?.is_group === true);
+const leafRoles = allRoleIds.filter((id) => rolesData[`role:${id}`]?.is_group !== true);
+const roleParents: Record<string, string> = {};
+for (const id of allRoleIds) {
+  if (rolesData[`role:${id}`]?.is_group) continue;
+  const colonIdx = id.indexOf(':');
+  if (colonIdx > 0) {
+    roleParents[id] = id.slice(0, colonIdx);
+  }
+}
 
 // Generate TypeScript output
 const output = `// Auto-generated from roles vocabulary - DO NOT EDIT
@@ -168,6 +182,22 @@ export const NAMESPACE_TO_COMPOSITION_ROLE = ${JSON.stringify(namespaceMappings,
  * @see compositionPackageStore.priority for runtime API
  */
 export const COMPOSITION_ROLE_PRIORITY = ${JSON.stringify(priority)} as const satisfies readonly ImageCompositionRole[];
+
+/**
+ * Group role IDs (top-level categories, not assignable to assets).
+ */
+export const ROLE_GROUPS = ${JSON.stringify(roleGroups)} as const;
+
+/**
+ * Leaf role IDs (assignable to assets).
+ */
+export const LEAF_COMPOSITION_ROLES = ${JSON.stringify(leafRoles)} as const;
+
+/**
+ * Leaf role → parent group mapping.
+ * e.g. "entities:main_character" → "entities"
+ */
+export const ROLE_PARENTS = ${JSON.stringify(roleParents, null, 2)} as const satisfies Partial<Record<ImageCompositionRole, string>>;
 
 /**
  * Infer composition role from a single tag string.

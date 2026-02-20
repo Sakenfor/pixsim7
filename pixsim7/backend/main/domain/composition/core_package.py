@@ -68,6 +68,7 @@ def _build_core_roles() -> List[CompositionRoleDefinition]:
         default_layer = role.default_layer
         if default_layer is None:
             default_layer = 0
+        parent = _strip_role_prefix(role.parent) if role.parent else None
         roles.append(
             CompositionRoleDefinition(
                 id=role_id,
@@ -76,6 +77,8 @@ def _build_core_roles() -> List[CompositionRoleDefinition]:
                 color=role.color or "slate",
                 default_layer=int(default_layer),
                 tags=list(role.tags or []),
+                parent=parent,
+                is_group=role.is_group,
                 slug_mappings=sorted(slug_by_role.get(role_id, [])),
                 namespace_mappings=sorted(namespace_by_role.get(role_id, [])),
             )

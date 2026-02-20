@@ -41,6 +41,7 @@ def _load_role_data() -> Dict[str, Any]:
 
     for role in registry.all_roles():
         role_id = _strip_role_prefix(role.id)
+        parent = _strip_role_prefix(role.parent) if role.parent else None
         roles_data[role_id] = {
             "label": role.label,
             "description": role.description,
@@ -48,6 +49,8 @@ def _load_role_data() -> Dict[str, Any]:
             "defaultLayer": role.default_layer,
             "defaultInfluence": role.default_influence,
             "tags": list(role.tags),
+            "parent": parent,
+            "isGroup": role.is_group,
         }
 
         for alias in role.aliases:
@@ -103,11 +106,11 @@ _PROMPT_ROLE_TO_COMPOSITION_ROLE_SNAPSHOT = _get_prompt_role_mappings()
 
 def _build_composition_role_enum() -> type:
     """Dynamically build ImageCompositionRole enum from vocab roles."""
-    # roles is now an object with metadata, extract keys
     roles_data = _ROLE_DATA_SNAPSHOT["roles"]
     role_ids = list(roles_data.keys())
-    # Create enum members: MAIN_CHARACTER = "main_character", etc.
-    members = {role.upper(): role for role in role_ids}
+    # Create enum members: replace ":" with "__" for valid Python identifiers
+    # e.g. "entities:main_character" → ENTITIES__MAIN_CHARACTER
+    members = {role.replace(":", "__").upper(): role for role in role_ids}
     return Enum("ImageCompositionRole", members, type=str)
 
 
@@ -193,6 +196,29 @@ def map_tag_to_composition_role(
     return namespace_mappings.get(namespace_key)
 
 
+def _is_world_role(role_id: str) -> bool:
+    """Check if a role belongs to the 'world' group."""
+    return role_id == "world" or role_id.startswith("world:")
+
+
+def get_role_group(role_id: str) -> Optional[str]:
+    """Extract the top-level group from a hierarchical role ID.
+
+    e.g. "entities:main_character" → "entities", "world:environment" → "world"
+    Flat IDs with no colon return None.
+    """
+    if ":" in role_id:
+        return role_id.split(":")[0]
+    return None
+
+
+def is_group_role(role_id: str) -> bool:
+    """Check if the given role_id is a group entry (not a leaf)."""
+    roles = _get_role_data()["roles"]
+    meta = roles.get(role_id)
+    return meta.get("isGroup", False) if meta else False
+
+
 def map_composition_role_to_pixverse_type(
     role: Optional[str],
     *,
@@ -204,7 +230,7 @@ def map_composition_role_to_pixverse_type(
     If role is missing, fall back to layer: layer<=0 -> background, else subject.
     """
     normalized = normalize_composition_role(role) if role else None
-    if normalized == ImageCompositionRole.ENVIRONMENT.value:
+    if normalized and _is_world_role(normalized):
         return "background"
     if normalized:
         return "subject"
