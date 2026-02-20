@@ -19,17 +19,14 @@ import { assetEvents } from '@features/assets/lib/assetEvents';
 import { useGenerationScopeStores } from '@features/generation';
 
 import {
+  type AnyElement,
   InteractiveImageSurface,
+  type InteractionMode,
   useInteractionLayer,
 } from '@/components/interactive-surface';
 import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
 
-import {
-  getToolbarButtonClass,
-  TOOLBAR_BUTTON_BASE,
-  TOOLBAR_BUTTON_INACTIVE,
-  TOOLBAR_BUTTON_DISABLED,
-} from '../styles';
+import { resolveViewerAssetProviderId } from '../../utils/providerResolution';
 import type { MediaOverlayComponentProps } from '../types';
 
 import { useMaskOverlayStore } from './maskOverlayStore';
@@ -37,20 +34,85 @@ import { useMaskOverlayStore } from './maskOverlayStore';
 // ── Constants ──────────────────────────────────────────────────────────
 
 const MASK_LAYER_ID = 'mask-layer';
+const MASK_DRAFT_STORAGE_PREFIX = 'ps7_mask_overlay_draft_v1';
+const MASK_DRAFT_SAVE_DEBOUNCE_MS = 250;
+
+type MaskDraftMode = 'draw' | 'erase' | 'view';
+
+interface MaskOverlayDraft {
+  version: 1;
+  savedAt: number;
+  mode: MaskDraftMode;
+  brushSize: number;
+  brushOpacity: number;
+  elements: AnyElement[];
+}
 
 // ── Provider ID resolution (same pattern as useFrameCapture) ──────────
 
-function resolveMaskProviderId(asset: ViewerAsset): string | null {
-  const providerId = asset.metadata?.providerId;
-  if (providerId) return providerId;
-  if (asset.source !== 'local') return null;
+function getMaskDraftStorageKey(asset: ViewerAsset): string {
+  const identity = asset.source === 'local'
+    ? String(asset.metadata?.path || asset.id)
+    : String(asset.id);
+  return `${MASK_DRAFT_STORAGE_PREFIX}:${asset.source}:${encodeURIComponent(identity)}`;
+}
+
+function toMaskDraftMode(mode: InteractionMode): MaskDraftMode {
+  if (mode === 'erase' || mode === 'view') return mode;
+  return 'draw';
+}
+
+function parseMaskDraftMode(value: unknown): MaskDraftMode {
+  if (value === 'draw' || value === 'erase' || value === 'view') return value;
+  return 'draw';
+}
+
+function readMaskDraft(asset: ViewerAsset): MaskOverlayDraft | null {
   try {
-    const raw = localStorage.getItem('ps7_localFolders_providerId');
+    const raw = localStorage.getItem(getMaskDraftStorageKey(asset));
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return typeof parsed === 'string' ? parsed : null;
+
+    const parsed = JSON.parse(raw) as Partial<MaskOverlayDraft> | null;
+    if (!parsed || !Array.isArray(parsed.elements)) {
+      return null;
+    }
+
+    const brushSize =
+      typeof parsed.brushSize === 'number' && Number.isFinite(parsed.brushSize)
+        ? parsed.brushSize
+        : 0.03;
+    const brushOpacity =
+      typeof parsed.brushOpacity === 'number' && Number.isFinite(parsed.brushOpacity)
+        ? parsed.brushOpacity
+        : 0.7;
+    const savedAt =
+      typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt)
+        ? parsed.savedAt
+        : Date.now();
+
+    return {
+      version: 1,
+      savedAt,
+      mode: parseMaskDraftMode(parsed.mode),
+      brushSize,
+      brushOpacity,
+      elements: parsed.elements as AnyElement[],
+    };
   } catch {
     return null;
+  }
+}
+
+function writeMaskDraft(asset: ViewerAsset, draft: MaskOverlayDraft | null): void {
+  try {
+    const key = getMaskDraftStorageKey(asset);
+    if (!draft || draft.elements.length === 0) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, JSON.stringify(draft));
+  } catch {
+    // Best effort only.
   }
 }
 
@@ -80,12 +142,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     setBrushOpacity,
     addLayer,
     getLayer,
+    updateLayer,
     clearLayer,
     undo,
     redo,
     canUndo,
     canRedo,
     exportLayerAsMask,
+    resetView,
   } = interaction;
 
   // Create mask layer on mount
@@ -99,9 +163,70 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const hasContent = useMemo(() => {
     const layer = getLayer(MASK_LAYER_ID);
     return layer ? layer.elements.length > 0 : false;
-  }, [getLayer, state.layers]);
+  }, [getLayer]);
+
+  const maskLayer = useMemo(
+    () => state.layers.find((layer) => layer.id === MASK_LAYER_ID) ?? null,
+    [state.layers],
+  );
+
+  const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
+  const restoredDraftKeyRef = useRef<string | null>(null);
+  const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Restore saved draft when entering mask overlay for this asset.
+  useEffect(() => {
+    if (!maskLayer) return;
+    if (restoredDraftKeyRef.current === draftStorageKey) return;
+    restoredDraftKeyRef.current = draftStorageKey;
+
+    const draft = readMaskDraft(asset);
+    if (!draft) return;
+
+    if (draft.elements.length > 0) {
+      updateLayer(MASK_LAYER_ID, { elements: draft.elements });
+    }
+    setMode(draft.mode);
+    setBrushSize(draft.brushSize);
+    setBrushOpacity(draft.brushOpacity);
+  }, [asset, draftStorageKey, maskLayer, updateLayer, setMode, setBrushSize, setBrushOpacity]);
+
+  // Persist draft state (debounced) so masks survive refresh.
+  useEffect(() => {
+    if (!maskLayer) return;
+
+    if (persistDraftTimerRef.current) {
+      clearTimeout(persistDraftTimerRef.current);
+    }
+
+    persistDraftTimerRef.current = setTimeout(() => {
+      if (maskLayer.elements.length === 0) {
+        writeMaskDraft(asset, null);
+        return;
+      }
+
+      writeMaskDraft(asset, {
+        version: 1,
+        savedAt: Date.now(),
+        mode: toMaskDraftMode(state.mode),
+        brushSize: state.tool.size,
+        brushOpacity: state.tool.opacity,
+        elements: maskLayer.elements,
+      });
+    }, MASK_DRAFT_SAVE_DEBOUNCE_MS);
+
+    return () => {
+      if (persistDraftTimerRef.current) {
+        clearTimeout(persistDraftTimerRef.current);
+        persistDraftTimerRef.current = null;
+      }
+    };
+  }, [asset, maskLayer, state.mode, state.tool.size, state.tool.opacity]);
 
   // Sync state to bridge store
+  const currentZoom = state.view.zoom;
+  const isZoomed = Math.abs(currentZoom - 1) > 0.01;
+
   useEffect(() => {
     store.getState()._syncState({
       mode: state.mode,
@@ -110,8 +235,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       canUndo,
       canRedo,
       hasContent,
+      zoom: currentZoom,
+      isZoomed,
     });
-  }, [state.mode, state.tool.size, state.tool.opacity, canUndo, canRedo, hasContent, store]);
+  }, [state.mode, state.tool.size, state.tool.opacity, canUndo, canRedo, hasContent, currentZoom, isZoomed, store]);
 
   // ── Ref-based callback bridge ──────────────────────────────────────
   // The undo/redo/clearLayer/exportMask functions from useInteractionLayer
@@ -128,6 +255,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     redo,
     clearLayer: () => clearLayer(MASK_LAYER_ID),
     exportMask: async () => {},
+    resetView,
   });
 
   // Keep ref current on every render
@@ -137,17 +265,15 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   callbacksRef.current.undo = undo;
   callbacksRef.current.redo = redo;
   callbacksRef.current.clearLayer = () => clearLayer(MASK_LAYER_ID);
+  callbacksRef.current.resetView = resetView;
 
   // Export mask callback
   const isSavingRef = useRef(false);
   const exportMask = useCallback(async () => {
     if (isSavingRef.current) return;
 
-    const providerId = resolveMaskProviderId(asset);
-    if (!providerId) {
-      toast.error('Select a provider to save masks.');
-      return;
-    }
+    const providerId = resolveViewerAssetProviderId(asset);
+    const saveTarget: 'provider' | 'library' = providerId ? 'provider' : 'library';
 
     const width = mediaDimensions?.width || 1024;
     const height = mediaDimensions?.height || 1024;
@@ -172,16 +298,19 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         feature: 'mask_overlay',
         source: 'asset_viewer',
       });
+      uploadContext.save_target = saveTarget;
 
       const uploadResult = await uploadAsset({
         file: blob,
         filename,
-        providerId,
+        saveTarget,
+        providerId: providerId || undefined,
         uploadMethod: 'mask_draw',
         uploadContext,
       });
 
       const newAssetId = uploadResult.asset_id;
+      let attachedToGeneration = false;
 
       // Fetch and emit so it appears in gallery
       if (newAssetId) {
@@ -194,9 +323,14 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
         // Wire mask into generation flow
         setParam('mask_url', `asset:${newAssetId}`);
+        attachedToGeneration = true;
       }
 
-      toast.success('Mask saved and attached to generation.');
+      if (saveTarget === 'provider') {
+        toast.success(attachedToGeneration ? 'Mask uploaded and set for generation.' : 'Mask uploaded.');
+      } else {
+        toast.success(attachedToGeneration ? 'Mask saved to library and set for generation.' : 'Mask saved to library.');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to save mask.';
       toast.error(message);
@@ -219,6 +353,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       redo: () => callbacksRef.current.redo(),
       clearLayer: () => callbacksRef.current.clearLayer(),
       exportMask: () => callbacksRef.current.exportMask(),
+      resetView: () => callbacksRef.current.resetView(),
     });
   }, [store]);
 
@@ -255,6 +390,9 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         case 'v':
           callbacksRef.current.setMode('view');
           break;
+        case '0':
+          callbacksRef.current.resetView();
+          break;
       }
     };
 
@@ -278,22 +416,34 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const cursor = state.mode === 'draw' || state.mode === 'erase' ? 'crosshair' : 'grab';
 
   return (
-    <div className="absolute inset-0">
-      <InteractiveImageSurface
-        media={media}
-        state={state}
-        handlers={handlers}
-        cursor={cursor}
-        className="w-full h-full"
-      />
+    <div className="absolute inset-0 flex">
+      <MaskSidePanel />
+      <div className="flex-1 min-w-0 relative">
+        <InteractiveImageSurface
+          media={media}
+          state={state}
+          handlers={handlers}
+          cursor={cursor}
+          className="w-full h-full"
+        />
+      </div>
     </div>
   );
 }
 
-// ── MaskOverlayToolbar ────────────────────────────────────────────────
+// ── MaskSidePanel ─────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function MaskOverlayToolbar(_props: MediaOverlayComponentProps) {
+const TOOL_MODES = [
+  { mode: 'draw' as const, icon: 'paintbrush' as const, label: 'Draw', shortcut: 'D' },
+  { mode: 'erase' as const, icon: 'xCircle' as const, label: 'Erase', shortcut: 'E' },
+  { mode: 'view' as const, icon: 'eye' as const, label: 'View', shortcut: 'V' },
+];
+
+function SectionDivider() {
+  return <div className="h-px bg-th/10 mx-1" />;
+}
+
+function MaskSidePanel() {
   const {
     mode,
     brushSize,
@@ -302,6 +452,8 @@ export function MaskOverlayToolbar(_props: MediaOverlayComponentProps) {
     canRedo,
     hasContent,
     isSaving,
+    zoom,
+    isZoomed,
     setMode,
     setBrushSize,
     setBrushOpacity,
@@ -309,111 +461,132 @@ export function MaskOverlayToolbar(_props: MediaOverlayComponentProps) {
     redo,
     clearLayer,
     exportMask,
+    resetView,
   } = useMaskOverlayStore();
 
   return (
-    <div className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 bg-neutral-800/90 border-b border-neutral-700 text-xs">
-      <span className="text-neutral-400 mr-1">Mode:</span>
+    <div className="w-36 flex-shrink-0 flex flex-col gap-2 py-2 bg-surface-secondary/95 border-r border-th/10 text-xs select-none">
+      {/* ── Tools ── */}
+      <div className="px-2 flex flex-col gap-1">
+        <span className="text-[10px] text-th-muted uppercase tracking-wider">Tools</span>
+        {TOOL_MODES.map(({ mode: m, icon, label, shortcut }) => (
+          <button
+            key={m}
+            onClick={() => setMode(m)}
+            className={`flex items-center gap-2 w-full px-2 py-1.5 rounded transition-colors ${
+              mode === m
+                ? 'bg-accent text-accent-text'
+                : 'text-th-secondary hover:bg-surface-elevated'
+            }`}
+            title={`${label} (${shortcut})`}
+          >
+            <Icon name={icon} size={14} />
+            <span>{label}</span>
+          </button>
+        ))}
+      </div>
 
-      <button
-        onClick={() => setMode('draw')}
-        className={getToolbarButtonClass(mode === 'draw')}
-        title="Draw mask (D)"
-      >
-        Draw
-      </button>
-      <button
-        onClick={() => setMode('erase')}
-        className={getToolbarButtonClass(mode === 'erase')}
-        title="Erase mask (E)"
-      >
-        Erase
-      </button>
-      <button
-        onClick={() => setMode('view')}
-        className={getToolbarButtonClass(mode === 'view')}
-        title="View/pan (V)"
-      >
-        View
-      </button>
+      <SectionDivider />
 
-      <div className="w-px h-4 bg-neutral-600 mx-1" />
+      {/* ── Brush ── */}
+      <div className="px-2 flex flex-col gap-1.5">
+        <span className="text-[10px] text-th-muted uppercase tracking-wider">Brush</span>
+        <label className="flex flex-col gap-0.5 text-th-secondary">
+          <span className="text-[10px]">Size</span>
+          <input
+            type="range"
+            min={0.005}
+            max={0.15}
+            step={0.005}
+            value={brushSize}
+            onChange={(e) => setBrushSize(Number(e.target.value))}
+            className="w-full h-1 accent-accent"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5 text-th-secondary">
+          <span className="text-[10px]">Opacity</span>
+          <input
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.1}
+            value={brushOpacity}
+            onChange={(e) => setBrushOpacity(Number(e.target.value))}
+            className="w-full h-1 accent-accent"
+          />
+        </label>
+      </div>
 
-      {/* Brush size slider */}
-      <label className="flex items-center gap-1 text-neutral-400" title="Brush size">
-        <span className="text-[10px]">Size</span>
-        <input
-          type="range"
-          min={0.005}
-          max={0.15}
-          step={0.005}
-          value={brushSize}
-          onChange={(e) => setBrushSize(Number(e.target.value))}
-          className="w-16 h-1 accent-blue-500"
-        />
-      </label>
+      <SectionDivider />
 
-      {/* Opacity slider */}
-      <label className="flex items-center gap-1 text-neutral-400" title="Brush opacity">
-        <span className="text-[10px]">Opacity</span>
-        <input
-          type="range"
-          min={0.1}
-          max={1}
-          step={0.1}
-          value={brushOpacity}
-          onChange={(e) => setBrushOpacity(Number(e.target.value))}
-          className="w-14 h-1 accent-blue-500"
-        />
-      </label>
+      {/* ── Actions ── */}
+      <div className="px-2 flex flex-col gap-1">
+        <span className="text-[10px] text-th-muted uppercase tracking-wider">Actions</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={undo}
+            disabled={!canUndo}
+            className="flex items-center justify-center w-8 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Undo (Ctrl+Z)"
+          >
+            <Icon name="undo" size={14} />
+          </button>
+          <button
+            onClick={redo}
+            disabled={!canRedo}
+            className="flex items-center justify-center w-8 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Icon name="redo" size={14} />
+          </button>
+          <button
+            onClick={clearLayer}
+            disabled={!hasContent}
+            className="flex-1 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[11px]"
+            title="Clear mask"
+          >
+            Clear
+          </button>
+        </div>
+      </div>
 
-      <div className="w-px h-4 bg-neutral-600 mx-1" />
+      {/* ── Zoom (conditional) ── */}
+      {isZoomed && (
+        <>
+          <SectionDivider />
+          <div className="px-2 flex items-center gap-1.5">
+            <span className="text-th-secondary text-[11px] tabular-nums">
+              {Math.round(zoom * 100)}%
+            </span>
+            <button
+              onClick={resetView}
+              className="flex items-center justify-center w-7 h-7 rounded bg-th/10 hover:bg-th/15 text-th-secondary transition-colors"
+              title="Fit to view (0)"
+            >
+              <Icon name="maximize2" size={14} />
+            </button>
+          </div>
+        </>
+      )}
 
-      {/* Undo / Redo */}
-      <button
-        onClick={undo}
-        disabled={!canUndo}
-        className={`${TOOLBAR_BUTTON_BASE} ${TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title="Undo (Ctrl+Z)"
-      >
-        <Icon name="undo" size={12} />
-      </button>
-      <button
-        onClick={redo}
-        disabled={!canRedo}
-        className={`${TOOLBAR_BUTTON_BASE} ${TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title="Redo (Ctrl+Shift+Z)"
-      >
-        <Icon name="redo" size={12} />
-      </button>
-
-      {/* Clear */}
-      <button
-        onClick={clearLayer}
-        disabled={!hasContent}
-        className={`${TOOLBAR_BUTTON_BASE} ${TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title="Clear mask"
-      >
-        Clear
-      </button>
-
+      {/* Spacer */}
       <div className="flex-1" />
 
-      <span className="text-neutral-500 text-[10px]">
-        {mode === 'draw' && 'Draw to create inpaint mask'}
-        {mode === 'erase' && 'Erase mask regions'}
-        {mode === 'view' && 'Pan / zoom'}
-      </span>
-
-      {/* Save Mask */}
-      <button
-        onClick={exportMask}
-        disabled={!hasContent || isSaving}
-        className={`${TOOLBAR_BUTTON_BASE} ${hasContent && !isSaving ? 'bg-blue-600 hover:bg-blue-500 text-white' : TOOLBAR_BUTTON_INACTIVE} ${TOOLBAR_BUTTON_DISABLED}`}
-        title="Save mask and attach to generation"
-      >
-        {isSaving ? 'Saving...' : 'Save Mask'}
-      </button>
+      {/* ── Save ── */}
+      <div className="px-2">
+        <button
+          onClick={exportMask}
+          disabled={!hasContent || isSaving}
+          className={`w-full py-2 rounded text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+            hasContent && !isSaving
+              ? 'bg-accent hover:bg-accent-hover text-accent-text'
+              : 'bg-th/10 text-th-muted'
+          }`}
+          title="Save mask and attach to generation"
+        >
+          {isSaving ? 'Saving...' : 'Save Mask'}
+        </button>
+      </div>
     </div>
   );
 }
