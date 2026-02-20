@@ -261,3 +261,17 @@ export function toSelectedAsset(
     source,
   };
 }
+
+/**
+ * Maps a SelectedAsset to ViewerAsset format.
+ * Used by AssetsRoute to provide CAP_ASSET_SELECTION without needing the full assets list.
+ */
+export function selectedAssetToViewer(sa: SelectedAsset): ViewerAsset {
+  return {
+    id: sa.id,
+    name: sa.name,
+    type: sa.type,
+    url: sa.url,
+    source: 'gallery',
+  };
+}

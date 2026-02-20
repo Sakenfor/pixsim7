@@ -1,7 +1,9 @@
 /**
- * Curator Gallery Surface
+ * Curator Gallery Surface (Presentational)
  *
  * Advanced curation view for power users with enhanced organization tools.
+ * Receives controller from RemoteGallerySource — no own data fetching.
+ *
  * Features:
  * - Metadata editing
  * - Collection building
@@ -10,12 +12,15 @@
  */
 
 import { Button } from '@pixsim7/shared.ui';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-import { GalleryToolsPanel, useCuratorGalleryController } from '@features/gallery';
+import { GalleryToolsPanel } from '@features/gallery';
+import type { GalleryToolContext } from '@features/gallery/lib/core/types';
 
 import { MediaCard } from '@/components/media/MediaCard';
 
+import type { AssetModel } from '../hooks/useAssets';
+import type { AssetsController } from '../hooks/useAssetsController';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 
 import {
@@ -25,48 +30,71 @@ import {
   SelectionIndicator,
 } from './shared';
 
-export function CuratorGallerySurface() {
-  const controller = useCuratorGalleryController();
 
-  const gridPreset = controller.viewMode === 'compact' ? 'compact' : 'default';
+export interface CuratorSurfaceContentProps {
+  controller: AssetsController;
+}
 
-  const galleryContext = useMemo(
+export function CuratorSurfaceContent({ controller }: CuratorSurfaceContentProps) {
+  const [viewMode, setViewMode] = useState<'grid' | 'list' | 'compact'>('grid');
+  const [collections] = useState<Map<string, Set<string>>>(new Map());
+
+  const gridPreset = viewMode === 'compact' ? 'compact' : 'default';
+
+  // Convert selected IDs to asset array
+  const selectedAssets = useMemo(() => {
+    return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
+  }, [controller.assets, controller.selectedAssetIds]);
+
+  const resetAssets = useCallback(() => {
+    controller.reset();
+  }, [controller]);
+
+  const galleryContext: GalleryToolContext = useMemo(
     () => ({
       assets: controller.assets,
-      selectedAssets: controller.selectedAssets,
+      selectedAssets,
       filters: controller.filters,
-      refresh: controller.refresh,
+      refresh: resetAssets,
       updateFilters: (updates: Partial<typeof controller.filters>) =>
-        controller.setFilters((prev) => ({ ...prev, ...updates })),
+        controller.setFilters({ ...updates }),
       isSelectionMode: false,
     }),
     [
       controller.assets,
-      controller.selectedAssets,
+      selectedAssets,
       controller.filters,
-      controller.refresh,
       controller.setFilters,
+      resetAssets,
     ]
   );
+
+  const handleSelectAll = useCallback(() => {
+    controller.selectAll(controller.assets);
+  }, [controller]);
+
+  const toggleAssetSelection = useCallback((asset: AssetModel) => {
+    controller.toggleAssetSelection(asset);
+  }, [controller]);
 
   // View mode toggle buttons
   const headerActions = (
     <div className="flex items-center gap-2 text-xs">
       <button
-        onClick={() => controller.setViewMode('grid')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'grid' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        onClick={() => setViewMode('grid')}
+        className={`px-2 py-1 rounded ${viewMode === 'grid' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         Grid
       </button>
       <button
-        onClick={() => controller.setViewMode('list')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'list' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        onClick={() => setViewMode('list')}
+        className={`px-2 py-1 rounded ${viewMode === 'list' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         List
       </button>
       <button
-        onClick={() => controller.setViewMode('compact')}
-        className={`px-2 py-1 rounded ${controller.viewMode === 'compact' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
+        onClick={() => setViewMode('compact')}
+        className={`px-2 py-1 rounded ${viewMode === 'compact' ? 'bg-accent text-accent-text' : 'bg-neutral-200 dark:bg-neutral-700'}`}
       >
         Compact
       </button>
@@ -75,17 +103,17 @@ export function CuratorGallerySurface() {
 
   // Selection tools panel
   const selectionSummary =
-    controller.selectedAssetIds.size > 0 || controller.collections.size > 0 ? (
+    controller.selectedAssetIds.size > 0 || collections.size > 0 ? (
       <div className="space-y-4">
         {controller.selectedAssetIds.size > 0 && (
           <GalleryToolsPanel context={galleryContext} surfaceId="assets-curator" />
         )}
 
-        {controller.collections.size > 0 && (
+        {collections.size > 0 && (
           <div className="space-y-2">
             <h3 className="text-sm font-semibold">Collections</h3>
             <div className="flex flex-wrap gap-2">
-              {Array.from(controller.collections.entries()).map(([name, assetIds]) => (
+              {Array.from(collections.entries()).map(([name, assetIds]) => (
                 <div
                   key={name}
                   className="px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded border border-purple-300 dark:border-purple-700 text-xs"
@@ -110,7 +138,7 @@ export function CuratorGallerySurface() {
             className={`flex items-center gap-3 p-2 bg-white dark:bg-neutral-800 rounded border cursor-pointer ${
               isSelected ? 'border-accent ring-2 ring-accent' : 'border-neutral-200 dark:border-neutral-700'
             }`}
-            onClick={() => controller.toggleAssetSelection(asset)}
+            onClick={() => toggleAssetSelection(asset)}
           >
             <div className="w-16 h-16 flex-shrink-0">
               <MediaCard
@@ -153,12 +181,12 @@ export function CuratorGallerySurface() {
           <AssetCardWrapper
             key={asset.id}
             isSelected={isSelected}
-            onClick={() => controller.toggleAssetSelection(asset)}
+            onClick={() => toggleAssetSelection(asset)}
           >
             <MediaCard
               asset={asset}
               onToggleFavorite={() => toggleFavoriteTag(asset)}
-              contextMenuSelection={controller.selectedAssets}
+              contextMenuSelection={selectedAssets}
             />
             {isSelected && <SelectionIndicator />}
           </AssetCardWrapper>
@@ -172,7 +200,7 @@ export function CuratorGallerySurface() {
       title="Asset Curator"
       headerActions={headerActions}
       filters={controller.filters}
-      onFiltersChange={(updates) => controller.setFilters(prev => ({ ...prev, ...updates }))}
+      onFiltersChange={(updates) => controller.setFilters({ ...updates })}
       showSearch
       showMediaType
       showSort
@@ -180,7 +208,7 @@ export function CuratorGallerySurface() {
       filtersLayout="grid"
       filtersHeader={undefined}
       filtersActions={
-        <Button variant="secondary" onClick={controller.selectAll} className="text-xs">
+        <Button variant="secondary" onClick={handleSelectAll} className="text-xs">
           Select All ({controller.assets.length})
         </Button>
       }
@@ -192,7 +220,7 @@ export function CuratorGallerySurface() {
       itemCount={controller.assets.length}
       loadMoreMode="button"
     >
-      {controller.viewMode === 'list' ? listView : gridView}
+      {viewMode === 'list' ? listView : gridView}
     </GallerySurfaceShell>
   );
 }

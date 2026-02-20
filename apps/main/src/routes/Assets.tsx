@@ -5,10 +5,22 @@ import { Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
+import { extractErrorMessage } from '@lib/api/errorHandling';
 import { mediaCardPresets } from '@lib/ui/overlay';
 
-import { useAssetsController, useAssetViewer, AssetDetailModal, DeleteAssetModal, useDeleteModalStore } from '@features/assets';
+import {
+  AssetDetailModal,
+  DeleteAssetModal,
+  useDeleteModalStore,
+  useAssetPickerStore,
+  useAssetSelectionStore,
+  selectedAssetToViewer,
+  deleteAsset,
+  bulkDeleteAssets,
+  assetEvents,
+} from '@features/assets';
 import { RelatedAssetsModal } from '@features/assets/components/RelatedAssetsModal';
+import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets/stores/assetViewerStore';
 import {
   CAP_ASSET_SELECTION,
   useProvideCapability,
@@ -40,16 +52,66 @@ import { Icon, IconBadge } from '../lib/icons';
 export function AssetsRoute() {
   const navigate = useNavigate();
   const location = useLocation();
-  const controller = useAssetsController();
-  const { galleryAssetToViewer } = useAssetViewer({ source: 'gallery' });
   const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [sourcesRegistered, setSourcesRegistered] = useState(false);
 
+  // Selection state from stores (no duplicate controller)
+  const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
+  const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
+  const selectedAssets = useAssetSelectionStore((s) => s.selectedAssets);
+  const clearSelection = useAssetSelectionStore((s) => s.clearSelection);
+  const storeRemoveAsset = useAssetSelectionStore((s) => s.removeAsset);
+
+  const selectedAssetIds = useMemo(
+    () => new Set(selectedAssets.map((a) => String(a.id))),
+    [selectedAssets],
+  );
+
+  const cancelSelection = useCallback(() => {
+    exitSelectionMode();
+    useWorkspaceStore.getState().closeFloatingPanel('gallery');
+  }, [exitSelectionMode]);
+
   // Delete modal state (shared store for cross-component access)
   const deleteModalAssets = useDeleteModalStore((s) => s.assets);
   const closeDeleteModal = useDeleteModalStore((s) => s.closeDeleteModal);
+
+  // Viewer store for checking if viewer is open when deleting
+  const viewerAsset = useAssetViewerStore((s) => s.currentAsset);
+  const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
+  const closeViewer = useAssetViewerStore((s) => s.closeViewer);
+
+  // Confirm deletion from modal (single or batch)
+  const confirmDeleteAsset = useCallback(async (deleteFromProvider: boolean) => {
+    const assets = deleteModalAssets;
+    if (!assets.length) return;
+
+    closeDeleteModal();
+
+    try {
+      if (assets.length === 1) {
+        await deleteAsset(assets[0].id, { delete_from_provider: deleteFromProvider });
+      } else {
+        await bulkDeleteAssets(
+          assets.map((a) => a.id),
+          { delete_from_provider: deleteFromProvider },
+        );
+      }
+
+      for (const asset of assets) {
+        assetEvents.emitAssetDeleted(asset.id);
+        storeRemoveAsset(asset.id);
+      }
+      if (isViewerOpen && viewerAsset && assets.some((a) => a.id === viewerAsset.id)) {
+        closeViewer();
+      }
+    } catch (err) {
+      console.error('Failed to delete asset(s):', err);
+      alert(extractErrorMessage(err, 'Failed to delete asset(s)'));
+    }
+  }, [deleteModalAssets, closeDeleteModal, isViewerOpen, viewerAsset, storeRemoveAsset, closeViewer]);
 
   // Register all sources once
   useEffect(() => {
@@ -102,33 +164,27 @@ export function AssetsRoute() {
     return 'media-card-default';
   }, [panelConfig]);
 
-  const selectedGalleryAssets = useMemo(() => {
-    return controller.assets.filter((asset) =>
-      controller.selectedAssetIds.has(String(asset.id)),
-    );
-  }, [controller.assets, controller.selectedAssetIds]);
-
   const assetSelectionValue = useMemo<AssetSelection>(
     () => {
-      const refs = selectedGalleryAssets
-        .map((asset) => {
-          const id = Number(asset.id);
+      const refs = selectedAssets
+        .map((sa) => {
+          const id = Number(sa.id);
           return Number.isFinite(id) ? Ref.asset(id) : null;
         })
         .filter((ref): ref is AssetRef => !!ref);
 
       return {
         asset:
-          selectedGalleryAssets.length > 0
-            ? galleryAssetToViewer(selectedGalleryAssets[0])
+          selectedAssets.length > 0
+            ? selectedAssetToViewer(selectedAssets[0])
           : null,
-        assets: selectedGalleryAssets.map(galleryAssetToViewer),
+        assets: selectedAssets.map(selectedAssetToViewer),
         source: 'gallery',
         ref: refs[0] ?? null,
         refs,
       };
     },
-    [selectedGalleryAssets, galleryAssetToViewer],
+    [selectedAssets],
   );
 
   const assetSelectionProvider = useMemo(
@@ -137,16 +193,16 @@ export function AssetsRoute() {
       label: 'Gallery Selection',
       priority: 30,
       exposeToContextMenu: true,
-      isAvailable: () => selectedGalleryAssets.length > 0,
+      isAvailable: () => selectedAssets.length > 0,
       getValue: () => assetSelectionValue,
     }),
-    [selectedGalleryAssets.length, assetSelectionValue],
+    [selectedAssets.length, assetSelectionValue],
   );
 
   useProvideCapability(
     CAP_ASSET_SELECTION,
     assetSelectionProvider,
-    [selectedGalleryAssets],
+    [selectedAssets],
     { scope: 'root' },
   );
 
@@ -205,7 +261,7 @@ export function AssetsRoute() {
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={layoutStyle}>
       {/* Selection banners (only rendered when active) */}
-      {controller.isSelectionMode && (
+      {isSelectionMode && (
         <div className="flex-shrink-0 px-6 pt-4">
           <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 dark:border-blue-400 rounded-lg">
             <div className="flex items-center justify-between">
@@ -218,27 +274,27 @@ export function AssetsRoute() {
                   Click on an asset to select it for your scene node
                 </p>
               </div>
-              <Button variant="secondary" onClick={controller.cancelSelection}>
+              <Button variant="secondary" onClick={cancelSelection}>
                 Cancel
               </Button>
             </div>
           </div>
         </div>
       )}
-      {!controller.isSelectionMode && controller.selectedAssetIds.size > 0 && (
+      {!isSelectionMode && selectedAssetIds.size > 0 && (
         <div className="flex-shrink-0 px-6 pt-4">
           <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
                   <Icon name="wrench" size={20} variant="primary" />
-                  {controller.selectedAssetIds.size} Asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} Selected
+                  {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
                 </h2>
                 <p className="text-sm text-purple-700 dark:text-purple-300">
                   Use the tools panel below to perform actions on selected assets
                 </p>
               </div>
-              <Button variant="secondary" onClick={controller.clearSelection}>
+              <Button variant="secondary" onClick={clearSelection}>
                 Clear Selection
               </Button>
             </div>
@@ -379,7 +435,7 @@ export function AssetsRoute() {
       {deleteModalAssets.length > 0 && (
         <DeleteAssetModal
           assets={deleteModalAssets}
-          onConfirm={controller.confirmDeleteAsset}
+          onConfirm={confirmDeleteAsset}
           onCancel={closeDeleteModal}
         />
       )}

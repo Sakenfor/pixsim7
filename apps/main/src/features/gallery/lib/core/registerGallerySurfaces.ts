@@ -3,16 +3,20 @@
  *
  * Registers all available gallery surfaces with the plugin catalog.
  * Called once at application startup.
+ *
+ * Note: Non-default surfaces are now rendered inline by RemoteGallerySource
+ * based on the ?surface= URL parameter. The component refs here are kept
+ * for the plugin registry (metadata, lifecycle hooks, etc.) but are not
+ * used for rendering.
  */
 
-import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
+import { registerPluginDefinition } from '@lib/plugins/pluginRuntime';
 
 import {
-  DefaultGallerySurface,
-  ReviewGallerySurface,
-  CuratorGallerySurface,
-  DebugGallerySurface,
+  ReviewSurfaceContent,
+  CuratorSurfaceContent,
+  DebugSurfaceContent,
 } from '@features/assets';
 
 const builtInGallerySurfaces = [
@@ -22,7 +26,8 @@ const builtInGallerySurfaces = [
     description: 'Standard asset gallery with filters and tools',
     icon: '🖼️',
     category: 'default',
-    component: DefaultGallerySurface,
+    // No component needed — this is the default rendering path in RemoteGallerySource
+    component: () => null,
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: true,
     routePath: '/assets',
@@ -33,7 +38,7 @@ const builtInGallerySurfaces = [
     description: 'Simplified view for reviewing and curating assets',
     icon: '✓',
     category: 'review',
-    component: ReviewGallerySurface,
+    component: ReviewSurfaceContent,
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: false,
     routePath: '/assets/review',
@@ -50,7 +55,7 @@ const builtInGallerySurfaces = [
     description: 'Advanced curation tools for power users',
     icon: '⭐',
     category: 'curation',
-    component: CuratorGallerySurface,
+    component: CuratorSurfaceContent,
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: true,
     routePath: '/assets/curator',
@@ -65,7 +70,7 @@ const builtInGallerySurfaces = [
     description: 'Developer tools and diagnostics',
     icon: '🐛',
     category: 'debug',
-    component: DebugGallerySurface,
+    component: DebugSurfaceContent,
     supportsMediaTypes: ['image', 'video', 'audio', '3d_model'],
     supportsSelection: false,
     routePath: '/assets/debug',

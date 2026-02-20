@@ -8,10 +8,12 @@
 // Components - Gallery Surfaces
 // ============================================================================
 
-export { CuratorGallerySurface } from './components/CuratorGallerySurface';
-export { DebugGallerySurface } from './components/DebugGallerySurface';
-export { DefaultGallerySurface } from './components/DefaultGallerySurface';
-export { ReviewGallerySurface } from './components/ReviewGallerySurface';
+export { CuratorSurfaceContent } from './components/CuratorGallerySurface';
+export type { CuratorSurfaceContentProps } from './components/CuratorGallerySurface';
+export { DebugSurfaceContent } from './components/DebugGallerySurface';
+export type { DebugSurfaceContentProps } from './components/DebugGallerySurface';
+export { ReviewSurfaceContent } from './components/ReviewGallerySurface';
+export type { ReviewSurfaceContentProps } from './components/ReviewGallerySurface';
 export { AssetDetailModal } from './components/AssetDetailModal';
 export { DeleteAssetModal } from './components/DeleteAssetModal';
 export { RelatedAssetsModal } from './components/RelatedAssetsModal';
@@ -49,6 +51,7 @@ export type { AssetFilters, AssetModel } from './hooks/useAssets';
 // AssetResponse is exported from ./lib/api for API boundary access
 
 export { useAssetsController } from './hooks/useAssetsController';
+export type { AssetsController } from './hooks/useAssetsController';
 
 export { useAssetViewer, useViewerScopeSync } from './hooks/useAssetViewer';
 
@@ -156,6 +159,7 @@ export {
   toViewerAsset,
   toViewerAssets,
   toSelectedAsset,
+  selectedAssetToViewer,
   type AssetSyncStatus,
   type AssetProviderStatus,
   type TagSummary,

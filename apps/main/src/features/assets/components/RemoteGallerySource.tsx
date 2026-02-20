@@ -2,6 +2,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+
 import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
@@ -37,6 +38,8 @@ import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses, toViewerAssets } from '../models/asset';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 
+import { CuratorSurfaceContent } from './CuratorGallerySurface';
+import { DebugSurfaceContent } from './DebugGallerySurface';
 import { DynamicFilters } from './DynamicFilters';
 import { FilterPresetBar } from './FilterPresetBar';
 import { GroupBreadcrumb } from './GroupBreadcrumb';
@@ -59,6 +62,7 @@ import {
 } from './groupHelpers';
 import { GroupingMenuDropdown } from './GroupingMenuDropdown';
 import { ParallelGroupSection, type ParallelAxisData } from './ParallelGroupSection';
+import { ReviewSurfaceContent } from './ReviewGallerySurface';
 import { BottomPagination } from './shared/BottomPagination';
 import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
 import { PaginationStrip } from './shared/PaginationStrip';
@@ -849,6 +853,24 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       </div>
     );
   });
+
+  // ---------------------------------------------------------------------------
+  // Surface routing: non-default surfaces replace the entire content area
+  // ---------------------------------------------------------------------------
+  const activeSurfaceId = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('surface') || 'assets-default';
+  }, [location.search]);
+
+  if (activeSurfaceId === 'assets-review') {
+    return <ReviewSurfaceContent controller={controller} />;
+  }
+  if (activeSurfaceId === 'assets-curator') {
+    return <CuratorSurfaceContent controller={controller} />;
+  }
+  if (activeSurfaceId === 'assets-debug') {
+    return <DebugSurfaceContent controller={controller} />;
+  }
 
   return (
     <div className="flex flex-col h-full">

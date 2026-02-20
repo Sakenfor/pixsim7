@@ -541,3 +541,5 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     cancelDeleteAsset,
   };
 }
+
+export type AssetsController = ReturnType<typeof useAssetsController>;

@@ -4,7 +4,7 @@
  * Shared selection state management for multi-select galleries and lists.
  * Provides toggle, clear, and select-all functionality with Set-based storage.
  *
- * Used by: useAssetsController, useGallerySurfaceController, useCuratorGalleryController
+ * Used by: useAssetsController, useGallerySurfaceController
  */
 
 import { useState, useCallback } from 'react';

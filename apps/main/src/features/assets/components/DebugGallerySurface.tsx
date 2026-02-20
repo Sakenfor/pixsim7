@@ -1,7 +1,8 @@
 /**
- * Debug Gallery Surface
+ * Debug Gallery Surface (Presentational)
  *
  * Developer-focused view showing technical information and diagnostics.
+ * Receives controller from RemoteGallerySource — no own data fetching.
  */
 
 import { useState } from 'react';
@@ -9,11 +10,13 @@ import { useState } from 'react';
 import { Icon } from '@lib/icons';
 import { gallerySurfaceSelectors, galleryToolSelectors } from '@lib/plugins/catalogSelectors';
 
-import { useAssets } from '../hooks/useAssets';
+import type { AssetsController } from '../hooks/useAssetsController';
 
-export function DebugGallerySurface() {
-  const [filters] = useState({ q: '', sort: 'new' as const });
-  const { items, loading, error } = useAssets({ filters });
+export interface DebugSurfaceContentProps {
+  controller: AssetsController;
+}
+
+export function DebugSurfaceContent({ controller }: DebugSurfaceContentProps) {
   const [activeTab, setActiveTab] = useState<'surfaces' | 'tools' | 'assets'>('surfaces');
 
   // Get registry information
@@ -47,6 +50,9 @@ export function DebugGallerySurface() {
       .join(', ');
     return entries.length > 120 ? `${entries.slice(0, 117)}...` : entries;
   };
+
+  const items = controller.assets;
+  const { loading, error } = controller;
 
   return (
     <div className="p-6 space-y-4 min-h-screen bg-neutral-50 dark:bg-neutral-900">

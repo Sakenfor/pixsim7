@@ -2,9 +2,11 @@
  * Gallery Surface Switcher
  *
  * Allows switching between different gallery surfaces.
+ * Uses React Router navigate to trigger re-renders properly.
  */
 
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 import { Icon } from '@lib/icons';
 import { gallerySurfaceSelectors } from '@lib/plugins/catalogSelectors';
@@ -32,11 +34,14 @@ export function GallerySurfaceSwitcher({
   onSurfaceChange,
   mode = 'dropdown',
 }: GallerySurfaceSwitcherProps) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [currentSurfaceId, setCurrentSurfaceId] = useState<GallerySurfaceId>(() => {
     if (activeSurfaceId) return activeSurfaceId;
 
     // Try to get from URL
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(location.search);
     const urlSurfaceId = params.get('surface');
     if (urlSurfaceId) return urlSurfaceId as GallerySurfaceId;
 
@@ -53,21 +58,25 @@ export function GallerySurfaceSwitcher({
     }
   }, [activeSurfaceId]);
 
+  // Sync with URL changes (e.g., browser back/forward)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const urlSurfaceId = params.get('surface');
+    if (urlSurfaceId && urlSurfaceId !== currentSurfaceId) {
+      setCurrentSurfaceId(urlSurfaceId as GallerySurfaceId);
+    }
+  }, [location.search, currentSurfaceId]);
+
   const handleSurfaceChange = (surfaceId: GallerySurfaceId) => {
     setCurrentSurfaceId(surfaceId);
 
-    // Update URL parameter
-    const params = new URLSearchParams(window.location.search);
+    // Update URL via React Router navigate (triggers re-render)
+    const params = new URLSearchParams(location.search);
     params.set('surface', surfaceId);
-    const newUrl = `${window.location.pathname}?${params.toString()}`;
-    window.history.pushState({}, '', newUrl);
+    navigate({ search: params.toString() }, { replace: true });
 
-    // Trigger callback which will cause parent to re-render with new surface
     if (onSurfaceChange) {
       onSurfaceChange(surfaceId);
-    } else {
-      // If no callback provided, force a reload as fallback
-      window.location.reload();
     }
   };
 

@@ -1,37 +1,35 @@
 /**
- * Review Gallery Surface
+ * Review Gallery Surface (Presentational)
  *
  * Simplified gallery view optimized for reviewing and curating assets.
+ * Receives controller from RemoteGallerySource — no own data fetching.
+ *
  * Features:
  * - Larger card view
  * - Accept/reject actions
- * - Minimal filters (focus on reviewing)
+ * - Keyboard shortcuts (A/R/S)
+ * - Persistent review session state
  */
 
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useMemo, useEffect } from 'react';
 
-import { useGallerySurfaceController } from '@features/gallery';
-
 import { MediaCard } from '@/components/media/MediaCard';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { usePersistentSet } from '@/hooks/usePersistentState';
 
+import type { AssetsController } from '../hooks/useAssetsController';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 
-import { AssetDetailModal } from './AssetDetailModal';
-import { RelatedAssetsModal } from './RelatedAssetsModal';
 import { GallerySurfaceShell } from './shared';
 
-export function ReviewGallerySurface() {
+export interface ReviewSurfaceContentProps {
+  controller: AssetsController;
+}
+
+export function ReviewSurfaceContent({ controller }: ReviewSurfaceContentProps) {
   const [focusedAssetIndex, setFocusedAssetIndex] = useState<number>(0);
   const [showHelp, setShowHelp] = useState(false);
-
-  // Use the gallery surface controller for asset loading and generation actions
-  const controller = useGallerySurfaceController({
-    mode: 'review',
-    filters: { sort: 'new' },
-  });
 
   // Persistent review state - survives page reloads
   const [reviewedAssets, setReviewedAssets] = usePersistentSet('review-session:reviewed', new Set());
@@ -158,6 +156,11 @@ export function ReviewGallerySurface() {
     }
   }, [controller.assets.length, focusedAssetIndex]);
 
+  // Convert selected IDs to asset array for context menu
+  const selectedAssets = useMemo(() => {
+    return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
+  }, [controller.assets, controller.selectedAssetIds]);
+
   // Header actions: help button + progress stats
   const headerActions = (
     <div className="flex items-center gap-4 text-sm">
@@ -179,7 +182,7 @@ export function ReviewGallerySurface() {
       </span>
       {stats.reviewed > 0 && (
         <Button variant="secondary" onClick={clearSession} className="text-xs">
-          🗑️ Clear Session
+          Clear Session
         </Button>
       )}
     </div>
@@ -220,7 +223,7 @@ export function ReviewGallerySurface() {
                 onReject: () => handleReject(assetId),
               }}
               overlayPresetId="media-card-review"
-              contextMenuSelection={controller.selectedAssets}
+              contextMenuSelection={selectedAssets}
             />
 
             {/* Review Actions */}
@@ -282,7 +285,7 @@ export function ReviewGallerySurface() {
         title="Asset Review"
         headerActions={headerActions}
         filters={controller.filters}
-        onFiltersChange={controller.updateFilters}
+        onFiltersChange={(updates) => controller.setFilters({ ...updates })}
         showSearch
         showMediaType={false}
         showSort
@@ -296,10 +299,6 @@ export function ReviewGallerySurface() {
       >
         {reviewGrid}
       </GallerySurfaceShell>
-
-      {/* Asset Detail Modal - uses shared store */}
-      <AssetDetailModal />
-      <RelatedAssetsModal />
     </>
   );
 }

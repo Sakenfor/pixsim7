@@ -47,13 +47,6 @@ export {
   type GallerySurfaceConfig,
 } from './hooks/useGallerySurfaceController';
 
-export {
-  useCuratorGalleryController,
-  type CuratorFilters,
-  type CuratorViewMode,
-  type CuratorGalleryController,
-} from './hooks/useCuratorGalleryController';
-
 // ============================================================================
 // Lib - Gallery System
 // ============================================================================
