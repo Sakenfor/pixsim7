@@ -15,15 +15,15 @@ import { providerCapabilityRegistry } from '@features/providers';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { useFilterPersistence } from '@/hooks/useFilterPersistence';
-import { useSelection } from '@/hooks/useSelection';
 import { useViewer } from '@/hooks/useViewer';
 import type { OperationType } from '@/types/operations';
 
 import { deleteAsset, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
-import { getAssetDisplayUrls } from '../models/asset';
+import { getAssetDisplayUrls, toSelectedAsset } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
+import { useAssetSelectionStore } from '../stores/assetSelectionStore';
 import { useDeleteModalStore } from '../stores/deleteModalStore';
 
 import { useAsset } from './useAsset';
@@ -210,8 +210,31 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
   const setDetailAssetId = useAssetDetailStore((s) => s.setDetailAssetId);
   const { asset: detailAsset, loading: detailLoading, error: detailError } = useAsset(detailAssetId);
 
-  // Multi-select state
-  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, selectAll, isSelected } = useSelection();
+  // Multi-select state (global store)
+  const selectedAssets = useAssetSelectionStore((s) => s.selectedAssets);
+  const toggleAsset = useAssetSelectionStore((s) => s.toggleAsset);
+  const clearSelection = useAssetSelectionStore((s) => s.clearSelection);
+  const storeSelectAll = useAssetSelectionStore((s) => s.selectAll);
+  const storeRemoveAsset = useAssetSelectionStore((s) => s.removeAsset);
+
+  const selectedAssetIds = useMemo(
+    () => new Set(selectedAssets.map((a) => String(a.id))),
+    [selectedAssets],
+  );
+
+  const toggleAssetSelection = useCallback(
+    (asset: AssetModel) => {
+      toggleAsset(toSelectedAsset(asset, 'gallery'));
+    },
+    [toggleAsset],
+  );
+
+  const selectAll = useCallback(
+    (assets: AssetModel[]) => {
+      storeSelectAll(assets.map((a) => toSelectedAsset(a, 'gallery')));
+    },
+    [storeSelectAll],
+  );
 
   // Handle asset selection for picker mode
   const handleSelectAsset = useCallback((asset: AssetModel) => {
@@ -274,9 +297,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       // Emit delete events and clean up selection/viewer for each asset
       for (const asset of assets) {
         assetEvents.emitAssetDeleted(asset.id);
-        if (isSelected(asset.id)) {
-          toggleAssetSelection(String(asset.id));
-        }
+        storeRemoveAsset(asset.id);
       }
       // Close viewer if viewing a deleted asset
       if (viewerAsset && assets.some((a) => a.id === viewerAsset.id)) {
@@ -286,7 +307,7 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       console.error('Failed to delete asset(s):', err);
       alert(extractErrorMessage(err, 'Failed to delete asset(s)'));
     }
-  }, [deleteModalAssets, closeDeleteModal, viewerAsset, isSelected, toggleAssetSelection, closeViewer]);
+  }, [deleteModalAssets, closeDeleteModal, viewerAsset, storeRemoveAsset, closeViewer]);
 
   // Cancel deletion
   const cancelDeleteAsset = useCallback(() => {

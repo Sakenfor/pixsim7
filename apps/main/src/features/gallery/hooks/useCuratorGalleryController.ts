@@ -1,10 +1,9 @@
 import { useMemo, useState, useCallback } from 'react';
 
-import { useAssets, type AssetFilters, type AssetModel } from '@features/assets';
+import { useAssets, toSelectedAsset, type AssetFilters, type AssetModel } from '@features/assets';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 
-import { useSelection } from '@/hooks/useSelection';
-
-export interface CuratorFilters extends AssetFilters {}
+export type CuratorFilters = AssetFilters;
 
 export type CuratorViewMode = 'grid' | 'list' | 'compact';
 
@@ -24,7 +23,7 @@ export interface CuratorGalleryController {
 
   selectedAssetIds: Set<string>;
   selectedAssets: AssetModel[];
-  toggleAssetSelection: (assetId: string | number) => void;
+  toggleAssetSelection: (asset: AssetModel) => void;
   selectAll: () => void;
   clearSelection: () => void;
 
@@ -51,8 +50,23 @@ export function useCuratorGalleryController(): CuratorGalleryController {
 
   const { items, loadMore, loading, error, hasMore, reset } = useAssets({ filters });
 
-  // Selection state
-  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection, selectAll: selectAllBase } = useSelection();
+  // Selection state (global store)
+  const storeSelectedAssets = useAssetSelectionStore((s) => s.selectedAssets);
+  const toggleAsset = useAssetSelectionStore((s) => s.toggleAsset);
+  const clearSelection = useAssetSelectionStore((s) => s.clearSelection);
+  const storeSelectAll = useAssetSelectionStore((s) => s.selectAll);
+
+  const selectedAssetIds = useMemo(
+    () => new Set(storeSelectedAssets.map((a) => String(a.id))),
+    [storeSelectedAssets],
+  );
+
+  const toggleAssetSelection = useCallback(
+    (asset: AssetModel) => {
+      toggleAsset(toSelectedAsset(asset, 'gallery'));
+    },
+    [toggleAsset],
+  );
 
   const [viewMode, setViewMode] = useState<CuratorViewMode>('grid');
   const [collections, setCollections] = useState<Map<string, Set<string>>>(new Map());
@@ -71,8 +85,8 @@ export function useCuratorGalleryController(): CuratorGalleryController {
 
   // Wrap selectAll to pass items
   const selectAll = useCallback(() => {
-    selectAllBase(items);
-  }, [items, selectAllBase]);
+    storeSelectAll(items.map((a) => toSelectedAsset(a, 'gallery')));
+  }, [items, storeSelectAll]);
 
   const addCollection = useCallback((name: string | null) => {
     if (!name || selectedAssetIds.size === 0) return;

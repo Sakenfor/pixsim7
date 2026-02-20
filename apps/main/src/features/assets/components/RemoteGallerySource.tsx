@@ -25,7 +25,7 @@ import { useProviders } from '@features/providers';
 import { MasonryGrid } from '@/components/layout/MasonryGrid';
 import { MediaCard } from '@/components/media/MediaCard';
 
-import type { AssetFilters } from '../hooks/useAssets';
+import type { AssetFilters, AssetModel } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
 import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
 import { assetEvents } from '../lib/assetEvents';
@@ -181,12 +181,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // Subscribe to open-tools-panel events (from context menu)
   useEffect(() => {
     return assetEvents.subscribeToOpenToolsPanel((assetIds) => {
-      controller.selectAll(assetIds.map((id) => ({ id })));
+      const idSet = new Set(assetIds);
+      const matchedAssets = controller.assets.filter((a) => idSet.has(a.id));
+      controller.selectAll(matchedAssets);
       // Auto-expand the first tool registered for this surface
       const tools = galleryToolSelectors.getBySurface('assets-default');
       setExpandedToolId(tools[0]?.id ?? null);
     });
-  }, [controller.selectAll]);
+  }, [controller.selectAll, controller.assets]);
 
   useLayoutEffect(() => {
     if (!groupMenuOpen || !groupMenuAnchorRef.current) {
@@ -772,8 +774,8 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   );
 
   // Handle asset selection for gallery tools
-  const toggleAssetSelection = (assetId: number | string) => {
-    controller.toggleAssetSelection(String(assetId));
+  const toggleAssetSelection = (asset: AssetModel) => {
+    controller.toggleAssetSelection(asset);
   };
 
   // Resolve single provider filter for reupload actions
@@ -825,7 +827,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           if (e.ctrlKey || e.metaKey || e.shiftKey) {
             e.preventDefault();
             e.stopPropagation();
-            toggleAssetSelection(a.id);
+            toggleAssetSelection(a);
           }
         }}
       >

@@ -26,6 +26,9 @@ interface AssetSelectionStore {
   // Clear selection
   clearSelection: () => void;
 
+  // Replace entire selection
+  selectAll: (assets: SelectedAsset[]) => void;
+
   // Check if asset is selected
   isSelected: (assetId: number) => boolean;
 
@@ -79,6 +82,10 @@ export const useAssetSelectionStore = create<AssetSelectionStore>()(
         set({ selectedAssets: [], lastSelectedAsset: undefined });
       },
 
+      selectAll: (assets) => {
+        set({ selectedAssets: assets });
+      },
+
       isSelected: (assetId) => {
         return get().selectedAssets.some((a) => a.id === assetId);
       },
@@ -92,7 +99,6 @@ export const useAssetSelectionStore = create<AssetSelectionStore>()(
     {
       name: 'asset_selection_v1',
       partialize: (state) => ({
-        selectedAssets: state.selectedAssets,
         lastSelectedAsset: state.lastSelectedAsset,
       }),
     },

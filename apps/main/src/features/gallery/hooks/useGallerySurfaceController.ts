@@ -1,10 +1,9 @@
 import { createAssetActions } from '@pixsim7/shared.assets.core';
 import { useState, useCallback, useMemo } from 'react';
 
-import { useAssets, useAsset, useAssetDetailStore, type AssetModel, type AssetFilters } from '@features/assets';
+import { useAssets, useAsset, useAssetDetailStore, toSelectedAsset, type AssetModel, type AssetFilters } from '@features/assets';
+import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
 import { useMediaGenerationActions } from '@features/generation';
-
-import { useSelection } from '@/hooks/useSelection';
 
 export interface GallerySurfaceConfig {
   /**
@@ -83,12 +82,25 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
     quickGenerate,
   } = useMediaGenerationActions();
 
-  // Selection state
-  const { selectedIds: selectedAssetIds, toggleSelection: toggleAssetSelection, clearSelection } = useSelection({
-    enableSelection,
-  });
+  // Selection state (global store)
+  const storeSelectedAssets = useAssetSelectionStore((s) => s.selectedAssets);
+  const toggleAsset = useAssetSelectionStore((s) => s.toggleAsset);
+  const clearSelection = useAssetSelectionStore((s) => s.clearSelection);
 
-  // Get selected assets
+  const selectedAssetIds = useMemo(
+    () => new Set(storeSelectedAssets.map((a) => String(a.id))),
+    [storeSelectedAssets],
+  );
+
+  const toggleAssetSelection = useCallback(
+    (asset: AssetModel) => {
+      if (!enableSelection) return;
+      toggleAsset(toSelectedAsset(asset, 'gallery'));
+    },
+    [enableSelection, toggleAsset],
+  );
+
+  // Get selected assets (filtered to displayItems for this surface)
   const selectedAssets = useMemo(() => {
     return displayItems.filter((asset) => selectedAssetIds.has(String(asset.id)));
   }, [displayItems, selectedAssetIds]);

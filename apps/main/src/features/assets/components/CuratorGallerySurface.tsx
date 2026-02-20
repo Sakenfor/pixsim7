@@ -78,33 +78,6 @@ export function CuratorGallerySurface() {
     controller.selectedAssetIds.size > 0 || controller.collections.size > 0 ? (
       <div className="space-y-4">
         {controller.selectedAssetIds.size > 0 && (
-          <div className="p-4 bg-accent-subtle border-2 border-accent rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-neutral-900 dark:text-neutral-100">
-                  {controller.selectedAssetIds.size} asset{controller.selectedAssetIds.size !== 1 ? 's' : ''} selected
-                </h3>
-                <p className="text-sm text-neutral-700 dark:text-neutral-300">
-                  Use bulk operations or create a collection
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  onClick={() => controller.addCollection(prompt('Collection name:') ?? null)}
-                  className="text-xs"
-                >
-                  Create Collection
-                </Button>
-                <Button variant="secondary" onClick={controller.clearSelection} className="text-xs">
-                  Clear
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {controller.selectedAssetIds.size > 0 && (
           <GalleryToolsPanel context={galleryContext} surfaceId="assets-curator" />
         )}
 
@@ -137,7 +110,7 @@ export function CuratorGallerySurface() {
             className={`flex items-center gap-3 p-2 bg-white dark:bg-neutral-800 rounded border cursor-pointer ${
               isSelected ? 'border-accent ring-2 ring-accent' : 'border-neutral-200 dark:border-neutral-700'
             }`}
-            onClick={() => controller.toggleAssetSelection(asset.id)}
+            onClick={() => controller.toggleAssetSelection(asset)}
           >
             <div className="w-16 h-16 flex-shrink-0">
               <MediaCard
@@ -180,7 +153,7 @@ export function CuratorGallerySurface() {
           <AssetCardWrapper
             key={asset.id}
             isSelected={isSelected}
-            onClick={() => controller.toggleAssetSelection(asset.id)}
+            onClick={() => controller.toggleAssetSelection(asset)}
           >
             <MediaCard
               asset={asset}
