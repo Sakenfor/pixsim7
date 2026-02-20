@@ -472,28 +472,6 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 except Exception as e:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
-            # Pinned account guard: if user explicitly selected an account
-            # and it couldn't be used, fail rather than silently using a
-            # different account from the pool.
-            if not account and getattr(generation, 'preferred_account_id', None):
-                pref_id = generation.preferred_account_id
-                gen_logger.warning(
-                    "preferred_account_pinned_unavailable",
-                    account_id=pref_id,
-                    generation_id=generation_id,
-                )
-                debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
-                await generation_service.mark_failed(
-                    generation_id,
-                    f"Selected account #{pref_id} is temporarily unavailable",
-                )
-                get_health_tracker().increment_failed()
-                return {
-                    "status": "failed",
-                    "reason": "preferred_account_unavailable",
-                    "generation_id": generation_id,
-                }
-
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
                 async def acquire_account():
@@ -640,26 +618,19 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    # Don't rotate away from a pinned account — let standard
-                    # retry/failure handling inform the user.
-                    _is_pinned = (
-                        getattr(generation, 'preferred_account_id', None)
-                        and generation.preferred_account_id == account.id
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_quota_exhausted",
+                        log_event="generation_requeued_for_different_account",
+                        account_log_field="exhausted_account_id",
+                        gen_logger=gen_logger,
                     )
-                    if not _is_pinned:
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_quota_exhausted",
-                            log_event="generation_requeued_for_different_account",
-                            account_log_field="exhausted_account_id",
-                            gen_logger=gen_logger,
-                        )
-                        if requeue_result:
-                            return requeue_result
-                    # Fall through to mark as failed if requeue fails or pinned
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
@@ -675,26 +646,19 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    # Don't rotate away from a pinned account — ARQ retry
-                    # will pick it up after the cooldown expires.
-                    _is_pinned = (
-                        getattr(generation, 'preferred_account_id', None)
-                        and generation.preferred_account_id == account.id
+                    requeue_result = await _requeue_generation_for_account_rotation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        failed_account_id=account.id,
+                        reason="account_concurrent_limit",
+                        log_event="generation_requeued_concurrent_limit",
+                        account_log_field="previous_account_id",
+                        gen_logger=gen_logger,
                     )
-                    if not _is_pinned:
-                        requeue_result = await _requeue_generation_for_account_rotation(
-                            db=db,
-                            generation=generation,
-                            generation_id=generation_id,
-                            failed_account_id=account.id,
-                            reason="account_concurrent_limit",
-                            log_event="generation_requeued_concurrent_limit",
-                            account_log_field="previous_account_id",
-                            gen_logger=gen_logger,
-                        )
-                        if requeue_result:
-                            return requeue_result
-                    # Fall through: pinned accounts use standard ARQ retry
+                    if requeue_result:
+                        return requeue_result
+                    # Fall through to mark as failed if requeue fails
 
                 # Session/auth failure on one account - cool it down and retry with another account.
                 elif _is_auth_rotation_error(e):
