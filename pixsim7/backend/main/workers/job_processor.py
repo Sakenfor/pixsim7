@@ -395,11 +395,15 @@ async def _defer_pinned_generation(
     defer_seconds: int,
     reason: str,
     gen_logger,
+    increment_retry: bool = True,
 ) -> dict | None:
     """
     Reset a pinned generation to PENDING and re-enqueue with a delay.
 
-    Used when the pinned account is temporarily at capacity (concurrent limit).
+    Used when the pinned account is temporarily at capacity (concurrent limit)
+    or on cooldown.  Set ``increment_retry=False`` for passive cooldown waits
+    that shouldn't count against the retry budget.
+
     Returns requeue payload on success; None on failure so the caller can fall
     through to standard failure handling.
     """
@@ -407,7 +411,8 @@ async def _defer_pinned_generation(
         from pixsim7.backend.main.infrastructure.redis import get_arq_pool
         from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
-        generation.retry_count = (generation.retry_count or 0) + 1
+        if increment_retry:
+            generation.retry_count = (generation.retry_count or 0) + 1
         generation.status = GenStatus.PENDING
         generation.started_at = None
         generation.account_id = None
@@ -572,10 +577,46 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
             # Pinned account guard: if user explicitly selected an account
-            # and it couldn't be used, fail rather than silently using a
-            # different account from the pool.
+            # and it couldn't be used, don't silently use a different account.
+            # Cooldown → defer until it expires.  Permanent issue → fail.
             if not account and getattr(generation, 'preferred_account_id', None):
                 pref_id = generation.preferred_account_id
+                try:
+                    _pref_acct = await db.get(ProviderAccount, pref_id)
+                except Exception:
+                    _pref_acct = None
+
+                # Temporary cooldown — defer until it expires instead of failing
+                if (
+                    _pref_acct
+                    and _pref_acct.cooldown_until
+                    and _pref_acct.cooldown_until > datetime.now(timezone.utc)
+                ):
+                    remaining = (
+                        _pref_acct.cooldown_until - datetime.now(timezone.utc)
+                    ).total_seconds()
+                    defer_seconds = max(int(remaining) + 5, 10)
+                    gen_logger.info(
+                        "preferred_account_cooldown_defer",
+                        account_id=pref_id,
+                        generation_id=generation_id,
+                        defer_seconds=defer_seconds,
+                    )
+                    defer_result = await _defer_pinned_generation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        account_id=pref_id,
+                        defer_seconds=defer_seconds,
+                        reason="pinned_account_cooldown_wait",
+                        gen_logger=gen_logger,
+                        increment_retry=False,
+                    )
+                    if defer_result:
+                        return defer_result
+                    # Fall through to fail if defer itself fails
+
+                # Permanent unavailability (disabled, daily limit, etc.)
                 gen_logger.warning(
                     "preferred_account_pinned_unavailable",
                     account_id=pref_id,
@@ -584,7 +625,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
                 await generation_service.mark_failed(
                     generation_id,
-                    f"Selected account #{pref_id} is temporarily unavailable",
+                    f"Selected account #{pref_id} is not available (disabled or at daily limit)",
                 )
                 get_health_tracker().increment_failed()
                 return {
