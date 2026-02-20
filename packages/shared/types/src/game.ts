@@ -7,7 +7,7 @@
  * This file contains two categories of types:
  *
  * 1. **API DTOs (aliased from Orval)**: Types that match backend Pydantic models.
- *    These are imported from `@pixsim7/shared.api.client/model` (Orval-generated).
+ *    These are imported from `@pixsim7/shared.api.model` (Orval-generated).
  *    Look for: `export type Foo = ...` with an Orval import.
  *
  * 2. **Frontend-only types**: Types used only in frontend/game engine that have no
@@ -17,7 +17,7 @@
  * ## Avoiding Drift
  *
  * When adding new types, check if they exist in the Orval model barrel first:
- *   grep "export \* from" packages/shared/api/client/src/generated/openapi/model/index.ts
+ *   grep "export \* from" packages/shared/api/model/src/generated/openapi/model/index.ts
  *
  * If they do, import them instead of duplicating.
  */
@@ -39,7 +39,7 @@ import type {
   QuestObjective,
   SensualTouchRequest,
   SensualTouchResponse,
-} from '@pixsim7/shared.api.client/model';
+} from '@pixsim7/shared.api.model';
 
 // ===================
 // Spatial Model Types [frontend-only]

@@ -22,6 +22,9 @@ export interface TemplateSlot {
   weight: number;
   optional: boolean;
   fallback_text?: string | null;
+  reinforcement_text?: string | null;
+  intensity?: number | null;
+  inherit_intensity?: boolean;
   exclude_block_ids?: string[] | null;
 }
 
@@ -60,10 +63,11 @@ export interface BlockTemplateDetail extends BlockTemplateSummary {
 /** Result of rolling a single slot */
 export interface SlotResult {
   label: string;
-  status: 'selected' | 'skipped' | 'fallback' | 'empty';
+  status: 'selected' | 'skipped' | 'fallback' | 'empty' | 'reinforcement';
   match_count: number;
   reason?: string;
   fallback_text?: string;
+  reinforcement_text?: string;
   selected_block_id?: string;
   selected_block_string_id?: string;
   selected_block_role?: string;

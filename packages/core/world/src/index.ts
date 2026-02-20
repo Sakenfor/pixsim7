@@ -6,15 +6,18 @@
 
 import type {
   IntimacyGatingConfig,
+  NpcConfig,
   WorldManifestParsed,
   WorldStatsConfig,
 } from '@pixsim7/shared.types';
 import {
   DEFAULT_INTIMACY_GATING,
+  DEFAULT_NPC_CONFIG,
   DEFAULT_TURN_PRESET,
   DEFAULT_WORLD_MANIFEST,
   DEFAULT_WORLD_STATS_CONFIG,
   IntimacyGatingConfigSchema,
+  NpcConfigSchema,
   TURN_PRESET_SECONDS,
   WorldManifestSchema,
   WorldStatsConfigSchema,
@@ -72,6 +75,17 @@ export function getTurnDeltaFromPreset(preset: string | undefined): number {
     return TURN_PRESET_SECONDS[preset as keyof typeof TURN_PRESET_SECONDS];
   }
   return TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET];
+}
+
+/**
+ * Safely parse NPC config with fallback to defaults.
+ */
+export function parseNpcConfig(raw: unknown): NpcConfig {
+  if (!raw) return DEFAULT_NPC_CONFIG;
+  const result = NpcConfigSchema.safeParse(raw);
+  if (result.success) return result.data;
+  console.warn('[WorldConfig] Invalid npc_config, using defaults:', result.error.issues);
+  return DEFAULT_NPC_CONFIG;
 }
 
 // =============================================================================

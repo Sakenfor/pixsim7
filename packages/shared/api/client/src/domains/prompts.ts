@@ -5,41 +5,46 @@
  * and semantic packs.
  */
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
+import type {
+  CompareVersionsApiV1PromptsVersionsCompareGetParams,
+  CreatePromptFamilyRequest,
+  CreatePromptVariantRequest,
+  CreatePromptVersionRequest,
+  ListFamiliesApiV1PromptsFamiliesGetParams,
+  ListPromptVariantsForVersionApiV1PromptsVersionsVersionIdVariantsGetParams,
+  ListSemanticPacksApiV1SemanticPacksGetParams,
+  ListVersionsApiV1PromptsFamiliesFamilyIdVersionsGetParams,
+  PromptFamilyResponse,
+  PromptVariantResponse,
+  PromptVersionResponse,
+  RatePromptVariantRequest,
+  SemanticPackCreateRequest,
+  SemanticPackManifest,
+} from '@pixsim7/shared.api.model';
 
 // ===== Prompt Types =====
 
-export type PromptFamilySummary = Schemas['PromptFamilyResponse'];
-export type PromptFamilyDetail = Schemas['PromptFamilyResponse'];
-export type PromptVersionSummary = Schemas['PromptVersionResponse'];
-export type PromptVersionDetail = Schemas['PromptVersionResponse'];
-export type PromptVariant = Schemas['PromptVariantResponse'];
-export type VariantFeedback = Schemas['PromptVariantResponse'];
-export type PromptAnalytics =
-  ApiOperations['get_family_analytics_api_v1_prompts_families__family_id__analytics_get']['responses'][200]['content']['application/json'];
-export type PromptComparison =
-  ApiOperations['compare_versions_api_v1_prompts_versions_compare_get']['responses'][200]['content']['application/json'];
-export type SemanticPack = Schemas['SemanticPackManifest'];
+export type PromptFamilySummary = PromptFamilyResponse;
+export type PromptFamilyDetail = PromptFamilyResponse;
+export type PromptVersionSummary = PromptVersionResponse;
+export type PromptVersionDetail = PromptVersionResponse;
+export type PromptVariant = PromptVariantResponse;
+export type VariantFeedback = PromptVariantResponse;
+export type PromptAnalytics = unknown;
+export type PromptComparison = unknown;
+export type SemanticPack = SemanticPackManifest;
 
-type ListFamiliesQuery =
-  ApiOperations['list_families_api_v1_prompts_families_get']['parameters']['query'];
-type ListVersionsQuery =
-  ApiOperations['list_versions_api_v1_prompts_families__family_id__versions_get']['parameters']['query'];
-type CreatePromptFamilyRequestSchema = Schemas['CreatePromptFamilyRequest'];
-type CreatePromptVersionRequestSchema = Schemas['CreatePromptVersionRequest'];
-type ListPromptVariantsQuery =
-  ApiOperations['list_prompt_variants_for_version_api_v1_prompts_versions__version_id__variants_get']['parameters']['query'];
-type CreatePromptVariantRequestSchema = Schemas['CreatePromptVariantRequest'];
-type RatePromptVariantRequestSchema = Schemas['RatePromptVariantRequest'];
-type CompareVersionsQuery =
-  ApiOperations['compare_versions_api_v1_prompts_versions_compare_get']['parameters']['query'];
-type ListSemanticPacksQuery =
-  ApiOperations['list_semantic_packs_api_v1_semantic_packs_get']['parameters']['query'];
-type SemanticPackCreateRequestSchema = Schemas['SemanticPackCreateRequest'];
-type DeleteSemanticPackResponse =
-  ApiOperations['delete_semantic_pack_api_v1_semantic_packs__pack_id__delete']['responses'][200]['content']['application/json'];
+type ListFamiliesQuery = ListFamiliesApiV1PromptsFamiliesGetParams;
+type ListVersionsQuery = ListVersionsApiV1PromptsFamiliesFamilyIdVersionsGetParams;
+type CreatePromptFamilyRequestSchema = CreatePromptFamilyRequest;
+type CreatePromptVersionRequestSchema = CreatePromptVersionRequest;
+type ListPromptVariantsQuery = ListPromptVariantsForVersionApiV1PromptsVersionsVersionIdVariantsGetParams;
+type CreatePromptVariantRequestSchema = CreatePromptVariantRequest;
+type RatePromptVariantRequestSchema = RatePromptVariantRequest;
+type CompareVersionsQuery = CompareVersionsApiV1PromptsVersionsCompareGetParams;
+type ListSemanticPacksQuery = ListSemanticPacksApiV1SemanticPacksGetParams;
+type SemanticPackCreateRequestSchema = SemanticPackCreateRequest;
+type DeleteSemanticPackResponse = unknown;
 
 // ===== Prompts API Factory =====
 
@@ -171,3 +176,4 @@ export function createPromptsApi(client: PixSimApiClient) {
     },
   };
 }
+

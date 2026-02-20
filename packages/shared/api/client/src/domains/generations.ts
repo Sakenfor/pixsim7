@@ -1,18 +1,29 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type {
+  CreateGenerationRequest,
+  GenerationListResponse,
+  GenerationNodeConfigSchema,
+  GenerationResponse,
+  GenerationSocialContextSchema,
+  GenerationStatus,
+  ListGenerationsApiV1GenerationsGetParams,
+  OperationType,
+  PlayerContextSnapshotSchema,
+  SceneRefSchema,
+} from '@pixsim7/shared.api.model';
+export type {
+  CreateGenerationRequest,
+  GenerationListResponse,
+  GenerationNodeConfigSchema,
+  GenerationResponse,
+  GenerationStatus,
+  OperationType,
+};
+export type GenerationSocialContext = GenerationSocialContextSchema;
+export type SceneRef = SceneRefSchema;
+export type PlayerContextSnapshot = PlayerContextSnapshotSchema;
 
-export type GenerationResponse = ApiComponents['schemas']['GenerationResponse'];
-export type GenerationListResponse = ApiComponents['schemas']['GenerationListResponse'];
-export type CreateGenerationRequest = ApiComponents['schemas']['CreateGenerationRequest'];
-export type GenerationStatus = ApiComponents['schemas']['GenerationStatus'];
-export type OperationType = ApiComponents['schemas']['OperationType'];
-export type GenerationNodeConfigSchema = ApiComponents['schemas']['GenerationNodeConfigSchema'];
-export type GenerationSocialContext = ApiComponents['schemas']['GenerationSocialContextSchema'];
-export type SceneRef = ApiComponents['schemas']['SceneRefSchema'];
-export type PlayerContextSnapshot = ApiComponents['schemas']['PlayerContextSnapshotSchema'];
-
-export type ListGenerationsQuery =
-  ApiOperations['list_generations_api_v1_generations_get']['parameters']['query'];
+export type ListGenerationsQuery = ListGenerationsApiV1GenerationsGetParams;
 
 export function createGenerationsApi(client: PixSimApiClient) {
   return {

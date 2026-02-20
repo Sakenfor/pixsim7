@@ -74,3 +74,11 @@ export {
 
 // Store
 export { useAuthStore, type AuthState } from './authStore';
+
+// Permission helpers
+export {
+  CODEGEN_PERMISSION,
+  isAdminUser,
+  hasPermission,
+  canRunCodegen,
+} from './permissions';

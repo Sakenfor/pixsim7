@@ -1,7 +1,8 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
+import type {
+  UpdateUserPreferencesRequest as UpdateUserPreferencesRequestSchema,
+  UserPreferencesResponse as UserPreferencesResponseSchema,
+} from '@pixsim7/shared.api.model';
 
 export interface DebugPreferences {
   generation?: boolean;
@@ -107,10 +108,11 @@ export interface UserPreferences {
   [key: string]: unknown;
 }
 
-type UserPreferencesResponseSchema = Schemas['UserPreferencesResponse'];
-type UpdateUserPreferencesRequest = Schemas['UpdateUserPreferencesRequest'];
 export type UserPreferencesResponse = Omit<UserPreferencesResponseSchema, 'preferences'> & {
   preferences?: UserPreferences;
+};
+export type UpdateUserPreferencesRequest = Omit<UpdateUserPreferencesRequestSchema, 'preferences'> & {
+  preferences?: Partial<UserPreferences>;
 };
 
 export function createUserPreferencesApi(client: PixSimApiClient) {

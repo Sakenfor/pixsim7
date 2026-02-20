@@ -7,7 +7,6 @@
  */
 import type { PixSimApiClient } from '../client';
 import type {
-  ApiComponents,
   InteractionParticipant as SharedInteractionParticipant,
   InteractionTarget as SharedInteractionTarget,
   InteractionInstance as SharedInteractionInstance,
@@ -16,11 +15,11 @@ import type {
   ExecuteInteractionRequest as SharedExecuteInteractionRequest,
   ExecuteInteractionResponse as SharedExecuteInteractionResponse,
 } from '@pixsim7/shared.types';
+import type {
+  ExecuteInteractionResponse as ExecuteInteractionResponseDto,
+  ListInteractionsResponse as ListInteractionsResponseDto,
+} from '@pixsim7/shared.api.model';
 import { toCamelCaseDeep } from '@pixsim7/shared.helpers.core';
-
-type Schemas = ApiComponents['schemas'];
-type ListInteractionsResponseDto = Schemas['ListInteractionsResponse'];
-type ExecuteInteractionResponseDto = Schemas['ExecuteInteractionResponse'];
 
 // ===== Canonical Shared Types =====
 
@@ -195,3 +194,4 @@ export function createInteractionsApi(client: PixSimApiClient) {
     },
   };
 }
+

@@ -42,7 +42,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@pixsim7/shared.api.client": "workspace:*",
+    "@pixsim7/shared.api.model": "workspace:*",
     "@pixsim7/shared.ref.core": "workspace:*",
     "zod": "^3.23.8"
   },

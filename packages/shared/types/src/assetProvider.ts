@@ -11,7 +11,7 @@
  */
 
 import type { GenerationStrategy } from './generation';
-import type { MediaType } from '@pixsim7/shared.api.client/model';
+import type { MediaType } from '@pixsim7/shared.api.model';
 
 // ============================================================================
 // Asset Types

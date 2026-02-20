@@ -4,22 +4,34 @@
  * Strict OpenAPI-backed client for architecture introspection endpoints.
  */
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
-
-export type RouteInfo = Schemas['RouteInfo'];
-export type CapabilityInfo = Schemas['CapabilityInfo'];
-export type SubServiceInfo = Schemas['SubServiceInfo'];
-export type ServiceInfo = Schemas['ServiceInfo'];
-export type BackendPluginInfo = Schemas['BackendPluginInfo'];
-export type ArchitectureMetrics = Schemas['ArchitectureMetrics'];
-export type BackendArchitectureResponse = Schemas['BackendArchitectureResponse'];
-export type FrontendFeatureEntry = Schemas['FrontendFeatureEntry'];
-export type FrontendArchitectureResponse = Schemas['FrontendArchitectureResponse'];
-export type UnifiedArchitectureBackend = Schemas['UnifiedArchitectureBackend'];
-export type UnifiedArchitectureMetrics = Schemas['UnifiedArchitectureMetrics'];
-export type UnifiedArchitectureResponse = Schemas['UnifiedArchitectureResponse'];
+import type {
+  ArchitectureMetrics,
+  BackendArchitectureResponse,
+  BackendPluginInfo,
+  CapabilityInfo,
+  FrontendArchitectureResponse,
+  FrontendFeatureEntry,
+  RouteInfo,
+  ServiceInfo,
+  SubServiceInfo,
+  UnifiedArchitectureBackend,
+  UnifiedArchitectureMetrics,
+  UnifiedArchitectureResponse,
+} from '@pixsim7/shared.api.model';
+export type {
+  ArchitectureMetrics,
+  BackendArchitectureResponse,
+  BackendPluginInfo,
+  CapabilityInfo,
+  FrontendArchitectureResponse,
+  FrontendFeatureEntry,
+  RouteInfo,
+  ServiceInfo,
+  SubServiceInfo,
+  UnifiedArchitectureBackend,
+  UnifiedArchitectureMetrics,
+  UnifiedArchitectureResponse,
+};
 
 export function createDevArchitectureApi(client: PixSimApiClient) {
   return {
@@ -57,3 +69,4 @@ export function createDevArchitectureApi(client: PixSimApiClient) {
     },
   };
 }
+

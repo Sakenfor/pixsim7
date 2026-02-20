@@ -1,18 +1,45 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type {
+  AssetGenerationContext,
+  AssetGroupBy,
+  AssetGroupGenerationMeta,
+  AssetGroupListResponse,
+  AssetGroupPathEntry,
+  AssetGroupPromptMeta,
+  AssetGroupRequest as AssetGroupRequestSchema,
+  AssetGroupSiblingMeta,
+  AssetGroupSourceMeta,
+  AssetGroupSummary,
+  AssetListResponse,
+  AssetResponse,
+  AssetSearchRequest as AssetSearchRequestSchema,
+  EnrichAssetResponse,
+  ExtractFrameRequest,
+  FilterDefinition,
+  FilterOptionsRequest as FilterOptionsRequestSchema,
+  FilterOptionsResponse,
+  FilterOptionValue,
+  ReuploadAssetRequest,
+} from '@pixsim7/shared.api.model';
+export type {
+  AssetGenerationContext,
+  AssetGroupBy,
+  AssetGroupGenerationMeta,
+  AssetGroupListResponse,
+  AssetGroupPathEntry,
+  AssetGroupPromptMeta,
+  AssetGroupSiblingMeta,
+  AssetGroupSourceMeta,
+  AssetGroupSummary,
+  AssetListResponse,
+  AssetResponse,
+  EnrichAssetResponse,
+  ExtractFrameRequest,
+  FilterDefinition,
+  FilterOptionValue,
+  ReuploadAssetRequest,
+};
 
-type Schemas = ApiComponents['schemas'];
-
-export type AssetResponse = Schemas['AssetResponse'];
-export type AssetListResponse = Schemas['AssetListResponse'];
-export type ExtractFrameRequest = Schemas['ExtractFrameRequest'];
-export type EnrichAssetResponse = Schemas['EnrichAssetResponse'];
-export type ReuploadAssetRequest = Schemas['ReuploadAssetRequest'];
-
-export type AssetGroupBy = Schemas['AssetGroupBy'];
-export type AssetGroupPathEntry = Schemas['AssetGroupPathEntry'];
-
-type AssetSearchRequestSchema = Schemas['AssetSearchRequest'];
 export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
   /** Asset ID for visual similarity search (uses CLIP embeddings) */
   similar_to?: number;
@@ -21,34 +48,21 @@ export type AssetSearchRequest = Partial<AssetSearchRequestSchema> & {
 };
 export type ListAssetsQuery = AssetSearchRequest;
 
-type AssetGroupRequestSchema = Schemas['AssetGroupRequest'];
 export type AssetGroupRequest =
   Partial<Omit<AssetGroupRequestSchema, 'group_by'>> &
   Pick<AssetGroupRequestSchema, 'group_by'>;
-
-export type AssetGroupSourceMeta = Schemas['AssetGroupSourceMeta'];
-export type AssetGroupGenerationMeta = Schemas['AssetGroupGenerationMeta'];
-export type AssetGroupPromptMeta = Schemas['AssetGroupPromptMeta'];
-export type AssetGroupSiblingMeta = Schemas['AssetGroupSiblingMeta'];
 export type AssetGroupMeta =
   | AssetGroupSourceMeta
   | AssetGroupGenerationMeta
   | AssetGroupPromptMeta
   | AssetGroupSiblingMeta;
-export type AssetGroupSummary = Schemas['AssetGroupSummary'];
-export type AssetGroupListResponse = Schemas['AssetGroupListResponse'];
 
-export type FilterDefinition = Schemas['FilterDefinition'];
-export type FilterOptionValue = Schemas['FilterOptionValue'];
-export type FilterMetadataResponse = Schemas['FilterOptionsResponse'];
-type FilterOptionsRequestSchema = Schemas['FilterOptionsRequest'];
+export type FilterMetadataResponse = FilterOptionsResponse;
 export type FilterOptionsRequest =
   Omit<FilterOptionsRequestSchema, 'include_counts'> & {
     includeCounts?: boolean;
   };
 export type FilterMetadataQueryOptions = FilterOptionsRequest;
-
-export type AssetGenerationContext = Schemas['AssetGenerationContext'];
 
 export function getAssetDownloadUrl(asset: AssetResponse): string {
   return asset.remote_url || asset.file_url || `/assets/${asset.id}/file`;
@@ -153,3 +167,4 @@ export function createAssetsApi(client: PixSimApiClient) {
     },
   };
 }
+

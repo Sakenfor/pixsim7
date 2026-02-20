@@ -9,6 +9,7 @@ export { createAccountsApi } from './accounts';
 export { createCodegenApi } from './codegen';
 export { createActionBlocksApi } from './actionBlocks';
 export { createBlockTemplatesApi } from './blockTemplates';
+export { createCharactersApi } from './characters';
 export { createAdminApi } from './admin';
 export { createAnalyzersApi } from './analyzers';
 export { createAssetsApi } from './assets';
@@ -48,9 +49,18 @@ export type {
   RollTemplateRequest,
   ListTemplatesQuery,
   SearchBlocksQuery,
+  BlockTagFacetsQuery,
   PromptBlockResponse,
   BlockRoleSummary,
 } from './blockTemplates';
+
+export type {
+  CharacterSummary,
+  CharacterDetail,
+  CreateCharacterRequest,
+  UpdateCharacterRequest,
+  ListCharactersQuery,
+} from './characters';
 
 export type {
   ActionBlockSummary,

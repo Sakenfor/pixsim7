@@ -1,11 +1,14 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
-
-export type DocsIndexResponse = Schemas['DocsIndexResponse'];
-export type DocPageResponse = Schemas['DocPageResponse'];
-export type DocsSearchResponse = Schemas['DocsSearchResponse'];
+import type {
+  DocPageResponse,
+  DocsIndexResponse,
+  DocsSearchResponse,
+} from '@pixsim7/shared.api.model';
+export type {
+  DocPageResponse,
+  DocsIndexResponse,
+  DocsSearchResponse,
+};
 
 export function createDevDocsApi(client: PixSimApiClient) {
   return {
@@ -42,3 +45,4 @@ export function createDevDocsApi(client: PixSimApiClient) {
     },
   };
 }
+

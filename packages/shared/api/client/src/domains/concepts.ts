@@ -1,14 +1,20 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
-
-// ============================================================================
-// OpenAPI-generated types
-// ============================================================================
-
-export type ConceptKindInfo = ApiComponents['schemas']['ConceptKindInfo'];
-export type ConceptKindsResponse = ApiComponents['schemas']['ConceptKindsResponse'];
-export type ConceptResponse = ApiComponents['schemas']['ConceptResponse'];
-export type ConceptsListResponse = ApiComponents['schemas']['ConceptsListResponse'];
+import type {
+  ConceptKindInfo,
+  ConceptKindsResponse,
+  ConceptResponse,
+  ConceptsListResponse,
+  RoleConceptResponse,
+  RolesListResponse,
+} from '@pixsim7/shared.api.model';
+export type {
+  ConceptKindInfo,
+  ConceptKindsResponse,
+  ConceptResponse,
+  ConceptsListResponse,
+  RoleConceptResponse,
+  RolesListResponse,
+};
 
 // ============================================================================
 // Concept Kind Types (Option B: Known + Extensible)
@@ -49,13 +55,11 @@ export function isKnownConceptKind(kind: string): kind is KnownConceptKind {
  * Includes all metadata needed for frontend role inference.
  * @deprecated Use ConceptResponse via getConcepts('role') for new code.
  */
-export type RoleConceptResponse = ApiComponents['schemas']['RoleConceptResponse'];
 
 /**
  * Response from GET /concepts/roles
  * @deprecated Use ConceptsListResponse via getConcepts('role') for new code.
  */
-export type RolesListResponse = ApiComponents['schemas']['RolesListResponse'];
 
 // ============================================================================
 // API Client
@@ -123,3 +127,4 @@ export function createConceptsApi(client: PixSimApiClient) {
     },
   };
 }
+

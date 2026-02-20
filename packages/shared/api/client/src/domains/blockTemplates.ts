@@ -64,8 +64,15 @@ export interface SearchBlocksQuery {
   kind?: string;
   package_name?: string;
   q?: string;
+  tags?: string;
   limit?: number;
   offset?: number;
+}
+
+export interface BlockTagFacetsQuery {
+  role?: string;
+  category?: string;
+  package_name?: string;
 }
 
 export interface PromptBlockResponse {
@@ -173,6 +180,15 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
         { params },
       );
       return [...response];
+    },
+
+    async listBlockTagFacets(
+      query?: BlockTagFacetsQuery,
+    ): Promise<Record<string, string[]>> {
+      return client.get<Record<string, string[]>>(
+        '/block-templates/blocks/tags',
+        { params: query },
+      );
     },
   };
 }

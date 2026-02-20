@@ -1,10 +1,12 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
-
-export type TagSummary = Schemas['TagSummary'];
-export type TagListResponse = Schemas['TagListResponse'];
+import type {
+  TagListResponse,
+  TagSummary,
+} from '@pixsim7/shared.api.model';
+export type {
+  TagListResponse,
+  TagSummary,
+};
 
 export interface ListTagsQuery {
   namespace?: string;
@@ -22,3 +24,4 @@ export function createTagsApi(client: PixSimApiClient) {
     },
   };
 }
+

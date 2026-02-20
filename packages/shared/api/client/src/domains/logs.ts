@@ -1,19 +1,25 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type {
+  ConsoleFieldDefinitionResponse,
+  ConsoleFieldsResponse,
+  LogBatchIngestRequest,
+  LogEntryResponse,
+  LogIngestRequest,
+  LogIngestResponse,
+  Pixsim7BackendMainApiV1LogsLogQueryResponse,
+  QueryLogsApiV1LogsQueryGetParams,
+} from '@pixsim7/shared.api.model';
+export type {
+  ConsoleFieldsResponse,
+  LogBatchIngestRequest,
+  LogEntryResponse,
+  LogIngestRequest,
+  LogIngestResponse,
+};
 
-export type LogEntryResponse = ApiComponents['schemas']['LogEntryResponse'];
-export type LogIngestRequest = ApiComponents['schemas']['LogIngestRequest'];
-export type LogIngestResponse = ApiComponents['schemas']['LogIngestResponse'];
-export type LogBatchIngestRequest = ApiComponents['schemas']['LogBatchIngestRequest'];
-
-export type LogQueryResponse =
-  ApiComponents['schemas']['pixsim7__backend__main__api__v1__logs__LogQueryResponse'];
-
-export type LogQueryParams =
-  ApiOperations['query_logs_api_v1_logs_query_get']['parameters']['query'];
-
-export type ConsoleFieldDefinition = ApiComponents['schemas']['ConsoleFieldDefinitionResponse'];
-export type ConsoleFieldsResponse = ApiComponents['schemas']['ConsoleFieldsResponse'];
+export type LogQueryResponse = Pixsim7BackendMainApiV1LogsLogQueryResponse;
+export type LogQueryParams = QueryLogsApiV1LogsQueryGetParams;
+export type ConsoleFieldDefinition = ConsoleFieldDefinitionResponse;
 
 export function createLogsApi(client: PixSimApiClient) {
   return {
@@ -43,3 +49,4 @@ export function createLogsApi(client: PixSimApiClient) {
     },
   };
 }
+

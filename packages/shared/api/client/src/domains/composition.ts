@@ -1,21 +1,18 @@
 import type { PixSimApiClient } from '../client';
 import type {
-  ApiComponents,
-  ApiOperations,
   CompositionPackage,
   CompositionRoleDefinition,
 } from '@pixsim7/shared.types';
+import type {
+  CompositionPackageResponse as CompositionPackageResponseDto,
+  CompositionPackagesListResponse as CompositionPackagesResponse,
+  CompositionRoleResponse as CompositionRoleResponseDto,
+  ListRolesApiV1CompositionRolesGetParams,
+} from '@pixsim7/shared.api.model';
+export type { CompositionPackagesResponse };
 import { toCamelCaseDeep } from '@pixsim7/shared.helpers.core';
 
-type Schemas = ApiComponents['schemas'];
-type CompositionRoleResponseDto = Schemas['CompositionRoleResponse'];
-type CompositionPackageResponseDto = Schemas['CompositionPackageResponse'];
-type ListRolesQuery = ApiOperations['list_roles_api_v1_composition_roles_get']['parameters']['query'];
-
-/**
- * Response from GET /composition/packages
- */
-export type CompositionPackagesResponse = Schemas['CompositionPackagesListResponse'];
+type ListRolesQuery = ListRolesApiV1CompositionRolesGetParams;
 
 function normalizeRole(raw: CompositionRoleResponseDto): CompositionRoleDefinition {
   const camel = toCamelCaseDeep(raw as unknown as Record<string, unknown>) as unknown as CompositionRoleDefinition;
@@ -66,3 +63,4 @@ export function createCompositionApi(client: PixSimApiClient) {
     },
   };
 }
+

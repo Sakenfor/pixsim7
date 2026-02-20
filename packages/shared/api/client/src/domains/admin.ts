@@ -4,34 +4,47 @@
  * Strict OpenAPI-backed client for admin monitoring and plugin endpoints.
  */
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
-type AdminPluginListResponseSchema =
-  Schemas['pixsim7__backend__main__api__v1__admin_plugins__PluginListResponse'];
+import type {
+  BehaviorExtensionsResponse,
+  ConditionInfo,
+  EffectInfo,
+  EventMetricsResponse,
+  Pixsim7BackendMainApiV1AdminPluginsPluginListResponse,
+  PluginDetailsResponse,
+  PluginHealthResponse,
+  PluginHealthStatus,
+  PluginListItem,
+  PluginMetricsData,
+  PluginMetricsResponse,
+  PluginMetricsSummary,
+  ResetPluginMetricsApiV1AdminPluginsMetricsResetPostParams,
+  ResetPluginMetricsResponse,
+  ServiceStatus,
+  SimulationConfigProviderInfo,
+  SystemMetrics,
+} from '@pixsim7/shared.api.model';
+export type {
+  BehaviorExtensionsResponse,
+  ConditionInfo,
+  EffectInfo,
+  PluginHealthResponse,
+  PluginHealthStatus,
+  PluginListItem,
+  PluginMetricsData,
+  PluginMetricsResponse,
+  PluginMetricsSummary,
+  ServiceStatus,
+  SystemMetrics,
+};
 
 // ===== Admin Types =====
 
-export type ServiceStatus = Schemas['ServiceStatus'];
-export type ServicesStatusResponse =
-  ApiOperations['get_services_status_api_v1_admin_services_status_get']['responses'][200]['content']['application/json'];
-export type SystemMetrics = Schemas['SystemMetrics'];
-export type EventMetrics = Schemas['EventMetricsResponse'];
-export type PluginMetricsData = Schemas['PluginMetricsData'];
-export type PluginMetricsSummary = Schemas['PluginMetricsSummary'];
-export type PluginMetricsResponse = Schemas['PluginMetricsResponse'];
-export type PluginHealthStatus = Schemas['PluginHealthStatus'];
-export type PluginHealthResponse = Schemas['PluginHealthResponse'];
-export type PluginListItem = Schemas['PluginListItem'];
-export type PluginListResponse = AdminPluginListResponseSchema;
-export type PluginDetails = Schemas['PluginDetailsResponse'];
-export type ConditionInfo = Schemas['ConditionInfo'];
-export type EffectInfo = Schemas['EffectInfo'];
-export type SimulationConfigProvider = Schemas['SimulationConfigProviderInfo'];
-export type BehaviorExtensionsResponse = Schemas['BehaviorExtensionsResponse'];
-type ResetPluginMetricsQuery =
-  ApiOperations['reset_plugin_metrics_api_v1_admin_plugins_metrics_reset_post']['parameters']['query'];
-type ResetPluginMetricsResponse = Schemas['ResetPluginMetricsResponse'];
+export type ServicesStatusResponse = readonly ServiceStatus[];
+export type EventMetrics = EventMetricsResponse;
+export type PluginListResponse = Pixsim7BackendMainApiV1AdminPluginsPluginListResponse;
+export type PluginDetails = PluginDetailsResponse;
+export type SimulationConfigProvider = SimulationConfigProviderInfo;
+type ResetPluginMetricsQuery = ResetPluginMetricsApiV1AdminPluginsMetricsResetPostParams;
 
 // ===== Admin API Factory =====
 
@@ -87,3 +100,4 @@ export function createAdminApi(client: PixSimApiClient) {
     },
   };
 }
+

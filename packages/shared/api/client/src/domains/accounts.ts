@@ -1,19 +1,24 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
-
-export type AccountResponse = Schemas['AccountResponse'];
-export type AccountUpdate = Schemas['AccountUpdate'];
-export type AccountStatus = Schemas['AccountStatus'];
-export type CreateApiKeyResponse = Schemas['CreateAccountApiKeyResponse'];
-export type DevPixverseDryRunResponse = Schemas['DevPixverseDryRunResponse'];
+import type {
+  AccountResponse,
+  AccountStatus,
+  AccountUpdate,
+  CreateAccountApiKeyResponse,
+  DevPixverseDryRunResponse,
+  PixverseSyncDryRunApiV1DevPixverseSyncDryRunGetParams,
+  PixverseGoogleConnectRequest,
+} from '@pixsim7/shared.api.model';
+export type {
+  AccountResponse,
+  AccountStatus,
+  AccountUpdate,
+  DevPixverseDryRunResponse,
+};
+export type CreateApiKeyResponse = CreateAccountApiKeyResponse;
 
 type DryRunPixverseSyncQuery =
-  ApiOperations['pixverse_sync_dry_run_api_v1_dev_pixverse_sync_dry_run_get']['parameters']['query'];
-type ConnectPixverseWithGoogleResponse =
-  ApiOperations['connect_pixverse_with_google_api_v1_accounts__account_id__connect_google_post']['responses'][200]['content']['application/json'];
-type PixverseGoogleConnectRequest = Schemas['PixverseGoogleConnectRequest'];
+  PixverseSyncDryRunApiV1DevPixverseSyncDryRunGetParams;
+type ConnectPixverseWithGoogleResponse = { account: AccountResponse };
 
 export function createAccountsApi(client: PixSimApiClient) {
   return {
@@ -52,7 +57,7 @@ export function createAccountsApi(client: PixSimApiClient) {
         `/accounts/${accountId}/connect-google`,
         request
       );
-      return res.account;
+      return res.account as AccountResponse;
     },
 
     async createApiKey(accountId: number): Promise<CreateApiKeyResponse> {
@@ -60,3 +65,4 @@ export function createAccountsApi(client: PixSimApiClient) {
     },
   };
 }
+

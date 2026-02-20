@@ -1,30 +1,25 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type {
+  ActionBlockResponse,
+  EmbedBatchRequest,
+  EmbedBlockApiV1ActionBlocksBlockIdEmbedPost200,
+  EmbedBlockApiV1ActionBlocksBlockIdEmbedPostParams,
+  EmbedBlocksBatchApiV1ActionBlocksEmbedBatchPost200,
+  FindSimilarBlocksApiV1ActionBlocksBlockIdSimilarGetParams,
+  SearchActionBlocksApiV1ActionBlocksGetParams,
+  SimilarBlockResponse,
+  SimilarByTextRequest,
+} from '@pixsim7/shared.api.model';
 
-type Schemas = ApiComponents['schemas'];
-
-export type ActionBlockSummary = Schemas['ActionBlockResponse'];
-
-type ActionBlockSearchQuerySchema =
-  ApiOperations['search_action_blocks_api_v1_action_blocks_get']['parameters']['query'];
-export type ActionBlockSearchQuery = ActionBlockSearchQuerySchema;
-
-type SimilarActionBlockQuerySchema =
-  ApiOperations['find_similar_blocks_api_v1_action_blocks__block_id__similar_get']['parameters']['query'];
-export type SimilarActionBlockQuery = SimilarActionBlockQuerySchema;
-
-export type SimilarActionBlocksByTextRequest = Schemas['SimilarByTextRequest'];
-
-export type SimilarActionBlockMatch = Schemas['SimilarBlockResponse'];
-
-type EmbedActionBlockQuerySchema =
-  ApiOperations['embed_block_api_v1_action_blocks__block_id__embed_post']['parameters']['query'];
-export type EmbedActionBlockQuery = EmbedActionBlockQuerySchema;
-export type EmbedActionBlockResponse =
-  ApiOperations['embed_block_api_v1_action_blocks__block_id__embed_post']['responses'][200]['content']['application/json'];
-export type EmbedActionBlocksBatchRequest = Schemas['EmbedBatchRequest'];
-export type EmbedActionBlocksBatchResponse =
-  ApiOperations['embed_blocks_batch_api_v1_action_blocks_embed_batch_post']['responses'][200]['content']['application/json'];
+export type ActionBlockSummary = ActionBlockResponse;
+export type EmbedActionBlocksBatchRequest = EmbedBatchRequest;
+export type EmbedActionBlockResponse = EmbedBlockApiV1ActionBlocksBlockIdEmbedPost200;
+export type EmbedActionBlockQuery = EmbedBlockApiV1ActionBlocksBlockIdEmbedPostParams;
+export type EmbedActionBlocksBatchResponse = EmbedBlocksBatchApiV1ActionBlocksEmbedBatchPost200;
+export type SimilarActionBlockQuery = FindSimilarBlocksApiV1ActionBlocksBlockIdSimilarGetParams;
+export type ActionBlockSearchQuery = SearchActionBlocksApiV1ActionBlocksGetParams;
+export type SimilarActionBlockMatch = SimilarBlockResponse;
+export type SimilarActionBlocksByTextRequest = SimilarByTextRequest;
 
 export function createActionBlocksApi(client: PixSimApiClient) {
   return {
@@ -72,3 +67,4 @@ export function createActionBlocksApi(client: PixSimApiClient) {
     },
   };
 }
+

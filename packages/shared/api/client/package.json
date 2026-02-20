@@ -21,10 +21,6 @@
       "import": "./src/browser/index.ts",
       "require": "./src/browser/index.ts",
       "types": "./src/browser/index.ts"
-    },
-    "./model": {
-      "import": "./src/generated/openapi/model/index.ts",
-      "types": "./src/generated/openapi/model/index.ts"
     }
   },
   "files": ["src", "dist"],
@@ -37,6 +33,7 @@
   },
   "dependencies": {
     "@pixsim7/shared.helpers.core": "workspace:*",
+    "@pixsim7/shared.api.model": "workspace:*",
     "@pixsim7/shared.types": "workspace:*"
   },
   "devDependencies": {

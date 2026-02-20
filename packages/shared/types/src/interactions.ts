@@ -16,12 +16,12 @@
  * Type Alignment:
  * - Backend source: pixsim7/backend/main/domain/game/interactions/interactions.py
  * - These types mirror the Python Pydantic models for API compatibility
- * - OpenAPI types are Orval-generated in @pixsim7/shared.api.client/model.
+ * - OpenAPI types are Orval-generated in @pixsim7/shared.api.model.
  *   Run `pnpm openapi:gen` to regenerate after backend changes.
  * - Frontend extends backend types with 'ambient' surface (frontend-only)
  */
 
-import type { InteractionSurface as InteractionSurfaceSchema, DisabledReason } from '@pixsim7/shared.api.client/model';
+import type { InteractionSurface as InteractionSurfaceSchema, DisabledReason } from '@pixsim7/shared.api.model';
 import type { EntityRef } from './ids';
 import type { GizmoConfig, GizmoSessionResult } from './gizmos';
 

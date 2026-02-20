@@ -5,33 +5,42 @@
  * provider specs and provider account management.
  */
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
-
-type Schemas = ApiComponents['schemas'];
+import type {
+  AccountCreate,
+  AccountResponse,
+  AccountStatsResponse,
+  AccountUpdate,
+  CreateAccountApiKeyApiV1AccountsAccountIdCreateApiKeyPostParams,
+  CreateAccountApiKeyResponse,
+  GetAccountStatsApiV1AccountsAccountIdStatsGetParams,
+  GetPixverseStatusApiV1AccountsAccountIdPixverseStatusGetParams,
+  ListAccountsApiV1AccountsGetParams,
+  PixverseStatusResponse,
+  ProviderInfo,
+  SetCreditRequest,
+} from '@pixsim7/shared.api.model';
+export type {
+  AccountStatsResponse,
+  PixverseStatusResponse,
+};
 
 // ===== Provider Types =====
 
-export type ProviderSpec = Schemas['ProviderInfo'];
+export type ProviderSpec = ProviderInfo;
 
 // ===== Account Types =====
 
-type ListAccountsQuery =
-  ApiOperations['list_accounts_api_v1_accounts_get']['parameters']['query'];
-type CreateAccountApiKeyQuery =
-  ApiOperations['create_account_api_key_api_v1_accounts__account_id__create_api_key_post']['parameters']['query'];
-type AccountStatsQuery =
-  ApiOperations['get_account_stats_api_v1_accounts__account_id__stats_get']['parameters']['query'];
-type PixverseStatusQuery =
-  ApiOperations['get_pixverse_status_api_v1_accounts__account_id__pixverse_status_get']['parameters']['query'];
+type ListAccountsQuery = ListAccountsApiV1AccountsGetParams;
+type CreateAccountApiKeyQuery = CreateAccountApiKeyApiV1AccountsAccountIdCreateApiKeyPostParams;
+type AccountStatsQuery = GetAccountStatsApiV1AccountsAccountIdStatsGetParams;
+type PixverseStatusQuery = GetPixverseStatusApiV1AccountsAccountIdPixverseStatusGetParams;
 
-export type ProviderAccount = Schemas['AccountResponse'];
-export type CreateAccountRequest = Schemas['AccountCreate'];
-export type UpdateAccountRequest = Schemas['AccountUpdate'];
-export type CreateApiKeyResponse = Schemas['CreateAccountApiKeyResponse'];
-export type SetAccountCreditRequest = Schemas['SetCreditRequest'];
-export type SetAccountCreditResponse = Schemas['AccountResponse'];
-export type AccountStatsResponse = Schemas['AccountStatsResponse'];
-export type PixverseStatusResponse = Schemas['PixverseStatusResponse'];
+export type ProviderAccount = AccountResponse;
+export type CreateAccountRequest = AccountCreate;
+export type UpdateAccountRequest = AccountUpdate;
+export type CreateApiKeyResponse = CreateAccountApiKeyResponse;
+export type SetAccountCreditRequest = SetCreditRequest;
+export type SetAccountCreditResponse = AccountResponse;
 
 // ===== Providers API Factory =====
 
@@ -104,3 +113,4 @@ export function createProvidersApi(client: PixSimApiClient) {
     },
   };
 }
+

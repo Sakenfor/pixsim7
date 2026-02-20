@@ -14,6 +14,7 @@ export interface User {
   is_active: boolean;
   role?: string;
   is_admin?: boolean;
+  permissions?: string[];
   created_at: string;
 }
 

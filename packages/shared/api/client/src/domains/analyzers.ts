@@ -1,16 +1,25 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents } from '@pixsim7/shared.types';
+import type {
+  AnalyzerInstanceCreate,
+  AnalyzerInstanceListResponse,
+  AnalyzerInstanceResponse,
+  AnalyzerInstanceUpdate,
+  AnalyzerResponse,
+  AnalyzersListResponse,
+} from '@pixsim7/shared.api.model';
+export type {
+  AnalyzerInstanceListResponse,
+  AnalyzerInstanceResponse,
+  AnalyzerResponse,
+  AnalyzersListResponse,
+};
 
 // ============================================================================
 // OpenAPI-generated types
 // ============================================================================
 
-export type AnalyzerResponse = ApiComponents['schemas']['AnalyzerResponse'];
-export type AnalyzersListResponse = ApiComponents['schemas']['AnalyzersListResponse'];
-export type AnalyzerInstanceResponse = ApiComponents['schemas']['AnalyzerInstanceResponse'];
-export type AnalyzerInstanceListResponse = ApiComponents['schemas']['AnalyzerInstanceListResponse'];
-export type CreateAnalyzerInstanceRequest = ApiComponents['schemas']['AnalyzerInstanceCreate'];
-export type UpdateAnalyzerInstanceRequest = ApiComponents['schemas']['AnalyzerInstanceUpdate'];
+export type CreateAnalyzerInstanceRequest = AnalyzerInstanceCreate;
+export type UpdateAnalyzerInstanceRequest = AnalyzerInstanceUpdate;
 
 // ============================================================================
 // Frontend-only types (UX helpers, not in OpenAPI)
@@ -100,3 +109,4 @@ export function createAnalyzersApi(client: PixSimApiClient) {
     },
   };
 }
+

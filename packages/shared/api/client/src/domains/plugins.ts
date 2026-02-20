@@ -1,19 +1,27 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type {
+  ControlCenterMetadata,
+  Pixsim7BackendMainSharedSchemasPluginSchemasPluginListResponse,
+  PluginMetadata,
+  PluginResponse,
+  PluginStateResponse,
+  PluginSyncItem,
+  PluginSyncRequest as PluginSyncRequestSchema,
+  PluginSyncResponse,
+  SceneViewMetadata,
+} from '@pixsim7/shared.api.model';
+export type {
+  ControlCenterMetadata,
+  PluginMetadata,
+  PluginStateResponse,
+  PluginSyncItem,
+  PluginSyncResponse,
+  SceneViewMetadata,
+};
 
-type Schemas = ApiComponents['schemas'];
+export type PluginInfo = PluginResponse;
+export type PluginListResponse = Pixsim7BackendMainSharedSchemasPluginSchemasPluginListResponse;
 
-export type SceneViewMetadata = Schemas['SceneViewMetadata'];
-export type ControlCenterMetadata = Schemas['ControlCenterMetadata'];
-export type PluginMetadata = Schemas['PluginMetadata'];
-export type PluginInfo = Schemas['PluginResponse'];
-export type PluginListResponse =
-  ApiOperations['list_plugins_api_v1_plugins_get']['responses'][200]['content']['application/json'];
-export type PluginStateResponse = Schemas['PluginStateResponse'];
-export type PluginSyncItem = Schemas['PluginSyncItem'];
-export type PluginSyncResponse = Schemas['PluginSyncResponse'];
-
-type PluginSyncRequestSchema = Schemas['PluginSyncRequest'];
 export type PluginSyncRequest =
   Omit<PluginSyncRequestSchema, 'plugins'> & {
     plugins: PluginSyncItem[];
@@ -56,3 +64,4 @@ export function createPluginsApi(client: PixSimApiClient) {
     },
   };
 }
+

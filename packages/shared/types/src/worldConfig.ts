@@ -16,6 +16,19 @@
 import { z } from 'zod';
 
 // =============================================================================
+// Canonical Meta Key Constants
+// =============================================================================
+
+export const WORLD_META_KEYS = {
+  STATS_CONFIG: 'stats_config',
+  MANIFEST: 'manifest',
+  INTIMACY_GATING: 'intimacy_gating',
+  TIME_CONFIG: 'time_config',
+  SIMULATION: 'simulation',
+  NPC_CONFIG: 'npc_config',
+} as const;
+
+// =============================================================================
 // Turn Presets (Canonical Definition)
 // =============================================================================
 
@@ -937,6 +950,19 @@ export function getTimeConstants(config: WorldTimeConfig = DEFAULT_WORLD_TIME_CO
 }
 
 // =============================================================================
+// NPC Config Schema
+// =============================================================================
+
+/** Permissive schema: version + any service namespace sub-dicts */
+export const NpcConfigSchema = z.object({
+  version: z.number().int().positive().default(1),
+}).passthrough();
+
+export type NpcConfig = z.infer<typeof NpcConfigSchema>;
+
+export const DEFAULT_NPC_CONFIG: NpcConfig = { version: 1 };
+
+// =============================================================================
 // API Response Types
 // =============================================================================
 
@@ -946,6 +972,7 @@ export interface WorldConfigResponse {
   manifest: WorldManifestParsed;
   intimacy_gating: IntimacyGatingConfig;
   time_config: WorldTimeConfig;
+  npc_config: NpcConfig;
   tier_order: string[];
   level_order: string[];
   merge_warnings: string[];

@@ -6,104 +6,106 @@
  */
 import type { PixSimApiClient } from '../client';
 import type {
-  ApiComponents,
-  ApiOperations,
   TemplateKind as SharedTemplateKind,
   ResolveTemplateResponse as SharedResolveTemplateResponse,
   ResolveBatchResponse as SharedResolveBatchResponse,
   RuntimeKind,
 } from '@pixsim7/shared.types';
+import type {
+  AddItemRequest,
+  AddQuestRequest,
+  AdvanceWorldTimeRequest,
+  CreateSessionRequest,
+  CreateWorldRequest,
+  GameHotspotDTOInput,
+  GameHotspotDTOOutput,
+  GameLocationDetail,
+  GameLocationSummary,
+  GameNPC,
+  GameSessionResponse,
+  GameWorldDetail,
+  GameWorldSummary,
+  GetNpcPresenceApiV1GameNpcsPresenceGetParams,
+  InventoryItem,
+  InventoryStatsResponse,
+  ListSessionQuestsApiV1GameQuestsSessionsSessionIdQuestsGetParams,
+  MessageResponse,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  NpcSummary,
+  PaginatedWorldsResponse,
+  Quest,
+  QuestObjective,
+  RemoveItemRequest,
+  ReplaceHotspotsPayload,
+  ResolveBatchRequest,
+  ResolveBatchResponse as ResolveBatchResponseSchema,
+  ResolveTemplateRequest,
+  ResolveTemplateResponse as ResolveTemplateResponseSchema,
+  SceneResponse,
+  SessionUpdateRequest,
+  UpdateQuestStatusRequest,
+  UpdateWorldMetaRequest,
+  WorldConfigResponse,
+} from '@pixsim7/shared.api.model';
 import { toCamelCaseShallow } from '@pixsim7/shared.helpers.core';
-
-type Schemas = ApiComponents['schemas'];
-type Ops = ApiOperations;
-
-// ===== World Types =====
-
-type CreateWorldRequest =
-  Ops['create_world_api_v1_game_worlds__post']['requestBody']['content']['application/json'];
-type UpdateWorldMetaRequest =
-  Ops['update_world_meta_api_v1_game_worlds__world_id__meta_put']['requestBody']['content']['application/json'];
-type AdvanceWorldTimeRequest =
-  Ops['advance_world_time_api_v1_game_worlds__world_id__advance_post']['requestBody']['content']['application/json'];
-
-export type GameWorldSummary = Schemas['GameWorldSummary'];
-export type GameWorldDetail = Schemas['GameWorldDetail'];
-export type PaginatedWorldsResponse = Schemas['PaginatedWorldsResponse'];
-export type WorldConfigResponse = Schemas['WorldConfigResponse'];
+export type {
+  GameLocationDetail,
+  GameLocationSummary,
+  GameWorldDetail,
+  GameWorldSummary,
+  InventoryStatsResponse,
+  MessageResponse,
+  NpcExpressionDTO,
+  NpcPresenceDTO,
+  PaginatedWorldsResponse,
+  WorldConfigResponse,
+};
 
 // ===== Session Types =====
 
-type CreateSessionRequest =
-  Ops['create_session_api_v1_game_sessions__post']['requestBody']['content']['application/json'];
-
-export type GameSessionDTO = Schemas['GameSessionResponse'];
-export type SessionUpdatePayload = Schemas['SessionUpdateRequest'];
+export type GameSessionDTO = GameSessionResponse;
+export type SessionUpdatePayload = SessionUpdateRequest;
 export type GameSessionSummary = Pick<GameSessionDTO, 'id' | 'scene_id' | 'world_time'>;
 
 // ===== Location Types =====
 
-type ReplaceHotspotsPayload =
-  Ops['replace_hotspots_api_v1_game_locations__location_id__hotspots_put']['requestBody']['content']['application/json'];
-
-export type GameLocationSummary = Schemas['GameLocationSummary'];
-export type GameHotspotInputDTO = Schemas['GameHotspotDTO-Input'];
-export type GameHotspotDTO = Schemas['GameHotspotDTO-Output'];
-export type GameLocationDetail = Schemas['GameLocationDetail'];
+export type GameHotspotInputDTO = GameHotspotDTOInput;
+export type GameHotspotDTO = GameHotspotDTOOutput;
 
 // ===== NPC Types =====
 
-type NpcPresenceQuery =
-  Ops['get_npc_presence_api_v1_game_npcs_presence_get']['parameters']['query'];
-
-export type GameNpcSummary = Schemas['NpcSummary'];
-export type GameNpcDetail = Schemas['GameNPC'];
-export type NpcExpressionDTO = Schemas['NpcExpressionDTO'];
-export type NpcPresenceDTO = Schemas['NpcPresenceDTO'];
+type NpcPresenceQuery = GetNpcPresenceApiV1GameNpcsPresenceGetParams;
+export type GameNpcSummary = NpcSummary;
+export type GameNpcDetail = GameNPC;
 
 // ===== Scene Types =====
 
-export type Scene = Schemas['SceneResponse'];
+export type Scene = SceneResponse;
 
 // ===== Quest Types =====
 
-type ListQuestsQuery =
-  Ops['list_session_quests_api_v1_game_quests_sessions__session_id__quests_get']['parameters']['query'];
-type AddQuestRequest =
-  Ops['add_quest_to_session_api_v1_game_quests_sessions__session_id__quests_post']['requestBody']['content']['application/json'];
-type UpdateQuestStatusRequest =
-  Ops['update_quest_status_api_v1_game_quests_sessions__session_id__quests__quest_id__status_patch']['requestBody']['content']['application/json'];
-
-export type QuestObjectiveDTO = Schemas['QuestObjective'];
-export type QuestDTO = Schemas['Quest'];
+type ListQuestsQuery = ListSessionQuestsApiV1GameQuestsSessionsSessionIdQuestsGetParams;
+export type QuestObjectiveDTO = QuestObjective;
+export type QuestDTO = Quest;
 
 // ===== Inventory Types =====
 
-type AddInventoryItemRequest =
-  Ops['add_item_to_inventory_api_v1_game_inventory_sessions__session_id__items_post']['requestBody']['content']['application/json'];
-type RemoveInventoryItemRequest =
-  Ops['remove_item_from_inventory_api_v1_game_inventory_sessions__session_id__items__item_id__delete']['requestBody']['content']['application/json'];
-
-export type InventoryItemDTO = Schemas['InventoryItem'];
-export type InventoryStatsResponse = Schemas['InventoryStatsResponse'];
-export type MessageResponse = Schemas['MessageResponse'];
+type AddInventoryItemRequest = AddItemRequest;
+type RemoveInventoryItemRequest = RemoveItemRequest;
+export type InventoryItemDTO = InventoryItem;
 
 // ===== Template Resolution Types =====
-
-type ResolveTemplateRequest =
-  Ops['resolve_template_api_v1_game_links_resolve_post']['requestBody']['content']['application/json'];
-type ResolveBatchRequest =
-  Ops['resolve_batch_api_v1_game_links_resolve_batch_post']['requestBody']['content']['application/json'];
 
 export type TemplateKind = SharedTemplateKind;
 export type ResolveTemplateResponse = SharedResolveTemplateResponse;
 export type ResolveBatchResponse = SharedResolveBatchResponse;
 
-type ResolveTemplateResponseDto = Schemas['ResolveTemplateResponse'] & {
+type ResolveTemplateResponseDto = ResolveTemplateResponseSchema & {
   found?: boolean;
 };
 
-type ResolveBatchResponseDto = Schemas['ResolveBatchResponse'];
+type ResolveBatchResponseDto = ResolveBatchResponseSchema;
 
 function normalizeResolveTemplateResponse(
   raw: ResolveTemplateResponseDto,
@@ -210,7 +212,7 @@ export function createGameApi(client: PixSimApiClient) {
       locationId: number,
       hotspots: readonly GameHotspotInputDTO[]
     ): Promise<GameLocationDetail> {
-      const request: ReplaceHotspotsPayload = { hotspots };
+      const request: ReplaceHotspotsPayload = { hotspots: [...hotspots] };
       return client.put<GameLocationDetail>(`/game/locations/${locationId}/hotspots`, request);
     },
 
@@ -370,3 +372,4 @@ export function createGameApi(client: PixSimApiClient) {
     },
   };
 }
+

@@ -15,6 +15,8 @@ export interface ButtonGroupItem {
   onAuxClick?: (e: React.MouseEvent) => void;
   title?: string;
   disabled?: boolean;
+  /** Right-click handler */
+  onContextMenu?: (e: React.MouseEvent) => void;
   /** Small badge rendered at top-right corner of the button (e.g. mode indicator) */
   badge?: React.ReactNode;
   /** Content to show on hover (expands in opposite direction of layout) */
@@ -230,6 +232,7 @@ export function ButtonGroup({
                 <button
                   onClick={item.onClick}
                   onAuxClick={item.onAuxClick}
+                  onContextMenu={item.onContextMenu}
                   disabled={item.disabled}
                   className={clsx(
                     sizeClass,
@@ -307,6 +310,7 @@ function ExpandableItem({
       <button
         onClick={item.onClick}
         onAuxClick={item.onAuxClick}
+        onContextMenu={item.onContextMenu}
         disabled={item.disabled}
         className={clsx(
           sizeClass,

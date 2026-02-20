@@ -1,5 +1,33 @@
 import type { PixSimApiClient } from '../client';
-import type { ApiComponents, ApiOperations } from '@pixsim7/shared.types';
+import type {
+  AndroidDevice as ApiAndroidDevice,
+  AppActionPreset as ApiAppActionPreset,
+  AutomationExecution as ApiAutomationExecution,
+  ClearExecutionsApiV1AutomationExecutionsClearDeleteParams,
+  ClearExecutionsResponse,
+  CompletePairingRequest,
+  CompletePairingResponse,
+  DeviceScanResponse,
+  ExecutePresetRequest,
+  ExecutePresetResponse,
+  ExecutionLoop as ApiExecutionLoop,
+  ListExecutionsApiV1AutomationExecutionsGetParams,
+  ListLoopsApiV1AutomationLoopsGetParams,
+  ResetDeviceStatusResponse,
+  TestActionsRequest,
+  TestActionsResponse,
+} from '@pixsim7/shared.api.model';
+export type {
+  ClearExecutionsResponse,
+  CompletePairingRequest,
+  CompletePairingResponse,
+  DeviceScanResponse,
+  ExecutePresetRequest,
+  ExecutePresetResponse,
+  ResetDeviceStatusResponse,
+  TestActionsRequest,
+  TestActionsResponse,
+};
 
 type RequireId<T extends { id?: number | null }> = Omit<T, 'id'> & { id: number };
 
@@ -10,34 +38,16 @@ function requireId<T extends { id?: number | null }>(value: T, label: string): R
   return { ...(value as any), id: value.id } as RequireId<T>;
 }
 
-export type ApiAndroidDevice = ApiComponents['schemas']['AndroidDevice'];
 export type AndroidDevice = RequireId<ApiAndroidDevice>;
 
-export type ApiAutomationExecution = ApiComponents['schemas']['AutomationExecution'];
 export type AutomationExecution = RequireId<ApiAutomationExecution>;
 
-export type ApiExecutionLoop = ApiComponents['schemas']['ExecutionLoop'];
 export type ExecutionLoop = RequireId<ApiExecutionLoop>;
 
-export type ApiAppActionPreset = ApiComponents['schemas']['AppActionPreset'];
 export type AppActionPreset = RequireId<ApiAppActionPreset>;
 
-export type CompletePairingRequest = ApiComponents['schemas']['CompletePairingRequest'];
-export type ExecutePresetRequest = ApiComponents['schemas']['ExecutePresetRequest'];
-export type TestActionsRequest = ApiComponents['schemas']['TestActionsRequest'];
-
-export type DeviceScanResponse = ApiComponents['schemas']['DeviceScanResponse'];
-export type CompletePairingResponse = ApiComponents['schemas']['CompletePairingResponse'];
-export type ExecutePresetResponse = ApiComponents['schemas']['ExecutePresetResponse'];
-export type TestActionsResponse = ApiComponents['schemas']['TestActionsResponse'];
-export type ClearExecutionsResponse = ApiComponents['schemas']['ClearExecutionsResponse'];
-export type ResetDeviceStatusResponse = ApiComponents['schemas']['ResetDeviceStatusResponse'];
-
-export type ListExecutionsQuery =
-  ApiOperations['list_executions_api_v1_automation_executions_get']['parameters']['query'];
-
-export type ListLoopsQuery =
-  ApiOperations['list_loops_api_v1_automation_loops_get']['parameters']['query'];
+export type ListExecutionsQuery = ListExecutionsApiV1AutomationExecutionsGetParams;
+export type ListLoopsQuery = ListLoopsApiV1AutomationLoopsGetParams;
 
 export function createAutomationApi(client: PixSimApiClient) {
   return {
@@ -100,7 +110,9 @@ export function createAutomationApi(client: PixSimApiClient) {
       return (executions || []).map((e) => requireId(e, 'AutomationExecution'));
     },
 
-    async clearExecutions(query?: { status?: string | null }): Promise<ClearExecutionsResponse> {
+    async clearExecutions(
+      query?: ClearExecutionsApiV1AutomationExecutionsClearDeleteParams
+    ): Promise<ClearExecutionsResponse> {
       return client.delete<ClearExecutionsResponse>('/automation/executions/clear', { params: query as any });
     },
 
@@ -152,3 +164,4 @@ export function createAutomationApi(client: PixSimApiClient) {
     },
   };
 }
+
