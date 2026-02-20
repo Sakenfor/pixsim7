@@ -149,7 +149,9 @@ class ProviderConcurrentLimitError(ProviderError):
     """Provider concurrent generation limit reached for this account.
 
     This indicates the provider has too many jobs running for this account.
-    The job should be requeued to try a different account.
+    The job processor handles this with deferred requeue (pinned accounts)
+    or account rotation (non-pinned).  Marked retryable so ARQ can retry
+    as a fallback if the explicit handling doesn't resolve it.
     """
     def __init__(self, provider_id: str, account_id: int | None = None):
         msg = f"Concurrent generation limit reached for provider '{provider_id}'"
@@ -157,7 +159,7 @@ class ProviderConcurrentLimitError(ProviderError):
             msg,
             code="PROVIDER_CONCURRENT_LIMIT",
             error_code="provider_concurrent_limit",
-            retryable=False,
+            retryable=True,
         )
         self.provider_id = provider_id
         self.account_id = account_id
