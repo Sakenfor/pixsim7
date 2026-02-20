@@ -102,6 +102,10 @@ function validateAndApplyDefaults(
   params: Record<string, any>,
   specParams: ParamSpec[]
 ): Record<string, any> {
+  // Account selection should remain unset when user chooses "Auto".
+  // Some provider specs may expose a default preferred_account_id, but
+  // forcing that default back in breaks the "Auto" intent.
+  const SKIP_DEFAULT_PARAMS = new Set(['preferred_account_id', 'account_id']);
   let changed = false;
   const next = { ...params };
 
@@ -111,6 +115,9 @@ function validateAndApplyDefaults(
 
     // Apply default if undefined
     if (currentValue === undefined) {
+      if (SKIP_DEFAULT_PARAMS.has(name)) {
+        continue;
+      }
       if (spec.default !== undefined && spec.default !== null) {
         next[name] = spec.default;
         changed = true;
@@ -180,6 +187,7 @@ export function useGenerationWorkbench(
   const storeProviderId = useSessionStore((s) => s.providerId);
   const generating = useSessionStore((s) => s.generating);
   const setStoreProvider = useSessionStore((s) => s.setProvider);
+  const sessionHydrated = useSessionStore((s) => s._hasHydrated);
 
   // Use override or store values
   const operationType = options.operationType ?? storeOperationType;
@@ -191,9 +199,11 @@ export function useGenerationWorkbench(
   const showSettings = useSettingsStore((s) => s.showSettings);
   const setShowSettings = useSettingsStore((s) => s.setShowSettings);
   const toggleSettings = useSettingsStore((s) => s.toggleSettings);
-  const hasHydrated = useSettingsStore((s) => s._hasHydrated);
+  const settingsHydrated = useSettingsStore((s) => s._hasHydrated);
   const setActiveOperationType = useSettingsStore((s) => s.setActiveOperationType);
   const activeOperationType = useSettingsStore((s) => s.activeOperationType);
+
+  const hasHydrated = sessionHydrated && settingsHydrated;
 
   // Sync operation type to settings store for per-operation params
   useEffect(() => {
@@ -267,7 +277,23 @@ export function useGenerationWorkbench(
     (name: string, value: any) => {
       const spec = paramSpecMap.get(name);
       const coercedValue = coerceParamValue(value, spec);
-      setDynamicParams((prev) => ({ ...prev, [name]: coercedValue }));
+      setDynamicParams((prev) => {
+        const next = { ...prev };
+
+        if (coercedValue === undefined) {
+          delete next[name];
+          // Clear any legacy alias when toggling account back to Auto.
+          if (name === 'preferred_account_id' || name === 'account_id') {
+            delete next.preferred_account_id;
+            delete next.account_id;
+            delete next.accountId;
+          }
+          return next;
+        }
+
+        next[name] = coercedValue;
+        return next;
+      });
     },
     [paramSpecMap, setDynamicParams]
   );

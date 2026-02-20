@@ -360,7 +360,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     && assetUploadedToProvider;
 
   // Build button group items
-  const supportsSlots = operationMetadata?.multiAssetMode !== 'single';
+  const supportsSlots = true;
   const inputScopeId = widgetContext?.scopeId;
   const buttonItems: ButtonGroupItem[] = [];
 

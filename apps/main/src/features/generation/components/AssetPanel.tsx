@@ -289,15 +289,13 @@ export function AssetPanel(props: QuickGenPanelProps) {
             return Number.isFinite(id) ? Ref.asset(id) : null;
           })
           .filter((ref): ref is AssetRef => !!ref);
-        const supportsMulti = operationMeta?.multiAssetMode !== 'single';
+        const supportsMulti = true;
         const minCount = operationMeta?.multiAssetMode === 'required'
           ? 2
           : isFlexibleOperation
           ? 0
           : 1;
-        const isMultiAsset =
-          operationMeta?.multiAssetMode === 'required' ||
-          (supportsMulti && (displayAssets?.length ?? 0) > 1);
+        const isMultiAsset = (displayAssets?.length ?? 0) > 1;
         const maxCount = isMultiAsset
           ? (maxAssetItems ?? Math.max(refs.length, 1))
           : 1;
@@ -484,7 +482,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   );
 
   const hasAsset = displayAssets.length > 0;
-  const isMultiAssetDisplay = operationMeta?.multiAssetMode === 'required' || displayAssets.length > 1;
+  const isMultiAssetDisplay = displayAssets.length > 1;
   const currentInputIdx = Math.max(0, Math.min(operationInputIndex - 1, orderedInputs.length - 1));
   const currentInput = orderedInputs[currentInputIdx];
   const currentInputId = currentInput?.id;
@@ -790,7 +788,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
           <div className="text-xs text-neutral-500 italic text-center">
             {operationType === 'video_extend' ? 'Select video' :
              operationMeta?.multiAssetMode === 'required' ? '+ Add images' :
-             isFlexibleOperation ? '+ Image (optional)' : 'Select image'}
+             isFlexibleOperation ? '+ Image (optional)' : '+ Add image'}
           </div>
         </div>
       </div>

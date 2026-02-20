@@ -37,14 +37,17 @@ export interface GenerationSessionActions {
 /**
  * Full generation session state (fields + actions).
  */
-export interface GenerationSessionState extends GenerationSessionFields, GenerationSessionActions {}
+export interface GenerationSessionState extends GenerationSessionFields, GenerationSessionActions {
+  /** Whether the store has been hydrated from persistence. */
+  _hasHydrated: boolean;
+}
 
 /**
  * Default values for generation session fields.
  * Exported for reuse by ControlCenterStore and other stores that implement GenerationSessionFields.
  */
 export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
-  operationType: "text_to_video",
+  operationType: "image_to_video",
   prompt: "",
   promptPerOperation: {},
   providerId: undefined,
@@ -66,6 +69,7 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
     persist(
       (set, get) => ({
         ...DEFAULT_SESSION_FIELDS,
+        _hasHydrated: false,
         setOperationType: (operationType) => {
           const state = get();
           if (state.operationType === operationType) return;
@@ -119,6 +123,11 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
             promptPerOperation: state.promptPerOperation,
             providerId: state.providerId,
           };
+        },
+        onRehydrateStorage: () => (state) => {
+          if (state) {
+            state._hasHydrated = true;
+          }
         },
         migrate: (persistedState: any, version: number) => {
           const migrated = { ...persistedState };

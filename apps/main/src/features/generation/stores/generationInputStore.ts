@@ -11,7 +11,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 import type { AssetModel } from '@features/assets';
 
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+import type { OperationType } from '@/types/operations';
 
 export interface InputItem {
   id: string;
@@ -127,10 +127,6 @@ function getOperationInputs(
   return inputsByOperation[operationType] ?? { items: [], currentIndex: 1 };
 }
 
-function isSingleOperation(operationType: OperationType): boolean {
-  return OPERATION_METADATA[operationType]?.multiAssetMode === 'single';
-}
-
 function allowDuplicates(operationType: OperationType): boolean {
   return operationType === 'video_transition';
 }
@@ -154,56 +150,6 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
 
         addInput: ({ asset, operationType, slotIndex }) => {
           set((state) => {
-            if (isSingleOperation(operationType)) {
-              const existing = getOperationInputs(state.inputsByOperation, operationType);
-              const preferredSlot = state.armedSlotByOperation?.[operationType];
-              const hasExplicitSlot =
-                (typeof slotIndex === 'number' && Number.isFinite(slotIndex)) ||
-                (typeof preferredSlot === 'number' && Number.isFinite(preferredSlot));
-
-              let nextItems = [...existing.items];
-              // Deduplicate — if asset already queued, remove old entry
-              nextItems = nextItems.filter((item) => item.asset.id !== asset.id);
-
-              // Determine target slot: explicit slot from picker, or slot 0 (replace primary)
-              let targetSlot: number;
-              if (typeof slotIndex === 'number' && Number.isFinite(slotIndex)) {
-                targetSlot = Math.max(0, Math.floor(slotIndex));
-              } else if (typeof preferredSlot === 'number' && Number.isFinite(preferredSlot)) {
-                targetSlot = Math.max(0, Math.floor(preferredSlot));
-              } else {
-                targetSlot = 0;
-              }
-
-              // Replace any existing item at the target slot
-              nextItems = nextItems.filter((item) => getSlotIndex(item, 0) !== targetSlot);
-              const newItem = createInputItem(asset, targetSlot);
-              nextItems.push(newItem);
-              nextItems = normalizeInputItems(nextItems);
-
-              const nextIndex = normalizeIndex(
-                nextItems.findIndex((item) => item.id === newItem.id) + 1,
-                nextItems.length
-              );
-              return {
-                inputsByOperation: {
-                  ...state.inputsByOperation,
-                  [operationType]: {
-                    items: nextItems,
-                    currentIndex: nextIndex,
-                  },
-                },
-                ...(hasExplicitSlot
-                  ? {
-                      armedSlotByOperation: {
-                        ...state.armedSlotByOperation,
-                        [operationType]: undefined,
-                      },
-                    }
-                  : {}),
-              };
-            }
-
             const existing = getOperationInputs(state.inputsByOperation, operationType);
             const shouldAllowDuplicates = allowDuplicates(operationType);
             let nextItems = normalizeInputItems([...existing.items]);
@@ -268,19 +214,6 @@ export function createGenerationInputStore(storageKey: string): GenerationInputS
           }
 
           set((state) => {
-            if (isSingleOperation(operationType)) {
-              const lastAsset = assets[assets.length - 1];
-              return {
-                inputsByOperation: {
-                  ...state.inputsByOperation,
-                  [operationType]: {
-                    items: [createInputItem(lastAsset, 0)],
-                    currentIndex: 1,
-                  },
-                },
-              };
-            }
-
             const existing = getOperationInputs(state.inputsByOperation, operationType);
             const shouldAllowDuplicates = allowDuplicates(operationType);
             let nextItems = normalizeInputItems([...existing.items]);

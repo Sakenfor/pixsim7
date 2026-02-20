@@ -14,9 +14,12 @@ import { getFallbackOperation } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
-import { computeCombinations, type EachStrategy } from '../lib/combinationStrategies';
+import { computeCombinations, computeSetCombinations, isSetStrategy, type EachStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
+
+import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
+import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/assetSetResolver';
 
 
 
@@ -380,16 +383,115 @@ export function useQuickGenerateController() {
    * Generate individually for each queued input asset (or group of assets
    * when a combination strategy is selected).
    * Same prompt and settings, but one generation per group.
+   *
+   * When a set strategy + setId is provided, resolves the asset set and
+   * uses computeSetCombinations instead of computeCombinations.
    */
   const generateEach = useCallback(async (options?: {
     overrideDynamicParams?: Record<string, any>;
-    strategy?: EachStrategy;
+    strategy?: CombinationStrategy;
+    setId?: string;
   }) => {
     const { currentInputs } = getInputState();
     const strategy = options?.strategy ?? 'each';
+
+    // ─── Set strategy path ───
+    if (isSetStrategy(strategy) && options?.setId) {
+      const assetSet = useAssetSetStore.getState().getSet(options.setId);
+      if (!assetSet) {
+        setError('Asset set not found');
+        return;
+      }
+
+      resetForGeneration();
+
+      try {
+        const resolvedAssets = await resolveAssetSet(assetSet);
+        if (resolvedAssets.length === 0) {
+          setError('Asset set is empty — no assets could be resolved');
+          setGenerating(false);
+          return;
+        }
+
+        const setInputItems = assetModelsToInputItems(resolvedAssets);
+        const groups = computeSetCombinations(currentInputs, setInputItems, strategy);
+
+        const total = groups.length;
+        let queued = 0;
+        const generatedIds: number[] = [];
+        setQueueProgress({ queued: 0, total });
+
+        const overrideParams = options?.overrideDynamicParams || {};
+
+        for (let i = 0; i < groups.length; i++) {
+          const group = groups[i];
+          const primaryInput = group[0];
+
+          try {
+            const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
+            await applyFrameExtraction(dynamicParams, primaryInput, []);
+
+            const request = buildRequest(dynamicParams, group, primaryInput);
+            if ('error' in request) {
+              logEvent('ERROR', 'generate_each_item_skipped', {
+                index: i,
+                strategy,
+                error: request.error,
+              });
+              continue;
+            }
+
+            const genId = await submitOne(request);
+            generatedIds.push(genId);
+            queued++;
+            setQueueProgress({ queued, total });
+            recordInputHistory(operationType, group);
+
+            logEvent('INFO', 'generate_each_created', {
+              generationId: genId,
+              operationType,
+              providerId: providerId || 'pixverse',
+              strategy,
+              setId: options.setId,
+              eachIndex: i + 1,
+              eachTotal: total,
+            });
+          } catch (itemErr) {
+            logEvent('ERROR', 'generate_each_item_failed', {
+              eachIndex: i + 1,
+              strategy,
+              error: extractErrorMessage(itemErr, 'Unknown error'),
+            });
+          }
+        }
+
+        if (generatedIds.length > 0) {
+          const lastId = generatedIds[generatedIds.length - 1];
+          setGenerationId(lastId);
+          setWatchingGeneration(lastId);
+        }
+
+        logEvent('INFO', 'generate_each_complete', {
+          queued,
+          total,
+          strategy,
+          setId: options.setId,
+          operationType,
+          providerId: providerId || 'pixverse',
+        });
+      } catch (err) {
+        setError(extractErrorMessage(err, 'Failed to queue set generations'));
+      } finally {
+        setGenerating(false);
+        setTimeout(() => setQueueProgress(null), 2000);
+      }
+      return;
+    }
+
+    // ─── Standard input strategy path ───
     if (currentInputs.length <= 1) return generate(options);
 
-    const groups = computeCombinations(currentInputs, strategy);
+    const groups = computeCombinations(currentInputs, strategy as EachStrategy);
 
     resetForGeneration();
     const total = groups.length;

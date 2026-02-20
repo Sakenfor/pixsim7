@@ -6,7 +6,7 @@
 
 import type { AssetModel } from '@features/assets';
 
-import { OPERATION_METADATA, type OperationType } from '@/types/operations';
+import type { OperationType } from '@/types/operations';
 
 import type { InputItem } from '../stores/generationInputStore';
 
@@ -64,26 +64,17 @@ export function buildFallbackAsset(asset: SelectedAssetLike): AssetModel {
  * Resolves which assets to display based on operation type and input state.
  *
  * Priority:
- * 1. Single-mode ops: return current input (by index).
- * 2. Multi-mode ops: return all input assets.
- * 3. Fallback to lastSelectedAsset if it matches the operation type.
- * 4. Empty array if nothing available.
+ * 1. Return all input assets.
+ * 2. Fallback to lastSelectedAsset if it matches the operation type.
+ * 3. Empty array if nothing available.
  */
 export function resolveDisplayAssets({
   operationType,
   inputs,
-  currentIndex,
   lastSelectedAsset,
   allowAnySelected = false,
 }: DisplayAssetsParams): AssetModel[] {
-  const metadata = OPERATION_METADATA[operationType];
-  const isSingleMode = metadata?.multiAssetMode === 'single';
-
   if (inputs.length > 0) {
-    if (isSingleMode) {
-      const index = Math.max(0, Math.min(currentIndex - 1, inputs.length - 1));
-      return [inputs[index].asset];
-    }
     return inputs.map(item => item.asset);
   }
 

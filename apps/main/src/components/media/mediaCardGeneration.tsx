@@ -170,7 +170,7 @@ export function createGenerationButtonGroup(props: MediaCardResolvedProps): Over
 
   const showGenerationBadge = badgeConfig?.showGenerationBadge ?? true;
 
-  if (!showGenerationBadge || !actions) {
+  if (!showGenerationBadge) {
     return null;
   }
 

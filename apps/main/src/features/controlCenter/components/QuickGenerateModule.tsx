@@ -12,20 +12,21 @@ import {
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
   useGenerationWebSocket,
-  useGenerationWorkbench,
   useProvideGenerationWidget,
   useQuickGenPanelLayout,
   useQuickGenScopeSync,
   QuickGenPanelHost,
-  GenerationWorkbench,
   GenerationScopeProvider,
   type QuickGenPanelHostRef,
 } from '@features/generation';
 
-import { OPERATION_METADATA } from '@/types/operations';
+
 
 const QUICKGEN_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings', 'quickgen-blocks'] as const;
-const QUICKGEN_PANEL_MANAGER_ID = 'controlCenter';
+/** Outer dockview ID — the CC dock where the quickgen module panel lives */
+const CC_DOCKVIEW_ID = 'controlCenter';
+/** Inner dockview ID — distinct from the outer CC dock to avoid host registry collision */
+const CC_QUICKGEN_DOCKVIEW_ID = 'ccQuickgen';
 
 type QuickGenerateModuleProps = IDockviewPanelProps & { panelId?: string };
 
@@ -36,7 +37,8 @@ export function QuickGenerateModule(props: QuickGenerateModuleProps) {
   const resolvedPanelId = props.panelId ?? props.api?.id ?? 'cc-generate';
 
   const { scopeInstanceId, scopeLabel } = useQuickGenScopeSync({
-    panelManagerId: QUICKGEN_PANEL_MANAGER_ID,
+    panelManagerId: CC_DOCKVIEW_ID,
+    innerDockviewId: CC_QUICKGEN_DOCKVIEW_ID,
     panelIds: QUICKGEN_PANEL_IDS,
     hostPanelId: resolvedPanelId,
   });
@@ -56,13 +58,8 @@ function QuickGenerateModuleInner() {
   // Centralized widget provision: controller + scoped stores + CAP_GENERATION_WIDGET
   const {
     operationType,
-    providerId,
-    generating,
-    setProvider,
-    error,
     generationId,
     operationInputs,
-    generate,
     widgetProviderId,
   } = useProvideGenerationWidget({
     widgetId: 'controlCenter',
@@ -75,11 +72,7 @@ function QuickGenerateModuleInner() {
   // Centralized panel layout: panels, defaultLayout, resolvePanelPosition
   const layout = useQuickGenPanelLayout({ showBlocks: true });
 
-  // Use the shared generation workbench hook for settings management
-  const workbench = useGenerationWorkbench({ operationType });
-
-  const operationMetadata = OPERATION_METADATA[operationType];
-  const isMultiAssetOp = operationMetadata?.multiAssetMode !== 'single';
+  const isMultiAssetOp = true;
 
   // Dockview wrapper ref for layout reset
   const dockviewRef = useRef<QuickGenPanelHostRef>(null);
@@ -117,42 +110,6 @@ function QuickGenerateModuleInner() {
     scope: 'root',
   });
 
-  // Get quality options filtered by model (for image operations)
-  const getQualityOptionsForModel = useMemo(() => {
-    const spec = workbench.paramSpecs.find((p) => p.name === 'quality');
-    if (!spec) return null;
-
-    const metadata = spec.metadata;
-    const perModelOptions = metadata?.per_model_options as Record<string, string[]> | undefined;
-    const modelValue = workbench.dynamicParams?.model;
-
-    if (perModelOptions && typeof modelValue === 'string') {
-      const normalizedModel = modelValue.toLowerCase();
-      const matchEntry = Object.entries(perModelOptions).find(
-        ([key]) => key.toLowerCase() === normalizedModel
-      );
-      if (matchEntry) {
-        return matchEntry[1];
-      }
-    }
-
-    // Fall back to enum from spec
-    return spec.enum ?? null;
-  }, [workbench.paramSpecs, workbench.dynamicParams?.model]);
-
-  // Reset quality when model changes and current quality is invalid for new model
-  useEffect(() => {
-    if (!getQualityOptionsForModel) return;
-    const currentQuality = workbench.dynamicParams?.quality;
-    if (currentQuality && !getQualityOptionsForModel.includes(currentQuality)) {
-      // Current quality not valid for this model, reset to first valid option
-      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
-    } else if (!currentQuality && getQualityOptionsForModel.length > 0) {
-      // No quality set, set default
-      workbench.handleParamChange('quality', getQualityOptionsForModel[0]);
-    }
-  }, [getQualityOptionsForModel, workbench.dynamicParams?.quality]);
-
   const panelContext = useMemo(
     () => ({ targetProviderId: widgetProviderId, sourceLabel: 'Control Center' }),
     [widgetProviderId],
@@ -175,7 +132,7 @@ function QuickGenerateModuleInner() {
     }
   }, [panelLayoutResetTrigger]);
 
-  // Handle dockview ready - store API reference and focus asset panel when inputs grow
+  // Handle dockview ready - store API reference
   const handleDockviewReady = useCallback((api: DockviewApi) => {
     dockviewApiRef.current = api;
   }, []);
@@ -202,7 +159,7 @@ function QuickGenerateModuleInner() {
     prevInputLengthRef.current = currentLength;
   }, [operationInputs.length]);
 
-  const renderContent = () => (
+  return (
     <div className="h-full flex flex-col">
       <div className="flex-1 min-h-0">
         <div
@@ -214,7 +171,7 @@ function QuickGenerateModuleInner() {
             panels={layout.panels}
             storageKey={storageKey}
             context={panelContext}
-            panelManagerId={QUICKGEN_PANEL_MANAGER_ID}
+            panelManagerId={CC_QUICKGEN_DOCKVIEW_ID}
             defaultLayout={layout.defaultLayout}
             resolvePanelPosition={layout.resolvePanelPosition}
             onReady={handleDockviewReady}
@@ -223,33 +180,5 @@ function QuickGenerateModuleInner() {
         </div>
       </div>
     </div>
-  );
-
-  return (
-    <GenerationWorkbench
-      className="h-full"
-      // Settings bar props - hidden since we have inline settings panel
-      providerId={providerId}
-      providers={workbench.providers}
-      paramSpecs={workbench.paramSpecs}
-      dynamicParams={workbench.dynamicParams}
-      onChangeParam={workbench.handleParamChange}
-      onChangeProvider={setProvider}
-      generating={generating}
-      showSettings={workbench.showSettings}
-      onToggleSettings={workbench.toggleSettings}
-      operationType={operationType}
-      // Generation action - hidden since we have inline Go button
-      onGenerate={generate}
-      // Error & status
-      error={error}
-      generationId={generationId}
-      hideStatusDisplay
-      hideSettingsBar
-      hideGenerateButton
-      // Render props - no header, just content with inline settings
-      renderContent={renderContent}
-      // No footer - blocks are now a dockview panel
-    />
   );
 }

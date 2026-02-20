@@ -29,7 +29,7 @@ export interface QuickNavItem {
 export const DEFAULT_QUICK_NAV: QuickNavItem[] = [
   { id: 'gallery', icon: '🖼️', label: 'Gallery', path: '/assets' },
   { id: 'workspace', icon: '🎨', label: 'Workspace', path: '/workspace' },
-  { id: 'plugin-workspace', icon: '🔌', label: 'Plugin Workspace', path: '/plugin-workspace' },
+  { id: 'devtools', icon: 'code', label: 'DevTools', path: '/devtools' },
   { id: 'home', icon: '🏠', label: 'Home', path: '/' },
   { id: 'graph', icon: '🕸️', label: 'Graph', path: '/graph/1' },
 ];
@@ -382,4 +382,3 @@ function PositionButton({
     </button>
   );
 }
-

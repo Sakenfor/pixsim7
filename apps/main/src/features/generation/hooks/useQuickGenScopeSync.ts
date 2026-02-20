@@ -11,8 +11,15 @@ import {
 } from '@features/panels';
 
 export interface UseQuickGenScopeSyncConfig {
-  /** Dockview / panel-manager ID ('controlCenter' | 'viewerQuickGenerate') */
+  /** Dockview / panel-manager ID of the outer host dockview ('controlCenter' | 'viewerQuickGenerate') */
   panelManagerId: string;
+  /**
+   * Dockview ID of the inner quickgen panel host.
+   * When the inner dockview uses a different panelManagerId than the outer host,
+   * pass the inner ID here so child instance IDs match the actual dockview context.
+   * Defaults to panelManagerId.
+   */
+  innerDockviewId?: string;
   /** Panel IDs to keep in sync (e.g. quickgen-asset, quickgen-prompt, …) */
   panelIds: readonly string[];
   /** Panel ID used for the host scope instance (defaults to panelManagerId) */
@@ -39,10 +46,12 @@ export interface UseQuickGenScopeSyncResult {
  */
 export function useQuickGenScopeSync({
   panelManagerId,
+  innerDockviewId,
   panelIds,
   hostPanelId,
 }: UseQuickGenScopeSyncConfig): UseQuickGenScopeSyncResult {
   const resolvedHostPanelId = hostPanelId ?? panelManagerId;
+  const childDockviewId = innerDockviewId ?? panelManagerId;
 
   const hostInstanceId = useMemo(
     () => getInstanceId(panelManagerId, resolvedHostPanelId),
@@ -53,9 +62,9 @@ export function useQuickGenScopeSync({
     () =>
       panelIds.map((panelId) => ({
         panelId,
-        instanceId: getInstanceId(panelManagerId, panelId),
+        instanceId: getInstanceId(childDockviewId, panelId),
       })),
-    [panelManagerId, panelIds],
+    [childDockviewId, panelIds],
   );
 
   const SCOPE_FALLBACK = { id: GENERATION_SCOPE_ID, defaultMode: 'local' } as const;

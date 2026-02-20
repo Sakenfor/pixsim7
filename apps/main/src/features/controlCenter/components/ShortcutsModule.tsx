@@ -20,7 +20,7 @@ const actionShortcutIds = [
   'interactions.open-studio',
   'gizmos.open-lab',
   'plugins.open',
-  'app-map.open',
+  'devtools.open',
 ];
 
 export function ShortcutsModule() {

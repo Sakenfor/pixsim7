@@ -9,11 +9,6 @@
 export * from './models';
 
 // Components
-export { GenerationWorkbench } from './components/GenerationWorkbench';
-export type {
-  GenerationWorkbenchProps,
-  WorkbenchRenderContext,
-} from './components/GenerationWorkbench';
 export { GenerationHistoryButton } from './components/GenerationHistoryButton';
 export type { GenerationHistoryButtonProps } from './components/GenerationHistoryButton';
 export { GenerationsPanel } from './components/GenerationsPanel';
@@ -96,8 +91,15 @@ export type {
 export * from './lib/core';
 
 // Lib - Combination Strategies
-export { EACH_STRATEGIES, computeCombinations } from './lib/combinationStrategies';
-export type { EachStrategy } from './lib/combinationStrategies';
+export {
+  EACH_STRATEGIES,
+  SET_STRATEGIES,
+  ALL_STRATEGIES,
+  computeCombinations,
+  computeSetCombinations,
+  isSetStrategy,
+} from './lib/combinationStrategies';
+export type { EachStrategy, SetStrategy, CombinationStrategy } from './lib/combinationStrategies';
 
 // Lib - Multi-Asset Mode
 export {

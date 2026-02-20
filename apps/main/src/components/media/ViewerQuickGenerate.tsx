@@ -41,6 +41,10 @@ import {
 
 import type { OperationType } from '@/types/operations';
 
+// Tracks last asset ID seen by auto-switch logic.
+// Survives component unmount/remount (gallery navigation) but resets on page refresh.
+let _lastViewerAssetId: string | number | undefined;
+
 const VIEWER_PANEL_MANAGER_ID = 'viewerQuickGenerate';
 const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
@@ -148,13 +152,23 @@ function ViewerQuickGenerateChrome({
     (s) => s.params.autoSwitchOperationType ?? true
   );
 
-  // Auto-set operation type based on asset type (when in user mode and enabled)
+  // Auto-switch operation type when navigating to a different asset.
+  // Uses module-level var so it survives unmount/remount (gallery click)
+  // but resets on page refresh (preserving persisted operation type).
   useEffect(() => {
-    if (mode === 'user' && autoSwitchEnabled) {
-      const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
-      setOperationType(targetOp);
+    if (_lastViewerAssetId === undefined) {
+      // First mount after refresh — just record, don't auto-switch
+      _lastViewerAssetId = asset.id;
+      return;
     }
-  }, [asset.type, setOperationType, mode, autoSwitchEnabled]);
+    if (_lastViewerAssetId === asset.id) return;
+    _lastViewerAssetId = asset.id;
+
+    if (mode !== 'user' || !autoSwitchEnabled) return;
+
+    const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
+    setOperationType(targetOp);
+  }, [asset.id, asset.type, setOperationType, mode, autoSwitchEnabled]);
 
   // Auto-set dynamic params from viewed asset (only gallery assets have valid backend IDs)
   useEffect(() => {
