@@ -2,7 +2,7 @@ import { Button } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
-import { enrichAsset, extractFrame, listAssetGroups, uploadAssetToProvider } from '@lib/api/assets';
+import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
@@ -27,13 +27,14 @@ import { MediaCard } from '@/components/media/MediaCard';
 
 import type { AssetFilters } from '../hooks/useAssets';
 import { useAssetsController } from '../hooks/useAssetsController';
-import { useAssetViewer } from '../hooks/useAssetViewer';
+import { useAssetViewer, useViewerScopeSync } from '../hooks/useAssetViewer';
 import { assetEvents } from '../lib/assetEvents';
+import { buildRemoteAssetActions } from '../lib/buildRemoteAssetActions';
 import { toggleFavoriteTag } from '../lib/favoriteTag';
 import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
-import { fromAssetResponses } from '../models/asset';
+import { fromAssetResponses, toViewerAssets } from '../models/asset';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
 
 import { DynamicFilters } from './DynamicFilters';
@@ -57,123 +58,11 @@ import {
   type GroupPathEntry,
 } from './groupHelpers';
 import { GroupingMenuDropdown } from './GroupingMenuDropdown';
+import { ParallelGroupSection, type ParallelAxisData } from './ParallelGroupSection';
 import { BottomPagination } from './shared/BottomPagination';
 import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
 import { PaginationStrip } from './shared/PaginationStrip';
 
-
-// ---------------------------------------------------------------------------
-// ParallelGroupSection — renders one axis in parallel mode
-// ---------------------------------------------------------------------------
-function ParallelGroupSection({
-  axis,
-  axisData,
-  axisPage,
-  groupView,
-  groupSort: sortKey,
-  cardSize,
-  onOpenGroup,
-  onPageChange,
-}: {
-  axis: GalleryGroupBy;
-  axisData: {
-    groups: AssetGroup[];
-    total: number;
-    limit: number;
-    offset: number;
-    loading: boolean;
-    error: string | null;
-  };
-  axisPage: number;
-  groupView: GalleryGroupView;
-  groupSort: GroupSortKey;
-  cardSize: number;
-  onOpenGroup: (key: string) => void;
-  onPageChange: (page: number) => void;
-}) {
-  const totalPages = useMemo(() => {
-    const limit = Math.max(1, axisData.limit || GROUP_PAGE_SIZE);
-    return Math.max(1, Math.ceil(axisData.total / limit));
-  }, [axisData.total, axisData.limit]);
-  const hasMore = axisData.offset + axisData.groups.length < axisData.total;
-  const sortedGroups = useMemo(() => sortGroups(axisData.groups, sortKey), [axisData.groups, sortKey]);
-  const showFolders = groupView === 'folders';
-  const layoutSettings = { rowGap: 12, columnGap: 12 };
-
-  return (
-    <div className="border border-neutral-200 dark:border-neutral-700 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-neutral-100 dark:bg-neutral-800/80">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
-          By {GROUP_BY_LABELS[axis]}
-        </span>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => onPageChange(axisPage - 1)}
-            disabled={axisData.loading || axisPage <= 1}
-            className="px-2 py-0.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            &lsaquo;
-          </button>
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 px-1">
-            {axisPage}/{totalPages}
-          </span>
-          <button
-            onClick={() => onPageChange(axisPage + 1)}
-            disabled={axisData.loading || !hasMore}
-            className="px-2 py-0.5 text-[11px] border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            &rsaquo;
-          </button>
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400 ml-1">
-            {axisData.total} groups
-          </span>
-        </div>
-      </div>
-      <div className="p-3">
-        {axisData.loading ? (
-          <div className="text-sm text-neutral-500 dark:text-neutral-400">Loading...</div>
-        ) : axisData.error ? (
-          <div className="text-sm text-red-500">{axisData.error}</div>
-        ) : sortedGroups.length > 0 ? (
-          showFolders ? (
-            <div
-              className="grid"
-              style={{
-                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
-                rowGap: `${layoutSettings.rowGap}px`,
-                columnGap: `${layoutSettings.columnGap}px`,
-              }}
-            >
-              {sortedGroups.map((group) => (
-                <GroupFolderTile
-                  key={group.key}
-                  group={group}
-                  cardSize={cardSize}
-                  onOpen={() => onOpenGroup(group.key)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {sortedGroups.map((group) => (
-                <GroupListRow
-                  key={group.key}
-                  group={group}
-                  cardSize={cardSize}
-                  onOpen={() => onOpenGroup(group.key)}
-                />
-              ))}
-            </div>
-          )
-        ) : (
-          <div className="text-sm text-neutral-500 dark:text-neutral-400">
-            No groups for this axis.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
@@ -242,15 +131,26 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     requestOverrides: groupSearchOverrides,
   });
   const { providers } = useProviders();
-  const { openGalleryAsset, updateGalleryList } = useAssetViewer({ source: 'gallery' });
+  const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
-  // Keep the viewer's navigation list in sync with the gallery's current assets
-  useEffect(() => {
-    if (isViewerOpen && controller.assets.length > 0) {
-      updateGalleryList(controller.assets);
-    }
-  }, [isViewerOpen, controller.assets, updateGalleryList]);
+  // Derive viewer assets and scope label for navigation scope sync
+  const viewerAssets = useMemo(() => toViewerAssets(controller.assets), [controller.assets]);
+  const hasActiveFilters = useMemo(() => {
+    const f = controller.filters;
+    return !!(
+      f.q ||
+      f.tag ||
+      f.provider_id ||
+      f.media_type ||
+      f.upload_method
+    );
+  }, [controller.filters]);
+  const scopeLabel = hasActiveFilters
+    ? `Gallery: filtered (${controller.assets.length})`
+    : `Gallery (${controller.assets.length})`;
+
+  useViewerScopeSync('gallery', scopeLabel, viewerAssets, isViewerOpen);
 
   const [groupData, setGroupData] = useState<AssetGroupListResponse | null>(null);
   const [groupLoading, setGroupLoading] = useState(false);
@@ -610,14 +510,6 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // ---------------------------------------------------------------------------
   // Parallel mode state & data fetching
   // ---------------------------------------------------------------------------
-  type ParallelAxisData = {
-    groups: AssetGroup[];
-    total: number;
-    limit: number;
-    offset: number;
-    loading: boolean;
-    error: string | null;
-  };
   const [parallelPages, setParallelPages] = useState<Record<string, number>>({});
   const [parallelData, setParallelData] = useState<Record<string, ParallelAxisData>>({});
 
@@ -884,6 +776,13 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     controller.toggleAssetSelection(String(assetId));
   };
 
+  // Resolve single provider filter for reupload actions
+  const filterProviderId = Array.isArray(controller.filters.provider_id)
+    ? controller.filters.provider_id.length === 1
+      ? controller.filters.provider_id[0]
+      : undefined
+    : controller.filters.provider_id || undefined;
+
   // Render cards
   const cardItems = visibleAssets.map((a) => {
     const isSelected = controller.selectedAssetIds.has(String(a.id));
@@ -930,119 +829,21 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           }
         }}
       >
-        {(() => {
-          const baseActions = controller.getAssetActions(a);
-          const filterProviderId = Array.isArray(controller.filters.provider_id)
-            ? controller.filters.provider_id.length === 1
-              ? controller.filters.provider_id[0]
-              : undefined
-            : controller.filters.provider_id || undefined;
-
-          const actions = {
-            ...baseActions,
-            onReuploadDone: () => resetAssets(),
-            onReupload: async () => {
-              let targetProviderId = filterProviderId;
-
-              if (!targetProviderId) {
-                if (!providers.length) {
-                  alert('No providers configured.');
-                  return;
-                }
-                const options = providers
-                  .map((p) => `${p.id} (${p.name})`)
-                  .join('\n');
-                const defaultId = a.providerId || providers[0].id;
-                const input = window.prompt(
-                  `Upload to which provider?\n${options}`,
-                  defaultId,
-                );
-                if (!input) return;
-                targetProviderId = input.trim();
-              }
-
-              await controller.reuploadAsset(a, targetProviderId);
-            },
-            onExtractLastFrameAndUpload: async () => {
-              if (a.mediaType !== 'video') return;
-              const duration = a.durationSec || 0;
-              const timestamp = Math.max(0, duration - (1 / 30));
-              try {
-                const frameAsset = await extractFrame({
-                  video_asset_id: a.id,
-                  timestamp,
-                });
-                const targetProvider = a.providerId || 'pixverse';
-                await uploadAssetToProvider(frameAsset.id, targetProvider);
-                resetAssets();
-              } catch (err: any) {
-                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-                alert(`Failed to extract/upload last frame: ${detail}`);
-              }
-            },
-            onExtractFrame: async (_id: number, timestamp: number) => {
-              if (a.mediaType !== 'video') return;
-              try {
-                // Don't pass provider_id - let backend decide based on settings
-                const frameAsset = await extractFrame({
-                  video_asset_id: a.id,
-                  timestamp,
-                });
-                resetAssets();
-                const uploadStatuses = frameAsset.last_upload_status_by_provider;
-                if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
-                  alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
-                }
-              } catch (err: any) {
-                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-                alert(`Failed to extract frame: ${detail}`);
-              }
-            },
-            onExtractLastFrame: async () => {
-              if (a.mediaType !== 'video') return;
-              try {
-                // Don't pass provider_id - let backend decide based on settings
-                const frameAsset = await extractFrame({
-                  video_asset_id: a.id,
-                  last_frame: true,
-                });
-                resetAssets();
-                const uploadStatuses = frameAsset.last_upload_status_by_provider;
-                if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
-                  alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
-                }
-              } catch (err: any) {
-                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-                alert(`Failed to extract last frame: ${detail}`);
-              }
-            },
-            onEnrichMetadata: async () => {
-              try {
-                const result = await enrichAsset(a.id);
-                if (result.enriched) {
-                  resetAssets();
-                } else {
-                  alert(result.message || 'No metadata to refresh');
-                }
-              } catch (err: any) {
-                const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-                alert(`Failed to refresh metadata: ${detail}`);
-              }
-            },
-          };
-
-          return (
-            <MediaCard
-              asset={a}
-              onOpen={() => openGalleryAsset(a, controller.assets)}
-              onToggleFavorite={() => toggleFavoriteTag(a)}
-              actions={actions}
-              contextMenuSelection={selectedAssets}
-              overlayConfig={overlayConfig}
-              overlayPresetId={overlayPresetId}
-            />
-          );
-        })()}
+        <MediaCard
+          asset={a}
+          onOpen={() => openGalleryAsset(a, controller.assets)}
+          onToggleFavorite={() => toggleFavoriteTag(a)}
+          actions={buildRemoteAssetActions(a, {
+            baseActions: controller.getAssetActions(a),
+            providers,
+            filterProviderId,
+            reuploadAsset: controller.reuploadAsset,
+            refresh: resetAssets,
+          })}
+          contextMenuSelection={selectedAssets}
+          overlayConfig={overlayConfig}
+          overlayPresetId={overlayPresetId}
+        />
       </div>
     );
   });
