@@ -81,6 +81,58 @@ function resolveAssetUrlFromInput(asset: Partial<InputItem['asset']>): string | 
 }
 
 /**
+ * Build composition_assets from asset IDs for a given operation type.
+ *
+ * Encapsulates the per-operation role, media_type, and layer conventions
+ * so every code-path (quick-generate, regenerate, extend, etc.) produces
+ * the same shape.  Returns `undefined` when the operation type does not
+ * use composition_assets or when no valid IDs are provided.
+ */
+export function buildCompositionAssetsFromAssetIds(
+  operationType: OperationType,
+  assetIds: number[],
+): Array<{ asset: string; role: string; layer?: number; media_type: string }> | undefined {
+  const validIds = assetIds.filter((id) => Number.isFinite(id) && Math.floor(id) > 0);
+  if (validIds.length === 0) return undefined;
+
+  switch (operationType) {
+    case 'image_to_image':
+    case 'fusion':
+      return validIds.map((id, index) => ({
+        asset: `asset:${id}`,
+        layer: index,
+        role: index === 0 ? 'environment' : 'main_character',
+        media_type: 'image',
+      }));
+
+    case 'image_to_video':
+      return validIds.map((id) => ({
+        asset: `asset:${id}`,
+        role: 'source_image',
+        media_type: 'image',
+      }));
+
+    case 'video_extend':
+      return validIds.map((id) => ({
+        asset: `asset:${id}`,
+        role: 'source_video',
+        media_type: 'video',
+      }));
+
+    case 'video_transition':
+      return validIds.map((id, index) => ({
+        asset: `asset:${id}`,
+        layer: index,
+        role: 'transition_input',
+        media_type: 'image',
+      }));
+
+    default:
+      return undefined;
+  }
+}
+
+/**
  * Build and validate a generation request for QuickGenerateModule.
  *
  * This helper centralizes operation-specific validation and parameter
@@ -179,26 +231,6 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
       (entry): entry is { asset?: string; url?: string; layer: number; role: string; media_type?: string } => !!entry,
     );
     return nonEmpty.length > 0 ? nonEmpty : undefined;
-  };
-
-  const buildCompositionAssetsFromIds = (
-    ids: number[],
-    options: {
-      role: string;
-      mediaType?: 'image' | 'video';
-      includeLayer?: boolean;
-    }
-  ): Array<{ asset: string; role: string; layer?: number; media_type?: string }> => {
-    const { role, mediaType, includeLayer = true } = options;
-    const resolvedIds = ids
-      .map((id) => asPositiveAssetId(id))
-      .filter((id): id is number => !!id);
-    return resolvedIds.map((id, index) => ({
-      asset: `asset:${id}`,
-      role,
-      ...(includeLayer ? { layer: index } : {}),
-      ...(mediaType ? { media_type: mediaType } : {}),
-    }));
   };
 
   const queuedImageCompositionAssets = resolveCompositionAssetsFromInputs(operationInputs, { mediaType: 'image' });
@@ -425,27 +457,20 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     params.source_asset_ids = inferredSourceAssetIds;
   }
 
+  // Helper to extract source IDs from params for composition_assets fallback
+  const extractSourceIds = (): number[] => {
+    if (Array.isArray(params.source_asset_ids)) return params.source_asset_ids;
+    if (params.source_asset_id) return [params.source_asset_id];
+    return [];
+  };
+
   if (operationType === 'image_to_image') {
     const inputCompositionAssets = queuedImageCompositionAssets;
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
-      const sourceIds = Array.isArray(params.source_asset_ids)
-        ? params.source_asset_ids
-        : params.source_asset_id
-          ? [params.source_asset_id]
-          : [];
-
-      if (sourceIds.length > 0) {
-        params.composition_assets = sourceIds.map((id: number, index: number) => ({
-          asset: `asset:${id}`,
-          layer: index,
-          role: index === 0 ? 'environment' : 'main_character',
-          media_type: 'image',
-        }));
-      }
+      params.composition_assets = buildCompositionAssetsFromAssetIds('image_to_image', extractSourceIds());
     }
-
   }
 
   if (operationType === 'fusion') {
@@ -456,20 +481,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
     if (inputCompositionAssets) {
       params.composition_assets = inputCompositionAssets;
     } else if (!params.composition_assets) {
-      const sourceIds = Array.isArray(params.source_asset_ids)
-        ? params.source_asset_ids
-        : params.source_asset_id
-          ? [params.source_asset_id]
-          : [];
-
-      if (sourceIds.length > 0) {
-        params.composition_assets = sourceIds.map((id: number, index: number) => ({
-          asset: `asset:${id}`,
-          layer: index,
-          role: index === 0 ? 'environment' : 'main_character',
-          media_type: 'image',
-        }));
-      }
+      params.composition_assets = buildCompositionAssetsFromAssetIds('fusion', extractSourceIds());
     }
 
     // Simple mode: strip roles so backend/SDK use flat @1/@2 references
@@ -493,16 +505,7 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           role: 'transition_input',
         }));
       } else {
-        const sourceIds = Array.isArray(params.source_asset_ids)
-          ? params.source_asset_ids
-          : [];
-        if (sourceIds.length > 0) {
-          params.composition_assets = buildCompositionAssetsFromIds(sourceIds, {
-            role: 'transition_input',
-            mediaType: 'image',
-            includeLayer: true,
-          });
-        }
+        params.composition_assets = buildCompositionAssetsFromAssetIds('video_transition', extractSourceIds());
       }
     }
     params.prompts = prompts.map((s) => s.trim()).filter(Boolean);
@@ -518,12 +521,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           ...entry,
           role: 'source_image',
         }));
-      } else if (params.source_asset_id) {
-        params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
-          role: 'source_image',
-          mediaType: 'image',
-          includeLayer: false,
-        });
+      } else {
+        params.composition_assets = buildCompositionAssetsFromAssetIds('image_to_video', extractSourceIds());
       }
     }
   }
@@ -535,12 +534,8 @@ export function buildGenerationRequest(context: QuickGenerateContext): BuildGene
           ...entry,
           role: 'source_video',
         }));
-      } else if (params.source_asset_id) {
-        params.composition_assets = buildCompositionAssetsFromIds([params.source_asset_id], {
-          role: 'source_video',
-          mediaType: 'video',
-          includeLayer: false,
-        });
+      } else {
+        params.composition_assets = buildCompositionAssetsFromAssetIds('video_extend', extractSourceIds());
       }
     }
   }

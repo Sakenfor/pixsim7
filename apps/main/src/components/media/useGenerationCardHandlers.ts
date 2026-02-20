@@ -18,7 +18,7 @@ import {
   getGenerationSessionStore,
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
-import { buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
 import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
 import { createPendingGeneration } from '@features/generation/models';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
@@ -415,6 +415,17 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       ) {
         sourceParams.source_asset_ids = sourceAssetIds;
       }
+
+      // Ensure composition_assets is present for operations that require it.
+      // The canonical_params from generation-context are flat provider params
+      // and may not include composition_assets (e.g. legacy generations).
+      if (!sourceParams.composition_assets && sourceAssetIds.length > 0) {
+        const built = buildCompositionAssetsFromAssetIds(resolvedOperationType, sourceAssetIds);
+        if (built) {
+          sourceParams.composition_assets = built;
+        }
+      }
+
       const parsedParams = params as Record<string, unknown>;
       const shouldRandomizeSeed =
         paramsIncludeSeed(parsedParams)
