@@ -19,6 +19,7 @@ export {
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
+  CAP_CHARACTER_CONTEXT,
 } from "./domain/capabilities";
 export {
   APP_ACTION_KEY_PREFIX,
@@ -40,6 +41,7 @@ export type {
   GenerationWidgetContext,
   GenerationSourceMode,
   GenerationSourceContext,
+  CharacterContextSummary,
 } from "./domain/capabilities";
 export type {
   SceneViewOffer as SceneViewCapabilityOffer,

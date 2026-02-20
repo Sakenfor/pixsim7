@@ -24,6 +24,7 @@ import {
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
+  CAP_CHARACTER_CONTEXT,
 } from "./capabilityKeys";
 import { assetInputContract } from "./contracts/assetInput";
 import { sceneViewContract } from "./contracts/sceneView";
@@ -44,6 +45,7 @@ export {
   CAP_GENERATION_WIDGET,
   CAP_GENERATION_SOURCE,
   CAP_SCENE_VIEW,
+  CAP_CHARACTER_CONTEXT,
 };
 
 registerCapabilityDescriptor({
@@ -149,6 +151,14 @@ registerCapabilityDescriptor({
   key: CAP_SCENE_VIEW,
   label: "Scene View",
   description: "Scene view content type matching for plugin resolution.",
+  kind: "context",
+  source: "contextHub",
+});
+
+registerCapabilityDescriptor({
+  key: CAP_CHARACTER_CONTEXT,
+  label: "Character Context",
+  description: "Selected character from the Character Creator panel.",
   kind: "context",
   source: "contextHub",
 });
@@ -333,5 +343,15 @@ export interface GenerationSourceContext {
   } | null;
   /** Reset to user mode, clearing fetched data */
   resetToUser: () => void;
+}
+
+export interface CharacterContextSummary {
+  characterId: string;
+  name: string | null;
+  displayName: string | null;
+  category: string;
+  species: string | null;
+  archetype: string | null;
+  gameNpcId: number | null;
 }
 

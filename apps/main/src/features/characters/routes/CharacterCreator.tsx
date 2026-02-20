@@ -1,5 +1,5 @@
 import { Button, ConfirmModal } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   listCharacters,
@@ -12,6 +12,12 @@ import {
   type CreateCharacterRequest,
   type UpdateCharacterRequest,
 } from '@lib/api/characters';
+
+import {
+  useProvideCapability,
+  CAP_CHARACTER_CONTEXT,
+  type CharacterContextSummary,
+} from '@features/contextHub';
 
 import { CharacterEditor } from '../components/CharacterEditor';
 import { CharacterSidebar } from '../components/CharacterSidebar';
@@ -44,6 +50,33 @@ export function CharacterCreator() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Provide selected character to other panels via ContextHub
+  const characterContextValue = useMemo<CharacterContextSummary | null>(() => {
+    if (isCreateMode || !selectedCharacterId || !editBuffer.character_id) return null;
+    return {
+      characterId: editBuffer.character_id,
+      name: editBuffer.name ?? null,
+      displayName: editBuffer.display_name ?? null,
+      category: editBuffer.category ?? 'creature',
+      species: editBuffer.species ?? null,
+      archetype: editBuffer.archetype ?? null,
+      gameNpcId: editBuffer.game_npc_id ?? null,
+    };
+  }, [isCreateMode, selectedCharacterId, editBuffer.character_id, editBuffer.name, editBuffer.display_name, editBuffer.category, editBuffer.species, editBuffer.archetype, editBuffer.game_npc_id]);
+
+  useProvideCapability<CharacterContextSummary>(
+    CAP_CHARACTER_CONTEXT,
+    {
+      id: 'character-creator',
+      label: 'Character Creator',
+      priority: 10,
+      isAvailable: () => characterContextValue != null,
+      getValue: () => characterContextValue!,
+    },
+    [characterContextValue],
+    { scope: 'parent' },
+  );
 
   const loadCharacters = useCallback(async () => {
     try {

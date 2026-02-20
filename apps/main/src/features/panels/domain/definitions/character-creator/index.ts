@@ -17,4 +17,5 @@ export default definePanel({
   },
   supportsCompactMode: false,
   supportsMultipleInstances: false,
+  providesCapabilities: ['characterContext'],
 });
