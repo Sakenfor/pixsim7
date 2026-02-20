@@ -36,6 +36,7 @@ from pixsim7.backend.main.services.game import (
 from pixsim7.backend.main.services.npc import NpcExpressionService
 from pixsim7.backend.main.services.plugin import PluginCatalogService
 from pixsim7.backend.main.services.refs import EntityRefResolver
+from pixsim7.backend.main.shared.auth_claims import AuthPrincipal
 
 # Narrative engine imports (lazy-loaded)
 from pixsim7.backend.main.domain.narrative import NarrativeEngine
@@ -214,6 +215,28 @@ async def get_llm_service() -> LLMService:
 
 # ===== AUTHENTICATION DEPENDENCY =====
 
+CODEGEN_PERMISSION = "devtools.codegen"
+
+
+def _extract_bearer_token(authorization: str | None) -> str:
+    """Extract token from an Authorization header."""
+    if not authorization:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing authorization header",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authorization header format (expected: Bearer <token>)",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return parts[1]
+
 async def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
     auth_service: AuthService = Depends(get_auth_service)
@@ -229,27 +252,39 @@ async def get_current_user(
     Raises:
         HTTPException: 401 if token is invalid or missing
     """
-    if not authorization:
-        raise HTTPException(
-            status_code=401,
-            detail="Missing authorization header",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract token from "Bearer <token>"
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authorization header format (expected: Bearer <token>)",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
+    token = _extract_bearer_token(authorization)
 
     try:
         user = await auth_service.verify_token(token)
         return user
+    except Exception as e:
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid or expired token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def get_current_game_principal(
+    authorization: Annotated[str | None, Header()] = None,
+    auth_service: AuthService = Depends(get_auth_service),
+) -> AuthPrincipal:
+    """
+    Resolve a claims-based principal for game-facing endpoints.
+
+    This validates JWT and session revocation state without loading the full
+    User ORM record.
+    """
+    token = _extract_bearer_token(authorization)
+
+    try:
+        payload = await auth_service.verify_token_claims(token, update_last_used=True)
+        principal = AuthPrincipal.from_jwt_payload(payload)
+        if not principal.is_active:
+            raise HTTPException(status_code=403, detail="Inactive user")
+        return principal
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=401,
@@ -303,12 +338,10 @@ async def get_current_user_optional(
     if not authorization:
         return None
 
-    # Extract token from "Bearer <token>"
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
+    try:
+        token = _extract_bearer_token(authorization)
+    except HTTPException:
         return None
-
-    token = parts[1]
 
     try:
         user = await auth_service.verify_token(token)
@@ -345,14 +378,31 @@ async def get_current_admin_user(
     return user
 
 
+def _require_permission(user: User, permission: str) -> None:
+    if user.has_permission(permission):
+        return
+    raise HTTPException(status_code=403, detail=f"Missing required permission: {permission}")
+
+
+async def get_current_codegen_user(
+    user: User = Depends(get_current_user)
+) -> User:
+    """Get current user and ensure they can run devtools codegen tasks."""
+    _require_permission(user, CODEGEN_PERMISSION)
+    return user
+
+
 # ===== TYPE ALIASES (for cleaner route signatures) =====
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentAdminUser = Annotated[User, Depends(get_current_admin_user)]
+CurrentCodegenUser = Annotated[User, Depends(get_current_codegen_user)]
+CurrentGamePrincipal = Annotated[AuthPrincipal, Depends(get_current_game_principal)]
 
 # Alias for admin access (used by admin endpoints)
 require_admin = get_current_admin_user
+require_codegen = get_current_codegen_user
 
 # ─────────────────────────────────────────────────────────────────────────
 # USAGE CONVENTIONS FOR CURRENT*USER TYPE ALIASES

@@ -181,12 +181,22 @@ async def lifespan(app: FastAPI):
     # Enable middleware lifecycle hooks
     await setup_middleware_lifecycle(app)
 
+    # Start content pack file watcher (auto-reloads YAML on change)
+    from pixsim7.backend.main.services.prompt.block.content_pack_watcher import (
+        start_content_pack_watcher,
+        stop_content_pack_watcher,
+    )
+    start_content_pack_watcher()
+
     logger.info("pixsim7_ready")
 
     yield
 
     # ===== SHUTDOWN =====
     logger.info("pixsim7_shutdown_begin")
+
+    # Stop content pack watcher
+    await stop_content_pack_watcher()
 
     # Disable middleware
     if middleware_manager:

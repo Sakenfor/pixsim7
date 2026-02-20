@@ -4,12 +4,14 @@ Asset upload API endpoints
 Upload, upload-from-url, frame extraction, and reupload operations.
 """
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi.params import Form as FormParam
 from pydantic import BaseModel, Field
 from typing import Optional
 import json
 import os
 import tempfile
 import hashlib
+from types import SimpleNamespace
 
 from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, AccountSvc, DatabaseSession
 from pixsim7.backend.main.shared.schemas.asset_schemas import AssetResponse
@@ -29,6 +31,16 @@ logger = get_logger()
 
 
 # ===== SCHEMAS =====
+
+
+def _unwrap_form_default(value):
+    """
+    FastAPI injects plain values for Form fields at runtime, but direct unit-test
+    calls can leave `Form(...)` sentinel objects in place.
+    """
+    if isinstance(value, FormParam):
+        return value.default
+    return value
 
 class UploadAssetResponse(BaseModel):
     provider_id: str
@@ -103,7 +115,11 @@ async def upload_asset_to_provider(
     account_service: AccountSvc,
     asset_service: AssetSvc,
     file: UploadFile = File(...),
-    provider_id: str = Form(...),
+    provider_id: Optional[str] = Form(None),
+    save_target: str = Form(
+        "provider",
+        description="Where to save: 'provider' (upload externally) or 'library' (backend only)",
+    ),
     source_folder_id: Optional[str] = Form(None),
     source_relative_path: Optional[str] = Form(None),
     upload_method: Optional[str] = Form(
@@ -116,10 +132,10 @@ async def upload_asset_to_provider(
     ),
 ):
     """
-    Upload media to the specified provider (no cross-provider Pixverse override).
+    Upload media to a provider or save directly to backend library.
 
-    Pixverse: OpenAPI usage is internal preference via UploadService (based on api_keys).
-    If provider rejects (e.g., unsupported mime/dimensions), returns error.
+    - save_target='provider': provider_id is required and UploadService is used.
+    - save_target='library': file is persisted in backend storage only.
 
     Optional source tracking fields:
     - source_folder_id: ID of local folder if uploaded from Local Folders panel
@@ -127,10 +143,41 @@ async def upload_asset_to_provider(
     - upload_method: Explicit upload method override (e.g., extension, api)
     - upload_context: JSON-encoded object with additional context
     """
+    provider_id = _unwrap_form_default(provider_id)
+    save_target = _unwrap_form_default(save_target)
+    source_folder_id = _unwrap_form_default(source_folder_id)
+    source_relative_path = _unwrap_form_default(source_relative_path)
+    upload_method = _unwrap_form_default(upload_method)
+    upload_context = _unwrap_form_default(upload_context)
+
     content_type = file.content_type or ""
     media_type = MediaType.IMAGE if content_type.startswith("image/") else MediaType.VIDEO if content_type.startswith("video/") else None
     if media_type is None:
         raise HTTPException(status_code=400, detail=f"Unsupported content type: {content_type}")
+
+    save_target_value = (save_target or "provider").strip().lower()
+    if save_target_value not in {"provider", "library"}:
+        raise HTTPException(
+            status_code=400,
+            detail="save_target must be 'provider' or 'library'",
+        )
+
+    if save_target_value == "library":
+        effective_provider_id = "local"
+    else:
+        effective_provider_id = (provider_id or "").strip()
+        if not effective_provider_id:
+            raise HTTPException(
+                status_code=400,
+                detail="provider_id is required when save_target='provider'",
+            )
+        if effective_provider_id == "local":
+            raise HTTPException(
+                status_code=400,
+                detail="Use save_target='library' for backend-only saves.",
+            )
+
+    provider_id = effective_provider_id
 
     # Save to temp
     try:
@@ -163,6 +210,17 @@ async def upload_asset_to_provider(
     local_path = prep.local_path
     existing = prep.existing_asset
 
+    # Library-only uploads require successful local persistence.
+    if provider_id == "local" and (not stored_key or not local_path):
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to persist file for library-only upload.",
+        )
+
     if existing and prep.dedup_note and "already on" in prep.dedup_note:
         try:
             os.unlink(tmp_path)
@@ -194,7 +252,7 @@ async def upload_asset_to_provider(
             existing.provider_id == provider_id or
             provider_id in (existing.provider_uploads or {})
         )
-        if not already_on_provider:
+        if provider_id != "local" and not already_on_provider:
             logger.info(
                 "asset_cross_provider_upload",
                 asset_id=existing.id,
@@ -203,15 +261,32 @@ async def upload_asset_to_provider(
                 detail="Uploading duplicate asset to additional provider",
             )
 
-    # Use UploadService
-    from pixsim7.backend.main.services.upload.upload_service import UploadService
-    upload_service = UploadService(db, account_service)
+    # Use UploadService for real provider uploads.
+    # For provider_id='local', skip provider upload and store backend-only.
     try:
-        result = await upload_service.upload(provider_id=provider_id, media_type=media_type, tmp_path=tmp_path)
+        if provider_id == "local":
+            local_id_seed = sha256 or hashlib.sha256(content).hexdigest()
+            result = SimpleNamespace(
+                provider_id="local",
+                media_type=media_type,
+                external_url=None,
+                provider_asset_id=f"local_{local_id_seed[:16]}",
+                note="Saved to library (backend storage only).",
+                width=width,
+                height=height,
+                mime_type=content_type,
+                file_size_bytes=len(content),
+            )
+        else:
+            from pixsim7.backend.main.services.upload.upload_service import UploadService
+            upload_service = UploadService(db, account_service)
+            result = await upload_service.upload(provider_id=provider_id, media_type=media_type, tmp_path=tmp_path)
         # Persist as Asset (best-effort):
         # Derive provider_asset_id and remote_url with fallbacks
         provider_asset_id_raw = result.provider_asset_id or (result.external_url or "")
         remote_url = result.external_url or (f"{provider_id}:{provider_asset_id_raw}")
+        if provider_id == "local":
+            remote_url = None
         # Ensure provider_asset_id fits DB constraints (max_length=128)
         if provider_asset_id_raw:
             provider_asset_id = str(provider_asset_id_raw)
@@ -268,7 +343,7 @@ async def upload_asset_to_provider(
         created_asset_id = None
         try:
             # Check if we're updating an existing asset (cross-provider upload)
-            if existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
+            if provider_id != "local" and existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
                 # Update existing asset with new provider mapping
                 if not existing.provider_uploads:
                     existing.provider_uploads = {}
@@ -312,7 +387,7 @@ async def upload_asset_to_provider(
                     sha256=sha256,
                     stored_key=stored_key,
                     local_path=local_path,
-                    sync_status=SyncStatus.DOWNLOADED if stored_key else SyncStatus.REMOTE,
+                    sync_status=SyncStatus.DOWNLOADED if (stored_key or provider_id == "local") else SyncStatus.REMOTE,
                     image_hash=image_hash,
                     phash64=phash64,
                     media_metadata=media_metadata or None,
@@ -339,11 +414,12 @@ async def upload_asset_to_provider(
                 # Record upload history
                 if new_asset:
                     try:
+                        upload_history_method = "upload_to_library" if provider_id == "local" else "upload_to_provider"
                         await asset_service.record_upload_attempt(
                             new_asset,
                             provider_id=provider_id,
                             status='success',
-                            method='upload_to_provider',
+                            method=upload_history_method,
                             context={"upload_method": upload_method},
                         )
                     except Exception as e:
@@ -394,7 +470,7 @@ async def upload_asset_to_provider(
         return UploadAssetResponse(
             provider_id=result.provider_id,
             media_type=result.media_type,
-            external_url=result.external_url,
+            external_url=result.external_url or (f"/api/v1/assets/{created_asset_id}/file" if created_asset_id else None),
             provider_asset_id=result.provider_asset_id,
             asset_id=created_asset_id,
             note=result.note,

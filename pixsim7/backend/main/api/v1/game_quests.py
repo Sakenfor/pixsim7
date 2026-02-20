@@ -1,4 +1,4 @@
-"""
+﻿"""
 Game quest management endpoints
 
 Uses async database session and service patterns for consistency with other game APIs.
@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameSessionSvc
 from pixsim7.backend.main.services.game.quest import QuestService, Quest
 
 router = APIRouter(tags=["game-quests"])
@@ -33,7 +33,7 @@ class UpdateObjectiveRequest(BaseModel):
     completed: Optional[bool] = None
 
 
-async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+async def _get_owned_session(session_id: int, user: CurrentGamePrincipal, game_session_service: GameSessionSvc):
     """Fetch a session and ensure it belongs to the current user."""
     gs = await game_session_service.get_session(session_id)
     if not gs or gs.user_id != user.id:
@@ -44,7 +44,7 @@ async def _get_owned_session(session_id: int, user: CurrentUser, game_session_se
 @router.get("/sessions/{session_id}/quests", response_model=List[Quest])
 async def list_session_quests(
     session_id: int,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
     status: Optional[str] = None,
 ):
@@ -58,7 +58,7 @@ async def list_session_quests(
 async def get_session_quest(
     session_id: int,
     quest_id: str,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Get a specific quest from a game session"""
@@ -73,7 +73,7 @@ async def get_session_quest(
 async def add_quest_to_session(
     session_id: int,
     request: AddQuestRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Add a new quest to a game session"""
@@ -115,7 +115,7 @@ async def update_quest_status(
     session_id: int,
     quest_id: str,
     request: UpdateQuestStatusRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Update quest status"""
@@ -151,7 +151,7 @@ async def update_objective_progress(
     session_id: int,
     quest_id: str,
     request: UpdateObjectiveRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Update objective progress"""
@@ -197,7 +197,7 @@ async def complete_objective(
     session_id: int,
     quest_id: str,
     objective_id: str,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Mark an objective as completed"""
@@ -226,3 +226,4 @@ async def complete_objective(
         return QuestService.get_quest(updated_flags, quest_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+

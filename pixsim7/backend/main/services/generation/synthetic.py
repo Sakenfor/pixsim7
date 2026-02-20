@@ -145,6 +145,10 @@ class SyntheticGenerationService:
 
         # Link asset back to generation
         asset.source_generation_id = generation.id
+        asset.prompt = gen_data.get("final_prompt")
+        asset.operation_type = gen_data["operation_type"].value if gen_data.get("operation_type") else None
+        asset.reproducible_hash = gen_data.get("reproducible_hash")
+        asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Stamp generation_context onto media_metadata
         from .context import build_generation_context
@@ -213,6 +217,12 @@ class SyntheticGenerationService:
         generation.reproducible_hash = gen_data["reproducible_hash"]
         generation.prompt_version_id = gen_data["prompt_version_id"]
         generation.final_prompt = gen_data["final_prompt"]
+
+        # Update denormalized asset fields
+        asset.prompt = gen_data.get("final_prompt")
+        asset.operation_type = gen_data["operation_type"].value if gen_data.get("operation_type") else None
+        asset.reproducible_hash = gen_data.get("reproducible_hash")
+        asset.prompt_version_id = gen_data.get("prompt_version_id")
 
         # Re-stamp generation_context onto asset media_metadata
         from .context import build_generation_context
@@ -617,30 +627,28 @@ async def find_sibling_assets(
         List of sibling assets (excluding the input asset)
     """
     asset = await db.get(Asset, asset_id)
-    if not asset or not asset.source_generation_id:
+    if not asset or not asset.reproducible_hash:
         return []
 
     # Verify the requesting user owns this asset
     if asset.user_id != user_id:
         return []
 
-    generation = await db.get(Generation, asset.source_generation_id)
-    if not generation or not generation.reproducible_hash:
-        return []
-
-    # Filter by user_id to prevent cross-user leaks
+    # Use denormalized reproducible_hash on Asset — no Generation JOIN needed
     stmt = (
         select(Asset)
-        .join(Generation, Asset.source_generation_id == Generation.id)
-        .where(Generation.reproducible_hash == generation.reproducible_hash)
+        .where(Asset.reproducible_hash == asset.reproducible_hash)
         .where(Asset.user_id == user_id)
         .where(Asset.id != asset_id)
         .order_by(Asset.created_at.desc())
     )
 
-    # Optional workspace filter
+    # Optional workspace filter (requires Generation join — rare cold path)
     if workspace_id is not None:
-        stmt = stmt.where(Generation.workspace_id == workspace_id)
+        stmt = (
+            stmt.join(Generation, Asset.source_generation_id == Generation.id)
+            .where(Generation.workspace_id == workspace_id)
+        )
 
     result = await db.execute(stmt)
     return list(result.scalars().all())

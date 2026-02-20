@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -6,12 +6,12 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameSessionSvc
 
 router = APIRouter()
 
 
-async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+async def _get_owned_session(session_id: int, user: CurrentGamePrincipal, game_session_service: GameSessionSvc):
     """Fetch a session and ensure it belongs to the current user."""
 
     gs = await game_session_service.get_session(session_id)
@@ -94,7 +94,7 @@ class SessionEventsResponse(BaseModel):
 async def create_session(
     req: CreateSessionRequest,
     game_session_service: GameSessionSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ):
     """Create a new game session for the current user with optional initial flags"""
     try:
@@ -122,7 +122,7 @@ async def create_session(
 async def get_session(
     session_id: int,
     game_session_service: GameSessionSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ):
     """Get a game session by ID"""
     gs = await _get_owned_session(session_id, user, game_session_service)
@@ -134,7 +134,7 @@ async def advance_session(
     session_id: int,
     req: SessionAdvanceRequest,
     game_session_service: GameSessionSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ):
     """Advance a game session by selecting an edge"""
     await _get_owned_session(session_id, user, game_session_service)
@@ -155,7 +155,7 @@ async def update_session(
     session_id: int,
     req: SessionUpdateRequest,
     game_session_service: GameSessionSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameSessionResponse:
     """Update world_time and/or flags for a game session.
 
@@ -201,7 +201,7 @@ async def update_session(
 async def get_session_events(
     session_id: int,
     game_session_service: GameSessionSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     limit: int = Query(200, ge=1, le=1000, description="Maximum number of events to return"),
     before_ts: Optional[str] = Query(None, description="ISO timestamp - only return events before this time"),
     after_ts: Optional[str] = Query(None, description="ISO timestamp - only return events after this time"),
@@ -233,3 +233,4 @@ async def get_session_events(
         events=[SessionEventResponse.from_model(e) for e in events],
         count=len(events),
     )
+

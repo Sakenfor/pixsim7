@@ -360,6 +360,14 @@ class PixverseProvider(
                             except Exception as e:
                                 logger.warning("pixverse_extend_original_video_id_lookup_failed", asset_id=asset_id, error=str(e))
                 elif operation_type == OperationType.FUSION:
+                    from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets as _coerce
+                    _n_assets = len(_coerce(composition_assets))
+                    if len(resolved_urls) != _n_assets:
+                        raise ProviderError(
+                            f"Fusion asset resolution mismatch: "
+                            f"{_n_assets} composition_assets but {len(resolved_urls)} resolved URLs. "
+                            f"Some assets may have an incompatible media type."
+                        )
                     result_params["image_references"] = build_fusion_image_references(
                         resolved_urls, composition_assets,
                     )

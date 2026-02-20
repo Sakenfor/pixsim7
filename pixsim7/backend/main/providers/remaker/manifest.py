@@ -1,7 +1,7 @@
 """
 Remaker Provider Plugin
 
-Image inpainting provider for Remaker.ai (web internal API).
+Photo-editor & prompt-editor provider for Remaker.ai (web internal API).
 Auto-discovered and registered via provider plugin system.
 
 This is an example of a "web internal API" provider that replays browser requests.
@@ -21,7 +21,7 @@ manifest = ProviderManifest(
     id="remaker",
     name="Remaker.ai",
     version="0.1.0",
-    description="Remaker.ai inpainting provider (web internal API replay)",
+    description="Remaker.ai photo-editor & prompt-editor provider (web internal API replay)",
     author="PixSim7",
     kind=ProviderKind.VIDEO,
     enabled=True,
@@ -31,7 +31,7 @@ manifest = ProviderManifest(
     # Credit types supported by this provider
     credit_types=["web"],
     # Notes on status code mapping for developers
-    status_mapping_notes="100000=success/completed, 300006=processing, other codes=failed",
+    status_mapping_notes="100000=success/completed, 300006=photo-editor processing, 300013=prompt-editor processing, other codes=failed",
 )
 
 

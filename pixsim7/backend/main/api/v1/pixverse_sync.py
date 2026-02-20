@@ -167,7 +167,7 @@ async def pixverse_sync_dry_run(
 
     # Fetch videos (client.list_videos now returns a coroutine)
     try:
-        videos: List[Dict[str, Any]] = await client.list_videos(limit=limit, offset=offset)
+        videos: List[Dict[str, Any]] = await client.list_videos(limit=limit, offset=offset, completed_only=True)
     except Exception as e:
         logger.error(
             "pixverse_list_videos_failed",
@@ -216,7 +216,7 @@ async def pixverse_sync_dry_run(
     image_response = None
     if include_images:
         try:
-            images: List[Dict[str, Any]] = await client.list_images(limit=limit, offset=offset)
+            images: List[Dict[str, Any]] = await client.list_images(limit=limit, offset=offset, completed_only=True)
         except Exception as e:
             logger.warning(
                 "pixverse_list_images_failed",
@@ -307,7 +307,7 @@ async def sync_pixverse_assets(
     # Sync videos
     if include_videos:
         try:
-            videos: List[Dict[str, Any]] = await client.list_videos(limit=body.limit, offset=body.offset)
+            videos: List[Dict[str, Any]] = await client.list_videos(limit=body.limit, offset=body.offset, completed_only=True)
         except Exception as e:
             logger.error(
                 "pixverse_sync_videos_failed",
@@ -379,7 +379,7 @@ async def sync_pixverse_assets(
     # Sync images
     if include_images:
         try:
-            images: List[Dict[str, Any]] = await client.list_images(limit=body.limit, offset=body.offset)
+            images: List[Dict[str, Any]] = await client.list_images(limit=body.limit, offset=body.offset, completed_only=True)
         except Exception as e:
             logger.warning(
                 "pixverse_sync_images_failed",

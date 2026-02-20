@@ -17,13 +17,17 @@ from pixsim7.backend.main.domain.game.entities.npc_memory import (
     MilestoneType,
     EmotionType
 )
+from pixsim7.backend.main.services.npc.base import NPCServiceBase
 
 
-class MilestoneService:
+class MilestoneService(NPCServiceBase):
     """Service for managing relationship milestones"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    _config_namespace = "milestone"
+
+    # Thresholds for auto-detected custom milestones
+    TRUST_THRESHOLD = 80
+    CHEMISTRY_THRESHOLD = 80
 
     # Milestone thresholds for auto-detection
     RELATIONSHIP_TIER_MILESTONES = {
@@ -107,11 +111,7 @@ class MilestoneService:
             meta=metadata or {}
         )
 
-        self.db.add(milestone)
-        await self.db.commit()
-        await self.db.refresh(milestone)
-
-        return milestone
+        return await self._persist(milestone)
 
     async def get_milestone_by_type(
         self,
@@ -138,8 +138,7 @@ class MilestoneService:
             )
         )
 
-        result = await self.db.execute(query)
-        return result.scalars().first()
+        return await self._fetch_one(query)
 
     async def get_all_milestones(
         self,
@@ -165,8 +164,7 @@ class MilestoneService:
             )
         ).order_by(RelationshipMilestone.achieved_at).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def get_recent_milestones(
         self,
@@ -192,8 +190,7 @@ class MilestoneService:
             )
         ).order_by(desc(RelationshipMilestone.achieved_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def check_and_create_tier_milestone(
         self,
@@ -269,8 +266,8 @@ class MilestoneService:
         """
         created_milestones = []
 
-        # Check trust milestone (trust > 80)
-        if relationship_values.get("trust", 0) > 80:
+        # Check trust milestone
+        if relationship_values.get("trust", 0) > self._cfg("trust_threshold", self.TRUST_THRESHOLD):
             existing = await self.get_milestone_by_type(
                 npc_id, user_id, MilestoneType.TRUST_MILESTONE
             )
@@ -288,8 +285,8 @@ class MilestoneService:
                 )
                 created_milestones.append(milestone)
 
-        # Check chemistry milestone (chemistry > 80)
-        if relationship_values.get("chemistry", 0) > 80:
+        # Check chemistry milestone
+        if relationship_values.get("chemistry", 0) > self._cfg("chemistry_threshold", self.CHEMISTRY_THRESHOLD):
             existing = await self.get_milestone_by_type(
                 npc_id, user_id, MilestoneType.CHEMISTRY_MILESTONE
             )

@@ -140,7 +140,8 @@ async def process_analysis(ctx: dict, analysis_id: int) -> dict:
             if not account:
                 analysis_logger.error("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
                 debug.worker("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
-                raise AccountExhaustedError(0, analysis.provider_id)
+                fallback_account_id = analysis.account_id if analysis.account_id is not None else -1
+                raise AccountExhaustedError(fallback_account_id, analysis.provider_id)
 
             # Mark analysis as started
             await analysis_service.mark_started(analysis_id)

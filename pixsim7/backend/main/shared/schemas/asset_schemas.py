@@ -152,6 +152,8 @@ class AssetResponse(BaseModel):
 
     # Provenance
     source_generation_id: Optional[int] = None
+    operation_type: Optional[str] = None
+    reproducible_hash: Optional[str] = None
 
     # Storage keys (source of truth for file locations)
     stored_key: Optional[str] = None
@@ -179,6 +181,7 @@ class AssetResponse(BaseModel):
     mime_type: Optional[str] = None
 
     # Semantics
+    prompt: Optional[str] = None
     description: Optional[str] = None
     tags: List[TagSummary] = Field(default_factory=list)
 

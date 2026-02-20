@@ -21,13 +21,16 @@ from pixsim7.backend.main.domain.game.entities.npc_memory import (
     MemoryImportance,
     EmotionType
 )
+from pixsim7.backend.main.domain.game.entities.memory_policy import (
+    get_policy,
+    build_decay_rate_case,
+    MEMORY_CONSTANTS,
+)
+from pixsim7.backend.main.services.npc.base import TemporalNPCService
 
 
-class MemoryService:
+class MemoryService(TemporalNPCService):
     """Service for managing NPC conversation memories"""
-
-    def __init__(self, db: AsyncSession):
-        self.db = db
 
     async def create_memory(
         self,
@@ -92,11 +95,7 @@ class MemoryService:
             expires_at=expires_at
         )
 
-        self.db.add(memory)
-        await self.db.commit()
-        await self.db.refresh(memory)
-
-        return memory
+        return await self._persist(memory)
 
     def _calculate_expiration(
         self,
@@ -113,31 +112,10 @@ class MemoryService:
         Returns:
             Expiration datetime or None for permanent
         """
-        now = datetime.now(timezone.utc)
-
-        # Long-term memories don't expire (or expire very slowly)
-        if memory_type == MemoryType.LONG_TERM:
-            if importance == MemoryImportance.CRITICAL:
-                return None  # Never forget
-            elif importance == MemoryImportance.IMPORTANT:
-                return now + timedelta(days=365)  # 1 year
-            else:
-                return now + timedelta(days=90)  # 3 months
-
-        # Short-term memories decay based on importance
-        elif memory_type == MemoryType.SHORT_TERM:
-            if importance == MemoryImportance.CRITICAL:
-                return now + timedelta(days=30)  # 30 days
-            elif importance == MemoryImportance.IMPORTANT:
-                return now + timedelta(days=7)  # 1 week
-            elif importance == MemoryImportance.NORMAL:
-                return now + timedelta(days=1)  # 1 day
-            else:  # TRIVIAL
-                return now + timedelta(hours=6)  # 6 hours
-
-        # Working memory is very short-lived
-        else:  # WORKING
-            return now + timedelta(hours=1)  # 1 hour
+        ttl = get_policy(memory_type, importance).ttl
+        if ttl is None:
+            return None
+        return datetime.now(timezone.utc) + ttl
 
     async def recall_memories(
         self,
@@ -177,16 +155,12 @@ class MemoryService:
         if topic:
             query = query.where(ConversationMemory.topic == topic)
 
-        # Filter by tags
+        # Filter by tags — match memories containing ANY of the given tags
         if tags:
-            # PostgreSQL JSON array overlap operator
+            from sqlalchemy import cast, literal
+            from sqlalchemy.dialects.postgresql import JSONB as JSONB_TYPE
             tag_conditions = [
-                func.jsonb_array_length(
-                    func.jsonb_path_query_array(
-                        ConversationMemory.tags,
-                        f'$[*] ? (@ == "{tag}")'
-                    )
-                ) > 0
+                ConversationMemory.tags.contains(cast(literal([tag]), JSONB_TYPE))
                 for tag in tags
             ]
             query = query.where(or_(*tag_conditions))
@@ -197,16 +171,8 @@ class MemoryService:
 
         # Filter by importance
         if min_importance:
-            importance_order = {
-                MemoryImportance.TRIVIAL: 0,
-                MemoryImportance.NORMAL: 1,
-                MemoryImportance.IMPORTANT: 2,
-                MemoryImportance.CRITICAL: 3
-            }
-            min_level = importance_order[min_importance]
             valid_importances = [
-                imp for imp, level in importance_order.items()
-                if level >= min_level
+                imp for imp in MemoryImportance if imp >= min_importance
             ]
             query = query.where(ConversationMemory.importance.in_(valid_importances))
 
@@ -229,18 +195,25 @@ class MemoryService:
         ).limit(limit)
 
         result = await self.db.execute(query)
-        memories = result.scalars().all()
+        memories = list(result.scalars().all())
 
-        # Update access tracking
-        for memory in memories:
-            memory.access_count += 1
-            memory.last_accessed_at = datetime.now(timezone.utc)
-            # Accessing a memory slightly strengthens it
-            memory.strength = min(1.0, memory.strength + 0.05)
+        # Bulk update access tracking for all recalled memories
+        if memories:
+            from sqlalchemy import update
+            memory_ids = [m.id for m in memories]
+            now = datetime.now(timezone.utc)
+            await self.db.execute(
+                update(ConversationMemory)
+                .where(ConversationMemory.id.in_(memory_ids))
+                .values(
+                    access_count=ConversationMemory.access_count + 1,
+                    last_accessed_at=now,
+                    strength=func.least(1.0, ConversationMemory.strength + MEMORY_CONSTANTS.access_boost),
+                )
+            )
+            await self.db.commit()
 
-        await self.db.commit()
-
-        return list(memories)
+        return memories
 
     async def get_recent_conversation(
         self,
@@ -273,12 +246,14 @@ class MemoryService:
 
         query = query.order_by(desc(ConversationMemory.created_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def decay_memories(self, npc_id: int) -> int:
         """
-        Apply decay to memories (reduce strength over time)
+        Apply decay to memories (reduce strength over time).
+
+        Uses a single SQL UPDATE with CASE-based decay rates instead of
+        loading all memories into Python.
 
         Args:
             npc_id: NPC whose memories to decay
@@ -286,69 +261,54 @@ class MemoryService:
         Returns:
             Number of memories decayed
         """
-        # Get all active memories
-        query = select(ConversationMemory).where(
-            ConversationMemory.npc_id == npc_id
-        )
+        from sqlalchemy import update, literal, extract
 
-        result = await self.db.execute(query)
-        memories = result.scalars().all()
-
-        decayed_count = 0
         now = datetime.now(timezone.utc)
 
-        for memory in memories:
-            # Calculate time since last access or creation
-            last_interaction = memory.last_accessed_at or memory.created_at
-            hours_since = (now - last_interaction).total_seconds() / 3600
+        # Hours since last interaction (last_accessed_at or created_at)
+        hours_since = extract(
+            'epoch',
+            literal(now) - func.coalesce(
+                ConversationMemory.last_accessed_at,
+                ConversationMemory.created_at
+            )
+        ) / 3600.0
 
-            # Decay rate depends on type and importance
-            if memory.memory_type == MemoryType.LONG_TERM:
-                decay_rate = 0.001  # Very slow decay
-            elif memory.importance == MemoryImportance.CRITICAL:
-                decay_rate = 0.005  # Slow decay
-            elif memory.importance == MemoryImportance.IMPORTANT:
-                decay_rate = 0.01  # Medium decay
-            else:
-                decay_rate = 0.02  # Faster decay
+        # Decay rate based on memory_type and importance
+        decay_rate = build_decay_rate_case(
+            ConversationMemory.memory_type,
+            ConversationMemory.importance,
+        )
 
-            # Apply decay
-            decay_amount = decay_rate * hours_since
-            memory.strength = max(0.0, memory.strength - decay_amount)
+        new_strength = func.greatest(
+            0.0,
+            ConversationMemory.strength - decay_rate * hours_since
+        )
 
-            decayed_count += 1
+        stmt = (
+            update(ConversationMemory)
+            .where(ConversationMemory.npc_id == npc_id)
+            .values(strength=new_strength)
+        )
 
+        result = await self.db.execute(stmt)
         await self.db.commit()
-        return decayed_count
+        return result.rowcount
 
     async def forget_expired_memories(self) -> int:
         """
-        Delete expired memories
+        Delete expired memories using a single bulk DELETE.
 
         Returns:
             Number of memories deleted
         """
-        now = datetime.now(timezone.utc)
-
-        # Also forget memories with very low strength
-        query = select(ConversationMemory).where(
-            or_(
-                and_(
-                    ConversationMemory.expires_at.isnot(None),
-                    ConversationMemory.expires_at < now
-                ),
-                ConversationMemory.strength < 0.1  # Very weak memories
-            )
+        return await self._bulk_expire(
+            ConversationMemory,
+            expires_col=ConversationMemory.expires_at,
+            extra_or_conditions=(
+                ConversationMemory.strength < MEMORY_CONSTANTS.weakness_threshold,
+            ),
         )
-
-        result = await self.db.execute(query)
-        expired = result.scalars().all()
-
-        for memory in expired:
-            await self.db.delete(memory)
-
-        await self.db.commit()
-        return len(expired)
 
     async def promote_to_long_term(
         self,
@@ -368,7 +328,8 @@ class MemoryService:
             return None
 
         memory.memory_type = MemoryType.LONG_TERM
-        memory.importance = max(memory.importance, MemoryImportance.IMPORTANT)
+        if memory.importance < MemoryImportance.IMPORTANT:
+            memory.importance = MemoryImportance.IMPORTANT
         memory.strength = 1.0
         memory.expires_at = self._calculate_expiration(
             MemoryType.LONG_TERM,

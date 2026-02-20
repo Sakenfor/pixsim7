@@ -92,11 +92,8 @@ class AssetService:
         import os
 
         from pixsim7.backend.main.domain import MediaType, SyncStatus
-        from pixsim7.backend.main.domain.enums import OperationType
-        from pixsim7.backend.main.domain.assets.lineage import AssetLineage
-        from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME
         from pixsim7.backend.main.services.asset.frame_extractor import extract_frame_with_metadata
-        from pixsim7.backend.main.services.asset.asset_factory import add_asset
+        from pixsim7.backend.main.services.asset.asset_factory import add_asset, create_capture_lineage
         from pixsim7.backend.main.services.storage.storage_service import get_storage_service
         from pixsim7.backend.main.shared.errors import InvalidOperationError
 
@@ -161,20 +158,22 @@ class AssetService:
                 sync_status=SyncStatus.DOWNLOADED,
                 description=frame_description,
                 upload_method="video_capture",
-                # Lineage handled separately below for timestamp metadata
+                upload_context={
+                    "source_asset_id": video_asset.id,
+                    "frame_time": timestamp,
+                    "source": "scrubber",
+                },
             )
 
             # 6. Create lineage with timestamp metadata
-            self.db.add(AssetLineage(
+            await create_capture_lineage(
+                self.db,
                 child_asset_id=asset.id,
                 parent_asset_id=video_asset.id,
-                relation_type=PAUSED_FRAME,
-                operation_type=OperationType.FRAME_EXTRACTION,
-                parent_start_time=timestamp,
-                parent_frame=frame_number,
-                sequence_order=0,
-            ))
-            await self.db.commit()
+                upload_method="video_capture",
+                timestamp=timestamp,
+                frame_number=frame_number,
+            )
 
             # 7. Update user storage quota
             storage_gb = file_size / (1024 ** 3)

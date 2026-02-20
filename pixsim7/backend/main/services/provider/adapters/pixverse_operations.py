@@ -617,6 +617,10 @@ class PixverseOperationsMixin:
         Expects pre-resolved image_references from prepare_execution_params
         (via resolve_fusion_image_references). Only handles prompt rewriting
         and the API call itself.
+
+        Simple mode: When image_references have no ``type`` field, converts
+        ``@imageN`` tokens to ``@N`` in the prompt (matching Pixverse's own
+        UI conversion) and auto-appends ``@1 @2 ...`` if no tokens found.
         """
         import re
 
@@ -625,33 +629,67 @@ class PixverseOperationsMixin:
             raise ValueError("image_references required for fusion generation (resolved from composition_assets)")
 
         prompt = params.get("prompt", "")
+        original_prompt = prompt
 
-        # Rewrite prompt to ensure @ref tokens match ref_names
-        prompt_has_refs = bool(re.search(r'@\w+', prompt))
+        # Detect simple mode: no "type" key on any reference
+        simple_mode = not any(ref.get("type") for ref in image_references)
 
-        if not prompt_has_refs and prompt:
-            ref_tokens = " ".join(f"@{ref['ref_name']}" for ref in image_references)
-            prompt = f"{prompt} {ref_tokens}"
+        if simple_mode:
+            num_refs = len(image_references)
+            valid_indices = set(str(i) for i in range(1, num_refs + 1))
 
-        for ref in image_references:
-            ref_token = f"@{ref['ref_name']}"
-            if ref_token not in prompt:
-                logger.warning(
-                    "fusion_ref_missing_from_prompt",
-                    ref_name=ref['ref_name'],
-                    prompt=prompt,
-                    msg=f"Reference {ref_token} not found in prompt, appending"
-                )
-                prompt = f"{prompt} {ref_token}"
+            # Normalize various user-written reference formats → @N
+            # @imageN, @image_N → @N
+            prompt = re.sub(r'@image[_]?(\d+)', r'@\1', prompt, flags=re.IGNORECASE)
+            # #N → @N  (e.g. "#1 licking #2")
+            prompt = re.sub(r'#(\d+)', r'@\1', prompt)
+            # imageN, image_N (without @) → @N
+            prompt = re.sub(r'\bimage[_]?(\d+)\b', r'@\1', prompt, flags=re.IGNORECASE)
+
+            # Bare standalone digits that match valid slot indices → @N
+            # e.g. "1 licking 2" → "@1 licking @2"
+            # Only convert digits in valid range to avoid mangling "3 cats"
+            def _replace_bare_digit(m: re.Match) -> str:
+                digit = m.group(1)
+                return f"@{digit}" if digit in valid_indices else m.group(0)
+
+            # Only attempt bare-digit conversion if no @N tokens exist yet
+            if not re.search(r'@\d+', prompt):
+                prompt = re.sub(r'(?<!\w)(\d+)(?!\w)', _replace_bare_digit, prompt)
+
+            # If still no @N tokens found, auto-append @1 @2 ...
+            if not re.search(r'@\d+', prompt) and prompt:
+                ref_tokens = " ".join(f"@{idx}" for idx in range(1, num_refs + 1))
+                prompt = f"{prompt} {ref_tokens}"
+        else:
+            # Legacy role-based mode: ensure @ref tokens match ref_names
+            prompt_has_refs = bool(re.search(r'@\w+', prompt))
+
+            if not prompt_has_refs and prompt:
+                ref_tokens = " ".join(f"@{ref['ref_name']}" for ref in image_references)
+                prompt = f"{prompt} {ref_tokens}"
+
+            for ref in image_references:
+                ref_token = f"@{ref['ref_name']}"
+                if ref_token not in prompt:
+                    logger.warning(
+                        "fusion_ref_missing_from_prompt",
+                        ref_name=ref['ref_name'],
+                        prompt=prompt,
+                        msg=f"Reference {ref_token} not found in prompt, appending"
+                    )
+                    prompt = f"{prompt} {ref_token}"
 
         logger.info(
             "fusion_generation",
             image_references=image_references,
             prompt=prompt,
+            original_prompt=original_prompt,
+            simple_mode=simple_mode,
         )
 
         seed = _coerce_optional_seed(params)
-        fusion_kwargs = {
+        fusion_kwargs: Dict[str, Any] = {
             "prompt": prompt,
             "image_references": image_references,
             "quality": params.get("quality", "360p"),

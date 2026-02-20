@@ -1,9 +1,9 @@
-from typing import List, Optional, Dict, Any
+﻿from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameTriggerSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameTriggerSvc
 from pixsim7.backend.main.api.v1.game_hotspots import (
     GameHotspotDTO,
     HotspotAction,
@@ -43,7 +43,7 @@ class GameTriggerUpdate(ApiModel):
 @router.get("/", response_model=List[GameHotspotDTO])
 async def list_triggers(
     game_trigger_service: GameTriggerSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     scope: Optional[str] = None,
     world_id: Optional[int] = None,
     location_id: Optional[int] = None,
@@ -62,7 +62,7 @@ async def list_triggers(
 async def get_trigger(
     trigger_id: int,
     game_trigger_service: GameTriggerSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameHotspotDTO:
     trigger = await game_trigger_service.get_trigger(trigger_id)
     if not trigger:
@@ -74,7 +74,7 @@ async def get_trigger(
 async def create_trigger(
     payload: GameTriggerCreate,
     game_trigger_service: GameTriggerSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameHotspotDTO:
     payload_dict = payload.model_dump(exclude_none=True, by_alias=False)
     validate_scope_binding(payload_dict)
@@ -88,7 +88,7 @@ async def update_trigger(
     trigger_id: int,
     payload: GameTriggerUpdate,
     game_trigger_service: GameTriggerSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameHotspotDTO:
     payload_dict = payload.model_dump(exclude_none=True, by_alias=False)
     existing = await game_trigger_service.get_trigger(trigger_id)
@@ -111,9 +111,10 @@ async def update_trigger(
 async def delete_trigger(
     trigger_id: int,
     game_trigger_service: GameTriggerSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     deleted = await game_trigger_service.delete_trigger(trigger_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Trigger not found")
     return {"status": "ok", "deleted": trigger_id}
+

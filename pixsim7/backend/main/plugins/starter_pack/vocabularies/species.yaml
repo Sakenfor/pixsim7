@@ -1,6 +1,7 @@
 # Species Vocabulary
 # Anatomy/movement mappings per species for character binding expansion
-version: "1.0.0"
+# word_lists: graded low→high intensity, resolved via {{role.key}} placeholders
+version: "1.1.0"
 
 species:
   species:human:
@@ -22,6 +23,19 @@ species:
       possessive: "their"
     default_stance: "standing upright"
     keywords: [human, person, man, woman]
+    word_lists:
+      # Audio / vocal cues — graded low → high intensity
+      vocal_pleasure: [sighs softly, whimpers, moans, cries out, screams]
+      vocal_pain: [winces, hisses, grunts, yelps, cries out]
+      vocal_surprise: [blinks, gasps, squeaks, shrieks]
+      vocal_effort: [exhales, grunts, strains, groans]
+      breath: [steady breath, quickened breath, heavy breath, panting, gasping]
+      vocal_delivery: [whispers, murmurs, says, gasps, cries]
+      utterance: ["oh...", "oh my...", "oh god...", "oh my god", "don't stop"]
+      # Physical / body language
+      posture: [relaxed, attentive, tense, braced, rigid]
+      touch: [barely brushes, lightly touches, presses, grips firmly, clamps down]
+      muscle: [relaxed, flexing slightly, taut, straining, trembling]
 
   species:canine:
     label: "Canine"
@@ -35,13 +49,67 @@ species:
       tail: "tail"
       muzzle: "muzzle"
       pelt: "fur"
-    movement_verbs: [trots, pads, lopes, bounds, scampers, gallops]
+    movement_verbs: [pads, trots, lopes, bounds, scampers, gallops]
     pronoun_set:
       subject: "it"
       object: "it"
       possessive: "its"
     default_stance: "all fours"
     keywords: [canine, dog, wolf, hound, puppy]
+    word_lists:
+      # Audio / vocal cues
+      vocal_pleasure: [pants softly, whines, pants eagerly, howls, bays]
+      vocal_pain: [whimpers, yelps, snarls, howls]
+      vocal_surprise: [perks ears, yips, yelps, barks sharply]
+      vocal_effort: [pants, huffs, strains, heaves]
+      breath: [soft panting, quick panting, heavy panting, ragged panting]
+      vocal_delivery: [whines low, rumbles, growls, snarls]
+      tail_motion: [still, twitching, wagging, wagging frantically, thrashing]
+      # Physical / body language
+      posture: [at ease, alert, tense, braced low, coiled]
+      press: [nuzzles gently, leans into, pushes against, shoves, slams into]
+      muscle: [relaxed, rippling slightly, taut under fur, straining, quivering]
+      ear_state: [relaxed, perked, pinned forward, flattened, twitching rapidly]
+
+  # Large canine breeds — extends canine with size-appropriate descriptors
+  species:canine_large:
+    label: "Large Canine"
+    category: mammal
+    anatomy_map:
+      limbs: "heavy paws"
+      grip: "powerful jaws"
+      stance: "all fours"
+      feet: "large paws"
+      forelimbs: "thick forelegs"
+      tail: "long tail"
+      muzzle: "broad muzzle"
+      pelt: "short coat"
+      chest: "deep barrel chest"
+      haunches: "muscular haunches"
+      shoulders: "broad shoulders"
+      neck: "thick neck"
+    movement_verbs: [pads heavily, strides, lopes, bounds, gallops, charges]
+    pronoun_set:
+      subject: "it"
+      object: "it"
+      possessive: "its"
+    default_stance: "standing tall on all fours"
+    keywords: [great dane, dane, mastiff, wolfhound, large dog, big dog]
+    word_lists:
+      # Audio / vocal cues
+      vocal_pleasure: [pants softly, rumbles, pants deeply, bays, howls deeply]
+      vocal_pain: [whimpers low, yelps, snarls, bays, roars]
+      vocal_surprise: [perks ears, barks, bellows, booms]
+      vocal_effort: [huffs, grunts, heaves, strains heavily]
+      breath: [deep slow panting, quickened panting, heavy panting, heaving breath, ragged gasping]
+      vocal_delivery: [rumbles low, growls, barks, bellows]
+      tail_motion: [still, swaying, wagging, lashing, whipping]
+      # Physical / body language — emphasizes size and weight
+      posture: [standing at ease, alert and towering, tense and looming, braced low, coiled to spring]
+      press: [leans weight gently, pushes firmly, shoves with full weight, drives forward, pins down]
+      muscle: [relaxed under hide, rippling visibly, taut and defined, straining, trembling with effort]
+      ear_state: [relaxed, perked high, pinned forward, flattened back, twitching]
+      weight_shift: [settles calmly, adjusts stance, shifts weight forward, bears down, throws full weight]
 
   species:feline:
     label: "Feline"
@@ -62,6 +130,20 @@ species:
       possessive: "its"
     default_stance: "all fours"
     keywords: [feline, cat, lion, tiger, panther, kitten]
+    word_lists:
+      # Audio / vocal cues
+      vocal_pleasure: [purrs softly, purrs, purrs loudly, yowls, roars]
+      vocal_pain: [hisses, spits, yowls, screeches]
+      vocal_surprise: [flicks ears, chirps, hisses, yowls]
+      vocal_effort: [huffs, growls low, snarls, roars]
+      breath: [quiet breath, quickened breath, heavy breath, panting]
+      vocal_delivery: [chirps, trills, growls, hisses, yowls]
+      tail_motion: [curled still, flicking, lashing, thrashing]
+      # Physical / body language
+      posture: [sprawled, alert, crouched, arched, coiled to strike]
+      press: [kneads gently, nudges, pushes, drives claws, rakes]
+      muscle: [limp, rippling, taut, springing, trembling]
+      ear_state: [relaxed, swiveling, pinned forward, flattened, twitching]
 
   species:equine:
     label: "Equine"
@@ -75,6 +157,8 @@ species:
       tail: "tail"
       muzzle: "muzzle"
       pelt: "coat"
+      flanks: "flanks"
+      withers: "withers"
     movement_verbs: [trots, canters, gallops, prances, walks, charges]
     pronoun_set:
       subject: "it"
@@ -82,3 +166,17 @@ species:
       possessive: "its"
     default_stance: "all fours"
     keywords: [equine, horse, mare, stallion, pony, foal]
+    word_lists:
+      # Audio / vocal cues
+      vocal_pleasure: [nickers softly, nickers, whinnies, neighs, screams]
+      vocal_pain: [snorts, stamps, squeals, screams]
+      vocal_surprise: [snorts, whinnies, rears, bolts]
+      vocal_effort: [snorts, huffs, heaves, grunts]
+      breath: [soft snort, quick snorting, heavy breathing, heaving flanks]
+      vocal_delivery: [nickers, snorts, whinnies, neighs, screams]
+      tail_motion: [still, swishing, flicking, lashing]
+      # Physical / body language
+      posture: [standing easy, alert, braced, rearing, stamping]
+      press: [nuzzles, nudges, pushes, shoves, rams]
+      muscle: [relaxed, twitching, rippling, straining, heaving]
+      ear_state: [relaxed, pricked, swiveling, pinned back, flicking]

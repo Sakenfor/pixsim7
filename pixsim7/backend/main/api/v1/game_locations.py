@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import List, Optional, Dict, Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import Field, AliasChoices
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameLocationSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameLocationSvc
 from pixsim7.backend.main.shared.schemas.entity_ref import AssetRef
 from pixsim7.backend.main.shared.schemas.api_base import ApiModel
 from pixsim7.backend.main.api.v1.game_hotspots import GameHotspotDTO, to_hotspot_dto
@@ -47,7 +47,7 @@ class ReplaceHotspotsPayload(ApiModel):
 @router.get("/", response_model=List[GameLocationSummary])
 async def list_locations(
     game_location_service: GameLocationSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> List[GameLocationSummary]:
     """
     List game locations.
@@ -70,7 +70,7 @@ async def list_locations(
 async def get_location(
     location_id: int,
     game_location_service: GameLocationSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameLocationDetail:
     """
     Get a game location with its configured hotspots.
@@ -96,7 +96,7 @@ async def replace_hotspots(
     location_id: int,
     payload: ReplaceHotspotsPayload,
     game_location_service: GameLocationSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameLocationDetail:
     """
     Replace all hotspots for a location.
@@ -131,3 +131,4 @@ async def replace_hotspots(
         meta=loc.meta,
         hotspots=[to_hotspot_dto(h) for h in created],
     )
+

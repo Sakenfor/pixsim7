@@ -68,9 +68,9 @@ async def assign_tags_to_asset(
         )
 
 
-# ===== ANALYZE ASSET =====
+# ===== TAG SUGGESTIONS =====
 
-@router.post("/{asset_id}/analyze")
+@router.get("/{asset_id}/tags/suggest")
 async def analyze_asset_for_tags(
     asset_id: int,
     user: CurrentUser,
@@ -78,7 +78,7 @@ async def analyze_asset_for_tags(
     db: DatabaseSession,
 ):
     """
-    Analyze an asset and suggest tags using heuristics.
+    Suggest tags for an asset using heuristics.
 
     Returns suggested tags based on:
     - Media type (image/video)

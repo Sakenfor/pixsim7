@@ -1,7 +1,8 @@
 """
 Authentication API endpoints
 """
-from fastapi import APIRouter, HTTPException, Request
+from typing import Annotated
+from fastapi import APIRouter, HTTPException, Request, Header
 from pixsim7.backend.main.api.dependencies import AuthSvc, UserSvc, CurrentUser
 from pixsim7.backend.main.shared.schemas.auth_schemas import (
     RegisterRequest,
@@ -9,6 +10,9 @@ from pixsim7.backend.main.shared.schemas.auth_schemas import (
     LoginResponse,
     UserResponse,
     SessionResponse,
+    TokenIntrospectRequest,
+    TokenIntrospectResponse,
+    TokenClaimsSummary,
 )
 from pixsim7.backend.main.shared.errors import (
     AuthenticationError,
@@ -19,6 +23,15 @@ from pixsim7.backend.main.shared.rate_limit import login_limiter, get_client_ide
 
 
 router = APIRouter()
+
+
+def _extract_optional_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    parts = authorization.split()
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1]
+    return None
 
 
 # ===== REGISTER =====
@@ -123,11 +136,53 @@ async def login(
 
 # ===== LOGOUT =====
 
+@router.post("/auth/introspect", response_model=TokenIntrospectResponse)
+async def introspect_token(
+    request: TokenIntrospectRequest,
+    auth_service: AuthSvc,
+    authorization: Annotated[str | None, Header()] = None
+):
+    """
+    Introspect token validity and return a minimal claims summary.
+
+    Accepts token in request body (`token`) or `Authorization: Bearer ...`.
+    """
+    token = (request.token or "").strip() or (_extract_optional_bearer_token(authorization) or "")
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="token is required (body.token or Authorization header)",
+        )
+
+    try:
+        payload = await auth_service.verify_token_claims(
+            token,
+            update_last_used=False,
+            use_cache=True,
+        )
+        claims = TokenClaimsSummary(
+            sub=str(payload["sub"]),
+            jti=str(payload["jti"]),
+            email=payload.get("email"),
+            username=payload.get("username"),
+            role=payload.get("role"),
+            is_admin=bool(payload.get("is_admin", False)),
+            permissions=list(payload.get("permissions") or []),
+            is_active=bool(payload.get("is_active", True)),
+            exp=payload.get("exp"),
+        )
+        return TokenIntrospectResponse(active=True, claims=claims)
+    except AuthenticationError as e:
+        return TokenIntrospectResponse(active=False, error=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Introspection failed: {str(e)}")
+
+
 @router.post("/auth/logout", status_code=204)
 async def logout(
     user: CurrentUser,
     auth_service: AuthSvc,
-    authorization: str | None = None
+    authorization: Annotated[str | None, Header()] = None
 ):
     """
     Logout current session
@@ -137,11 +192,9 @@ async def logout(
     """
     try:
         # Extract token from Authorization header
-        if authorization:
-            parts = authorization.split()
-            if len(parts) == 2 and parts[0].lower() == "bearer":
-                token = parts[1]
-                await auth_service.logout(token)
+        token = _extract_optional_bearer_token(authorization)
+        if token:
+            await auth_service.logout(token)
 
         return None
 

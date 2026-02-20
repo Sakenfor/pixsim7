@@ -1,4 +1,4 @@
-"""
+﻿"""
 Behavior System API Routes
 
 Provides endpoints for managing NPC behavior configurations:
@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ValidationError
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameWorldSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameWorldSvc
 from pixsim7.backend.main.domain.game.schemas import (
     BehaviorConfigSchema,
     ActivitySchema,
@@ -110,7 +110,7 @@ class ActivityPreviewResponse(BaseModel):
 # ==================
 
 
-async def _get_owned_world(world_id: int, user: CurrentUser, game_world_service: GameWorldSvc):
+async def _get_owned_world(world_id: int, user: CurrentGamePrincipal, game_world_service: GameWorldSvc):
     """Fetch a world and ensure the requesting user owns it."""
     world = await game_world_service.get_world(world_id)
     if not world or world.owner_user_id != user.id:
@@ -140,7 +140,7 @@ def _set_behavior_config(world, behavior_config: Dict[str, Any]):
 async def get_behavior_config(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> BehaviorConfigResponse:
     """
     Get behavior configuration for a world.
@@ -160,7 +160,7 @@ async def update_behavior_config(
     world_id: int,
     req: UpdateBehaviorConfigRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> BehaviorConfigResponse:
     """
     Update behavior configuration for a world.
@@ -196,7 +196,7 @@ async def validate_behavior_config(
     world_id: int,
     req: ValidateBehaviorConfigRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> ValidationResult:
     """
     Validate behavior configuration without saving it.
@@ -241,7 +241,7 @@ async def create_activity(
     world_id: int,
     req: CreateActivityRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Create a new activity in the catalog.
@@ -291,7 +291,7 @@ async def update_activity(
     activity_id: str,
     req: UpdateActivityRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Update an existing activity.
@@ -332,7 +332,7 @@ async def delete_activity(
     world_id: int,
     activity_id: str,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ):
     """
     Delete an activity from the catalog.
@@ -366,7 +366,7 @@ async def create_routine(
     world_id: int,
     req: CreateRoutineRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Create a new routine graph.
@@ -415,7 +415,7 @@ async def update_routine(
     routine_id: str,
     req: UpdateRoutineRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Update an existing routine graph.
@@ -456,7 +456,7 @@ async def delete_routine(
     world_id: int,
     routine_id: str,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ):
     """
     Delete a routine graph.
@@ -490,7 +490,7 @@ async def preview_activity_selection(
     world_id: int,
     req: ActivityPreviewRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> ActivityPreviewResponse:
     """
     Preview which activity an NPC would choose given current state.
@@ -514,3 +514,4 @@ async def preview_activity_selection(
             "moodState": {"valence": 0, "arousal": 0, "tags": ["neutral"]},
         },
     )
+

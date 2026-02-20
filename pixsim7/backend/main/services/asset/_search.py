@@ -80,13 +80,9 @@ class AssetSearchMixin:
         elif group_by == "generation":
             raw_key = cast(Asset.source_generation_id, String)
         elif group_by == "prompt":
-            from pixsim7.backend.main.domain.generation.models import Generation
-            join_generation = True
-            raw_key = cast(Generation.prompt_version_id, String)
+            raw_key = cast(Asset.prompt_version_id, String)
         elif group_by == "sibling":
-            from pixsim7.backend.main.domain.generation.models import Generation
-            join_generation = True
-            raw_key = Generation.reproducible_hash
+            raw_key = Asset.reproducible_hash
         else:
             return None, False, False, None
 
@@ -322,10 +318,9 @@ class AssetSearchMixin:
                 )
             )
 
-        # Prompt version filter (via generation)
+        # Prompt version filter (denormalized on asset)
         if prompt_version_id is not None:
-            _ensure_generation_join()
-            query = query.where(Generation.prompt_version_id == prompt_version_id)
+            query = query.where(Asset.prompt_version_id == prompt_version_id)
 
         # Lineage filters - use EXISTS subqueries to avoid row duplication
         if operation_type is not None:
@@ -437,30 +432,16 @@ class AssetSearchMixin:
                 )
                 tag_joined = True
 
-            # Join to Generation for prompt search (via source_generation_id)
-            _ensure_generation_join()
-
-            # Build search conditions
+            # Build search conditions (no Generation JOIN needed — prompt is on Asset)
             search_conditions = [
                 Asset.description.ilike(like),
+                Asset.prompt.ilike(like),
                 Asset.local_path.ilike(like),
                 Asset.original_source_url.ilike(like),
                 Tag.slug.ilike(like),
                 Tag.display_name.ilike(like),
                 Tag.name.ilike(like),
             ]
-
-            # Add prompt search via JSON extraction (prompt_analysis->>'prompt')
-            # Use json_extract_path_text to get text value from JSON column
-            search_conditions.append(
-                func.json_extract_path_text(Asset.prompt_analysis, 'prompt').ilike(like)
-            )
-
-            # Also search Generation.final_prompt for assets with source_generation_id
-            if Generation is not None:
-                search_conditions.append(
-                    Generation.final_prompt.ilike(like)
-                )
 
             query = query.where(or_(*search_conditions))
 
@@ -696,8 +677,6 @@ class AssetSearchMixin:
                     }
 
         elif group_by == "generation":
-            from pixsim7.backend.main.domain.generation.models import Generation
-
             generation_ids: list[int] = []
             for key in group_keys:
                 try:
@@ -706,45 +685,43 @@ class AssetSearchMixin:
                     continue
 
             if generation_ids:
-                scoped_generation_ids = (
-                    select(Asset.source_generation_id.label("generation_id"))
+                # Build meta from Asset columns — no Generation JOIN needed
+                # Pick one representative asset per source_generation_id
+                ranked = (
+                    select(
+                        Asset.source_generation_id.label("generation_id"),
+                        Asset.id.label("asset_id"),
+                        func.row_number()
+                        .over(
+                            partition_by=Asset.source_generation_id,
+                            order_by=[Asset.created_at.desc(), Asset.id.desc()],
+                        )
+                        .label("rn"),
+                    )
                     .select_from(Asset)
                     .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
-                    .where(Asset.source_generation_id.isnot(None))
-                    .distinct()
+                    .where(Asset.source_generation_id.in_(generation_ids))
                     .subquery()
                 )
                 result = await self.db.execute(
-                    select(Generation).where(
-                        Generation.id.in_(generation_ids),
-                        Generation.id.in_(select(scoped_generation_ids.c.generation_id)),
-                    )
+                    select(Asset)
+                    .join(ranked, Asset.id == ranked.c.asset_id)
+                    .where(ranked.c.rn == 1)
                 )
-                for generation in result.scalars().all():
-                    operation_type_value = (
-                        generation.operation_type.value
-                        if hasattr(generation.operation_type, "value")
-                        else str(generation.operation_type)
-                    )
-                    status_value = (
-                        generation.status.value
-                        if hasattr(generation.status, "value")
-                        else str(generation.status)
-                    )
-                    meta_map[str(generation.id)] = {
+                for asset in result.scalars().all():
+                    meta_map[str(asset.source_generation_id)] = {
                         "kind": "generation",
-                        "generation_id": generation.id,
-                        "provider_id": generation.provider_id,
-                        "operation_type": operation_type_value,
-                        "status": status_value,
-                        "created_at": generation.created_at,
-                        "final_prompt": generation.final_prompt,
-                        "prompt_version_id": generation.prompt_version_id,
+                        "generation_id": asset.source_generation_id,
+                        "provider_id": asset.provider_id,
+                        "operation_type": asset.operation_type or "text_to_image",
+                        "status": "completed",
+                        "created_at": asset.created_at,
+                        "final_prompt": asset.prompt,
+                        "prompt_version_id": asset.prompt_version_id,
                     }
 
         elif group_by == "prompt":
             from pixsim7.backend.main.domain import PromptVersion, PromptFamily
-            from pixsim7.backend.main.domain.generation.models import Generation
 
             prompt_ids: list[UUID] = []
             for key in group_keys:
@@ -755,11 +732,10 @@ class AssetSearchMixin:
 
             if prompt_ids:
                 scoped_prompt_ids = (
-                    select(Generation.prompt_version_id.label("prompt_version_id"))
-                    .select_from(Generation)
-                    .join(Asset, Asset.source_generation_id == Generation.id)
+                    select(Asset.prompt_version_id.label("prompt_version_id"))
+                    .select_from(Asset)
                     .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
-                    .where(Generation.prompt_version_id.isnot(None))
+                    .where(Asset.prompt_version_id.isnot(None))
                     .distinct()
                     .subquery()
                 )
@@ -787,60 +763,43 @@ class AssetSearchMixin:
                     }
 
         elif group_by == "sibling":
-            from pixsim7.backend.main.domain.generation.models import Generation
-
             hash_keys = [k for k in group_keys if k]
             if hash_keys:
+                # Use Asset columns directly — no Generation JOIN needed
                 ranked = (
                     select(
-                        Generation.reproducible_hash.label("hash"),
-                        Generation.id.label("generation_id"),
+                        Asset.reproducible_hash.label("hash"),
+                        Asset.id.label("asset_id"),
                         func.row_number()
                         .over(
-                            partition_by=Generation.reproducible_hash,
-                            order_by=[
-                                Asset.created_at.desc(),
-                                Asset.id.desc(),
-                                Generation.created_at.desc(),
-                                Generation.id.desc(),
-                            ],
+                            partition_by=Asset.reproducible_hash,
+                            order_by=[Asset.created_at.desc(), Asset.id.desc()],
                         )
                         .label("rn"),
                     )
                     .select_from(Asset)
                     .join(scoped_asset_ids, scoped_asset_ids.c.id == Asset.id)
-                    .join(Generation, Generation.id == Asset.source_generation_id)
-                    .where(Generation.reproducible_hash.in_(hash_keys))
+                    .where(Asset.reproducible_hash.in_(hash_keys))
                     .subquery()
                 )
                 result = await self.db.execute(
-                    select(Generation)
-                    .join(ranked, Generation.id == ranked.c.generation_id)
+                    select(Asset)
+                    .join(ranked, Asset.id == ranked.c.asset_id)
                     .where(ranked.c.rn == 1)
                 )
-                for generation in result.scalars().all():
-                    operation_type_value = (
-                        generation.operation_type.value
-                        if hasattr(generation.operation_type, "value")
-                        else str(generation.operation_type)
-                    )
-                    status_value = (
-                        generation.status.value
-                        if hasattr(generation.status, "value")
-                        else str(generation.status)
-                    )
+                for asset in result.scalars().all():
                     prompt_snippet = None
-                    if generation.final_prompt:
-                        text = generation.final_prompt.strip()
+                    if asset.prompt:
+                        text = asset.prompt.strip()
                         prompt_snippet = text[:80] + ("..." if len(text) > 80 else "")
-                    meta_map[generation.reproducible_hash] = {
+                    meta_map[asset.reproducible_hash] = {
                         "kind": "sibling",
-                        "hash": generation.reproducible_hash,
-                        "generation_id": generation.id,
-                        "provider_id": generation.provider_id,
-                        "operation_type": operation_type_value,
-                        "status": status_value,
-                        "created_at": generation.created_at,
+                        "hash": asset.reproducible_hash,
+                        "generation_id": asset.source_generation_id,
+                        "provider_id": asset.provider_id,
+                        "operation_type": asset.operation_type or "text_to_image",
+                        "status": "completed",
+                        "created_at": asset.created_at,
                         "prompt_snippet": prompt_snippet,
                     }
 

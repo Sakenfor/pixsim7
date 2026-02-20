@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_database
+from pixsim7.backend.main.api.dependencies import get_database, CurrentGamePrincipal
 from pixsim7.backend.main.domain.metrics.reputation_evaluators import evaluate_reputation_band
 
 router = APIRouter()
@@ -52,7 +52,9 @@ class PreviewReputationResponse(BaseModel):
 
 @router.post("/preview-reputation", response_model=PreviewReputationResponse)
 async def preview_reputation_band(
-    request: PreviewReputationRequest, db: AsyncSession = Depends(get_database)
+    request: PreviewReputationRequest,
+    _user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Preview what reputation band would result from a given reputation score or relationship.

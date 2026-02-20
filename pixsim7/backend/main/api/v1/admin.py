@@ -19,7 +19,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser
+from pixsim7.backend.main.api.dependencies import CurrentAdminUser, CurrentUser
 from pixsim7.backend.main.infrastructure.redis import check_redis_connection, get_redis
 
 router = APIRouter()
@@ -39,7 +39,11 @@ def analyze_api_routes(app) -> Dict[str, Any]:
         - public: Count of public endpoints
     """
     from fastapi.routing import APIRoute
-    from pixsim7.backend.main.api.dependencies import get_current_user, get_current_admin_user
+    from pixsim7.backend.main.api.dependencies import (
+        get_current_user,
+        get_current_admin_user,
+        get_current_codegen_user,
+    )
 
     total = 0
     by_method = {}
@@ -68,7 +72,7 @@ def analyze_api_routes(app) -> Dict[str, Any]:
                 if route.dependant and route.dependant.dependencies:
                     for dep in route.dependant.dependencies:
                         dep_call = getattr(dep, 'call', None)
-                        if dep_call in (get_current_user, get_current_admin_user):
+                        if dep_call in (get_current_user, get_current_admin_user, get_current_codegen_user):
                             is_protected = True
                             break
 
@@ -629,3 +633,61 @@ async def stream_logs(websocket):
         except Exception:
             # Already closed or failed to close - nothing we can do
             pass
+
+
+# ===== GENERATION CONFIG (RATE LIMITS & RETRY) =====
+
+class GenerationConfigResponse(BaseModel):
+    """Current generation config (rate limits + retry settings)."""
+    rate_limit_max_requests: int
+    rate_limit_window_seconds: int
+    auto_retry_max_attempts: int
+
+
+class GenerationConfigUpdate(BaseModel):
+    """Partial update for generation config."""
+    rate_limit_max_requests: int | None = Field(None, ge=1, le=100)
+    rate_limit_window_seconds: int | None = Field(None, ge=10, le=3600)
+    auto_retry_max_attempts: int | None = Field(None, ge=1, le=50)
+
+
+@router.get("/admin/generation/config", response_model=GenerationConfigResponse)
+async def get_generation_config(user: CurrentUser):
+    """Get current generation rate-limit and retry config (any authenticated user)."""
+    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.shared.rate_limit import job_create_limiter
+
+    return GenerationConfigResponse(
+        rate_limit_max_requests=job_create_limiter.max_requests,
+        rate_limit_window_seconds=job_create_limiter.window_seconds,
+        auto_retry_max_attempts=settings.auto_retry_max_attempts,
+    )
+
+
+@router.patch("/admin/generation/config", response_model=GenerationConfigResponse)
+async def update_generation_config(body: GenerationConfigUpdate, admin: CurrentAdminUser):
+    """Update generation rate-limit and retry config (admin only, in-memory)."""
+    from pixsim7.backend.main.shared.config import settings
+    from pixsim7.backend.main.shared.rate_limit import job_create_limiter
+
+    job_create_limiter.update_limits(
+        max_requests=body.rate_limit_max_requests,
+        window_seconds=body.rate_limit_window_seconds,
+    )
+
+    if body.auto_retry_max_attempts is not None:
+        settings.auto_retry_max_attempts = body.auto_retry_max_attempts
+
+    logger.info(
+        "Generation config updated by admin %s: rate_limit=%d/%ds, auto_retry=%d",
+        admin.username,
+        job_create_limiter.max_requests,
+        job_create_limiter.window_seconds,
+        settings.auto_retry_max_attempts,
+    )
+
+    return GenerationConfigResponse(
+        rate_limit_max_requests=job_create_limiter.max_requests,
+        rate_limit_window_seconds=job_create_limiter.window_seconds,
+        auto_retry_max_attempts=settings.auto_retry_max_attempts,
+    )

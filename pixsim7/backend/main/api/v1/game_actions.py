@@ -7,6 +7,7 @@ This enables dynamic UI generation without hardcoding action types.
 
 from fastapi import APIRouter
 
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal
 from pixsim7.backend.main.domain.game.core.actions import (
     GameActionTypesResponse,
     game_action_registry,
@@ -16,7 +17,7 @@ router = APIRouter()
 
 
 @router.get("/", response_model=GameActionTypesResponse)
-async def list_action_types() -> GameActionTypesResponse:
+async def list_action_types(_user: CurrentGamePrincipal) -> GameActionTypesResponse:
     """
     Get all available game action types.
 

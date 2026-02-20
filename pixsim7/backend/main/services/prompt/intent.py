@@ -39,6 +39,15 @@ MODE_TARGET_INTENTS: dict[str, dict[str, BlockIntent]] = {
         "setting": BlockIntent.MODIFY,
         "mood": BlockIntent.MODIFY,
     },
+    "image_edit": {
+        "subject": BlockIntent.PRESERVE,
+        "environment": BlockIntent.MODIFY,
+        "camera": BlockIntent.MODIFY,
+        "lighting": BlockIntent.MODIFY,
+        "style": BlockIntent.MODIFY,
+        "placement": BlockIntent.ADD,
+        "composition": BlockIntent.MODIFY,
+    },
     "pose_change": {
         "action": BlockIntent.MODIFY,
     },

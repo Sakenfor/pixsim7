@@ -15,11 +15,9 @@ from sqlalchemy import select
 # Use domain entry module for cross-domain imports
 from pixsim7.backend.game import GameWorld, GameSession
 from pixsim7.backend.main.domain.game.stats.engine import StatEngine
-from pixsim7.backend.main.domain.game.stats.schemas import WorldStatsConfig
 from pixsim7.backend.main.domain.game.stats.migration import (
-    migrate_world_meta_to_stats_config,
-    needs_migration as needs_world_migration,
     get_default_relationship_definition,
+    resolve_stats_config,
 )
 from pixsim7.backend.main.shared.content_rating import (
     clamp_rating,
@@ -126,18 +124,7 @@ async def build_generation_social_context(
     world_max_rating = generation_config.get('maxContentRating', 'romantic')
 
     # Get or migrate stats config
-    stats_config: Optional[WorldStatsConfig] = None
-    if needs_world_migration(world_meta):
-        # Auto-migrate legacy schemas
-        stats_config = migrate_world_meta_to_stats_config(world_meta)
-    elif 'stats_config' in world_meta:
-        stats_config = WorldStatsConfig.model_validate(world_meta['stats_config'])
-    else:
-        # No config found, use default
-        stats_config = WorldStatsConfig(
-            version=1,
-            definitions={"relationships": get_default_relationship_definition()}
-        )
+    stats_config = resolve_stats_config(world_meta)
 
     # Get relationship stat definition
     relationship_definition = stats_config.definitions.get("relationships")

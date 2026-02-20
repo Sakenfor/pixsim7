@@ -1,11 +1,11 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, ValidationError
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameWorldSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameWorldSvc
 from pixsim7.backend.main.domain.game.schemas import (
     WorldMetaSchemas,
     RelationshipTierSchema,
@@ -64,7 +64,7 @@ class UpdateWorldMetaRequest(BaseModel):
     meta: Dict[str, Any]
 
 
-async def _get_owned_world(world_id: int, user: CurrentUser, game_world_service: GameWorldSvc):
+async def _get_owned_world(world_id: int, user: CurrentGamePrincipal, game_world_service: GameWorldSvc):
     """Fetch a world and ensure the requesting user owns it."""
 
     world = await game_world_service.get_world(world_id)
@@ -112,7 +112,7 @@ def _to_saved_project_detail(project) -> SavedGameProjectDetail:
 @router.get("/", response_model=PaginatedWorldsResponse)
 async def list_worlds(
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     offset: int = 0,
     limit: int = 100,
 ) -> PaginatedWorldsResponse:
@@ -157,7 +157,7 @@ async def list_worlds(
 async def create_world(
     req: CreateWorldRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameWorldDetail:
     """
     Create a new game world for the current user.
@@ -187,7 +187,7 @@ async def create_world(
 async def get_world(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameWorldDetail:
     """
     Get a world and its current global time.
@@ -201,7 +201,7 @@ async def advance_world_time(
     world_id: int,
     req: AdvanceWorldTimeRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameWorldDetail:
     """
     Manually advance global world time for a world.
@@ -229,7 +229,7 @@ async def update_world_meta(
     world_id: int,
     req: UpdateWorldMetaRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameWorldDetail:
     """
     Update the metadata for a game world.
@@ -264,7 +264,7 @@ async def update_world_meta(
 async def export_world_project(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameProjectBundle:
     """
     Export a world as a versioned project bundle.
@@ -290,7 +290,7 @@ async def export_world_project(
 async def import_world_project(
     req: GameProjectImportRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> GameProjectImportResponse:
     """
     Import a project bundle as a new world owned by the current user.
@@ -311,7 +311,7 @@ async def import_world_project(
 @router.get("/projects/snapshots", response_model=List[SavedGameProjectSummary])
 async def list_saved_projects(
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     offset: int = 0,
     limit: int = 100,
 ) -> List[SavedGameProjectSummary]:
@@ -328,7 +328,7 @@ async def list_saved_projects(
 async def get_saved_project(
     project_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SavedGameProjectDetail:
     storage = GameProjectStorageService(game_world_service.db)
     project = await storage.get_project(owner_user_id=user.id, project_id=project_id)
@@ -345,7 +345,7 @@ async def get_saved_project(
 async def save_project_snapshot(
     req: SaveGameProjectRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
     try:
@@ -372,7 +372,7 @@ async def rename_saved_project(
     project_id: int,
     req: RenameSavedGameProjectRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
     try:
@@ -397,7 +397,7 @@ async def duplicate_saved_project(
     project_id: int,
     req: DuplicateSavedGameProjectRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SavedGameProjectSummary:
     storage = GameProjectStorageService(game_world_service.db)
     try:
@@ -421,7 +421,7 @@ async def duplicate_saved_project(
 async def delete_saved_project(
     project_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Response:
     storage = GameProjectStorageService(game_world_service.db)
     deleted = await storage.delete_project(owner_user_id=user.id, project_id=project_id)
@@ -446,7 +446,7 @@ def _to_draft_summary(draft) -> DraftSummary:
 async def upsert_project_draft(
     req: UpsertDraftRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> DraftSummary:
     storage = GameProjectStorageService(game_world_service.db)
     draft = await storage.upsert_draft(
@@ -461,7 +461,7 @@ async def upsert_project_draft(
 @router.get("/projects/drafts")
 async def get_project_draft(
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     draft_source_project_id: Optional[int] = None,
 ) -> Optional[SavedGameProjectDetail]:
     storage = GameProjectStorageService(game_world_service.db)
@@ -481,7 +481,7 @@ async def get_project_draft(
 @router.delete("/projects/drafts", status_code=204)
 async def delete_project_draft(
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     draft_source_project_id: Optional[int] = None,
 ) -> Response:
     storage = GameProjectStorageService(game_world_service.db)
@@ -541,7 +541,7 @@ class BatchValidationResponse(BaseModel):
 @router.get("/debug/validate-schemas", response_model=BatchValidationResponse)
 async def validate_all_world_schemas(
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> BatchValidationResponse:
     """
     Development endpoint to validate schemas for all worlds owned by the current user.
@@ -636,7 +636,7 @@ class WorldSchemaReport(BaseModel):
 async def get_world_schema_report(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> WorldSchemaReport:
     """
     Generate detailed schema validation report for a single world.
@@ -871,7 +871,7 @@ async def evolve_world_schemas(
     world_id: int,
     req: SchemaEvolutionRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SchemaEvolutionResponse:
     """
     Safely evolve world schemas with migration planning.
@@ -957,7 +957,7 @@ class SchemaMigrationResponse(BaseModel):
 async def migrate_world_schema(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SchemaMigrationResponse:
     """
     Automatically migrate world schema to latest version.
@@ -1035,7 +1035,7 @@ class UpdateSchedulerConfigRequest(BaseModel):
 async def get_scheduler_config(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Get current scheduler configuration for a world.
@@ -1058,7 +1058,7 @@ async def update_scheduler_config(
     world_id: int,
     req: UpdateSchedulerConfigRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """
     Update scheduler configuration for a world.
@@ -1141,7 +1141,7 @@ async def update_scheduler_config(
 async def pause_simulation(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, str]:
     """
     Pause simulation for a world.
@@ -1165,7 +1165,7 @@ async def pause_simulation(
 async def resume_simulation(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, str]:
     """
     Resume simulation for a world.
@@ -1205,7 +1205,7 @@ async def tick_world_manually(
     world_id: int,
     req: TickWorldRequest,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> TickWorldResponse:
     """
     Manually trigger a simulation tick for a world.
@@ -1268,7 +1268,7 @@ from pixsim7.backend.main.domain.game.stats import (
 async def get_world_config_endpoint(
     world_id: int,
     game_world_service: GameWorldSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> WorldConfigResponse:
     """
     Get unified world configuration with merged stat definitions.
@@ -1298,4 +1298,5 @@ async def get_world_config_endpoint(
     config = get_world_config(world.meta)
 
     return config
+
 

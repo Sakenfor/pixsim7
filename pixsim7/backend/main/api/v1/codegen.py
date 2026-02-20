@@ -1,5 +1,5 @@
 """
-Admin codegen API endpoints.
+Devtools codegen API endpoints.
 
 Backend-authoritative task listing and execution for devtools.
 """
@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentAdminUser
+from pixsim7.backend.main.api.dependencies import CurrentCodegenUser
 from pixsim7.backend.main.services.codegen import (
     CodegenRunResult,
     CodegenTask,
@@ -18,7 +18,7 @@ from pixsim7.backend.main.services.codegen import (
     run_codegen_task,
 )
 
-router = APIRouter(prefix="/admin/codegen", tags=["admin", "codegen"])
+router = APIRouter(prefix="/devtools/codegen", tags=["devtools", "codegen"])
 
 
 class CodegenTaskResponse(BaseModel):
@@ -70,8 +70,8 @@ def _to_run_response(result: CodegenRunResult) -> CodegenRunResponse:
 
 
 @router.get("/tasks", response_model=CodegenTasksResponse)
-async def list_codegen_tasks(admin: CurrentAdminUser):
-    _ = admin
+async def list_codegen_tasks(user: CurrentCodegenUser):
+    _ = user
     try:
         tasks = load_codegen_tasks()
     except Exception as exc:
@@ -86,9 +86,9 @@ async def list_codegen_tasks(admin: CurrentAdminUser):
 @router.post("/run", response_model=CodegenRunResponse)
 async def run_codegen_task_endpoint(
     payload: CodegenRunRequest,
-    admin: CurrentAdminUser,
+    user: CurrentCodegenUser,
 ):
-    _ = admin
+    _ = user
     try:
         result = await run_in_threadpool(
             run_codegen_task,

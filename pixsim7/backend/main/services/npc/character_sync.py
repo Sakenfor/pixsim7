@@ -23,7 +23,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.domain.links import ObjectLink
+from pixsim7.backend.main.domain.links import ObjectLink, SyncDirection
 from pixsim7.backend.main.domain.game import GameNPC, NPCState
 from pixsim7.backend.main.services.characters.instance import CharacterInstanceService
 from pixsim7.backend.main.services.links.link_service import LinkService
@@ -74,7 +74,7 @@ class CharacterNPCSyncService:
         character_instance_id: UUID,
         npc_id: int,
         sync_enabled: bool = True,
-        sync_direction: str = "bidirectional",
+        sync_direction: "str | SyncDirection" = SyncDirection.BIDIRECTIONAL,
         sync_field_mappings: Optional[Dict[str, str]] = None,
         priority: int = 0,
         activation_conditions: Optional[Dict[str, Any]] = None

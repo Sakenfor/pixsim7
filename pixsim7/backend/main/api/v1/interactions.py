@@ -1,4 +1,4 @@
-"""
+﻿"""
 Interaction API Endpoints
 
 Phase 17.3+: REST API for listing and executing interactions
@@ -11,7 +11,7 @@ import time
 
 from fastapi import APIRouter, HTTPException, Depends
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, DatabaseSession
 from pixsim7.backend.main.infrastructure.plugins.dependencies import get_plugin_context
 from pixsim7.backend.main.infrastructure.plugins.context import PluginContext
 # Note: Fully migrated to capability APIs - reads via ctx.world/ctx.session,
@@ -247,7 +247,7 @@ async def list_interactions(
     req: ListInteractionsRequest,
     ctx: PluginContext = Depends(get_plugin_context("interactions")),
     db: DatabaseSession = None,
-    user: CurrentUser = None
+    user: CurrentGamePrincipal = None
 ) -> ListInteractionsResponse:
     """
     List available interactions for a target at the current moment.
@@ -382,7 +382,7 @@ async def execute_interaction(
     req: ExecuteInteractionRequest,
     ctx: PluginContext = Depends(get_plugin_context("interactions")),
     db: DatabaseSession = None,
-    user: CurrentUser = None
+    user: CurrentGamePrincipal = None
 ) -> ExecuteInteractionResponse:
     """
     Execute an interaction and apply all outcomes.
@@ -525,3 +525,4 @@ async def execute_interaction(
         updatedSession=result_dict.get("updated_session"),
         timestamp=result_dict["timestamp"],
     )
+

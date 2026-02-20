@@ -1,4 +1,4 @@
-"""
+﻿"""
 Game inventory management endpoints
 
 Uses async database session and service patterns for consistency with other game APIs.
@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, GameSessionSvc
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, GameSessionSvc
 from pixsim7.backend.main.services.game.inventory import InventoryService, InventoryItem
 
 router = APIRouter(tags=["game-inventory"])
@@ -41,7 +41,7 @@ class MessageResponse(BaseModel):
     message: str
 
 
-async def _get_owned_session(session_id: int, user: CurrentUser, game_session_service: GameSessionSvc):
+async def _get_owned_session(session_id: int, user: CurrentGamePrincipal, game_session_service: GameSessionSvc):
     """Fetch a session and ensure it belongs to the current user."""
     gs = await game_session_service.get_session(session_id)
     if not gs or gs.user_id != user.id:
@@ -52,7 +52,7 @@ async def _get_owned_session(session_id: int, user: CurrentUser, game_session_se
 @router.get("/sessions/{session_id}/items", response_model=List[InventoryItem])
 async def list_inventory_items(
     session_id: int,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """List all items in a game session's inventory"""
@@ -65,7 +65,7 @@ async def list_inventory_items(
 async def get_inventory_item(
     session_id: int,
     item_id: str,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Get a specific item from inventory"""
@@ -80,7 +80,7 @@ async def get_inventory_item(
 async def add_item_to_inventory(
     session_id: int,
     request: AddItemRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Add an item to inventory or increase quantity if it exists"""
@@ -116,7 +116,7 @@ async def remove_item_from_inventory(
     session_id: int,
     item_id: str,
     request: RemoveItemRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Remove quantity of an item from inventory"""
@@ -152,7 +152,7 @@ async def update_inventory_item(
     session_id: int,
     item_id: str,
     request: UpdateItemRequest,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Update item properties"""
@@ -195,7 +195,7 @@ async def update_inventory_item(
 @router.delete("/sessions/{session_id}/clear", response_model=MessageResponse)
 async def clear_inventory(
     session_id: int,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Clear all items from inventory"""
@@ -225,7 +225,7 @@ async def clear_inventory(
 @router.get("/sessions/{session_id}/stats", response_model=InventoryStatsResponse)
 async def get_inventory_stats(
     session_id: int,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     game_session_service: GameSessionSvc,
 ):
     """Get inventory statistics"""
@@ -238,3 +238,4 @@ async def get_inventory_stats(
         unique_items=item_count,
         total_quantity=total_quantity,
     )
+

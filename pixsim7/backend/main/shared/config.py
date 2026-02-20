@@ -58,6 +58,11 @@ class Settings(BaseSettings):
         default=True,
         description="If True, verify_token requires a session record in DB (strict mode). If False, any valid JWT is accepted (stateless mode)."
     )
+    jwt_introspection_cache_ttl_seconds: float = Field(
+        default=5.0,
+        ge=0.0,
+        description="Short-lived in-memory cache TTL (seconds) for token claims introspection.",
+    )
 
     # ===== CORS =====
     cors_origins: str | List[str] = Field(

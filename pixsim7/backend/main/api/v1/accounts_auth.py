@@ -588,6 +588,13 @@ async def import_cookies(
 
             existing.updated_at = datetime.now(timezone.utc)
 
+            # Remaker accounts should run one generation at a time per account.
+            # Clamp imported/legacy accounts to the provider-safe default.
+            if request.provider_id == "remaker" and existing.max_concurrent_jobs != 1:
+                existing.max_concurrent_jobs = 1
+                if "max_concurrent_jobs" not in updated_fields:
+                    updated_fields.append("max_concurrent_jobs")
+
             # Update credits if provided
             if credits_data:
                 for credit_type, amount in credits_data.items():

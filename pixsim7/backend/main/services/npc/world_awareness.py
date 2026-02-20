@@ -17,13 +17,16 @@ from pixsim7.backend.main.domain.game.entities.npc_memory import (
     WorldEventType,
     EmotionType
 )
+from pixsim7.backend.main.services.npc.base import TemporalNPCService
 
 
-class WorldAwarenessService:
+class WorldAwarenessService(TemporalNPCService):
     """Service for managing NPC awareness of world events"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    _config_namespace = "world_awareness"
+
+    MIN_RELEVANCE = 0.3
+    HIGH_RELEVANCE = 0.7
 
     async def register_event(
         self,
@@ -83,11 +86,7 @@ class WorldAwarenessService:
             meta=metadata or {}
         )
 
-        self.db.add(context)
-        await self.db.commit()
-        await self.db.refresh(context)
-
-        return context
+        return await self._persist(context)
 
     async def broadcast_event(
         self,
@@ -102,7 +101,7 @@ class WorldAwarenessService:
         metadata: Optional[Dict[str, Any]] = None
     ) -> List[NPCWorldContext]:
         """
-        Broadcast an event to multiple NPCs
+        Broadcast an event to multiple NPCs in a single transaction.
 
         Args:
             npc_ids: List of NPC IDs to inform
@@ -118,30 +117,39 @@ class WorldAwarenessService:
         Returns:
             List of created contexts
         """
-        contexts = []
+        expires_at = None
+        if duration_hours:
+            expires_at = datetime.now(timezone.utc) + timedelta(hours=duration_hours)
 
+        contexts = []
         for npc_id in npc_ids:
             relevance = (relevance_scores or {}).get(npc_id, 0.5)
 
-            context = await self.register_event(
+            context = NPCWorldContext(
                 npc_id=npc_id,
+                world_id=world_id,
+                session_id=session_id,
                 event_type=event_type,
                 event_name=event_name,
                 event_description=event_description,
-                world_id=world_id,
-                session_id=session_id,
-                relevance_score=relevance,
-                duration_hours=duration_hours,
-                metadata=metadata
+                is_aware=True,
+                relevance_score=max(0.0, min(1.0, relevance)),
+                expires_at=expires_at,
+                meta=metadata or {}
             )
+            self.db.add(context)
             contexts.append(context)
+
+        await self.db.commit()
+        for context in contexts:
+            await self.db.refresh(context)
 
         return contexts
 
     async def get_relevant_events(
         self,
         npc_id: int,
-        min_relevance: float = 0.3,
+        min_relevance: Optional[float] = None,
         event_types: Optional[List[WorldEventType]] = None,
         limit: int = 10
     ) -> List[NPCWorldContext]:
@@ -157,6 +165,9 @@ class WorldAwarenessService:
         Returns:
             List of relevant events
         """
+        if min_relevance is None:
+            min_relevance = self._cfg("min_relevance", self.MIN_RELEVANCE)
+
         now = datetime.now(timezone.utc)
 
         query = select(NPCWorldContext).where(
@@ -179,8 +190,7 @@ class WorldAwarenessService:
             desc(NPCWorldContext.occurred_at)
         ).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def get_recent_events(
         self,
@@ -209,8 +219,7 @@ class WorldAwarenessService:
             )
         ).order_by(desc(NPCWorldContext.occurred_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def update_npc_reaction(
         self,
@@ -269,8 +278,7 @@ class WorldAwarenessService:
             )
         )
 
-        result = await self.db.execute(query)
-        context = result.scalars().first()
+        context = await self._fetch_one(query)
 
         if not context:
             return None
@@ -289,7 +297,7 @@ class WorldAwarenessService:
         npc_id: Optional[int] = None
     ) -> int:
         """
-        Mark expired events as no longer relevant
+        Mark expired events as no longer relevant using a single bulk UPDATE.
 
         Args:
             npc_id: Optional NPC ID to limit to
@@ -297,29 +305,17 @@ class WorldAwarenessService:
         Returns:
             Number of events expired
         """
-        now = datetime.now(timezone.utc)
-
-        query = select(NPCWorldContext).where(
-            and_(
-                NPCWorldContext.expires_at.isnot(None),
-                NPCWorldContext.expires_at <= now,
-                NPCWorldContext.is_aware == True
-            )
-        )
-
+        extra_and = [NPCWorldContext.is_aware == True]
         if npc_id:
-            query = query.where(NPCWorldContext.npc_id == npc_id)
+            extra_and.append(NPCWorldContext.npc_id == npc_id)
 
-        result = await self.db.execute(query)
-        expired_contexts = result.scalars().all()
-
-        count = 0
-        for context in expired_contexts:
-            context.is_aware = False  # Mark as no longer relevant
-            count += 1
-
-        await self.db.commit()
-        return count
+        return await self._bulk_expire(
+            NPCWorldContext,
+            expires_col=NPCWorldContext.expires_at,
+            extra_and_conditions=extra_and,
+            mode="deactivate",
+            deactivate_values={"is_aware": False},
+        )
 
     def format_events_for_dialogue(
         self,
@@ -383,8 +379,7 @@ class WorldAwarenessService:
             )
         ).order_by(desc(NPCWorldContext.occurred_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def get_world_context_summary(
         self,
@@ -407,8 +402,7 @@ class WorldAwarenessService:
             )
         )
 
-        result = await self.db.execute(query)
-        events = list(result.scalars().all())
+        events = await self._fetch_list(query)
 
         # Count by type
         type_counts = {}
@@ -417,7 +411,7 @@ class WorldAwarenessService:
             type_counts[type_str] = type_counts.get(type_str, 0) + 1
 
         # Get recent high-relevance events
-        relevant_events = [e for e in events if e.relevance_score >= 0.7]
+        relevant_events = [e for e in events if e.relevance_score >= self._cfg("high_relevance", self.HIGH_RELEVANCE)]
         recent_relevant = sorted(
             relevant_events,
             key=lambda e: e.occurred_at,

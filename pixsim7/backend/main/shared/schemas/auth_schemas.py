@@ -2,6 +2,7 @@
 Authentication request/response schemas
 """
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -28,6 +29,11 @@ class LoginRequest(BaseModel):
     client_name: str | None = None  # Human-readable client name
 
 
+class TokenIntrospectRequest(BaseModel):
+    """Token introspection request."""
+    token: str | None = None
+
+
 # ===== RESPONSE SCHEMAS =====
 
 class UserResponse(BaseModel):
@@ -37,6 +43,7 @@ class UserResponse(BaseModel):
     username: str
     display_name: str | None = None
     role: str
+    permissions: list[str] = Field(default_factory=list)
     is_active: bool
     created_at: datetime
     updated_at: datetime
@@ -70,3 +77,24 @@ class SessionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TokenClaimsSummary(BaseModel):
+    """Minimal token claims returned by introspection."""
+    sub: str
+    jti: str
+    email: str | None = None
+    username: str | None = None
+    role: str | None = None
+    is_admin: bool = False
+    permissions: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    exp: datetime | None = None
+
+
+class TokenIntrospectResponse(BaseModel):
+    """Token introspection response."""
+    active: bool
+    claims: TokenClaimsSummary | None = None
+    error: str | None = None
+    details: dict[str, Any] | None = None

@@ -1,4 +1,4 @@
-"""
+﻿"""
 NPC State Management API endpoints.
 
 Manages NPC memories, emotions, milestones, world events, and personality evolution.
@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, DatabaseSession
 from pixsim7.backend.main.services.npc import (
     MemoryService, EmotionalStateService, MilestoneService,
     WorldAwarenessService, PersonalityEvolutionService
@@ -46,7 +46,7 @@ class RegisterWorldEventRequest(BaseModel):
 async def get_npc_memories(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     topic: Optional[str] = None,
     limit: int = 20,
     session_id: Optional[int] = None
@@ -97,7 +97,7 @@ async def get_npc_memories(
 async def get_npc_memory_summary(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Get memory summary statistics for an NPC
@@ -114,7 +114,7 @@ async def get_npc_memory_summary(
 async def get_npc_emotions(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     session_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
@@ -162,7 +162,7 @@ async def set_npc_emotion(
     npc_id: int,
     req: SetEmotionRequest,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Set an emotional state for an NPC
@@ -205,7 +205,7 @@ async def clear_npc_emotion(
     npc_id: int,
     emotion_id: int,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Clear a specific emotional state
@@ -227,7 +227,7 @@ async def clear_npc_emotion(
 async def clear_all_npc_emotions(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     session_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
@@ -252,7 +252,7 @@ async def clear_all_npc_emotions(
 async def get_npc_milestones(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     limit: int = 50
 ) -> Dict[str, Any]:
     """
@@ -290,7 +290,7 @@ async def get_npc_milestones(
 async def get_milestone_summary(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Get summary of relationship milestones
@@ -322,7 +322,7 @@ async def register_world_event(
     npc_id: int,
     req: RegisterWorldEventRequest,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     world_id: Optional[int] = None,
     session_id: Optional[int] = None
 ) -> Dict[str, Any]:
@@ -369,7 +369,7 @@ async def register_world_event(
 async def get_world_events(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     min_relevance: float = 0.3,
     limit: int = 10
 ) -> Dict[str, Any]:
@@ -407,7 +407,7 @@ async def get_world_events(
 async def get_world_context_summary(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Get summary of NPC's world awareness
@@ -427,7 +427,7 @@ async def get_world_context_summary(
 async def get_personality_history(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     limit: int = 50
 ) -> Dict[str, Any]:
     """
@@ -463,7 +463,7 @@ async def get_personality_history(
 async def get_personality_summary(
     npc_id: int,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Get summary of personality evolution
@@ -482,7 +482,7 @@ async def get_trait_trajectory(
     npc_id: int,
     trait: str,
     db: DatabaseSession,
-    user: CurrentUser
+    user: CurrentGamePrincipal
 ) -> Dict[str, Any]:
     """
     Get trajectory/trend for a specific personality trait
@@ -506,4 +506,5 @@ async def get_trait_trajectory(
     )
 
     return trajectory
+
 

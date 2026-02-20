@@ -82,7 +82,9 @@ def canonicalize_params(
                 "model", "quality", "off_peak", "audio", "multi_shot",
                 "aspect_ratio", "seed", "camera_movement", "negative_prompt",
                 "motion_mode", "style", "template_id",
-                "api_method", "pixverse_api_mode", "use_openapi"
+                "api_method", "pixverse_api_mode", "use_openapi",
+                # Remaker-specific prompt-editor controls
+                "task_type", "image_resolution",
             ]:
                 if field in provider_style:
                     canonical[field] = provider_style[field]

@@ -5,6 +5,7 @@ Services for managing NPC memory, emotional states, conversation tracking,
 relationship milestones, world awareness, personality evolution, and analytics.
 """
 
+from .base import NPCServiceBase, TemporalNPCService
 from .memory import MemoryService
 from .emotional_state import EmotionalStateService
 from .milestone import MilestoneService
@@ -17,6 +18,8 @@ from .expression import NpcExpressionService
 from .character_sync import CharacterNPCSyncService
 
 __all__ = [
+    "NPCServiceBase",
+    "TemporalNPCService",
     "MemoryService",
     "EmotionalStateService",
     "MilestoneService",

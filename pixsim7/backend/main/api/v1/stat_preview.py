@@ -19,18 +19,16 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from pixsim7.backend.main.api.dependencies import get_database
+from pixsim7.backend.main.api.dependencies import get_database, CurrentGamePrincipal
 from pixsim7.backend.main.domain.game import GameWorld
 from pixsim7.backend.main.domain.game.stats import (
     StatEngine,
-    WorldStatsConfig,
     get_derivation_engine,
     register_core_stat_packages,
 )
 from pixsim7.backend.main.domain.game.stats.migration import (
-    migrate_world_meta_to_stats_config,
-    needs_migration as needs_world_migration,
     get_default_relationship_definition,
+    resolve_stats_config,
 )
 
 router = APIRouter()
@@ -84,7 +82,9 @@ class PreviewDerivedStatsResponse(BaseModel):
 
 @router.post("/preview-entity-stats", response_model=PreviewEntityStatsResponse)
 async def preview_entity_stats(
-    request: PreviewEntityStatsRequest, db: AsyncSession = Depends(get_database)
+    request: PreviewEntityStatsRequest,
+    _user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Preview what stat tiers and levels would result from given axis values.
@@ -150,29 +150,18 @@ async def preview_entity_stats(
 
         # Get or migrate stats config
         world_meta = world.meta or {}
-        stats_config: Optional[WorldStatsConfig] = None
+        stats_config = resolve_stats_config(world_meta)
 
-        if needs_world_migration(world_meta):
-            # Auto-migrate legacy schemas
-            stats_config = migrate_world_meta_to_stats_config(world_meta)
-        elif "stats_config" in world_meta:
-            stats_config = WorldStatsConfig.model_validate(world_meta["stats_config"])
-        else:
-            # No config found - for relationships, use default
-            if request.stat_definition_id == "relationships":
-                stats_config = WorldStatsConfig(
-                    version=1,
-                    definitions={"relationships": get_default_relationship_definition()},
-                )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "error": "Stat definition not configured",
-                        "stat_definition_id": request.stat_definition_id,
-                        "world_id": request.world_id,
-                    },
-                )
+        # If a non-relationship stat is requested but not configured, reject
+        if request.stat_definition_id not in stats_config.definitions:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Stat definition not configured",
+                    "stat_definition_id": request.stat_definition_id,
+                    "world_id": request.world_id,
+                },
+            )
 
         # Get stat definition
         stat_definition = stats_config.definitions.get(request.stat_definition_id)
@@ -216,7 +205,9 @@ async def preview_entity_stats(
 
 @router.post("/preview-derived-stats", response_model=PreviewDerivedStatsResponse)
 async def preview_derived_stats(
-    request: PreviewDerivedStatsRequest, db: AsyncSession = Depends(get_database)
+    request: PreviewDerivedStatsRequest,
+    _user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Preview derived stat computation using semantic derivation.

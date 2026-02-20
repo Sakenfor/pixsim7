@@ -239,6 +239,12 @@ def build_fusion_image_references(
     combines those URLs with role metadata (subject / background) from the
     original composition_assets.
 
+    Simple mode: When none of the composition_assets have a ``role`` field,
+    the function produces entries without ``type`` — just ``ref_name``,
+    ``customer_img_url``, and ``customer_img_path``.  The SDK detects this
+    and sends the simplified Pixverse payload (flat arrays, no
+    fusion_*_list fields).
+
     Args:
         resolved_urls: URLs returned by resolve_composition_assets_for_pixverse
         composition_assets: Original composition_assets (for role / layer info)
@@ -254,31 +260,21 @@ def build_fusion_image_references(
     from urllib.parse import urlparse, unquote
 
     assets = coerce_composition_assets(composition_assets)
+
+    # Simple mode: none of the composition_assets carry a role field.
+    # The downstream SDK/operations layer detects this via absence of "type".
+    simple_mode = not any(
+        (item.get("role") if isinstance(item, dict) else None)
+        for item in assets
+    )
+
     entries: List[Dict[str, Any]] = []
 
     for idx, (url, item) in enumerate(zip(resolved_urls, assets), start=1):
         if hasattr(item, "model_dump"):
             item = item.model_dump()
 
-        role = item.get("role") if isinstance(item, dict) else None
         layer = item.get("layer") if isinstance(item, dict) else None
-        ref_name = item.get("ref_name") if isinstance(item, dict) else None
-
-        provider_params = (item.get("provider_params") or {}) if isinstance(item, dict) else {}
-        pixverse_override = (
-            provider_params.get("pixverse_role") or provider_params.get("pixverse_type")
-        ) if isinstance(provider_params, dict) else None
-
-        # Map role → Pixverse type (subject / background)
-        pixverse_type = None
-        if pixverse_override in {"subject", "background"}:
-            pixverse_type = pixverse_override
-        elif role:
-            normalized = normalize_composition_role(role)
-            pixverse_type = map_composition_role_to_pixverse_type(normalized, layer=layer)
-
-        if not ref_name:
-            ref_name = str(idx)
 
         # Derive customer_img_path from URL (Pixverse convention)
         img_path = ""
@@ -287,29 +283,51 @@ def build_fusion_image_references(
         except Exception:
             pass
 
-        entries.append({
-            "type": pixverse_type,
-            "ref_name": ref_name,
+        entry: Dict[str, Any] = {
+            "ref_name": str(idx),
             "customer_img_url": url,
             "customer_img_path": img_path,
             "layer": layer,
-        })
+        }
 
-    # Ensure at least one background (lowest layer index)
-    if entries and not any(e["type"] == "background" for e in entries):
-        def _layer_key(e: dict) -> int:
-            return int(e["layer"]) if e.get("layer") is not None else 999
-        min(entries, key=_layer_key)["type"] = "background"
+        # Role-based mode: resolve Pixverse type from composition role
+        if not simple_mode:
+            role = item.get("role") if isinstance(item, dict) else None
+            ref_name = item.get("ref_name") if isinstance(item, dict) else None
+            if ref_name:
+                entry["ref_name"] = ref_name
 
-    # Fill remaining as subject
-    for e in entries:
-        if not e.get("type"):
-            e["type"] = "subject"
+            provider_params = (item.get("provider_params") or {}) if isinstance(item, dict) else {}
+            pixverse_override = (
+                provider_params.get("pixverse_role") or provider_params.get("pixverse_type")
+            ) if isinstance(provider_params, dict) else None
+
+            pixverse_type = None
+            if pixverse_override in {"subject", "background"}:
+                pixverse_type = pixverse_override
+            elif role:
+                normalized = normalize_composition_role(role)
+                pixverse_type = map_composition_role_to_pixverse_type(normalized, layer=layer)
+
+            entry["type"] = pixverse_type
+
+        entries.append(entry)
+
+    # Role-based post-processing: ensure at least one background, fill gaps as subject
+    if not simple_mode and entries:
+        if not any(e["type"] == "background" for e in entries):
+            def _layer_key(e: dict) -> int:
+                return int(e["layer"]) if e.get("layer") is not None else 999
+            min(entries, key=_layer_key)["type"] = "background"
+        for e in entries:
+            if not e.get("type"):
+                e["type"] = "subject"
 
     logger.info(
         "fusion_image_references_built",
         count=len(entries),
-        types=[e["type"] for e in entries],
+        mode="simple" if simple_mode else "roles",
+        types=[e.get("type") for e in entries] if not simple_mode else None,
     )
 
     return entries

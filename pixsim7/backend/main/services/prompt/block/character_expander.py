@@ -50,6 +50,7 @@ class CharacterBindingExpander:
         text: str,
         bindings: Dict[str, Any],
         rng: Optional[Random] = None,
+        intensity: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Expand placeholders in text using character bindings.
 
@@ -57,6 +58,8 @@ class CharacterBindingExpander:
             text: Prompt text with {{role}} / {{role.attr}} placeholders.
             bindings: Mapping of role -> {"character_id": str}.
             rng: Seeded Random instance for deterministic movement verb picks.
+            intensity: Optional 1-10 value forwarded to GradedList modifiers.
+                       None means random selection.
 
         Returns:
             Dict with keys:
@@ -106,6 +109,8 @@ class CharacterBindingExpander:
                     role_species[role] = species_def
 
         def _replace_match(match: re.Match) -> str:
+            from pixsim7.backend.main.shared.ontology.vocabularies.modifiers import PronounSet
+
             role = match.group(1)
             attr_path = match.group(2)
 
@@ -127,40 +132,19 @@ class CharacterBindingExpander:
             if attr_path == "name":
                 return character.name or role
 
-            # {{role.movement}} -> random verb
-            if attr_path == "movement":
-                if species and species.movement_verbs:
-                    return rng.choice(species.movement_verbs)
-                return "moves"
-
-            # {{role.pronoun}} -> subject pronoun
-            if attr_path == "pronoun":
-                if species and species.pronoun_set:
-                    return species.pronoun_set.get("subject", "they")
-                return "they"
-
-            # {{role.pronoun.X}}
-            if attr_path.startswith("pronoun."):
+            # {{role.pronoun.X}} — sub-key access on PronounSet
+            if attr_path.startswith("pronoun.") and species:
                 pronoun_key = attr_path.split(".", 1)[1]
-                if species and species.pronoun_set:
-                    val = species.pronoun_set.get(pronoun_key)
-                    if val:
-                        return val
-                # Fallback defaults
+                mod = species.modifiers.get("pronoun")
+                if isinstance(mod, PronounSet):
+                    return mod.resolve_form(pronoun_key)
                 defaults = {"subject": "they", "object": "them", "possessive": "their"}
                 return defaults.get(pronoun_key, "they")
 
-            # {{role.stance}} -> anatomy_map["stance"] or default_stance
-            if attr_path == "stance":
-                if species:
-                    stance = species.anatomy_map.get("stance") or species.default_stance
-                    if stance:
-                        return stance
-                return "standing"
-
-            # Check anatomy_map for the attr
-            if species and attr_path in species.anatomy_map:
-                return species.anatomy_map[attr_path]
+            # Generic modifier lookup — handles movement, stance,
+            # anatomy keys, pronouns, and any YAML word_lists
+            if species and attr_path in species.modifiers:
+                return species.modifiers[attr_path].resolve(rng, intensity)
 
             # Check character visual_traits as fallback
             if character.visual_traits and attr_path in character.visual_traits:

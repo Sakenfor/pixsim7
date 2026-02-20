@@ -3,8 +3,10 @@ AuthService - authentication and session management
 
 Clean service for login, logout, and JWT token management
 """
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+import asyncio
+import hashlib
+from datetime import datetime, timezone
+from typing import Any, Optional, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -14,7 +16,6 @@ from pixsim7.backend.main.shared.auth import (
     create_access_token,
     decode_access_token,
     get_token_jti,
-    get_token_user_id,
 )
 from pixsim7.backend.main.shared.errors import (
     AuthenticationError,
@@ -40,6 +41,90 @@ class AuthService:
     def __init__(self, db: AsyncSession, user_service: UserService):
         self.db = db
         self.users = user_service
+
+    # Short-lived in-memory cache for token claim introspection.
+    # Keyed by sha256(token) + verification mode, invalidated on revocation.
+    _claims_cache: dict[str, tuple[float, dict[str, Any], str]] = {}
+    _claims_cache_by_jti: dict[str, set[str]] = {}
+    _claims_cache_lock = asyncio.Lock()
+
+    @staticmethod
+    def _claims_cache_digest(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _exp_to_datetime(exp_claim: Any) -> datetime | None:
+        if isinstance(exp_claim, (int, float)):
+            return datetime.fromtimestamp(exp_claim, tz=timezone.utc)
+        if isinstance(exp_claim, datetime):
+            return exp_claim if exp_claim.tzinfo else exp_claim.replace(tzinfo=timezone.utc)
+        return None
+
+    @classmethod
+    def _is_payload_expired(cls, payload: dict[str, Any]) -> bool:
+        exp = cls._exp_to_datetime(payload.get("exp"))
+        if exp is None:
+            return False
+        return exp <= datetime.now(timezone.utc)
+
+    @classmethod
+    def _evict_claims_cache_key_locked(cls, cache_key: str) -> None:
+        entry = cls._claims_cache.pop(cache_key, None)
+        if not entry:
+            return
+
+        _, _, jti = entry
+        jti_keys = cls._claims_cache_by_jti.get(jti)
+        if not jti_keys:
+            return
+        jti_keys.discard(cache_key)
+        if not jti_keys:
+            cls._claims_cache_by_jti.pop(jti, None)
+
+    @classmethod
+    async def _cache_get_claims(cls, cache_key: str) -> dict[str, Any] | None:
+        now_monotonic = asyncio.get_running_loop().time()
+        async with cls._claims_cache_lock:
+            entry = cls._claims_cache.get(cache_key)
+            if not entry:
+                return None
+            expires_monotonic, payload, _ = entry
+            if expires_monotonic <= now_monotonic or cls._is_payload_expired(payload):
+                cls._evict_claims_cache_key_locked(cache_key)
+                return None
+            return dict(payload)
+
+    @classmethod
+    async def _cache_set_claims(
+        cls,
+        *,
+        cache_key: str,
+        payload: dict[str, Any],
+        jti: str,
+        ttl_seconds: float,
+    ) -> None:
+        ttl = float(ttl_seconds)
+        if ttl <= 0:
+            return
+
+        expires_monotonic = asyncio.get_running_loop().time() + ttl
+        async with cls._claims_cache_lock:
+            cls._evict_claims_cache_key_locked(cache_key)
+            cls._claims_cache[cache_key] = (expires_monotonic, dict(payload), jti)
+            cls._claims_cache_by_jti.setdefault(jti, set()).add(cache_key)
+
+    @classmethod
+    async def evict_claims_cache_for_jti(cls, jti: str) -> None:
+        async with cls._claims_cache_lock:
+            keys = list(cls._claims_cache_by_jti.get(jti, set()))
+            for cache_key in keys:
+                cls._evict_claims_cache_key_locked(cache_key)
+
+    @classmethod
+    async def clear_claims_cache(cls) -> None:
+        async with cls._claims_cache_lock:
+            cls._claims_cache.clear()
+            cls._claims_cache_by_jti.clear()
 
     # ===== LOGIN / LOGOUT =====
 
@@ -116,14 +201,20 @@ class AuthService:
             data={
                 "sub": str(user.id),
                 "email": user.email,
+                "username": user.username,
                 "role": user.role,
+                "is_admin": user.is_admin(),
+                "permissions": list(user.permissions or []),
+                "is_active": user.is_active,
             }
         )
 
         # Decode token to get jti and expiration
         payload = decode_access_token(token)
         jti = payload["jti"]
-        exp = datetime.fromtimestamp(payload["exp"])
+        exp = self._exp_to_datetime(payload.get("exp"))
+        if exp is None:
+            raise AuthenticationError("Token missing valid exp claim")
 
         # Create session record
         session = UserSession(
@@ -175,6 +266,7 @@ class AuthService:
         session.revoke_reason = "user_logout"
 
         await self.db.commit()
+        await self.evict_claims_cache_for_jti(jti)
 
     async def logout_all(self, user_id: int) -> int:
         """
@@ -195,16 +287,84 @@ class AuthService:
         sessions = result.scalars().all()
 
         count = 0
+        revoked_token_ids: list[str] = []
         for session in sessions:
             session.is_revoked = True
             session.revoked_at = datetime.now(timezone.utc)
             session.revoke_reason = "logout_all"
+            revoked_token_ids.append(session.token_id)
             count += 1
 
         await self.db.commit()
+        for token_id in revoked_token_ids:
+            await self.evict_claims_cache_for_jti(token_id)
         return count
 
     # ===== TOKEN VERIFICATION =====
+
+    async def verify_token_claims(
+        self,
+        token: str,
+        *,
+        require_session: bool | None = None,
+        update_last_used: bool = False,
+        use_cache: bool = False,
+        cache_ttl_seconds: float | None = None,
+    ) -> dict:
+        """
+        Verify token signature/expiry and optional session revocation state.
+
+        Returns decoded claims without loading the User row. This is used by
+        claims-based auth dependencies for game endpoints.
+        """
+        from pixsim7.backend.main.shared.config import settings
+
+        if require_session is None:
+            require_session = settings.jwt_require_session
+
+        cache_key: str | None = None
+        if use_cache and not update_last_used:
+            token_digest = self._claims_cache_digest(token)
+            cache_key = f"{int(require_session)}:{token_digest}"
+            cached = await self._cache_get_claims(cache_key)
+            if cached is not None:
+                return cached
+
+        try:
+            payload = decode_access_token(token)
+            jti = str(payload["jti"])
+        except (ValueError, KeyError) as e:
+            raise AuthenticationError(f"Invalid token: {e}")
+
+        result = await self.db.execute(
+            select(UserSession).where(UserSession.token_id == jti)
+        )
+        session = result.scalar_one_or_none()
+
+        if require_session and not session:
+            raise AuthenticationError("Session not found (token may have been logged out)")
+
+        if session and not session.is_valid():
+            raise AuthenticationError("Token has been revoked or expired")
+
+        if update_last_used and session:
+            session.last_used_at = datetime.now(timezone.utc)
+            await self.db.commit()
+
+        if use_cache and not update_last_used and cache_key is not None:
+            effective_ttl = (
+                cache_ttl_seconds
+                if cache_ttl_seconds is not None
+                else settings.jwt_introspection_cache_ttl_seconds
+            )
+            await self._cache_set_claims(
+                cache_key=cache_key,
+                payload=payload,
+                jti=jti,
+                ttl_seconds=effective_ttl,
+            )
+
+        return payload
 
     async def verify_token(self, token: str) -> User:
         """
@@ -220,50 +380,14 @@ class AuthService:
             AuthenticationError: Invalid or revoked token
             ResourceNotFoundError: User not found
         """
-        from pixsim7.backend.main.shared.config import settings
-        
         try:
-            # Decode token
-            payload = decode_access_token(token)
+            payload = await self.verify_token_claims(
+                token,
+                update_last_used=True,
+            )
             user_id = int(payload["sub"])
-            jti = payload["jti"]
         except (ValueError, KeyError) as e:
             raise AuthenticationError(f"Invalid token: {e}")
-
-        # Check session in DB if strict mode is enabled
-        if settings.jwt_require_session:
-            # Strict mode: require session record
-            result = await self.db.execute(
-                select(UserSession).where(UserSession.token_id == jti)
-            )
-            session = result.scalar_one_or_none()
-
-            if not session:
-                raise AuthenticationError("Session not found (token may have been logged out)")
-
-            # Session exists - check if valid
-            if not session.is_valid():
-                raise AuthenticationError("Token has been revoked or expired")
-
-            # Update last used
-            session.last_used_at = datetime.now(timezone.utc)
-            await self.db.commit()
-        else:
-            # Stateless mode: check if session exists, but don't require it
-            result = await self.db.execute(
-                select(UserSession).where(UserSession.token_id == jti)
-            )
-            session = result.scalar_one_or_none()
-
-            if session:
-                # Session exists - check if valid
-                if not session.is_valid():
-                    raise AuthenticationError("Token has been revoked or expired")
-
-                # Update last used
-                session.last_used_at = datetime.now(timezone.utc)
-                await self.db.commit()
-            # If no session found, continue (stateless accepts valid JWTs without session record)
 
         # Get user
         user = await self.users.get_user(user_id)
@@ -341,6 +465,7 @@ class AuthService:
 
         await self.db.commit()
         await self.db.refresh(session)
+        await self.evict_claims_cache_for_jti(session.token_id)
 
         return session
 
@@ -362,11 +487,15 @@ class AuthService:
         sessions = result.scalars().all()
 
         count = 0
+        expired_token_ids: list[str] = []
         for session in sessions:
             session.is_revoked = True
             session.revoked_at = now
             session.revoke_reason = "expired"
+            expired_token_ids.append(session.token_id)
             count += 1
 
         await self.db.commit()
+        for token_id in expired_token_ids:
+            await self.evict_claims_cache_for_jti(token_id)
         return count

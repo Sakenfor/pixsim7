@@ -64,6 +64,25 @@ class RateLimiter:
         # Increment counter
         await redis.incr(key)
     
+    def update_limits(
+        self,
+        max_requests: int | None = None,
+        window_seconds: int | None = None,
+    ) -> None:
+        """Update rate limit parameters at runtime."""
+        if max_requests is not None:
+            self.max_requests = max_requests
+        if window_seconds is not None:
+            self.window_seconds = window_seconds
+
+    def to_dict(self) -> dict:
+        """Serialize current config for API responses."""
+        return {
+            "key_prefix": self.key_prefix,
+            "max_requests": self.max_requests,
+            "window_seconds": self.window_seconds,
+        }
+
     async def reset(self, identifier: str) -> None:
         """Reset rate limit for identifier (for testing or admin override)"""
         redis = await get_redis()

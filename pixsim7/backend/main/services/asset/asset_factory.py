@@ -102,6 +102,7 @@ async def add_asset(
     file_size_bytes: Optional[int] = None,
     mime_type: Optional[str] = None,
     description: Optional[str] = None,
+    prompt: Optional[str] = None,
     # NOTE: tags parameter removed - use TagService.assign_tags_to_asset() after creation
     media_metadata: Optional[Dict[str, Any]] = None,
     parent_asset_ids: Optional[List[int]] = None,
@@ -109,6 +110,10 @@ async def add_asset(
     image_hash: Optional[str] = None,
     phash64: Optional[int] = None,
     operation_type: Optional[OperationType] = None,
+    # Denormalized generation fields (for hot-path queries)
+    asset_operation_type: Optional[str] = None,
+    reproducible_hash: Optional[str] = None,
+    prompt_version_id = None,  # Optional[UUID]
     upload_method: Optional[str] = None,
     upload_context: Optional[Dict[str, Any]] = None,
 ) -> Asset:
@@ -259,6 +264,10 @@ async def add_asset(
         _fill(existing, "duration_sec", duration_sec)
         _fill(existing, "mime_type", mime_type)
         _fill(existing, "description", description)
+        _fill(existing, "prompt", prompt)
+        _fill(existing, "operation_type", asset_operation_type)
+        _fill(existing, "reproducible_hash", reproducible_hash)
+        _fill(existing, "prompt_version_id", prompt_version_id)
         _fill(existing, "local_path", local_path)
         _fill(existing, "stored_key", stored_key)
         _fill(existing, "sha256", sha256)
@@ -333,6 +342,10 @@ async def add_asset(
         logical_size_bytes=file_size_bytes,
         mime_type=mime_type,
         description=description,
+        prompt=prompt,
+        operation_type=asset_operation_type,
+        reproducible_hash=reproducible_hash,
+        prompt_version_id=prompt_version_id,
         # NOTE: tags removed - use TagService.assign_tags_to_asset() after creation
         media_metadata=media_metadata,
         image_hash=image_hash,
@@ -413,6 +426,44 @@ async def create_lineage_links(
                 sequence_order=order,
             )
         )
+    await db.commit()
+
+
+async def create_capture_lineage(
+    db: AsyncSession,
+    *,
+    child_asset_id: int,
+    parent_asset_id: int,
+    upload_method: str,
+    timestamp: Optional[float] = None,
+    frame_number: Optional[int] = None,
+) -> None:
+    """
+    Create a single lineage edge for frame captures / image crops.
+
+    Centralises relation-type determination and timestamp metadata so
+    both the backend scrubber path and the viewer-upload path go through
+    the same logic.
+
+    * ``video_capture`` upload_method → PAUSED_FRAME
+    * anything else                   → CROPPED_REGION
+    """
+    from pixsim7.backend.main.domain.assets.lineage import AssetLineage
+    from pixsim7.backend.main.domain.relation_types import PAUSED_FRAME, CROPPED_REGION
+
+    relation_type = PAUSED_FRAME if upload_method == "video_capture" else CROPPED_REGION
+
+    db.add(
+        AssetLineage(
+            child_asset_id=child_asset_id,
+            parent_asset_id=parent_asset_id,
+            relation_type=relation_type,
+            operation_type=OperationType.FRAME_EXTRACTION,
+            parent_start_time=timestamp,
+            parent_frame=frame_number,
+            sequence_order=0,
+        )
+    )
     await db.commit()
 
 

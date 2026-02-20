@@ -13,13 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_db, get_current_user
+from pixsim7.backend.main.api.dependencies import get_db, CurrentGamePrincipal
 from pixsim7.backend.main.services.characters import (
     CharacterService,
     CharacterTemplateEngine
 )
 from pixsim7.backend.main.domain.game.entities import Character
-from pixsim7.backend.main.domain.user import User
 
 router = APIRouter(tags=["characters"])
 
@@ -120,8 +119,8 @@ class CharacterDetailResponse(CharacterResponse):
 @router.post("", response_model=CharacterDetailResponse, status_code=201)
 async def create_character(
     request: CreateCharacterRequest,
+    current_user: CurrentGamePrincipal,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Create a new character in the registry
 
@@ -231,8 +230,8 @@ async def get_character(
 async def update_character(
     character_id: str,
     request: UpdateCharacterRequest,
+    current_user: CurrentGamePrincipal,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Update a character
 
@@ -259,9 +258,9 @@ async def update_character(
 @router.delete("/{character_id}", status_code=204)
 async def delete_character(
     character_id: str,
+    current_user: CurrentGamePrincipal,
     soft: bool = Query(True, description="Soft delete (default) or hard delete"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Delete a character"""
     service = CharacterService(db)
@@ -294,8 +293,8 @@ async def get_character_history(
 async def evolve_character(
     character_id: str,
     request: UpdateCharacterRequest,
+    current_user: CurrentGamePrincipal,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Create new version of character (evolution)
 
@@ -429,8 +428,8 @@ async def get_character_usage(
 @router.post("/{character_id}/sync-from-game", response_model=Dict[str, Any])
 async def sync_from_game(
     character_id: str,
+    current_user: CurrentGamePrincipal,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Sync character state from game NPC
 
@@ -443,8 +442,8 @@ async def sync_from_game(
 @router.post("/{character_id}/sync-to-game", response_model=Dict[str, Any])
 async def sync_to_game(
     character_id: str,
+    current_user: CurrentGamePrincipal,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
     """Sync character to game NPC
 

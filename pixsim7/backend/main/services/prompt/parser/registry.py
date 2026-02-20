@@ -5,8 +5,8 @@ Unified registry for all analyzers (prompt and asset).
 Supports dynamic discovery and extensibility.
 
 Analyzer ID convention:
-- prompt:simple, prompt:claude, prompt:openai  → text analysis
-- asset:faces, asset:scene, asset:motion       → media analysis (future)
+- prompt:simple, prompt:claude, prompt:openai  -> text analysis
+- asset:object-detection, asset:ocr            -> media analysis
 """
 
 from typing import Dict, List, Optional, Set
@@ -52,7 +52,7 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
     Analyzers can be:
     - Built-in parsers (prompt:simple)
     - LLM-based (prompt:claude, prompt:openai)
-    - Vision-based (asset:faces, asset:scene) - future
+    - Vision-based (asset:object-detection, asset:ocr)
     - Custom/plugin-provided
     """
 
@@ -111,6 +111,81 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             target=AnalyzerTarget.PROMPT,
             provider_id="openai-llm",
             model_id="gpt-4",
+            source_plugin_id="core",
+            enabled=True,
+        ))
+
+        # Asset analyzers
+        self.register(AnalyzerInfo(
+            id="asset:object-detection",
+            name="Object Detection",
+            description="Detects objects and regions in media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+            is_default=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:face-detection",
+            name="Face Detection",
+            description="Detects faces and facial regions in media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:scene-tagging",
+            name="Scene Tagging",
+            description="Extracts scene-level tags from media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:content-moderation",
+            name="Content Moderation",
+            description="Flags moderation-related signals in media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:ocr",
+            name="OCR",
+            description="Extracts text from media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:caption",
+            name="Caption",
+            description="Generates captions or descriptions for media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:embedding",
+            name="Embedding",
+            description="Generates semantic embeddings for media assets",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
+            source_plugin_id="core",
+            enabled=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="asset:custom",
+            name="Custom Asset Analyzer",
+            description="Custom asset analysis pipeline",
+            kind=AnalyzerKind.VISION,
+            target=AnalyzerTarget.ASSET,
             source_plugin_id="core",
             enabled=True,
         ))
@@ -263,6 +338,14 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             "parser:simple": "prompt:simple",
             "llm:claude": "prompt:claude",
             "llm:openai": "prompt:openai",
+            "face_detection": "asset:face-detection",
+            "scene_tagging": "asset:scene-tagging",
+            "content_moderation": "asset:content-moderation",
+            "object_detection": "asset:object-detection",
+            "ocr": "asset:ocr",
+            "caption": "asset:caption",
+            "embedding": "asset:embedding",
+            "custom": "asset:custom",
         }
         return legacy_map.get(analyzer_id, analyzer_id)
 

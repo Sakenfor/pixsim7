@@ -35,6 +35,18 @@ class AccountService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def _default_max_concurrent_jobs(provider_id: str) -> int:
+        """
+        Provider-specific account concurrency defaults.
+
+        Remaker prompt-editor appears to allow one in-flight generation per
+        account reliably; keep other providers on the historical default.
+        """
+        if (provider_id or "").strip().lower() == "remaker":
+            return 1
+        return 2
+
     # ===== ACCOUNT SELECTION =====
 
     async def select_account(
@@ -754,6 +766,7 @@ class AccountService:
             cookies=cookies or {},
             is_private=is_private,
             nickname=nickname,
+            max_concurrent_jobs=self._default_max_concurrent_jobs(provider_id),
             status=AccountStatus.ACTIVE,
             created_at=datetime.now(timezone.utc)
         )

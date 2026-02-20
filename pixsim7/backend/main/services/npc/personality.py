@@ -35,19 +35,23 @@ from sqlalchemy import select, and_, desc
 
 from pixsim7.backend.main.domain.game.entities.npc_memory import PersonalityEvolutionEvent
 from pixsim7.backend.main.domain.game.personality import PersonalityTrait
+from pixsim7.backend.main.services.npc.base import NPCServiceBase
 
 
-class PersonalityEvolutionService:
+class PersonalityEvolutionService(NPCServiceBase):
     """Service for managing NPC personality evolution"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    _config_namespace = "personality"
 
     # Thresholds for personality change magnitudes
     TINY_CHANGE = 1.0      # Small daily drift
     SMALL_CHANGE = 3.0     # Minor event impact
     MEDIUM_CHANGE = 7.0    # Significant event
     LARGE_CHANGE = 15.0    # Life-changing event
+
+    # Emotion-to-personality drift gates
+    MIN_EMOTION_DURATION_HOURS = 24
+    MIN_EMOTION_INTENSITY = 0.7
 
     async def record_personality_change(
         self,
@@ -96,11 +100,7 @@ class PersonalityEvolutionService:
             meta=metadata or {}
         )
 
-        self.db.add(event)
-        await self.db.commit()
-        await self.db.refresh(event)
-
-        return event
+        return await self._persist(event)
 
     async def apply_trait_change(
         self,
@@ -173,8 +173,7 @@ class PersonalityEvolutionService:
             )
         ).order_by(desc(PersonalityEvolutionEvent.changed_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def get_all_personality_history(
         self,
@@ -202,8 +201,7 @@ class PersonalityEvolutionService:
 
         query = query.order_by(desc(PersonalityEvolutionEvent.changed_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)
 
     async def calculate_trait_trajectory(
         self,
@@ -327,7 +325,7 @@ class PersonalityEvolutionService:
         changes = []
 
         # Only long-lasting, intense emotions affect personality
-        if duration_hours < 24 or intensity < 0.7:
+        if duration_hours < self._cfg("min_emotion_duration_hours", self.MIN_EMOTION_DURATION_HOURS) or intensity < self._cfg("min_emotion_intensity", self.MIN_EMOTION_INTENSITY):
             return changes
 
         # Map emotions to personality drifts

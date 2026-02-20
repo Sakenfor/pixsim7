@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from pixsim7.backend.main.api.dependencies import get_database
+from pixsim7.backend.main.api.dependencies import get_database, CurrentGamePrincipal
 from pixsim7.backend.main.domain.metrics.mood_evaluators import (
     evaluate_npc_mood,
     evaluate_unified_npc_mood,
@@ -101,7 +101,9 @@ class UnifiedMoodResponse(BaseModel):
 
 @router.post("/preview-mood", response_model=PreviewMoodResponse)
 async def preview_npc_mood(
-    request: PreviewMoodRequest, db: AsyncSession = Depends(get_database)
+    request: PreviewMoodRequest,
+    _user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Preview what mood state an NPC would have based on relationship and emotional state.
@@ -178,7 +180,9 @@ async def preview_npc_mood(
 
 @router.post("/preview-unified-mood", response_model=UnifiedMoodResponse)
 async def preview_unified_mood(
-    request: PreviewMoodRequest, db: AsyncSession = Depends(get_database)
+    request: PreviewMoodRequest,
+    _user: CurrentGamePrincipal,
+    db: AsyncSession = Depends(get_database),
 ):
     """
     Preview unified NPC mood (general + intimacy + active emotion).

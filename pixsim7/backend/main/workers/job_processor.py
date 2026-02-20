@@ -472,15 +472,41 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 except Exception as e:
                     gen_logger.warning("account_reuse_failed", prev_account_id=generation.account_id, error=str(e))
 
+            # Pinned account guard: if user explicitly selected an account
+            # and it couldn't be used, fail rather than silently using a
+            # different account from the pool.
+            if not account and getattr(generation, 'preferred_account_id', None):
+                pref_id = generation.preferred_account_id
+                gen_logger.warning(
+                    "preferred_account_pinned_unavailable",
+                    account_id=pref_id,
+                    generation_id=generation_id,
+                )
+                debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
+                await generation_service.mark_failed(
+                    generation_id,
+                    f"Selected account #{pref_id} is temporarily unavailable",
+                )
+                get_health_tracker().increment_failed()
+                return {
+                    "status": "failed",
+                    "reason": "preferred_account_unavailable",
+                    "generation_id": generation_id,
+                }
+
             # If no account yet (first attempt or reuse failed), select a new one
             if not account:
                 async def acquire_account():
                     """Select and reserve next account. Raises if pool empty."""
                     try:
+                        # Do not include exhausted accounts in the selection pool by default.
+                        # Using `bool(gen_model)` here made almost every request include
+                        # EXHAUSTED accounts, causing fallback loops over zero-credit accounts.
+                        include_exhausted_candidates = False
                         acct = await account_service.select_and_reserve_account(
                             provider_id=generation.provider_id,
                             user_id=generation.user_id,
-                            include_exhausted=bool(gen_model),  # unlimited models may live on 0-credit accounts
+                            include_exhausted=include_exhausted_candidates,
                         )
                         return acct
                     except (NoAccountAvailableError, AccountCooldownError) as e:
@@ -513,10 +539,25 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         ),
                         max_attempts=MAX_ACCOUNT_RETRIES,
                     )
-                except FallbackExhaustedError:
-                    gen_logger.error("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
-                    debug.worker("all_accounts_exhausted", attempts=MAX_ACCOUNT_RETRIES)
-                    raise AccountExhaustedError(0, generation.provider_id)
+                except FallbackExhaustedError as exhausted_error:
+                    last_account = exhausted_error.last_resource
+                    last_account_id = getattr(last_account, "id", None)
+                    fallback_account_id = (
+                        int(last_account_id)
+                        if isinstance(last_account_id, int)
+                        else (generation.account_id if generation.account_id is not None else -1)
+                    )
+                    gen_logger.error(
+                        "all_accounts_exhausted",
+                        attempts=MAX_ACCOUNT_RETRIES,
+                        last_account_id=last_account_id,
+                    )
+                    debug.worker(
+                        "all_accounts_exhausted",
+                        attempts=MAX_ACCOUNT_RETRIES,
+                        last_account_id=last_account_id,
+                    )
+                    raise AccountExhaustedError(fallback_account_id, generation.provider_id)
 
             # Save account_id on generation so UI can show which account is being used
             if generation.account_id != account.id:
@@ -599,19 +640,26 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_quota_exhausted",
-                        log_event="generation_requeued_for_different_account",
-                        account_log_field="exhausted_account_id",
-                        gen_logger=gen_logger,
+                    # Don't rotate away from a pinned account — let standard
+                    # retry/failure handling inform the user.
+                    _is_pinned = (
+                        getattr(generation, 'preferred_account_id', None)
+                        and generation.preferred_account_id == account.id
                     )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                    if not _is_pinned:
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_quota_exhausted",
+                            log_event="generation_requeued_for_different_account",
+                            account_log_field="exhausted_account_id",
+                            gen_logger=gen_logger,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                    # Fall through to mark as failed if requeue fails or pinned
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
@@ -627,19 +675,26 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_concurrent_limit",
-                        log_event="generation_requeued_concurrent_limit",
-                        account_log_field="previous_account_id",
-                        gen_logger=gen_logger,
+                    # Don't rotate away from a pinned account — ARQ retry
+                    # will pick it up after the cooldown expires.
+                    _is_pinned = (
+                        getattr(generation, 'preferred_account_id', None)
+                        and generation.preferred_account_id == account.id
                     )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                    if not _is_pinned:
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_concurrent_limit",
+                            log_event="generation_requeued_concurrent_limit",
+                            account_log_field="previous_account_id",
+                            gen_logger=gen_logger,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                    # Fall through: pinned accounts use standard ARQ retry
 
                 # Session/auth failure on one account - cool it down and retry with another account.
                 elif _is_auth_rotation_error(e):

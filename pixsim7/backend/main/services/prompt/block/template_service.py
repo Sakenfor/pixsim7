@@ -175,23 +175,48 @@ class BlockTemplateService:
         )
         return [r for (r,) in result.all()]
 
-    # ── Preview ───────────────────────────────────────────────────────────
+    # ── Block resolution ─────────────────────────────────────────────────
+    # All block lookups go through find_candidates / count_candidates.
+    # These are the seam: swap the body for vector search later
+    # without touching roll_template, preview, or count logic.
 
-    async def count_matching_blocks(self, slot: Dict[str, Any]) -> int:
+    async def find_candidates(
+        self,
+        slot: Dict[str, Any],
+        *,
+        limit: Optional[int] = None,
+    ) -> List[PromptBlock]:
+        """Find prompt blocks matching a slot's constraints.
+
+        Override this method to swap SQL for vector / hybrid retrieval.
+        """
+        query = self._build_slot_query(slot)
+        if limit is not None:
+            query = query.limit(limit)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def count_candidates(self, slot: Dict[str, Any]) -> int:
+        """Count prompt blocks matching a slot's constraints.
+
+        Override this method alongside find_candidates for alternate backends.
+        """
         base = self._build_slot_query(slot).subquery()
         result = await self.db.execute(select(func.count()).select_from(base))
         return result.scalar() or 0
+
+    # ── Preview ───────────────────────────────────────────────────────────
+
+    async def count_matching_blocks(self, slot: Dict[str, Any]) -> int:
+        return await self.count_candidates(slot)
 
     async def preview_slot_matches(
         self,
         slot: Dict[str, Any],
         limit: int = 5,
     ) -> Dict[str, Any]:
-        count = await self.count_matching_blocks(slot)
-
-        sample_query = self._build_slot_query(slot).limit(limit)
-        result = await self.db.execute(sample_query)
-        samples = result.scalars().all()
+        count = await self.count_candidates(slot)
+        samples = await self.find_candidates(slot, limit=limit)
 
         return {
             "count": count,
@@ -232,15 +257,26 @@ class BlockTemplateService:
         warnings: List[str] = []
 
         for slot in slots:
+            label = slot.get("label", f"Slot {slot.get('slot_index', '?')}")
+
+            # Reinforcement / audio cue slots — inject literal text, skip DB query
+            if slot.get("kind") in ("reinforcement", "audio_cue"):
+                slot_results.append({
+                    "label": label,
+                    "status": "reinforcement",
+                    "reinforcement_text": slot.get("reinforcement_text") or "",
+                    "intensity": slot.get("intensity"),
+                    "inherit_intensity": slot.get("inherit_intensity", False),
+                    "match_count": 0,
+                })
+                continue
+
             # Merge global excludes into slot excludes
             slot_exc = list(set(slot.get("exclude_block_ids") or []) | global_excludes)
             slot_with_exc = {**slot, "exclude_block_ids": slot_exc if slot_exc else None}
 
-            query = self._build_slot_query(slot_with_exc)
-            result = await self.db.execute(query)
-            candidates = list(result.scalars().all())
+            candidates = await self.find_candidates(slot_with_exc)
 
-            label = slot.get("label", f"Slot {slot.get('slot_index', '?')}")
             strategy = slot.get("selection_strategy", "uniform")
 
             if not candidates:
@@ -292,46 +328,67 @@ class BlockTemplateService:
                 "prompt_preview": chosen.text[:120] if chosen.text else "",
             })
 
-        # Compose selected blocks
+        # ── Slot-order-aware composition ──────────────────────────────────
+        # Walk slot_results in order, pulling block text from selected_blocks
+        # (consumed sequentially) and interleaving reinforcement/fallback text.
+        # Reinforcement text is expanded per-slot with its own intensity value,
+        # then the final pass expands block text (no intensity).
         assembled_prompt = ""
         derived_analysis = None
+        block_iter = iter(selected_blocks)
 
-        if selected_blocks:
-            strategy = template.composition_strategy or "sequential"
-            if strategy == "sequential":
-                assembled_prompt = _compose_sequential(selected_blocks)
-            elif strategy == "layered":
-                assembled_prompt = _compose_layered(selected_blocks)
-            elif strategy == "merged":
-                assembled_prompt = _compose_sequential(selected_blocks)
-            else:
-                assembled_prompt = _compose_sequential(selected_blocks)
-
-            # Also add fallback texts in order
-            fallback_parts = []
-            block_idx = 0
-            for sr in slot_results:
-                if sr["status"] == "selected":
-                    block_idx += 1
-                elif sr["status"] == "fallback":
-                    fallback_parts.append(sr["fallback_text"])
-
-            if fallback_parts:
-                assembled_prompt = assembled_prompt + " " + " ".join(fallback_parts)
-                assembled_prompt = assembled_prompt.strip()
-
-            derived_analysis = derive_analysis_from_blocks(selected_blocks, assembled_prompt)
-
-        # Character binding expansion
         effective_bindings = character_bindings or (template.character_bindings if template.character_bindings else None) or {}
         characters_resolved: Dict[str, str] = {}
-        if effective_bindings and assembled_prompt:
+
+        # Prepare expander once (caches character lookups across calls)
+        expander = None
+        if effective_bindings:
             from pixsim7.backend.main.services.characters.character import CharacterService
             char_service = CharacterService(self.db)
             expander = CharacterBindingExpander(char_service.get_character_by_id)
+
+        prompt_parts: List[str] = []
+        last_block: Optional[PromptBlock] = None
+
+        for sr in slot_results:
+            if sr["status"] == "selected":
+                block = next(block_iter, None)
+                if block and block.text:
+                    prompt_parts.append(block.text)
+                    last_block = block
+            elif sr["status"] == "fallback":
+                prompt_parts.append(sr["fallback_text"])
+            elif sr["status"] == "reinforcement":
+                text = sr["reinforcement_text"]
+                if expander and text:
+                    # Resolve intensity for this cue
+                    slot_intensity = sr.get("intensity")  # explicit 1-10 or None
+                    if sr.get("inherit_intensity") and last_block:
+                        # Read intensity from previous block's tags
+                        block_tags = last_block.tags if isinstance(last_block.tags, dict) else {}
+                        inherited = block_tags.get("intensity")
+                        if inherited is not None:
+                            slot_intensity = int(inherited)
+
+                    expansion = await expander.expand(text, effective_bindings, rng, intensity=slot_intensity)
+                    text = expansion["expanded_text"]
+                    characters_resolved.update(expansion["characters_resolved"])
+                    for err in expansion.get("expansion_errors", []):
+                        warnings.append(f"Character expansion (reinforcement): {err}")
+                prompt_parts.append(text)
+            # skipped / empty contribute nothing
+
+        if prompt_parts:
+            assembled_prompt = " ".join(prompt_parts).strip()
+
+        if selected_blocks:
+            derived_analysis = derive_analysis_from_blocks(selected_blocks, assembled_prompt)
+
+        # Final character binding expansion for block text (no intensity)
+        if expander and assembled_prompt:
             expansion = await expander.expand(assembled_prompt, effective_bindings, rng)
             assembled_prompt = expansion["expanded_text"]
-            characters_resolved = expansion["characters_resolved"]
+            characters_resolved.update(expansion["characters_resolved"])
             for err in expansion.get("expansion_errors", []):
                 warnings.append(f"Character expansion: {err}")
 
@@ -352,6 +409,7 @@ class BlockTemplateService:
                 "slots_filled": sum(1 for sr in slot_results if sr["status"] == "selected"),
                 "slots_skipped": sum(1 for sr in slot_results if sr["status"] == "skipped"),
                 "slots_fallback": sum(1 for sr in slot_results if sr["status"] == "fallback"),
+                "slots_reinforcement": sum(1 for sr in slot_results if sr["status"] == "reinforcement"),
                 "composition_strategy": template.composition_strategy,
                 "seed": seed,
                 "roll_count": template.roll_count,

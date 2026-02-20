@@ -14,13 +14,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, desc
 
 from pixsim7.backend.main.domain.game.entities.npc_memory import DialogueAnalytics
+from pixsim7.backend.main.services.npc.base import NPCServiceBase
 
 
-class DialogueAnalyticsService:
+class DialogueAnalyticsService(NPCServiceBase):
     """Service for tracking dialogue generation analytics"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    _config_namespace = "dialogue_analytics"
+
+    CACHE_SAVINGS_RATE = 0.95
 
     async def record_dialogue_generation(
         self,
@@ -93,11 +95,7 @@ class DialogueAnalyticsService:
             meta=metadata or {}
         )
 
-        self.db.add(analytics)
-        await self.db.commit()
-        await self.db.refresh(analytics)
-
-        return analytics
+        return await self._persist(analytics)
 
     async def update_engagement_metrics(
         self,
@@ -174,7 +172,7 @@ class DialogueAnalyticsService:
         for a in analytics:
             if a.estimated_cost:
                 if a.was_cached:
-                    cached_cost_saved += a.estimated_cost * 0.95  # Assume 95% savings
+                    cached_cost_saved += a.estimated_cost * self._cfg("cache_savings_rate", self.CACHE_SAVINGS_RATE)
                     cached_count += 1
                 else:
                     total_cost += a.estimated_cost
@@ -473,5 +471,4 @@ class DialogueAnalyticsService:
             )
         ).order_by(desc(DialogueAnalytics.generated_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)

@@ -261,9 +261,13 @@ class CharacterService:
         template_reference: Optional[str] = None
     ) -> CharacterUsage:
         """Track where a character is used"""
+        from sqlalchemy import update
+
         character = await self.get_character_by_id(character_id)
         if not character:
             raise ValueError(f"Character '{character_id}' not found")
+
+        now = datetime.now(timezone.utc)
 
         usage = CharacterUsage(
             id=uuid4(),
@@ -272,16 +276,21 @@ class CharacterService:
             prompt_version_id=prompt_version_id,
             action_block_id=action_block_id,
             template_reference=template_reference,
-            used_at=datetime.now(timezone.utc)
+            used_at=now
+        )
+        self.db.add(usage)
+
+        # Atomic increment — avoids race conditions from concurrent usage tracking
+        await self.db.execute(
+            update(Character)
+            .where(Character.id == character.id)
+            .values(
+                usage_count=Character.usage_count + 1,
+                last_used_at=now,
+            )
         )
 
-        # Update character usage count
-        character.usage_count += 1
-        character.last_used_at = datetime.now(timezone.utc)
-
-        self.db.add(usage)
         await self.db.commit()
-
         return usage
 
     async def get_character_usage(

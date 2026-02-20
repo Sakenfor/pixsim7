@@ -504,7 +504,8 @@ class ProviderService:
 
         # Build analysis params
         analysis_params = {
-            "analyzer_type": analysis.analyzer_type.value,
+            "analyzer_id": analysis.analyzer_id,
+            "model_id": analysis.model_id,
             "prompt": analysis.prompt,
             **(analysis.params or {}),
         }
@@ -533,7 +534,8 @@ class ProviderService:
                 result = await provider.analyze(
                     account=account,
                     asset_url=analysis_params.get("asset_url"),
-                    analyzer_type=analysis.analyzer_type.value,
+                    analyzer_id=analysis.analyzer_id,
+                    model_id=analysis.model_id,
                     prompt=analysis.prompt,
                     params=analysis.params or {},
                 )
@@ -762,6 +764,20 @@ class ProviderService:
         }
         if video_url:
             updated_response["asset_url"] = video_url
+        if status_result.error_message:
+            updated_response["error"] = status_result.error_message
+            updated_response["error_message"] = status_result.error_message
+
+        # Preserve existing metadata while applying provider status updates from polling.
+        existing_metadata = submission.response.get("metadata")
+        merged_metadata = dict(existing_metadata) if isinstance(existing_metadata, dict) else {}
+        if status_result.metadata:
+            merged_metadata.update(status_result.metadata)
+        if merged_metadata:
+            updated_response["metadata"] = merged_metadata
+            provider_status = merged_metadata.get("provider_status")
+            if provider_status is not None:
+                updated_response["provider_status"] = provider_status
 
         # Assign new dict to trigger SQLAlchemy change detection for JSON column
         submission.response = updated_response

@@ -15,8 +15,14 @@ DEFAULT_ROLE_PRIORITIES: Dict[str, int] = {
     "mood": 50,
     "setting": 40,
     "action": 30,
+    "subject": 25,
     "character": 20,
+    "placement": 18,
+    "environment": 16,
+    "style": 14,
+    "lighting": 12,
     "camera": 10,
+    "composition": 5,
     "other": 0,
 }
 
@@ -26,7 +32,13 @@ DEFAULT_ROLE_DESCRIPTIONS: Dict[str, str] = {
     "setting": "Environment, location, or time of day",
     "mood": "Emotional tone or atmosphere",
     "romance": "Romantic or intimate content",
-    "camera": "Camera and shot instructions",
+    "camera": "Camera angle and field of view",
+    "subject": "Subject preservation locks (pose, identity, framing)",
+    "placement": "Depth positioning and placed character descriptions",
+    "environment": "Scene backgrounds and location descriptions",
+    "style": "Visual aesthetics — wardrobe, rendering, atmosphere",
+    "lighting": "Key and fill light sources",
+    "composition": "Layer ordering and spatial structure",
     "other": "Unclassified or technical content",
 }
 

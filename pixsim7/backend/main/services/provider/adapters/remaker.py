@@ -177,6 +177,46 @@ class RemakerProvider(WebApiProvider):
                 return url_value
         return None
 
+    @staticmethod
+    def _normalize_task_type(params: Dict[str, Any]) -> str:
+        """Resolve Remaker model selector to sd|flux."""
+        raw_task = params.get("task_type")
+        if isinstance(raw_task, str) and raw_task.strip().lower() in {"sd", "flux"}:
+            return raw_task.strip().lower()
+
+        model = str(params.get("model") or "").strip().lower()
+        if "flux" in model:
+            return "flux"
+        return "sd"
+
+    @staticmethod
+    def _normalize_image_resolution(task_type: str, params: Dict[str, Any]) -> str:
+        """
+        Resolve Remaker image_resolution.
+
+        Remaker prompt-editor accepts 1K/2K/4K in observed traffic. Flux jobs are
+        constrained to 1K, so we clamp to 1K for task_type=flux.
+        """
+        if task_type == "flux":
+            return "1K"
+
+        raw = params.get("image_resolution")
+        if raw is None:
+            raw = params.get("quality")
+
+        normalized = str(raw or "").strip().upper().replace(" ", "")
+        aliases = {
+            "1024": "1K",
+            "1K": "1K",
+            "720P": "1K",
+            "1080P": "1K",
+            "2K": "2K",
+            "1440P": "2K",
+            "4K": "4K",
+            "2160P": "4K",
+        }
+        return aliases.get(normalized, "2K")
+
     def map_parameters(self, operation_type: OperationType, params: Dict[str, Any]) -> Dict[str, Any]:
         if operation_type not in self.supported_operations:
             raise UnsupportedOperationError(self.provider_id, operation_type.value)
@@ -195,6 +235,8 @@ class RemakerProvider(WebApiProvider):
 
         # Auto-detect mode by mask presence
         mask_source = params.get("mask_url") or params.get("mask_source") or params.get("mask")
+        task_type = self._normalize_task_type(params)
+        image_resolution = self._normalize_image_resolution(task_type, params)
 
         if mask_source:
             # Photo-editor mode: image + mask + prompt + model choice
@@ -203,7 +245,7 @@ class RemakerProvider(WebApiProvider):
                 "prompt": prompt,
                 "original_image_source": original_image_source,
                 "mask_source": mask_source,
-                "task_type": params.get("task_type", "sd"),
+                "task_type": task_type,
                 "file_extension": file_extension,
             }
         else:
@@ -212,9 +254,9 @@ class RemakerProvider(WebApiProvider):
                 "mode": "prompt-editor",
                 "prompt": prompt,
                 "original_image_source": original_image_source,
-                "task_type": params.get("task_type", "sd"),
+                "task_type": task_type,
                 "aspect_ratio": params.get("aspect_ratio", "match_input_image"),
-                "image_resolution": params.get("image_resolution", "2K"),
+                "image_resolution": image_resolution,
                 "file_extension": file_extension,
             }
 
@@ -307,7 +349,11 @@ class RemakerProvider(WebApiProvider):
         original_path = params.get("original_image_path")
         task_type = params.get("task_type", "sd")
         aspect_ratio = params.get("aspect_ratio", "match_input_image")
-        image_resolution = params.get("image_resolution", "2K")
+        image_resolution = params.get("image_resolution")
+        if not image_resolution:
+            image_resolution = "1K" if str(task_type).lower() == "flux" else "2K"
+        elif str(task_type).lower() == "flux":
+            image_resolution = "1K"
         file_extension = params.get("file_extension")
 
         if not original_path:
@@ -409,31 +455,39 @@ class RemakerProvider(WebApiProvider):
                 },
             )
 
-        msg = (payload.get("message") or {}).get("en") or str(payload.get("message") or payload)
+        raw_message = payload.get("message")
+        msg = (raw_message or {}).get("en") if isinstance(raw_message, dict) else None
+        if not msg:
+            msg = str(raw_message or payload)
         logger.warning(
             "remaker_status_unexpected",
             provider_job_id=provider_job_id,
             code=code,
             message=msg,
         )
+        metadata = {"provider_status": code, "provider_message": msg}
+        if isinstance(raw_message, dict):
+            zh_message = raw_message.get("zh")
+            if zh_message:
+                metadata["provider_message_zh"] = zh_message
         return ProviderStatusResult(
             status=ProviderStatus.FAILED,
             error_message=f"Remaker unexpected status (code={code}): {msg}",
-            metadata={"provider_status": code},
+            metadata=metadata,
             provider_video_id=provider_job_id,
         )
 
     def get_operation_parameter_spec(self) -> dict:
         # -- Per-model option maps (Pixverse pattern) --
         all_ratios = ["match_input_image", "1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
-        flux_ratios = ["1:1", "2:3", "3:4", "9:16", "3:2", "4:3", "16:9", "21:9"]
+        flux_ratios = list(all_ratios)
         aspect_per_model = {
             "sd": all_ratios,
             "flux": flux_ratios,
         }
         resolution_per_model = {
             "sd": ["1K", "2K", "4K"],
-            "flux": ["1024"],
+            "flux": ["1K"],
         }
         credits_per_model = {
             "sd": 6,
@@ -499,7 +553,7 @@ class RemakerProvider(WebApiProvider):
                         "type": "enum",
                         "required": False,
                         "default": "2K",
-                        "enum": ["1K", "2K", "4K", "1024"],
+                        "enum": ["1K", "2K", "4K"],
                         "description": "Output resolution (prompt-editor mode only)",
                         "group": "prompt-editor",
                         "metadata": {

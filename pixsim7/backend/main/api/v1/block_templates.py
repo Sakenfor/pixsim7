@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
@@ -314,6 +315,7 @@ async def search_blocks(
     kind: Optional[str] = Query(None, description="Filter by kind"),
     package_name: Optional[str] = Query(None, description="Filter by package"),
     q: Optional[str] = Query(None, description="Text search in block_id and text"),
+    tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -341,6 +343,15 @@ async def search_blocks(
                 PromptBlock.text.ilike(pattern),
             )
         )
+    if tags:
+        for pair in tags.split(","):
+            pair = pair.strip()
+            if ":" not in pair:
+                continue
+            tag_key, tag_value = pair.split(":", 1)
+            query = query.where(
+                func.jsonb_extract_path_text(PromptBlock.tags, tag_key.strip()) == tag_value.strip()
+            )
 
     query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
     query = query.offset(offset).limit(limit)
@@ -392,6 +403,39 @@ async def list_block_roles(
         {"role": row.role, "category": row.category, "count": row.count}
         for row in result.all()
     ]
+
+
+@router.get("/blocks/tags", response_model=Dict[str, List[str]])
+async def list_block_tag_facets(
+    role: Optional[str] = Query(None, description="Filter by role"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    package_name: Optional[str] = Query(None, description="Filter by package"),
+    db: AsyncSession = Depends(get_db),
+):
+    """List distinct tag keys and their distinct values from prompt blocks."""
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    query = select(PromptBlock.tags)
+    if role:
+        query = query.where(PromptBlock.role == role)
+    if category:
+        query = query.where(PromptBlock.category == category)
+    if package_name:
+        query = query.where(PromptBlock.package_name == package_name)
+
+    result = await db.execute(query)
+    all_tags = result.scalars().all()
+
+    facets: Dict[str, set] = {}
+    for tags_dict in all_tags:
+        if not tags_dict or not isinstance(tags_dict, dict):
+            continue
+        for key, value in tags_dict.items():
+            if key not in facets:
+                facets[key] = set()
+            facets[key].add(str(value))
+
+    return {key: sorted(values) for key, values in sorted(facets.items())}
 
 
 # ===== Content Pack Management =====

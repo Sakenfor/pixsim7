@@ -16,13 +16,17 @@ from pixsim7.backend.main.domain.game.entities.npc_memory import (
     NPCEmotionalState,
     EmotionType
 )
+from pixsim7.backend.main.domain.game.entities.memory_policy import MEMORY_CONSTANTS
+from pixsim7.backend.main.services.npc.base import TemporalNPCService
 
 
-class EmotionalStateService:
+class EmotionalStateService(TemporalNPCService):
     """Service for managing NPC emotional states"""
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    _config_namespace = "emotional_state"
+
+    HIGH_INTENSITY = 0.7
+    MODERATE_INTENSITY = 0.4
 
     async def set_emotion(
         self,
@@ -30,7 +34,7 @@ class EmotionalStateService:
         emotion: EmotionType,
         intensity: float = 0.7,
         duration_seconds: Optional[float] = None,
-        decay_rate: float = 0.1,
+        decay_rate: float = MEMORY_CONSTANTS.emotion_default_decay,
         triggered_by: Optional[str] = None,
         trigger_memory_id: Optional[int] = None,
         session_id: Optional[int] = None,
@@ -71,11 +75,7 @@ class EmotionalStateService:
             expires_at=expires_at
         )
 
-        self.db.add(state)
-        await self.db.commit()
-        await self.db.refresh(state)
-
-        return state
+        return await self._persist(state)
 
     async def get_current_emotions(
         self,
@@ -111,8 +111,7 @@ class EmotionalStateService:
 
         query = query.order_by(desc(NPCEmotionalState.intensity))
 
-        result = await self.db.execute(query)
-        states = list(result.scalars().all())
+        states = await self._fetch_list(query)
 
         if update_intensity:
             # Update intensities based on decay and expiration
@@ -175,7 +174,7 @@ class EmotionalStateService:
             new_intensity = max(0.0, state.intensity - intensity_loss)
 
             # If intensity drops too low, mark as inactive
-            if new_intensity < 0.05:
+            if new_intensity < MEMORY_CONSTANTS.emotion_inactivity_threshold:
                 state.is_active = False
                 state.ended_at = now
             else:
@@ -278,8 +277,7 @@ class EmotionalStateService:
         if session_id:
             query = query.where(NPCEmotionalState.session_id == session_id)
 
-        result = await self.db.execute(query)
-        current_state = result.scalars().first()
+        current_state = await self._fetch_one(query)
 
         if not current_state:
             return None
@@ -356,9 +354,9 @@ class EmotionalStateService:
         adjustments = []
 
         # High intensity emotions affect dialogue more
-        if dominant.intensity > 0.7:
+        if dominant.intensity > self._cfg("high_intensity", self.HIGH_INTENSITY):
             adjustments.append(f"very_{dominant.emotion.value}")
-        elif dominant.intensity > 0.4:
+        elif dominant.intensity > self._cfg("moderate_intensity", self.MODERATE_INTENSITY):
             adjustments.append(f"somewhat_{dominant.emotion.value}")
         else:
             adjustments.append(f"slightly_{dominant.emotion.value}")
@@ -409,5 +407,4 @@ class EmotionalStateService:
 
         query = query.order_by(desc(NPCEmotionalState.started_at)).limit(limit)
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        return await self._fetch_list(query)

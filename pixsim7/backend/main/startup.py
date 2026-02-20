@@ -143,6 +143,23 @@ async def setup_database_and_seed() -> None:
             msg="Continuing startup without built-in plugins"
         )
 
+    # Content pack seeding is OPTIONAL — auto-discovers plugins with content/ dirs
+    try:
+        from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+            seed_content_packs,
+        )
+        async with get_async_session() as db:
+            count = await seed_content_packs(db)
+            if count:
+                logger.info("content_packs_seeded", count=count)
+    except Exception as e:
+        logger.warning(
+            "content_pack_seed_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing startup without content packs"
+        )
+
 
 async def setup_analyzer_definitions() -> int:
     """

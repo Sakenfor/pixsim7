@@ -25,7 +25,7 @@ from typing import List, Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
-from pixsim7.backend.main.domain.links import ObjectLink
+from pixsim7.backend.main.domain.links import ObjectLink, SyncDirection
 from pixsim7.backend.main.services.links.link_types import link_type_id
 from pixsim7.backend.main.services.links.mapping_registry import get_mapping_registry
 from pixsim7.backend.main.services.links.activation import (
@@ -59,7 +59,7 @@ class LinkService:
         runtime_id: int,
         mapping_id: Optional[str] = None,
         sync_enabled: bool = True,
-        sync_direction: str = 'bidirectional',
+        sync_direction: "str | SyncDirection" = SyncDirection.BIDIRECTIONAL,
         priority: int = 0,
         activation_conditions: Optional[Dict[str, Any]] = None,
         sync_field_mappings: Optional[Dict[str, str]] = None,

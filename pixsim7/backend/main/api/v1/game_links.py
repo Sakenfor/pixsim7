@@ -1,4 +1,4 @@
-"""
+﻿"""
 Game Links API - Template to Runtime Resolution
 
 Exposes the ObjectLink resolution system to the frontend game runtime,
@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from pixsim7.backend.main.api.dependencies import DatabaseSession, CurrentUser
+from pixsim7.backend.main.api.dependencies import DatabaseSession, CurrentGamePrincipal
 from pixsim7.backend.main.services.links.template_resolver import (
     resolve_template_to_runtime,
 )
@@ -264,7 +264,7 @@ async def resolve_batch(
 @router.get(
     "/mappings",
     summary="List available template-runtime mappings",
-    description="Returns the list of registered template→runtime mapping types.",
+    description="Returns the list of registered templateâ†’runtime mapping types.",
 )
 async def list_mappings() -> Dict[str, Any]:
     """List available template-runtime mappings."""
@@ -301,7 +301,7 @@ This is useful for monitoring link health and planning maintenance.
 )
 async def get_integrity_report(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """Get link integrity report."""
     service = LinkIntegrityService(db)
@@ -348,7 +348,7 @@ Returns a report of findings and actions taken.
 async def cleanup_orphaned_links(
     request: CleanupRequest,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """Cleanup orphaned links."""
     service = LinkIntegrityService(db)
@@ -368,7 +368,7 @@ async def cleanup_orphaned_links(
 async def validate_link(
     link_id: str,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> Dict[str, Any]:
     """Validate a specific link."""
     from uuid import UUID
@@ -391,7 +391,7 @@ async def get_links_for_entity(
     entity_kind: str,
     entity_id: str,
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     side: str = "both",
 ) -> Dict[str, Any]:
     """Get links for a specific entity."""
@@ -408,3 +408,4 @@ async def get_links_for_entity(
         "links": links,
         "count": len(links),
     }
+

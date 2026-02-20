@@ -12,9 +12,24 @@ Benefits:
 - Easier to split services later if needed
 """
 from __future__ import annotations
-from datetime import datetime
+
+from datetime import datetime, timezone
 from typing import Optional
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
+
+
+def _parse_exp(value) -> Optional[datetime]:
+    """Normalize JWT exp claim to timezone-aware datetime."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    return None
 
 
 class AuthClaims(BaseModel):
@@ -48,8 +63,54 @@ class AuthClaims(BaseModel):
             email=payload.get("email"),
             username=payload.get("username"),
             is_admin=payload.get("is_admin", False),
-            exp=payload.get("exp"),
+            exp=_parse_exp(payload.get("exp")),
         )
+
+
+class AuthPrincipal(BaseModel):
+    """
+    Claims-based request principal for game-facing routes.
+
+    This avoids loading full ORM user records when only identity and role data
+    are needed.
+    """
+
+    id: int
+    token_id: str
+    email: Optional[str] = None
+    username: Optional[str] = None
+    role: Optional[str] = None
+    admin: bool = False
+    permissions: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    exp: Optional[datetime] = None
+
+    @classmethod
+    def from_jwt_payload(cls, payload: dict) -> "AuthPrincipal":
+        role = payload.get("role")
+        is_admin_claim = bool(payload.get("is_admin", False))
+        role_is_admin = str(role).lower() in {"admin", "super_admin"} if role is not None else False
+        return cls(
+            id=int(payload["sub"]),
+            token_id=payload["jti"],
+            email=payload.get("email"),
+            username=payload.get("username"),
+            role=role,
+            admin=is_admin_claim or role_is_admin,
+            permissions=list(payload.get("permissions") or []),
+            is_active=bool(payload.get("is_active", True)),
+            exp=_parse_exp(payload.get("exp")),
+        )
+
+    @property
+    def user_id(self) -> int:
+        return self.id
+
+    def is_admin(self) -> bool:
+        return self.admin
+
+    def has_permission(self, permission: str) -> bool:
+        return self.is_admin() or permission in self.permissions
 
 
 class UserContext(BaseModel):

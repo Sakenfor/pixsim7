@@ -1,4 +1,4 @@
-"""
+﻿"""
 Dialogue Analytics API endpoints.
 
 Provides cost tracking, engagement metrics, quality analysis,
@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 
 from fastapi import APIRouter
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, DatabaseSession
 from pixsim7.backend.main.services.npc import DialogueAnalyticsService
 
 
@@ -19,7 +19,7 @@ router = APIRouter(prefix="/dialogue/analytics", tags=["dialogue-analytics"])
 @router.get("/cost-summary")
 async def get_cost_summary(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     npc_id: Optional[int] = None,
     days: int = 30
 ) -> Dict[str, Any]:
@@ -42,7 +42,7 @@ async def get_cost_summary(
 @router.get("/engagement")
 async def get_engagement_metrics(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     npc_id: Optional[int] = None,
     days: int = 30
 ) -> Dict[str, Any]:
@@ -64,7 +64,7 @@ async def get_engagement_metrics(
 @router.get("/quality")
 async def get_quality_metrics(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     npc_id: Optional[int] = None,
     days: int = 30
 ) -> Dict[str, Any]:
@@ -86,7 +86,7 @@ async def get_quality_metrics(
 @router.get("/model-performance")
 async def get_model_performance(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     days: int = 30
 ) -> Dict[str, Any]:
     """
@@ -104,7 +104,7 @@ async def get_model_performance(
 @router.get("/program-performance")
 async def get_program_performance(
     db: DatabaseSession,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
     npc_id: Optional[int] = None,
     days: int = 30
 ) -> Dict[str, Any]:
@@ -119,3 +119,4 @@ async def get_program_performance(
     )
 
     return performance
+

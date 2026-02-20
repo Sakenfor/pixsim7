@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from pixsim7.backend.main.api.dependencies import CurrentUser, AssetSvc, DatabaseSession
+from pixsim7.backend.main.api.dependencies import CurrentGamePrincipal, AssetSvc, DatabaseSession
 from pixsim7.backend.main.domain.game import GameScene, GameSceneNode, GameSceneEdge
 from pixsim7.backend.main.services.tag_service import TagService
 
@@ -101,7 +101,7 @@ async def get_scene(
     scene_id: int,
     db: DatabaseSession,
     asset_service: AssetSvc,
-    user: CurrentUser,
+    user: CurrentGamePrincipal,
 ) -> SceneResponse:
     """Get a game scene by ID with all its nodes and edges.
 
@@ -227,3 +227,4 @@ async def get_scene(
         edges=edge_models,
         startNodeId=str(scene.entry_node_id),
     )
+

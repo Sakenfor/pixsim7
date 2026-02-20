@@ -6,7 +6,7 @@ Clean service for user CRUD and quota checks
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from pixsim7.backend.main.domain import User, UserQuotaUsage
 from pixsim7.backend.main.shared.auth import hash_password
@@ -165,6 +165,56 @@ class UserService:
         await self.db.refresh(user)
 
         return user
+
+    async def list_users(
+        self,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+        search: Optional[str] = None,
+    ) -> list[User]:
+        """
+        List users with optional search and pagination.
+
+        Args:
+            limit: Max users to return
+            offset: Number of users to skip
+            search: Optional case-insensitive search by email/username
+        """
+        query = select(User)
+
+        normalized_search = (search or "").strip().lower()
+        if normalized_search:
+            like_term = f"%{normalized_search}%"
+            query = query.where(
+                or_(
+                    func.lower(User.email).like(like_term),
+                    func.lower(User.username).like(like_term),
+                )
+            )
+
+        query = query.order_by(User.created_at.desc()).offset(offset).limit(limit)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+
+    async def count_users(self, *, search: Optional[str] = None) -> int:
+        """
+        Count users with optional case-insensitive email/username search.
+        """
+        query = select(func.count()).select_from(User)
+
+        normalized_search = (search or "").strip().lower()
+        if normalized_search:
+            like_term = f"%{normalized_search}%"
+            query = query.where(
+                or_(
+                    func.lower(User.email).like(like_term),
+                    func.lower(User.username).like(like_term),
+                )
+            )
+
+        result = await self.db.execute(query)
+        return int(result.scalar_one() or 0)
 
     async def delete_user(self, user_id: int) -> None:
         """
