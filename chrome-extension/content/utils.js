@@ -142,6 +142,21 @@ function getPixverseSessionIds() {
 }
 
 /**
+ * Get captured Remaker session data from injected script.
+ * Remaker uses a raw JWT (no Bearer prefix) + product-serial/product-code headers.
+ */
+function getRemakerSessionData() {
+  return {
+    token: _pixsim7SessionData.remarkerToken || null,
+    productSerial: _pixsim7SessionData.remarkerProductSerial || null,
+    productCode: _pixsim7SessionData.remarkerProductCode || null,
+    credits: _pixsim7SessionData.remarkerCredits ?? null,
+    userId: _pixsim7SessionData.remarkerUserId ?? null,
+    email: _pixsim7SessionData.remarkerEmail ?? null,
+  };
+}
+
+/**
  * Inject script to capture bearer token from network requests
  */
 function injectBearerTokenCapture() {

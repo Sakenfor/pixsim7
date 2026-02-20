@@ -5,6 +5,7 @@
  * Captures:
  * - Bearer token (Authorization header)
  * - ai-trace-id and ai-anonymous-id (Pixverse session identifiers)
+ * - Remaker JWT + product-serial/product-code headers (from localStorage.userInfo + fetch)
  *
  * These IDs are crucial for session sharing - Pixverse uses them to identify
  * a "session instance". If browser and backend use different IDs with the same
@@ -21,6 +22,13 @@
       anonymousId: window.__pixsim7_anonymous_id || null,
       jwtToken: window.__pixsim7_jwt_token || null,
       bearerToken: window.__pixsim7_bearer_token || null,
+      // Remaker-specific captures
+      remarkerToken: window.__pixsim7_remaker_token || null,
+      remarkerProductSerial: window.__pixsim7_remaker_product_serial || null,
+      remarkerProductCode: window.__pixsim7_remaker_product_code || null,
+      remarkerCredits: window.__pixsim7_remaker_credits ?? null,
+      remarkerUserId: window.__pixsim7_remaker_user_id ?? null,
+      remarkerEmail: window.__pixsim7_remaker_email ?? null,
       timestamp: Date.now(),
     };
     document.dispatchEvent(new CustomEvent('pixsim7-session-data', { detail: data }));
@@ -75,6 +83,20 @@
         scanStorage(sessionStorage);
       }
 
+      // Remaker: JWT + account data lives in localStorage.userInfo as JSON
+      try {
+        const userInfoRaw = localStorage.getItem('userInfo');
+        if (userInfoRaw && userInfoRaw.startsWith('{')) {
+          const userInfo = JSON.parse(userInfoRaw);
+          if (userInfo.token && userInfo.token.startsWith('eyJ')) {
+            window.__pixsim7_remaker_token = userInfo.token;
+            console.debug('[PixSim7] Found Remaker JWT from userInfo');
+          }
+        }
+      } catch (e) {
+        // userInfo not present or not valid JSON - not on Remaker or not logged in
+      }
+
       // Also check for JWT token in storage
       const tokenKeys = ['_ai_token', 'ai_token', 'token', 'jwt_token', 'jwtToken'];
       for (const key of tokenKeys) {
@@ -126,47 +148,86 @@
   window.fetch = function(...args) {
     const [url, options] = args;
 
-    // Only capture from Pixverse API calls
-    if (options && options.headers && typeof url === 'string' && url.includes('pixverse')) {
+    if (options && options.headers && typeof url === 'string') {
       const headers = options.headers instanceof Headers
         ? options.headers
         : new Headers(options.headers);
 
-      // Capture Authorization/Bearer token
-      const auth = headers.get('Authorization') || headers.get('authorization');
-      if (auth && auth.startsWith('Bearer ')) {
-        window.__pixsim7_bearer_token = auth.substring(7);
+      // Pixverse API calls
+      if (url.includes('pixverse')) {
+        // Capture Authorization/Bearer token
+        const auth = headers.get('Authorization') || headers.get('authorization');
+        if (auth && auth.startsWith('Bearer ')) {
+          window.__pixsim7_bearer_token = auth.substring(7);
+        }
+
+        // Capture token header (Pixverse uses this for JWT)
+        const token = headers.get('token') || headers.get('Token');
+        if (token) {
+          window.__pixsim7_jwt_token = token;
+        }
+
+        // Capture session identifiers for session sharing
+        // Check multiple header name variations
+        const traceHeaders = ['ai-trace-id', 'ai_trace_id', 'x-trace-id', 'trace-id'];
+        const anonHeaders = ['ai-anonymous-id', 'ai_anonymous_id', 'x-anonymous-id', 'anonymous-id'];
+
+        for (const h of traceHeaders) {
+          const val = headers.get(h);
+          if (val) {
+            window.__pixsim7_trace_id = val;
+            break;
+          }
+        }
+
+        for (const h of anonHeaders) {
+          const val = headers.get(h);
+          if (val) {
+            window.__pixsim7_anonymous_id = val;
+            break;
+          }
+        }
+
+        notifyContentScript();
       }
 
-      // Capture token header (Pixverse uses this for JWT)
-      const token = headers.get('token') || headers.get('Token');
-      if (token) {
-        window.__pixsim7_jwt_token = token;
-      }
+      // Remaker API calls — capture raw JWT + product headers
+      if (url.includes('remaker')) {
+        const auth = headers.get('Authorization') || headers.get('authorization');
+        if (auth) {
+          // Remaker uses raw JWT (no "Bearer " prefix)
+          window.__pixsim7_remaker_token = auth;
+        }
 
-      // Capture session identifiers for session sharing
-      // Check multiple header name variations
-      const traceHeaders = ['ai-trace-id', 'ai_trace_id', 'x-trace-id', 'trace-id'];
-      const anonHeaders = ['ai-anonymous-id', 'ai_anonymous_id', 'x-anonymous-id', 'anonymous-id'];
+        const productSerial = headers.get('product-serial');
+        if (productSerial) {
+          window.__pixsim7_remaker_product_serial = productSerial;
+        }
 
-      for (const h of traceHeaders) {
-        const val = headers.get(h);
-        if (val) {
-          window.__pixsim7_trace_id = val;
-          break;
+        const productCode = headers.get('product-code');
+        if (productCode) {
+          window.__pixsim7_remaker_product_code = productCode;
+        }
+
+        notifyContentScript();
+
+        // Capture fresh credits from get-userinfo response
+        if (url.includes('/user/get-userinfo')) {
+          const result = originalFetch.apply(this, args);
+          result.then(resp => {
+            resp.clone().json().then(body => {
+              if (body && body.code === 100000 && body.result) {
+                const r = body.result;
+                window.__pixsim7_remaker_credits = r.credits ?? null;
+                window.__pixsim7_remaker_user_id = r.user_id ?? null;
+                window.__pixsim7_remaker_email = r.email ?? null;
+                notifyContentScript();
+              }
+            }).catch(() => {});
+          }).catch(() => {});
+          return result;
         }
       }
-
-      for (const h of anonHeaders) {
-        const val = headers.get(h);
-        if (val) {
-          window.__pixsim7_anonymous_id = val;
-          break;
-        }
-      }
-
-      // Notify content script of newly captured data
-      notifyContentScript();
     }
 
     return originalFetch.apply(this, args);
@@ -190,6 +251,17 @@
       captured = true;
     } else if (nameLower === 'authorization' && value && value.startsWith('Bearer ')) {
       window.__pixsim7_bearer_token = value.substring(7);
+      captured = true;
+    }
+    // Remaker-specific headers (raw JWT auth + product headers)
+    if (nameLower === 'authorization' && value && !value.startsWith('Bearer ') && value.startsWith('eyJ')) {
+      window.__pixsim7_remaker_token = value;
+      captured = true;
+    } else if (nameLower === 'product-serial' && value) {
+      window.__pixsim7_remaker_product_serial = value;
+      captured = true;
+    } else if (nameLower === 'product-code' && value) {
+      window.__pixsim7_remaker_product_code = value;
       captured = true;
     }
     if (captured) {

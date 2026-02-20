@@ -1,1 +1,1 @@
-export { extractErrorMessage } from '../../../../../main/src/lib/api/errorHandling';
+export { extractErrorMessage } from '@pixsim7/shared.api.client';

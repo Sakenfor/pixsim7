@@ -22,11 +22,9 @@ import urllib.error
 try:
     from .. import theme
     from ..config import read_env_ports, service_env, ROOT
-    from ..openapi_checker import update_schema_cache
 except ImportError:
     import theme
     from config import read_env_ports, service_env, ROOT
-    from openapi_checker import update_schema_cache
 
 
 class OpenApiWorker(QThread):
@@ -37,7 +35,7 @@ class OpenApiWorker(QThread):
         super().__init__(parent)
         self.operation = operation
         self.openapi_url = openapi_url
-        self.types_path = types_path or "packages/shared/api/client/src/generated/openapi"
+        self.types_path = types_path or "packages/shared/api/model/src/generated/openapi"
 
     def run(self):
         try:
@@ -62,7 +60,7 @@ class OpenApiWorker(QThread):
             req = urllib.request.Request(self.openapi_url, method='GET')
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
-                    return (True, f"✓ Service is reachable at {self.openapi_url}")
+                    return (True, f"[ok] Service is reachable at {self.openapi_url}")
                 else:
                     return (False, f"Service returned status {response.status}")
         except urllib.error.URLError as e:
@@ -75,6 +73,7 @@ class OpenApiWorker(QThread):
         env = service_env()
         env['OPENAPI_URL'] = self.openapi_url
         env['OPENAPI_TYPES_OUT'] = self.types_path
+        env['OPENAPI_ORVAL_OUT'] = self.types_path
 
         # Use pnpm from PATH
         pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
@@ -129,12 +128,7 @@ class OpenApiWorker(QThread):
             output_msg += f"stderr:\n{err}\n"
 
         if code == 0:
-            # Update the schema cache so freshness checks work
-            cache_updated = update_schema_cache(self.openapi_url, self.types_path)
-            if cache_updated:
-                output_msg += "\n✓ Schema cache updated for freshness tracking.\n"
-
-            return (True, f"✓ Types generated successfully!\n\n{output_msg}")
+            return (True, f"[ok] Types generated successfully!\n\n{output_msg}")
         else:
             return (False, f"Generation failed (exit code {code}):\n\n{output_msg}")
 
@@ -177,9 +171,9 @@ class OpenApiWorker(QThread):
             output_msg += f"stderr:\n{err}\n"
 
         if code == 0:
-            return (True, f"✓ Types are up-to-date!\n\n{output_msg}")
+            return (True, f"[ok] Types are up-to-date!\n\n{output_msg}")
         else:
-            return (False, f"⚠️ Types are NOT up-to-date (exit code {code}):\n\n{output_msg}")
+            return (False, f"[stale] Types are NOT up-to-date (exit code {code}):\n\n{output_msg}")
 
 
 class OpenApiToolsWidget(QWidget):
@@ -212,7 +206,7 @@ class OpenApiToolsWidget(QWidget):
             self._openapi_url = f"http://localhost:{ports.backend}/openapi.json"
             display_info = f"localhost:{ports.backend}"
 
-        self._types_path = types_path or "packages/shared/api/client/src/generated/openapi"
+        self._types_path = types_path or "packages/shared/api/model/src/generated/openapi"
         self._docs_url = self._openapi_url.replace('/openapi.json', '/docs')
 
         # Status indicator
@@ -409,3 +403,4 @@ def show_openapi_tools_dialog(parent, openapi_url: str = None, types_path: str =
     layout.addWidget(btn_close)
 
     dlg.exec()
+

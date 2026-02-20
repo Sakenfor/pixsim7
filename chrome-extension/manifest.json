@@ -47,7 +47,8 @@
         "*://*.runwayml.com/*",
         "*://*.pika.art/*",
         "*://sora.chatgpt.com/*",
-        "*://chatgpt.com/*"
+        "*://chatgpt.com/*",
+        "*://*.remaker.ai/*"
       ],
       "js": [
         "shared/constants.js",

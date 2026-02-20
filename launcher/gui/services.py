@@ -54,7 +54,7 @@ class ServiceDef:
     depends_on: Optional[List[str]] = None  # Service keys that must be running first
     # OpenAPI schema support (for services that expose OpenAPI)
     openapi_url: Optional[str] = None  # e.g., "http://localhost:8000/openapi.json"
-    openapi_types_path: Optional[str] = None  # Relative path to generated types file
+    openapi_types_path: Optional[str] = None  # Relative path to generated OpenAPI output directory
 
 
 def _iter_package_json_paths(root: Path) -> Iterable[Path]:

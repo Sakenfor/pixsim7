@@ -9,6 +9,7 @@
     // State for intercepting multipart uploads
     window.__pxs7PendingImageUrl = null;  // Set by content script when we want to intercept
     window.__pxs7FakeUploadId = null;     // Track fake multipart upload
+    window.__pxs7UploadInProgress = false; // Track when we're mid-upload
 
     const FAKE_UPLOAD_ID = 'PXS7_FAKE_UPLOAD_' + Date.now();
     const FAKE_ETAG = '"pxs7fake' + Date.now() + '"';
@@ -19,6 +20,49 @@
     return false; // Disabled - let OSS requests pass through or fail naturally
     // return window.__pxs7PendingImageUrl && url.includes('aliyuncs.com');
   }
+
+  // Build the fake batch_upload_media response
+  function buildBatchUploadResponse(urlToReturn) {
+    const mediaId = Date.now();
+    const urlPath = new URL(urlToReturn).pathname;
+    const filename = urlPath.split('/').pop() || 'image.jpg';
+
+    return {
+      ErrCode: 0,
+      ErrMsg: 'success',
+      Resp: {
+        result: [{
+          id: mediaId,
+          url: urlToReturn,
+          path: decodeURIComponent(urlPath.replace(/^\//, '')),
+          size: 100000,
+          name: decodeURIComponent(filename),
+          category: 0,
+          err_msg: ''
+        }]
+      }
+    };
+  }
+
+  // Signal upload completion to content script
+  function signalUploadComplete(url) {
+    window.__pxs7UploadInProgress = false;
+    window.dispatchEvent(new CustomEvent('__pxs7UploadComplete', {
+      detail: { url, success: true }
+    }));
+  }
+
+  // === Suppress Pixverse's internal upload errors ===
+  // Pixverse's antd Upload component has a bug where a callback ('O' in minified code)
+  // is undefined during the React re-render triggered by onSuccess/flushSync.
+  // This only happens with programmatic file input changes (our extension's slot filling).
+  window.addEventListener('unhandledrejection', function(e) {
+    if (window.__pxs7UploadInProgress && e.reason instanceof TypeError &&
+        e.reason.message.includes('is not a function')) {
+      e.preventDefault();
+      debugLog('Suppressed Pixverse upload callback error:', e.reason.message);
+    }
+  });
 
   // Intercept XHR (Pixverse uses XHR for OSS uploads)
   const originalXHROpen = XMLHttpRequest.prototype.open;
@@ -35,55 +79,35 @@
     const url = this._pxs7Url;
     const method = this._pxs7Method;
 
+    // Log upload-related requests when we have a pending image
+    if (window.__pxs7UploadInProgress && method === 'POST') {
+      debugLog('XHR POST during upload:', url);
+    }
+
     // === Intercept batch_upload_media ===
     if (window.__pxs7PendingImageUrl && method === 'POST' && url.includes('batch_upload_media')) {
       const urlToReturn = window.__pxs7PendingImageUrl;
-      debugLog(' Intercepting batch_upload_media, returning:', urlToReturn);
+      debugLog('Intercepting batch_upload_media (XHR), returning:', urlToReturn);
 
       window.__pxs7PendingImageUrl = null;
       window.__pxs7FakeUploadId = null;
 
       setTimeout(() => {
-        const mediaId = Date.now();
-        // Extract filename from URL
-        const urlPath = new URL(urlToReturn).pathname;
-        const filename = urlPath.split('/').pop() || 'image.jpg';
-
-        const responseObj = {
-          ErrCode: 0,
-          ErrMsg: 'success',
-          Resp: {
-            result: [{
-              id: mediaId,
-              url: urlToReturn,
-              path: decodeURIComponent(urlPath.replace(/^\//, '')),
-              size: 100000,
-              name: decodeURIComponent(filename),
-              category: 0,
-              err_msg: ''
-            }]
-          }
-        };
-
-        debugLog(' batch_upload_media response:', responseObj);
+        const responseObj = buildBatchUploadResponse(urlToReturn);
+        debugLog('batch_upload_media response:', responseObj);
         fakeXHRResponse(xhr, 200, JSON.stringify(responseObj), responseObj);
-        debugLog(' batch_upload_media response sent');
-
-        // Signal completion so content script knows it's safe to proceed with next image
-        window.dispatchEvent(new CustomEvent('__pxs7UploadComplete', {
-          detail: { url: urlToReturn, success: true }
-        }));
+        debugLog('batch_upload_media response sent');
+        signalUploadComplete(urlToReturn);
       }, 50);
       return;
     }
 
     // === Intercept OSS multipart: POST ?uploads= (initiate) ===
     if (shouldInterceptOSS(url) && method === 'POST' && url.includes('?uploads')) {
-      debugLog(' Intercepting multipart initiate');
+      debugLog('Intercepting multipart initiate');
       window.__pxs7FakeUploadId = FAKE_UPLOAD_ID;
 
       setTimeout(() => {
-        // OSS returns XML with uploadId
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <InitiateMultipartUploadResult>
   <Bucket>pixverse-fe-upload</Bucket>
@@ -92,16 +116,15 @@
 </InitiateMultipartUploadResult>`;
 
         fakeXHRResponse(xhr, 200, xml);
-        debugLog(' Multipart initiate response sent');
+        debugLog('Multipart initiate response sent');
       }, 30);
       return;
     }
 
     // === Intercept OSS multipart: PUT ?partNumber= (upload part) ===
     if (shouldInterceptOSS(url) && method === 'PUT' && url.includes('partNumber=')) {
-      debugLog(' Intercepting multipart part upload');
+      debugLog('Intercepting multipart part upload');
 
-      // Simulate progress
       setTimeout(() => {
         xhr.dispatchEvent(new ProgressEvent('progress', { loaded: 50, total: 100 }));
         if (xhr.upload) xhr.upload.dispatchEvent(new ProgressEvent('progress', { loaded: 50, total: 100 }));
@@ -111,23 +134,20 @@
         xhr.dispatchEvent(new ProgressEvent('progress', { loaded: 100, total: 100 }));
         if (xhr.upload) xhr.upload.dispatchEvent(new ProgressEvent('progress', { loaded: 100, total: 100 }));
 
-        // PUT part returns 200 with ETag header
         fakeXHRResponse(xhr, 200, '', null, { 'ETag': FAKE_ETAG });
-        debugLog(' Multipart part upload response sent');
+        debugLog('Multipart part upload response sent');
       }, 50);
       return;
     }
 
     // === Intercept OSS multipart: POST ?uploadId= (complete) ===
     if (shouldInterceptOSS(url) && method === 'POST' && url.includes('uploadId=') && !url.includes('uploads')) {
-      debugLog(' Intercepting multipart complete');
+      debugLog('Intercepting multipart complete');
 
       setTimeout(() => {
-        // Extract key from URL for response
         const keyMatch = url.match(/\/upload\/([^?]+)/);
         const key = keyMatch ? keyMatch[1] : 'fake.jpg';
 
-        // OSS returns XML with final location
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <CompleteMultipartUploadResult>
   <Location>https://pixverse-fe-upload.oss-accelerate.aliyuncs.com/upload/${key}</Location>
@@ -137,13 +157,49 @@
 </CompleteMultipartUploadResult>`;
 
         fakeXHRResponse(xhr, 200, xml);
-        debugLog(' Multipart complete response sent');
+        debugLog('Multipart complete response sent');
       }, 30);
       return;
     }
 
     // Not intercepting - pass through
     return originalXHRSend.call(this, body);
+  };
+
+  // === Intercept fetch (Pixverse may use fetch instead of XHR for uploads) ===
+  const originalFetch = window.fetch;
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input?.url || '');
+    const method = (init?.method || 'GET').toUpperCase();
+
+    if (window.__pxs7UploadInProgress && method === 'POST') {
+      debugLog('fetch POST during upload:', url);
+    }
+
+    if (window.__pxs7PendingImageUrl && method === 'POST' && url.includes('batch_upload_media')) {
+      const urlToReturn = window.__pxs7PendingImageUrl;
+      debugLog('Intercepting batch_upload_media (fetch), returning:', urlToReturn);
+
+      window.__pxs7PendingImageUrl = null;
+      window.__pxs7FakeUploadId = null;
+
+      const responseObj = buildBatchUploadResponse(urlToReturn);
+      debugLog('batch_upload_media fetch response:', responseObj);
+
+      // Return a fake Response after a short delay
+      return new Promise((resolve) => {
+        setTimeout(() => {
+          resolve(new Response(JSON.stringify(responseObj), {
+            status: 200,
+            statusText: 'OK',
+            headers: { 'Content-Type': 'application/json' }
+          }));
+          signalUploadComplete(urlToReturn);
+        }, 50);
+      });
+    }
+
+    return originalFetch.apply(this, arguments);
   };
 
   // Helper to fake XHR response
@@ -178,7 +234,6 @@
       ...headers
     };
     xhr.getResponseHeader = function(name) {
-      // Case-insensitive header lookup
       const key = Object.keys(defaultHeaders).find(k => k.toLowerCase() === name.toLowerCase());
       return key ? defaultHeaders[key] : null;
     };
@@ -186,25 +241,28 @@
       return Object.entries(defaultHeaders).map(([k, v]) => `${k}: ${v}`).join('\r\n');
     };
 
-    // Fire events
+    // Fire events - dispatchEvent already triggers on* property handlers,
+    // so we must NOT call them explicitly (would cause double-processing)
     xhr.dispatchEvent(new Event('readystatechange'));
     xhr.dispatchEvent(new ProgressEvent('progress', { loaded: 100, total: 100 }));
     xhr.dispatchEvent(new Event('load'));
     xhr.dispatchEvent(new Event('loadend'));
-
-    if (xhr.onreadystatechange) xhr.onreadystatechange();
-    if (xhr.onload) xhr.onload(new Event('load'));
-    if (xhr.onloadend) xhr.onloadend(new Event('loadend'));
   }
 
   // Listen for messages from content script
   window.addEventListener('__pxs7SetPendingUrl', function(e) {
     window.__pxs7PendingImageUrl = e.detail;
     window.__pxs7FakeUploadId = null;
-    debugLog(' Pending URL set:', e.detail);
+    window.__pxs7UploadInProgress = true;
+    debugLog('Pending URL set:', e.detail);
   });
 
-  debugLog(' Upload interceptor installed (multipart support)');
+  // Auto-clear upload-in-progress flag after timeout
+  window.addEventListener('__pxs7SetPendingUrl', function() {
+    setTimeout(() => { window.__pxs7UploadInProgress = false; }, 10000);
+  });
+
+  debugLog('Upload interceptor installed (multipart + fetch support)');
   } catch (e) {
     console.error('[PixSim7] Upload interceptor failed:', e);
   }

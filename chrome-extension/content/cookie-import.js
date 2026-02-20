@@ -79,6 +79,54 @@ async function _cookieImport_extractRawData(providerId, config) {
     }
   }
 
+  // For Remaker: capture JWT token + product headers from network requests
+  if (providerId === 'remaker') {
+    requestSessionDataRefresh();
+
+    let remarkerData = getRemakerSessionData();
+    let retries = 0;
+    const maxRetries = 5;
+
+    while (!remarkerData.token && retries < maxRetries) {
+      await new Promise(r => setTimeout(r, 300));
+      if (retries > 0) {
+        requestSessionDataRefresh();
+      }
+      remarkerData = getRemakerSessionData();
+      retries++;
+    }
+
+    // The raw JWT captured from the authorization header or localStorage.userInfo
+    if (remarkerData.token) {
+      data.token = remarkerData.token;
+    }
+    // Product headers needed by the Remaker API
+    if (remarkerData.productSerial) {
+      data.product_serial = remarkerData.productSerial;
+    }
+    if (remarkerData.productCode) {
+      data.product_code = remarkerData.productCode;
+    }
+    // Fresh account data from get-userinfo response
+    if (remarkerData.email) {
+      data.email = remarkerData.email;
+    }
+    if (remarkerData.userId) {
+      data.userId = remarkerData.userId;
+    }
+    if (remarkerData.credits != null) {
+      data.credits = remarkerData.credits;
+    }
+
+    debugLogCookies('Captured Remaker session data:', {
+      hasToken: !!remarkerData.token,
+      hasProductSerial: !!remarkerData.productSerial,
+      hasProductCode: !!remarkerData.productCode,
+      hasCredits: remarkerData.credits != null,
+      retries,
+    });
+  }
+
   // For Pixverse: capture session identifiers for session sharing
   // These allow backend to appear as the same session as the browser,
   // preventing "logged in elsewhere" errors

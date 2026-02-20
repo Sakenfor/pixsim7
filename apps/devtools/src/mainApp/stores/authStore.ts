@@ -1,1 +1,3 @@
-export { useAuthStore } from '../../../../main/src/stores/authStore';
+import '../lib/auth/authService';
+
+export { useAuthStore, type AuthState } from '@pixsim7/shared.auth.core';

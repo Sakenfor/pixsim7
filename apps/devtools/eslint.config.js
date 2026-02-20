@@ -20,6 +20,10 @@ export default [
               message:
                 'Devtools should import from @pixsim7/* or @devtools/*, not main app aliases.',
             },
+            {
+              group: ['@pixsim7/shared.api.client/model', '@pixsim7/shared.api.client/model/*'],
+              message: 'Import OpenAPI models from @pixsim7/shared.api.model instead of @pixsim7/shared.api.client/model.',
+            },
           ],
         },
       ],

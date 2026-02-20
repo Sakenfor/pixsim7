@@ -1027,6 +1027,13 @@ class LauncherWindow(QWidget):
             # Clear the last check time to force immediate recheck
             self.health_worker.last_openapi_check.pop(key, None)
             self.health_worker.openapi_status_cache.pop(key, None)
+            # Run an immediate check so the card updates right away (no wait for next poll cycle).
+            sp = self.processes.get(key)
+            if sp and getattr(sp, "health_status", None) == HealthStatus.HEALTHY:
+                try:
+                    self.health_worker._check_openapi_freshness(key, sp)
+                except Exception:
+                    pass
 
     def _generate_openapi_types(self, key: str):
         """Generate OpenAPI types for a service."""
@@ -1066,14 +1073,7 @@ class LauncherWindow(QWidget):
                 if proc.returncode == 0:
                     if _launcher_logger:
                         _launcher_logger.info("openapi_generation_success", url=defn.openapi_url)
-                    # Update cache and refresh status
-                    try:
-                        from .openapi_checker import update_schema_cache
-                        if defn.openapi_types_path:
-                            update_schema_cache(defn.openapi_url, defn.openapi_types_path)
-                    except Exception:
-                        pass
-                    # Trigger refresh
+                    # Trigger refresh (freshness uses pnpm openapi:check)
                     self._refresh_openapi_status(key)
                 else:
                     if _launcher_logger:

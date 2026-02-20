@@ -18,6 +18,7 @@ const PROVIDER_AUTH_COOKIE_HINTS = {
   sora: ['__Secure-next-auth.session-token'],
   runway: ['session'],
   pika: ['auth_token'],
+  remaker: [],  // No auth cookie; JWT lives in localStorage.userInfo
 };
 
 // Timing constants

@@ -6,19 +6,17 @@ Used by the launcher GUI to show freshness status on service cards.
 
 Delegates to `pnpm openapi:check` for actual freshness verification.
 """
-import hashlib
-import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
-from dataclasses import dataclass
 
 try:
-    from .config import ROOT
+    from .config import ROOT, service_env
 except ImportError:
-    from config import ROOT
+    from config import ROOT, service_env
 
 
 class OpenAPIStatus(Enum):
@@ -38,14 +36,85 @@ class OpenAPICheckResult:
     file_hash: Optional[str] = None
 
 
-def _compute_schema_hash(schema_json: str) -> str:
-    """Compute a stable hash of an OpenAPI schema."""
+def _resolve_types_dir(types_path: str) -> str:
+    return os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
+
+
+def _probe_openapi_url(openapi_url: str, timeout: float) -> Optional[OpenAPICheckResult]:
+    """Pre-flight OpenAPI endpoint availability before running pnpm check."""
+    import urllib.error
+    import urllib.request
+
     try:
-        parsed = json.loads(schema_json)
-        normalized = json.dumps(parsed, sort_keys=True, separators=(',', ':'))
-        return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]
-    except json.JSONDecodeError:
-        return hashlib.sha256(schema_json.encode('utf-8')).hexdigest()[:16]
+        req = urllib.request.Request(openapi_url, method='GET')
+        req.add_header('Accept', 'application/json')
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            if response.status != 200:
+                return OpenAPICheckResult(
+                    status=OpenAPIStatus.UNAVAILABLE,
+                    message=f"OpenAPI endpoint returned status {response.status}",
+                )
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return OpenAPICheckResult(
+                status=OpenAPIStatus.NO_OPENAPI,
+                message="Service does not expose OpenAPI at the configured endpoint",
+            )
+        return OpenAPICheckResult(
+            status=OpenAPIStatus.UNAVAILABLE,
+            message=f"Failed to fetch schema: HTTP {e.code}",
+        )
+    except urllib.error.URLError as e:
+        return OpenAPICheckResult(
+            status=OpenAPIStatus.UNAVAILABLE,
+            message=f"Failed to fetch schema: {e.reason}",
+        )
+    except Exception as e:
+        return OpenAPICheckResult(
+            status=OpenAPIStatus.UNAVAILABLE,
+            message=f"Failed to fetch schema: {e}",
+        )
+
+    return None
+
+
+def _run_openapi_check(openapi_url: str, types_dir: str, timeout: float) -> tuple[int, str]:
+    pnpm_cmd = "pnpm.cmd" if sys.platform == "win32" else "pnpm"
+    env = service_env()
+    env['OPENAPI_URL'] = openapi_url
+    env['OPENAPI_TYPES_OUT'] = types_dir
+    env['OPENAPI_ORVAL_OUT'] = types_dir
+
+    # openapi:check runs Orval + directory comparison, so allow longer than HTTP probe.
+    process_timeout = max(10.0, timeout * 10.0)
+    proc = subprocess.run(
+        [pnpm_cmd, "-s", "openapi:check"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=process_timeout,
+    )
+    output = "\n".join(part for part in [proc.stdout.strip(), proc.stderr.strip()] if part).strip()
+    return proc.returncode, output
+
+
+def _is_stale_output(output: str) -> bool:
+    if not output:
+        return False
+
+    lowered = output.lower()
+    markers = (
+        "[stale]",
+        "is stale",
+        "run `pnpm openapi:gen`",
+        "run 'pnpm openapi:gen'",
+        "content mismatch",
+        "file count mismatch",
+        "file list mismatch",
+        "output directory does not exist",
+    )
+    return any(marker in lowered for marker in markers)
 
 
 def check_openapi_freshness(
@@ -55,8 +124,8 @@ def check_openapi_freshness(
 ) -> OpenAPICheckResult:
     """Check if generated types are fresh compared to live OpenAPI schema.
 
-    Uses the Orval model directory for checking. The types_path should point
-    to packages/shared/api/client/src/generated/openapi or similar.
+    Uses `pnpm openapi:check` with service-specific environment variables so
+    status matches the same logic used by the CLI and CI checks.
 
     Args:
         openapi_url: URL to fetch OpenAPI JSON (e.g., http://localhost:8000/openapi.json)
@@ -66,109 +135,51 @@ def check_openapi_freshness(
     Returns:
         OpenAPICheckResult with status and details
     """
-    import urllib.request
-    import urllib.error
+    abs_types_dir = _resolve_types_dir(types_path)
 
-    # Resolve types path — check the model barrel file
-    abs_types_dir = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
-    model_barrel = os.path.join(abs_types_dir, 'model', 'index.ts')
+    # Distinguish "service unavailable" from stale output before running pnpm.
+    probe_failure = _probe_openapi_url(openapi_url, timeout=timeout)
+    if probe_failure is not None:
+        return probe_failure
 
-    if not os.path.exists(model_barrel):
-        return OpenAPICheckResult(
-            status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Model barrel not found: {model_barrel}"
-        )
-
-    # Compute hash of existing model barrel as file_hash
     try:
-        with open(model_barrel, 'r', encoding='utf-8') as f:
-            barrel_content = f.read()
-        file_hash = hashlib.sha256(barrel_content.encode('utf-8')).hexdigest()[:16]
-    except Exception as e:
+        code, output = _run_openapi_check(openapi_url, abs_types_dir, timeout=timeout)
+    except FileNotFoundError:
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Failed to read model barrel: {e}"
+            message="pnpm is not available in PATH",
         )
-
-    # Fetch live OpenAPI schema
-    try:
-        req = urllib.request.Request(openapi_url, method='GET')
-        req.add_header('Accept', 'application/json')
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            live_schema = response.read().decode('utf-8')
-    except urllib.error.URLError as e:
+    except subprocess.TimeoutExpired:
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Failed to fetch schema: {e.reason}",
-            file_hash=file_hash
+            message="openapi:check timed out",
         )
     except Exception as e:
         return OpenAPICheckResult(
             status=OpenAPIStatus.UNAVAILABLE,
-            message=f"Failed to fetch schema: {e}",
-            file_hash=file_hash
+            message=f"Failed to run openapi:check: {e}",
         )
 
-    live_hash = _compute_schema_hash(live_schema)
-
-    # Check schema hash cache
-    cache_path = os.path.join(abs_types_dir, '.schema-hash')
-    cached_hash = None
-
-    if os.path.exists(cache_path):
-        try:
-            with open(cache_path, 'r') as f:
-                cached_hash = f.read().strip()
-        except Exception:
-            pass
-
-    if cached_hash == live_hash:
+    if code == 0:
         return OpenAPICheckResult(
             status=OpenAPIStatus.FRESH,
             message="Types are up-to-date",
-            live_hash=live_hash,
-            file_hash=file_hash
         )
-    elif cached_hash is None:
-        return OpenAPICheckResult(
-            status=OpenAPIStatus.UNAVAILABLE,
-            message="No schema cache - run 'pnpm openapi:gen' to establish baseline",
-            live_hash=live_hash,
-            file_hash=file_hash
-        )
-    else:
+
+    if _is_stale_output(output):
         return OpenAPICheckResult(
             status=OpenAPIStatus.STALE,
-            message="Schema has changed - run 'pnpm openapi:gen' to update",
-            live_hash=live_hash,
-            file_hash=file_hash
+            message="Schema/types are out of date - run 'pnpm openapi:gen'",
         )
+
+    details = output.splitlines()[0] if output else f"openapi:check exited with code {code}"
+    return OpenAPICheckResult(
+        status=OpenAPIStatus.UNAVAILABLE,
+        message=f"openapi:check failed: {details}",
+    )
 
 
 def update_schema_cache(openapi_url: str, types_path: str, timeout: float = 2.0) -> bool:
-    """Update the schema hash cache after regenerating types.
-
-    Call this after running 'pnpm openapi:gen' to update the cached hash.
-
-    Returns:
-        True if cache was updated successfully
-    """
-    import urllib.request
-
-    abs_types_dir = os.path.join(ROOT, types_path) if not os.path.isabs(types_path) else types_path
-    cache_path = os.path.join(abs_types_dir, '.schema-hash')
-
-    try:
-        req = urllib.request.Request(openapi_url, method='GET')
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            live_schema = response.read().decode('utf-8')
-
-        live_hash = _compute_schema_hash(live_schema)
-
-        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-        with open(cache_path, 'w') as f:
-            f.write(live_hash)
-
-        return True
-    except Exception:
-        return False
+    """Deprecated no-op kept for backward compatibility with launcher callers."""
+    _ = (openapi_url, types_path, timeout)
+    return True
