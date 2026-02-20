@@ -18,16 +18,12 @@ import {
   LOCAL_MEDIA_CARD_PRESET,
   type LocalGroupMode,
 } from './constants';
-import { isAssetInFolderScope } from './utils';
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
-  displayAssets: LocalAsset[];
   localFilterDefs: ClientFilterDef<LocalAsset>[];
   groupMode: LocalGroupMode;
   selectGroupMode: (next: LocalGroupMode) => void;
-  isSidebarCollapsed: boolean;
-  toggleSidebar: () => void;
   favoriteFoldersSet: ReadonlySet<string>;
   layout: 'masonry' | 'grid';
   cardSize: number;
@@ -43,6 +39,7 @@ export interface LocalFoldersContentProps {
   getHashStatus: (asset: LocalAsset) => 'unique' | 'duplicate' | 'hashing' | undefined;
   openAssetInViewer: (asset: LocalAsset, viewerItems: LocalAsset[], resolvedPreviewUrl?: string) => Promise<void>;
   handleUpload: (asset: LocalAsset) => void;
+  handleUploadToProvider: (asset: LocalAsset, providerId: string) => Promise<void>;
   getIsFavorite: (asset: LocalAsset) => boolean;
   handleToggleFavorite: (asset: LocalAsset) => Promise<void>;
   getLocalMediaCardActions: (asset: LocalAsset) => MediaCardActions;
@@ -55,12 +52,9 @@ export interface LocalFoldersContentProps {
 
 export function LocalFoldersContent({
   controller,
-  displayAssets,
   localFilterDefs,
   groupMode,
   selectGroupMode,
-  isSidebarCollapsed,
-  toggleSidebar,
   favoriteFoldersSet,
   layout,
   cardSize,
@@ -75,6 +69,7 @@ export function LocalFoldersContent({
   getHashStatus,
   openAssetInViewer,
   handleUpload,
+  handleUploadToProvider,
   getIsFavorite,
   handleToggleFavorite,
   getLocalMediaCardActions,
@@ -104,6 +99,7 @@ export function LocalFoldersContent({
           openAssetInViewer(asset, viewerItems, resolvedPreviewUrl)
         }
         onUpload={handleUpload}
+        onUploadToProvider={handleUploadToProvider}
         getIsFavorite={getIsFavorite}
         onToggleFavorite={handleToggleFavorite}
         getActions={getLocalMediaCardActions}
@@ -127,6 +123,7 @@ export function LocalFoldersContent({
       getUploadState,
       handleToggleFavorite,
       handleUpload,
+      handleUploadToProvider,
       getLocalMediaCardActions,
       layout,
       openAssetInViewer,
@@ -173,12 +170,6 @@ export function LocalFoldersContent({
     </div>
   );
 
-  const folderEmptyState = (
-    <GalleryEmptyState
-      icon="folder"
-      title="No files in this folder"
-    />
-  );
   const filteredEmptyState = (
     <GalleryEmptyState
       icon="search"
@@ -190,17 +181,13 @@ export function LocalFoldersContent({
     <GalleryEmptyState
       icon="folder"
       title="Choose a folder to start"
-      description="Pick a folder in filters or open the folders sidebar."
+      description="Pick a folder from the Folder filter above."
     />
   );
 
   const renderMainContent = (galleryAssets: LocalAsset[]) => {
     if (controller.assets.length === 0) {
       return noFoldersEmptyState;
-    }
-
-    if (controller.selectedFolderPath && displayAssets.length === 0) {
-      return folderEmptyState;
     }
 
     if (galleryAssets.length === 0) {
@@ -233,18 +220,6 @@ export function LocalFoldersContent({
 
   return (
     <div ref={contentScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-6">
-      {isSidebarCollapsed && (
-        <div className="mb-3">
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-          >
-            <Icons.folderTree size={14} />
-            Show folders sidebar
-          </button>
-        </div>
-      )}
       <ClientFilteredGallerySection<LocalAsset>
         items={controller.assets}
         filterDefs={localFilterDefs}
@@ -282,18 +257,13 @@ export function LocalFoldersContent({
           const folderSelection = filterState.folder;
           const hasFolderFilterSelection = Array.isArray(folderSelection) && folderSelection.length > 0;
           const hasFavoriteFolderScope = filterState.favorite_folders === true && favoriteFoldersSet.size > 0;
-          const hasFolderScope =
-            !!controller.selectedFolderPath || hasFolderFilterSelection || hasFavoriteFolderScope;
+          const hasFolderScope = hasFolderFilterSelection || hasFavoriteFolderScope;
 
           if (controller.assets.length > 0 && !hasFolderScope) {
             return chooseFolderEmptyState;
           }
 
-          const scopedFilteredAssets = controller.selectedFolderPath
-            ? filteredDisplayAssets.filter((asset) =>
-                isAssetInFolderScope(asset, controller.selectedFolderPath || ''))
-            : filteredDisplayAssets;
-          return renderMainContent(scopedFilteredAssets);
+          return renderMainContent(filteredDisplayAssets);
         }}
       </ClientFilteredGallerySection>
     </div>

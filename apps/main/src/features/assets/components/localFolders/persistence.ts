@@ -23,25 +23,6 @@ export function writeStoredGroupMode(value: LocalGroupMode): void {
   }
 }
 
-export function readStoredScrollTop(key: string): number {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return 0;
-    const value = Number(raw);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  } catch {
-    return 0;
-  }
-}
-
-export function writeStoredScrollTop(key: string, scrollTop: number): void {
-  try {
-    localStorage.setItem(key, String(Math.max(0, Math.round(scrollTop))));
-  } catch {
-    // Best effort persistence only
-  }
-}
-
 export function readStoredContentScrollByScope(): ContentScrollByScope {
   try {
     const raw = localStorage.getItem(CONTENT_SCROLL_BY_SCOPE_KEY);
@@ -66,24 +47,6 @@ export function readStoredContentScrollByScope(): ContentScrollByScope {
 export function writeStoredContentScrollByScope(value: ContentScrollByScope): void {
   try {
     localStorage.setItem(CONTENT_SCROLL_BY_SCOPE_KEY, JSON.stringify(value));
-  } catch {
-    // Best effort persistence only
-  }
-}
-
-export function readStoredBoolean(key: string, fallback = false): boolean {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw === null) return fallback;
-    return raw === '1' || raw === 'true';
-  } catch {
-    return fallback;
-  }
-}
-
-export function writeStoredBoolean(key: string, value: boolean): void {
-  try {
-    localStorage.setItem(key, value ? '1' : '0');
   } catch {
     // Best effort persistence only
   }

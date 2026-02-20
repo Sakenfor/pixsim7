@@ -22,13 +22,11 @@ export interface UseLocalFolderCallbacksParams {
     previews: Record<string, string>,
     fullUrl?: string,
   ) => void;
-  displayAssets: LocalAsset[];
 }
 
 export function useLocalFolderCallbacks({
   controller,
   openLocalAsset,
-  displayAssets,
 }: UseLocalFolderCallbacksParams) {
   const toast = useToast();
   const {
@@ -37,6 +35,7 @@ export function useLocalFolderCallbacks({
     queueVideoExtend,
     queueAddToTransition,
     queueAutoGenerate,
+    quickGenerate,
   } = useMediaGenerationActions();
 
   const controllerPreviews = controller.previews;
@@ -179,16 +178,27 @@ export function useLocalFolderCallbacks({
     [openLocalAsset, controllerPreviews, controllerGetFileForAsset]
   );
 
-  const handleTreeOpen = useCallback(
-    async (asset: LocalAsset, resolvedPreviewUrl?: string) => {
-      await openAssetInViewer(asset, displayAssets, resolvedPreviewUrl);
-    },
-    [openAssetInViewer, displayAssets],
-  );
-
   const handleUpload = useCallback(
     (asset: LocalAsset) => controllerUploadOne(asset),
     [controllerUploadOne]
+  );
+
+  const handleUploadToProvider = useCallback(
+    async (asset: LocalAsset, providerId: string) => {
+      try {
+        if (providerId === 'library') {
+          await controllerUploadOne(asset);
+          toast.success('Saved to library');
+        } else {
+          await controller.uploadOneToProvider(asset, providerId);
+          toast.success(`Uploaded to ${providerId}`);
+        }
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : 'Upload failed';
+        toast.error(message);
+      }
+    },
+    [controller, controllerUploadOne, toast],
   );
 
   const getIsFavorite = useCallback(
@@ -276,7 +286,11 @@ export function useLocalFolderCallbacks({
       }
       : undefined,
     onQuickAdd: undefined,
+    onQuickGenerate: asset.last_upload_asset_id != null
+      ? () => quickGenerate(toGenerationInputAsset(asset))
+      : undefined,
   }), [
+    quickGenerate,
     queueAddToTransition,
     queueAutoGenerate,
     queueImageToImage,
@@ -298,8 +312,8 @@ export function useLocalFolderCallbacks({
     getHashFilterState,
     getHashStatus,
     openAssetInViewer,
-    handleTreeOpen,
     handleUpload,
+    handleUploadToProvider,
     getIsFavorite,
     handleToggleFavorite,
     toGenerationInputAsset,
