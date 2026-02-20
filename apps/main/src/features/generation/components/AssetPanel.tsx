@@ -14,9 +14,11 @@ import { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback } fr
 import { useDockviewId } from '@lib/dockview';
 import { getArrayParamLimits, type ParamSpec } from '@lib/generation-ui';
 import { Icon } from '@lib/icons';
+import { createBadgeWidget } from '@lib/ui/overlay';
 
-import { getAssetDisplayUrls } from '@features/assets';
+import { getAssetDisplayUrls, uploadAssetToProvider } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared';
+import { needsUploadToProvider } from '@features/assets/lib/resolveUploadTarget';
 import {
   CAP_ASSET_INPUT,
   useProvideCapability,
@@ -34,9 +36,9 @@ import {
 } from '@features/generation/lib/quickGenerateComponentSettings';
 import { useResolveComponentSettings, getInstanceId, useScopeInstanceId, resolveCapabilityScopeFromScopeInstanceId, usePanelInstanceSettingsStore, GENERATION_SCOPE_ID } from '@features/panels';
 import { useQuickGenerateController } from '@features/prompts';
+import { useProviderIdForModel } from '@features/providers';
 import { useWorkspaceStore } from '@features/workspace';
 
-import { useCompositionPackageStore } from '@/stores/compositionPackageStore';
 import { OPERATION_METADATA } from '@/types/operations';
 
 import { useRecentGenerations } from '../hooks/useRecentGenerations';
@@ -44,10 +46,6 @@ import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 import { useGenerationsStore } from '../stores/generationsStore';
 
 import { FLEXIBLE_OPERATIONS, EMPTY_INPUTS, type QuickGenPanelProps } from './quickGenPanelTypes';
-
-function getAssetTagStrings(asset: { tags?: Array<{ slug?: string; name?: string }> }): string[] {
-  return (asset.tags ?? []).map(t => t.slug ?? t.name ?? '').filter(Boolean);
-}
 
 export function AssetPanel(props: QuickGenPanelProps) {
   const ctx = props.context;
@@ -61,7 +59,37 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const capabilityScope = resolveCapabilityScopeFromScopeInstanceId(scopeInstanceId);
 
   // Subscribe to scoped input store for live input data
-  const { useInputStore } = useGenerationScopeStores();
+  const { useInputStore, useSessionStore, useSettingsStore } = useGenerationScopeStores();
+
+  // Resolve effective provider ID (same pattern as GenerationButtonGroupContent)
+  const scopedProviderId = useSessionStore((s) => s.providerId);
+  const activeModel = useSettingsStore((s) => s.params?.model as string | undefined);
+  const inferredProviderId = useProviderIdForModel(activeModel);
+  const effectiveProviderId = scopedProviderId ?? inferredProviderId;
+
+  // Track per-asset upload state and locally completed uploads
+  const [uploadingAssetIds, setUploadingAssetIds] = useState<Set<number>>(() => new Set());
+  const [uploadedAssetIds, setUploadedAssetIds] = useState<Set<number>>(() => new Set());
+
+  const handleUploadToProvider = useCallback(async (assetId: number) => {
+    if (!effectiveProviderId) return;
+    setUploadingAssetIds((prev) => new Set(prev).add(assetId));
+    try {
+      await uploadAssetToProvider(assetId, effectiveProviderId);
+      setUploadedAssetIds((prev) => new Set(prev).add(assetId));
+    } finally {
+      setUploadingAssetIds((prev) => {
+        const next = new Set(prev);
+        next.delete(assetId);
+        return next;
+      });
+    }
+  }, [effectiveProviderId]);
+
+  // Reset uploaded tracking when provider changes
+  useEffect(() => {
+    setUploadedAssetIds(new Set());
+  }, [effectiveProviderId]);
 
   // History state
   const historyTriggerRef = useRef<HTMLButtonElement>(null);
@@ -308,10 +336,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
   const operationInputIndex = ctx?.operationInputIndex ?? storeInputIndex;
   const cycleInputs = ctx?.cycleInputs ?? storeCycleInputs;
   const setOperationInputIndex = ctx?.setOperationInputIndex ?? ((idx: number) => storeSetInputIndex(operationType, idx));
-  const isOverLimit = maxAssetItems !== null && operationInputs.length > maxAssetItems;
-  const overLimitCount = isOverLimit && maxAssetItems !== null
-    ? Math.max(0, operationInputs.length - maxAssetItems)
-    : 0;
+
 
   const orderedInputs = useMemo(() => {
     if (!operationInputs.length) return [];
@@ -395,39 +420,67 @@ export function AssetPanel(props: QuickGenPanelProps) {
   }, []);
 
   const isFusionOperation = operationType === 'fusion';
-  const inferRoleFromTags = useCompositionPackageStore(s => s.inferRoleFromTags);
 
   const buildFusionRoleOverlay = useCallback(
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     (item: InputItem, slotIdx: number) => {
       if (!isFusionOperation) return undefined;
-      const resolvedRole =
-        item.roleOverride
-        ?? inferRoleFromTags?.(getAssetTagStrings(item.asset))
-        ?? (slotIdx === 0 ? 'environment' : 'main_character');
-      const isEnvironment = resolvedRole === 'environment';
+
+      // Three-state cycle: none → main_character → environment → none
+      const currentRole = item.roleOverride; // undefined = simple mode (no role)
+
+      const nextRole =
+        currentRole === undefined ? 'main_character'
+        : currentRole === 'main_character' ? 'environment'
+        : undefined; // environment → none
+
+      const title =
+        currentRole === undefined ? 'No role (simple mode) — click to assign Character'
+        : currentRole === 'main_character' ? 'Character — click to switch to Background'
+        : 'Background — click to clear role';
+
+      const iconName =
+        currentRole === 'environment' ? 'image'
+        : currentRole === 'main_character' ? 'user'
+        : 'minus';
+
+      const bgClass =
+        currentRole === undefined
+          ? 'bg-black/40'
+          : 'bg-black/70';
+
       return (
         <button
           type="button"
-          className="cq-badge-xs cq-inset-br absolute rounded-full bg-black/70 text-white pointer-events-auto cursor-pointer hover:bg-black/90 transition-colors"
-          title={isEnvironment ? 'Background — click to switch to Character' : 'Character — click to switch to Background'}
+          className={`cq-badge-xs cq-inset-br absolute rounded-full pointer-events-auto cursor-pointer hover:bg-black/90 transition-colors ${bgClass}`}
+          title={title}
           onClick={(e) => {
             e.stopPropagation();
-            storeUpdateRoleOverride(
-              operationType,
-              item.id,
-              isEnvironment ? 'main_character' : 'environment',
-            );
+            storeUpdateRoleOverride(operationType, item.id, nextRole);
           }}
         >
-          <Icon
-            name={isEnvironment ? 'image' : 'user'}
-            size={10}
-            color="#fff"
-          />
+          <Icon name={iconName} size={10} color="#fff" />
         </button>
       );
     },
-    [isFusionOperation, inferRoleFromTags, storeUpdateRoleOverride, operationType],
+    [isFusionOperation, storeUpdateRoleOverride, operationType],
+  );
+
+  // Reusable warning badge widget for cards (over-limit, etc.)
+  const buildWarningWidget = useCallback(
+    (tooltip: string) => [createBadgeWidget({
+      id: 'card-warning',
+      position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
+      visibility: { trigger: 'always', transition: 'none' },
+      variant: 'icon',
+      icon: 'alertTriangle',
+      color: 'amber',
+      shape: 'circle',
+      tooltip,
+      priority: 25,
+      className: '!bg-amber-500/90 !text-white',
+    })],
+    [],
   );
 
   const hasAsset = displayAssets.length > 0;
@@ -706,26 +759,10 @@ export function AssetPanel(props: QuickGenPanelProps) {
     </Dropdown>
   );
 
-  const limitLabel = maxAssetItems && operationMeta?.multiAssetMode !== 'single' ? (
-    <div
-      className={`text-[10px] font-medium ${
-        isOverLimit ? 'text-amber-600 dark:text-amber-400' : 'text-neutral-500 dark:text-neutral-400'
-      }`}
-      title={
-        isOverLimit
-          ? `Only the first ${maxAssetItems} assets will be used (remove ${overLimitCount}).`
-          : `Max ${maxAssetItems} assets for this model.`
-      }
-    >
-      Max {maxAssetItems} assets
-    </div>
-  ) : null;
-
   // Header bar with history and settings buttons grouped on right
   const headerBar = (
     <>
-      <div className="relative flex items-center justify-between gap-1 px-2 py-1 shrink-0">
-        {limitLabel ?? <div />}
+      <div className="relative flex items-center justify-end gap-1 px-2 py-1 shrink-0">
         <div className="flex items-center gap-1">
           {resolvedDisplayMode === 'carousel' && operationInputs.length > 0 && (
             <div
@@ -788,10 +825,11 @@ export function AssetPanel(props: QuickGenPanelProps) {
                 return (
                   <div
                     key={`empty-${idx}`}
-                    className={`${wrapperClasses} ${isClamped ? 'opacity-40' : ''} border border-dashed ${
+                    className={`${wrapperClasses} border border-dashed ${
+                      isClamped ? 'border-red-500/50' :
                       isDragOver ? 'border-accent ring-2 ring-accent/60' :
                       isArmed ? 'border-accent ring-2 ring-accent/60' : 'border-neutral-300 dark:border-neutral-700'
-                    } rounded-md flex items-center justify-center transition-shadow`}
+                    } rounded-md flex items-center justify-center ${!isClamped ? 'transition-shadow' : ''}`}
                     onClick={() => {
                       if (isClamped) return;
                       setArmedSlot(operationType, isArmed ? undefined : idx);
@@ -815,8 +853,8 @@ export function AssetPanel(props: QuickGenPanelProps) {
                       {idx + 1}
                     </div>
                     {isClamped && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/40 text-white text-[10px] font-semibold z-10 pointer-events-none">
-                        Exceeds limit
+                      <div className="cq-btn-md cq-inset-tr-md absolute rounded-full bg-amber-500/90 flex items-center justify-center z-10" title={`Over limit — only the first ${maxAssetItems} assets will be used`}>
+                        <Icon name="alertTriangle" size={12} variant="default" className="text-white" />
                       </div>
                     )}
                   </div>
@@ -829,7 +867,7 @@ export function AssetPanel(props: QuickGenPanelProps) {
               return (
                 <div
                   key={inputItem.id ?? idx}
-                  className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isClamped ? 'opacity-50' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} ${!isClamped ? 'cursor-grab' : ''} transition-shadow`}
+                  className={`${wrapperClasses} ${isSelected ? 'quickgen-asset-selected' : ''} ${isDragOver ? 'ring-2 ring-accent' : ''} ${isDragging ? 'opacity-40' : ''} ${!isClamped ? 'cursor-grab transition-shadow' : ''}`}
                   {...(isClamped ? getDropTargetProps(idx) : getDragItemProps(idx))}
                   onClick={() => {
                     if (isClamped) return;
@@ -871,16 +909,16 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     clickToPlay={clickToPlay}
                     disableMotion={isSelected}
                     overlay={buildFusionRoleOverlay(inputItem, idx)}
-                    className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? 'grayscale' : ''}`}
+                    className={`${isSelected ? 'ring-2 ring-accent' : ''} ${isClamped ? '!border-amber-500/70' : ''}`}
+                    extraWidgets={isClamped ? buildWarningWidget(`Over limit — only the first ${maxAssetItems} assets will be used`) : undefined}
+                    {...(needsUploadToProvider(inputItem.asset, effectiveProviderId) && !uploadedAssetIds.has(inputItem.asset.id) ? {
+                      onUploadToProvider: () => handleUploadToProvider(inputItem.asset.id),
+                      uploadingToProvider: uploadingAssetIds.has(inputItem.asset.id),
+                    } : {})}
                   />
                   <div className="cq-badge cq-inset-tl absolute bg-accent text-accent-text font-medium rounded">
                     {idx + 1}
                   </div>
-                  {isClamped && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/50 text-white text-[10px] font-semibold z-10 pointer-events-none">
-                      Exceeds limit
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -910,12 +948,13 @@ export function AssetPanel(props: QuickGenPanelProps) {
 
   const currentAsset = currentInput?.asset ?? displayAssets[0];
   const singleHoverPreview = enableHoverPreview;
+  const singleNeedsUpload = needsUploadToProvider(currentAsset, effectiveProviderId) && !uploadedAssetIds.has(currentAsset.id);
 
   return (
     <div className="h-full w-full flex flex-col">
       {headerBar}
       <div ref={containerRef} className="flex-1 p-2 pt-0">
-        <div className={`relative h-full ${isCurrentClamped ? 'opacity-50' : ''}`}>
+        <div className="relative h-full">
           <CompactAssetCard
             asset={currentAsset}
             showRemoveButton={orderedInputs.length > 0}
@@ -931,10 +970,18 @@ export function AssetPanel(props: QuickGenPanelProps) {
                     updateLockedTimestamp?.(operationType, currentInputId, timestamp)
                 : undefined
             }
-            onGenerate={() => controller.generate(
-              currentInput ? { overrideOperationInputs: [currentInput] } : undefined
+            {...(singleNeedsUpload
+              ? {
+                  onUploadToProvider: () => handleUploadToProvider(currentAsset.id),
+                  uploadingToProvider: uploadingAssetIds.has(currentAsset.id),
+                }
+              : {
+                  onGenerate: () => controller.generate(
+                    currentInput ? { overrideOperationInputs: [currentInput] } : undefined
+                  ),
+                  generating: controller.generating,
+                }
             )}
-            generating={controller.generating}
             hideFooter
             fillHeight
             currentIndex={operationInputIndex}
@@ -947,13 +994,9 @@ export function AssetPanel(props: QuickGenPanelProps) {
             showPlayOverlay={showPlayOverlay}
             clickToPlay={clickToPlay}
             overlay={currentInput ? buildFusionRoleOverlay(currentInput, currentSlotIndex ?? 0) : undefined}
-            className={isCurrentClamped ? 'grayscale' : ''}
+            className={isCurrentClamped ? '!border-amber-500/70' : ''}
+            extraWidgets={isCurrentClamped ? buildWarningWidget(`Over limit — only the first ${maxAssetItems} assets will be used`) : undefined}
           />
-          {isCurrentClamped && (
-            <div className="absolute inset-0 flex items-center justify-center bg-neutral-900/50 text-white text-[10px] font-semibold z-10 pointer-events-none">
-              Exceeds limit
-            </div>
-          )}
         </div>
       </div>
     </div>

@@ -19,7 +19,8 @@ import { createPortal } from 'react-dom';
 
 import { useAssetAutoContextMenu } from '@lib/dockview';
 import { Icon } from '@lib/icons';
-import { OverlayContainer, VideoScrubWidgetRenderer } from '@lib/ui/overlay';
+import { OverlayContainer, VideoScrubWidgetRenderer, createBadgeWidget } from '@lib/ui/overlay';
+import type { OverlayWidget } from '@lib/ui/overlay';
 
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
@@ -29,6 +30,9 @@ import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import type { AssetModel } from '../../types';
+
+/** Stable empty object to avoid busting the useMemo inside useOverlayWidgetsForAsset */
+const STABLE_RUNTIME_PROPS = {};
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -74,10 +78,14 @@ export interface CompactAssetCardProps {
   // Generation shortcut
   onGenerate?: () => void; // "Go" button — triggers generation with this asset
   generating?: boolean; // Whether a generation is currently running
+  // Upload to provider shortcut (replaces generate button when asset isn't on target provider)
+  onUploadToProvider?: () => void | Promise<void>;
+  uploadingToProvider?: boolean;
   // Extension points
   onClick?: () => void; // Custom click handler for the card body
   overlay?: React.ReactNode; // Custom overlay content (absolute-positioned, pointer-events-none)
   hoverActions?: React.ReactNode; // Custom hover overlay replacing default behavior
+  extraWidgets?: OverlayWidget[]; // Additional overlay widgets (participate in collision detection)
 }
 
 export function CompactAssetCard({
@@ -102,9 +110,12 @@ export function CompactAssetCard({
   clickToPlay = false,
   onGenerate,
   generating = false,
+  onUploadToProvider,
+  uploadingToProvider = false,
   onClick,
   overlay,
   hoverActions,
+  extraWidgets,
 }: CompactAssetCardProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -200,7 +211,47 @@ export function CompactAssetCard({
   const { overlayConfig, overlayData } = useOverlayWidgetsForAsset({
     asset,
     context: 'compact',
+    runtimeProps: STABLE_RUNTIME_PROPS,
   });
+
+  // Stable ref for onRemove so widget identity doesn't change every render
+  const onRemoveRef = useRef(onRemove);
+  onRemoveRef.current = onRemove;
+
+  // Build extra widgets from props (remove button, etc.)
+  const cardWidgets = useMemo(() => {
+    const widgets: OverlayWidget[] = [];
+
+    if (showRemoveButton) {
+      widgets.push(createBadgeWidget({
+        id: 'remove-asset',
+        position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
+        visibility: { trigger: 'always', transition: 'none' },
+        variant: 'icon',
+        icon: 'close',
+        color: 'red',
+        shape: 'circle',
+        tooltip: 'Remove',
+        onClick: () => onRemoveRef.current?.(),
+        className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100',
+        priority: 30,
+      }));
+    }
+
+    return widgets;
+  }, [showRemoveButton]);
+
+  // Merge all widgets into one config; enable collision detection only when extra widgets are present
+  const mergedOverlayConfig = useMemo(() => {
+    const hasExtra = cardWidgets.length > 0 || (extraWidgets && extraWidgets.length > 0);
+    return {
+      ...overlayConfig,
+      widgets: hasExtra
+        ? [...overlayConfig.widgets, ...cardWidgets, ...(extraWidgets ?? [])]
+        : overlayConfig.widgets,
+      ...(hasExtra && { collisionDetection: true }),
+    };
+  }, [overlayConfig, cardWidgets, extraWidgets]);
 
   return (
     <div
@@ -217,7 +268,7 @@ export function CompactAssetCard({
       )}
 
       <OverlayContainer
-        configuration={overlayConfig}
+        configuration={mergedOverlayConfig}
         data={overlayData}
         className={`relative bg-neutral-100 dark:bg-neutral-800 cq-scale ${
           fillHeight ? 'h-full' : (aspectSquare || !isVideo ? 'aspect-square' : 'aspect-video')
@@ -274,19 +325,8 @@ export function CompactAssetCard({
           </div>
         )}
 
-        {/* Remove button - top right, scales with container */}
-        {showRemoveButton && onRemove && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onRemove(); }}
-            className="cq-btn-xs cq-inset-tr absolute rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center transition-colors z-20 opacity-70 hover:opacity-100"
-            title="Remove"
-          >
-            <Icon name="close" size={8} variant="default" className="text-white" />
-          </button>
-        )}
-
-        {/* Generate button - bottom left */}
-        {onGenerate && (
+        {/* Generate button - bottom left (hidden when upload-to-provider is needed) */}
+        {!onUploadToProvider && onGenerate && (
           <button
             onClick={(e) => { e.stopPropagation(); onGenerate(); }}
             className="cq-btn-sm cq-inset-bl absolute rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all z-20 opacity-0 group-hover/card:opacity-90 hover:!opacity-100 disabled:opacity-30"
@@ -396,6 +436,22 @@ export function CompactAssetCard({
           document.body
         )}
       </OverlayContainer>
+
+      {/* Upload-to-provider bar — below image to avoid overlapping corner widgets */}
+      {onUploadToProvider && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onUploadToProvider(); }}
+          className="w-full flex items-center justify-center gap-1 py-0.5 bg-accent/90 hover:bg-accent text-accent-text text-[10px] font-medium transition-colors disabled:opacity-40"
+          title="Upload to provider"
+          disabled={uploadingToProvider}
+        >
+          {uploadingToProvider
+            ? <Icon name="loader" size={10} className="animate-spin" />
+            : <Icon name="upload" size={10} />
+          }
+          <span>{uploadingToProvider ? 'Uploading…' : 'Upload'}</span>
+        </button>
+      )}
 
       {/* Footer with basic info */}
       {!hideFooter && (

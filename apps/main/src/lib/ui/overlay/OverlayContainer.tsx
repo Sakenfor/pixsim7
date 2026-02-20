@@ -120,13 +120,15 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       return;
     }
 
+    const containerEl = containerRef.current;
+
     // Run collision detection after render
     const checkCollisions = () => {
-      const containerEl = containerRef.current;
-      if (!containerEl) {
-        return;
-      }
+      if (!containerEl) return;
       const containerRect = containerEl.getBoundingClientRect();
+      // Skip if container hasn't laid out yet
+      if (containerRect.width === 0 && containerRect.height === 0) return;
+
       const result = handleCollisions(config.widgets, containerRect, widgetRefs.current);
 
       if (result.hasCollisions) {
@@ -142,10 +144,20 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       }
     };
 
-    // Check collisions after a short delay to ensure widgets are rendered
+    // Initial check after widgets mount
     const timeoutId = setTimeout(checkCollisions, 100);
 
-    return () => clearTimeout(timeoutId);
+    // Re-check when container size settles (handles deferred layout)
+    let observer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(checkCollisions);
+      observer.observe(containerEl);
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      observer?.disconnect();
+    };
   }, [config.widgets, config.collisionDetection]);
 
   // Create widget context

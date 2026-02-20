@@ -7,6 +7,7 @@
 
 import type { OverlayWidget, WidgetBounds, WidgetPosition, OverlayAnchor } from '../types';
 import { isOverlayPosition } from '../types';
+
 import { calculatePosition, getAdjacentAnchors } from './position';
 
 /**
@@ -41,48 +42,49 @@ export function calculateWidgetBounds(
 ): WidgetBounds {
   const position = calculatePosition(widget.position);
 
-  // If we have the actual element, use its dimensions
-  if (element) {
-    const rect = element.getBoundingClientRect();
-    const containerLeft = containerRect.left;
-    const containerTop = containerRect.top;
-
-    return {
-      id: widget.id,
-      x: rect.left - containerLeft,
-      y: rect.top - containerTop,
-      width: rect.width,
-      height: rect.height,
-    };
-  }
-
-  // Otherwise estimate based on size and position
+  // Use DOM element for accurate size measurement, fall back to estimate.
+  // Hidden widgets (display:none, hover-only when not hovered) report 0×0
+  // from getBoundingClientRect — use the estimate in that case so collision
+  // detection still accounts for them.
   const estimatedSize = typeof widget.style?.size === 'number'
     ? widget.style.size
     : 32; // default size estimate
+  let width: number;
+  let height: number;
 
-  // Parse position to estimate coordinates
+  if (element) {
+    const rect = element.getBoundingClientRect();
+    width = rect.width > 0 ? rect.width : estimatedSize;
+    height = rect.height > 0 ? rect.height : estimatedSize;
+  } else {
+    width = estimatedSize;
+    height = estimatedSize;
+  }
+
+  // Always derive x/y from the *configured* position (not DOM).
+  // Reading DOM coords would reflect previously-adjusted positions, making
+  // collision detection non-idempotent (clears its own adjustments on re-run).
   let x = 0;
   let y = 0;
 
   if (position.left) {
     x = parseFloat(position.left);
   } else if (position.right) {
-    x = containerRect.width - parseFloat(position.right) - estimatedSize;
+    x = containerRect.width - parseFloat(position.right) - width;
   }
 
   if (position.top) {
     y = parseFloat(position.top);
   } else if (position.bottom) {
-    y = containerRect.height - parseFloat(position.bottom) - estimatedSize;
+    y = containerRect.height - parseFloat(position.bottom) - height;
   }
 
   return {
     id: widget.id,
     x,
     y,
-    width: estimatedSize,
-    height: estimatedSize,
+    width,
+    height,
   };
 }
 
@@ -215,6 +217,23 @@ export function resolveCollisions(
 }
 
 /**
+ * Determine the order of axes to try when stacking widgets at the same anchor.
+ *
+ * - Edge anchors (center-left/right) prefer horizontal stacking first.
+ * - Everything else (corners, top/bottom center) prefers vertical first.
+ * - Both axes are always tried — the second is a fallback.
+ */
+function getStackingAxes(anchor: OverlayAnchor): Array<'x' | 'y'> {
+  switch (anchor) {
+    case 'center-left':
+    case 'center-right':
+      return ['x', 'y'];
+    default:
+      return ['y', 'x'];
+  }
+}
+
+/**
  * Try to find a non-colliding position for a widget
  */
 function findNonCollidingPosition(
@@ -251,27 +270,36 @@ function findNonCollidingPosition(
     }
   }
 
-  // If adjacent anchors don't work, try increasing offset
+  // If adjacent anchors don't work, try offset increments at the same anchor.
+  // Primary axis depends on anchor edge — edge widgets stack along the edge,
+  // corner/center widgets default to vertical then horizontal.
+  const axes = getStackingAxes(originalAnchor);
   const offsetIncrements = [16, 32, 48, 64];
 
-  for (const increment of offsetIncrements) {
-    const testPosition: WidgetPosition = {
-      ...widget.position,
-      offset: {
-        x: typeof originalOffset.x === 'number' ? originalOffset.x + increment : originalOffset.x,
-        y: typeof originalOffset.y === 'number' ? originalOffset.y + increment : originalOffset.y,
-      },
-    };
+  for (const axis of axes) {
+    for (const increment of offsetIncrements) {
+      const testPosition: WidgetPosition = {
+        ...widget.position,
+        offset: {
+          x: axis === 'x'
+            ? (typeof originalOffset.x === 'number' ? originalOffset.x + increment : originalOffset.x)
+            : originalOffset.x,
+          y: axis === 'y'
+            ? (typeof originalOffset.y === 'number' ? originalOffset.y + increment : originalOffset.y)
+            : originalOffset.y,
+        },
+      };
 
-    const testWidget = { ...widget, position: testPosition };
-    const testBounds = calculateWidgetBounds(testWidget, containerRect);
+      const testWidget = { ...widget, position: testPosition };
+      const testBounds = calculateWidgetBounds(testWidget, containerRect);
 
-    const hasCollision = occupiedBounds.some((occupied) =>
-      boundsOverlap(testBounds, occupied)
-    );
+      const hasCollision = occupiedBounds.some((occupied) =>
+        boundsOverlap(testBounds, occupied)
+      );
 
-    if (!hasCollision) {
-      return testPosition;
+      if (!hasCollision) {
+        return testPosition;
+      }
     }
   }
 
