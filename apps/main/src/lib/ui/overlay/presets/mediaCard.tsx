@@ -29,8 +29,8 @@ export const defaultPreset: OverlayPreset = {
   name: 'Default',
   icon: '⚖️',
   category: 'media',
-  // Default preset uses all runtime widgets with no special capabilities
-  capabilities: {},
+  // Default preset enables the generation button group for all cards
+  capabilities: { showsGenerationMenu: true, showsQuickGenerate: true },
   configuration: {
     id: 'media-card-default',
     name: 'Default Media Card',
@@ -161,6 +161,7 @@ export const generationPreset: OverlayPreset = {
   // Generation preset shows generation menu, skips upload/tags for focused workflow
   capabilities: {
     showsGenerationMenu: true,
+    showsQuickGenerate: true,
     skipUploadButton: true,
     skipTagsTooltip: true,
   },

@@ -107,6 +107,7 @@ export function useOverlayWidgetsForAsset({
       },
       presetCapabilities: {
         showsGenerationMenu: true,
+        showsQuickGenerate: true,
         ...runtimeProps.presetCapabilities,
       },
       ...runtimeProps,

@@ -6,10 +6,11 @@
  * Supports overlay modes for drawing regions and pose references.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 import { OverlayContainer } from '@lib/ui/overlay';
 
+import { useAssetViewerStore } from '@features/assets';
 import { useAssetRegionStore, useAssetViewerOverlayStore } from '@features/mediaViewer';
 
 import { useOverlayWidgetsForAsset } from '../../hooks/useOverlayWidgetsForAsset';
@@ -147,6 +148,21 @@ export function MediaPanel({ context }: MediaPanelProps) {
     providerId: 'media-panel',
   });
 
+  // Scope state for navigation scope switcher
+  const scopes = useAssetViewerStore((s) => s.scopes);
+  const activeScopeId = useAssetViewerStore((s) => s.activeScopeId);
+  const switchScope = useAssetViewerStore((s) => s.switchScope);
+
+  const scopeItems = useMemo(() =>
+    Object.entries(scopes).map(([id, scope]) => ({
+      id,
+      label: scope.label,
+      count: scope.assets.length,
+      active: id === activeScopeId,
+    })),
+    [scopes, activeScopeId],
+  );
+
   const zoomIn = () => setZoom(Math.min(zoom + 25, 400));
   const zoomOut = () => setZoom(Math.max(zoom - 25, 25));
   const resetZoom = () => setZoom(100);
@@ -215,6 +231,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
                   settings={settings}
                   onCaptureFrame={captureFrame}
                   captureDisabled={isCapturing}
+                  mediaDimensions={mediaDimensions}
                 />
               </div>
             )}
@@ -236,6 +253,7 @@ export function MediaPanel({ context }: MediaPanelProps) {
                   settings={settings}
                   onCaptureFrame={captureFrame}
                   captureDisabled={isCapturing}
+                  mediaDimensions={mediaDimensions}
                 />
               </div>
             )}
@@ -279,6 +297,9 @@ export function MediaPanel({ context }: MediaPanelProps) {
         showCapture={asset?.type === 'video' && activeOverlayId !== 'capture'}
         captureDisabled={isCapturing}
         onCaptureFrame={captureFrame}
+        scopeLabel={activeScopeId ? scopes[activeScopeId]?.label : undefined}
+        scopes={scopeItems.length > 0 ? scopeItems : undefined}
+        onSwitchScope={switchScope}
       />
     </div>
   );

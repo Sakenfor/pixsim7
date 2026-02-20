@@ -325,6 +325,9 @@ export interface PresetCapabilities {
    * Useful for "focus" mode where everything is hidden until hover.
    */
   forceHoverOnly?: boolean;
+
+  /** Whether to show the quick-generate (sparkles) button in the generation button group */
+  showsQuickGenerate?: boolean;
 }
 
 /**
