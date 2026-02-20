@@ -5,7 +5,7 @@
  * Handles panel interactions, retraction, zone management, and dockview integration.
  */
 
-import { getDockviewPanels, type DockviewHost } from '@lib/dockview';
+import { getDockviewHost, getDockviewPanels, type DockviewHost } from '@lib/dockview';
 
 import type {
   PanelMetadata,
@@ -168,8 +168,8 @@ export class PanelManager {
     // Only delegate when the workspace dockview is mounted — during early
     // init restorePanel would fall back to openFloatingPanel which causes
     // unwanted popups on page refresh.
-    const workspaceDockview = this.panels.get('workspace')?.dockview;
-    if (workspaceDockview?.isReady) {
+    const workspaceHost = getDockviewHost('workspace');
+    if (workspaceHost) {
       // Lazy import to avoid circular dependency (workspace → panels → workspace).
       import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
         if (options.zone === 'floating') {
