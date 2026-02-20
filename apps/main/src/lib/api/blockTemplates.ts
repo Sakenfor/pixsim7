@@ -19,6 +19,9 @@ export type {
   UpdateTemplateRequest,
   RollTemplateRequest,
   ListTemplatesQuery,
+  SearchBlocksQuery,
+  PromptBlockResponse,
+  BlockRoleSummary,
 } from '@pixsim7/shared.api.client/domains';
 
 const blockTemplatesApi = createBlockTemplatesApi(pixsimClient);
@@ -32,3 +35,5 @@ export const deleteTemplate = blockTemplatesApi.deleteTemplate;
 export const rollTemplate = blockTemplatesApi.rollTemplate;
 export const previewSlot = blockTemplatesApi.previewSlot;
 export const listBlockPackages = blockTemplatesApi.listBlockPackages;
+export const searchBlocks = blockTemplatesApi.searchBlocks;
+export const listBlockRoles = blockTemplatesApi.listBlockRoles;

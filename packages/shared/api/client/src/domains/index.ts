@@ -47,6 +47,9 @@ export type {
   UpdateTemplateRequest,
   RollTemplateRequest,
   ListTemplatesQuery,
+  SearchBlocksQuery,
+  PromptBlockResponse,
+  BlockRoleSummary,
 } from './blockTemplates';
 
 export type {

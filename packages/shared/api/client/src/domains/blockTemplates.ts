@@ -58,6 +58,37 @@ export interface ListTemplatesQuery {
   offset?: number;
 }
 
+export interface SearchBlocksQuery {
+  role?: string;
+  category?: string;
+  kind?: string;
+  package_name?: string;
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface PromptBlockResponse {
+  id: string;
+  block_id: string;
+  role: string | null;
+  category: string | null;
+  kind: string;
+  default_intent: string | null;
+  text: string;
+  tags: Record<string, unknown>;
+  complexity_level: string | null;
+  package_name: string | null;
+  description: string | null;
+  word_count: number;
+}
+
+export interface BlockRoleSummary {
+  role: string | null;
+  category: string | null;
+  count: number;
+}
+
 export function createBlockTemplatesApi(client: PixSimApiClient) {
   return {
     async listTemplates(query?: ListTemplatesQuery): Promise<BlockTemplateSummary[]> {
@@ -123,6 +154,23 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
     async listBlockPackages(): Promise<string[]> {
       const response = await client.get<readonly string[]>(
         '/block-templates/meta/packages',
+      );
+      return [...response];
+    },
+
+    async searchBlocks(query?: SearchBlocksQuery): Promise<PromptBlockResponse[]> {
+      const response = await client.get<readonly PromptBlockResponse[]>(
+        '/block-templates/blocks',
+        { params: query },
+      );
+      return [...response];
+    },
+
+    async listBlockRoles(packageName?: string): Promise<BlockRoleSummary[]> {
+      const params = packageName ? { package_name: packageName } : undefined;
+      const response = await client.get<readonly BlockRoleSummary[]>(
+        '/block-templates/blocks/roles',
+        { params },
       );
       return [...response];
     },

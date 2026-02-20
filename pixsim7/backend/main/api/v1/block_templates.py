@@ -37,6 +37,9 @@ class TemplateSlotInput(BaseModel):
     weight: float = Field(1.0, description="Composition weight")
     optional: bool = Field(False, description="Skip if no matches")
     fallback_text: Optional[str] = Field(None, description="Fallback text if no matches")
+    reinforcement_text: Optional[str] = Field(None, description="Freeform text for reinforcement slots (supports {{role.attr}} placeholders)")
+    intensity: Optional[int] = Field(None, ge=1, le=10, description="Intensity 1-10 for graded modifiers in reinforcement text (null = random)")
+    inherit_intensity: bool = Field(False, description="If true, inherit intensity from the previous block's tags")
     exclude_block_ids: Optional[List[UUID]] = Field(None, description="Block IDs to exclude")
 
 
@@ -282,3 +285,153 @@ async def list_block_packages(
     """List distinct package names from prompt blocks."""
     service = BlockTemplateService(db)
     return await service.list_package_names()
+
+
+# ===== Block Search =====
+
+class BlockResponse(BaseModel):
+    id: UUID
+    block_id: str
+    role: Optional[str] = None
+    category: Optional[str] = None
+    kind: str = "single_state"
+    default_intent: Optional[str] = None
+    text: str = ""
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    complexity_level: Optional[str] = None
+    package_name: Optional[str] = None
+    description: Optional[str] = None
+    word_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/blocks", response_model=List[BlockResponse])
+async def search_blocks(
+    role: Optional[str] = Query(None, description="Filter by role"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    package_name: Optional[str] = Query(None, description="Filter by package"),
+    q: Optional[str] = Query(None, description="Text search in block_id and text"),
+    limit: int = Query(100, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search prompt blocks with optional filters."""
+    from sqlalchemy import or_
+
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    query = select(PromptBlock)
+
+    if role:
+        query = query.where(PromptBlock.role == role)
+    if category:
+        query = query.where(PromptBlock.category == category)
+    if kind:
+        query = query.where(PromptBlock.kind == kind)
+    if package_name:
+        query = query.where(PromptBlock.package_name == package_name)
+    if q:
+        pattern = f"%{q}%"
+        query = query.where(
+            or_(
+                PromptBlock.block_id.ilike(pattern),
+                PromptBlock.text.ilike(pattern),
+            )
+        )
+
+    query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
+    query = query.offset(offset).limit(limit)
+
+    result = await db.execute(query)
+    blocks = result.scalars().all()
+
+    return [
+        BlockResponse(
+            id=b.id,
+            block_id=b.block_id,
+            role=b.role,
+            category=b.category,
+            kind=b.kind,
+            default_intent=b.default_intent.value if b.default_intent else None,
+            text=b.text,
+            tags=b.tags or {},
+            complexity_level=b.complexity_level,
+            package_name=b.package_name,
+            description=b.description,
+            word_count=b.word_count or 0,
+        )
+        for b in blocks
+    ]
+
+
+@router.get("/blocks/roles", response_model=List[Dict[str, Any]])
+async def list_block_roles(
+    package_name: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """List distinct role/category combinations with counts."""
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    query = (
+        select(
+            PromptBlock.role,
+            PromptBlock.category,
+            func.count(PromptBlock.id).label("count"),
+        )
+        .group_by(PromptBlock.role, PromptBlock.category)
+        .order_by(PromptBlock.role, PromptBlock.category)
+    )
+    if package_name:
+        query = query.where(PromptBlock.package_name == package_name)
+
+    result = await db.execute(query)
+    return [
+        {"role": row.role, "category": row.category, "count": row.count}
+        for row in result.all()
+    ]
+
+
+# ===== Content Pack Management =====
+
+@router.get("/meta/content-packs", response_model=List[str])
+async def list_content_packs():
+    """List discovered content packs (plugins with content/ dirs)."""
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        discover_content_packs,
+    )
+    return discover_content_packs()
+
+
+@router.post("/meta/content-packs/reload")
+async def reload_content_packs(
+    pack: Optional[str] = Query(None, description="Specific pack to reload (default: all)"),
+    force: bool = Query(False, description="Overwrite existing blocks/templates"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reload content packs from disk without restarting the server.
+
+    Discovers plugin content/ directories and upserts blocks + templates.
+    Default: skip existing. Use force=true to overwrite.
+    """
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        discover_content_packs,
+        load_pack,
+    )
+
+    packs = [pack] if pack else discover_content_packs()
+    results = {}
+
+    for pack_name in packs:
+        try:
+            stats = await load_pack(db, pack_name, force=force)
+            results[pack_name] = stats
+        except FileNotFoundError:
+            results[pack_name] = {"error": f"Content pack '{pack_name}' not found"}
+        except Exception as e:
+            results[pack_name] = {"error": str(e)}
+
+    return {"packs_processed": len(packs), "results": results}
