@@ -175,6 +175,8 @@ import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@fe
 
 import { OPERATION_METADATA } from '@/types/operations';
 
+import { EACH_STRATEGIES, type EachStrategy } from '../lib/combinationStrategies';
+
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
 import { PresetSelector } from './PresetSelector';
 
@@ -210,8 +212,8 @@ export interface GenerationSettingsPanelProps {
   queueProgress?: { queued: number; total: number } | null;
   /** Callback for burst generation (receives count) */
   onGenerateBurst?: (count: number) => void;
-  /** Callback for generate-each mode (one generation per queued asset) */
-  onGenerateEach?: () => void;
+  /** Callback for generate-each mode (one generation per queued asset or group) */
+  onGenerateEach?: (strategy?: EachStrategy) => void;
   /** Optional node rendered in Row 2 next to Input Sets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
@@ -301,6 +303,88 @@ function AspectRatioDropdown({
               </button>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Split-button for "Each" with strategy dropdown. */
+function EachSplitButton({
+  onGenerateEach,
+  disabled,
+  generating,
+  queueProgress,
+}: {
+  onGenerateEach: (strategy?: EachStrategy) => void;
+  disabled: boolean;
+  generating: boolean;
+  queueProgress?: { queued: number; total: number } | null;
+}) {
+  const [selectedStrategy, setSelectedStrategy] = useState<EachStrategy>('each');
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useClickOutside(ref, open, () => setOpen(false));
+
+  const current = EACH_STRATEGIES.find(s => s.id === selectedStrategy) ?? EACH_STRATEGIES[0];
+  const showProgress = generating && queueProgress;
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <div className="flex">
+        {/* Main area — run with selected strategy */}
+        <button
+          onClick={() => onGenerateEach(selectedStrategy)}
+          disabled={disabled}
+          className={clsx(
+            'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold text-white',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            disabled
+              ? 'bg-neutral-400'
+              : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
+          )}
+          style={{ transition: 'none', animation: 'none' }}
+          title={current.description}
+        >
+          {showProgress ? `${queueProgress.queued}/${queueProgress.total}` : current.shortLabel}
+        </button>
+        {/* Arrow area — open strategy picker */}
+        <button
+          onClick={() => setOpen(o => !o)}
+          disabled={disabled}
+          className={clsx(
+            'px-1 py-1.5 rounded-r-lg text-[11px] font-semibold text-white border-l border-white/20',
+            'disabled:opacity-50 disabled:cursor-not-allowed',
+            disabled
+              ? 'bg-neutral-400'
+              : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
+          )}
+          style={{ transition: 'none', animation: 'none' }}
+          title="Select combination strategy"
+        >
+          <Icon name="chevronDown" size={10} className={clsx(open && 'rotate-180')} />
+        </button>
+      </div>
+
+      {open && (
+        <div className={clsx(DROPDOWN_MENU_CLS, 'right-0 left-auto min-w-[160px]')}>
+          {EACH_STRATEGIES.map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => { setSelectedStrategy(s.id); setOpen(false); }}
+              className={clsx(DROPDOWN_ITEM_CLS, selectedStrategy === s.id && 'font-semibold')}
+            >
+              <span className={clsx(
+                'w-2 h-2 rounded-full shrink-0',
+                selectedStrategy === s.id ? 'bg-amber-500' : 'bg-neutral-300 dark:bg-neutral-600'
+              )} />
+              <div className="flex flex-col items-start">
+                <span>{s.label}</span>
+                <span className="text-[9px] text-neutral-400">{s.description}</span>
+              </div>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -686,23 +770,14 @@ export function GenerationSettingsPanel({
             </div>
           )}
 
-          {/* Generate Each button */}
+          {/* Generate Each split-button */}
           {onGenerateEach && inputCount > 1 && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
-            <button
-              onClick={onGenerateEach}
+            <EachSplitButton
+              onGenerateEach={onGenerateEach}
               disabled={generating || !canGenerate}
-              className={clsx(
-                'flex-shrink-0 px-2 py-1.5 rounded-lg text-[11px] font-semibold text-white',
-                'disabled:opacity-50 disabled:cursor-not-allowed',
-                generating || !canGenerate
-                  ? 'bg-neutral-400'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
-              )}
-              style={{ transition: 'none', animation: 'none' }}
-              title="Generate individually for each queued asset"
-            >
-              {generating && queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : 'Each'}
-            </button>
+              generating={generating}
+              queueProgress={queueProgress}
+            />
           )}
 
           {/* Primary Go button — always visible */}

@@ -19,7 +19,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@pixsim7/shared.helpers.core": "workspace:*"
+  },
   "peerDependencies": {},
   "devDependencies": {
     "typescript": "^5.4.0",

@@ -14,6 +14,10 @@ from sqlalchemy import JSON
 import re
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+from pixsim7.backend.main.shared.namespaced_id import (
+    parse_namespaced_id,
+    make_namespaced_id as _make_nsid,
+)
 
 
 class Tag(SQLModel, table=True):
@@ -167,36 +171,31 @@ def make_slug(namespace: str, name: str) -> str:
 
 def parse_slug(slug: str) -> tuple[str, str]:
     """
-    Parse slug into (namespace, name).
+    Parse slug into (namespace, name) by splitting on the first colon.
+
+    The name part may itself contain colons (e.g., ``set:thief:01``).
 
     Raises ValueError if slug format is invalid.
 
     Examples:
     - "character:alice" → ("character", "alice")
     - "location:tokyo" → ("location", "tokyo")
+    - "set:thief:01"   → ("set", "thief:01")
     - "invalid" → ValueError
-    - "too:many:parts" → ValueError
     """
-    parts = slug.split(':')
-    if len(parts) != 2:
-        raise ValueError(f"Invalid slug format: {slug}. Expected 'namespace:name'")
-
-    namespace, name = parts
-    if not namespace or not name:
-        raise ValueError(f"Invalid slug format: {slug}. Namespace and name cannot be empty")
-
-    return namespace, name
+    return parse_namespaced_id(slug)
 
 
 def validate_slug(slug: str) -> bool:
     """
-    Validate slug format: namespace:name with no spaces, no empty parts.
+    Validate slug format: namespace:name with no spaces in the namespace,
+    no empty parts. The name may contain colons (e.g., ``set:thief:01``).
 
     Returns True if valid, False otherwise.
 
     Examples:
     - "character:alice" → True
-    - "location:tokyo" → True
+    - "set:thief:01" → True
     - "invalid" → False
     - "has space:name" → False
     - ":empty" → False
@@ -204,12 +203,8 @@ def validate_slug(slug: str) -> bool:
     try:
         namespace, name = parse_slug(slug)
 
-        # Check for spaces
-        if ' ' in namespace or ' ' in name:
-            return False
-
-        # Check for empty parts (already checked in parse_slug, but explicit)
-        if not namespace or not name:
+        # No spaces allowed in namespace
+        if ' ' in namespace:
             return False
 
         return True
@@ -226,12 +221,14 @@ def normalize_slug(slug: str) -> str:
     Examples:
     - "Character:Alice" → "character:alice"
     - "  LOCATION : Tokyo  " → "location:tokyo"
+    - "Set:Thief:01" → "set:thief:01"
     """
     namespace, name = parse_slug(slug)
     namespace = normalize_namespace(namespace)
     name = normalize_name(name)
 
-    if not validate_slug(f"{namespace}:{name}"):
-        raise ValueError(f"Invalid slug after normalization: {namespace}:{name}")
+    rebuilt = make_slug(namespace, name)
+    if not validate_slug(rebuilt):
+        raise ValueError(f"Invalid slug after normalization: {rebuilt}")
 
-    return make_slug(namespace, name)
+    return rebuilt

@@ -63,3 +63,12 @@ export { computeFileSha256 } from './hash';
 
 // Object utilities
 export { deepMerge } from './object';
+
+// Namespaced identifier utilities
+export {
+  parseNamespacedId,
+  makeNamespacedId,
+  getNamespace,
+  getName,
+} from './namespacedId';
+export type { NamespacedId } from './namespacedId';

@@ -25,6 +25,11 @@ from typing import Any, Dict, Optional, Union, Annotated, Iterable, List
 
 from pydantic import BaseModel, Field, BeforeValidator, PlainSerializer, WithJsonSchema
 
+from pixsim7.backend.main.shared.namespaced_id import (
+    parse_namespaced_id,
+    make_namespaced_id,
+)
+
 
 class ConceptRef(BaseModel):
     """Reference to an ontology concept.
@@ -84,10 +89,11 @@ class ConceptRef(BaseModel):
             if not value.strip():
                 return None
 
-            if ":" in value:
-                # "kind:id" format
-                parts = value.split(":", 1)
-                return cls(kind=parts[0], id=parts[1])
+            try:
+                kind, concept_id = parse_namespaced_id(value)
+                return cls(kind=kind, id=concept_id)
+            except ValueError:
+                pass  # Fall through to raw ID handling
 
             # Raw ID without prefix
             if not default_kind:
@@ -114,7 +120,7 @@ class ConceptRef(BaseModel):
 
     def to_canonical(self) -> str:
         """Serialize to 'kind:id' canonical format."""
-        return f"{self.kind}:{self.id}"
+        return make_namespaced_id(self.kind, self.id)
 
     def to_string(self) -> str:
         """Alias for to_canonical()."""
@@ -139,13 +145,12 @@ def _make_concept_ref_validator(concept_kind: str):
             return None
 
         # Handle string that might already have a different prefix
-        if isinstance(value, str) and ":" in value:
-            parts = value.split(":", 1)
-            # If the prefix matches our expected kind, parse normally
-            if parts[0] == concept_kind:
-                return ConceptRef(kind=concept_kind, id=parts[1])
-            # If different prefix, still parse it (for flexibility)
-            return ConceptRef(kind=parts[0], id=parts[1])
+        if isinstance(value, str):
+            try:
+                kind, concept_id = parse_namespaced_id(value)
+                return ConceptRef(kind=kind, id=concept_id)
+            except ValueError:
+                pass  # Fall through to parse_flexible
 
         return ConceptRef.parse_flexible(value, default_kind=concept_kind)
 
@@ -272,7 +277,7 @@ def canonicalize_concept_id(value: Optional[str], kind: str) -> Optional[str]:
     expected_prefix = f"{kind}:"
     if value.startswith(expected_prefix):
         return value
-    return f"{expected_prefix}{value}"
+    return make_namespaced_id(kind, value)
 
 
 def parse_concept_id(canonical_id: str) -> tuple[str, str]:
@@ -287,10 +292,7 @@ def parse_concept_id(canonical_id: str) -> tuple[str, str]:
     Raises:
         ValueError: If format is invalid
     """
-    if ":" not in canonical_id:
-        raise ValueError(f"Invalid canonical concept ID: '{canonical_id}'. Expected 'kind:id' format.")
-    parts = canonical_id.split(":", 1)
-    return (parts[0], parts[1])
+    return parse_namespaced_id(canonical_id)
 
 
 def strip_concept_prefix(canonical_id: str, expected_kind: Optional[str] = None) -> str:
@@ -306,10 +308,11 @@ def strip_concept_prefix(canonical_id: str, expected_kind: Optional[str] = None)
     Raises:
         ValueError: If expected_kind provided and doesn't match
     """
-    if ":" not in canonical_id:
+    try:
+        kind, id_part = parse_namespaced_id(canonical_id)
+    except ValueError:
         return canonical_id
 
-    kind, id_part = parse_concept_id(canonical_id)
     if expected_kind and kind != expected_kind:
         raise ValueError(f"Expected kind '{expected_kind}' but got '{kind}'")
     return id_part

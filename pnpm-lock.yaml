@@ -844,6 +844,9 @@ importers:
 
   packages/shared/api/client:
     dependencies:
+      '@pixsim7/shared.api.model':
+        specifier: workspace:*
+        version: link:../model
       '@pixsim7/shared.helpers.core':
         specifier: workspace:*
         version: link:../../helpers/core
@@ -854,6 +857,12 @@ importers:
       axios:
         specifier: ^1.6.0
         version: 1.13.2
+      typescript:
+        specifier: ^5.4.0
+        version: 5.9.3
+
+  packages/shared/api/model:
+    devDependencies:
       typescript:
         specifier: ^5.4.0
         version: 5.9.3
@@ -1098,6 +1107,10 @@ importers:
         version: 5.9.3
 
   packages/shared/ref/core:
+    dependencies:
+      '@pixsim7/shared.helpers.core':
+        specifier: workspace:*
+        version: link:../../helpers/core
     devDependencies:
       typescript:
         specifier: ^5.4.0
@@ -1120,9 +1133,9 @@ importers:
 
   packages/shared/types:
     dependencies:
-      '@pixsim7/shared.api.client':
+      '@pixsim7/shared.api.model':
         specifier: workspace:*
-        version: link:../api/client
+        version: link:../api/model
       '@pixsim7/shared.ref.core':
         specifier: workspace:*
         version: link:../ref/core

@@ -1,3 +1,5 @@
+import { parseNamespacedId, makeNamespacedId } from '@pixsim7/shared.helpers.core';
+
 import { assignTags } from './api';
 import { assetEvents } from './assetEvents';
 import { useQuickTagStore } from './quickTagStore';
@@ -17,25 +19,24 @@ export function cleanTagPart(s: string): string {
  * - Trims and lowercases
  * - Replaces spaces/special chars with underscores
  * - Prepends `user:` if no namespace is present
+ * - Name part may contain colons (e.g., `set:thief:01`)
  */
 export function normalizeTagInput(raw: string): string {
   const slug = raw.trim().toLowerCase();
   if (!slug) return '';
 
-  // If already has namespace:name format, normalize each part
-  if (slug.includes(':')) {
-    const [ns, ...rest] = slug.split(':');
-    const name = rest.join(':'); // rejoin in case of multiple colons
-    const cleanNs = cleanTagPart(ns);
-    const cleanName = cleanTagPart(name);
+  const parsed = parseNamespacedId(slug);
+  if (parsed) {
+    const cleanNs = cleanTagPart(parsed.namespace);
+    const cleanName = cleanTagPart(parsed.name);
     if (!cleanNs || !cleanName) return '';
-    return `${cleanNs}:${cleanName}`;
+    return makeNamespacedId(cleanNs, cleanName);
   }
 
   // No namespace — auto-prefix with default
   const cleanName = cleanTagPart(slug);
   if (!cleanName) return '';
-  return `${DEFAULT_NAMESPACE}:${cleanName}`;
+  return makeNamespacedId(DEFAULT_NAMESPACE, cleanName);
 }
 
 /**

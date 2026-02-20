@@ -14,6 +14,7 @@ import { getFallbackOperation } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 
+import { computeCombinations, type EachStrategy } from '../lib/combinationStrategies';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
 
@@ -376,15 +377,22 @@ export function useQuickGenerateController() {
   ]);
 
   /**
-   * Generate individually for each queued input asset.
-   * Same prompt and settings, but one generation per asset.
+   * Generate individually for each queued input asset (or group of assets
+   * when a combination strategy is selected).
+   * Same prompt and settings, but one generation per group.
    */
-  const generateEach = useCallback(async (options?: { overrideDynamicParams?: Record<string, any> }) => {
+  const generateEach = useCallback(async (options?: {
+    overrideDynamicParams?: Record<string, any>;
+    strategy?: EachStrategy;
+  }) => {
     const { currentInputs } = getInputState();
+    const strategy = options?.strategy ?? 'each';
     if (currentInputs.length <= 1) return generate(options);
 
+    const groups = computeCombinations(currentInputs, strategy);
+
     resetForGeneration();
-    const total = currentInputs.length;
+    const total = groups.length;
     let queued = 0;
     const generatedIds: number[] = [];
     setQueueProgress({ queued: 0, total });
@@ -392,17 +400,20 @@ export function useQuickGenerateController() {
     try {
       const overrideParams = options?.overrideDynamicParams || {};
 
-      for (let i = 0; i < currentInputs.length; i++) {
-        const inputItem = currentInputs[i];
+      for (let i = 0; i < groups.length; i++) {
+        const group = groups[i];
+        // For single-item groups use the item as currentInput; for multi-item groups use the first
+        const primaryInput = group[0];
 
         try {
           const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
-          await applyFrameExtraction(dynamicParams, inputItem, []);
+          await applyFrameExtraction(dynamicParams, primaryInput, []);
 
-          const request = buildRequest(dynamicParams, [inputItem], inputItem);
+          const request = buildRequest(dynamicParams, group, primaryInput);
           if ('error' in request) {
             logEvent('ERROR', 'generate_each_item_skipped', {
               index: i,
+              strategy,
               error: request.error,
             });
             continue;
@@ -412,18 +423,20 @@ export function useQuickGenerateController() {
           generatedIds.push(genId);
           queued++;
           setQueueProgress({ queued, total });
-          recordInputHistory(operationType, [inputItem]);
+          recordInputHistory(operationType, group);
 
           logEvent('INFO', 'generate_each_created', {
             generationId: genId,
             operationType,
             providerId: providerId || 'pixverse',
+            strategy,
             eachIndex: i + 1,
             eachTotal: total,
           });
         } catch (itemErr) {
           logEvent('ERROR', 'generate_each_item_failed', {
             eachIndex: i + 1,
+            strategy,
             error: extractErrorMessage(itemErr, 'Unknown error'),
           });
         }
@@ -438,6 +451,7 @@ export function useQuickGenerateController() {
       logEvent('INFO', 'generate_each_complete', {
         queued,
         total,
+        strategy,
         operationType,
         providerId: providerId || 'pixverse',
       });

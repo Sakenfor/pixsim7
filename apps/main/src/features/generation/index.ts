@@ -95,6 +95,10 @@ export type {
 // Lib - Generation Core
 export * from './lib/core';
 
+// Lib - Combination Strategies
+export { EACH_STRATEGIES, computeCombinations } from './lib/combinationStrategies';
+export type { EachStrategy } from './lib/combinationStrategies';
+
 // Lib - Multi-Asset Mode
 export {
   resolveDisplayAssets,

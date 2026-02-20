@@ -21,6 +21,8 @@
  * @module ref-core
  */
 
+import { parseNamespacedId } from '@pixsim7/shared.helpers.core';
+
 // ============================================================================
 // REF STRING TYPES
 // ============================================================================
@@ -254,11 +256,13 @@ export type ParsedRef =
  * @returns Parsed reference with typed ID, or null if invalid
  */
 export function parseRef(ref: string): ParsedRef | null {
-  if (!ref || !ref.includes(':')) return null;
+  if (!ref) return null;
 
-  const colonIndex = ref.indexOf(':');
-  const prefix = ref.slice(0, colonIndex);
-  const value = ref.slice(colonIndex + 1);
+  const parsed = parseNamespacedId(ref);
+  if (!parsed) return null;
+
+  const prefix = parsed.namespace;
+  const value = parsed.name;
 
   const parseNonNegativeInt = (val: string): number | null => {
     const normalized = val.trim();
@@ -394,13 +398,13 @@ export function tryParseRef(ref: string): RefParseResult {
     return { success: false, reason: 'empty_string', message: 'Reference string is empty' };
   }
 
-  if (!ref.includes(':')) {
+  const parsed = parseNamespacedId(ref);
+  if (!parsed) {
     return { success: false, reason: 'missing_colon', message: 'Reference must contain a colon separator' };
   }
 
-  const colonIndex = ref.indexOf(':');
-  const prefix = ref.slice(0, colonIndex);
-  const value = ref.slice(colonIndex + 1);
+  const prefix = parsed.namespace;
+  const value = parsed.name;
 
   type ValidationSuccess = { valid: true; n: number };
   type ValidationError = { valid: false; reason: RefParseErrorReason; message: string };
@@ -676,6 +680,6 @@ export function extractSessionId(ref: string): number | null {
  * Faster than parseRef when you only need the type.
  */
 export function getRefType(ref: string): string | null {
-  if (!ref || !ref.includes(':')) return null;
-  return ref.slice(0, ref.indexOf(':'));
+  if (!ref) return null;
+  return parseNamespacedId(ref)?.namespace ?? null;
 }
