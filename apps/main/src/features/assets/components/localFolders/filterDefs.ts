@@ -12,7 +12,6 @@ export interface BuildLocalFilterDefsDeps {
   getFolderFilterLabel: (folderId: string) => string;
   isFavoriteRootFolder: (folderId: string) => boolean;
   isAssetInFavoriteFolder: (asset: LocalAsset) => boolean;
-  favoriteFoldersSet: ReadonlySet<string>;
   getScopedFolderIds: (filterState: ClientFilterState) => string[];
   getSubfolderValue: (asset: LocalAsset) => string;
   getSubfolderLabelForAsset: (asset: LocalAsset) => string;
@@ -27,7 +26,6 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
     getFolderFilterLabel,
     isFavoriteRootFolder,
     isAssetInFavoriteFolder,
-    favoriteFoldersSet,
     getScopedFolderIds,
     getSubfolderValue,
     getSubfolderLabelForAsset,
@@ -104,18 +102,6 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
       },
     },
     {
-      key: 'favorite_folders',
-      label: 'Favorite Folders',
-      icon: 'star',
-      type: 'boolean',
-      order: 3,
-      isVisible: () => favoriteFoldersSet.size > 0,
-      predicate: (asset, value) => {
-        if (value !== true) return true;
-        return isAssetInFavoriteFolder(asset);
-      },
-    },
-    {
       key: 'subfolder',
       label: 'Subfolder',
       icon: 'folderTree',
@@ -183,12 +169,28 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
     {
       key: 'favorites',
       label: 'Favorites',
-      icon: 'heart',
-      type: 'boolean',
+      icon: 'star',
+      type: 'enum',
       order: 6,
       predicate: (asset, value) => {
-        if (value !== true) return true;
-        return favoriteStatus[asset.key] ?? false;
+        if (!Array.isArray(value) || value.length === 0) return true;
+        for (const v of value) {
+          if (v === 'assets' && (favoriteStatus[asset.key] ?? false)) return true;
+          if (v === 'folders' && isAssetInFavoriteFolder(asset)) return true;
+        }
+        return false;
+      },
+      deriveOptionsWithCounts: (items) => {
+        let assetFavCount = 0;
+        let folderFavCount = 0;
+        for (const item of items) {
+          if (favoriteStatus[item.key]) assetFavCount += 1;
+          if (isAssetInFavoriteFolder(item)) folderFavCount += 1;
+        }
+        const options: Array<{ value: string; label: string; count: number }> = [];
+        if (assetFavCount > 0) options.push({ value: 'assets', label: 'Favorited Assets', count: assetFavCount });
+        if (folderFavCount > 0) options.push({ value: 'folders', label: 'Favorite Folders', count: folderFavCount });
+        return options;
       },
     },
     {

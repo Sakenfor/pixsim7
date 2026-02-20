@@ -256,7 +256,8 @@ export function LocalFoldersContent({
         {(filteredDisplayAssets, { filterState }) => {
           const folderSelection = filterState.folder;
           const hasFolderFilterSelection = Array.isArray(folderSelection) && folderSelection.length > 0;
-          const hasFavoriteFolderScope = filterState.favorite_folders === true && favoriteFoldersSet.size > 0;
+          const favoritesSelection = filterState.favorites;
+          const hasFavoriteFolderScope = Array.isArray(favoritesSelection) && favoritesSelection.includes('folders') && favoriteFoldersSet.size > 0;
           const hasFolderScope = hasFolderFilterSelection || hasFavoriteFolderScope;
 
           if (controller.assets.length > 0 && !hasFolderScope) {

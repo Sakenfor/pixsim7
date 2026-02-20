@@ -114,7 +114,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   }, [getSubfolderLabelFromValue, getSubfolderValue]);
   const getScopedFolderIds = useCallback((filterState: ClientFilterState): string[] => {
     const selectedFolders = filterState.folder;
-    const favoriteFoldersOnly = filterState.favorite_folders === true;
+    const favoritesSelection = filterState.favorites;
+    const favoriteFoldersOnly = Array.isArray(favoritesSelection) && favoritesSelection.includes('folders');
     if (Array.isArray(selectedFolders) && selectedFolders.length > 0) {
       const scoped = selectedFolders
         .filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
@@ -169,7 +170,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     getFolderFilterLabel,
     isFavoriteRootFolder,
     isAssetInFavoriteFolder,
-    favoriteFoldersSet,
     getScopedFolderIds,
     getSubfolderValue,
     getSubfolderLabelForAsset,
@@ -178,7 +178,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     favoriteStatus: controller.favoriteStatus,
   }), [
     controller.favoriteStatus,
-    favoriteFoldersSet,
     getFolderFilterLabel,
     getFolderLabel,
     callbacks.getHashFilterState,
