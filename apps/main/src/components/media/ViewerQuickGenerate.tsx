@@ -9,7 +9,7 @@
  * - "user": Uses current user settings from Control Center (global scope)
  * - "asset": Uses original generation settings from the asset (isolated scope)
  *
- * Uses QuickGenPanelHost with GenerationScopeProvider for scoped panel layout.
+ * Uses QuickGenWidget for scoped panel layout and widget provision.
  * Chrome components (GenerationSourceToggle, ViewerAssetInputProvider) provide capabilities.
  */
 
@@ -30,13 +30,10 @@ import {
 } from '@features/contextHub';
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 import {
-  GenerationScopeProvider,
   ViewerAssetInputProvider,
-  QuickGenPanelHost,
-  useProvideGenerationWidget,
-  useQuickGenPanelLayout,
-  useQuickGenScopeSync,
+  QuickGenWidget,
   useGenerationSettingsStore,
+  type QuickGenWidgetRenderContext,
 } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
@@ -45,7 +42,6 @@ import type { OperationType } from '@/types/operations';
 // Survives component unmount/remount (gallery navigation) but resets on page refresh.
 let _lastViewerAssetId: string | number | undefined;
 
-const VIEWER_PANEL_MANAGER_ID = 'viewerQuickGenerate';
 const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
 interface ViewerQuickGenerateProps {
@@ -108,8 +104,8 @@ function ViewerGenerationContextProvider({
 }
 
 /**
- * Inner component for the expanded quick generate content.
- * Rendered inside the viewer scope to access scoped stores.
+ * Chrome rendered above the panel host inside the widget.
+ * Receives setOperationType/setDynamicParams from the widget's render context.
  */
 function ViewerQuickGenerateChrome({
   asset,
@@ -117,35 +113,19 @@ function ViewerQuickGenerateChrome({
   onCollapse,
   controlCenterOpen,
   mode,
+  ctx,
 }: {
   asset: ViewerAsset;
   alwaysExpanded: boolean;
   onCollapse: () => void;
   controlCenterOpen: boolean;
   mode: GenerationSourceMode;
+  ctx: QuickGenWidgetRenderContext;
 }) {
   // Read source context for loading/info display (mode comes from prop, not capability)
   const { value: sourceContext } = useCapability<GenerationSourceContext>(CAP_GENERATION_SOURCE);
   const loading = sourceContext?.loading ?? false;
   const sourceGeneration = sourceContext?.sourceGeneration;
-
-  const setOpen = useCallback(
-    (open: boolean) => {
-      if (!open) {
-        onCollapse();
-      }
-    },
-    [onCollapse],
-  );
-
-  // Centralized widget provision: controller + scoped stores + CAP_GENERATION_WIDGET
-  const { setOperationType, setDynamicParams } = useProvideGenerationWidget({
-    widgetId: 'viewerQuickGenerate',
-    label: 'Viewer Quick Generate',
-    priority: 45,
-    isOpen: true,
-    setOpen,
-  });
 
   // Check if auto-switch is enabled (defaults to true)
   const autoSwitchEnabled = useGenerationSettingsStore(
@@ -167,13 +147,13 @@ function ViewerQuickGenerateChrome({
     if (mode !== 'user' || !autoSwitchEnabled) return;
 
     const targetOp: OperationType = asset.type === 'video' ? 'video_extend' : 'image_to_video';
-    setOperationType(targetOp);
-  }, [asset.id, asset.type, setOperationType, mode, autoSwitchEnabled]);
+    ctx.setOperationType(targetOp);
+  }, [asset.id, asset.type, ctx.setOperationType, mode, autoSwitchEnabled]);
 
   // Auto-set dynamic params from viewed asset (only gallery assets have valid backend IDs)
   useEffect(() => {
     if (!asset.id) return;
-    setDynamicParams((prev: Record<string, unknown>) => {
+    ctx.setDynamicParams((prev: Record<string, unknown>) => {
       const next = { ...prev };
       delete next.video_url;
       delete next.image_url;
@@ -182,7 +162,7 @@ function ViewerQuickGenerateChrome({
       }
       return next;
     });
-  }, [asset.id, asset.type, asset.source, setDynamicParams]);
+  }, [asset.id, asset.type, asset.source, ctx.setDynamicParams]);
 
   return (
     <div className="space-y-2">
@@ -221,63 +201,6 @@ function ViewerQuickGenerateChrome({
   );
 }
 
-/**
- * Inner component for the expanded quick generate content.
- * Rendered inside GenerationScopeProvider to access scoped stores.
- */
-function ViewerQuickGenerateContent({
-  asset,
-  alwaysExpanded,
-  onCollapse,
-  controlCenterOpen,
-  mode,
-  onModeChange,
-}: {
-  asset: ViewerAsset;
-  alwaysExpanded: boolean;
-  onCollapse: () => void;
-  controlCenterOpen: boolean;
-  mode: GenerationSourceMode;
-  onModeChange: (mode: GenerationSourceMode) => void;
-}) {
-  // Centralized panel layout: panels, defaultLayout, resolvePanelPosition
-  const layout = useQuickGenPanelLayout({ showBlocks: false });
-
-  const layoutVersion = layout.operationType === 'video_transition' ? 'v7' : 'v6';
-  const storageKey = layout.supportsInputs
-    ? `viewer-quickgen-layout-${layoutVersion}:${layout.operationType}:with-asset`
-    : `viewer-quickgen-layout-${layoutVersion}:${layout.operationType}:no-asset`;
-
-  return (
-    <>
-      <ViewerQuickGenerateChrome
-        asset={asset}
-        alwaysExpanded={alwaysExpanded}
-        onCollapse={onCollapse}
-        controlCenterOpen={controlCenterOpen}
-        mode={mode}
-      />
-      <QuickGenPanelHost
-        key={storageKey}
-        panels={layout.panels}
-        storageKey={storageKey}
-        panelManagerId="viewerQuickGenerate"
-        context={{
-          targetProviderId: 'generation-widget:viewerQuickGenerate',
-          sourceLabel: 'Viewer',
-          sourceToggleMode: mode,
-          sourceToggleGenerationId: asset.sourceGenerationId,
-          onSourceToggleModeChange: onModeChange,
-        }}
-        defaultLayout={layout.defaultLayout}
-        resolvePanelPosition={layout.resolvePanelPosition}
-        className="h-[360px] min-h-[280px] mt-2"
-        minPanelsForTabs={2}
-      />
-    </>
-  );
-}
-
 export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQuickGenerateProps) {
   const controlCenterOpen = useControlCenterStore((s) => s.open);
   const [isExpanded, setIsExpanded] = useState(alwaysExpanded);
@@ -292,11 +215,12 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     }
   }, [asset.id, asset.sourceGenerationId, asset.hasGenerationContext, mode]);
 
-  // Scope sync — keeps all viewer quickgen panels in lockstep
-  const { scopeInstanceId, scopeLabel } = useQuickGenScopeSync({
-    panelManagerId: VIEWER_PANEL_MANAGER_ID,
-    panelIds: VIEWER_PANEL_IDS,
-  });
+  const setOpen = useCallback(
+    (open: boolean) => {
+      if (!open) setIsExpanded(false);
+    },
+    [],
+  );
 
   const shouldHide = controlCenterOpen && !alwaysExpanded;
 
@@ -318,17 +242,37 @@ export function ViewerQuickGenerate({ asset, alwaysExpanded = false }: ViewerQui
     );
   }
 
-  // Expanded state - show panel host with viewer scope
+  // Expanded state — QuickGenWidget handles scope sync, scope provider, widget provision, layout
   return (
-    <GenerationScopeProvider scopeId={scopeInstanceId} label={scopeLabel}>
-      <ViewerQuickGenerateContent
-        asset={asset}
-        alwaysExpanded={alwaysExpanded}
-        onCollapse={() => setIsExpanded(false)}
-        controlCenterOpen={controlCenterOpen}
-        mode={mode}
-        onModeChange={setMode}
-      />
-    </GenerationScopeProvider>
+    <QuickGenWidget
+      widgetId="viewerQuickGenerate"
+      label="Viewer Quick Generate"
+      panelManagerId="viewerQuickGenerate"
+      panelIds={VIEWER_PANEL_IDS}
+      priority={45}
+      isOpen={true}
+      setOpen={setOpen}
+      provideContext={false}
+      storageKeyPrefix="viewer-quickgen"
+      className=""
+      panelHostClassName="h-[360px] min-h-[280px] mt-2"
+      context={{
+        sourceToggleMode: mode,
+        sourceToggleGenerationId: asset.sourceGenerationId,
+        onSourceToggleModeChange: setMode,
+      }}
+      minPanelsForTabs={2}
+    >
+      {(ctx) => (
+        <ViewerQuickGenerateChrome
+          asset={asset}
+          alwaysExpanded={alwaysExpanded}
+          onCollapse={() => setIsExpanded(false)}
+          controlCenterOpen={controlCenterOpen}
+          mode={mode}
+          ctx={ctx}
+        />
+      )}
+    </QuickGenWidget>
   );
 }

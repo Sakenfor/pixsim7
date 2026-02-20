@@ -25,7 +25,7 @@ export type { ViewerAssetInputProviderProps } from './components/ViewerAssetInpu
 export { QuickGenPanelHost, QUICKGEN_PANEL_IDS, QUICKGEN_PRESETS } from './components/QuickGenPanelHost';
 export type { QuickGenPanelHostProps, QuickGenPanelHostRef, QuickGenSlot, QuickGenPreset } from './components/QuickGenPanelHost';
 export { QuickGenWidget } from './components/QuickGenWidget';
-export type { QuickGenWidgetProps } from './components/QuickGenWidget';
+export type { QuickGenWidgetProps, QuickGenWidgetRenderContext } from './components/QuickGenWidget';
 export { ContentModerationWarning } from './components/ContentModerationWarning';
 export type { ContentModerationWarningProps } from './components/ContentModerationWarning';
 export { NotificationTicker } from './components/NotificationTicker';

@@ -24,23 +24,20 @@ import type { MediaCardOverlayData } from './mediaCardWidgets';
  */
 export function QueueStatusBadge({ assetId }: { assetId: number }) {
   const inputsByOperation = useGenerationInputStore((s) => s.inputsByOperation);
-  const matchOperation = OPERATION_TYPES.find((operationType) =>
+  const matchOperations = OPERATION_TYPES.filter((operationType) =>
     inputsByOperation[operationType]?.items.some((item) => item.asset.id === assetId),
   );
 
-  if (!matchOperation) return null;
+  if (matchOperations.length === 0) return null;
 
-  const metadata = OPERATION_METADATA[matchOperation];
-  const label = metadata?.label || 'Queued';
-  const icon = metadata?.icon || 'clock';
+  const labels = matchOperations.map((op) => OPERATION_METADATA[op]?.label || op);
 
   return (
     <div
-      className="cq-badge-xs flex items-center gap-1 font-medium rounded-full bg-accent text-accent-text shadow-sm"
-      title={`In inputs for ${label}`}
+      className="inline-flex items-center justify-center cq-btn-md bg-accent text-accent-text rounded-full shadow-md"
+      title={`In inputs: ${labels.join(', ')}`}
     >
-      <Icon name={icon} />
-      <span className="max-w-[60px] truncate">{label}</span>
+      <Icon name="layers" />
     </div>
   );
 }
