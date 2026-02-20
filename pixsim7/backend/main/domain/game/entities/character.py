@@ -93,7 +93,7 @@ class Character(SQLModel, table=True):
     )  # URLs or file paths
 
     # Game integration
-    game_npc_id: Optional[UUID] = Field(None, foreign_key="npcs.id", index=True)
+    game_npc_id: Optional[int] = Field(None, foreign_key="game_npcs.id", index=True)
     sync_with_game: bool = Field(default=False)  # Auto-sync changes with game NPC
     game_metadata: Dict[str, Any] = Field(
         default_factory=dict,
@@ -173,8 +173,8 @@ class CharacterUsage(SQLModel, table=True):
 
     # What uses this character
     usage_type: str = Field(max_length=50)  # "prompt", "action_block", "composition"
-    prompt_version_id: Optional[UUID] = Field(None, foreign_key="prompt_versions.id", index=True)
-    action_block_id: Optional[UUID] = Field(None, foreign_key="action_blocks.id", index=True)
+    prompt_version_id: Optional[UUID] = Field(None, index=True)  # soft ref to prompt_versions.id
+    action_block_id: Optional[UUID] = Field(None, index=True)  # soft ref to action_blocks.id
 
     # Template reference that was expanded
     template_reference: Optional[str] = None  # "{{character:gorilla_01}}"

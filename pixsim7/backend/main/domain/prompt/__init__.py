@@ -35,6 +35,7 @@ from .models import (
     PromptFamily,
     PromptVersion,
     PromptBlock,
+    BlockTemplate,
 )
 
 # Relations
@@ -57,6 +58,7 @@ __all__ = [
     "PromptFamily",
     "PromptVersion",
     "PromptBlock",
+    "BlockTemplate",
     # Relations
     "PromptVersionBlock",
     # Feedback

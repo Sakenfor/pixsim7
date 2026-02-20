@@ -432,3 +432,33 @@ def needs_migration(world_meta: Dict[str, Any]) -> bool:
     has_new = "stats_config" in world_meta
 
     return has_legacy and not has_new
+
+
+def resolve_stats_config(world_meta: Dict[str, Any]) -> WorldStatsConfig:
+    """
+    Resolve WorldStatsConfig from world meta: migrate legacy, validate existing, or default.
+
+    This is the single canonical path for obtaining a WorldStatsConfig from raw world meta.
+    Handles all three cases:
+    1. Legacy schemas that need migration
+    2. Existing stats_config that needs validation
+    3. No config → default with relationship definitions
+
+    Args:
+        world_meta: The world's meta dict (may be empty)
+
+    Returns:
+        A valid WorldStatsConfig (never None)
+    """
+    from pixsim7.backend.main.domain.game import meta_keys
+
+    if needs_migration(world_meta):
+        return migrate_world_meta_to_stats_config(world_meta)
+
+    if meta_keys.STATS_CONFIG in world_meta:
+        return WorldStatsConfig.model_validate(world_meta[meta_keys.STATS_CONFIG])
+
+    return WorldStatsConfig(
+        version=1,
+        definitions={"relationships": get_default_relationship_definition()},
+    )

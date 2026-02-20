@@ -15,6 +15,12 @@ manifest = DomainModelManifest(
     models=[],
     source_modules=[
         "pixsim7.backend.main.domain.game.core.models",
+        "pixsim7.backend.main.domain.game.entities.character",
+        "pixsim7.backend.main.domain.game.entities.character_integrations",
+        "pixsim7.backend.main.domain.game.entities.npc_memory",
+        "pixsim7.backend.main.domain.game.entities.item_template",
+        "pixsim7.backend.main.domain.game.entities.location_template",
+        "pixsim7.backend.main.domain.game.entities.sequence",
     ],
     auto_discover=True,
     enabled=True,

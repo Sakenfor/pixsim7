@@ -21,6 +21,7 @@ Example links:
 - propTemplate->prop: PropTemplate ↔ PropInstance
 """
 from datetime import datetime
+from enum import Enum
 from typing import Optional, Dict, Any
 from uuid import UUID, uuid4
 from sqlmodel import SQLModel, Field, Column
@@ -28,6 +29,13 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import Index
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
+
+
+class SyncDirection(str, Enum):
+    """Valid sync directions for object links."""
+    BIDIRECTIONAL = "bidirectional"
+    TEMPLATE_TO_RUNTIME = "template_to_runtime"
+    RUNTIME_TO_TEMPLATE = "runtime_to_template"
 
 
 class ObjectLink(SQLModel, table=True):
@@ -80,8 +88,8 @@ class ObjectLink(SQLModel, table=True):
         default=True,
         description="Enable/disable sync for this link"
     )
-    sync_direction: str = Field(
-        default='bidirectional',
+    sync_direction: SyncDirection = Field(
+        default=SyncDirection.BIDIRECTIONAL,
         max_length=50,
         description="Sync direction: 'bidirectional', 'template_to_runtime', 'runtime_to_template'"
     )
@@ -122,7 +130,7 @@ class ObjectLink(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     last_synced_at: Optional[datetime] = Field(None)
-    last_sync_direction: Optional[str] = Field(None, max_length=50)
+    last_sync_direction: Optional[SyncDirection] = Field(None, max_length=50)
 
     # Table args for indexes
     __table_args__ = (

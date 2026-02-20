@@ -97,6 +97,7 @@ from .prompt import (
     PromptFamily,
     PromptVersion,
     PromptBlock,
+    BlockTemplate,
     PromptVersionBlock,
     PromptVariantFeedback,
     PromptSegmentRole,
@@ -106,7 +107,7 @@ from .prompt import (
 from .ai_interaction import AiInteraction
 
 # Asset analysis
-from .assets.analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
+from .assets.analysis import AssetAnalysis, AnalysisStatus
 
 __all__ = [
     # Enums
@@ -151,6 +152,7 @@ __all__ = [
     "PromptFamily",
     "PromptVersion",
     "PromptBlock",
+    "BlockTemplate",
     "PromptVersionBlock",
     "PromptVariantFeedback",
     "PromptSegmentRole",
@@ -159,5 +161,4 @@ __all__ = [
     # Asset analysis
     "AssetAnalysis",
     "AnalysisStatus",
-    "AnalyzerType",
 ]

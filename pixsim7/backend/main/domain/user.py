@@ -49,6 +49,11 @@ class User(SQLModel, table=True):
         max_length=20,
         description="User role: admin, user, guest"
     )
+    permissions: list[str] = Field(
+        default_factory=list,
+        sa_column=Column(JSON),
+        description="Explicit permission grants (for example: devtools.codegen)",
+    )
 
     # ===== QUOTA & LIMITS =====
     # Job quotas
@@ -118,6 +123,17 @@ class User(SQLModel, table=True):
     def is_admin(self) -> bool:
         """Check if user is admin"""
         return self.role == UserRole.ADMIN
+
+    def has_permission(self, permission: str) -> bool:
+        """Check if the user has a specific scoped permission."""
+        target = (permission or "").strip().lower()
+        if not target:
+            return False
+
+        for raw in self.permissions or []:
+            if isinstance(raw, str) and raw.strip().lower() == target:
+                return True
+        return False
 
     def can_create_job(self) -> bool:
         """Check if user can create more jobs"""

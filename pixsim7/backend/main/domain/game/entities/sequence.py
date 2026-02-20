@@ -2,6 +2,9 @@
 Clip sequences for asset playback.
 
 Defines ordered sequences of clips/keyframes with optional branching variants.
+
+Moved from domain/assets/sequence.py to game domain in Phase 2.
+Cross-domain FKs to assets/clips/branches removed; fields kept as soft refs.
 """
 from __future__ import annotations
 
@@ -49,12 +52,12 @@ class ClipSequenceEntry(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     sequence_id: int = Field(foreign_key="clip_sequences.id", index=True)
 
-    # Reference to clip or asset
-    clip_id: Optional[int] = Field(default=None, foreign_key="asset_clips.id")
-    asset_id: Optional[int] = Field(default=None, foreign_key="assets.id")
+    # Reference to clip or asset (soft refs to main DB)
+    clip_id: Optional[int] = Field(default=None)  # soft ref to asset_clips.id
+    asset_id: Optional[int] = Field(default=None)  # soft ref to assets.id
 
-    # Variations (uses AssetBranch/AssetBranchVariant)
-    branch_id: Optional[int] = Field(default=None, foreign_key="asset_branches.id")
+    # Variations (soft ref to main DB)
+    branch_id: Optional[int] = Field(default=None)  # soft ref to asset_branches.id
 
     # Position
     sequence_order: int = Field(default=0)

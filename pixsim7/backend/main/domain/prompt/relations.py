@@ -32,7 +32,7 @@ class PromptVersionBlock(SQLModel, table=True):
         description="The prompt version containing this block"
     )
     block_id: UUID = Field(
-        foreign_key="prompt_blocks.id",
+        foreign_key="action_blocks.id",
         index=True,
         description="The block used in this version"
     )

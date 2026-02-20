@@ -42,12 +42,24 @@ from .npc_memory import (
     DialogueAnalytics,
 )
 
+from .memory_policy import (
+    MEMORY_POLICY,
+    get_policy,
+    build_decay_rate_case,
+    MEMORY_CONSTANTS,
+)
+
 from .item_template import (
     ItemTemplate,
 )
 
 from .location_template import (
     LocationTemplate,
+)
+
+from .sequence import (
+    ClipSequence,
+    ClipSequenceEntry,
 )
 
 __all__ = [
@@ -83,8 +95,16 @@ __all__ = [
     "NPCWorldContext",
     "PersonalityEvolutionEvent",
     "DialogueAnalytics",
+    # Memory policy
+    "MEMORY_POLICY",
+    "get_policy",
+    "build_decay_rate_case",
+    "MEMORY_CONSTANTS",
     # Item templates
     "ItemTemplate",
     # Location templates
     "LocationTemplate",
+    # Clip sequences
+    "ClipSequence",
+    "ClipSequenceEntry",
 ]

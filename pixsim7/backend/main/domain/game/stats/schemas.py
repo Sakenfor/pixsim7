@@ -677,6 +677,14 @@ DEFAULT_WORLD_TIME_CONFIG = WorldTimeConfig(
 )
 
 
+class NpcConfig(BaseModel):
+    """Per-world NPC service overrides (milestone thresholds, etc.)."""
+    version: int = 1
+
+    class Config:
+        extra = "allow"  # Service namespaces are open-ended
+
+
 class WorldConfigResponse(BaseModel):
     """Complete world configuration returned by /worlds/{id}/config endpoint."""
     schema_version: int = STATS_SCHEMA_VERSION
@@ -684,6 +692,7 @@ class WorldConfigResponse(BaseModel):
     manifest: WorldManifest
     intimacy_gating: IntimacyGatingConfig
     time_config: WorldTimeConfig = Field(default_factory=lambda: DEFAULT_WORLD_TIME_CONFIG)
+    npc_config: NpcConfig = Field(default_factory=NpcConfig)
     # Pre-computed for frontend
     tier_order: List[str] = Field(default_factory=list)
     level_order: List[str] = Field(default_factory=list)

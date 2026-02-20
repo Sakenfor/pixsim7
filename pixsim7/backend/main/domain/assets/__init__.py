@@ -3,7 +3,7 @@ Assets domain package - Asset models and related entities.
 
 Contains:
 - Asset and AssetVariant models
-- Asset analysis models (AnalysisStatus, AnalyzerType, AssetAnalysis)
+- Asset analysis models (AnalysisStatus, AssetAnalysis)
 - Asset lineage and branching models
 - Asset metadata tables for 3D, audio, temporal, adult content
 - Tag models
@@ -17,10 +17,9 @@ Usage:
 """
 from .models import Asset, AssetVariant
 from .content import ContentBlob
-from .analysis import AssetAnalysis, AnalysisStatus, AnalyzerType
+from .analysis import AssetAnalysis, AnalysisStatus
 from .lineage import AssetLineage
 from .branching import AssetBranch, AssetBranchVariant, AssetClip
-from .sequence import ClipSequence, ClipSequenceEntry
 from .metadata import (
     Asset3DMetadata,
     AssetAudioMetadata,
@@ -45,14 +44,11 @@ __all__ = [
     # Analysis
     "AssetAnalysis",
     "AnalysisStatus",
-    "AnalyzerType",
     # Lineage and branching
     "AssetLineage",
     "AssetBranch",
     "AssetBranchVariant",
     "AssetClip",
-    "ClipSequence",
-    "ClipSequenceEntry",
     # Metadata
     "Asset3DMetadata",
     "AssetAudioMetadata",

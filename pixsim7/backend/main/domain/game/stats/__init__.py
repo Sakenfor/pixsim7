@@ -78,7 +78,7 @@ from .derivation_engine import (
 # Legacy relationship migration helpers are kept in the migration module;
 # only the default relationship definition is exported at the package level
 # so the core API stays focused on generic stats.
-from .migration import get_default_relationship_definition
+from .migration import get_default_relationship_definition, resolve_stats_config
 from .package_utils import (
     initialize_stat_package_entity,
     merge_stat_package_entity,
@@ -227,6 +227,7 @@ __all__ = [
     "get_world_config",
     # Default definitions
     "get_default_relationship_definition",
+    "resolve_stats_config",
     "get_default_personality_definition",
     "get_default_mood_definition",
     "get_default_resources_definition",

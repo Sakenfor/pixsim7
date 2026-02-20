@@ -428,8 +428,10 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         WorldConfigResponse,
         WorldManifest,
         IntimacyGatingConfig,
+        NpcConfig,
         STATS_SCHEMA_VERSION,
     )
+    from pixsim7.backend.main.domain.game import meta_keys
 
     meta = world_meta or {}
     warnings: List[str] = []
@@ -439,7 +441,7 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
     warnings.extend(stats_warnings)
 
     # Parse manifest
-    manifest_data = meta.get("manifest", {})
+    manifest_data = meta.get(meta_keys.MANIFEST, {})
     try:
         manifest = WorldManifest.model_validate(manifest_data)
     except Exception as e:
@@ -447,12 +449,20 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         warnings.append(f"Invalid manifest, using defaults: {e}")
 
     # Parse intimacy gating
-    gating_data = meta.get("intimacy_gating", {})
+    gating_data = meta.get(meta_keys.INTIMACY_GATING, {})
     try:
         intimacy_gating = IntimacyGatingConfig.model_validate(gating_data)
     except Exception as e:
         intimacy_gating = IntimacyGatingConfig()
         warnings.append(f"Invalid intimacy_gating, using defaults: {e}")
+
+    # Parse npc_config
+    npc_config_data = meta.get(meta_keys.NPC_CONFIG, {})
+    try:
+        npc_config = NpcConfig.model_validate(npc_config_data)
+    except Exception as e:
+        npc_config = NpcConfig()
+        warnings.append(f"Invalid npc_config, using defaults: {e}")
 
     # Pre-compute ordering for relationships (primary stat definition)
     tier_order = stats_config.get_tier_order("relationships")
@@ -463,6 +473,7 @@ def get_world_config(world_meta: Optional[Dict] = None) -> "WorldConfigResponse"
         stats_config=stats_config,
         manifest=manifest,
         intimacy_gating=intimacy_gating,
+        npc_config=npc_config,
         tier_order=tier_order,
         level_order=level_order,
         merge_warnings=warnings,

@@ -31,6 +31,38 @@ class MemoryImportance(str, Enum):
     IMPORTANT = "important"    # Significant events, player choices
     CRITICAL = "critical"      # Major milestones, relationship changes
 
+    @property
+    def rank(self) -> int:
+        return _IMPORTANCE_RANK[self]
+
+    def __lt__(self, other):
+        if not isinstance(other, MemoryImportance):
+            return NotImplemented
+        return self.rank < other.rank
+
+    def __le__(self, other):
+        if not isinstance(other, MemoryImportance):
+            return NotImplemented
+        return self.rank <= other.rank
+
+    def __gt__(self, other):
+        if not isinstance(other, MemoryImportance):
+            return NotImplemented
+        return self.rank > other.rank
+
+    def __ge__(self, other):
+        if not isinstance(other, MemoryImportance):
+            return NotImplemented
+        return self.rank >= other.rank
+
+
+_IMPORTANCE_RANK = {
+    MemoryImportance.TRIVIAL: 0,
+    MemoryImportance.NORMAL: 1,
+    MemoryImportance.IMPORTANT: 2,
+    MemoryImportance.CRITICAL: 3,
+}
+
 
 class EmotionType(str, Enum):
     """Types of emotions"""
@@ -75,7 +107,7 @@ class ConversationMemory(SQLModel, table=True):
     # Foreign keys
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
     session_id: Optional[int] = Field(default=None, foreign_key="game_sessions.id", index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)  # Player who had this conversation
+    user_id: int = Field(index=True)  # Player who had this conversation (soft ref to users.id)
 
     # Memory metadata
     memory_type: MemoryType = Field(default=MemoryType.SHORT_TERM)
@@ -182,7 +214,7 @@ class ConversationTopic(SQLModel, table=True):
 
     # Foreign keys
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    user_id: int = Field(index=True)  # soft ref to users.id
 
     # Topic info
     topic_id: str = Field(..., description="Unique identifier for the topic (e.g., 'backstory', 'family', 'fears')")
@@ -248,7 +280,7 @@ class RelationshipMilestone(SQLModel, table=True):
 
     # Foreign keys
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    user_id: int = Field(index=True)  # soft ref to users.id
     session_id: Optional[int] = Field(default=None, foreign_key="game_sessions.id")
 
     # Milestone info
@@ -364,7 +396,7 @@ class PersonalityEvolutionEvent(SQLModel, table=True):
 
     # Foreign keys
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
-    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    user_id: Optional[int] = Field(default=None)  # soft ref to users.id
 
     # Personality change
     trait_changed: PersonalityTrait = Field(..., description="Which trait changed")
@@ -411,7 +443,7 @@ class DialogueAnalytics(SQLModel, table=True):
 
     # Foreign keys
     npc_id: int = Field(foreign_key="game_npcs.id", index=True)
-    user_id: int = Field(foreign_key="users.id", index=True)
+    user_id: int = Field(index=True)  # soft ref to users.id
     session_id: Optional[int] = Field(default=None, foreign_key="game_sessions.id")
     memory_id: Optional[int] = Field(default=None, foreign_key="npc_conversation_memories.id")
 

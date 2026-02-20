@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from uuid import UUID
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import BigInteger, JSON
+from sqlalchemy import BigInteger, JSON, String, Text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 from pgvector.sqlalchemy import Vector
 
@@ -125,6 +125,11 @@ class Asset(SQLModel, table=True):
     )
 
     # ===== SEMANTIC UNDERSTANDING =====
+    prompt: Optional[str] = Field(
+        default=None,
+        sa_column=Column(Text, nullable=True),
+        description="Generation prompt text (first-class column for direct access and querying)"
+    )
     description: Optional[str] = Field(
         default=None,
         description="What's happening in this asset (AI-generated or user-provided)"
@@ -272,6 +277,22 @@ class Asset(SQLModel, table=True):
         default=None,
         index=True,
         description="ID of source generation (no DB FK to allow cross-domain separation)"
+    )
+    # Denormalized from Generation for hot-path queries (no JOIN needed)
+    operation_type: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), index=True, nullable=True),
+        description="Generation operation type (text_to_video, image_to_video, etc.)"
+    )
+    reproducible_hash: Optional[str] = Field(
+        default=None,
+        sa_column=Column(String(64), index=True, nullable=True),
+        description="Seed-agnostic hash for sibling discovery (same inputs + params)"
+    )
+    prompt_version_id: Optional[UUID] = Field(
+        default=None,
+        sa_column=Column(PG_UUID(as_uuid=True), index=True, nullable=True),
+        description="Prompt version reference for prompt grouping"
     )
 
     # ===== VERSIONING =====

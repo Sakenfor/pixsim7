@@ -122,6 +122,8 @@ from .entities import (
     NPCWorldContext,
     PersonalityEvolutionEvent,
     DialogueAnalytics,
+    ClipSequence,
+    ClipSequenceEntry,
 )
 
 # Interactions
@@ -260,6 +262,9 @@ __all__ = [
     "NPCWorldContext",
     "PersonalityEvolutionEvent",
     "DialogueAnalytics",
+    # Clip sequences
+    "ClipSequence",
+    "ClipSequenceEntry",
     # Interactions
     "StatDelta",
     "FlagChanges",
