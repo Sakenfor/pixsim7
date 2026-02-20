@@ -1,9 +1,7 @@
-import { IconButton } from '@pixsim7/shared.ui';
-import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { getAsset } from '@lib/api/assets';
-import { Icon, IconBadge } from '@lib/icons';
+import { createBadgeWidget, type OverlayWidget } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
 import { fromAssetResponse } from '@features/assets';
@@ -55,21 +53,15 @@ async function resolveHistoryAsset(asset: AssetModel): Promise<AssetModel> {
 }
 
 // ---------------------------------------------------------------------------
-// Overlay — pin badge + use count
+// Overlay — use count badge (bottom-left, passive)
 // ---------------------------------------------------------------------------
 
-function HistoryItemOverlay({ entry }: { entry: AssetHistoryEntry }) {
+function UseCountOverlay({ entry }: { entry: AssetHistoryEntry }) {
+  if (entry.useCount <= 1) return null;
   return (
-    <>
-      {entry.pinned && (
-        <IconBadge name="pin" size={10} bg="#9333EA" className="absolute top-1 left-1 w-5 h-5 pointer-events-none" />
-      )}
-      {entry.useCount > 1 && (
-        <div className="absolute top-1 right-1 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium pointer-events-none">
-          {entry.useCount}x
-        </div>
-      )}
-    </>
+    <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium pointer-events-none">
+      {entry.useCount}x
+    </div>
   );
 }
 
@@ -147,59 +139,58 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
     [],
   );
 
-  // Card overlay — pin badge + use count
+  // Card overlay — use count only (pin + remove moved to widgets)
   const renderItemOverlay = useCallback(
-    (asset: AssetModel): ReactNode => {
+    (asset: AssetModel) => {
       const entry = entryByAssetId.get(asset.id);
       if (!entry) return null;
-      return <HistoryItemOverlay entry={entry} />;
+      return <UseCountOverlay entry={entry} />;
     },
     [entryByAssetId],
   );
 
-  // Card hover actions — pin toggle + default zap/viewer + remove
+  // Suppress hover actions — generation button group from overlay system handles generation
   const renderItemActions = useCallback(
-    (asset: AssetModel, defaultActions: ReactNode): ReactNode => {
+    () => null,
+    [],
+  );
+
+  // Card widgets — pin (top-left) + remove (top-right)
+  const renderItemWidgets = useCallback(
+    (asset: AssetModel): OverlayWidget[] | undefined => {
       const entry = entryByAssetId.get(asset.id);
-      return (
-        <>
-          {/* Pin toggle */}
-          {entry && (
-            <IconButton
-              size="lg"
-              rounded="full"
-              icon={<Icon name="pin" size={12} />}
-              onClick={(e) => {
-                e.stopPropagation();
-                togglePin(historyOperation, asset.id);
-              }}
-              className={entry.pinned
-                ? 'bg-accent hover:bg-accent-hover'
-                : 'bg-neutral-700 hover:bg-neutral-600'
-              }
-              style={{ color: '#fff' }}
-              title={entry.pinned ? 'Unpin' : 'Pin'}
-            />
-          )}
+      if (!entry) return undefined;
 
-          {/* Default zap + viewer */}
-          {defaultActions}
-
-          {/* Remove */}
-          <IconButton
-            size="lg"
-            rounded="full"
-            icon={<Icon name="close" size={12} />}
-            onClick={(e) => {
-              e.stopPropagation();
-              removeFromHistory(historyOperation, asset.id);
-            }}
-            className="bg-red-600/80 hover:bg-red-600"
-            style={{ color: '#fff' }}
-            title="Remove from history"
-          />
-        </>
-      );
+      return [
+        createBadgeWidget({
+          id: 'pin-toggle',
+          position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
+          visibility: { trigger: entry.pinned ? 'always' : 'hover-container' },
+          variant: 'icon',
+          icon: 'pin',
+          color: 'gray',
+          shape: 'circle',
+          tooltip: entry.pinned ? 'Unpin' : 'Pin',
+          onClick: () => togglePin(historyOperation, asset.id),
+          className: entry.pinned
+            ? '!bg-purple-600 hover:!bg-purple-700 !text-white'
+            : '!bg-white/80 dark:!bg-neutral-800/80 !text-neutral-400 hover:!text-purple-500 backdrop-blur-sm',
+          priority: 25,
+        }),
+        createBadgeWidget({
+          id: 'remove-history',
+          position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
+          visibility: { trigger: 'hover-container' },
+          variant: 'icon',
+          icon: 'x',
+          color: 'red',
+          shape: 'circle',
+          tooltip: 'Remove from history',
+          onClick: () => removeFromHistory(historyOperation, asset.id),
+          className: '!bg-red-600/80 hover:!bg-red-600 !text-white',
+          priority: 30,
+        }),
+      ];
     },
     [entryByAssetId, historyOperation, togglePin, removeFromHistory],
   );
@@ -265,6 +256,7 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
       resolveAsset={resolveHistoryAsset}
       renderItemOverlay={renderItemOverlay}
       renderItemActions={renderItemActions}
+      renderItemWidgets={renderItemWidgets}
     />
   );
 }

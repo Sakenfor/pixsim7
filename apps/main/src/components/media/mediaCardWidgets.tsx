@@ -6,7 +6,7 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { useHoverExpand } from '@pixsim7/shared.ui';
+import { Button, useHoverExpand } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -17,7 +17,6 @@ import {
   createBadgeWidget,
   createMenuWidget,
   createVideoScrubWidget,
-  createUploadWidget,
   createTooltipWidget,
   type MenuItem,
 } from '@lib/ui/overlay';
@@ -28,12 +27,15 @@ import {
   type TooltipWidgetSettings,
 } from '@lib/widgets';
 
+
 import { applyQuickTag, normalizeTagInput } from '@features/assets/lib/quickTag';
 import { useQuickTagStore } from '@features/assets/lib/quickTagStore';
 import { useTagAutocomplete, TAG_NAMESPACES } from '@features/assets/lib/useTagAutocomplete';
+import { useProviders } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
+import { UploadProviderMenu } from './UploadProviderMenu';
 
 // Re-export from split files for backwards compatibility
 export {
@@ -89,6 +91,8 @@ export interface MediaCardOverlayData {
   model?: string | null;
   width?: number;
   height?: number;
+  // Upload to specific provider (right-click menu)
+  onUploadToProvider?: (providerId: string) => void | Promise<void>;
 }
 
 /**
@@ -172,68 +176,78 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
 
   // If we have actions, create a menu widget
   if (actions && (actions.onOpenDetails || actions.onDelete || actions.onArchive || actions.onReupload || actions.onExtractLastFrameAndUpload || actions.onEnrichMetadata)) {
-    const menuItems: MenuItem[] = [];
-
-    if (actions.onOpenDetails) {
-      menuItems.push({
-        id: 'details',
-        label: 'View Details',
-        icon: 'eye',
-        onClick: () => actions.onOpenDetails?.(id),
-      });
-    }
-
-    if (actions.onReupload) {
-      menuItems.push({
-        id: 'reupload',
-        label: 'Upload to provider…',
-        icon: 'upload',
-        onClick: () => actions.onReupload?.(providerId),
-      });
-    }
-
-    if (actions.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse')) {
-      menuItems.push({
-        id: 'extract-last-frame',
-        label: 'Upload last frame to Pixverse',
-        icon: 'image',
-        onClick: () => actions.onExtractLastFrameAndUpload?.(id),
-      });
-    }
-
-    if (actions.onEnrichMetadata) {
-      menuItems.push({
-        id: 'enrich',
-        label: 'Refresh metadata',
-        icon: 'refresh',
-        onClick: () => actions.onEnrichMetadata?.(id),
-      });
-    }
-
-    if (actions.onArchive) {
-      menuItems.push({
-        id: 'archive',
-        label: 'Archive',
-        icon: 'archive',
-        onClick: () => actions.onArchive?.(id),
-      });
-    }
-
-    if (actions.onDelete) {
-      menuItems.push({
-        id: 'delete',
-        label: 'Delete',
-        icon: 'trash',
-        variant: 'danger',
-        onClick: () => actions.onDelete?.(id),
-      });
-    }
-
     return createMenuWidget({
       id: 'status-menu',
       position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
       visibility: { trigger: 'always' },
-      items: menuItems,
+      items: (data: MediaCardOverlayData) => {
+        const menuItems: MenuItem[] = [];
+
+        // Info section at top (replaces "View Details")
+        menuItems.push({
+          id: 'info',
+          label: 'Info',
+          content: <InfoPopoverContent data={data} />,
+          divider: true,
+        });
+
+        if (actions.onOpenDetails) {
+          menuItems.push({
+            id: 'details',
+            label: 'View Details',
+            icon: 'eye',
+            onClick: () => actions.onOpenDetails?.(id),
+          });
+        }
+
+        if (actions.onReupload) {
+          menuItems.push({
+            id: 'reupload',
+            label: 'Upload to provider…',
+            icon: 'upload',
+            onClick: () => actions.onReupload?.(providerId),
+          });
+        }
+
+        if (actions.onExtractLastFrameAndUpload && mediaType === 'video' && providerId?.startsWith('pixverse')) {
+          menuItems.push({
+            id: 'extract-last-frame',
+            label: 'Upload last frame to Pixverse',
+            icon: 'image',
+            onClick: () => actions.onExtractLastFrameAndUpload?.(id),
+          });
+        }
+
+        if (actions.onEnrichMetadata) {
+          menuItems.push({
+            id: 'enrich',
+            label: 'Refresh metadata',
+            icon: 'refresh',
+            onClick: () => actions.onEnrichMetadata?.(id),
+          });
+        }
+
+        if (actions.onArchive) {
+          menuItems.push({
+            id: 'archive',
+            label: 'Archive',
+            icon: 'archive',
+            onClick: () => actions.onArchive?.(id),
+          });
+        }
+
+        if (actions.onDelete) {
+          menuItems.push({
+            id: 'delete',
+            label: 'Delete',
+            icon: 'trash',
+            variant: 'danger',
+            onClick: () => actions.onDelete?.(id),
+          });
+        }
+
+        return menuItems;
+      },
       trigger: {
         icon: statusMeta.icon,
         variant: 'icon',
@@ -355,8 +369,129 @@ export function createVideoScrubber(props: MediaCardResolvedProps): OverlayWidge
 }
 
 /**
+ * Self-contained upload button with optional provider right-click menu.
+ * Follows the QuickTagWidgetContent pattern — a render component that uses hooks.
+ */
+function UploadButtonContent({
+  data,
+  onUploadClick,
+  assetId,
+}: {
+  data: MediaCardOverlayData;
+  onUploadClick: (id: number) => Promise<{ ok: boolean; note?: string } | void> | void;
+  assetId: number;
+}) {
+  const { providers } = useProviders();
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Get user-customized settings (merged with defaults)
+  const settings = getOverlayWidgetSettings<UploadWidgetSettings>('upload');
+
+  const state = data.uploadState || 'idle';
+  const progress = data.uploadProgress || 0;
+
+  const handleClick = async () => {
+    if (state === 'uploading') return;
+    await onUploadClick(assetId);
+  };
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!data.onUploadToProvider || providers.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setMenuPos({ x: e.clientX, y: e.clientY });
+    },
+    [data.onUploadToProvider, providers.length],
+  );
+
+  const handleProviderSelect = useCallback(
+    (providerId: string) => {
+      data.onUploadToProvider?.(providerId);
+      setMenuPos(null);
+    },
+    [data.onUploadToProvider],
+  );
+
+  // State-based styling
+  const stateConfig = {
+    idle: { label: 'Upload', icon: 'upload', variant: settings.variant || ('secondary' as const), disabled: false },
+    uploading: { label: 'Uploading...', icon: 'loader', variant: 'secondary' as const, disabled: true },
+    success: { label: 'Uploaded', icon: 'check', variant: 'secondary' as const, disabled: true },
+    error: { label: 'Failed', icon: 'alertCircle', variant: 'secondary' as const, disabled: false },
+  };
+
+  const currentConfig = stateConfig[state];
+
+  return (
+    <>
+      <div className="flex flex-col gap-1" onContextMenu={handleContextMenu}>
+        <Button
+          onClick={handleClick}
+          variant={currentConfig.variant}
+          size={settings.size || 'sm'}
+          disabled={currentConfig.disabled}
+          className={`
+            ${state === 'uploading' ? 'cursor-wait' : ''}
+            ${state === 'success' ? 'bg-green-500 hover:bg-green-600' : ''}
+            ${state === 'error' ? 'bg-red-500 hover:bg-red-600' : ''}
+          `}
+        >
+          <Icon
+            name={currentConfig.icon}
+            size={settings.size === 'lg' ? 16 : settings.size === 'md' ? 14 : 12}
+            className={state === 'uploading' ? 'animate-spin' : ''}
+          />
+          <span className="ml-1.5">{currentConfig.label}</span>
+        </Button>
+
+        {/* Progress bar (only shown when uploading) */}
+        {(settings.showProgress ?? true) && state === 'uploading' && (
+          <div className="w-full">
+            <div className="h-1 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-300 rounded-full"
+                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+              />
+            </div>
+            {progress > 0 && (
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                {Math.round(progress)}%
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Error message hint */}
+        {state === 'error' && (
+          <span className="text-xs text-red-600 dark:text-red-400">
+            Click to retry
+          </span>
+        )}
+      </div>
+
+      {/* Provider selection menu (portal) */}
+      {menuPos && (
+        <UploadProviderMenu
+          x={menuPos.x}
+          y={menuPos.y}
+          providers={providers}
+          onSelect={handleProviderSelect}
+          onClose={() => setMenuPos(null)}
+          extraItems={
+            state === 'success' && data.actions?.onQuickGenerate
+              ? [{ id: 'quick-generate', label: 'Generate', icon: 'sparkles', onClick: () => data.actions!.onQuickGenerate!(data.id) }]
+              : undefined
+          }
+        />
+      )}
+    </>
+  );
+}
+
+/**
  * Create upload widget (bottom-left or custom position)
- * Uses REACTIVE function-based values for state and progress
+ * Self-contained: includes provider right-click menu when onUploadToProvider is present.
  * Settings are read from overlayWidgetSettingsStore for user customization
  */
 export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
@@ -371,26 +506,18 @@ export function createUploadButton(props: MediaCardResolvedProps): OverlayWidget
     return null;
   }
 
-  // Get user-customized settings (merged with defaults)
-  const settings = getOverlayWidgetSettings<UploadWidgetSettings>('upload');
-
-  return createUploadWidget({
+  return {
     id: 'upload-button',
+    type: 'custom',
     position: { anchor: 'bottom-left', offset: { x: 8, y: -8 } },
     visibility: { trigger: 'hover-container' },
-    // REACTIVE: Function gets fresh data on every render
-    stateBinding: createBindingFromValue('state', (data: MediaCardOverlayData) => data.uploadState || 'idle'),
-    progressBinding: createBindingFromValue('progress', (data: MediaCardOverlayData) => data.uploadProgress || 0),
-    onUpload: async () => {
-      await onUploadClick(id);
-    },
-    // Apply user settings
-    showProgress: settings.showProgress,
-    size: settings.size,
-    variant: settings.variant,
-    successDuration: settings.successDuration,
     priority: 25,
-  });
+    interactive: true,
+    handlesOwnInteraction: true,
+    render: (data: MediaCardOverlayData) => (
+      <UploadButtonContent data={data} onUploadClick={onUploadClick} assetId={id} />
+    ),
+  };
 }
 
 /**

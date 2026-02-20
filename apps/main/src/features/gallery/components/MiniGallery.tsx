@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
+import type { OverlayWidget } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
-import { getAssetDisplayUrls, useAssetViewerStore } from '@features/assets';
+import { useAssetViewerStore, toViewerAsset, toViewerAssets } from '@features/assets';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
 import type { AssetFilters } from '@features/assets/hooks/useAssets';
@@ -61,8 +62,12 @@ export interface MiniGalleryProps {
   /** Extra overlay content rendered on top of each card (pin badges, counts, etc.). */
   renderItemOverlay?: (asset: AssetModel) => ReactNode;
   /** Wrap or replace the default hover actions (zap + viewer buttons).
-   *  Receives the asset and the default action buttons as `defaultActions`. */
-  renderItemActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode;
+   *  Receives the asset and the default action buttons as `defaultActions`.
+   *  Return `null` to suppress hover actions entirely. */
+  renderItemActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
+
+  /** Extra overlay widgets to add per card (e.g. pin badge, remove badge). */
+  renderItemWidgets?: (asset: AssetModel) => OverlayWidget[] | undefined;
 
   // --- Asset resolution ---
   /** Called before addInput / openViewer when asset data may be incomplete
@@ -86,7 +91,8 @@ interface MiniGalleryItemProps {
   maxSlots?: number;
   isReplaceMode?: boolean;
   extraOverlay?: ReactNode;
-  renderActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode;
+  renderActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
+  extraWidgets?: OverlayWidget[];
 }
 
 function MiniGalleryItem({
@@ -101,6 +107,7 @@ function MiniGalleryItem({
   isReplaceMode,
   extraOverlay,
   renderActions,
+  extraWidgets,
 }: MiniGalleryItemProps) {
   const showSlotPicker = isMultiAssetOperation(operationType);
   const zapRef = useRef<HTMLButtonElement | null>(null);
@@ -174,14 +181,15 @@ function MiniGalleryItem({
     [showSlotPicker, stableHandlers, onSelect, isReplaceMode],
   );
 
-  const hoverActions = useMemo(
-    () => (
+  const hoverActions = useMemo(() => {
+    const content = renderActions ? renderActions(asset, defaultActions) : defaultActions;
+    if (content === null) return null;
+    return (
       <div className="flex items-center gap-1">
-        {renderActions ? renderActions(asset, defaultActions) : defaultActions}
+        {content}
       </div>
-    ),
-    [asset, defaultActions, renderActions],
-  );
+    );
+  }, [asset, defaultActions, renderActions]);
 
   return (
     <>
@@ -195,6 +203,7 @@ function MiniGalleryItem({
         showPlayOverlay={false}
         overlay={overlay}
         hoverActions={hoverActions}
+        extraWidgets={extraWidgets}
       />
 
       {showSlotPicker && slotPickerExpanded && slotPickerPos && createPortal(
@@ -238,6 +247,7 @@ function MiniGalleryContent({
   emptyMessage = 'No assets found.',
   renderItemOverlay,
   renderItemActions,
+  renderItemWidgets,
   resolveAsset,
 }: MiniGalleryProps) {
   const useExternalData = externalItems !== undefined;
@@ -347,17 +357,11 @@ function MiniGalleryContent({
 
   const openAssetInViewer = useCallback(
     (asset: AssetModel) => {
-      const { thumbnailUrl, previewUrl, mainUrl } = getAssetDisplayUrls(asset);
-      openViewer({
-        id: asset.id,
-        name: asset.description || `Asset ${asset.id}`,
-        type: asset.mediaType === 'video' ? 'video' : 'image',
-        url: thumbnailUrl || previewUrl || mainUrl || '',
-        fullUrl: mainUrl,
-        source: 'gallery',
-      });
+      const viewerAsset = toViewerAsset(asset);
+      const viewerList = displayItems.length > 0 ? toViewerAssets(displayItems) : undefined;
+      openViewer(viewerAsset, viewerList);
     },
-    [openViewer],
+    [openViewer, displayItems],
   );
 
   const handleSelect = useCallback(
@@ -457,6 +461,7 @@ function MiniGalleryContent({
                 isReplaceMode={isReplaceMode}
                 extraOverlay={renderItemOverlay?.(asset)}
                 renderActions={renderItemActions}
+                extraWidgets={renderItemWidgets?.(asset)}
               />
             ))}
           </div>

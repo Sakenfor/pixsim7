@@ -61,6 +61,8 @@ export interface MediaCardActions {
   onArchive?: (id: number) => void;
   onDelete?: (id: number) => void;
   onReupload?: (providerId: string) => void | Promise<void>;
+  /** Called after a successful upload-to-provider to refresh data */
+  onReuploadDone?: () => void;
   onEnrichMetadata?: (id: number) => void;
   onExtractLastFrameAndUpload?: (id: number) => void | Promise<void>;
   onExtractFrame?: (id: number, timestamp: number) => void | Promise<void>;
@@ -68,6 +70,7 @@ export interface MediaCardActions {
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
   onQuickAdd?: (id: number) => void;
+  onQuickGenerate?: (id: number) => void | Promise<void>;
   onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   onImageToImage?: (id: number) => void;
   onImageToVideo?: (id: number) => void;
@@ -140,6 +143,9 @@ export interface MediaCardRuntimeProps {
 
   /** Callback to toggle the favorite tag */
   onToggleFavorite?: () => void;
+
+  /** Upload to a specific provider (used by right-click menu in upload widget) */
+  onUploadToProvider?: (id: number, providerId: string) => Promise<void> | void;
 }
 
 // ─── Resolved flat shape (runtime + asset-derived) — widget factories use this ─
@@ -452,11 +458,15 @@ export function MediaCard(props: MediaCardProps) {
     model: resolved.contextMenuAsset?.model,
     width: resolved.width,
     height: resolved.height,
+    // Upload to specific provider (self-contained menu in upload widget)
+    onUploadToProvider: resolved.onUploadToProvider
+      ? (pid: string) => resolved.onUploadToProvider!(id, pid)
+      : undefined,
   };
 
   return (
     <div
-      className="cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition overflow-hidden relative"
+      className="cq-scale group rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 shadow-sm hover:shadow-md transition relative hover:z-10"
       data-pixsim7="media-card"
       onContextMenu={enableMediaCardContextMenu ? handleContextMenu : undefined}
     >
@@ -468,7 +478,7 @@ export function MediaCard(props: MediaCardProps) {
         }}
       >
         <div
-          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer ${
+          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md ${
             !videoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
