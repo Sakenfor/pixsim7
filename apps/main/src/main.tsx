@@ -5,7 +5,7 @@ import './index.css'
 import { registerContextMenuActions, configurePanelLookup } from '@lib/dockview'
 import { panelSelectors } from '@lib/plugins/catalogSelectors'
 
-import { initializePanels } from '@features/panels'
+import { initializePanels, registerAllPanels } from '@features/panels'
 
 import { registerModules, moduleRegistry } from '@app/modules'
 
@@ -38,6 +38,7 @@ async function bootstrapApp() {
   // Initialize infrastructure before rendering.
   await moduleRegistry.initializeAll()
   await initializePanels()
+  await registerAllPanels()
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>

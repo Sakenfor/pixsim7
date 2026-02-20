@@ -6,6 +6,6 @@ import type { Module } from '@app/modules/types';
  * Marker module for devtools feature wiring.
  */
 export const devtoolsModule: Module = {
-  id: 'app-map',
-  name: 'App Map Module',
+  id: 'devtools-module',
+  name: 'DevTools Module',
 };

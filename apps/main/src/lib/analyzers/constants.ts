@@ -36,6 +36,39 @@ export function isValidPromptAnalyzerId(id: string): id is PromptAnalyzerId {
   return PROMPT_ANALYZER_IDS.includes(id as PromptAnalyzerId);
 }
 
+// ----------------------------------------------------------------------------
+// Asset Analyzer IDs
+// ----------------------------------------------------------------------------
+
+/**
+ * Known built-in asset analyzer IDs.
+ * Format: `asset:{type}` where type maps to backend analyzer registry entries.
+ */
+export const ASSET_ANALYZER_IDS = [
+  'asset:object-detection',
+  'asset:face-detection',
+  'asset:scene-tagging',
+  'asset:content-moderation',
+  'asset:ocr',
+  'asset:caption',
+  'asset:embedding',
+  'asset:custom',
+] as const;
+
+export type AssetAnalyzerId = typeof ASSET_ANALYZER_IDS[number];
+
+/**
+ * Default analyzer for generic asset analysis calls.
+ */
+export const DEFAULT_ASSET_ANALYZER_ID: AssetAnalyzerId = 'asset:object-detection';
+
+/**
+ * Check if a string is a valid built-in asset analyzer ID.
+ */
+export function isValidAssetAnalyzerId(id: string): id is AssetAnalyzerId {
+  return ASSET_ANALYZER_IDS.includes(id as AssetAnalyzerId);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Legacy Analyzer IDs (backwards compatibility)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,10 +77,18 @@ export function isValidPromptAnalyzerId(id: string): id is PromptAnalyzerId {
  * Legacy analyzer ID mappings.
  * Old format → new canonical format.
  */
-export const LEGACY_ANALYZER_MAP: Record<string, PromptAnalyzerId> = {
+export const LEGACY_ANALYZER_MAP: Record<string, string> = {
   'parser:simple': 'prompt:simple',
   'llm:claude': 'prompt:claude',
   'llm:openai': 'prompt:openai',
+  face_detection: 'asset:face-detection',
+  scene_tagging: 'asset:scene-tagging',
+  content_moderation: 'asset:content-moderation',
+  object_detection: 'asset:object-detection',
+  ocr: 'asset:ocr',
+  caption: 'asset:caption',
+  embedding: 'asset:embedding',
+  custom: 'asset:custom',
 };
 
 /**
@@ -72,6 +113,21 @@ export const FALLBACK_PROMPT_ANALYZERS: AnalyzerInfo[] = [
     description: 'Fast, keyword-based parser with ontology matching',
     kind: 'parser',
     target: 'prompt',
+    enabled: true,
+    is_default: true,
+  },
+];
+
+/**
+ * Fallback asset analyzer info when API is unavailable.
+ */
+export const FALLBACK_ASSET_ANALYZERS: AnalyzerInfo[] = [
+  {
+    id: DEFAULT_ASSET_ANALYZER_ID,
+    name: 'Object Detection',
+    description: 'Detects objects and regions in media assets',
+    kind: 'vision',
+    target: 'asset',
     enabled: true,
     is_default: true,
   },

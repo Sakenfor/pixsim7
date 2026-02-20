@@ -29,13 +29,8 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
     setSuggestions([]);
 
     try {
-      // Call AI analysis endpoint
-      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      // Call tag suggestion endpoint
+      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/suggest`);
 
       if (!response.ok) {
         throw new Error('Failed to analyze asset');
@@ -69,13 +64,13 @@ function AITaggingTool({ context }: { context: GalleryToolContext }) {
     const tags = Array.from(selectedTags);
 
     try {
-      // Call tag update endpoint
-      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/add`, {
-        method: 'PATCH',
+      // Call canonical tag assignment endpoint
+      const response = await fetch(`/api/v1/assets/${selectedAsset?.id}/tags/assign`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tags }),
+        body: JSON.stringify({ add: tags }),
       });
 
       if (!response.ok) {

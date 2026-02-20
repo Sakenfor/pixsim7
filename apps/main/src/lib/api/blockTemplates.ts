@@ -20,6 +20,7 @@ export type {
   RollTemplateRequest,
   ListTemplatesQuery,
   SearchBlocksQuery,
+  BlockTagFacetsQuery,
   PromptBlockResponse,
   BlockRoleSummary,
 } from '@pixsim7/shared.api.client/domains';
@@ -37,3 +38,4 @@ export const previewSlot = blockTemplatesApi.previewSlot;
 export const listBlockPackages = blockTemplatesApi.listBlockPackages;
 export const searchBlocks = blockTemplatesApi.searchBlocks;
 export const listBlockRoles = blockTemplatesApi.listBlockRoles;
+export const listBlockTagFacets = blockTemplatesApi.listBlockTagFacets;

@@ -96,6 +96,7 @@ import './AnalyzersSettings';
 import './ProfilesSettings';
 import './BackupSettings';
 import './DebugSettings';
+import './AdminSettings';
 
 // Schema registration utilities (not settings modules themselves)
 import './UISettings'; // Registers panel settings schema

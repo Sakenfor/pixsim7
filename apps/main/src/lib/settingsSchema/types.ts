@@ -115,6 +115,8 @@ export interface SettingGroup {
   description?: string;
   /** Condition to show/hide this group based on current values */
   showWhen?: (values: Record<string, any>) => boolean;
+  /** If true, this group is auto-collected into the Admin settings category */
+  adminGroup?: boolean;
   /** Fields in this group */
   fields: SettingField[];
 }

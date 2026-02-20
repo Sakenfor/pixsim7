@@ -660,6 +660,92 @@ export function IconBadge({
 }
 
 /**
+ * Icon with a small sub-icon in a corner — generalised "icon-on-icon" indicator.
+ *
+ * Covers warning badges, status accents, folder+plus combos, etc.
+ *
+ * ```tsx
+ * <CompositeIcon name="image" size={16} sub={{ name: "alertTriangle", position: "tr", bg: "amber" }} />
+ * <CompositeIcon name="folder" size={14} sub={{ name: "plus", position: "br", bg: "amber" }} />
+ * ```
+ */
+
+type CornerPosition = 'tr' | 'tl' | 'br' | 'bl';
+
+export interface CompositeIconSub {
+  name: IconName;
+  /** Corner placement (default: 'br') */
+  position?: CornerPosition;
+  /** Tailwind color stem for the pill background, e.g. 'amber', 'red', 'green'.
+   *  Omit for a transparent sub-icon (no pill). */
+  bg?: string;
+  /** Force a specific CSS color on the sub-icon (default: white when bg is set, currentColor otherwise) */
+  color?: string;
+}
+
+const cornerClasses: Record<CornerPosition, string> = {
+  tr: '-top-1 -right-1',
+  tl: '-top-1 -left-1',
+  br: '-bottom-0.5 -right-0.5',
+  bl: '-bottom-0.5 -left-0.5',
+};
+
+// Pre-built bg classes for common colors — keeps Tailwind's JIT scanner happy
+const pillBgClasses: Record<string, string> = {
+  amber:   'bg-amber-500',
+  red:     'bg-red-500',
+  green:   'bg-green-500',
+  blue:    'bg-blue-500',
+  purple:  'bg-purple-500',
+  neutral: 'bg-neutral-500',
+  cyan:    'bg-cyan-500',
+};
+
+export function CompositeIcon({
+  name,
+  size = 16,
+  sub,
+  className = '',
+  ...props
+}: IconProps & {
+  name: IconName;
+  sub?: CompositeIconSub;
+}) {
+  if (!sub) {
+    return <Icon name={name} size={size} className={className} {...props} />;
+  }
+
+  const numSize = typeof size === 'number' ? size : 16;
+  const subSize = Math.max(7, Math.round(numSize * 0.5));
+  const position = sub.position ?? 'br';
+  const hasPill = !!sub.bg;
+
+  const pillCls = hasPill
+    ? `${pillBgClasses[sub.bg!] ?? ''} rounded-full ring-1 ring-white dark:ring-neutral-900`
+    : '';
+
+  // Use inline backgroundColor as fallback when the color isn't in our pre-built map
+  const pillStyle: React.CSSProperties | undefined =
+    hasPill && !pillBgClasses[sub.bg!]
+      ? { backgroundColor: sub.bg }
+      : undefined;
+
+  const subColor = sub.color ?? (hasPill ? '#fff' : undefined);
+
+  return (
+    <span className={`relative inline-flex ${className}`}>
+      <Icon name={name} size={size} {...props} />
+      <span
+        className={`absolute ${cornerClasses[position]} flex items-center justify-center ${pillCls}`}
+        style={{ width: subSize, height: subSize, ...pillStyle }}
+      >
+        <Icon name={sub.name} size={Math.round(subSize * 0.7)} color={subColor} />
+      </span>
+    </span>
+  );
+}
+
+/**
  * Status icon with dot indicator
  */
 export function StatusIcon({

@@ -16,7 +16,7 @@ import { resolveMediaType } from '@pixsim7/shared.assets.core';
 import { useToastStore } from '@pixsim7/shared.ui';
 
 import type { AssetModel } from '@features/assets';
-import { assetEvents, getAssetDisplayUrls, toViewerAsset, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
+import { assetEvents, getAssetDisplayUrls, toViewerAsset, toViewerAssets, toSelectedAsset, useMediaSettingsStore } from '@features/assets';
 import { archiveAsset } from '@features/assets/lib/api';
 import { useAssetDetailStore } from '@features/assets/stores/assetDetailStore';
 import { useAssetSelectionStore } from '@features/assets/stores/assetSelectionStore';
@@ -33,6 +33,8 @@ import {
 import { useGenerationInputStore } from '@features/generation';
 import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+
+import { applyQuickTag, useQuickTagStore } from '@features/assets';
 
 import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
@@ -365,7 +367,9 @@ const openAssetInViewerAction: MenuAction = {
     if (!assets.length) return;
 
     const viewerAsset = toViewerAsset(assets[0]);
-    useAssetViewerStore.getState().openViewer(viewerAsset, [viewerAsset]);
+    const viewerList = assets.length > 1 ? toViewerAssets(assets) : [viewerAsset];
+    const scopeId = assets.length > 1 ? 'selection' : 'gallery';
+    useAssetViewerStore.getState().openViewer(viewerAsset, viewerList, scopeId);
   },
 };
 
@@ -866,6 +870,77 @@ const moreFromSourceSubmenuAction: MenuAction = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tags Submenu
+// ─────────────────────────────────────────────────────────────────────────────
+
+const quickTagAction: MenuAction = {
+  id: 'asset:tags:quick-tag',
+  label: 'Quick Tag',
+  icon: 'tag',
+  requiredCapabilities: [CAP_ASSET],
+  disabled: () => {
+    const defaults = useQuickTagStore.getState().defaultTags;
+    return defaults.length === 0 ? 'No default tags configured' : false;
+  },
+  dynamicLabel: () => {
+    const defaults = useQuickTagStore.getState().defaultTags;
+    if (defaults.length === 0) return 'Quick Tag (none set)';
+    const preview = defaults.length <= 2
+      ? defaults.map((t) => t.split(':').pop()).join(', ')
+      : `${defaults.slice(0, 2).map((t) => t.split(':').pop()).join(', ')} +${defaults.length - 2}`;
+    return `Quick Tag: ${preview}`;
+  },
+  execute: async (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    const defaults = useQuickTagStore.getState().defaultTags;
+    if (defaults.length === 0) return;
+    const results = await Promise.allSettled(
+      assets.map((asset) => applyQuickTag(asset.id, defaults)),
+    );
+    const successCount = results.filter((r) => r.status === 'fulfilled').length;
+    const errorCount = results.length - successCount;
+    if (successCount > 0) {
+      const tagLabel = defaults.length === 1 ? defaults[0] : `${defaults.length} tags`;
+      notify('success', `Applied ${tagLabel} to ${successCount} asset${successCount === 1 ? '' : 's'}.`);
+    }
+    if (errorCount > 0) {
+      notify('error', `Failed to tag ${errorCount} asset${errorCount === 1 ? '' : 's'}.`);
+    }
+  },
+};
+
+const bulkTagAction: MenuAction = {
+  id: 'asset:tags:bulk-tag',
+  label: 'Bulk Tag\u2026',
+  icon: 'tags',
+  requiredCapabilities: [CAP_ASSET],
+  dynamicLabel: (ctx) => {
+    const count = resolveAssets(ctx).length;
+    return count > 1 ? `Bulk Tag (${count})\u2026` : 'Bulk Tag\u2026';
+  },
+  execute: (ctx) => {
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    assetEvents.emitOpenToolsPanel(assets.map((a) => a.id));
+  },
+};
+
+const tagsSubmenuAction: MenuAction = {
+  id: 'asset:tags',
+  label: 'Tags',
+  icon: 'tags',
+  category: 'tags',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  children: () => [
+    { ...quickTagAction, category: undefined, requiredCapabilities: undefined },
+    { ...bulkTagAction, category: undefined, requiredCapabilities: undefined },
+  ],
+  execute: () => {},
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Destructive / Management Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -940,6 +1015,8 @@ export const assetActions: MenuAction[] = [
   generateSubmenuAction,
   // Related assets
   moreFromSourceSubmenuAction,
+  // Tags submenu
+  tagsSubmenuAction,
   // Copy submenu
   copySubmenuAction,
   // Asset management

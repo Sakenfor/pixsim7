@@ -22,6 +22,7 @@ import {
   parseStatsConfig,
   parseManifest,
   parseIntimacyGating,
+  parseNpcConfig,
   getTurnDeltaFromPreset,
 } from '@pixsim7/core.world';
 import { deepMerge } from '@pixsim7/shared.helpers.core';
@@ -31,6 +32,7 @@ import {
   DEFAULT_WORLD_MANIFEST,
   DEFAULT_INTIMACY_GATING,
   DEFAULT_WORLD_TIME_CONFIG,
+  DEFAULT_NPC_CONFIG,
   TURN_PRESET_SECONDS,
   DEFAULT_TURN_PRESET,
   WorldTimeConfigSchema,
@@ -38,6 +40,7 @@ import {
   type WorldManifestParsed,
   type IntimacyGatingConfig,
   type WorldTimeConfig,
+  type NpcConfig,
   type StatDefinition,
   type StatTier,
   type StatLevel,
@@ -75,6 +78,7 @@ interface WorldConfigState {
   manifest: Readonly<WorldManifestParsed>;
   intimacyGating: Readonly<IntimacyGatingConfig>;
   timeConfig: Readonly<WorldTimeConfig>;
+  npcConfig: Readonly<NpcConfig>;
 
   // Pre-computed ordering from backend (source of truth)
   backendTierOrder: string[] | null;
@@ -145,6 +149,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
     manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
     intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
     timeConfig: Object.freeze(DEFAULT_WORLD_TIME_CONFIG),
+    npcConfig: Object.freeze(DEFAULT_NPC_CONFIG),
     backendTierOrder: null,
     backendLevelOrder: null,
     turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],
@@ -160,6 +165,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       const manifest = Object.freeze(parseManifest(meta.manifest)) as Readonly<WorldManifestParsed>;
       const intimacyGating = Object.freeze(parseIntimacyGating(meta.intimacy_gating)) as Readonly<IntimacyGatingConfig>;
       const timeConfig = Object.freeze(parseTimeConfig(meta.time_config)) as Readonly<WorldTimeConfig>;
+      const npcConfig = Object.freeze(parseNpcConfig(meta.npc_config)) as Readonly<NpcConfig>;
 
       set({
         worldId: world.id,
@@ -169,6 +175,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         manifest,
         intimacyGating,
         timeConfig,
+        npcConfig,
         turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
         isLoaded: true,
         // Clear backend ordering - will be fetched via loadWorldConfig
@@ -202,12 +209,16 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         const timeConfig = Object.freeze(
           config.time_config ?? DEFAULT_WORLD_TIME_CONFIG
         ) as Readonly<WorldTimeConfig>;
+        const npcConfig = Object.freeze(
+          config.npc_config ?? DEFAULT_NPC_CONFIG
+        ) as Readonly<NpcConfig>;
 
         set({
           statsConfig,
           manifest,
           intimacyGating,
           timeConfig,
+          npcConfig,
           backendTierOrder: config.tier_order ? [...config.tier_order] : null,
           backendLevelOrder: config.level_order ? [...config.level_order] : null,
           turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
@@ -241,6 +252,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
       const manifest = Object.freeze(parseManifest(meta.manifest)) as Readonly<WorldManifestParsed>;
       const intimacyGating = Object.freeze(parseIntimacyGating(meta.intimacy_gating)) as Readonly<IntimacyGatingConfig>;
       const timeConfig = Object.freeze(parseTimeConfig(meta.time_config)) as Readonly<WorldTimeConfig>;
+      const npcConfig = Object.freeze(parseNpcConfig(meta.npc_config)) as Readonly<NpcConfig>;
 
       set({
         rawMeta: frozenMeta,
@@ -249,6 +261,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         manifest,
         intimacyGating,
         timeConfig,
+        npcConfig,
         turnDeltaSeconds: getTurnDeltaFromPreset(manifest.turn_preset),
       });
     },
@@ -262,6 +275,7 @@ export const useWorldConfigStore = create<WorldConfigState>()(
         manifest: Object.freeze(DEFAULT_WORLD_MANIFEST),
         intimacyGating: Object.freeze(DEFAULT_INTIMACY_GATING),
         timeConfig: Object.freeze(DEFAULT_WORLD_TIME_CONFIG),
+        npcConfig: Object.freeze(DEFAULT_NPC_CONFIG),
         backendTierOrder: null,
         backendLevelOrder: null,
         turnDeltaSeconds: TURN_PRESET_SECONDS[DEFAULT_TURN_PRESET],

@@ -111,6 +111,10 @@ export default defineConfig([
               message: 'Use @lib/* instead of @/lib/*. Example: import { apiClient } from "@lib/api"',
             },
             {
+              group: ['@pixsim7/shared.api.client/model', '@pixsim7/shared.api.client/model/*'],
+              message: 'Import OpenAPI models from @pixsim7/shared.api.model instead of @pixsim7/shared.api.client/model.',
+            },
+            {
               group: [
                 '@features/generation/lib/core/assetInputTypes',
                 '@features/generation/lib/core/normalizeProviderParams',
@@ -180,6 +184,10 @@ export default defineConfig([
               group: ['@/stores/*', '../../../stores/*', '../../../../stores/*'],
               message:
                 'Features should not import global stores directly. Use feature-local stores or pass via props/context.',
+            },
+            {
+              group: ['@pixsim7/shared.api.client/model', '@pixsim7/shared.api.client/model/*'],
+              message: 'Import OpenAPI models from @pixsim7/shared.api.model instead of @pixsim7/shared.api.client/model.',
             },
           ],
         },

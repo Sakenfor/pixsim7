@@ -46,7 +46,7 @@ async function doInitializePanels(): Promise<void> {
     // Auto-discover and register panels from definitions directory
     // These are self-contained panels that use definePanel()
     const { autoRegisterPanels } = await import("./autoDiscovery");
-    const result = await autoRegisterPanels({ verbose: true });
+    const result = await autoRegisterPanels();
     if (result.failed.length > 0) {
       console.warn(
         `[initializePanels] ${result.failed.length} panels failed to auto-register`

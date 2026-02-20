@@ -8,7 +8,16 @@ import clsx from 'clsx';
 import { useCallback, useEffect, useState } from 'react';
 
 import { listBlockPackages } from '@lib/api/blockTemplates';
+import { pixsimClient } from '@lib/api';
 import { Icon } from '@lib/icons';
+
+interface CharacterOption {
+  id: string;
+  character_id: string;
+  display_name: string | null;
+  name: string | null;
+  species: string | null;
+}
 
 import { OPERATION_TYPES } from '@/types/operations';
 
@@ -49,9 +58,13 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [packageNames, setPackageNames] = useState<string[]>([]);
+  const [characters, setCharacters] = useState<CharacterOption[]>([]);
 
   useEffect(() => {
     void listBlockPackages().then(setPackageNames).catch(() => {});
+    void pixsimClient.get<CharacterOption[]>('/characters', { params: { limit: 200 } })
+      .then(setCharacters)
+      .catch(() => {});
   }, []);
 
   const handleAddSlot = useCallback(() => {
@@ -200,15 +213,31 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
                   setDraftCharacterBinding(newRole, binding.character_id);
                 }
               }}
-              className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+              className="w-28 shrink-0 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
             />
-            <input
-              type="text"
-              value={binding.character_id}
-              placeholder="character_id"
-              onChange={(e) => setDraftCharacterBinding(role, e.target.value)}
-              className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
-            />
+            {characters.length > 0 ? (
+              <select
+                value={binding.character_id}
+                onChange={(e) => setDraftCharacterBinding(role, e.target.value)}
+                className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none"
+              >
+                <option value="">Select character...</option>
+                {characters.map((c) => (
+                  <option key={c.character_id} value={c.character_id}>
+                    {c.display_name || c.name || c.character_id}
+                    {c.species ? ` (${c.species.replace('species:', '')})` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={binding.character_id}
+                placeholder="character_id"
+                onChange={(e) => setDraftCharacterBinding(role, e.target.value)}
+                className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+              />
+            )}
             <button
               type="button"
               onClick={() => removeDraftCharacterBinding(role)}

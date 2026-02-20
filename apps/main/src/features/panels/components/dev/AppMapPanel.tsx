@@ -19,7 +19,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
-import { isAdminUser } from '@lib/auth/userRoles';
+import { canRunCodegen } from '@lib/auth/userRoles';
 import {
   useFeatures,
   useFeatureRoutes,
@@ -140,9 +140,9 @@ export function AppMapPanel() {
   const [activeTab, setActiveTab] = useState<TabId>('features');
   const [allPlugins, setAllPlugins] = useState<UnifiedPluginDescriptor[]>([]);
 
-  // Devtools codegen link (admin + DEV mode)
+  // Devtools codegen link (permission + DEV mode)
   const user = useAuthStore((s) => s.user);
-  const showCodegenLink = import.meta.env.DEV && isAdminUser(user);
+  const showCodegenLink = import.meta.env.DEV && canRunCodegen(user);
   const codegenUrl = useMemo(() => buildDevtoolsUrl('/dev/codegen?task=app-map'), []);
 
   // Data from capability registry

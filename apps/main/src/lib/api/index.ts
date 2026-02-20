@@ -48,7 +48,9 @@ export * from './generations';
 export * from './generationOperations';
 export * from './analyzers';
 export * from './userPreferences';
+export * from './adminUsers';
 export * from './codegen';
+export * from './characters';
 
 export * from './tags';
 

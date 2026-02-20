@@ -9,7 +9,7 @@ import type {
   PixverseSyncDryRunCategory,
   PixverseSyncDryRunResponse,
   PixverseSyncAssetsResponse,
-} from '@pixsim7/shared.api.client/model';
+} from '@pixsim7/shared.api.model';
 
 import { pixsimClient } from '@lib/api/client';
 

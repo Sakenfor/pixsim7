@@ -3,10 +3,10 @@ import { Navigate } from 'react-router-dom';
 
 import type { Module } from '@app/modules/types';
 
-// Redirect component for /settings/overlays -> /dev/widget-builder?surface=overlay
+// Redirect component for /settings/overlays -> /devtools
 function OverlayConfigRedirect() {
   return createElement(Navigate, {
-    to: '/dev/widget-builder?surface=overlay',
+    to: '/devtools',
     replace: true,
   });
 }

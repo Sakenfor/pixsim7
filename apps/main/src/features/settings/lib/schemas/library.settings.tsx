@@ -370,6 +370,7 @@ const maintenanceTab: SettingTab = {
       id: 'maintenance-dashboard',
       title: 'Maintenance',
       showWhen: adminOnly,
+      adminGroup: true,
       fields: [
         {
           id: 'maintenance-dashboard-widget',

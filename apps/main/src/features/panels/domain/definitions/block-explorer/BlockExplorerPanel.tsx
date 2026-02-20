@@ -11,10 +11,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   searchBlocks,
   listBlockRoles,
+  listBlockPackages,
+  listBlockTagFacets,
   type PromptBlockResponse,
   type BlockRoleSummary,
 } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
+
+import { BlockFilters, type TagFilter } from './BlockFilters';
+import { useVocabResolver, type ResolvedTag } from './useVocabResolver';
 
 // ============================================================================
 // Color mapping by role name
@@ -158,7 +163,32 @@ function SidebarRoleNode({
 // Detail
 // ============================================================================
 
-function BlockDetail({ block }: { block: PromptBlockResponse }) {
+function TagValue({
+  raw,
+  resolveTagValue,
+}: {
+  raw: string;
+  resolveTagValue: (raw: string) => ResolvedTag;
+}) {
+  const resolved = resolveTagValue(raw);
+  if (resolved.isVocab) {
+    return (
+      <span>
+        <span className="text-blue-400">{resolved.label}</span>
+        <span className="text-neutral-600 ml-1">({raw})</span>
+      </span>
+    );
+  }
+  return <span className="text-neutral-300">{raw}</span>;
+}
+
+function BlockDetail({
+  block,
+  resolveTagValue,
+}: {
+  block: PromptBlockResponse;
+  resolveTagValue: (raw: string) => ResolvedTag;
+}) {
   const color = roleColor(block.role);
   const badgeClass = COLOR_BADGE[color] ?? COLOR_BADGE.gray;
 
@@ -205,7 +235,7 @@ function BlockDetail({ block }: { block: PromptBlockResponse }) {
             {Object.entries(block.tags).map(([key, value]) => (
               <div key={key} className="contents">
                 <span className="text-neutral-500">{key}</span>
-                <span className="text-neutral-300">{String(value)}</span>
+                <TagValue raw={String(value)} resolveTagValue={resolveTagValue} />
               </div>
             ))}
           </div>
@@ -294,11 +324,21 @@ export function BlockExplorerPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Load role tree on mount
+  // Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [packages, setPackages] = useState<string[]>([]);
+  const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
+  const [tagFacets, setTagFacets] = useState<Record<string, string[]>>({});
+  const [activeTagFilters, setActiveTagFilters] = useState<TagFilter[]>([]);
+
+  const { resolveTagValue } = useVocabResolver();
+
+  // Load role tree and packages on mount
   useEffect(() => {
-    listBlockRoles()
-      .then((summaries) => {
+    Promise.all([listBlockRoles(), listBlockPackages()])
+      .then(([summaries, pkgs]) => {
         setRoleTree(buildRoleTree(summaries));
+        setPackages(pkgs);
         setIsLoading(false);
       })
       .catch((err) => {
@@ -307,29 +347,76 @@ export function BlockExplorerPanel() {
       });
   }, []);
 
-  // Fetch blocks when filter changes
+  // Fetch tag facets when role/category changes
+  useEffect(() => {
+    if (!selectedRole) {
+      setTagFacets({});
+      return;
+    }
+    listBlockTagFacets({
+      role: selectedRole,
+      category: selectedCategory ?? undefined,
+      package_name: selectedPackage ?? undefined,
+    })
+      .then(setTagFacets)
+      .catch(() => setTagFacets({}));
+  }, [selectedRole, selectedCategory, selectedPackage]);
+
+  // Fetch blocks when any filter changes
   useEffect(() => {
     if (!selectedRole) {
       setBlocks([]);
       return;
     }
+    const tagsParam =
+      activeTagFilters.length > 0
+        ? activeTagFilters.map((f) => `${f.key}:${f.value}`).join(',')
+        : undefined;
     searchBlocks({
       role: selectedRole,
       category: selectedCategory ?? undefined,
+      package_name: selectedPackage ?? undefined,
+      q: searchQuery || undefined,
+      tags: tagsParam,
       limit: 200,
-    }).then(setBlocks).catch(() => setBlocks([]));
-  }, [selectedRole, selectedCategory]);
+    })
+      .then(setBlocks)
+      .catch(() => setBlocks([]));
+  }, [selectedRole, selectedCategory, selectedPackage, searchQuery, activeTagFilters]);
 
   const handleSelectRole = useCallback((role: string) => {
     setSelectedRole(role);
     setSelectedCategory(null);
     setSelectedBlock(null);
+    setSearchQuery('');
+    setActiveTagFilters([]);
   }, []);
 
   const handleSelectCategory = useCallback((role: string, category: string) => {
     setSelectedRole(role);
     setSelectedCategory(category);
     setSelectedBlock(null);
+    setSearchQuery('');
+    setActiveTagFilters([]);
+  }, []);
+
+  const handleTagFilterAdd = useCallback((filter: TagFilter) => {
+    setActiveTagFilters((prev) => {
+      if (prev.some((f) => f.key === filter.key && f.value === filter.value)) return prev;
+      return [...prev, filter];
+    });
+  }, []);
+
+  const handleTagFilterRemove = useCallback((filter: TagFilter) => {
+    setActiveTagFilters((prev) =>
+      prev.filter((f) => !(f.key === filter.key && f.value === filter.value)),
+    );
+  }, []);
+
+  const handleClearFilters = useCallback(() => {
+    setSearchQuery('');
+    setSelectedPackage(null);
+    setActiveTagFilters([]);
   }, []);
 
   const totalBlocks = useMemo(
@@ -379,21 +466,37 @@ export function BlockExplorerPanel() {
 
       {/* Right: block list + detail */}
       <div className="flex-1 flex min-w-0">
-        {/* Block list */}
+        {/* Block list with filters */}
         {selectedRole && (
-          <div className="w-52 shrink-0 border-r border-neutral-800 overflow-y-auto">
-            <BlockList
-              blocks={blocks}
-              selectedId={selectedBlock?.block_id ?? null}
-              onSelect={setSelectedBlock}
-            />
+          <div className="w-56 shrink-0 border-r border-neutral-800 flex flex-col">
+            <div className="border-b border-neutral-800 shrink-0">
+              <BlockFilters
+                searchQuery={searchQuery}
+                onSearchChange={setSearchQuery}
+                packages={packages}
+                selectedPackage={selectedPackage}
+                onPackageChange={setSelectedPackage}
+                tagFacets={tagFacets}
+                activeTagFilters={activeTagFilters}
+                onTagFilterAdd={handleTagFilterAdd}
+                onTagFilterRemove={handleTagFilterRemove}
+                onClearFilters={handleClearFilters}
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <BlockList
+                blocks={blocks}
+                selectedId={selectedBlock?.block_id ?? null}
+                onSelect={setSelectedBlock}
+              />
+            </div>
           </div>
         )}
 
         {/* Detail */}
         <div className="flex-1 overflow-y-auto">
           {selectedBlock ? (
-            <BlockDetail block={selectedBlock} />
+            <BlockDetail block={selectedBlock} resolveTagValue={resolveTagValue} />
           ) : (
             <div className="h-full flex items-center justify-center px-6">
               <p className="text-xs text-neutral-500">

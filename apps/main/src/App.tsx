@@ -18,7 +18,7 @@ import { ContextHubHost } from '@features/contextHub';
 import { ContextHubRootProviders } from '@features/contextHub/components/ContextHubRootProviders';
 import { ControlCenterManager } from '@features/controlCenter';
 import { CubeWidgetOverlay } from '@features/cubes';
-import { useInitializePanelSystem } from '@features/panels';
+
 import { FloatingPanelsManager } from '@features/panels/components/shared/FloatingPanelsManager';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
@@ -63,9 +63,6 @@ function App() {
   // Register dev tool keyboard shortcuts
   useDevToolShortcuts();
   useActionShortcuts(isAuthenticated);
-
-  // Initialize panel orchestration system
-  useInitializePanelSystem(true);
 
   useEffect(() => {
     // Initialize auth state

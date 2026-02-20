@@ -23,7 +23,7 @@ interface DynamicSettingsPanelProps {
   tabId?: string;
 }
 
-function SettingGroupRenderer({
+export function SettingGroupRenderer({
   group,
   useStore,
 }: {

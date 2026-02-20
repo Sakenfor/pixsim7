@@ -9,17 +9,11 @@
 import {
   sessionStateViewerTool,
   generationHealthTool,
-  pluginWorkspaceTool,
   capabilityTestingTool,
-  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
-  templateAnalyticsTool,
   gizmoSurfacesTool,
-  mediaHarnessTool,
-  promptLabTool,
-  promptBlockGraphTool,
-  actionBlockGraphTool,
+  promptImporterTool,
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
@@ -30,17 +24,11 @@ import {
 export {
   sessionStateViewerTool,
   generationHealthTool,
-  pluginWorkspaceTool,
   capabilityTestingTool,
-  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
-  templateAnalyticsTool,
   gizmoSurfacesTool,
-  mediaHarnessTool,
-  promptLabTool,
-  promptBlockGraphTool,
-  actionBlockGraphTool,
+  promptImporterTool,
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
@@ -53,26 +41,17 @@ export const builtInDevTools = [
   sessionStateViewerTool,
   generationHealthTool,
 
-  // Plugin Development
-  pluginWorkspaceTool,
   capabilityTestingTool,
 
   // Architecture & Graph
-  appMapTool,
   dependencyGraphTool,
   backendArchitectureTool,
 
-  // Analytics & Metrics
-  templateAnalyticsTool,
-
   // Gizmo & Surface Management
   gizmoSurfacesTool,
-  mediaHarnessTool,
 
   // Prompt Tools
-  promptLabTool,
-  promptBlockGraphTool,
-  actionBlockGraphTool,
+  promptImporterTool,
   blockFitTool,
 
   // Types & Schema

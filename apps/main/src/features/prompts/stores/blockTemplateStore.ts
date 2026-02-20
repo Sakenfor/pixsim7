@@ -94,6 +94,9 @@ function createEmptySlot(index: number): TemplateSlot {
     weight: 1.0,
     optional: false,
     fallback_text: null,
+    reinforcement_text: null,
+    intensity: null,
+    inherit_intensity: false,
     exclude_block_ids: null,
   };
 }

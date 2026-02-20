@@ -16,18 +16,18 @@ function openDevtools(path: string) {
   navigateTo('/devtools');
 }
 
-const openAppMapAction: ActionDefinition = {
-  id: 'app-map.open',
-  featureId: 'app-map',
-  title: 'Open App Map',
-  description: 'View live app architecture and plugin ecosystem',
-  icon: 'map',
+const openDevtoolsAction: ActionDefinition = {
+  id: 'devtools.open',
+  featureId: 'devtools',
+  title: 'Open DevTools',
+  description: 'Open the dedicated developer tools workspace',
+  icon: 'code',
   shortcut: 'Ctrl+Shift+M',
   route: '/devtools',
   contexts: ['background'],
   category: 'quick-add',
   execute: () => {
-    openDevtools('/app-map');
+    openDevtools('/');
   },
 };
 
@@ -74,6 +74,6 @@ export const devtoolsGatewayModule: Module = {
     featureId: 'devtools',
     hidden: true,
     component: DevtoolsGatewayRedirect,
-    actions: [openAppMapAction, openCodegenAction],
+    actions: [openDevtoolsAction, openCodegenAction],
   },
 };

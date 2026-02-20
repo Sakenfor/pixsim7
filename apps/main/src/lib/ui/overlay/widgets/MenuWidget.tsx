@@ -40,6 +40,9 @@ export interface MenuItem {
 
   /** Keyboard shortcut hint */
   shortcut?: string;
+
+  /** Custom React content — renders instead of the standard label/icon row */
+  content?: React.ReactNode;
 }
 
 export interface MenuWidgetConfig {
@@ -200,6 +203,18 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
       };
 
       const renderMenuItem = (item: MenuItem, depth: number = 0) => {
+        // Custom content — renders directly instead of the standard button row
+        if (item.content) {
+          return (
+            <div key={item.id}>
+              <div className="px-3 py-2">{item.content}</div>
+              {item.divider && (
+                <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+              )}
+            </div>
+          );
+        }
+
         const hasChildren = item.children && item.children.length > 0;
         const isSubMenuOpen = openSubMenus.has(item.id);
         const variantClasses = {

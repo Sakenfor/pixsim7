@@ -20,7 +20,7 @@ import type {
   DuplicateSavedGameProjectRequest,
   UpsertDraftRequest,
   DraftSummary,
-} from '@pixsim7/shared.api.client/model';
+} from '@pixsim7/shared.api.model';
 import { IDs } from '@pixsim7/shared.types';
 
 import type {

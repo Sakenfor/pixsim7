@@ -82,6 +82,9 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   /** Dismiss the missing folders warning */
   dismissMissingFolders: () => void;
 
+  /** Upload one asset to a specific provider (bypasses default provider setting) */
+  uploadOneToProvider: (asset: LocalAsset | string, providerId: string) => Promise<void>;
+
   // Local favorites (maps local asset key -> favorite state in backend library)
   favoriteStatus: Record<string, boolean>;
   toggleFavoriteOne: (asset: LocalAsset | string) => Promise<void>;

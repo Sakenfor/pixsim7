@@ -15,7 +15,7 @@ import type {
   AppActionPreset,
   AutomationExecution,
   ExecutionLoop,
-} from '@pixsim7/shared.api.client/model';
+} from '@pixsim7/shared.api.model';
 
 // =============================================================================
 // Backend Types (from Orval-generated OpenAPI)

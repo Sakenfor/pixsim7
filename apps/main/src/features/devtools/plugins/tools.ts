@@ -45,20 +45,6 @@ export const generationHealthTool: DevToolDefinition = {
   tags: ['generation', 'health', 'diagnostics', 'content'],
 };
 
-// ============================================================================
-// Plugin Development Tools
-// ============================================================================
-
-export const pluginWorkspaceTool: DevToolDefinition = {
-  id: 'plugin-workspace',
-  label: 'Plugin Workspace',
-  description: 'Develop and test plugins (UI, interactions, node types, tools)',
-  icon: 'plug',
-  category: 'plugins',
-  routePath: buildDevtoolsUrl('/plugin-workspace'),
-  tags: ['plugins', 'dev', 'workspace', 'test', 'harness'],
-};
-
 export const capabilityTestingTool: DevToolDefinition = {
   id: 'capability-testing',
   label: 'Capability Testing',
@@ -72,16 +58,6 @@ export const capabilityTestingTool: DevToolDefinition = {
 // ============================================================================
 // Architecture & Graph Tools
 // ============================================================================
-
-export const appMapTool: DevToolDefinition = {
-  id: 'app-map',
-  label: 'App Map',
-  description: 'Visualize application structure and plugin architecture',
-  icon: 'map',
-  category: 'graph',
-  routePath: buildDevtoolsUrl('/app-map'),
-  tags: ['architecture', 'map', 'visualization', 'structure'],
-};
 
 export const dependencyGraphTool: DevToolDefinition = {
   id: 'dependency-graph',
@@ -107,16 +83,6 @@ export const backendArchitectureTool: DevToolDefinition = {
 // Analytics & Metrics Tools
 // ============================================================================
 
-export const templateAnalyticsTool: DevToolDefinition = {
-  id: 'template-analytics',
-  label: 'Template Analytics',
-  description: 'Analyze template usage and performance metrics',
-  icon: 'bar-chart',
-  category: 'debug',
-  routePath: buildDevtoolsUrl('/template-analytics'),
-  tags: ['templates', 'analytics', 'metrics', 'performance'],
-};
-
 // ============================================================================
 // Gizmo & Surface Management
 // ============================================================================
@@ -131,49 +97,18 @@ export const gizmoSurfacesTool: DevToolDefinition = {
   tags: ['gizmos', 'surfaces', 'overlays', 'dashboards', 'debug'],
 };
 
-export const mediaHarnessTool: DevToolDefinition = {
-  id: 'media-harness',
-  label: 'Media Resolver Harness',
-  description: 'Debug asset URL resolution, auth media, and video scrubbing',
-  icon: 'video',
-  category: 'debug',
-  routePath: buildDevtoolsUrl('/dev/media-harness'),
-  tags: ['media', 'assets', 'thumbnails', 'scrub', 'auth'],
-  safeForNonDev: false,
-};
-
 // ============================================================================
 // Prompt Tools
 // ============================================================================
 
-export const promptLabTool: DevToolDefinition = {
-  id: 'prompt-lab',
-  label: 'Prompt Lab',
-  description: 'Analyze, import, and browse prompts',
+export const promptImporterTool: DevToolDefinition = {
+  id: 'prompt-importer',
+  label: 'Prompt Importer',
+  description: 'Import prompts from external sources',
   icon: 'fileText',
   category: 'prompts',
-  routePath: buildDevtoolsUrl('/dev/prompt-lab'),
-  tags: ['prompts', 'analysis', 'import', 'library'],
-};
-
-export const promptBlockGraphTool: DevToolDefinition = {
-  id: 'prompt-block-graph',
-  label: 'Prompt Block Graph',
-  description: 'Visualize parsed prompt blocks as a graph',
-  icon: 'graph',
-  category: 'prompts',
-  routePath: buildDevtoolsUrl('/dev/prompt-lab'),
-  tags: ['prompts', 'graph', 'analysis', 'blocks'],
-};
-
-export const actionBlockGraphTool: DevToolDefinition = {
-  id: 'action-block-graph',
-  label: 'Action Block Graph',
-  description: 'Visualize ActionBlocks and their compatibility/composition',
-  icon: 'zap',
-  category: 'prompts',
-  routePath: buildDevtoolsUrl('/dev/action-block-graph'),
-  tags: ['action-blocks', 'graph', 'library', 'prompts'],
+  routePath: buildDevtoolsUrl('/dev/prompt-importer'),
+  tags: ['prompts', 'import', 'library'],
 };
 
 export const blockFitTool: DevToolDefinition = {

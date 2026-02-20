@@ -5,14 +5,37 @@
  * Configure retry behavior and defaults for generation tools.
  */
 
+import { useEffect, useRef, useState } from 'react';
+
 import {
   useGenerationSettingsStore,
   useGenerationHistoryStore,
   type HistoryMode,
   type HistorySortMode,
 } from '@features/generation';
+import { pixsimClient } from '@lib/api';
 
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '../core';
+
+// ===== Server generation config (rate limits & retry) =====
+
+interface GenerationServerConfig {
+  rate_limit_max_requests: number;
+  rate_limit_window_seconds: number;
+  auto_retry_max_attempts: number;
+}
+
+async function fetchGenerationServerConfig(): Promise<GenerationServerConfig> {
+  return pixsimClient.get<GenerationServerConfig>('/admin/generation/config');
+}
+
+async function updateGenerationServerConfig(
+  patch: Partial<GenerationServerConfig>,
+): Promise<GenerationServerConfig> {
+  return pixsimClient.patch<GenerationServerConfig>('/admin/generation/config', patch);
+}
+
+const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
 
 function HistoryClearActions({
   value,
@@ -236,7 +259,53 @@ const generationGroups: SettingGroup[] = [
       },
     ],
   },
+  {
+    id: 'server-limits',
+    title: 'Server Limits',
+    description: 'Rate limits and retry caps applied server-side. Changes are in-memory and reset on server restart.',
+    showWhen: adminOnly,
+    adminGroup: true,
+    fields: [
+      {
+        id: 'server_rateLimitMaxRequests',
+        type: 'number',
+        label: 'Rate Limit — Max Requests',
+        description: 'Maximum generation requests allowed per time window.',
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 10,
+      },
+      {
+        id: 'server_rateLimitWindowSeconds',
+        type: 'number',
+        label: 'Rate Limit — Window (seconds)',
+        description: 'Time window for the rate limit counter.',
+        min: 10,
+        max: 3600,
+        step: 10,
+        defaultValue: 60,
+      },
+      {
+        id: 'server_autoRetryMaxAttempts',
+        type: 'number',
+        label: 'Server Auto-Retry Max Attempts',
+        description: 'Server-enforced maximum retry attempts per generation.',
+        min: 1,
+        max: 50,
+        step: 1,
+        defaultValue: 20,
+      },
+    ],
+  },
 ];
+
+// Field ID → server config key mapping
+const SERVER_FIELD_MAP: Record<string, keyof GenerationServerConfig> = {
+  server_rateLimitMaxRequests: 'rate_limit_max_requests',
+  server_rateLimitWindowSeconds: 'rate_limit_window_seconds',
+  server_autoRetryMaxAttempts: 'auto_retry_max_attempts',
+};
 
 function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
   const params = useGenerationSettingsStore((s) => s.params);
@@ -276,8 +345,26 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
     (s) => s.setMaxHistorySizeForOperation,
   );
 
+  // Server config state (admin-only, in-memory on backend)
+  const [serverConfig, setServerConfig] = useState<GenerationServerConfig | null>(null);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    fetchGenerationServerConfig()
+      .then(setServerConfig)
+      .catch((err) => console.error('Failed to fetch generation server config:', err));
+  }, []);
+
   return {
     get: (fieldId: string) => {
+      // Server fields
+      const serverKey = SERVER_FIELD_MAP[fieldId];
+      if (serverKey) {
+        return serverConfig?.[serverKey];
+      }
+
       switch (fieldId) {
         case 'autoSwitchOperationType':
           return params.autoSwitchOperationType ?? true;
@@ -318,6 +405,22 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       }
     },
     set: (fieldId: string, value: any) => {
+      // Server fields — optimistic update + PATCH, revert on error
+      const serverKey = SERVER_FIELD_MAP[fieldId];
+      if (serverKey && serverConfig) {
+        const prev = { ...serverConfig };
+        const optimistic = { ...serverConfig, [serverKey]: Number(value) };
+        setServerConfig(optimistic);
+
+        updateGenerationServerConfig({ [serverKey]: Number(value) })
+          .then(setServerConfig)
+          .catch((err) => {
+            console.error('Failed to update server config:', err);
+            setServerConfig(prev);
+          });
+        return;
+      }
+
       if (fieldId === 'autoSwitchOperationType') {
         setParam('autoSwitchOperationType', Boolean(value));
       }
@@ -415,6 +518,10 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       maxHistorySizeVideoExtend: maxHistorySizeByOperation.video_extend ?? maxHistorySize ?? 20,
       maxHistorySizeVideoTransition: maxHistorySizeByOperation.video_transition ?? maxHistorySize ?? 20,
       maxHistorySizeFusion: maxHistorySizeByOperation.fusion ?? maxHistorySize ?? 20,
+      // Server config fields
+      server_rateLimitMaxRequests: serverConfig?.rate_limit_max_requests,
+      server_rateLimitWindowSeconds: serverConfig?.rate_limit_window_seconds,
+      server_autoRetryMaxAttempts: serverConfig?.auto_retry_max_attempts,
     }),
   };
 }

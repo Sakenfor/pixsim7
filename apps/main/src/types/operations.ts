@@ -128,7 +128,7 @@ export type OperationType = typeof OPERATION_TYPES[number];
  */
 export type { MediaType };
 
-export type MultiAssetMode = 'single' | 'optional' | 'required';
+export type MultiAssetMode = 'optional' | 'required';
 
 export interface OperationMetadata {
   /** Display label */
@@ -157,7 +157,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   text_to_image: {
     label: 'Text to Image',
     description: 'Generate an image from a text prompt',
-    multiAssetMode: 'single',
+    multiAssetMode: 'optional',
     acceptsInput: [],
     outputType: 'image',
     promptRequired: true,
@@ -166,7 +166,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   text_to_video: {
     label: 'Text to Video',
     description: 'Generate a video from a text prompt',
-    multiAssetMode: 'single',
+    multiAssetMode: 'optional',
     acceptsInput: [],
     outputType: 'video',
     promptRequired: true,
@@ -175,7 +175,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   image_to_video: {
     label: 'Image to Video',
     description: 'Animate an image into a video',
-    multiAssetMode: 'single',
+    multiAssetMode: 'optional',
     acceptsInput: ['image', 'video'], // video via frame extraction
     outputType: 'video',
     promptRequired: false,
@@ -193,7 +193,7 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
   video_extend: {
     label: 'Video Extend',
     description: 'Extend a video with additional frames',
-    multiAssetMode: 'single',
+    multiAssetMode: 'optional',
     acceptsInput: ['video'],
     outputType: 'video',
     promptRequired: false,
@@ -220,20 +220,11 @@ export const OPERATION_METADATA: Record<OperationType, OperationMetadata> = {
 };
 
 /**
- * Check if an operation supports multiple input assets
+ * Check if an operation supports multiple input assets.
+ * Always true — all operations use the multi-input path.
  */
-export function isMultiAssetOperation(operationType: OperationType): boolean {
-  const mode = OPERATION_METADATA[operationType]?.multiAssetMode;
-  return mode === 'optional' || mode === 'required';
-}
-
-/**
- * Check if an operation should default to the multi-asset queue.
- *
- * @deprecated Input routing is now handled by per-operation input lists.
- */
-export function shouldDefaultToMultiAssetQueue(operationType: OperationType): boolean {
-  return OPERATION_METADATA[operationType]?.multiAssetMode === 'required';
+export function isMultiAssetOperation(_operationType: OperationType): boolean {
+  return true;
 }
 
 /**

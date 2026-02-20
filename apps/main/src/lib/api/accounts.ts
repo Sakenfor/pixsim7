@@ -6,7 +6,7 @@
  */
 import { createAccountsApi } from '@pixsim7/shared.api.client/domains';
 import type { AccountResponse, AccountStatus, AccountUpdate, CreateApiKeyResponse } from '@pixsim7/shared.api.client/domains';
-import type { AccountStatsResponse, InvitedAccountsResponse } from '@pixsim7/shared.api.client/model';
+import type { AccountStatsResponse, InvitedAccountsResponse } from '@pixsim7/shared.api.model';
 
 import { logEvent } from '@lib/utils/logging';
 

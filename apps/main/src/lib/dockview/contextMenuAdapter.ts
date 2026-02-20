@@ -26,12 +26,19 @@ export function useCapabilitiesSnapshotProvider(): CapabilitiesSnapshotProvider 
   const overrides = useContextHubOverridesStore((store) => store.overrides);
   const cacheRef = useRef<{ keys: CapabilityKey[]; map: Record<string, unknown> } | null>(null);
 
-  // Build subscribe/getSnapshot for the shared provider
+  // Subscribe to the entire hub chain so changes in parent registries
+  // (e.g. a generation widget provided at root) also trigger snapshot rebuilds.
   const subscribe = (listener: () => void) => {
     if (!hub) {
       return () => {};
     }
-    return hub.registry.subscribe(listener);
+    const unsubs: Array<() => void> = [];
+    let current: ContextHubState | null = hub;
+    while (current) {
+      unsubs.push(current.registry.subscribe(listener));
+      current = current.parent;
+    }
+    return () => unsubs.forEach((fn) => fn());
   };
 
   const getSnapshot = () => {
@@ -53,7 +60,17 @@ function buildCapabilitiesSnapshot(
     return { keys: [] as string[], map: {} as Record<string, unknown> };
   }
 
-  const keys = hub.registry.getExposedKeys();
+  // Collect exposed keys from the entire hub chain so parent-scoped providers
+  // (e.g. CAP_GENERATION_WIDGET registered at root) are visible to child scopes.
+  const keySet = new Set<CapabilityKey>();
+  let walk: ContextHubState | null = hub;
+  while (walk) {
+    for (const k of walk.registry.getExposedKeys()) {
+      keySet.add(k);
+    }
+    walk = walk.parent;
+  }
+  const keys = Array.from(keySet);
   const map: Record<string, unknown> = {};
   for (const key of keys) {
     const preferredProviderId = overrides[key]?.preferredProviderId;

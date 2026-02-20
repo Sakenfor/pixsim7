@@ -98,13 +98,23 @@ export interface ProviderEntry<T = unknown> {
  */
 export function getAllProviders<T>(ctx: MenuActionContext, key: CapabilityKey): ProviderEntry<T>[] {
   const chain = getRegistryChain(ctx);
-  return chain.flatMap((scope) =>
-    scope.registry.getAll<T>(key).map((provider) => ({
-      scope: scope.label,
-      provider,
-      available: provider.isAvailable ? provider.isAvailable() : true,
-    }))
-  );
+  const seen = new Set<string>();
+  const entries: ProviderEntry<T>[] = [];
+  for (const scope of chain) {
+    for (const provider of scope.registry.getAll<T>(key)) {
+      // Deduplicate providers registered at multiple scopes (e.g. local + root).
+      // Keep the nearest-scope entry since the chain walks local → root.
+      const dedupKey = provider.id ?? `__ref:${entries.length}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+      entries.push({
+        scope: scope.label,
+        provider,
+        available: provider.isAvailable ? provider.isAvailable() : true,
+      });
+    }
+  }
+  return entries;
 }
 
 /**

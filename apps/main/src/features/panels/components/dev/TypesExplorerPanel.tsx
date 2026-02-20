@@ -439,7 +439,7 @@ function OpenAPIView() {
         </h3>
         <div className="space-y-2">
           <div className="p-3 bg-neutral-800 rounded-md">
-            <code className="text-xs font-mono text-emerald-400">@pixsim7/shared.api.client/model</code>
+            <code className="text-xs font-mono text-emerald-400">@pixsim7/shared.api.model</code>
             <p className="text-xs text-neutral-400 mt-1">
               Individual model types (request/response DTOs, enums)
             </p>
@@ -459,7 +459,7 @@ function OpenAPIView() {
         <h3 className="text-sm font-semibold text-neutral-300">Usage Example</h3>
         <pre className="p-3 bg-neutral-800 rounded-md text-xs font-mono overflow-x-auto">
           <code className="text-neutral-300">
-            {`import type { AssetResponse, GenerationResponse } from '@pixsim7/shared.api.client/model';
+            {`import type { AssetResponse, GenerationResponse } from '@pixsim7/shared.api.model';
 import type { MediaType } from '@pixsim7/shared.types';`}
           </code>
         </pre>
@@ -475,7 +475,7 @@ import type { MediaType } from '@pixsim7/shared.types';`}
             <li>
               View the model barrel:{' '}
               <code className="text-neutral-300">
-                packages/shared/api/client/src/generated/openapi/model/
+                packages/shared/api/model/src/generated/openapi/model/
               </code>
             </li>
             <li>
@@ -499,7 +499,7 @@ import type { MediaType } from '@pixsim7/shared.types';`}
         <p>
           Source:{' '}
           <code className="text-neutral-400">
-            packages/shared/api/client/src/generated/openapi/model/
+            packages/shared/api/model/src/generated/openapi/model/
           </code>
         </p>
         <p className="mt-1">
