@@ -7,9 +7,8 @@
  * Used by both Control Center and Media Viewer for consistent UI.
  */
 
-import { Dropdown, DropdownItem, IconButton } from '@pixsim7/shared.ui';
 import clsx from 'clsx';
-import { useMemo, useEffect, useState, useRef, type ReactNode } from 'react';
+import { useMemo, useEffect, type ReactNode } from 'react';
 
 import {
   getDurationOptions,
@@ -19,152 +18,7 @@ import {
   getParamIcon,
   isVisualParam,
 } from '@lib/generation-ui';
-import { Icon, IconBadge, type IconName } from '@lib/icons';
-
-// ── Provider brand config ──────────────────────────────────────────────
-const PROVIDER_BRANDS: Record<string, { color: string; short: string }> = {
-  pixverse: { color: '#7C3AED', short: 'Px' },
-  sora:     { color: '#6B7280', short: 'So' },
-  remaker:  { color: '#059669', short: 'Rm' },
-};
-const AUTO_BRAND = { color: '#3B82F6', short: 'A' };
-
-// ── Operation type config ──────────────────────────────────────────────
-const OPERATION_ICONS: Record<string, { icon: IconName; label: string; color: string }> = {
-  image_to_image:   { icon: 'image',          label: 'Image',      color: '#8B5CF6' },
-  image_to_video:   { icon: 'film',           label: 'Video',      color: '#2563EB' },
-  video_extend:     { icon: 'arrowRight',     label: 'Extend',     color: '#0891B2' },
-  video_transition: { icon: 'arrowRightLeft', label: 'Transition', color: '#D97706' },
-  fusion:           { icon: 'layers',         label: 'Fusion',     color: '#DC2626' },
-};
-
-// ── Shared close-on-outside hook ───────────────────────────────────────
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, open: boolean, close: () => void) {
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) close();
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open, ref, close]);
-}
-
-// ── Shared dropdown menu shell ─────────────────────────────────────────
-const DROPDOWN_MENU_CLS = 'absolute left-0 top-full mt-1 z-50 min-w-[140px] py-1 rounded-lg shadow-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700';
-const DROPDOWN_ITEM_CLS = 'w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-neutral-100 dark:hover:bg-neutral-700';
-
-/** Compact provider badge with dropdown picker. */
-function ProviderIconButton({
-  providerId,
-  providers,
-  onSelect,
-  disabled,
-}: {
-  providerId: string | undefined;
-  providers: { id: string; name: string }[];
-  onSelect: (id: string | undefined) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
-
-  const brand = providerId ? (PROVIDER_BRANDS[providerId] ?? { color: '#6B7280', short: providerId.slice(0, 2) }) : AUTO_BRAND;
-
-  return (
-    <div ref={ref} className="relative">
-      <IconButton
-        bg={brand.color}
-        size="lg"
-        icon={<span className="text-[10px] font-bold">{brand.short}</span>}
-        onClick={() => setOpen(o => !o)}
-        disabled={disabled}
-        title={providerId ?? 'Auto'}
-      />
-
-      {open && (
-        <div className={DROPDOWN_MENU_CLS}>
-          <button
-            type="button"
-            onClick={() => { onSelect(undefined); setOpen(false); }}
-            className={clsx(DROPDOWN_ITEM_CLS, !providerId && 'font-semibold')}
-          >
-            <span
-              className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0"
-              style={{ backgroundColor: AUTO_BRAND.color }}
-            >{AUTO_BRAND.short}</span>
-            Auto
-          </button>
-
-          {providers.map(p => {
-            const b = PROVIDER_BRANDS[p.id] ?? { color: '#6B7280', short: p.id.slice(0, 2) };
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => { onSelect(p.id); setOpen(false); }}
-                className={clsx(DROPDOWN_ITEM_CLS, providerId === p.id && 'font-semibold')}
-              >
-                <span
-                  className="inline-flex w-4 h-4 rounded-full text-[8px] font-bold text-white items-center justify-center shrink-0"
-                  style={{ backgroundColor: b.color }}
-                >{b.short}</span>
-                {p.name}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Compact operation type icon button with dropdown picker. */
-function OperationIconButton({
-  operationType,
-  onSelect,
-  disabled,
-}: {
-  operationType: string;
-  onSelect: (op: string) => void;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useClickOutside(ref, open, () => setOpen(false));
-
-  const current = OPERATION_ICONS[operationType] ?? { icon: 'alertCircle' as IconName, label: operationType, color: '#6B7280' };
-
-  return (
-    <div ref={ref} className="relative">
-      <IconButton
-        bg={current.color}
-        size="lg"
-        icon={<Icon name={current.icon} size={14} />}
-        onClick={() => setOpen(o => !o)}
-        disabled={disabled}
-        title={current.label}
-      />
-
-      {open && (
-        <div className={DROPDOWN_MENU_CLS}>
-          {Object.entries(OPERATION_ICONS).map(([op, meta]) => (
-            <button
-              key={op}
-              type="button"
-              onClick={() => { onSelect(op); setOpen(false); }}
-              className={clsx(DROPDOWN_ITEM_CLS, operationType === op && 'font-semibold')}
-            >
-              <IconBadge name={meta.icon} size={10} bg={meta.color} rounded="md" className="w-4 h-4 shrink-0" />
-              {meta.label}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+import { Icon } from '@lib/icons';
 
 import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import {
@@ -173,18 +27,16 @@ import {
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
-import { openWorkspacePanel } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
-import {
-  EACH_STRATEGIES,
-  SET_STRATEGIES,
-  isSetStrategy,
-  type CombinationStrategy,
-} from '../lib/combinationStrategies';
+import type { CombinationStrategy } from '../lib/combinationStrategies';
 
 import { AdvancedSettingsPopover } from './AdvancedSettingsPopover';
+import { AspectRatioDropdown } from './generationSettingsPanel/AspectRatioDropdown';
+import { EachSplitButton } from './generationSettingsPanel/EachSplitButton';
+import { OperationIconButton } from './generationSettingsPanel/OperationIconButton';
+import { ProviderIconButton } from './generationSettingsPanel/ProviderIconButton';
 import { PresetSelector } from './PresetSelector';
 
 export interface GenerationSettingsPanelProps {
@@ -223,272 +75,6 @@ export interface GenerationSettingsPanelProps {
   onGenerateEach?: (strategy?: CombinationStrategy, setId?: string) => void;
   /** Optional node rendered in Row 2 next to Input Sets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
-}
-
-// ── Aspect Ratio Dropdown ──────────────────────────────────────────────
-
-function AspectRatioDropdown({
-  options,
-  currentValue,
-  onChange,
-  disabled,
-}: {
-  options: string[];
-  currentValue: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (
-        menuRef.current && !menuRef.current.contains(e.target as Node) &&
-        triggerRef.current && !triggerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open]);
-
-  const label = getAspectRatioLabel(currentValue);
-
-  return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={() => setOpen(!open)}
-        disabled={disabled}
-        className={clsx(
-          'flex items-center gap-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors',
-          'bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700',
-          'text-neutral-700 dark:text-neutral-200',
-          disabled && 'opacity-50 cursor-not-allowed',
-        )}
-      >
-        {getParamIcon('aspect_ratio', currentValue)}
-        <span className="flex-1 text-left truncate">{label}</span>
-        <Icon name="chevronDown" size={12} className={clsx('text-neutral-400 transition-transform', open && 'rotate-180')} />
-      </button>
-
-      {open && (
-        <div
-          ref={menuRef}
-          className="absolute z-50 mt-1 left-0 right-0 bg-white dark:bg-neutral-900 rounded-lg shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 max-h-[200px] overflow-y-auto"
-        >
-          {options.map((opt) => {
-            const isSelected = currentValue === opt;
-            return (
-              <button
-                type="button"
-                key={opt}
-                onClick={() => { onChange(opt); setOpen(false); }}
-                className={clsx(
-                  'flex items-center gap-2 w-full px-2.5 py-1.5 text-[11px] text-left transition-colors',
-                  isSelected
-                    ? 'bg-accent/10 text-accent font-semibold'
-                    : 'text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
-                )}
-              >
-                {getParamIcon('aspect_ratio', opt)}
-                <span>{getAspectRatioLabel(opt)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Split-button for "Each" with strategy dropdown. */
-function EachSplitButton({
-  onGenerateEach,
-  disabled,
-  generating,
-  queueProgress,
-}: {
-  onGenerateEach: (strategy?: CombinationStrategy, setId?: string) => void;
-  disabled: boolean;
-  generating: boolean;
-  queueProgress?: { queued: number; total: number } | null;
-}) {
-  const [selectedStrategy, setSelectedStrategy] = usePersistedScopeState<CombinationStrategy>('eachStrategy', 'each');
-  const [selectedSetId, setSelectedSetId] = usePersistedScopeState<string | null>('eachSetId', null);
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const [anchorPos, setAnchorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
-
-  const sets = useAssetSetStore(s => s.sets);
-
-  const current =
-    EACH_STRATEGIES.find(s => s.id === selectedStrategy) ??
-    SET_STRATEGIES.find(s => s.id === selectedStrategy) ??
-    EACH_STRATEGIES[0];
-  const showProgress = generating && queueProgress;
-  const needsSet = isSetStrategy(selectedStrategy);
-  const canRun = !needsSet || !!selectedSetId;
-
-  const handleToggle = () => {
-    if (!open && triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setAnchorPos({ x: rect.right, y: rect.top });
-    }
-    setOpen(o => !o);
-  };
-
-  const totalItems = EACH_STRATEGIES.length + SET_STRATEGIES.length + 1; // +1 for divider
-
-  return (
-    <div className="relative flex-shrink-0">
-      <div className="flex">
-        {/* Main area — run with selected strategy */}
-        <button
-          onClick={() => canRun && onGenerateEach(selectedStrategy, selectedSetId ?? undefined)}
-          disabled={disabled || !canRun}
-          className={clsx(
-            'px-2 py-1.5 rounded-l-lg text-[11px] font-semibold text-white',
-            'disabled:opacity-50 disabled:cursor-not-allowed',
-            disabled || !canRun
-              ? 'bg-neutral-400'
-              : needsSet
-                ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
-          )}
-          style={{ transition: 'none', animation: 'none' }}
-          title={current.description}
-        >
-          {showProgress ? `${queueProgress.queued}/${queueProgress.total}` : current.shortLabel}
-        </button>
-        {/* Right column: arrow + sets shortcut */}
-        <div className="flex flex-col">
-          {/* Arrow area — open strategy picker */}
-          <button
-            ref={triggerRef}
-            onClick={handleToggle}
-            disabled={disabled}
-            className={clsx(
-              'px-1 py-1 rounded-tr-lg text-[11px] font-semibold text-white border-l border-white/20',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              disabled
-                ? 'bg-neutral-400'
-                : needsSet
-                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
-            )}
-            style={{ transition: 'none', animation: 'none' }}
-            title="Select combination strategy"
-          >
-            <Icon name="chevronDown" size={10} className={clsx(open && 'rotate-180')} />
-          </button>
-          {/* Open Asset Sets panel */}
-          <button
-            onClick={() => {
-              openWorkspacePanel('asset-sets');
-            }}
-            className={clsx(
-              'px-1 py-0.5 rounded-br-lg text-white/70 hover:text-white border-l border-t border-white/20',
-              disabled
-                ? 'bg-neutral-400'
-                : needsSet
-                  ? 'bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600'
-                  : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600'
-            )}
-            style={{ transition: 'none', animation: 'none' }}
-            title="Manage asset sets"
-          >
-            <Icon name="layers" size={8} />
-          </button>
-        </div>
-      </div>
-
-      <Dropdown
-        isOpen={open}
-        onClose={() => setOpen(false)}
-        portal
-        positionMode="fixed"
-        anchorPosition={{ x: anchorPos.x - 180, y: anchorPos.y - (totalItems * 40 + 24) }}
-        minWidth="180px"
-        triggerRef={triggerRef}
-        className="!p-0"
-      >
-        {/* Input strategies section */}
-        <div className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Input</div>
-        {EACH_STRATEGIES.map(s => (
-          <DropdownItem
-            key={s.id}
-            onClick={() => { setSelectedStrategy(s.id); setSelectedSetId(null); setOpen(false); }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold')}
-            icon={
-              <span className={clsx(
-                'w-2 h-2 rounded-full shrink-0',
-                selectedStrategy === s.id ? 'bg-amber-500' : 'bg-neutral-300 dark:bg-neutral-600'
-              )} />
-            }
-          >
-            <div className="flex flex-col items-start">
-              <span>{s.label}</span>
-              <span className="text-[9px] text-neutral-400">{s.description}</span>
-            </div>
-          </DropdownItem>
-        ))}
-
-        {/* Divider + set strategies section */}
-        <div className="my-1 border-t border-neutral-200 dark:border-neutral-700" />
-        <div className="px-2 pt-0.5 pb-0.5 text-[9px] font-semibold text-neutral-400 uppercase tracking-wider">Asset Set</div>
-        {SET_STRATEGIES.map(s => (
-          <DropdownItem
-            key={s.id}
-            onClick={() => { setSelectedStrategy(s.id); setOpen(false); }}
-            className={clsx(selectedStrategy === s.id && 'font-semibold')}
-            icon={
-              <span className={clsx(
-                'w-2 h-2 rounded-full shrink-0',
-                selectedStrategy === s.id ? 'bg-violet-500' : 'bg-neutral-300 dark:bg-neutral-600'
-              )} />
-            }
-          >
-            <div className="flex flex-col items-start">
-              <span>{s.label}</span>
-              <span className="text-[9px] text-neutral-400">{s.description}</span>
-            </div>
-          </DropdownItem>
-        ))}
-      </Dropdown>
-
-      {/* Inline set picker when a set strategy is selected */}
-      {needsSet && (
-        <select
-          value={selectedSetId ?? ''}
-          onChange={(e) => setSelectedSetId(e.target.value || null)}
-          className="mt-1 w-full px-1.5 py-1 text-[10px] rounded-md bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200"
-          title="Select asset set"
-        >
-          <option value="">Pick a set…</option>
-          {sets.map(s => (
-            <option key={s.id} value={s.id}>
-              {s.name} ({s.kind === 'manual' ? `${s.assetIds.length} assets` : 'smart'})
-            </option>
-          ))}
-        </select>
-      )}
-    </div>
-  );
 }
 
 export function GenerationSettingsPanel({
@@ -839,37 +425,6 @@ export function GenerationSettingsPanel({
             />
           </div>
 
-          {/* Burst count — collapses first */}
-          <div className="flex items-center gap-0.5 min-w-0 flex-shrink text-[10px] overflow-hidden">
-            <input
-              type="number"
-              min={1}
-              max={50}
-              value={burstCount}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                if (!isNaN(val)) setBurstCount(Math.max(1, Math.min(50, val)));
-              }}
-              disabled={generating}
-              className={clsx(
-                'w-10 px-1 py-1.5 rounded-md font-medium border-0 shadow-sm text-center text-[10px]',
-                isBurstMode
-                  ? 'bg-accent text-accent-text'
-                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300'
-              )}
-              title="Number of generations to run"
-            />
-            <span className="text-neutral-500">×</span>
-          </div>
-
-          {/* Queued indicator — hides when tight */}
-          {inputCount > 0 && (
-            <div className="flex-shrink text-[10px] text-neutral-500 dark:text-neutral-400 overflow-hidden whitespace-nowrap min-w-0">
-              <span className="font-mono text-accent">{inputCount}</span>
-              <span className="ml-0.5">in</span>
-            </div>
-          )}
-
           {/* Generate Each split-button — visible with 2+ inputs or when sets exist */}
           {onGenerateEach && (inputCount > 1 || useAssetSetStore.getState().sets.length > 0) && OPERATION_METADATA[operationType].multiAssetMode !== 'required' && (
             <EachSplitButton
@@ -880,42 +435,77 @@ export function GenerationSettingsPanel({
             />
           )}
 
-          {/* Primary Go button — always visible */}
-          <button
-            onClick={() => {
-              if (isBurstMode && onGenerateBurst) {
-                onGenerateBurst(burstCount);
-              } else {
-                onGenerate();
-              }
-            }}
-            disabled={generating || !canGenerate}
-            className={clsx(
-              'flex-1 min-w-[48px] flex-shrink-0 px-2 py-1.5 rounded-lg text-xs font-semibold text-white',
-              'disabled:opacity-50 disabled:cursor-not-allowed',
-              generating || !canGenerate
-                ? 'bg-neutral-400'
-                : error
-                ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
-                : 'bg-accent hover:bg-accent-hover'
-            )}
-            style={{ transition: 'none', animation: 'none' }}
-          >
-            {generating ? (
-              queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : '...'
-            ) : creditLoading ? (
-              isBurstMode ? `Go x${burstCount}` : 'Go'
-            ) : creditEstimate !== null ? (
-              <span className="flex items-center justify-center gap-1">
-                {isBurstMode ? `Go x${burstCount}` : 'Go'}
-                <span className="text-amber-200 text-[10px]">
-                  +{Math.round(creditEstimate * burstCount)}
+          {/* Primary Go button with inline burst stepper */}
+          <div className="flex-1 min-w-[52px] flex-shrink-0 flex">
+            {/* Main Go area */}
+            <button
+              onClick={() => {
+                if (isBurstMode && onGenerateBurst) {
+                  onGenerateBurst(burstCount);
+                } else {
+                  onGenerate();
+                }
+              }}
+              disabled={generating || !canGenerate}
+              className={clsx(
+                'flex-1 px-2 py-1.5 text-xs font-semibold text-white',
+                'disabled:opacity-50 disabled:cursor-not-allowed',
+                burstCount > 1 ? 'rounded-l-lg' : 'rounded-lg',
+                generating || !canGenerate
+                  ? 'bg-neutral-400'
+                  : error
+                  ? 'bg-red-600 hover:bg-red-700 ring-2 ring-red-400'
+                  : 'bg-accent hover:bg-accent-hover'
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+            >
+              {generating ? (
+                queueProgress ? `${queueProgress.queued}/${queueProgress.total}` : '...'
+              ) : creditLoading ? (
+                'Go'
+              ) : creditEstimate !== null ? (
+                <span className="flex items-center justify-center gap-1">
+                  Go
+                  <span className="text-amber-200 text-[10px]">
+                    +{Math.round(creditEstimate * burstCount)}
+                  </span>
                 </span>
-              </span>
-            ) : (
-              isBurstMode ? `Go x${burstCount}` : 'Go'
-            )}
-          </button>
+              ) : (
+                'Go'
+              )}
+            </button>
+            {/* Burst stepper area */}
+            <div
+              className={clsx(
+                'flex flex-col border-l border-white/20 rounded-r-lg text-white',
+                generating || !canGenerate
+                  ? 'bg-neutral-400'
+                  : error
+                  ? 'bg-red-600'
+                  : 'bg-accent',
+                (generating || !canGenerate) && 'opacity-50',
+              )}
+              style={{ transition: 'none', animation: 'none' }}
+            >
+              <button
+                type="button"
+                onClick={() => setBurstCount((c: number) => Math.min(50, c + 1))}
+                disabled={generating || !canGenerate}
+                className="px-1 flex-1 flex items-center justify-center hover:bg-white/10 rounded-tr-lg disabled:cursor-not-allowed"
+              >
+                <Icon name="chevronUp" size={8} />
+              </button>
+              <span className="text-[9px] font-mono text-center leading-none px-1">{burstCount}</span>
+              <button
+                type="button"
+                onClick={() => setBurstCount((c: number) => Math.max(1, c - 1))}
+                disabled={generating || !canGenerate || burstCount <= 1}
+                className="px-1 flex-1 flex items-center justify-center hover:bg-white/10 rounded-br-lg disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Icon name="chevronDown" size={8} />
+              </button>
+            </div>
+          </div>
 
           {/* Secondary Go button (with media viewer asset) */}
           {secondaryButton && (
