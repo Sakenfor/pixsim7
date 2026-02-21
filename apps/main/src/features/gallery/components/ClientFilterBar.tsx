@@ -296,11 +296,12 @@ function FilterDropdown({
   const width = Math.min(maxWidth, Math.max(minWidth, rect.width));
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
   const top = rect.bottom + spacing;
+  const maxHeight = Math.max(120, window.innerHeight - top - 16);
 
   return createPortal(
     <div
       className="z-popover"
-      style={{ position: 'fixed', left, top }}
+      style={{ position: 'fixed', left, top, maxHeight }}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -363,7 +364,7 @@ function FilterContent<T>({
 
     case 'enum':
       return (
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto">
           {options.length === 0 && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
               No options available.
