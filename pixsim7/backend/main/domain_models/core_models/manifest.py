@@ -35,6 +35,7 @@ manifest = DomainModelManifest(
         "pixsim7.backend.main.domain.providers.models.provider_instance_config",
         "pixsim7.backend.main.domain.scene",
         "pixsim7.backend.main.domain.log_entry",
+        "pixsim7.backend.main.domain.system_config",
     ],
     auto_discover=True,
     enabled=True,

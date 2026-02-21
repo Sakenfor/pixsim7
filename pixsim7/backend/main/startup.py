@@ -161,6 +161,38 @@ async def setup_database_and_seed() -> None:
         )
 
 
+async def setup_system_config() -> None:
+    """
+    Load all persisted system config namespaces from DB and apply.
+
+    Each subsystem registers its own applier via
+    ``register_applier(namespace, fn)`` in ``services/system_config``.
+    This function simply iterates over every registered namespace.
+
+    Why this is a separate function:
+    - Runs after database init, before providers
+    - Failure is non-fatal (defaults remain in effect)
+    """
+    from pixsim7.backend.main.infrastructure.database.session import get_async_session
+    from pixsim7.backend.main.services.system_config import apply_all_from_db
+
+    # Ensure all applier registrations have run (import triggers registration)
+    import pixsim7.backend.main.services.system_config.appliers  # noqa: F401
+
+    try:
+        async with get_async_session() as db:
+            applied = await apply_all_from_db(db)
+        if applied:
+            logger.info("system_config_loaded", namespaces=applied)
+    except Exception as e:
+        logger.warning(
+            "system_config_load_failed",
+            error=str(e),
+            error_type=e.__class__.__name__,
+            msg="Continuing with default config",
+        )
+
+
 async def setup_analyzer_definitions() -> int:
     """
     Load custom analyzer definitions from the database.

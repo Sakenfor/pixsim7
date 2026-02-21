@@ -7,22 +7,28 @@
 
 import { useEffect, useRef, useState } from 'react';
 
+import { pixsimClient } from '@lib/api';
+
 import {
   useGenerationSettingsStore,
   useGenerationHistoryStore,
   type HistoryMode,
   type HistorySortMode,
 } from '@features/generation';
-import { pixsimClient } from '@lib/api';
 
 import { settingsSchemaRegistry, type SettingGroup, type SettingStoreAdapter } from '../core';
 
-// ===== Server generation config (rate limits & retry) =====
+// ===== Server generation config (rate limits, retry, per-user caps) =====
 
 interface GenerationServerConfig {
   rate_limit_max_requests: number;
   rate_limit_window_seconds: number;
+  login_rate_limit_max_requests: number;
+  login_rate_limit_window_seconds: number;
+  auto_retry_enabled: boolean;
   auto_retry_max_attempts: number;
+  max_jobs_per_user: number;
+  max_accounts_per_user: number;
 }
 
 async function fetchGenerationServerConfig(): Promise<GenerationServerConfig> {
@@ -33,6 +39,24 @@ async function updateGenerationServerConfig(
   patch: Partial<GenerationServerConfig>,
 ): Promise<GenerationServerConfig> {
   return pixsimClient.patch<GenerationServerConfig>('/admin/generation/config', patch);
+}
+
+// ===== Server LLM config (cache tuning) =====
+
+interface LLMServerConfig {
+  llm_cache_enabled: boolean;
+  llm_cache_ttl: number;
+  llm_cache_freshness: number;
+}
+
+async function fetchLLMServerConfig(): Promise<LLMServerConfig> {
+  return pixsimClient.get<LLMServerConfig>('/admin/llm/config');
+}
+
+async function updateLLMServerConfig(
+  patch: Partial<LLMServerConfig>,
+): Promise<LLMServerConfig> {
+  return pixsimClient.patch<LLMServerConfig>('/admin/llm/config', patch);
 }
 
 const adminOnly = (values: Record<string, any>) => !!values.__isAdmin;
@@ -262,14 +286,14 @@ const generationGroups: SettingGroup[] = [
   {
     id: 'server-limits',
     title: 'Server Limits',
-    description: 'Rate limits and retry caps applied server-side. Changes are in-memory and reset on server restart.',
+    description: 'Rate limits, retry caps, and per-user quotas applied server-side. Changes are persisted to the database.',
     showWhen: adminOnly,
     adminGroup: true,
     fields: [
       {
         id: 'server_rateLimitMaxRequests',
         type: 'number',
-        label: 'Rate Limit — Max Requests',
+        label: 'Generation Rate Limit — Max Requests',
         description: 'Maximum generation requests allowed per time window.',
         min: 1,
         max: 100,
@@ -279,12 +303,39 @@ const generationGroups: SettingGroup[] = [
       {
         id: 'server_rateLimitWindowSeconds',
         type: 'number',
-        label: 'Rate Limit — Window (seconds)',
-        description: 'Time window for the rate limit counter.',
+        label: 'Generation Rate Limit — Window (seconds)',
+        description: 'Time window for the generation rate limit counter.',
         min: 10,
         max: 3600,
         step: 10,
         defaultValue: 60,
+      },
+      {
+        id: 'server_loginRateLimitMaxRequests',
+        type: 'number',
+        label: 'Login Rate Limit — Max Requests',
+        description: 'Maximum login attempts allowed per time window.',
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 5,
+      },
+      {
+        id: 'server_loginRateLimitWindowSeconds',
+        type: 'number',
+        label: 'Login Rate Limit — Window (seconds)',
+        description: 'Time window for the login rate limit counter.',
+        min: 10,
+        max: 3600,
+        step: 10,
+        defaultValue: 60,
+      },
+      {
+        id: 'server_autoRetryEnabled',
+        type: 'toggle',
+        label: 'Server Auto-Retry Enabled',
+        description: 'Enable automatic retry for failed generations server-side.',
+        defaultValue: true,
       },
       {
         id: 'server_autoRetryMaxAttempts',
@@ -296,16 +347,94 @@ const generationGroups: SettingGroup[] = [
         step: 1,
         defaultValue: 20,
       },
+      {
+        id: 'server_maxJobsPerUser',
+        type: 'number',
+        label: 'Max Concurrent Jobs per User',
+        description: 'Maximum number of concurrent generation jobs allowed per user.',
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 10,
+      },
+      {
+        id: 'server_maxAccountsPerUser',
+        type: 'number',
+        label: 'Max Provider Accounts per User',
+        description: 'Maximum number of provider accounts a user can link.',
+        min: 1,
+        max: 50,
+        step: 1,
+        defaultValue: 5,
+      },
+    ],
+  },
+  {
+    id: 'server-llm',
+    title: 'LLM Cache',
+    description: 'Control LLM response caching behavior. Changes are persisted to the database.',
+    showWhen: adminOnly,
+    adminGroup: true,
+    fields: [
+      {
+        id: 'server_llmCacheEnabled',
+        type: 'toggle',
+        label: 'Enable LLM Cache',
+        description: 'Cache LLM responses in Redis to reduce API costs and latency.',
+        defaultValue: true,
+      },
+      {
+        id: 'server_llmCacheTtl',
+        type: 'number',
+        label: 'Cache TTL (seconds)',
+        description: 'Time-to-live for cached LLM responses.',
+        min: 0,
+        max: 86400,
+        step: 60,
+        defaultValue: 3600,
+      },
+      {
+        id: 'server_llmCacheFreshness',
+        type: 'number',
+        label: 'Cache Freshness',
+        description: 'Freshness threshold (0.0 = always use cache, 1.0 = always regenerate).',
+        min: 0,
+        max: 1,
+        step: 0.1,
+        defaultValue: 0,
+      },
     ],
   },
 ];
 
-// Field ID → server config key mapping
-const SERVER_FIELD_MAP: Record<string, keyof GenerationServerConfig> = {
+// Field ID → server config key mapping (generation namespace)
+const GENERATION_FIELD_MAP: Record<string, keyof GenerationServerConfig> = {
   server_rateLimitMaxRequests: 'rate_limit_max_requests',
   server_rateLimitWindowSeconds: 'rate_limit_window_seconds',
+  server_loginRateLimitMaxRequests: 'login_rate_limit_max_requests',
+  server_loginRateLimitWindowSeconds: 'login_rate_limit_window_seconds',
+  server_autoRetryEnabled: 'auto_retry_enabled',
   server_autoRetryMaxAttempts: 'auto_retry_max_attempts',
+  server_maxJobsPerUser: 'max_jobs_per_user',
+  server_maxAccountsPerUser: 'max_accounts_per_user',
 };
+
+// Field ID → server config key mapping (llm namespace)
+const LLM_FIELD_MAP: Record<string, keyof LLMServerConfig> = {
+  server_llmCacheEnabled: 'llm_cache_enabled',
+  server_llmCacheTtl: 'llm_cache_ttl',
+  server_llmCacheFreshness: 'llm_cache_freshness',
+};
+
+// Boolean server fields need Boolean() coercion instead of Number()
+const SERVER_BOOLEAN_FIELDS = new Set([
+  'server_autoRetryEnabled',
+  'server_llmCacheEnabled',
+]);
+
+function coerceServerValue(fieldId: string, value: unknown): boolean | number {
+  return SERVER_BOOLEAN_FIELDS.has(fieldId) ? Boolean(value) : Number(value);
+}
 
 function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
   const params = useGenerationSettingsStore((s) => s.params);
@@ -345,25 +474,31 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
     (s) => s.setMaxHistorySizeForOperation,
   );
 
-  // Server config state (admin-only, in-memory on backend)
-  const [serverConfig, setServerConfig] = useState<GenerationServerConfig | null>(null);
+  // Server config state (admin-only, persisted to DB)
+  const [generationConfig, setGenerationConfig] = useState<GenerationServerConfig | null>(null);
+  const [llmConfig, setLLMConfig] = useState<LLMServerConfig | null>(null);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     fetchGenerationServerConfig()
-      .then(setServerConfig)
+      .then(setGenerationConfig)
       .catch((err) => console.error('Failed to fetch generation server config:', err));
+    fetchLLMServerConfig()
+      .then(setLLMConfig)
+      .catch((err) => console.error('Failed to fetch LLM server config:', err));
   }, []);
 
   return {
     get: (fieldId: string) => {
-      // Server fields
-      const serverKey = SERVER_FIELD_MAP[fieldId];
-      if (serverKey) {
-        return serverConfig?.[serverKey];
-      }
+      // Server fields — generation namespace
+      const genKey = GENERATION_FIELD_MAP[fieldId];
+      if (genKey) return generationConfig?.[genKey];
+
+      // Server fields — LLM namespace
+      const llmKey = LLM_FIELD_MAP[fieldId];
+      if (llmKey) return llmConfig?.[llmKey];
 
       switch (fieldId) {
         case 'autoSwitchOperationType':
@@ -405,18 +540,34 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       }
     },
     set: (fieldId: string, value: any) => {
-      // Server fields — optimistic update + PATCH, revert on error
-      const serverKey = SERVER_FIELD_MAP[fieldId];
-      if (serverKey && serverConfig) {
-        const prev = { ...serverConfig };
-        const optimistic = { ...serverConfig, [serverKey]: Number(value) };
-        setServerConfig(optimistic);
+      // Server fields — generation namespace (optimistic + PATCH)
+      const genKey = GENERATION_FIELD_MAP[fieldId];
+      if (genKey && generationConfig) {
+        const prev = { ...generationConfig };
+        const coerced = coerceServerValue(fieldId, value);
+        setGenerationConfig({ ...generationConfig, [genKey]: coerced });
 
-        updateGenerationServerConfig({ [serverKey]: Number(value) })
-          .then(setServerConfig)
+        updateGenerationServerConfig({ [genKey]: coerced } as Partial<GenerationServerConfig>)
+          .then(setGenerationConfig)
           .catch((err) => {
-            console.error('Failed to update server config:', err);
-            setServerConfig(prev);
+            console.error('Failed to update generation config:', err);
+            setGenerationConfig(prev);
+          });
+        return;
+      }
+
+      // Server fields — LLM namespace (optimistic + PATCH)
+      const llmKey = LLM_FIELD_MAP[fieldId];
+      if (llmKey && llmConfig) {
+        const prev = { ...llmConfig };
+        const coerced = coerceServerValue(fieldId, value);
+        setLLMConfig({ ...llmConfig, [llmKey]: coerced });
+
+        updateLLMServerConfig({ [llmKey]: coerced } as Partial<LLMServerConfig>)
+          .then(setLLMConfig)
+          .catch((err) => {
+            console.error('Failed to update LLM config:', err);
+            setLLMConfig(prev);
           });
         return;
       }
@@ -518,10 +669,19 @@ function useGenerationSettingsStoreAdapter(): SettingStoreAdapter {
       maxHistorySizeVideoExtend: maxHistorySizeByOperation.video_extend ?? maxHistorySize ?? 20,
       maxHistorySizeVideoTransition: maxHistorySizeByOperation.video_transition ?? maxHistorySize ?? 20,
       maxHistorySizeFusion: maxHistorySizeByOperation.fusion ?? maxHistorySize ?? 20,
-      // Server config fields
-      server_rateLimitMaxRequests: serverConfig?.rate_limit_max_requests,
-      server_rateLimitWindowSeconds: serverConfig?.rate_limit_window_seconds,
-      server_autoRetryMaxAttempts: serverConfig?.auto_retry_max_attempts,
+      // Server config fields — generation
+      server_rateLimitMaxRequests: generationConfig?.rate_limit_max_requests,
+      server_rateLimitWindowSeconds: generationConfig?.rate_limit_window_seconds,
+      server_loginRateLimitMaxRequests: generationConfig?.login_rate_limit_max_requests,
+      server_loginRateLimitWindowSeconds: generationConfig?.login_rate_limit_window_seconds,
+      server_autoRetryEnabled: generationConfig?.auto_retry_enabled,
+      server_autoRetryMaxAttempts: generationConfig?.auto_retry_max_attempts,
+      server_maxJobsPerUser: generationConfig?.max_jobs_per_user,
+      server_maxAccountsPerUser: generationConfig?.max_accounts_per_user,
+      // Server config fields — LLM
+      server_llmCacheEnabled: llmConfig?.llm_cache_enabled,
+      server_llmCacheTtl: llmConfig?.llm_cache_ttl,
+      server_llmCacheFreshness: llmConfig?.llm_cache_freshness,
     }),
   };
 }

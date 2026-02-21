@@ -85,6 +85,7 @@ async def lifespan(app: FastAPI):
         validate_settings,
         setup_domain_registry,
         setup_database_and_seed,
+        setup_system_config,
         setup_analyzer_definitions,
         setup_redis,
         setup_providers,
@@ -123,6 +124,7 @@ async def lifespan(app: FastAPI):
 
     # Setup database and seed defaults
     await setup_database_and_seed()
+    await setup_system_config()
     await setup_analyzer_definitions()
 
     # Setup Redis (optional - degraded mode without it)
