@@ -14,13 +14,17 @@ import { getCapabilityKeys } from "@pixsim7/shared.ui.panels";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
+import { CATEGORY_LABELS } from "@features/panels/lib/panelConstants";
+import { resolveSiblings } from "@features/panels/lib/siblingResolution";
 
+import { addDockviewPanel, isPanelOpen } from "../../panelAdd";
 import {
   getRegistryChain,
   getAllProviders,
   resolveProvider,
   hasLiveState,
 } from "../capabilityHelpers";
+import { resolveCurrentDockview } from "../resolveCurrentDockview";
 import type { MenuAction, MenuActionContext } from "../types";
 
 /**
@@ -264,6 +268,189 @@ function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Related Panels (capability-based discovery)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface RelatedPanelCandidate {
+  id: string;
+  title: string;
+  icon?: string;
+  category?: string;
+}
+
+/**
+ * Find panels related to the current one by capability overlap.
+ *
+ * A panel is "related" if:
+ * - It provides capabilities that the current panel consumes, OR
+ * - It consumes capabilities that the current panel provides
+ *
+ * Falls back to static siblings if no capability matches are found.
+ */
+function resolveRelatedPanels(ctx: MenuActionContext): RelatedPanelCandidate[] {
+  const panelDefId = resolvePanelDefinitionId(ctx);
+  if (!panelDefId) return [];
+
+  const currentDef = panelSelectors.get(panelDefId);
+  if (!currentDef) return [];
+
+  // 1. Gather consumed capability keys (runtime + declared)
+  const consumedKeys = new Set<string>();
+  const hostId = ctx.instanceId;
+  if (hostId && ctx.contextHubState) {
+    let root = ctx.contextHubState;
+    while (root.parent) root = root.parent;
+    for (const rec of root.registry.getConsumptionForHost(hostId)) {
+      consumedKeys.add(rec.key);
+    }
+  }
+  for (const key of getCapabilityKeys(currentDef.consumesCapabilities)) {
+    consumedKeys.add(key);
+  }
+
+  // 2. Gather provided capability keys
+  const providedKeys = new Set(
+    getCapabilityKeys(currentDef.providesCapabilities),
+  );
+
+  // 3. Find panels whose provides overlap our consumes, or whose consumes overlap our provides
+  const allPanels = panelSelectors.getPublicPanels();
+  const matches = new Map<string, RelatedPanelCandidate>();
+
+  for (const panel of allPanels) {
+    if (panel.id === panelDefId || panel.isInternal) continue;
+
+    const theirProvides = new Set(
+      getCapabilityKeys(panel.providesCapabilities),
+    );
+    const theirConsumes = new Set(
+      getCapabilityKeys(panel.consumesCapabilities),
+    );
+
+    const providesMatch = [...consumedKeys].some((k) => theirProvides.has(k));
+    const consumesMatch = [...providedKeys].some((k) => theirConsumes.has(k));
+
+    if (providesMatch || consumesMatch) {
+      matches.set(panel.id, {
+        id: panel.id,
+        title: panel.title,
+        icon: panel.icon,
+        category: panel.category,
+      });
+    }
+  }
+
+  // 4. Fallback to static siblings if no capability matches
+  if (matches.size === 0) {
+    return resolveSiblings(panelDefId, allPanels);
+  }
+
+  return Array.from(matches.values());
+}
+
+/**
+ * Check if a single-instance panel is already open.
+ * Returns a disabled reason string, or false if it can be opened.
+ */
+function isPanelAlreadyOpen(
+  ctx: MenuActionContext,
+  panelId: string,
+): string | false {
+  const { api, host } = resolveCurrentDockview(ctx);
+  if (!api) return false;
+  const def = panelSelectors.get(panelId);
+  if (def?.supportsMultipleInstances) return false;
+  const alreadyOpen =
+    host?.isPanelOpen(panelId, false) ?? isPanelOpen(api, panelId, false);
+  return alreadyOpen ? "Already open" : false;
+}
+
+/**
+ * Open a related panel in the same group as the current panel.
+ */
+function openRelatedPanel(ctx: MenuActionContext, panelId: string) {
+  const { api, host } = resolveCurrentDockview(ctx);
+  if (!api) return;
+  const def = panelSelectors.get(panelId);
+  const allowMultiple = !!def?.supportsMultipleInstances;
+  const title = def?.title ?? panelId;
+
+  if (host) {
+    host.addPanel(panelId, {
+      allowMultiple,
+      title,
+      position: ctx.panelId
+        ? { direction: "within", referencePanel: ctx.panelId }
+        : undefined,
+    });
+  } else {
+    addDockviewPanel(api, panelId, {
+      allowMultiple,
+      title,
+      position: ctx.panelId
+        ? { direction: "within", referencePanel: ctx.panelId }
+        : undefined,
+    });
+  }
+}
+
+/**
+ * Build the "Related Panels" submenu actions from capability-matched panels.
+ */
+function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
+  const related = resolveRelatedPanels(ctx);
+  if (related.length === 0) return null;
+
+  // Group by category
+  const byCategory = new Map<string, RelatedPanelCandidate[]>();
+  for (const panel of related) {
+    const cat = panel.category ?? "other";
+    const list = byCategory.get(cat) ?? [];
+    list.push(panel);
+    byCategory.set(cat, list);
+  }
+
+  const relatedActions: MenuAction[] = [];
+
+  if (byCategory.size > 1) {
+    // Use category submenus when multiple categories
+    for (const [category, panels] of byCategory) {
+      relatedActions.push({
+        id: `connect:related:${category}`,
+        label:
+          CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ?? category,
+        availableIn: ["panel-content", "tab"],
+        children: panels.map((p) => ({
+          id: `connect:related:add:${p.id}`,
+          label: p.title,
+          icon: p.icon,
+          availableIn: ["panel-content", "tab"] as const,
+          disabled: () => isPanelAlreadyOpen(ctx, p.id),
+          execute: () => openRelatedPanel(ctx, p.id),
+        })),
+        execute: () => {},
+      });
+    }
+  } else {
+    // Flat list when single category
+    for (const panels of byCategory.values()) {
+      for (const p of panels) {
+        relatedActions.push({
+          id: `connect:related:add:${p.id}`,
+          label: p.title,
+          icon: p.icon,
+          availableIn: ["panel-content", "tab"],
+          disabled: () => isPanelAlreadyOpen(ctx, p.id),
+          execute: () => openRelatedPanel(ctx, p.id),
+        });
+      }
+    }
+  }
+
+  return relatedActions;
+}
+
 export const contextHubActions: MenuAction[] = [
   {
     id: "capability:inspect",
@@ -296,6 +483,21 @@ export const contextHubActions: MenuAction[] = [
           execute: () => {},
         });
       });
+
+      // Related Panels section
+      const relatedActions = buildRelatedPanelActions(ctx);
+      if (relatedActions && relatedActions.length > 0) {
+        actions.push({
+          id: "connect:related",
+          label: "Related Panels",
+          icon: "plus-circle",
+          divider: true,
+          sectionLabel: "Add",
+          availableIn: ["panel-content", "tab"],
+          children: relatedActions,
+          execute: () => {},
+        });
+      }
 
       if (actions.length === 0) {
         return [
