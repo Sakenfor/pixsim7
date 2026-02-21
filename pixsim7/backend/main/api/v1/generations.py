@@ -10,10 +10,12 @@ Handles generation requests from frontend Generation Nodes with:
 from fastapi import APIRouter, HTTPException, Query, Request
 from typing import Optional, List, Dict, Any
 from uuid import UUID
+from datetime import datetime
 
 from pixsim7.backend.main.api.dependencies import (
     CurrentUser,
     GenerationGatewaySvc,
+    GenerationTrackingSvc,
     DatabaseSession,
 )
 from pixsim7.backend.main.shared.schemas.generation_schemas import (
@@ -200,6 +202,87 @@ class GenerationOperationMetadataItem(BaseModel):
     is_semantic_alias: bool = Field(
         False,
         description="True if this is a semantic/plugin-owned alias rather than a canonical core name",
+    )
+
+
+class GenerationBatchSummaryResponse(BaseModel):
+    """Summary metadata for a tracked generation batch/run."""
+
+    batch_id: UUID
+    created_at: datetime
+    item_count: int
+    first_item_index: int
+    last_item_index: int
+
+
+class GenerationBatchListResponse(BaseModel):
+    """Paginated list response for generation batches."""
+
+    batches: List[GenerationBatchSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class GenerationBatchItemResponse(BaseModel):
+    """Single output item belonging to a tracked generation batch."""
+
+    asset_id: int
+    item_index: int
+    generation_id: Optional[int] = None
+    prompt_version_id: Optional[UUID] = None
+    block_template_id: Optional[UUID] = None
+    template_slug: Optional[str] = None
+    roll_seed: Optional[int] = None
+    selected_block_ids: List[str] = Field(default_factory=list)
+    slot_results: List[Dict[str, Any]] = Field(default_factory=list)
+    assembled_prompt: Optional[str] = None
+    mode: Optional[str] = None
+    strategy: Optional[str] = None
+    input_asset_ids: List[int] = Field(default_factory=list)
+    manifest_metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class GenerationBatchDetailResponse(BaseModel):
+    """Full batch payload for later review/rating workflows."""
+
+    batch: GenerationBatchSummaryResponse
+    items: List[GenerationBatchItemResponse]
+
+
+def _coerce_input_asset_ids(value: Any) -> List[int]:
+    if not isinstance(value, list):
+        return []
+    coerced: List[int] = []
+    for item in value:
+        try:
+            coerced.append(int(item))
+        except (TypeError, ValueError):
+            continue
+    return coerced
+
+
+def _to_batch_item_response(manifest: Any) -> GenerationBatchItemResponse:
+    metadata = manifest.manifest_metadata if isinstance(manifest.manifest_metadata, dict) else {}
+    mode_raw = metadata.get("mode")
+    strategy_raw = metadata.get("strategy")
+    return GenerationBatchItemResponse(
+        asset_id=manifest.asset_id,
+        item_index=manifest.item_index,
+        generation_id=manifest.generation_id,
+        prompt_version_id=manifest.prompt_version_id,
+        block_template_id=manifest.block_template_id,
+        template_slug=manifest.template_slug,
+        roll_seed=manifest.roll_seed,
+        selected_block_ids=list(manifest.selected_block_ids or []),
+        slot_results=list(manifest.slot_results or []),
+        assembled_prompt=manifest.assembled_prompt,
+        mode=str(mode_raw) if mode_raw is not None else None,
+        strategy=str(strategy_raw) if strategy_raw is not None else None,
+        input_asset_ids=_coerce_input_asset_ids(metadata.get("input_asset_ids")),
+        manifest_metadata=metadata,
+        created_at=manifest.created_at,
     )
 
 
@@ -474,6 +557,149 @@ async def list_generations(
     except Exception as e:
         logger.error(f"Failed to list generations: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to list generations: {str(e)}")
+
+
+# ===== LIST/GET GENERATION BATCHES =====
+
+@router.get("/generation-batches", response_model=GenerationBatchListResponse)
+async def list_generation_batches(
+    req: Request,
+    user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
+    db: DatabaseSession,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+):
+    """
+    List tracked generation batches for the current user.
+
+    Batches are grouped by manifest batch_id and sorted by newest batch activity.
+    """
+    from sqlalchemy import func
+    from sqlmodel import select
+    from pixsim7.backend.main.domain import Asset, GenerationBatchItemManifest
+
+    try:
+        proxy = await generation_gateway.proxy(
+            req,
+            "GET",
+            "/api/v1/generation-batches",
+            params={
+                "limit": limit,
+                "offset": offset,
+            },
+        )
+        if proxy.called:
+            return GenerationBatchListResponse.model_validate(proxy.data)
+
+        created_at_expr = func.max(GenerationBatchItemManifest.created_at)
+        count_expr = func.count(GenerationBatchItemManifest.asset_id)
+        first_item_expr = func.min(GenerationBatchItemManifest.item_index)
+        last_item_expr = func.max(GenerationBatchItemManifest.item_index)
+
+        grouped_stmt = (
+            select(
+                GenerationBatchItemManifest.batch_id,
+                created_at_expr.label("created_at"),
+                count_expr.label("item_count"),
+                first_item_expr.label("first_item_index"),
+                last_item_expr.label("last_item_index"),
+            )
+            .join(Asset, Asset.id == GenerationBatchItemManifest.asset_id)
+            .where(Asset.user_id == user.id)
+            .group_by(GenerationBatchItemManifest.batch_id)
+        )
+
+        total_stmt = select(func.count()).select_from(grouped_stmt.subquery())
+        total_result = await db.execute(total_stmt)
+        total = int(total_result.scalar_one() or 0)
+
+        rows_result = await db.execute(
+            grouped_stmt
+            .order_by(created_at_expr.desc(), GenerationBatchItemManifest.batch_id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+
+        batches: List[GenerationBatchSummaryResponse] = []
+        for row in rows_result.fetchall():
+            batches.append(
+                GenerationBatchSummaryResponse(
+                    batch_id=row[0],
+                    created_at=row[1],
+                    item_count=int(row[2] or 0),
+                    first_item_index=int(row[3] or 0),
+                    last_item_index=int(row[4] or 0),
+                )
+            )
+
+        return GenerationBatchListResponse(
+            batches=batches,
+            total=total,
+            limit=limit,
+            offset=offset,
+        )
+    except Exception as e:
+        logger.error(f"Failed to list generation batches: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to list generation batches: {str(e)}")
+
+
+@router.get("/generation-batches/{batch_id}", response_model=GenerationBatchDetailResponse)
+async def get_generation_batch(
+    batch_id: UUID,
+    req: Request,
+    user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
+    db: DatabaseSession,
+):
+    """Get ordered manifest items for a single batch_id owned by current user."""
+    from sqlmodel import select
+    from pixsim7.backend.main.domain import Asset, GenerationBatchItemManifest
+
+    try:
+        proxy = await generation_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/generation-batches/{batch_id}",
+        )
+        if proxy.called:
+            return GenerationBatchDetailResponse.model_validate(proxy.data)
+
+        result = await db.execute(
+            select(GenerationBatchItemManifest)
+            .join(Asset, Asset.id == GenerationBatchItemManifest.asset_id)
+            .where(GenerationBatchItemManifest.batch_id == batch_id)
+            .where(Asset.user_id == user.id)
+            .order_by(
+                GenerationBatchItemManifest.item_index.asc(),
+                GenerationBatchItemManifest.created_at.asc(),
+                GenerationBatchItemManifest.asset_id.asc(),
+            )
+        )
+        manifests = list(result.scalars().all())
+        if not manifests:
+            raise HTTPException(status_code=404, detail=f"Generation batch {batch_id} not found")
+
+        items = [_to_batch_item_response(manifest) for manifest in manifests]
+        created_at = max(item.created_at for item in items)
+        first_item_index = min(item.item_index for item in items)
+        last_item_index = max(item.item_index for item in items)
+
+        return GenerationBatchDetailResponse(
+            batch=GenerationBatchSummaryResponse(
+                batch_id=batch_id,
+                created_at=created_at,
+                item_count=len(items),
+                first_item_index=first_item_index,
+                last_item_index=last_item_index,
+            ),
+            items=items,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get generation batch {batch_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get generation batch: {str(e)}")
 
 
 # ===== CANCEL GENERATION =====
@@ -983,3 +1209,216 @@ async def redis_health_check():
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+# ===== GENERATION TRACKING SCHEMAS =====
+
+
+class ProviderSubmissionSummary(BaseModel):
+    """Lightweight summary of a provider submission attempt."""
+
+    submission_id: int
+    provider_id: str
+    provider_job_id: Optional[str] = None
+    retry_attempt: int
+    status: str
+    submitted_at: Optional[str] = None
+    responded_at: Optional[str] = None
+    duration_ms: Optional[int] = None
+
+
+class GenerationTrackingSummary(BaseModel):
+    """Lightweight summary of a generation's lifecycle state."""
+
+    id: int
+    status: Optional[str] = None
+    operation_type: Optional[str] = None
+    provider_id: Optional[str] = None
+    asset_id: Optional[int] = None
+    priority: int = 5
+    retry_count: int = 0
+    error_message: Optional[str] = None
+    error_code: Optional[str] = None
+    final_prompt: Optional[str] = None
+    prompt_source_type: Optional[str] = None
+    created_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    duration_seconds: Optional[float] = None
+
+
+class ManifestSummary(BaseModel):
+    """Lightweight summary of a generation batch item manifest."""
+
+    asset_id: int
+    batch_id: Optional[str] = None
+    item_index: int = 0
+    generation_id: Optional[int] = None
+    block_template_id: Optional[str] = None
+    template_slug: Optional[str] = None
+    roll_seed: Optional[int] = None
+    selected_block_ids: List[str] = Field(default_factory=list)
+    slot_results: List[Dict[str, Any]] = Field(default_factory=list)
+    assembled_prompt: Optional[str] = None
+    prompt_version_id: Optional[str] = None
+    mode: Optional[str] = None
+    strategy: Optional[str] = None
+    input_asset_ids: List[int] = Field(default_factory=list)
+    created_at: Optional[str] = None
+
+
+class AssetTrackingResponse(BaseModel):
+    """Unified tracking view for a single asset."""
+
+    asset_id: int
+    generation: Optional[GenerationTrackingSummary] = None
+    manifest: Optional[ManifestSummary] = None
+    latest_submission: Optional[ProviderSubmissionSummary] = None
+    consistency_warnings: List[str] = Field(default_factory=list)
+
+
+class RunTrackingItemResponse(BaseModel):
+    """Single item in a run tracking view (manifest + generation + submission)."""
+
+    asset_id: int
+    batch_id: Optional[str] = None
+    item_index: int = 0
+    generation_id: Optional[int] = None
+    block_template_id: Optional[str] = None
+    template_slug: Optional[str] = None
+    roll_seed: Optional[int] = None
+    selected_block_ids: List[str] = Field(default_factory=list)
+    slot_results: List[Dict[str, Any]] = Field(default_factory=list)
+    assembled_prompt: Optional[str] = None
+    prompt_version_id: Optional[str] = None
+    mode: Optional[str] = None
+    strategy: Optional[str] = None
+    input_asset_ids: List[int] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    generation_status: Optional[str] = None
+    generation_provider_id: Optional[str] = None
+    generation_operation_type: Optional[str] = None
+    latest_submission: Optional[ProviderSubmissionSummary] = None
+    item_warnings: List[str] = Field(default_factory=list)
+
+
+class RunSummary(BaseModel):
+    """Summary metadata for a generation run."""
+
+    run_id: str
+    item_count: int
+    created_at: Optional[str] = None
+    first_item_index: int
+    last_item_index: int
+
+
+class RunTrackingResponse(BaseModel):
+    """Unified tracking view for an entire generation run."""
+
+    run: RunSummary
+    items: List[RunTrackingItemResponse]
+    consistency_warnings: List[str] = Field(default_factory=list)
+
+
+class GenerationTrackingDetailResponse(BaseModel):
+    """Unified tracking view for a single generation."""
+
+    generation: GenerationTrackingSummary
+    manifest: Optional[ManifestSummary] = None
+    latest_submission: Optional[ProviderSubmissionSummary] = None
+    consistency_warnings: List[str] = Field(default_factory=list)
+
+
+# ===== GENERATION TRACKING ENDPOINTS =====
+
+
+@router.get(
+    "/generation-tracking/assets/{asset_id}",
+    response_model=AssetTrackingResponse,
+)
+async def get_asset_tracking(
+    asset_id: int,
+    user: CurrentUser,
+    tracking_service: GenerationTrackingSvc,
+):
+    """
+    Unified tracking view for a single asset.
+
+    Returns merged generation lifecycle, manifest provenance, and latest
+    provider submission for the given asset. Includes consistency warnings
+    for any data mismatches across the three source models.
+
+    Auth: scoped to current user via asset ownership.
+    """
+    try:
+        result = await tracking_service.get_asset_tracking(asset_id, user)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")
+        return AssetTrackingResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get asset tracking for {asset_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get asset tracking: {str(e)}")
+
+
+@router.get(
+    "/generation-tracking/runs/{run_id}",
+    response_model=RunTrackingResponse,
+)
+async def get_run_tracking(
+    run_id: UUID,
+    user: CurrentUser,
+    tracking_service: GenerationTrackingSvc,
+):
+    """
+    Unified tracking view for an entire generation run (batch).
+
+    Returns run summary, ordered items (each with manifest fields, generation
+    status, and latest provider submission), and consistency warnings at both
+    run-level and item-level.
+
+    Auth: scoped to current user via asset ownership of batch items.
+    """
+    try:
+        result = await tracking_service.get_run_tracking(run_id, user)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Generation run {run_id} not found")
+        return RunTrackingResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get run tracking for {run_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get run tracking: {str(e)}")
+
+
+@router.get(
+    "/generation-tracking/generations/{generation_id}",
+    response_model=GenerationTrackingDetailResponse,
+)
+async def get_generation_tracking(
+    generation_id: int,
+    user: CurrentUser,
+    tracking_service: GenerationTrackingSvc,
+):
+    """
+    Unified tracking view for a single generation.
+
+    Returns generation details, linked manifest (if any), latest provider
+    submission summary, and consistency warnings. Useful as a single
+    debugging endpoint.
+
+    Auth: scoped to generation owner or admin.
+    """
+    try:
+        result = await tracking_service.get_generation_tracking(generation_id, user)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Generation {generation_id} not found")
+        return GenerationTrackingDetailResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get generation tracking for {generation_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get generation tracking: {str(e)}"
+        )

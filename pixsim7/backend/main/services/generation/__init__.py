@@ -10,6 +10,7 @@ Services:
 - GenerationQueryService: Retrieval and listing
 - GenerationRetryService: Retry logic
 - GenerationBillingService: Credit deduction and billing finalization
+- GenerationTrackingService: Read-only facade for unified generation provenance
 """
 
 # Main service (backward compatibility)
@@ -21,6 +22,7 @@ from .lifecycle import GenerationLifecycleService
 from .query import GenerationQueryService
 from .retry import GenerationRetryService
 from .billing import GenerationBillingService
+from .tracking import GenerationTrackingService
 
 __all__ = [
     "GenerationService",  # Main service (backward compatible)
@@ -29,4 +31,5 @@ __all__ = [
     "GenerationQueryService",
     "GenerationRetryService",
     "GenerationBillingService",
+    "GenerationTrackingService",
 ]

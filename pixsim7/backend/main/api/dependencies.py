@@ -21,7 +21,7 @@ from pixsim7.backend.main.infrastructure.database.session import get_db
 from pixsim7.backend.main.infrastructure.redis.client import get_redis
 from pixsim7.backend.main.services.user import UserService, AuthService
 from pixsim7.backend.main.services.account import AccountService
-from pixsim7.backend.main.services.generation import GenerationService
+from pixsim7.backend.main.services.generation import GenerationService, GenerationTrackingService
 from pixsim7.backend.main.infrastructure.services.router import ServiceRouter
 from pixsim7.backend.main.infrastructure.services.gateway import ServiceGateway
 from pixsim7.backend.main.services.asset import AssetService
@@ -79,6 +79,13 @@ def get_generation_service(
 ) -> GenerationService:
     """Get GenerationService instance"""
     return GenerationService(db, user_service)
+
+
+def get_generation_tracking_service(
+    db: AsyncSession = Depends(get_database),
+) -> GenerationTrackingService:
+    """Get GenerationTrackingService instance (read-only facade)"""
+    return GenerationTrackingService(db)
 
 
 @lru_cache(maxsize=1)
@@ -441,6 +448,7 @@ AuthSvc = Annotated[AuthService, Depends(get_auth_service)]
 AccountSvc = Annotated[AccountService, Depends(get_account_service)]
 GenerationSvc = Annotated[GenerationService, Depends(get_generation_service)]
 GenerationGatewaySvc = Annotated[ServiceGateway[GenerationService], Depends(get_generation_gateway)]
+GenerationTrackingSvc = Annotated[GenerationTrackingService, Depends(get_generation_tracking_service)]
 ProviderSvc = Annotated[ProviderService, Depends(get_provider_service)]
 AssetSvc = Annotated[AssetService, Depends(get_asset_service)]
 AnalysisSvc = Annotated[AnalysisService, Depends(get_analysis_service)]
