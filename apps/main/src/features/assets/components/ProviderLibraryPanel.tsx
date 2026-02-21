@@ -4,9 +4,12 @@ import { Icon } from '@lib/icons';
 import { createIdbKvStore, getUserNamespace } from '@lib/storage/idbKvCache';
 
 
+import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import {
   type ClientFilterDef,
 } from '@features/gallery/lib/useClientFilters';
+import { useClientFilters } from '@features/gallery/lib/useClientFilters';
+import { usePagedItems } from '@features/gallery/lib/usePagedItems';
 import { useProviderAccounts } from '@features/providers/hooks/useProviderAccounts';
 import {
   getPixverseSyncDryRun,
@@ -16,10 +19,10 @@ import {
 } from '@features/providers/lib/api/pixverseSync';
 
 
-import { AssetGallery } from '@/components/media/AssetGallery';
+import { AssetGallery, GalleryEmptyState } from '@/components/media/AssetGallery';
+
 
 import { GROUP_PAGE_SIZE } from './groupHelpers';
-import { ClientFilteredGallerySection } from './shared/ClientFilteredGallerySection';
 import { PaginationStrip } from './shared/PaginationStrip';
 
 // ---------------------------------------------------------------------------
@@ -199,8 +202,6 @@ export function ProviderLibraryPanel({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
-  const [currentPage, setCurrentPage] = useState(1);
-  const prevFilteredLenRef = useRef<number>(-1);
 
   // Load cached scan result on mount / account change
   const loadedCacheRef = useRef<number | null>(null);
@@ -221,6 +222,20 @@ export function ProviderLibraryPanel({
     if (!scanResult) return [];
     return toLibraryItems(scanResult);
   }, [scanResult]);
+
+  // Client-side filtering
+  const {
+    filteredItems,
+    filterState,
+    visibleDefs,
+    setFilter,
+    resetFilters,
+    derivedOptions,
+  } = useClientFilters(libraryItems, FILTER_DEFS);
+
+  // Pagination
+  const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
+    usePagedItems(filteredItems, GROUP_PAGE_SIZE);
 
   // Stats
   const stats = useMemo(() => {
@@ -421,85 +436,68 @@ export function ProviderLibraryPanel({
 
       {/* Content area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {/* Gallery */}
+        {/* Pre-scan state */}
         {!scanResult && !scanning && (
-          <div className="flex items-center justify-center h-[60vh] text-neutral-500 dark:text-neutral-400">
-            <div className="text-center">
-              <Icon name="cloud" size={48} className="mx-auto mb-4 text-neutral-400" />
-              <p className="text-lg mb-2">Provider Library</p>
-              <p className="text-sm">Select an account and click Scan Library to browse remote assets.</p>
-            </div>
-          </div>
+          <GalleryEmptyState
+            icon="cloud"
+            title="Provider Library"
+            description="Select an account and click Scan Library to browse remote assets."
+          />
         )}
 
+        {/* Scanning state */}
         {scanning && (
-          <div className="flex items-center justify-center h-[60vh] text-neutral-500 dark:text-neutral-400">
-            <div className="text-center">
-              <Icon name="loader" size={48} className="mx-auto mb-4 animate-spin text-neutral-400" />
-              <p className="text-sm">Scanning remote library...</p>
-            </div>
-          </div>
+          <GalleryEmptyState
+            icon="loader"
+            title="Scanning remote library..."
+            iconClassName="animate-spin text-neutral-400"
+          />
         )}
 
+        {/* Results */}
         {scanResult && !scanning && (
-          <ClientFilteredGallerySection<LibraryItem>
-            items={libraryItems}
-            filterDefs={FILTER_DEFS}
-            toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
-            renderToolbarExtra={(filteredItems) => {
-              const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
-              const showPagination = filteredItems.length > GROUP_PAGE_SIZE;
-              return showPagination ? (
-                <div className="mt-2 flex items-center justify-end">
-                  <PaginationStrip
-                    currentPage={Math.min(currentPage, totalPages)}
-                    totalPages={totalPages}
-                    onPageChange={(page) => setCurrentPage(Math.max(1, Math.min(page, totalPages)))}
-                  />
-                </div>
-              ) : null;
-            }}
-          >
-            {(filteredItems) => {
-              // Reset page when filtered result count changes
-              if (filteredItems.length !== prevFilteredLenRef.current) {
-                prevFilteredLenRef.current = filteredItems.length;
-                if (currentPage !== 1) {
-                  queueMicrotask(() => setCurrentPage(1));
-                }
-              }
-
-              const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
-              const safePage = Math.min(currentPage, totalPages);
-              const pageStart = (safePage - 1) * GROUP_PAGE_SIZE;
-              const pageItems = filteredItems.slice(pageStart, pageStart + GROUP_PAGE_SIZE);
-
-              return (
-                <AssetGallery<LibraryItem>
-                  assets={pageItems}
-                  getAssetKey={getAssetKey}
-                  getPreviewUrl={getPreviewUrl}
-                  loadPreview={loadPreview}
-                  getMediaType={getMediaType}
-                  getDescription={getDescription}
-                  getTags={getTags}
-                  getUploadState={getUploadState}
-                  layout={layout}
-                  cardSize={cardSize}
-                  initialDisplayLimit={Infinity}
-                  showAssetCount={false}
-                  emptyState={
-                    <div className="flex items-center justify-center h-[40vh] text-neutral-500 dark:text-neutral-400">
-                      <div className="text-center">
-                        <Icon name="search" size={48} className="mx-auto mb-4 text-neutral-400" />
-                        <p className="text-sm">No items match the current filters.</p>
-                      </div>
-                    </div>
-                  }
+          <>
+            {libraryItems.length > 0 && (
+              <div className="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2">
+                <ClientFilterBar
+                  defs={visibleDefs}
+                  filterState={filterState}
+                  derivedOptions={derivedOptions}
+                  onFilterChange={setFilter}
+                  onReset={resetFilters}
                 />
-              );
-            }}
-          </ClientFilteredGallerySection>
+                {showPagination && (
+                  <div className="mt-2 flex items-center justify-end">
+                    <PaginationStrip
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      onPageChange={setCurrentPage}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+            <AssetGallery<LibraryItem>
+              assets={pageItems}
+              getAssetKey={getAssetKey}
+              getPreviewUrl={getPreviewUrl}
+              loadPreview={loadPreview}
+              getMediaType={getMediaType}
+              getDescription={getDescription}
+              getTags={getTags}
+              getUploadState={getUploadState}
+              layout={layout}
+              cardSize={cardSize}
+              initialDisplayLimit={Infinity}
+              showAssetCount={false}
+              emptyState={
+                <GalleryEmptyState
+                  icon="search"
+                  title="No items match the current filters"
+                />
+              }
+            />
+          </>
         )}
       </div>
     </div>

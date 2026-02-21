@@ -27,6 +27,7 @@
  * ```
  */
 
+import type { ReactNode } from 'react';
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 
 import { Icons } from '@lib/icons';
@@ -56,6 +57,15 @@ const CARD_SIZE_PRESETS: Record<Exclude<GalleryCardSizePreset, 'custom'>, number
 };
 
 const DEFAULT_RESOLVE_PREVIEW_URL = (_asset: unknown, url: string | undefined) => url;
+
+/**
+ * Descriptor for a single group section produced by `groupBy`.
+ */
+export interface GroupSection {
+  key: string;
+  label: string;
+  count: number;
+}
 
 /**
  * Props for the AssetGallery component.
@@ -224,6 +234,22 @@ export interface AssetGalleryProps<T> {
   groupBy?: (asset: T) => string;
 
   /**
+   * Resolve display label for a group key. Used when `groupBy` is set.
+   */
+  getGroupLabel?: (groupKey: string) => string;
+
+  /**
+   * Custom renderer for group headers. Receives the group key, label, and item count.
+   * Falls back to a default header when not provided.
+   */
+  renderGroupHeader?: (key: string, label: string, count: number) => ReactNode;
+
+  /**
+   * Optional sort for group sections before rendering.
+   */
+  sortGroupSections?: (groups: GroupSection[]) => GroupSection[];
+
+  /**
    * Function to get the hash status for an asset.
    * Used for the primary icon ring to indicate duplicate/unique/hashing state.
    */
@@ -386,6 +412,22 @@ function GalleryItem({
 }
 
 /**
+ * Default group header matching LocalFoldersContent's styling.
+ */
+function DefaultGroupHeader({ label, count }: { label: string; count: number }) {
+  return (
+    <header className="flex items-center justify-between pb-1 border-b border-neutral-200 dark:border-neutral-700">
+      <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200 truncate pr-3">
+        {label}
+      </h3>
+      <span className="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+        {count.toLocaleString()} items
+      </span>
+    </header>
+  );
+}
+
+/**
  * AssetGallery - A reusable gallery component for displaying assets.
  *
  * Provides consistent lazy-loading, status badges, and layout behavior
@@ -420,7 +462,10 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     initialDisplayLimit = 50,
     loadMoreIncrement = 50,
     lazyLoadRootMargin = '400px',
-    // groupBy - reserved for future use
+    groupBy,
+    getGroupLabel,
+    renderGroupHeader,
+    sortGroupSections,
     badgeConfig,
     actions,
     getActions,
@@ -461,59 +506,56 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     setDisplayLimit((prev) => prev + loadMoreIncrement);
   }, [loadMoreIncrement]);
 
-  // Build card items
-  const cardItems = useMemo(() => {
-    return displayAssets.map((asset) => {
-      const key = getAssetKey(asset);
-      const previewUrl = getPreviewUrl(asset);
-      const mediaType = getMediaType(asset);
-      const numericId = getNumericId
-        ? getNumericId(asset)
-        : hashStringToNumber(key);
-      const description = getDescription?.(asset);
-      const tags = getTags(asset);
-      const createdAt = getCreatedAt(asset);
-      const width = getWidth?.(asset);
-      const height = getHeight?.(asset);
-      const uploadState = getUploadState?.(asset);
-      const uploadProgress = getUploadProgress?.(asset);
-      const isFavorite = getIsFavorite?.(asset);
-      const hashStatus = getHashStatus?.(asset);
-      const assetActions = getActions?.(asset) ?? actions;
+  // Build a single GalleryItem element for an asset (shared by flat + grouped paths)
+  const buildCardElement = useCallback((asset: T) => {
+    const key = getAssetKey(asset);
+    const previewUrl = getPreviewUrl(asset);
+    const mediaType = getMediaType(asset);
+    const numericId = getNumericId
+      ? getNumericId(asset)
+      : hashStringToNumber(key);
+    const description = getDescription?.(asset);
+    const tags = getTags(asset);
+    const createdAt = getCreatedAt(asset);
+    const width = getWidth?.(asset);
+    const height = getHeight?.(asset);
+    const uploadState = getUploadState?.(asset);
+    const uploadProgress = getUploadProgress?.(asset);
+    const isFavorite = getIsFavorite?.(asset);
+    const hashStatus = getHashStatus?.(asset);
+    const assetActions = getActions?.(asset) ?? actions;
 
-      return (
-        <GalleryItem
-          key={key}
-          asset={asset}
-          previewUrl={previewUrl}
-          resolvePreviewUrl={resolvePreviewUrl}
-          loadPreview={() => loadPreview(asset)}
-          mediaType={mediaType}
-          numericId={numericId}
-          description={description}
-          tags={tags}
-          createdAt={createdAt}
-          width={width}
-          height={height}
-          uploadState={uploadState}
-          uploadProgress={uploadProgress}
-          isFavorite={isFavorite}
-          hashStatus={hashStatus}
-          onOpen={onOpen ? (resolvedPreviewUrl) => onOpen(asset, resolvedPreviewUrl) : undefined}
-          onUpload={onUpload ? () => onUpload(asset) : undefined}
-          onUploadToProvider={onUploadToProvider
-            ? (_id, pid) => onUploadToProvider(asset, pid)
-            : undefined}
-          onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(asset) : undefined}
-          lazyLoadRootMargin={lazyLoadRootMargin}
-          badgeConfig={badgeConfig}
-          actions={assetActions}
-          overlayPresetId={overlayPresetId}
-        />
-      );
-    });
+    return (
+      <GalleryItem
+        key={key}
+        asset={asset}
+        previewUrl={previewUrl}
+        resolvePreviewUrl={resolvePreviewUrl}
+        loadPreview={() => loadPreview(asset)}
+        mediaType={mediaType}
+        numericId={numericId}
+        description={description}
+        tags={tags}
+        createdAt={createdAt}
+        width={width}
+        height={height}
+        uploadState={uploadState}
+        uploadProgress={uploadProgress}
+        isFavorite={isFavorite}
+        hashStatus={hashStatus}
+        onOpen={onOpen ? (resolvedUrl) => onOpen(asset, resolvedUrl) : undefined}
+        onUpload={onUpload ? () => onUpload(asset) : undefined}
+        onUploadToProvider={onUploadToProvider
+          ? (_id, pid) => onUploadToProvider(asset, pid)
+          : undefined}
+        onToggleFavorite={onToggleFavorite ? () => onToggleFavorite(asset) : undefined}
+        lazyLoadRootMargin={lazyLoadRootMargin}
+        badgeConfig={badgeConfig}
+        actions={assetActions}
+        overlayPresetId={overlayPresetId}
+      />
+    );
   }, [
-    displayAssets,
     getAssetKey,
     getPreviewUrl,
     resolvePreviewUrl,
@@ -539,6 +581,69 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getActions,
     overlayPresetId,
   ]);
+
+  // Render a grid/masonry block from pre-built card elements
+  const renderGrid = useCallback((cards: React.ReactElement[]) => {
+    if (layout === 'masonry') {
+      return (
+        <MasonryGrid
+          items={cards}
+          rowGap={rowGap}
+          columnGap={columnGap}
+          minColumnWidth={resolvedCardSize}
+        />
+      );
+    }
+    return (
+      <div
+        className="grid"
+        style={{
+          gridTemplateColumns: `repeat(auto-fill, minmax(${resolvedCardSize}px, 1fr))`,
+          rowGap: `${rowGap}px`,
+          columnGap: `${columnGap}px`,
+        }}
+      >
+        {cards}
+      </div>
+    );
+  }, [layout, rowGap, columnGap, resolvedCardSize]);
+
+  // ---------- Grouped rendering ----------
+
+  const groupedSections = useMemo(() => {
+    if (!groupBy) return null;
+
+    // Group displayAssets into Map (preserves insertion order)
+    const groupMap = new Map<string, T[]>();
+    for (const asset of displayAssets) {
+      const key = groupBy(asset);
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.push(asset);
+      } else {
+        groupMap.set(key, [asset]);
+      }
+    }
+
+    let sections: GroupSection[] = Array.from(groupMap.entries()).map(([key, items]) => ({
+      key,
+      label: getGroupLabel ? getGroupLabel(key) : key,
+      count: items.length,
+    }));
+
+    if (sortGroupSections) {
+      sections = sortGroupSections(sections);
+    }
+
+    return { groupMap, sections };
+  }, [groupBy, displayAssets, getGroupLabel, sortGroupSections]);
+
+  // ---------- Build card items (flat path only) ----------
+
+  const flatCardItems = useMemo(() => {
+    if (groupBy) return null; // skip work when grouped
+    return displayAssets.map(buildCardElement);
+  }, [groupBy, displayAssets, buildCardElement]);
 
   // Empty state
   if (assets.length === 0) {
@@ -577,7 +682,37 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     </div>
   );
 
-  // Masonry layout
+  // ---------- Grouped layout ----------
+
+  if (groupedSections) {
+    const { groupMap, sections } = groupedSections;
+    return (
+      <div className={className}>
+        {assetCountIndicator}
+        <div className="space-y-5">
+          {sections.map(({ key, label, count }) => {
+            const groupAssets = groupMap.get(key);
+            if (!groupAssets || groupAssets.length === 0) return null;
+            const cards = groupAssets.map(buildCardElement);
+            return (
+              <section key={key} className="space-y-2">
+                {renderGroupHeader
+                  ? renderGroupHeader(key, label, count)
+                  : <DefaultGroupHeader label={label} count={count} />}
+                {renderGrid(cards)}
+              </section>
+            );
+          })}
+        </div>
+        {loadMoreButton}
+      </div>
+    );
+  }
+
+  // ---------- Flat layouts ----------
+
+  const cardItems = flatCardItems!;
+
   if (layout === 'masonry') {
     return (
       <div className={className}>
@@ -620,23 +755,27 @@ export function GalleryEmptyState({
   icon = 'folder',
   title = 'No files found',
   description,
+  iconClassName,
 }: {
-  icon?: 'folder' | 'image' | 'video' | 'search';
+  icon?: 'folder' | 'image' | 'video' | 'search' | 'cloud' | 'loader';
   title?: string;
   description?: string;
+  iconClassName?: string;
 }) {
   const IconComponent = {
     folder: Icons.folder,
     image: Icons.image,
     video: Icons.video,
     search: Icons.search,
+    cloud: Icons.cloud,
+    loader: Icons.loader,
   }[icon];
 
   return (
     <div className="flex items-center justify-center h-[60vh] text-neutral-500">
       <div className="text-center">
         <div className="mb-4 flex justify-center">
-          <IconComponent size={48} className="text-neutral-400" />
+          <IconComponent size={48} className={iconClassName ?? 'text-neutral-400'} />
         </div>
         <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
           {title}

@@ -1,26 +1,29 @@
 import type { RefObject } from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 
-import { Icons } from '@lib/icons';
-
-import type { ClientFilterDef, UseClientFiltersOptions } from '@features/gallery/lib/useClientFilters';
+import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
+import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
+import type { ClientFilterDef } from '@features/gallery/lib/useClientFilters';
+import { useClientFilters } from '@features/gallery/lib/useClientFilters';
+import { usePagedItems } from '@features/gallery/lib/usePagedItems';
+import { useScrollToTopOnChange } from '@features/gallery/lib/useScrollToTopOnChange';
 
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
+
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 import { GROUP_PAGE_SIZE } from '../groupHelpers';
-import { ClientFilteredGallerySection } from '../shared/ClientFilteredGallerySection';
 import { PaginationStrip } from '../shared/PaginationStrip';
 
 import {
+  FILTER_STATE_KEY,
   GROUP_MODE_OPTIONS,
   LOCAL_MEDIA_CARD_PRESET,
   type LocalGroupMode,
 } from './constants';
-import { readStoredFilterState, writeStoredFilterState } from './persistence';
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
@@ -80,119 +83,79 @@ export function LocalFoldersContent({
   getSubfolderValue,
   getSubfolderLabelForAsset,
 }: LocalFoldersContentProps) {
-  const [currentPage, setCurrentPage] = useState(1);
-  const prevFilteredLenRef = useRef<number>(-1);
-
   // --- Filter persistence ---
-  const filterOptions = useMemo<UseClientFiltersOptions>(() => ({
-    initialFilterState: readStoredFilterState(),
-    onFilterStateChange: writeStoredFilterState,
-  }), []);
+  const filterOptions = useClientFilterPersistence(FILTER_STATE_KEY);
 
-  // Scroll to top when page changes (skip initial mount)
-  const mountedRef = useRef(false);
-  useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-    contentScrollRef.current?.scrollTo({ top: 0 });
-  }, [currentPage, contentScrollRef]);
+  // --- Client-side filtering ---
+  const {
+    filteredItems,
+    filterState,
+    visibleDefs,
+    setFilter,
+    resetFilters,
+    derivedOptions,
+  } = useClientFilters(controller.assets, localFilterDefs, filterOptions);
 
-  const renderAssetGallery = useCallback(
-    (
-      galleryAssets: LocalAsset[],
-      viewerItems: LocalAsset[],
-      showAssetCount: boolean,
-    ) => (
-      <AssetGallery
-        assets={galleryAssets}
-        getAssetKey={getAssetKey}
-        getPreviewUrl={getPreviewUrl}
-        resolvePreviewUrl={useLocalAssetPreview}
-        loadPreview={controller.loadPreview}
-        getMediaType={getMediaType}
-        getDescription={getDescription}
-        getTags={getTags}
-        getCreatedAt={getCreatedAt}
-        getUploadState={getUploadState}
-        getHashStatus={getHashStatus}
-        onOpen={(asset, resolvedPreviewUrl) =>
-          openAssetInViewer(asset, viewerItems, resolvedPreviewUrl)
-        }
-        onUpload={handleUpload}
-        onUploadToProvider={handleUploadToProvider}
-        getIsFavorite={getIsFavorite}
-        onToggleFavorite={handleToggleFavorite}
-        getActions={getLocalMediaCardActions}
-        layout={layout}
-        cardSize={cardSize}
-        showAssetCount={showAssetCount}
-        overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
-        initialDisplayLimit={Infinity}
-      />
-    ),
-    [
-      cardSize,
-      controller.loadPreview,
-      getAssetKey,
-      getCreatedAt,
-      getDescription,
-      getHashStatus,
-      getIsFavorite,
-      getMediaType,
-      getPreviewUrl,
-      getTags,
-      getUploadState,
-      handleToggleFavorite,
-      handleUpload,
-      handleUploadToProvider,
-      getLocalMediaCardActions,
-      layout,
-      openAssetInViewer,
-    ],
-  );
+  // --- Folder scope detection ---
+  const hasFolderScope = useMemo(() => {
+    const folderSel = filterState.folder;
+    const hasFolderFilter = Array.isArray(folderSel) && folderSel.length > 0;
+    const favSel = filterState.favorites;
+    const hasFavFolderScope = Array.isArray(favSel) && favSel.includes('folders') && favoriteFoldersSet.size > 0;
+    return hasFolderFilter || hasFavFolderScope;
+  }, [filterState.folder, filterState.favorites, favoriteFoldersSet.size]);
 
-  const buildGroupedAssets = useCallback((items: LocalAsset[]) => {
-    const groups = new Map<string, { label: string; assets: LocalAsset[] }>();
+  // --- Pagination ---
+  const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
+    usePagedItems(filteredItems, GROUP_PAGE_SIZE);
 
-    for (const asset of items) {
-      const groupKey = groupMode === 'folder'
-        ? asset.folderId
-        : getSubfolderValue(asset);
-      const groupLabel = groupMode === 'folder'
-        ? getFolderLabel(asset.folderId)
-        : getSubfolderLabelForAsset(asset);
-      const existing = groups.get(groupKey);
-      if (existing) {
-        existing.assets.push(asset);
-        continue;
+  // --- Scroll to top on page change ---
+  useScrollToTopOnChange(contentScrollRef, [currentPage]);
+
+  // --- groupBy integration ---
+  const groupByFn = useMemo(() => {
+    if (groupMode === 'none') return undefined;
+    if (groupMode === 'folder') return (asset: LocalAsset) => asset.folderId;
+    return (asset: LocalAsset) => getSubfolderValue(asset);
+  }, [groupMode, getSubfolderValue]);
+
+  // Build a label map from pageItems so getGroupLabel can resolve keys
+  const groupLabelMap = useMemo(() => {
+    if (!groupByFn) return undefined;
+    const map = new Map<string, string>();
+    for (const asset of pageItems) {
+      const key = groupByFn(asset);
+      if (!map.has(key)) {
+        map.set(
+          key,
+          groupMode === 'folder'
+            ? getFolderLabel(asset.folderId)
+            : getSubfolderLabelForAsset(asset),
+        );
       }
-      groups.set(groupKey, { label: groupLabel, assets: [asset] });
     }
+    return map;
+  }, [groupByFn, pageItems, groupMode, getFolderLabel, getSubfolderLabelForAsset]);
 
-    return Array.from(groups.entries())
-      .map(([key, value]) => ({ key, label: value.label, assets: value.assets }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [getFolderLabel, getSubfolderLabelForAsset, getSubfolderValue, groupMode]);
-
-  // Empty states
-  const noFoldersEmptyState = (
-    <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
-      <div className="mb-4 flex justify-center">
-        <Icons.folder size={64} className="text-neutral-400" />
-      </div>
-      <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
-        {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
-      </p>
-      <p className="text-sm text-neutral-500">
-        {controller.folders.length === 0
-          ? 'Click "Add Folder" to get started'
-          : 'Added folders contain no media files'}
-      </p>
-    </div>
+  const getGroupLabel = useCallback(
+    (key: string) => groupLabelMap?.get(key) ?? key,
+    [groupLabelMap],
   );
 
+  const sortGroupSections = useCallback(
+    (groups: Array<{ key: string; label: string; count: number }>) =>
+      [...groups].sort((a, b) => a.label.localeCompare(b.label)),
+    [],
+  );
+
+  // --- Gallery onOpen wrapper ---
+  const handleOpen = useCallback(
+    (asset: LocalAsset, resolvedPreviewUrl?: string) =>
+      openAssetInViewer(asset, filteredItems, resolvedPreviewUrl),
+    [openAssetInViewer, filteredItems],
+  );
+
+  // --- Empty states ---
   const filteredEmptyState = (
     <GalleryEmptyState
       icon="search"
@@ -208,124 +171,114 @@ export function LocalFoldersContent({
     />
   );
 
-  const renderMainContent = (pageAssets: LocalAsset[], allFilteredAssets: LocalAsset[]) => {
+  // --- Main content ---
+  const renderMainContent = () => {
     if (controller.assets.length === 0) {
-      return noFoldersEmptyState;
+      return (
+        <div className="text-center py-16 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg bg-neutral-50 dark:bg-neutral-900/50">
+          <div className="mb-4 flex justify-center">
+            <svg className="w-16 h-16 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>
+          </div>
+          <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-2">
+            {controller.folders.length === 0 ? 'No folders added yet' : 'No files found'}
+          </p>
+          <p className="text-sm text-neutral-500">
+            {controller.folders.length === 0
+              ? 'Click "Add Folder" to get started'
+              : 'Added folders contain no media files'}
+          </p>
+        </div>
+      );
     }
 
-    if (allFilteredAssets.length === 0) {
+    if (!hasFolderScope) {
+      return chooseFolderEmptyState;
+    }
+
+    if (filteredItems.length === 0) {
       return filteredEmptyState;
     }
 
-    if (groupMode === 'none') {
-      return renderAssetGallery(pageAssets, allFilteredAssets, true);
-    }
-
-    const groupedAssets = buildGroupedAssets(pageAssets);
     return (
-      <div className="space-y-5">
-        {groupedAssets.map((group) => (
-          <section key={group.key} className="space-y-2">
-            <header className="flex items-center justify-between pb-1 border-b border-neutral-200 dark:border-neutral-700">
-              <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200 truncate pr-3">
-                {group.label}
-              </h3>
-              <span className="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-                {group.assets.length.toLocaleString()} items
-              </span>
-            </header>
-            {renderAssetGallery(group.assets, allFilteredAssets, false)}
-          </section>
-        ))}
-      </div>
+      <AssetGallery
+        assets={pageItems}
+        getAssetKey={getAssetKey}
+        getPreviewUrl={getPreviewUrl}
+        resolvePreviewUrl={useLocalAssetPreview}
+        loadPreview={controller.loadPreview}
+        getMediaType={getMediaType}
+        getDescription={getDescription}
+        getTags={getTags}
+        getCreatedAt={getCreatedAt}
+        getUploadState={getUploadState}
+        getHashStatus={getHashStatus}
+        onOpen={handleOpen}
+        onUpload={handleUpload}
+        onUploadToProvider={handleUploadToProvider}
+        getIsFavorite={getIsFavorite}
+        onToggleFavorite={handleToggleFavorite}
+        getActions={getLocalMediaCardActions}
+        layout={layout}
+        cardSize={cardSize}
+        showAssetCount={groupMode === 'none'}
+        overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
+        initialDisplayLimit={Infinity}
+        groupBy={groupByFn}
+        getGroupLabel={getGroupLabel}
+        sortGroupSections={groupMode !== 'none' ? sortGroupSections : undefined}
+      />
     );
   };
 
   return (
     <div ref={contentScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-6">
-      <ClientFilteredGallerySection<LocalAsset>
-        items={controller.assets}
-        filterDefs={localFilterDefs}
-        filterOptions={filterOptions}
-        toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
-        renderToolbarExtra={(filteredItems, { filterState: toolbarFilterState }) => {
-          const folderSel = toolbarFilterState.folder;
-          const hasFolderFilter = Array.isArray(folderSel) && folderSel.length > 0;
-          const favSel = toolbarFilterState.favorites;
-          const hasFavFolderScope = Array.isArray(favSel) && favSel.includes('folders') && favoriteFoldersSet.size > 0;
-          const hasFolderScope = hasFolderFilter || hasFavFolderScope;
-
-          const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
-          const safePage = Math.min(currentPage, totalPages);
-          const showPagination = hasFolderScope && filteredItems.length > GROUP_PAGE_SIZE;
-
-          return (
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <div className="inline-flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/70 p-0.5">
-                {GROUP_MODE_OPTIONS.map((option) => {
-                  const isActive = groupMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => selectGroupMode(option.value)}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                        isActive
-                          ? 'bg-accent text-accent-text'
-                          : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center gap-2">
-                {groupMode !== 'none' && (
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Grouped by {groupMode === 'folder' ? 'folder' : 'subfolder'}
-                  </span>
-                )}
-                {showPagination && (
-                  <PaginationStrip
-                    currentPage={safePage}
-                    totalPages={totalPages}
-                    onPageChange={(page) => setCurrentPage(Math.max(1, Math.min(page, totalPages)))}
-                  />
-                )}
-              </div>
+      {controller.assets.length > 0 && (
+        <div className="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2">
+          <ClientFilterBar
+            defs={visibleDefs}
+            filterState={filterState}
+            derivedOptions={derivedOptions}
+            onFilterChange={setFilter}
+            onReset={resetFilters}
+          />
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="inline-flex items-center rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/70 p-0.5">
+              {GROUP_MODE_OPTIONS.map((option) => {
+                const isActive = groupMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => selectGroupMode(option.value)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                      isActive
+                        ? 'bg-accent text-accent-text'
+                        : 'text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
-          );
-        }}
-      >
-        {(filteredDisplayAssets, { filterState }) => {
-          // Reset page when the filtered result count changes (actual filter change)
-          if (filteredDisplayAssets.length !== prevFilteredLenRef.current) {
-            prevFilteredLenRef.current = filteredDisplayAssets.length;
-            if (currentPage !== 1) {
-              queueMicrotask(() => setCurrentPage(1));
-            }
-          }
-
-          const folderSelection = filterState.folder;
-          const hasFolderFilterSelection = Array.isArray(folderSelection) && folderSelection.length > 0;
-          const favoritesSelection = filterState.favorites;
-          const hasFavoriteFolderScope = Array.isArray(favoritesSelection) && favoritesSelection.includes('folders') && favoriteFoldersSet.size > 0;
-          const hasFolderScope = hasFolderFilterSelection || hasFavoriteFolderScope;
-
-          if (controller.assets.length > 0 && !hasFolderScope) {
-            return chooseFolderEmptyState;
-          }
-
-          // Paginate
-          const totalPages = Math.max(1, Math.ceil(filteredDisplayAssets.length / GROUP_PAGE_SIZE));
-          const safePage = Math.min(currentPage, totalPages);
-          const pageStart = (safePage - 1) * GROUP_PAGE_SIZE;
-          const pageAssets = filteredDisplayAssets.slice(pageStart, pageStart + GROUP_PAGE_SIZE);
-
-          return renderMainContent(pageAssets, filteredDisplayAssets);
-        }}
-      </ClientFilteredGallerySection>
+            <div className="flex items-center gap-2">
+              {groupMode !== 'none' && (
+                <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                  Grouped by {groupMode === 'folder' ? 'folder' : 'subfolder'}
+                </span>
+              )}
+              {hasFolderScope && showPagination && (
+                <PaginationStrip
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {renderMainContent()}
     </div>
   );
 }
