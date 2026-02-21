@@ -37,6 +37,8 @@ export interface PanelInitialSize {
 export interface BasePanelInfo {
   id: string;
   title?: string;
+  supportsMultipleInstances?: boolean;
+  maxInstances?: number;
 }
 
 /**

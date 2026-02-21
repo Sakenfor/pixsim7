@@ -1,12 +1,13 @@
+import { IconButton } from "@pixsim7/shared.ui";
 import { memo, useCallback, useState, useRef } from "react";
 import { Rnd } from "react-rnd";
 
 import { Icon } from "@lib/icons";
-import { IconButton } from "@pixsim7/shared.ui";
 import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
+import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
@@ -68,19 +69,22 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
 
   const rndRef = useRef<Rnd | null>(null);
 
+  // Resolve definition ID (strips ::N suffix for multi-instance floating panels)
+  const definitionId = getFloatingDefinitionId(panel.id);
+
   // Check if this is a dev-tool panel (format: "dev-tool:toolId")
   const isDevToolPanel =
-    typeof panel.id === "string" && panel.id.startsWith("dev-tool:");
+    typeof definitionId === "string" && definitionId.startsWith("dev-tool:");
 
   let Component: React.ComponentType<any>;
   let title: string;
 
-  // For dev-tool panels, extract toolId from panel ID and ensure it's in context
+  // For dev-tool panels, extract toolId from definition ID and ensure it's in context
   let panelContext = panel.context || {};
 
   if (isDevToolPanel) {
-    // Extract tool ID from panel ID
-    const toolId = panel.id.slice("dev-tool:".length);
+    // Extract tool ID from definition ID
+    const toolId = definitionId.slice("dev-tool:".length);
     const devTool = devToolSelectors.get(toolId);
 
     Component = DevToolDynamicPanel;
@@ -89,8 +93,8 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     // Ensure toolId is in context (critical for persistence/restore)
     panelContext = { ...panelContext, toolId };
   } else {
-    // Regular panel from catalog
-    const panelDef = panelSelectors.get(panel.id);
+    // Regular panel from catalog — look up by definition ID
+    const panelDef = panelSelectors.get(definitionId);
     if (!panelDef) return null;
 
     Component = panelDef.component;

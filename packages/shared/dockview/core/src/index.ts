@@ -42,6 +42,7 @@ export {
   getGroupCount,
   resolvePanelDefinitionId,
   findPanel,
+  findAllPanels,
   isPanelOpen,
   focusPanel,
   addPanel,

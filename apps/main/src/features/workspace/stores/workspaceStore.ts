@@ -3,11 +3,12 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { addDockviewPanel, focusPanel, getDockviewApi } from "@lib/dockview";
-
+import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { createBackendStorage } from "../../../lib/backendStorage";
 import { pluginCatalog } from "../../../lib/plugins/pluginSystem";
 import { getBuiltinLayoutPresetsForScope, isBuiltinPreset, BUILTIN_PRESET_IDS } from "../lib/builtinPresets";
+import { getFloatingDefinitionId, createFloatingInstanceId } from "../lib/floatingPanelUtils";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 
 /**
@@ -312,6 +313,51 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }
 
         const { x, y, width, height, context } = options;
+        const panelDef = panelSelectors.get(panelId);
+        const isMultiInstance = panelDef?.supportsMultipleInstances === true;
+
+        if (isMultiInstance) {
+          // Multi-instance: enforce maxInstances, generate unique floating ID
+          const floatingPanels = get().floatingPanels;
+          const defId = panelId;
+          const instancesOfDef = floatingPanels.filter(
+            (p) => getFloatingDefinitionId(p.id) === defId,
+          );
+          if (panelDef?.maxInstances != null && instancesOfDef.length >= panelDef.maxInstances) {
+            // At capacity — bring first instance to front
+            const first = instancesOfDef[0];
+            if (first) get().bringFloatingPanelToFront(first.id);
+            return;
+          }
+          const floatingId = createFloatingInstanceId(panelId, floatingPanels);
+
+          const saved = get().lastFloatingPanelStates[panelId];
+          const finalWidth = width ?? saved?.width ?? 600;
+          const finalHeight = height ?? saved?.height ?? 400;
+          const rawX = x ?? saved?.x ?? (window.innerWidth - finalWidth) / 2;
+          const rawY = y ?? saved?.y ?? (window.innerHeight - finalHeight) / 2;
+          const finalX = Math.max(0, Math.min(rawX, window.innerWidth - Math.min(finalWidth, 100)));
+          const finalY = Math.max(0, Math.min(rawY, window.innerHeight - Math.min(finalHeight, 40)));
+          const maxZ = Math.max(...floatingPanels.map((p) => p.zIndex), 0);
+
+          set({
+            floatingPanels: [
+              ...floatingPanels,
+              {
+                id: floatingId,
+                x: finalX,
+                y: finalY,
+                width: finalWidth,
+                height: finalHeight,
+                zIndex: maxZ + 1,
+                context,
+              },
+            ],
+          });
+          return;
+        }
+
+        // Single-instance: existing behavior (focus if already open)
         const existing = get().floatingPanels.find((p) => p.id === panelId);
         if (existing) {
           const maxZ = Math.max(...get().floatingPanels.map((p) => p.zIndex), 0);
@@ -353,8 +399,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
 
       closeFloatingPanel: (panelId) => {
         const panel = get().floatingPanels.find((p) => p.id === panelId);
+        const defId = getFloatingDefinitionId(panelId);
         const saved = panel
-          ? { ...get().lastFloatingPanelStates, [panelId]: { x: panel.x, y: panel.y, width: panel.width, height: panel.height } }
+          ? { ...get().lastFloatingPanelStates, [defId]: { x: panel.x, y: panel.y, width: panel.width, height: panel.height } }
           : get().lastFloatingPanelStates;
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
@@ -417,12 +464,15 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         const floatingPanel = get().floatingPanels.find((p) => p.id === panelId);
         if (!floatingPanel) return;
 
-        // Save geometry before removing
+        // Resolve definition ID (strips ::N suffix for multi-instance panels)
+        const defId = getFloatingDefinitionId(panelId);
+
+        // Save geometry before removing (keyed by definition ID)
         set({
           floatingPanels: get().floatingPanels.filter((p) => p.id !== panelId),
           lastFloatingPanelStates: {
             ...get().lastFloatingPanelStates,
-            [panelId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
+            [defId]: { x: floatingPanel.x, y: floatingPanel.y, width: floatingPanel.width, height: floatingPanel.height },
           },
         });
 
@@ -434,9 +484,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>()(
         }
 
         // Resolve the actual panel ID (strip dev-tool: prefix if present)
-        const actualPanelId = panelId.startsWith("dev-tool:")
-          ? panelId.slice("dev-tool:".length)
-          : panelId;
+        const actualPanelId = defId.startsWith("dev-tool:")
+          ? defId.slice("dev-tool:".length)
+          : defId;
 
         // Add panel to dockview at the specified position
         addDockviewPanel(api, actualPanelId, {

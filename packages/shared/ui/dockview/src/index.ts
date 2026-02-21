@@ -57,6 +57,7 @@ export {
   getGroupCount as getDockviewGroupCount,
   resolvePanelDefinitionId,
   findPanel as findDockviewPanel,
+  findAllPanels as findAllDockviewPanels,
   isPanelOpen,
   focusPanel,
   addPanel as addDockviewPanel,

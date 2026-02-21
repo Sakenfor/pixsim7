@@ -84,6 +84,17 @@ export function findPanel(api: DockviewApi, panelId: string): IDockviewPanel | u
 }
 
 /**
+ * Find all panels matching a definition ID in a dockview.
+ * Returns every instance whose resolved definition ID equals `panelId`.
+ */
+export function findAllPanels(api: DockviewApi, panelId: string): IDockviewPanel[] {
+  return getPanels(api).filter((panel) => {
+    const resolved = resolvePanelDefinitionId(panel);
+    return resolved === panelId;
+  });
+}
+
+/**
  * Check if a panel is currently open
  */
 export function isPanelOpen(api: DockviewApi, panelId: string, allowMultiple = false): boolean {
@@ -104,10 +115,24 @@ export function focusPanel(api: DockviewApi, panelId: string): boolean {
 }
 
 /**
- * Generate a unique instance ID for multi-instance panels
+ * Generate a unique instance ID for multi-instance panels.
+ * Uses a counter format: `{panelId}:1`, `{panelId}:2`, etc.
+ * Scans existing panels to find the next available counter.
  */
-function createInstanceId(panelId: string): string {
-  return `${panelId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+function createInstanceId(panelId: string, api: DockviewApi): string {
+  const existing = findAllPanels(api, panelId);
+  const usedCounters = new Set<number>();
+  const prefix = `${panelId}:`;
+  for (const p of existing) {
+    const id = p.id;
+    if (id.startsWith(prefix)) {
+      const n = parseInt(id.slice(prefix.length), 10);
+      if (!isNaN(n)) usedCounters.add(n);
+    }
+  }
+  let counter = 1;
+  while (usedCounters.has(counter)) counter++;
+  return `${panelId}:${counter}`;
 }
 
 /**
@@ -130,8 +155,20 @@ export function addPanel(
 
   const lookup = panelLookup ?? getConfiguredPanelLookup();
   const definition = lookup?.get(panelId);
+
+  // Enforce maxInstances for multi-instance panels
+  if (allowMultiple && definition?.maxInstances != null) {
+    const existing = findAllPanels(api, panelId);
+    if (existing.length >= definition.maxInstances) {
+      // At capacity — focus the first existing instance
+      const first = existing[0];
+      if (first?.api?.setActive) first.api.setActive();
+      return null;
+    }
+  }
+
   const title = options.title ?? definition?.title ?? panelId;
-  const instanceId = options.instanceId ?? (allowMultiple ? createInstanceId(panelId) : panelId);
+  const instanceId = options.instanceId ?? (allowMultiple ? createInstanceId(panelId, api) : panelId);
   const params = { ...(options.params ?? {}), panelId };
 
   api.addPanel({
