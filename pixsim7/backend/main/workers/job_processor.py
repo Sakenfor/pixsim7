@@ -892,21 +892,24 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
-                    requeue_result = await _requeue_generation_for_account_rotation(
-                        db=db,
-                        generation=generation,
-                        generation_id=generation_id,
-                        failed_account_id=account.id,
-                        reason="account_auth_failure",
-                        log_event="generation_requeued_auth_failure",
-                        account_log_field="failed_account_id",
-                        gen_logger=gen_logger,
-                        clear_preferred_on_account_match=True,
-                        error_code=error_code,
-                    )
-                    if requeue_result:
-                        return requeue_result
-                    # Fall through to mark as failed if requeue fails
+                    # Don't rotate away from a pinned account — the user
+                    # needs to fix auth on their chosen account.
+                    if not _is_pinned_account(generation, account):
+                        requeue_result = await _requeue_generation_for_account_rotation(
+                            db=db,
+                            generation=generation,
+                            generation_id=generation_id,
+                            failed_account_id=account.id,
+                            reason="account_auth_failure",
+                            log_event="generation_requeued_auth_failure",
+                            account_log_field="failed_account_id",
+                            gen_logger=gen_logger,
+                            clear_preferred_on_account_match=True,
+                            error_code=error_code,
+                        )
+                        if requeue_result:
+                            return requeue_result
+                    # Fall through to mark as failed if requeue fails or pinned
 
                 # Content filtered - retry only if retryable (output rejection, not prompt rejection)
                 elif isinstance(e, ProviderContentFilteredError):
