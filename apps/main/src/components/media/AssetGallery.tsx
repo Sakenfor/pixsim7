@@ -362,7 +362,7 @@ function GalleryItem({
         providerId="local"
         providerAssetId={String(numericId)}
         thumbUrl={resolvedPreviewUrl || ''}
-        remoteUrl={resolvedPreviewUrl || ''}
+        remoteUrl={mediaType !== 'video' ? (resolvedPreviewUrl || '') : ''}
         width={width}
         height={height}
         tags={tagObjects}

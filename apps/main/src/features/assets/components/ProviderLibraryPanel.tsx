@@ -18,7 +18,9 @@ import {
 
 import { AssetGallery } from '@/components/media/AssetGallery';
 
+import { GROUP_PAGE_SIZE } from './groupHelpers';
 import { ClientFilteredGallerySection } from './shared/ClientFilteredGallerySection';
+import { PaginationStrip } from './shared/PaginationStrip';
 
 // ---------------------------------------------------------------------------
 // Scan result cache
@@ -197,6 +199,8 @@ export function ProviderLibraryPanel({
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [includeImages, setIncludeImages] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const prevFilteredLenRef = useRef<number>(-1);
 
   // Load cached scan result on mount / account change
   const loadedCacheRef = useRef<number | null>(null);
@@ -441,30 +445,60 @@ export function ProviderLibraryPanel({
           <ClientFilteredGallerySection<LibraryItem>
             items={libraryItems}
             filterDefs={FILTER_DEFS}
-            filterBarClassName="mb-3"
+            toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
+            renderToolbarExtra={(filteredItems) => {
+              const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
+              const showPagination = filteredItems.length > GROUP_PAGE_SIZE;
+              return showPagination ? (
+                <div className="mt-2 flex items-center justify-end">
+                  <PaginationStrip
+                    currentPage={Math.min(currentPage, totalPages)}
+                    totalPages={totalPages}
+                    onPageChange={(page) => setCurrentPage(Math.max(1, Math.min(page, totalPages)))}
+                  />
+                </div>
+              ) : null;
+            }}
           >
-            {(filteredItems) => (
-              <AssetGallery<LibraryItem>
-                assets={filteredItems}
-                getAssetKey={getAssetKey}
-                getPreviewUrl={getPreviewUrl}
-                loadPreview={loadPreview}
-                getMediaType={getMediaType}
-                getDescription={getDescription}
-                getTags={getTags}
-                getUploadState={getUploadState}
-                layout={layout}
-                cardSize={cardSize}
-                emptyState={
-                  <div className="flex items-center justify-center h-[40vh] text-neutral-500 dark:text-neutral-400">
-                    <div className="text-center">
-                      <Icon name="search" size={48} className="mx-auto mb-4 text-neutral-400" />
-                      <p className="text-sm">No items match the current filters.</p>
-                    </div>
-                  </div>
+            {(filteredItems) => {
+              // Reset page when filtered result count changes
+              if (filteredItems.length !== prevFilteredLenRef.current) {
+                prevFilteredLenRef.current = filteredItems.length;
+                if (currentPage !== 1) {
+                  queueMicrotask(() => setCurrentPage(1));
                 }
-              />
-            )}
+              }
+
+              const totalPages = Math.max(1, Math.ceil(filteredItems.length / GROUP_PAGE_SIZE));
+              const safePage = Math.min(currentPage, totalPages);
+              const pageStart = (safePage - 1) * GROUP_PAGE_SIZE;
+              const pageItems = filteredItems.slice(pageStart, pageStart + GROUP_PAGE_SIZE);
+
+              return (
+                <AssetGallery<LibraryItem>
+                  assets={pageItems}
+                  getAssetKey={getAssetKey}
+                  getPreviewUrl={getPreviewUrl}
+                  loadPreview={loadPreview}
+                  getMediaType={getMediaType}
+                  getDescription={getDescription}
+                  getTags={getTags}
+                  getUploadState={getUploadState}
+                  layout={layout}
+                  cardSize={cardSize}
+                  initialDisplayLimit={Infinity}
+                  showAssetCount={false}
+                  emptyState={
+                    <div className="flex items-center justify-center h-[40vh] text-neutral-500 dark:text-neutral-400">
+                      <div className="text-center">
+                        <Icon name="search" size={48} className="mx-auto mb-4 text-neutral-400" />
+                        <p className="text-sm">No items match the current filters.</p>
+                      </div>
+                    </div>
+                  }
+                />
+              );
+            }}
           </ClientFilteredGallerySection>
         )}
       </div>

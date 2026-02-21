@@ -30,7 +30,7 @@ export function useMediaPreviewSource(
     remoteUrl: mediaType === 'video' ? undefined : remoteUrl,
   });
 
-  const rawVideoSrc = mediaType === 'video' ? (remoteUrl || thumbSrc) : undefined;
+  const rawVideoSrc = mediaType === 'video' ? (remoteUrl || undefined) : undefined;
   const isBackendVideoSrc = rawVideoSrc ? isBackendUrl(rawVideoSrc, BACKEND_BASE) : false;
   const { mediaSrc: resolvedVideoSrc } = useResolvedAssetMedia({
     mediaUrl: isBackendVideoSrc ? rawVideoSrc : undefined,

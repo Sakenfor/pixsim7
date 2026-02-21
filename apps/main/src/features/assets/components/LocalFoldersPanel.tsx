@@ -1,5 +1,5 @@
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 
 import { CompositeIcon, Icons } from '@lib/icons';
@@ -172,6 +172,66 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     return 'reading';
   }, [controller.hashingProgress?.phase]);
 
+  // --- Per-option action buttons for folder / subfolder filters ---
+  const renderFolderOptionExtra = useCallback((folderId: string): ReactNode => {
+    const isFav = favoriteFoldersSet.has(folderId);
+    return (
+      <>
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+          title="Hash files"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); controller.hashFolder(folderId); }}
+        >
+          <Icons.hash size={12} />
+        </button>
+        <button
+          type="button"
+          className={`p-0.5 rounded transition-colors ${
+            isFav
+              ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-amber-500'
+          }`}
+          title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavoriteFolder(folderId); }}
+        >
+          <Icons.star size={12} />
+        </button>
+      </>
+    );
+  }, [controller, favoriteFoldersSet, toggleFavoriteFolder]);
+
+  const renderSubfolderOptionExtra = useCallback((subfolderValue: string): ReactNode => {
+    const parsed = parseSubfolderValue(subfolderValue);
+    if (!parsed) return null;
+    const favPath = parsed.directory ? `${parsed.folderId}/${parsed.directory}` : parsed.folderId;
+    const isFav = favoriteFoldersSet.has(favPath);
+    return (
+      <>
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
+          title="Hash files"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); controller.hashFolder(parsed.folderId); }}
+        >
+          <Icons.hash size={12} />
+        </button>
+        <button
+          type="button"
+          className={`p-0.5 rounded transition-colors ${
+            isFav
+              ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+              : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-amber-500'
+          }`}
+          title={isFav ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleFavoriteFolder(favPath); }}
+        >
+          <Icons.star size={12} />
+        </button>
+      </>
+    );
+  }, [controller, favoriteFoldersSet, toggleFavoriteFolder]);
+
   // --- Filter definitions ---
   const localFilterDefs = useMemo(() => buildLocalFilterDefs({
     getFolderLabel,
@@ -184,6 +244,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     getUploadFilterState: callbacks.getUploadFilterState,
     getHashFilterState: callbacks.getHashFilterState,
     favoriteStatus: controller.favoriteStatus,
+    renderFolderOptionExtra,
+    renderSubfolderOptionExtra,
   }), [
     controller.favoriteStatus,
     getFolderFilterLabel,
@@ -195,6 +257,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     getSubfolderLabelForAsset,
     getSubfolderValue,
     callbacks.getUploadFilterState,
+    renderFolderOptionExtra,
+    renderSubfolderOptionExtra,
   ]);
 
   // --- Scroll persistence ---

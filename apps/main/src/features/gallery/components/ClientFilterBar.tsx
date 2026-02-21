@@ -371,27 +371,34 @@ function FilterContent<T>({
           )}
           {options.map((opt) => {
             const isSelected = selectedValues.includes(opt.value);
+            const extra = filter.renderOptionExtra?.(opt.value);
             return (
-              <label
-                key={opt.value}
-                className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer"
-              >
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => {
-                    const next = new Set(selectedValues);
-                    if (next.has(opt.value)) next.delete(opt.value);
-                    else next.add(opt.value);
-                    onChange(Array.from(next));
-                  }}
-                  className="accent-accent"
-                />
-                <span>
-                  {opt.label}
-                  {opt.count !== undefined ? ` (${opt.count})` : ''}
-                </span>
-              </label>
+              <div key={opt.value} className="group/opt flex items-center gap-1">
+                <label
+                  className="flex items-center gap-2 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer flex-1 min-w-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => {
+                      const next = new Set(selectedValues);
+                      if (next.has(opt.value)) next.delete(opt.value);
+                      else next.add(opt.value);
+                      onChange(Array.from(next));
+                    }}
+                    className="accent-accent flex-shrink-0"
+                  />
+                  <span className="truncate">
+                    {opt.label}
+                    {opt.count !== undefined ? ` (${opt.count})` : ''}
+                  </span>
+                </label>
+                {extra && (
+                  <span className="flex-shrink-0 flex items-center opacity-0 group-hover/opt:opacity-100 transition-opacity">
+                    {extra}
+                  </span>
+                )}
+              </div>
             );
           })}
         </div>

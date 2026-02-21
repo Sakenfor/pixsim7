@@ -1,9 +1,9 @@
 import type { RefObject } from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icons } from '@lib/icons';
 
-import type { ClientFilterDef } from '@features/gallery/lib/useClientFilters';
+import type { ClientFilterDef, UseClientFiltersOptions } from '@features/gallery/lib/useClientFilters';
 
 import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
@@ -20,6 +20,7 @@ import {
   LOCAL_MEDIA_CARD_PRESET,
   type LocalGroupMode,
 } from './constants';
+import { readStoredFilterState, writeStoredFilterState } from './persistence';
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
@@ -80,7 +81,13 @@ export function LocalFoldersContent({
   getSubfolderLabelForAsset,
 }: LocalFoldersContentProps) {
   const [currentPage, setCurrentPage] = useState(1);
-  const prevFilteredRef = useRef<LocalAsset[] | null>(null);
+  const prevFilteredLenRef = useRef<number>(-1);
+
+  // --- Filter persistence ---
+  const filterOptions = useMemo<UseClientFiltersOptions>(() => ({
+    initialFilterState: readStoredFilterState(),
+    onFilterStateChange: writeStoredFilterState,
+  }), []);
 
   // Scroll to top when page changes (skip initial mount)
   const mountedRef = useRef(false);
@@ -239,6 +246,7 @@ export function LocalFoldersContent({
       <ClientFilteredGallerySection<LocalAsset>
         items={controller.assets}
         filterDefs={localFilterDefs}
+        filterOptions={filterOptions}
         toolbarClassName="sticky top-0 z-20 mb-3 border-b border-neutral-200/70 dark:border-neutral-800/70 bg-neutral-50/95 dark:bg-neutral-950/95 supports-[backdrop-filter]:bg-neutral-50/80 supports-[backdrop-filter]:dark:bg-neutral-950/80 backdrop-blur pb-2"
         renderToolbarExtra={(filteredItems, { filterState: toolbarFilterState }) => {
           const folderSel = toolbarFilterState.folder;
@@ -291,9 +299,9 @@ export function LocalFoldersContent({
         }}
       >
         {(filteredDisplayAssets, { filterState }) => {
-          // Reset page when filtered items change
-          if (filteredDisplayAssets !== prevFilteredRef.current) {
-            prevFilteredRef.current = filteredDisplayAssets;
+          // Reset page when the filtered result count changes (actual filter change)
+          if (filteredDisplayAssets.length !== prevFilteredLenRef.current) {
+            prevFilteredLenRef.current = filteredDisplayAssets.length;
             if (currentPage !== 1) {
               queueMicrotask(() => setCurrentPage(1));
             }

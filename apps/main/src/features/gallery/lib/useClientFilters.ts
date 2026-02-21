@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +24,8 @@ export interface ClientFilterDef<T> {
   predicate: (item: T, value: ClientFilterValue) => boolean;
   deriveOptions?: (items: T[], filterState: ClientFilterState) => ClientEnumFilterOption[];
   deriveOptionsWithCounts?: (items: T[], filterState: ClientFilterState) => ClientEnumFilterOption[];
+  /** Optional extra UI rendered after each enum option label (e.g. action buttons). */
+  renderOptionExtra?: (optionValue: string) => ReactNode;
 }
 
 export interface UseClientFiltersResult<T> {
@@ -39,11 +41,24 @@ export interface UseClientFiltersResult<T> {
 // Hook
 // ---------------------------------------------------------------------------
 
+export interface UseClientFiltersOptions {
+  /** Pre-populate filter state (e.g. restored from localStorage). */
+  initialFilterState?: ClientFilterState;
+  /** Called whenever filter state changes (for persistence). */
+  onFilterStateChange?: (state: ClientFilterState) => void;
+}
+
 export function useClientFilters<T>(
   items: T[],
   defs: ClientFilterDef<T>[],
+  options?: UseClientFiltersOptions,
 ): UseClientFiltersResult<T> {
-  const [filterState, setFilterState] = useState<Record<string, ClientFilterValue>>({});
+  const [filterState, setFilterState] = useState<Record<string, ClientFilterValue>>(
+    () => options?.initialFilterState ?? {},
+  );
+
+  const onFilterStateChangeRef = useRef(options?.onFilterStateChange);
+  onFilterStateChangeRef.current = options?.onFilterStateChange;
 
   const setFilter = useCallback((key: string, value: ClientFilterValue) => {
     setFilterState((prev) => {
@@ -51,12 +66,15 @@ export function useClientFilters<T>(
       const normalized =
         value === '' || (Array.isArray(value) && value.length === 0) ? undefined : value;
       if (prev[key] === normalized) return prev;
-      return { ...prev, [key]: normalized };
+      const next = { ...prev, [key]: normalized };
+      onFilterStateChangeRef.current?.(next);
+      return next;
     });
   }, []);
 
   const resetFilters = useCallback(() => {
     setFilterState({});
+    onFilterStateChangeRef.current?.({});
   }, []);
 
   const visibleDefs = useMemo(

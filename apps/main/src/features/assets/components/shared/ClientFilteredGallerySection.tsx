@@ -5,6 +5,7 @@ import {
   useClientFilters,
   type ClientFilterState,
   type ClientFilterDef,
+  type UseClientFiltersOptions,
 } from '@features/gallery/lib/useClientFilters';
 
 export interface ClientFilteredGallerySectionRenderContext<T> {
@@ -18,6 +19,7 @@ export interface ClientFilteredGallerySectionRenderContext<T> {
 interface ClientFilteredGallerySectionProps<T> {
   items: T[];
   filterDefs: ClientFilterDef<T>[];
+  filterOptions?: UseClientFiltersOptions;
   children: (filteredItems: T[], context: ClientFilteredGallerySectionRenderContext<T>) => ReactNode;
   filterBarClassName?: string;
   toolbarClassName?: string;
@@ -34,6 +36,7 @@ interface ClientFilteredGallerySectionProps<T> {
 export function ClientFilteredGallerySection<T>({
   items,
   filterDefs,
+  filterOptions,
   children,
   filterBarClassName,
   toolbarClassName,
@@ -46,7 +49,7 @@ export function ClientFilteredGallerySection<T>({
     setFilter,
     resetFilters,
     derivedOptions,
-  } = useClientFilters(items, filterDefs);
+  } = useClientFilters(items, filterDefs, filterOptions);
   const renderContext: ClientFilteredGallerySectionRenderContext<T> = {
     filterState,
     setFilter,

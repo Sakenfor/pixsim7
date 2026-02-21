@@ -914,8 +914,8 @@ export function VideoScrubWidgetRenderer({
         </div>
       )}
 
-      {/* Loading indicator - hide if video failed to load */}
-      {isHovering && !isVideoLoaded && !videoError && (
+      {/* Loading indicator - hide if video failed to load or no URL available */}
+      {isHovering && !isVideoLoaded && !videoError && !!resolvedUrl && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
           <div className="px-3 py-1.5 bg-black/80 text-white text-xs rounded backdrop-blur-sm">
             Loading video...

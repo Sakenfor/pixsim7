@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import type {
   ClientFilterDef,
   ClientFilterState,
@@ -18,6 +20,10 @@ export interface BuildLocalFilterDefsDeps {
   getUploadFilterState: (asset: LocalAsset) => UploadFilterState;
   getHashFilterState: (asset: LocalAsset) => HashFilterState;
   favoriteStatus: Record<string, boolean>;
+  /** Render hash / favorite action buttons for a folder filter option. */
+  renderFolderOptionExtra?: (folderId: string) => ReactNode;
+  /** Render hash / favorite action buttons for a subfolder filter option. */
+  renderSubfolderOptionExtra?: (subfolderValue: string) => ReactNode;
 }
 
 export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilterDef<LocalAsset>[] {
@@ -32,6 +38,8 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
     getUploadFilterState,
     getHashFilterState,
     favoriteStatus,
+    renderFolderOptionExtra,
+    renderSubfolderOptionExtra,
   } = deps;
 
   return [
@@ -86,6 +94,7 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
         if (!Array.isArray(value) || value.length === 0) return true;
         return value.includes(asset.folderId);
       },
+      renderOptionExtra: renderFolderOptionExtra,
       deriveOptionsWithCounts: (items) => {
         const counts = new Map<string, number>();
         for (const item of items) {
@@ -107,6 +116,7 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
       icon: 'folderTree',
       type: 'enum',
       order: 4,
+      renderOptionExtra: renderSubfolderOptionExtra,
       isVisible: (filterState) => getScopedFolderIds(filterState).length > 0,
       predicate: (asset, value) => {
         if (!Array.isArray(value) || value.length === 0) return true;
