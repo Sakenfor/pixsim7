@@ -10,11 +10,18 @@ package:
     - immersive_sim
 
 roles:
+  pov:
+    label: POV
+    description: First-person point-of-view overlay group
+    color: amber
+    isGroup: true
+    tags: [pov, perspective]
   pov_hands:
     label: POV Hands
     description: First-person player hands overlay
     color: amber
     defaultLayer: 2
+    parent: pov
     tags: [pov, hands, player, foreground, overlay]
     slugMappings: [pov:hands, role:pov_hands, hands]
     namespaceMappings: [pov]
@@ -23,6 +30,7 @@ roles:
     description: Item held in player's hands (weapon, tool, etc.)
     color: yellow
     defaultLayer: 2
+    parent: pov
     tags: [pov, item, held, foreground]
     slugMappings: [pov:item, pov:held, role:pov_held_item]
     namespaceMappings: []

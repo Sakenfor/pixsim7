@@ -68,6 +68,44 @@ blocks:
     complexity_level: simple
     description: "Dane entrance v3 — already present, camera reveals scale"
 
+  - block_id: dane_entrance_04
+    role: action
+    category: entrance
+    kind: transition
+    text: >-
+      Heavy nails click on hard flooring as the Great Dane rounds the
+      corner into the room, its long legs carrying it with an easy
+      loping gait, it stops in the doorway and surveys the scene, head
+      high, the sheer width of its chest blocking most of the opening
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: enter_frame
+      direction: right
+      intensity: 3
+      species: canine_large
+    complexity_level: moderate
+    description: "Dane entrance v4 — enters through doorway, emphasis on sound and width"
+
+  - block_id: dane_entrance_05
+    role: action
+    category: entrance
+    kind: transition
+    text: >-
+      A shadow falls across her before the Dane itself appears, its
+      silhouette enormous as it steps into the light, short coat
+      gleaming, muscles rolling beneath the skin with each slow
+      purposeful step, it does not hurry
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: enter_frame
+      direction: behind
+      intensity: 4
+      species: canine_large
+    complexity_level: moderate
+    description: "Dane entrance v5 — shadow-first reveal, silhouette emphasis"
+
   # === Approach / contact (intensity 5-6) ===
 
   - block_id: dane_approach_01
@@ -124,6 +162,60 @@ blocks:
     complexity_level: complex
     description: "Approach v3 — circles and claims, paw on knee, eye contact"
 
+  - block_id: dane_approach_04
+    role: action
+    category: approach
+    kind: single_state
+    text: >-
+      The Dane pushes its muzzle under her arm, lifting it with the
+      strength of its neck alone, wedging its enormous head into the
+      space beside her ribs, its warm flank pressing flat against her
+      hip, tail thumping once, twice
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: wedge
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Approach v4 — muzzle under arm, wedging into her space"
+
+  - block_id: dane_approach_05
+    role: action
+    category: approach
+    kind: single_state
+    text: >-
+      It lowers its head and presses its forehead against her stomach,
+      the pressure steady and insistent, shoulders bunched, hindquarters
+      still, the full weight of its skull and neck concentrated in a
+      single point of contact that pushes her half a step backward
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: press
+      intensity: 6
+      species: canine_large
+    complexity_level: moderate
+    description: "Approach v5 — forehead press against stomach, immovable force"
+
+  - block_id: dane_approach_06
+    role: action
+    category: approach
+    kind: single_state
+    text: >-
+      The Dane's long tongue drags across the back of her hand as it
+      moves past, leaving a wet trail, it turns and comes back the
+      other way, shoulder brushing her leg, its body heat radiating
+      through the thin gap between them
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: pass
+      intensity: 5
+      species: canine_large
+    complexity_level: simple
+    description: "Approach v6 — lick in passing, circling body heat"
+
   # === Main action (intensity 6-8) ===
 
   - block_id: dane_main_01
@@ -161,6 +253,60 @@ blocks:
       species: canine_large
     complexity_level: complex
     description: "Main action v2 — forelegs bracket waist, dramatic scale"
+
+  - block_id: dane_main_03
+    role: action
+    category: main_action
+    kind: single_state
+    text: >-
+      The Dane rears onto its hind legs, forepaws landing on her
+      shoulders with surprising precision, its full height now
+      towering above her, chest vibrating with a low rumble, the
+      weight settling incrementally as it finds its balance against her
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: rear_up
+      intensity: 8
+      species: canine_large
+    complexity_level: complex
+    description: "Main action v3 — rears up, paws on shoulders, towers over her"
+
+  - block_id: dane_main_04
+    role: action
+    category: main_action
+    kind: single_state
+    text: >-
+      It hooks one foreleg around her hip and pulls, dragging her
+      closer with raw muscular force, its hindquarters planted wide
+      for leverage, the movement controlled but unmistakably powerful,
+      its muzzle pressed into the crook of her neck, breathing hard
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: pull
+      intensity: 7
+      species: canine_large
+    complexity_level: complex
+    description: "Main action v4 — foreleg hooks hip, pulls her in, neck breathing"
+
+  - block_id: dane_main_05
+    role: action
+    category: main_action
+    kind: single_state
+    text: >-
+      The Dane pins her against the surface behind her, its mass
+      impossible to redirect, forepaws braced on either side, its
+      deep chest heaving with each breath, tongue dragging across
+      her throat in a slow wet stripe, tail rigid and quivering
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: pin
+      intensity: 8
+      species: canine_large
+    complexity_level: complex
+    description: "Main action v5 — pins against surface, lick across throat"
 
   # === Closeup (intensity 7-9) ===
 
@@ -200,6 +346,186 @@ blocks:
     complexity_level: moderate
     description: "Closeup v2 — dane face profile, jaw and breath detail"
 
+  - block_id: dane_closeup_03
+    role: camera
+    category: closeup
+    kind: single_state
+    text: >-
+      Macro shot of the Dane's paw gripping the fabric of her clothing,
+      claws slightly extended, the tendons in its wrist flexed, each
+      digit spread wide for purchase, the scale of the paw against her
+      body striking at this magnification
+    tags:
+      tone: dominant
+      scene_type: encounter
+      camera: tight_closeup
+      intensity: 7
+      species: canine_large
+    complexity_level: simple
+    description: "Closeup v3 — paw gripping fabric, macro detail"
+
+  - block_id: dane_closeup_04
+    role: camera
+    category: closeup
+    kind: single_state
+    text: >-
+      The camera catches the Dane's tongue mid-drag across skin,
+      the wet gleam reflecting light, muscles of its jaw working,
+      droplets of saliva catching the light like tiny lenses, her
+      skin prickling visibly in the tongue's wake
+    tags:
+      tone: dominant
+      scene_type: encounter
+      camera: face_closeup
+      intensity: 8
+      species: canine_large
+    complexity_level: moderate
+    description: "Closeup v4 — tongue detail, saliva, skin reaction"
+
+  - block_id: dane_closeup_05
+    role: camera
+    category: closeup
+    kind: single_state
+    text: >-
+      Low angle looking up at the Dane as it stands over her, its
+      chest and jaw framed against the ceiling, the underside of its
+      thick neck catching the light, powerful forelegs planted like
+      columns on either side, dominance rendered architecturally
+    tags:
+      tone: dominant
+      scene_type: encounter
+      camera: low_angle
+      intensity: 7
+      species: canine_large
+    complexity_level: moderate
+    description: "Closeup v5 — low angle upshot, architectural dominance"
+
+  # === Setting / atmosphere ===
+
+  - block_id: dane_setting_01
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Warm interior light fills the room, late afternoon sun cutting
+      through half-drawn blinds in golden bars, the floor is hardwood,
+      the space intimate, a sofa and low table defining the boundary
+      of the scene
+    tags:
+      tone: warm
+      scene_type: encounter
+      setting: interior
+      species: canine_large
+    complexity_level: simple
+    description: "Setting v1 — warm interior, afternoon light, intimate room"
+
+  - block_id: dane_setting_02
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      A dimly lit bedroom, sheets rumpled, a single lamp casting a
+      cone of amber light across the bed and floor, shadows pooling
+      in the corners, the air close and still
+    tags:
+      tone: intimate
+      scene_type: encounter
+      setting: interior
+      species: canine_large
+    complexity_level: simple
+    description: "Setting v2 — bedroom, single lamp, amber shadows"
+
+  - block_id: dane_setting_03
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Outside on a secluded patio, trees screening the view, dappled
+      light shifting across the stone floor, a low bench along one
+      wall, the quiet broken only by birdsong and the distant hum
+      of wind through leaves
+    tags:
+      tone: warm
+      scene_type: encounter
+      setting: exterior
+      species: canine_large
+    complexity_level: simple
+    description: "Setting v3 — secluded patio, dappled light, natural quiet"
+
+  # === Character — her reactions (intensity 4-7) ===
+
+  - block_id: dane_her_react_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her breath catches as the weight settles against her, eyes
+      widening for a moment before she steadies, one hand rising
+      instinctively to rest on the Dane's broad skull, fingers
+      curling into the short fur behind its ear
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: reaction
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v1 — breath catches, hand on skull, steadying"
+
+  - block_id: dane_her_react_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She takes a half-step back but the surface behind her stops
+      the retreat, a small sound escapes her throat, not protest but
+      acknowledgement, her chin lifts as the Dane's muzzle traces
+      upward, exposing the line of her neck
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: reaction
+      intensity: 6
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v2 — trapped, throat sound, chin lifts exposing neck"
+
+  - block_id: dane_her_react_03
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She exhales slowly through parted lips, eyes half-closing,
+      her posture softening incrementally, shoulders dropping, spine
+      relaxing into the pressure rather than resisting it, one hand
+      braced against the wall for balance
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: reaction
+      intensity: 6
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v3 — yielding posture, eyes half-closed, bracing"
+
+  - block_id: dane_her_react_04
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She looks down at the massive animal pressed against her and
+      a faint smile crosses her face, almost disbelieving, her
+      fingers scratch absently behind its ear as her other hand
+      grips the furniture beside her, knuckles whitening
+    tags:
+      tone: dominant
+      scene_type: encounter
+      motion: reaction
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v4 — disbelieving smile, contradicting grip"
+
   # === Mount scene — camera drift + rear approach (intensity 4-5) ===
 
   - block_id: dm_camera_drift_01
@@ -220,6 +546,25 @@ blocks:
     complexity_level: simple
     description: "Opening camera drift — reveals rear angle behind her"
 
+  - block_id: dm_camera_drift_02
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera descends from a high angle, tracking slowly downward
+      and behind her until it settles at hip height, the framing
+      placing her lower back and hips center-screen, the depth of
+      field narrowing to isolate her figure
+    tags:
+      tone: intimate
+      scene_type: approach
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+      species: canine_large
+    complexity_level: moderate
+    description: "Camera drift v2 — descends from high angle to hip height behind"
+
   - block_id: dm_dane_entrance_01
     role: action
     category: entrance
@@ -237,6 +582,44 @@ blocks:
       species: canine_large
     complexity_level: moderate
     description: "Dane enters from off-screen on hindlegs approaching her"
+
+  - block_id: dm_dane_entrance_02
+    role: action
+    category: entrance
+    kind: transition
+    text: >-
+      The Dane appears at the edge of frame, already on its hind legs,
+      forepaws lifted and reaching, it closes the distance to her back
+      in two powerful strides, its shadow falling across her before
+      contact is made
+    tags:
+      tone: intimate
+      scene_type: approach
+      motion: enter_frame
+      element: dane
+      intensity: 4
+      species: canine_large
+    complexity_level: moderate
+    description: "Dane entrance v2 — already upright, shadow precedes contact"
+
+  - block_id: dm_dane_entrance_03
+    role: action
+    category: entrance
+    kind: transition
+    text: >-
+      From behind her the Great Dane rises from all fours onto its
+      hind legs in a single fluid motion, forelegs extending outward,
+      its full standing height suddenly dwarfing her, chest expanding
+      with a deep breath as it steps forward
+    tags:
+      tone: intimate
+      scene_type: approach
+      motion: enter_frame
+      element: dane
+      intensity: 5
+      species: canine_large
+    complexity_level: complex
+    description: "Dane entrance v3 — rises from all fours to standing behind her"
 
   - block_id: dm_mount_action_01
     role: action
@@ -257,6 +640,44 @@ blocks:
     complexity_level: moderate
     description: "Dane mounts from rear with paws on shoulders"
 
+  - block_id: dm_mount_action_02
+    role: action
+    category: mount
+    kind: single_state
+    text: >-
+      Its forelegs wrap around her waist from behind, pulling tight,
+      the Dane's hips drive forward in short powerful strokes, its
+      hindlegs adjusting for purchase on the floor, the grip of its
+      paws bunching the fabric at her sides
+    tags:
+      tone: intimate
+      scene_type: mount
+      motion: mount
+      element: dane
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Mount v2 — forelegs around waist, hip drive, fabric grip"
+
+  - block_id: dm_mount_action_03
+    role: action
+    category: mount
+    kind: single_state
+    text: >-
+      The Dane locks its forelegs high on her back, chest flush
+      against her spine, its hindquarters pumping in an urgent
+      rhythmic cadence, each stroke shifting her forward slightly,
+      its claws leaving faint lines where they grip
+    tags:
+      tone: intimate
+      scene_type: mount
+      motion: mount
+      element: dane
+      intensity: 6
+      species: canine_large
+    complexity_level: complex
+    description: "Mount v3 — locked high on back, rhythmic drive, claw marks"
+
   - block_id: dm_detail_shot_01
     role: camera
     category: detail
@@ -276,6 +697,25 @@ blocks:
     complexity_level: moderate
     description: "Detail shot of anatomical contact attempt"
 
+  - block_id: dm_detail_shot_02
+    role: camera
+    category: detail
+    kind: single_state
+    text: >-
+      Close framing on the point where the Dane's hips meet her body,
+      the short fur of its lower belly visible, muscles contracting
+      with each forward motion, the mechanical precision of the animal's
+      instinct rendered in sharp cinematic focus
+    tags:
+      tone: intimate
+      scene_type: detail
+      camera: detail_shot
+      element: dane
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Detail shot v2 — hip contact point, muscle contractions"
+
   - block_id: dm_her_reaction_01
     role: character
     category: reaction
@@ -294,3 +734,41 @@ blocks:
       species: canine_large
     complexity_level: moderate
     description: "Her willing reaction — arching spine, tilting hips, playing aloof"
+
+  - block_id: dm_her_reaction_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her fingers grip the edge of the surface in front of her, head
+      dropping forward, hair falling across her face, her breathing
+      audible and quickening, she shifts her weight onto her forearms
+      and holds position
+    tags:
+      tone: intimate
+      scene_type: reaction
+      motion: brace
+      element: dane
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v2 — gripping edge, head dropped, bracing forward"
+
+  - block_id: dm_her_reaction_03
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      A low moan escapes her as the rhythm intensifies, her back
+      curving deeper, shoulder blades pressing together, she bites
+      her lower lip and pushes back slightly against the pressure
+      behind her
+    tags:
+      tone: intimate
+      scene_type: reaction
+      motion: push_back
+      element: dane
+      intensity: 6
+      species: canine_large
+    complexity_level: moderate
+    description: "Her reaction v3 — moaning, curving deeper, pushing back"

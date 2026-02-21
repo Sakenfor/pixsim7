@@ -11,19 +11,23 @@ from uuid import UUID
 from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, cast, String
+from sqlalchemy import select, func
 
 from pixsim7.backend.main.domain.prompt import PromptBlock, BlockTemplate
 from pixsim7.backend.main.services.prompt.block.composition_engine import (
     derive_analysis_from_blocks,
 )
+from pixsim7.backend.main.services.prompt.block.block_query import (
+    build_prompt_block_query,
+)
 from pixsim7.backend.main.services.prompt.block.character_expander import (
     CharacterBindingExpander,
 )
-
-
-# Complexity levels ordered for range filtering
-_COMPLEXITY_ORDER = ["simple", "moderate", "complex", "very_complex"]
+from pixsim7.backend.main.services.prompt.block.template_slots import (
+    TEMPLATE_SLOT_SCHEMA_VERSION,
+    normalize_template_slot,
+    normalize_template_slots,
+)
 
 
 class BlockTemplateService:
@@ -39,6 +43,13 @@ class BlockTemplateService:
         data: Dict[str, Any],
         created_by: Optional[str] = None,
     ) -> BlockTemplate:
+        if "slots" in data:
+            data["slots"] = normalize_template_slots(data.get("slots"))
+        metadata = data.get("template_metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
+        data["template_metadata"] = metadata
         now = datetime.now(timezone.utc)
         data["created_by"] = created_by
         data["created_at"] = now
@@ -69,6 +80,15 @@ class BlockTemplateService:
         template = await self.get_template(template_id)
         if not template:
             return None
+
+        if "slots" in updates:
+            updates["slots"] = normalize_template_slots(updates.get("slots"))
+            metadata = dict(template.template_metadata or {})
+            incoming_metadata = updates.get("template_metadata")
+            if isinstance(incoming_metadata, dict):
+                metadata.update(incoming_metadata)
+            metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
+            updates["template_metadata"] = metadata
 
         for key, value in updates.items():
             if hasattr(template, key):
@@ -118,50 +138,20 @@ class BlockTemplateService:
 
     def _build_slot_query(self, slot: Dict[str, Any]):
         """Build a SQLAlchemy select for PromptBlocks matching slot constraints."""
-        query = select(PromptBlock)
-
-        if slot.get("role"):
-            query = query.where(PromptBlock.role == slot["role"])
-        if slot.get("category"):
-            query = query.where(PromptBlock.category == slot["category"])
-        if slot.get("kind"):
-            query = query.where(PromptBlock.kind == slot["kind"])
-        if slot.get("intent"):
-            query = query.where(PromptBlock.default_intent == slot["intent"])
-        if slot.get("package_name"):
-            query = query.where(PromptBlock.package_name == slot["package_name"])
-
-        # Complexity range
-        complexity_min = slot.get("complexity_min")
-        complexity_max = slot.get("complexity_max")
-        if complexity_min or complexity_max:
-            min_idx = _COMPLEXITY_ORDER.index(complexity_min) if complexity_min and complexity_min in _COMPLEXITY_ORDER else 0
-            max_idx = _COMPLEXITY_ORDER.index(complexity_max) if complexity_max and complexity_max in _COMPLEXITY_ORDER else len(_COMPLEXITY_ORDER) - 1
-            allowed = _COMPLEXITY_ORDER[min_idx:max_idx + 1]
-            query = query.where(PromptBlock.complexity_level.in_(allowed))
-
-        # Minimum rating
-        if slot.get("min_rating") is not None:
-            query = query.where(PromptBlock.avg_rating >= slot["min_rating"])
-
-        # Tag constraints (JSON key-value matching)
-        tag_constraints = slot.get("tag_constraints")
-        if tag_constraints and isinstance(tag_constraints, dict):
-            for tag_key, tag_value in tag_constraints.items():
-                # Use ->> via jsonb_extract_path_text for plain-text comparison
-                query = query.where(
-                    func.jsonb_extract_path_text(PromptBlock.tags, tag_key) == str(tag_value)
-                )
-
-        # Exclude specific block IDs
-        exclude_ids = slot.get("exclude_block_ids")
-        if exclude_ids:
-            query = query.where(PromptBlock.id.notin_(exclude_ids))
-
-        # Only curated, public blocks by default
-        query = query.where(PromptBlock.is_public == True)
-
-        return query
+        slot = normalize_template_slot(slot)
+        return build_prompt_block_query(
+            role=slot.get("role"),
+            category=slot.get("category"),
+            kind=slot.get("kind"),
+            intent=slot.get("intent"),
+            package_name=slot.get("package_name"),
+            complexity_min=slot.get("complexity_min"),
+            complexity_max=slot.get("complexity_max"),
+            min_rating=slot.get("min_rating"),
+            tag_constraints=slot.get("tag_constraints"),
+            exclude_block_ids=slot.get("exclude_block_ids"),
+            is_public=True,
+        )
 
     # ── Metadata ──────────────────────────────────────────────────────────
 
@@ -249,7 +239,13 @@ class BlockTemplateService:
             return {"success": False, "error": "Template not found"}
 
         rng = random.Random(seed)
-        slots = sorted(template.slots, key=lambda s: s.get("slot_index", 0))
+        try:
+            slots = normalize_template_slots(template.slots)
+        except ValueError as exc:
+            return {
+                "success": False,
+                "error": f"Template has invalid slot schema: {exc}",
+            }
         global_excludes = set(exclude_block_ids or [])
 
         selected_blocks: List[PromptBlock] = []
@@ -333,11 +329,32 @@ class BlockTemplateService:
         # (consumed sequentially) and interleaving reinforcement/fallback text.
         # Reinforcement text is expanded per-slot with its own intensity value,
         # then the final pass expands block text (no intensity).
+        requested_strategy = (template.composition_strategy or "sequential").lower()
+        strategy = requested_strategy
+        composition_strategy_applied = True
+        if strategy not in {"sequential", "layered", "merged"}:
+            warnings.append(
+                f"Unknown composition strategy '{requested_strategy}', falling back to sequential"
+            )
+            strategy = "sequential"
+            composition_strategy_applied = False
+
+        has_mixed_slot_statuses = any(sr["status"] != "selected" for sr in slot_results)
+        if strategy != "sequential" and has_mixed_slot_statuses:
+            warnings.append(
+                f"Composition strategy '{strategy}' requires all slots selected; "
+                "using slot-order composition due to fallback/reinforcement/empty slots"
+            )
+            composition_strategy_applied = False
+
         assembled_prompt = ""
         derived_analysis = None
-        block_iter = iter(selected_blocks)
 
-        effective_bindings = character_bindings or (template.character_bindings if template.character_bindings else None) or {}
+        # Respect explicit roll-time override, including {} to disable template defaults.
+        if character_bindings is not None:
+            effective_bindings = character_bindings
+        else:
+            effective_bindings = template.character_bindings or {}
         characters_resolved: Dict[str, str] = {}
 
         # Prepare expander once (caches character lookups across calls)
@@ -347,42 +364,57 @@ class BlockTemplateService:
             char_service = CharacterService(self.db)
             expander = CharacterBindingExpander(char_service.get_character_by_id)
 
-        prompt_parts: List[str] = []
-        last_block: Optional[PromptBlock] = None
+        if strategy == "sequential" or not composition_strategy_applied:
+            block_iter = iter(selected_blocks)
+            prompt_parts: List[str] = []
+            last_block: Optional[PromptBlock] = None
 
-        for sr in slot_results:
-            if sr["status"] == "selected":
-                block = next(block_iter, None)
-                if block and block.text:
-                    prompt_parts.append(block.text)
-                    last_block = block
-            elif sr["status"] == "fallback":
-                prompt_parts.append(sr["fallback_text"])
-            elif sr["status"] == "reinforcement":
-                text = sr["reinforcement_text"]
-                if expander and text:
-                    # Resolve intensity for this cue
-                    slot_intensity = sr.get("intensity")  # explicit 1-10 or None
-                    if sr.get("inherit_intensity") and last_block:
-                        # Read intensity from previous block's tags
-                        block_tags = last_block.tags if isinstance(last_block.tags, dict) else {}
-                        inherited = block_tags.get("intensity")
-                        if inherited is not None:
-                            slot_intensity = int(inherited)
+            for sr in slot_results:
+                if sr["status"] == "selected":
+                    block = next(block_iter, None)
+                    if block and block.text:
+                        prompt_parts.append(block.text)
+                        last_block = block
+                elif sr["status"] == "fallback":
+                    prompt_parts.append(sr["fallback_text"])
+                elif sr["status"] == "reinforcement":
+                    text = sr["reinforcement_text"]
+                    if expander and text:
+                        # Resolve intensity for this cue
+                        slot_intensity = sr.get("intensity")  # explicit 1-10 or None
+                        if sr.get("inherit_intensity") and last_block:
+                            # Read intensity from previous block's tags
+                            block_tags = last_block.tags if isinstance(last_block.tags, dict) else {}
+                            inherited = block_tags.get("intensity")
+                            if inherited is not None:
+                                try:
+                                    slot_intensity = int(inherited)
+                                except (TypeError, ValueError):
+                                    warnings.append(
+                                        f"Slot '{sr.get('label', 'reinforcement')}': "
+                                        f"invalid inherited intensity '{inherited}', using default intensity"
+                                    )
 
-                    expansion = await expander.expand(text, effective_bindings, rng, intensity=slot_intensity)
-                    text = expansion["expanded_text"]
-                    characters_resolved.update(expansion["characters_resolved"])
-                    for err in expansion.get("expansion_errors", []):
-                        warnings.append(f"Character expansion (reinforcement): {err}")
-                prompt_parts.append(text)
-            # skipped / empty contribute nothing
+                        expansion = await expander.expand(text, effective_bindings, rng, intensity=slot_intensity)
+                        text = expansion["expanded_text"]
+                        characters_resolved.update(expansion["characters_resolved"])
+                        for err in expansion.get("expansion_errors", []):
+                            warnings.append(f"Character expansion (reinforcement): {err}")
+                    prompt_parts.append(text)
+                # skipped / empty contribute nothing
 
-        if prompt_parts:
-            assembled_prompt = " ".join(prompt_parts).strip()
+            if prompt_parts:
+                assembled_prompt = _join_blocks(prompt_parts)
+        elif strategy == "layered":
+            assembled_prompt = _compose_layered(selected_blocks)
+        else:
+            assembled_prompt = _compose_merged(selected_blocks)
 
         if selected_blocks:
-            derived_analysis = derive_analysis_from_blocks(selected_blocks, assembled_prompt)
+            analysis_blocks = selected_blocks
+            if strategy == "layered" and composition_strategy_applied:
+                analysis_blocks = _order_layered_blocks(selected_blocks)
+            derived_analysis = derive_analysis_from_blocks(analysis_blocks, assembled_prompt)
 
         # Final character binding expansion for block text (no intensity)
         if expander and assembled_prompt:
@@ -411,6 +443,7 @@ class BlockTemplateService:
                 "slots_fallback": sum(1 for sr in slot_results if sr["status"] == "fallback"),
                 "slots_reinforcement": sum(1 for sr in slot_results if sr["status"] == "reinforcement"),
                 "composition_strategy": template.composition_strategy,
+                "composition_strategy_applied": composition_strategy_applied,
                 "seed": seed,
                 "roll_count": template.roll_count,
                 "character_bindings": effective_bindings if effective_bindings else None,
@@ -421,17 +454,38 @@ class BlockTemplateService:
 
 # ── Composition helpers (stateless) ──────────────────────────────────────
 
+_SENTENCE_ENDINGS = frozenset(".!?")
+
+
+def _ensure_period(text: str) -> str:
+    """Ensure text ends with sentence-ending punctuation."""
+    stripped = text.rstrip()
+    if not stripped:
+        return stripped
+    if stripped[-1] not in _SENTENCE_ENDINGS:
+        return stripped + "."
+    return stripped
+
+
+def _join_blocks(parts: List[str]) -> str:
+    """Join block parts with newlines, ensuring each ends with a period."""
+    cleaned = [_ensure_period(p.strip()) for p in parts if p.strip()]
+    return "\n".join(cleaned)
+
+
 def _compose_sequential(blocks: List[PromptBlock]) -> str:
     if not blocks:
         return ""
-    parts = []
-    for block in blocks:
-        parts.append(block.text)
-    return " ".join(parts).strip()
+    return _join_blocks([block.text for block in blocks if block.text])
 
 
 def _compose_layered(blocks: List[PromptBlock]) -> str:
     """Layer blocks by inferred role category."""
+    return _join_blocks([block.text for block in _order_layered_blocks(blocks) if block.text])
+
+
+def _order_layered_blocks(blocks: List[PromptBlock]) -> List[PromptBlock]:
+    """Return blocks ordered by role categories for layered composition."""
     categories: Dict[str, List[PromptBlock]] = {
         "character": [], "setting": [], "camera": [],
         "action": [], "mood": [], "other": [],
@@ -445,9 +499,13 @@ def _compose_layered(blocks: List[PromptBlock]) -> str:
             categories["other"].append(block)
 
     order = ["setting", "character", "action", "camera", "mood", "other"]
-    parts = []
+    ordered_blocks: List[PromptBlock] = []
     for cat in order:
-        for block in categories.get(cat, []):
-            parts.append(block.text)
+        ordered_blocks.extend(categories.get(cat, []))
 
-    return " ".join(parts).strip()
+    return ordered_blocks
+
+
+def _compose_merged(blocks: List[PromptBlock]) -> str:
+    """Placeholder merged strategy; currently mirrors sequential composition."""
+    return _compose_sequential(blocks)

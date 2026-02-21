@@ -6,10 +6,15 @@
  * Data is fetched from the backend API at runtime (supports plugin roles).
  */
 
-import { useMemo, useState } from 'react';
+import type { CompositionRoleDefinition } from '@pixsim7/shared.types';
+import { useMemo, useRef, useState } from 'react';
 
-import type { RoleConceptResponse } from '@lib/api/concepts';
 import { Icon } from '@lib/icons';
+
+import {
+  SidebarTreeGroup,
+  SidebarTreeLeafButton,
+} from '@features/panels/components/shared/SidebarTree';
 
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
@@ -64,27 +69,27 @@ const COLOR_TEXT: Record<string, string> = {
 // ============================================================================
 
 interface RoleGroup {
-  group: RoleConceptResponse;
-  leaves: RoleConceptResponse[];
+  group: CompositionRoleDefinition;
+  leaves: CompositionRoleDefinition[];
 }
 
-function buildRoleTree(roles: RoleConceptResponse[]): {
+function buildRoleTree(roles: CompositionRoleDefinition[]): {
   groups: RoleGroup[];
-  ungrouped: RoleConceptResponse[];
+  ungrouped: CompositionRoleDefinition[];
 } {
-  const groupMap = new Map<string, RoleConceptResponse>();
-  const childMap = new Map<string, RoleConceptResponse[]>();
-  const ungrouped: RoleConceptResponse[] = [];
+  const groupMap = new Map<string, CompositionRoleDefinition>();
+  const childMap = new Map<string, CompositionRoleDefinition[]>();
+  const ungrouped: CompositionRoleDefinition[] = [];
 
   for (const role of roles) {
-    if (role.is_group) {
+    if (role.isGroup) {
       groupMap.set(role.id, role);
       if (!childMap.has(role.id)) childMap.set(role.id, []);
     }
   }
 
   for (const role of roles) {
-    if (role.is_group) continue;
+    if (role.isGroup) continue;
     if (role.parent && childMap.has(role.parent)) {
       childMap.get(role.parent)!.push(role);
     } else {
@@ -98,76 +103,6 @@ function buildRoleTree(roles: RoleConceptResponse[]): {
   }
 
   return { groups, ungrouped };
-}
-
-// ============================================================================
-// Sidebar tree
-// ============================================================================
-
-function SidebarGroupSection({
-  group,
-  leaves,
-  selectedId,
-  onSelect,
-  priorityMap,
-}: RoleGroup & {
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  priorityMap: Map<string, number>;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const dotClass = COLOR_DOT[group.color] ?? COLOR_DOT.gray;
-
-  return (
-    <div className="mb-0.5">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 px-2 py-1 rounded hover:bg-neutral-800/60 transition-colors"
-      >
-        <Icon
-          name={expanded ? 'chevronDown' : 'chevronRight'}
-          size={10}
-          className="text-neutral-500 shrink-0"
-        />
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-        <span className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider truncate">
-          {group.label}
-        </span>
-      </button>
-
-      {expanded && (
-        <div className="ml-3 mt-px">
-          {leaves.map((role) => {
-            const isSelected = role.id === selectedId;
-            const leafName = role.id.includes(':')
-              ? role.id.split(':').pop()!
-              : role.id;
-            const pri = priorityMap.get(role.id);
-
-            return (
-              <button
-                key={role.id}
-                onClick={() => onSelect(role.id)}
-                className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-left transition-colors ${
-                  isSelected
-                    ? 'bg-neutral-700/80 text-neutral-100'
-                    : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
-                }`}
-              >
-                <span className={`w-1 h-1 rounded-full shrink-0 ${dotClass}`} />
-                <span className="text-[11px] truncate flex-1">{leafName}</span>
-                {pri != null && (
-                  <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">
-                    #{pri}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ============================================================================
@@ -196,11 +131,13 @@ function RoleDetail({
   priorityIndex,
   inboundSlugs,
   inboundNamespaces,
+  packageName,
 }: {
-  role: RoleConceptResponse;
+  role: CompositionRoleDefinition;
   priorityIndex: number | undefined;
   inboundSlugs: [string, string][];
   inboundNamespaces: [string, string][];
+  packageName: string | null;
 }) {
   const badgeClass = COLOR_BADGE[role.color] ?? COLOR_BADGE.gray;
   const textClass = COLOR_TEXT[role.color] ?? COLOR_TEXT.gray;
@@ -215,7 +152,7 @@ function RoleDetail({
           >
             {role.id}
           </span>
-          {role.is_group && (
+          {role.isGroup && (
             <span className="text-[10px] text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded">
               group
             </span>
@@ -233,7 +170,7 @@ function RoleDetail({
           <div className={`font-medium ${textClass}`}>{role.color}</div>
 
           <div className="text-neutral-500">Layer</div>
-          <div className="text-neutral-300">{role.default_layer ?? 0}</div>
+          <div className="text-neutral-300">{role.defaultLayer ?? 0}</div>
 
           {role.parent && (
             <>
@@ -246,6 +183,13 @@ function RoleDetail({
             <>
               <div className="text-neutral-500">Priority</div>
               <div className="text-neutral-300">#{priorityIndex}</div>
+            </>
+          )}
+
+          {packageName && (
+            <>
+              <div className="text-neutral-500">Package</div>
+              <div className="text-neutral-300">{packageName}</div>
             </>
           )}
         </div>
@@ -326,15 +270,163 @@ function EmptyDetail({ leafCount, groupCount }: { leafCount: number; groupCount:
 }
 
 // ============================================================================
+// Search helpers
+// ============================================================================
+
+function matchesSearch(role: CompositionRoleDefinition, query: string): boolean {
+  const q = query.toLowerCase();
+  return (
+    role.id.toLowerCase().includes(q) ||
+    role.label.toLowerCase().includes(q) ||
+    role.description.toLowerCase().includes(q)
+  );
+}
+
+// ============================================================================
+// Package filter bar
+// ============================================================================
+
+function PackageFilterBar({
+  packageIds,
+  packageLabels,
+  activePackageIds,
+  onToggle,
+}: {
+  packageIds: string[];
+  packageLabels: Map<string, string>;
+  activePackageIds: Set<string>;
+  onToggle: (packageId: string) => void;
+}) {
+  if (packageIds.length <= 1) return null;
+
+  return (
+    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-neutral-800 overflow-x-auto">
+      {packageIds.map((pkgId) => {
+        const isActive = activePackageIds.has(pkgId);
+        return (
+          <button
+            key={pkgId}
+            onClick={() => onToggle(pkgId)}
+            className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+              isActive
+                ? 'bg-neutral-700 text-neutral-200 border border-neutral-600'
+                : 'bg-neutral-800/40 text-neutral-500 border border-neutral-800 hover:text-neutral-400'
+            }`}
+          >
+            {packageLabels.get(pkgId) ?? pkgId}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ============================================================================
 // Main panel
 // ============================================================================
 
 export function CompositionRolesPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { roles, priority, slugToRole, namespaceToRole, isLoading, error } =
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activePackageIds, setActivePackageIds] = useState<Set<string> | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  const { roles, packages, priority, slugToRole, namespaceToRole, isLoading, error } =
     useCompositionPackages();
 
-  const { groups, ungrouped } = useMemo(() => buildRoleTree(roles), [roles]);
+  // Build role → package mapping from packages data
+  const roleToPackage = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const pkg of packages) {
+      for (const role of pkg.roles) {
+        map.set(role.id, pkg.id);
+      }
+    }
+    return map;
+  }, [packages]);
+
+  // Package metadata
+  const packageIds = useMemo(() => packages.map((p) => p.id), [packages]);
+  const packageLabels = useMemo(
+    () => new Map(packages.map((p) => [p.id, p.label])),
+    [packages],
+  );
+
+  // Effective active packages (null = all active)
+  const effectiveActiveIds = useMemo(
+    () => activePackageIds ?? new Set(packageIds),
+    [activePackageIds, packageIds],
+  );
+
+  const handleTogglePackage = (pkgId: string) => {
+    setActivePackageIds((prev) => {
+      const current = prev ?? new Set(packageIds);
+      const next = new Set(current);
+      if (next.has(pkgId)) {
+        next.delete(pkgId);
+      } else {
+        next.add(pkgId);
+      }
+      // If all are selected, reset to null (meaning "all")
+      if (next.size === packageIds.length) return null;
+      return next;
+    });
+  };
+
+  // Filter roles by package and search
+  const filteredRoles = useMemo(() => {
+    let result = roles;
+
+    // Package filter
+    if (activePackageIds != null) {
+      result = result.filter((r) => {
+        const pkg = roleToPackage.get(r.id);
+        // Keep roles that belong to an active package, or keep group roles if any of their children's packages are active
+        if (pkg && activePackageIds.has(pkg)) return true;
+        // For groups, keep if the group's own package is active
+        if (r.isGroup) {
+          // Group roles may not have their own package mapping — keep if any child's package matches
+          return result.some(
+            (child) => child.parent === r.id && roleToPackage.get(child.id) && activePackageIds.has(roleToPackage.get(child.id)!),
+          );
+        }
+        return false;
+      });
+    }
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim();
+      const matchingIds = new Set<string>();
+      const matchingParents = new Set<string>();
+
+      for (const role of result) {
+        if (role.isGroup) continue;
+        if (matchesSearch(role, q)) {
+          matchingIds.add(role.id);
+          if (role.parent) matchingParents.add(role.parent);
+        }
+      }
+      // Also check group roles themselves
+      for (const role of result) {
+        if (role.isGroup && matchesSearch(role, q)) {
+          matchingParents.add(role.id);
+          // Include all children of a matching group
+          for (const child of result) {
+            if (child.parent === role.id) matchingIds.add(child.id);
+          }
+        }
+      }
+
+      result = result.filter(
+        (r) => matchingIds.has(r.id) || matchingParents.has(r.id),
+      );
+    }
+
+    return result;
+  }, [roles, activePackageIds, roleToPackage, searchQuery]);
+
+  const { groups, ungrouped } = useMemo(() => buildRoleTree(filteredRoles), [filteredRoles]);
 
   // Priority lookup: role id → 1-based rank
   const priorityMap = useMemo(
@@ -342,7 +434,7 @@ export function CompositionRolesPanel() {
     [priority],
   );
 
-  // Role lookup
+  // Role lookup (from full roles for detail pane)
   const roleMap = useMemo(
     () => new Map(roles.map((r) => [r.id, r])),
     [roles],
@@ -366,7 +458,9 @@ export function CompositionRolesPanel() {
     [namespaceToRole, selectedId],
   );
 
-  const leafCount = roles.filter((r) => !r.is_group).length;
+  const leafCount = filteredRoles.filter((r) => !r.isGroup).length;
+  const totalLeafCount = roles.filter((r) => !r.isGroup).length;
+  const isFiltered = searchQuery.trim() !== '' || activePackageIds != null;
 
   if (isLoading) {
     return (
@@ -385,60 +479,135 @@ export function CompositionRolesPanel() {
   }
 
   return (
-    <div className="h-full flex bg-neutral-900">
-      {/* Left sidebar: role tree */}
-      <div className="w-44 shrink-0 flex flex-col border-r border-neutral-800">
-        <div className="px-2 py-2 border-b border-neutral-800">
-          <h2 className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider">
-            Roles
-          </h2>
-        </div>
-        <div className="flex-1 overflow-y-auto py-1 px-1">
-          {groups.map(({ group, leaves }) => (
-            <SidebarGroupSection
-              key={group.id}
-              group={group}
-              leaves={leaves}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              priorityMap={priorityMap}
-            />
-          ))}
-          {ungrouped.length > 0 && (
-            <div className="mt-1 px-2">
-              <p className="text-[9px] text-neutral-600 uppercase tracking-wider mb-1">
-                Other
-              </p>
-              {ungrouped.map((role) => (
+    <div className="h-full flex flex-col bg-neutral-900">
+      {/* Package filter bar */}
+      <PackageFilterBar
+        packageIds={packageIds}
+        packageLabels={packageLabels}
+        activePackageIds={effectiveActiveIds}
+        onToggle={handleTogglePackage}
+      />
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left sidebar: role tree */}
+        <div className="w-44 shrink-0 flex flex-col border-r border-neutral-800">
+          {/* Search input */}
+          <div className="px-1.5 py-1.5 border-b border-neutral-800">
+            <div className="relative">
+              <Icon
+                name="search"
+                size={11}
+                className="absolute left-1.5 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none"
+              />
+              <input
+                ref={searchRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Filter roles..."
+                className="w-full bg-neutral-800/60 border border-neutral-700/50 rounded pl-6 pr-6 py-1 text-[11px] text-neutral-200 placeholder:text-neutral-600 outline-none focus:border-neutral-600 transition-colors"
+              />
+              {searchQuery && (
                 <button
-                  key={role.id}
-                  onClick={() => setSelectedId(role.id)}
-                  className={`w-full text-left px-2 py-1 rounded text-[11px] transition-colors ${
-                    role.id === selectedId
-                      ? 'bg-neutral-700/80 text-neutral-100'
-                      : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
-                  }`}
+                  onClick={() => {
+                    setSearchQuery('');
+                    searchRef.current?.focus();
+                  }}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
                 >
-                  {role.id}
+                  <Icon name="x" size={10} />
                 </button>
-              ))}
+              )}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto py-1 px-1">
+            {groups.map(({ group, leaves }) => {
+              const dotClass = COLOR_DOT[group.color] ?? COLOR_DOT.gray;
+              return (
+                <SidebarTreeGroup
+                  key={group.id}
+                  label={group.label}
+                  dotClassName={dotClass}
+                  labelClassName="text-neutral-300"
+                >
+                  {leaves.map((role) => {
+                    const leafName = role.id.includes(':')
+                      ? role.id.split(':').pop()!
+                      : role.id;
+                    const pri = priorityMap.get(role.id);
+
+                    return (
+                      <SidebarTreeLeafButton
+                        key={role.id}
+                        label={leafName}
+                        dotClassName={dotClass}
+                        selected={role.id === selectedId}
+                        onClick={() => setSelectedId(role.id)}
+                        trailing={
+                          pri != null ? (
+                            <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">
+                              #{pri}
+                            </span>
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
+                </SidebarTreeGroup>
+              );
+            })}
+            {ungrouped.length > 0 && (
+              <div className="mt-1 px-2">
+                <p className="text-[9px] text-neutral-600 uppercase tracking-wider mb-1">
+                  Other
+                </p>
+                {ungrouped.map((role) => (
+                  <button
+                    key={role.id}
+                    onClick={() => setSelectedId(role.id)}
+                    className={`w-full text-left px-2 py-1 rounded text-[11px] transition-colors ${
+                      role.id === selectedId
+                        ? 'bg-neutral-700/80 text-neutral-100'
+                        : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
+                    }`}
+                  >
+                    {role.id}
+                  </button>
+                ))}
+              </div>
+            )}
+            {filteredRoles.length === 0 && (
+              <div className="px-2 py-4 text-center">
+                <p className="text-[10px] text-neutral-600">No roles match</p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer count */}
+          {isFiltered && (
+            <div className="px-2 py-1 border-t border-neutral-800">
+              <p className="text-[9px] text-neutral-600 text-center">
+                {leafCount} / {totalLeafCount} roles
+              </p>
             </div>
           )}
         </div>
-      </div>
 
-      {/* Right detail pane */}
-      <div className="flex-1 overflow-y-auto">
-        {selectedRole ? (
-          <RoleDetail
-            role={selectedRole}
-            priorityIndex={priorityMap.get(selectedRole.id)}
-            inboundSlugs={inboundSlugs}
-            inboundNamespaces={inboundNamespaces}
-          />
-        ) : (
-          <EmptyDetail leafCount={leafCount} groupCount={groups.length} />
-        )}
+        {/* Right detail pane */}
+        <div className="flex-1 overflow-y-auto">
+          {selectedRole ? (
+            <RoleDetail
+              role={selectedRole}
+              priorityIndex={priorityMap.get(selectedRole.id)}
+              inboundSlugs={inboundSlugs}
+              inboundNamespaces={inboundNamespaces}
+              packageName={packageLabels.get(roleToPackage.get(selectedRole.id) ?? '') ?? null}
+            />
+          ) : (
+            <EmptyDetail leafCount={leafCount} groupCount={groups.length} />
+          )}
+        </div>
       </div>
     </div>
   );
