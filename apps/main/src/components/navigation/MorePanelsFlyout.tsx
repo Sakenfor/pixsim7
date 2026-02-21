@@ -1,12 +1,11 @@
-import { Tooltip, useHoverExpand } from '@pixsim7/shared.ui';
+import { PortalFloat, Tooltip, useHoverExpand } from '@pixsim7/shared.ui';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import { CATEGORY_LABELS, CATEGORY_ORDER } from '@features/panels';
-import { useWorkspaceStore } from '@features/workspace';
+import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { NavIcon } from './ActivityBar';
 
@@ -22,8 +21,6 @@ export function MorePanelsFlyout() {
   });
 
   const [triggerHovered, setTriggerHovered] = useState(false);
-
-  const rect = triggerRef.current?.getBoundingClientRect();
 
   return (
     <div
@@ -50,33 +47,25 @@ export function MorePanelsFlyout() {
         )}
       </div>
 
-      {isExpanded &&
-        rect &&
-        createPortal(
-          <FlyoutContent
-            top={rect.top}
-            left={rect.right + 4}
-            onMouseEnter={handlers.onMouseEnter}
-            onMouseLeave={handlers.onMouseLeave}
-          />,
-          document.body,
-        )}
+      {isExpanded && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="right"
+          align="start"
+          offset={4}
+          clamp
+          className="py-2 w-[220px] max-h-[min(500px,80vh)] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col"
+          onMouseEnter={handlers.onMouseEnter}
+          onMouseLeave={handlers.onMouseLeave}
+        >
+          <FlyoutContent />
+        </PortalFloat>
+      )}
     </div>
   );
 }
 
-function FlyoutContent({
-  top,
-  left,
-  onMouseEnter,
-  onMouseLeave,
-}: {
-  top: number;
-  left: number;
-  onMouseEnter: React.MouseEventHandler;
-  onMouseLeave: React.MouseEventHandler;
-}) {
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
+function FlyoutContent() {
   const togglePin = useWorkspaceStore((s) => s.toggleQuickAddPin);
   const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
   const [search, setSearch] = useState('');
@@ -111,21 +100,13 @@ function FlyoutContent({
 
   const handleOpen = useCallback(
     (panelId: string) => {
-      restorePanel(panelId);
+      openWorkspacePanel(panelId);
     },
-    [restorePanel],
+    [],
   );
 
-  // Clamp so the flyout doesn't go off-screen
-  const maxTop = Math.max(0, Math.min(top, window.innerHeight - 400));
-
   return (
-    <div
-      className="fixed z-popover py-2 w-[220px] max-h-[min(500px,80vh)] bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm flex flex-col"
-      style={{ top: maxTop, left }}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <>
       {/* Search */}
       <div className="px-2 pb-1.5">
         <input
@@ -178,6 +159,6 @@ function FlyoutContent({
           </div>
         ))}
       </div>
-    </div>
+    </>
   );
 }
