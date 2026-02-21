@@ -171,9 +171,9 @@ import {
   CAP_GENERATION_WIDGET,
   useContextHubOverridesStore,
 } from '@features/contextHub';
-import { useGenerationWorkbench, useGenerationScopeStores } from '@features/generation';
-import { panelManager } from '@features/panels/lib/PanelManager';
+import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
+import { openWorkspacePanel } from '@features/workspace';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
@@ -328,8 +328,8 @@ function EachSplitButton({
   generating: boolean;
   queueProgress?: { queued: number; total: number } | null;
 }) {
-  const [selectedStrategy, setSelectedStrategy] = useState<CombinationStrategy>('each');
-  const [selectedSetId, setSelectedSetId] = useState<string | null>(null);
+  const [selectedStrategy, setSelectedStrategy] = usePersistedScopeState<CombinationStrategy>('eachStrategy', 'each');
+  const [selectedSetId, setSelectedSetId] = usePersistedScopeState<string | null>('eachSetId', null);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [anchorPos, setAnchorPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -398,7 +398,9 @@ function EachSplitButton({
           </button>
           {/* Open Asset Sets panel */}
           <button
-            onClick={() => panelManager.openPanel('asset-sets')}
+            onClick={() => {
+              openWorkspacePanel('asset-sets');
+            }}
             className={clsx(
               'px-1 py-0.5 rounded-br-lg text-white/70 hover:text-white border-l border-t border-white/20',
               disabled
@@ -512,8 +514,8 @@ export function GenerationSettingsPanel({
   const setProvider = useSessionStore(s => s.setProvider);
   const setOperationType = useSessionStore(s => s.setOperationType);
 
-  // Burst mode - local state (not persisted in session store)
-  const [burstCount, setBurstCount] = useState(1);
+  // Burst mode - persisted in session store uiState
+  const [burstCount, setBurstCount] = usePersistedScopeState('burstCount', 1);
   const isBurstMode = burstCount > 1;
 
   // Input count from scoped store

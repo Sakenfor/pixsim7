@@ -21,6 +21,8 @@ export interface GenerationSessionFields {
   promptPerOperation?: Partial<Record<OperationType, string>>;
   providerId?: string;
   generating: boolean;
+  /** Generic bag for persisted UI state (burst count, combination strategy, etc.) */
+  uiState: Record<string, any>;
 }
 
 /**
@@ -31,6 +33,7 @@ export interface GenerationSessionActions {
   setPrompt: (value: string) => void;
   setProvider: (id?: string) => void;
   setGenerating: (value: boolean) => void;
+  setUiState: (key: string, value: any) => void;
   reset: () => void;
 }
 
@@ -52,6 +55,7 @@ export const DEFAULT_SESSION_FIELDS: GenerationSessionFields = {
   promptPerOperation: {},
   providerId: undefined,
   generating: false,
+  uiState: {},
 };
 
 export type GenerationSessionStoreHook = (<T>(
@@ -110,18 +114,22 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
           if (get().generating === value) return;
           set({ generating: value });
         },
+        setUiState: (key, value) => {
+          set({ uiState: { ...get().uiState, [key]: value } });
+        },
         reset: () => set({ ...DEFAULT_SESSION_FIELDS }),
       }),
       {
         name: storageKey,
         storage: createJSONStorage(() => localStorage),
-        version: 4,
+        version: 5,
         partialize: (state) => {
           return {
             operationType: state.operationType,
             prompt: state.prompt,
             promptPerOperation: state.promptPerOperation,
             providerId: state.providerId,
+            uiState: state.uiState,
           };
         },
         onRehydrateStorage: () => (state) => {
@@ -145,6 +153,11 @@ export function createGenerationSessionStore(storageKey: string): GenerationSess
           if (version < 4) {
             delete migrated.presetId;
             delete migrated.presetParams;
+          }
+
+          // Migrate to version 5: add uiState bag
+          if (version < 5) {
+            migrated.uiState = migrated.uiState ?? {};
           }
 
           return migrated;

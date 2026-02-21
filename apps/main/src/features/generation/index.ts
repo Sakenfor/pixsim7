@@ -47,6 +47,7 @@ export { useQuickGenPanelLayout } from './hooks/useQuickGenPanelLayout';
 export type { UseQuickGenPanelLayoutConfig } from './hooks/useQuickGenPanelLayout';
 export { useQuickGenScopeSync } from './hooks/useQuickGenScopeSync';
 export type { UseQuickGenScopeSyncConfig, UseQuickGenScopeSyncResult } from './hooks/useQuickGenScopeSync';
+export { usePersistedScopeState } from './hooks/usePersistedScopeState';
 
 // Stores
 export { useGenerationInputStore, getInputsForOperation } from './stores/generationInputStore';
@@ -100,6 +101,19 @@ export {
   isSetStrategy,
 } from './lib/combinationStrategies';
 export type { EachStrategy, SetStrategy, CombinationStrategy } from './lib/combinationStrategies';
+
+// Lib - Canonical run-context contract
+export {
+  createGenerationRunDescriptor,
+  createGenerationRunItemContext,
+} from './lib/runContext';
+export type {
+  GenerationRunMode,
+  GenerationRunContext,
+  GenerationRunDescriptor,
+  GenerationRunItemDescriptor,
+  ResolvedGenerationRunDescriptor,
+} from './lib/runContext';
 
 // Lib - Multi-Asset Mode
 export {

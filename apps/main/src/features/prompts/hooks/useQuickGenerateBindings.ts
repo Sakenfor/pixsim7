@@ -1,8 +1,8 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, type Dispatch, type SetStateAction } from 'react';
 
 import { useAssetSelectionStore, type SelectedAsset } from '@features/assets/stores/assetSelectionStore';
 import type { InputItem } from '@features/generation';
-import { useGenerationScopeStores } from '@features/generation';
+import { useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
 
 import type { OperationType } from '@/types/operations';
 
@@ -60,9 +60,9 @@ export function useQuickGenerateBindings(
   const dynamicParams = useSettingsStore((s) => s.params);
   const setDynamicParams = useSettingsStore((s) => s.setDynamicParams);
 
-  // Operation-specific array fields for video_transition
-  const [prompts, setPrompts] = useState<string[]>([]);
-  const [transitionDurations, setTransitionDurations] = useState<number[]>([]);
+  // Operation-specific array fields for video_transition (persisted)
+  const [prompts, setPrompts] = usePersistedScopeState<string[]>('transitionPrompts', []);
+  const [transitionDurations, setTransitionDurations] = usePersistedScopeState<number[]>('transitionDurations', []);
 
   // Sync source_asset_ids and prompts/durations arrays for video_transition
   useEffect(() => {
