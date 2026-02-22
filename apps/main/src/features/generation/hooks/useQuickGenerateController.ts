@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+import { rollTemplate } from '@lib/api/blockTemplates';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
 import { extractFrame, fromAssetResponse, getAssetDisplayUrls, toSelectedAsset, type AssetModel } from '@features/assets';
+import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/assetSetResolver';
+import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
 import { useGenerationsStore, createPendingGeneration } from '@features/generation';
 import { useGenerationScopeStores } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { useQuickGenerateBindings } from '@features/prompts';
+import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateStore';
 import { providerCapabilityRegistry } from '@features/providers';
 
 import { getFallbackOperation } from '@/types/operations';
@@ -16,10 +20,8 @@ import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
 
 import { computeCombinations, computeSetCombinations, isSetStrategy, type EachStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
 import { buildGenerationRequest } from '../lib/quickGenerateLogic';
+import { createGenerationRunDescriptor, createGenerationRunItemContext, type GenerationRunContext } from '../lib/runContext';
 import { useGenerationHistoryStore } from '../stores/generationHistoryStore';
-
-import { useAssetSetStore } from '@features/assets/stores/assetSetStore';
-import { resolveAssetSet, assetModelsToInputItems } from '@features/assets/lib/assetSetResolver';
 
 
 
@@ -48,6 +50,12 @@ function recordInputHistory(operationType: string, inputs: any[]) {
   if (assetsToRecord.length > 0) {
     useGenerationHistoryStore.getState().recordUsage(operationType, assetsToRecord);
   }
+}
+
+function extractInputAssetIds(group: any[]): number[] {
+  return group
+    .map((item) => item?.asset?.id)
+    .filter((id): id is number => typeof id === 'number' && Number.isFinite(id));
 }
 
 /**
@@ -82,6 +90,10 @@ export function useQuickGenerateController() {
   const setGenerating = useSessionStore((s) => s.setGenerating);
   const prompt = useSessionStore((s) => s.prompt);
   const setPrompt = useSessionStore((s) => s.setPrompt);
+
+  // Template pinning state (global, from blockTemplateStore)
+  const pinnedTemplateId = useBlockTemplateStore((s) => s.pinnedTemplateId);
+  const templateRollMode = useBlockTemplateStore((s) => s.templateRollMode);
 
   // Bindings to active asset and inputs
   const bindings = useQuickGenerateBindings(operationType);
@@ -199,12 +211,28 @@ export function useQuickGenerateController() {
     }
   }
 
+  /** Roll the pinned template (if any) and return the assembled prompt, or null. */
+  async function maybeRollTemplate(): Promise<string | null> {
+    if (!pinnedTemplateId) return null;
+    try {
+      const bindings = useBlockTemplateStore.getState().draftCharacterBindings;
+      const hasBindings = Object.keys(bindings).length > 0;
+      const result = await rollTemplate(pinnedTemplateId, {
+        character_bindings: hasBindings ? bindings : undefined,
+      });
+      return result?.success ? result.assembled_prompt : null;
+    } catch {
+      logEvent('WARN', 'template_roll_failed', { templateId: pinnedTemplateId });
+      return null;
+    }
+  }
+
   /** Build and validate a generation request, resolving the effective operation type */
   function buildRequest(
     dynamicParams: Record<string, any>,
     operationInputs: any[],
     currentInput: any,
-    overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset> },
+    overrides?: { activeAsset?: ReturnType<typeof toSelectedAsset>; promptOverride?: string | null },
   ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
@@ -212,7 +240,7 @@ export function useQuickGenerateController() {
 
     const buildResult = buildGenerationRequest({
       operationType,
-      prompt,
+      prompt: overrides?.promptOverride ?? prompt,
       dynamicParams,
       operationInputs,
       prompts: bindings.prompts,
@@ -237,12 +265,16 @@ export function useQuickGenerateController() {
   }
 
   /** Submit a single generation to the API and seed the generations store */
-  async function submitOne(request: { finalPrompt: string; params: any; effectiveOperationType: string }) {
+  async function submitOne(
+    request: { finalPrompt: string; params: any; effectiveOperationType: string },
+    runContext?: GenerationRunContext,
+  ) {
     const result = await generateAsset({
       prompt: request.finalPrompt,
       providerId,
       operationType: request.effectiveOperationType,
       extraParams: request.params,
+      runContext,
     });
 
     const genId = result.job_id;
@@ -270,14 +302,25 @@ export function useQuickGenerateController() {
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      const request = buildRequest(dynamicParams, effectiveInputs, currentInput);
+      const rolledPrompt = await maybeRollTemplate();
+      const request = buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledPrompt });
       if ('error' in request) {
         setError(request.error);
         setGenerating(false);
         return;
       }
 
-      const genId = await submitOne(request);
+      const run = createGenerationRunDescriptor({
+        mode: 'quickgen_single',
+      });
+      const genId = await submitOne(
+        request,
+        createGenerationRunItemContext(run, {
+          itemIndex: 0,
+          itemTotal: 1,
+          inputAssetIds: extractInputAssetIds(effectiveInputs),
+        }),
+      );
       setGenerationId(genId);
       setWatchingGeneration(genId);
       recordInputHistory(operationType, currentInputs);
@@ -306,6 +349,7 @@ export function useQuickGenerateController() {
     const total = count;
     let queued = 0;
     const generatedIds: number[] = [];
+    const run = createGenerationRunDescriptor({ mode: 'quickgen_burst' });
     setQueueProgress({ queued: 0, total });
 
     try {
@@ -314,9 +358,11 @@ export function useQuickGenerateController() {
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      const request = buildRequest(dynamicParams, currentInputs, currentInput);
-      if ('error' in request) {
-        setError(request.error);
+      // Roll template once upfront for 'once' mode (or when no template is pinned)
+      const rollOnce = pinnedTemplateId && templateRollMode === 'each' ? null : await maybeRollTemplate();
+      const baseRequest = buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
+      if ('error' in baseRequest) {
+        setError(baseRequest.error);
         setGenerating(false);
         setQueueProgress(null);
         return;
@@ -326,7 +372,21 @@ export function useQuickGenerateController() {
 
       for (let i = 0; i < count; i++) {
         try {
-          const genId = await submitOne(request);
+          // In 'each' mode with a pinned template, re-roll per item
+          let request = baseRequest;
+          if (pinnedTemplateId && templateRollMode === 'each') {
+            const rolledPrompt = await maybeRollTemplate();
+            const rebuilt = buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rolledPrompt });
+            if (!('error' in rebuilt)) request = rebuilt;
+          }
+
+          const genId = await submitOne(
+            request,
+            createGenerationRunItemContext(run, {
+              itemIndex: i,
+              itemTotal: total,
+            }),
+          );
           generatedIds.push(genId);
           queued++;
           setQueueProgress({ queued, total });
@@ -369,6 +429,8 @@ export function useQuickGenerateController() {
     operationType,
     prompt,
     providerId,
+    pinnedTemplateId,
+    templateRollMode,
     bindings.dynamicParams,
     bindings.prompts,
     bindings.transitionDurations,
@@ -394,6 +456,11 @@ export function useQuickGenerateController() {
   }) => {
     const { currentInputs } = getInputState();
     const strategy = options?.strategy ?? 'each';
+    const run = createGenerationRunDescriptor({
+      mode: 'quickgen_each',
+      strategy,
+      setId: options?.setId,
+    });
 
     // ─── Set strategy path ───
     if (isSetStrategy(strategy) && options?.setId) {
@@ -417,11 +484,19 @@ export function useQuickGenerateController() {
         const groups = computeSetCombinations(currentInputs, setInputItems, strategy);
 
         const total = groups.length;
+        if (total === 0) {
+          setError('No valid combinations for selected set strategy');
+          setGenerating(false);
+          return;
+        }
         let queued = 0;
         const generatedIds: number[] = [];
         setQueueProgress({ queued: 0, total });
 
         const overrideParams = options?.overrideDynamicParams || {};
+
+        // Pre-roll template once for 'once' mode
+        const rolledOnce = pinnedTemplateId && templateRollMode === 'once' ? await maybeRollTemplate() : null;
 
         for (let i = 0; i < groups.length; i++) {
           const group = groups[i];
@@ -431,7 +506,8 @@ export function useQuickGenerateController() {
             const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
             await applyFrameExtraction(dynamicParams, primaryInput, []);
 
-            const request = buildRequest(dynamicParams, group, primaryInput);
+            const rolledPrompt = templateRollMode === 'each' ? await maybeRollTemplate() : rolledOnce;
+            const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledPrompt });
             if ('error' in request) {
               logEvent('ERROR', 'generate_each_item_skipped', {
                 index: i,
@@ -441,7 +517,14 @@ export function useQuickGenerateController() {
               continue;
             }
 
-            const genId = await submitOne(request);
+            const genId = await submitOne(
+              request,
+              createGenerationRunItemContext(run, {
+                itemIndex: i,
+                itemTotal: total,
+                inputAssetIds: extractInputAssetIds(group),
+              }),
+            );
             generatedIds.push(genId);
             queued++;
             setQueueProgress({ queued, total });
@@ -489,9 +572,11 @@ export function useQuickGenerateController() {
     }
 
     // ─── Standard input strategy path ───
-    if (currentInputs.length <= 1) return generate(options);
-
     const groups = computeCombinations(currentInputs, strategy as EachStrategy);
+    if (groups.length === 0) {
+      setError('No queued inputs to generate');
+      return;
+    }
 
     resetForGeneration();
     const total = groups.length;
@@ -502,6 +587,9 @@ export function useQuickGenerateController() {
     try {
       const overrideParams = options?.overrideDynamicParams || {};
 
+      // Pre-roll template once for 'once' mode
+      const rolledOnce = pinnedTemplateId && templateRollMode === 'once' ? await maybeRollTemplate() : null;
+
       for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
         // For single-item groups use the item as currentInput; for multi-item groups use the first
@@ -511,7 +599,8 @@ export function useQuickGenerateController() {
           const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
           await applyFrameExtraction(dynamicParams, primaryInput, []);
 
-          const request = buildRequest(dynamicParams, group, primaryInput);
+          const rolledPrompt = templateRollMode === 'each' ? await maybeRollTemplate() : rolledOnce;
+          const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledPrompt });
           if ('error' in request) {
             logEvent('ERROR', 'generate_each_item_skipped', {
               index: i,
@@ -521,7 +610,14 @@ export function useQuickGenerateController() {
             continue;
           }
 
-          const genId = await submitOne(request);
+          const genId = await submitOne(
+            request,
+            createGenerationRunItemContext(run, {
+              itemIndex: i,
+              itemTotal: total,
+              inputAssetIds: extractInputAssetIds(group),
+            }),
+          );
           generatedIds.push(genId);
           queued++;
           setQueueProgress({ queued, total });
@@ -568,6 +664,8 @@ export function useQuickGenerateController() {
     operationType,
     prompt,
     providerId,
+    pinnedTemplateId,
+    templateRollMode,
     bindings.dynamicParams,
     bindings.prompts,
     bindings.transitionDurations,
@@ -610,7 +708,20 @@ export function useQuickGenerateController() {
         return;
       }
 
-      const genId = await submitOne(request);
+      const run = createGenerationRunDescriptor({
+        mode: 'quickgen_single',
+        metadata: {
+          source: 'generateWithAsset',
+        },
+      });
+      const genId = await submitOne(
+        request,
+        createGenerationRunItemContext(run, {
+          itemIndex: 0,
+          itemTotal: 1,
+          inputAssetIds: [asset.id],
+        }),
+      );
       setGenerationId(genId);
       setWatchingGeneration(genId);
       recordInputHistory(operationType, [inputItem]);

@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Icon } from '@lib/icons';
 
+import { openWorkspacePanel } from '@features/workspace';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { useApi } from '@/hooks/useApi';
@@ -25,12 +26,12 @@ import {
 } from '@/plugins/ui/prompt-companion/components';
 
 import { useSemanticActionBlocks } from '../hooks/useSemanticActionBlocks';
+import { useBlockTemplateStore } from '../stores/blockTemplateStore';
 import { usePromptSettingsStore } from '../stores/promptSettingsStore';
 import type { PromptTag } from '../types';
 
 import { InlineBlocksEditor } from './InlineBlocksEditor';
 import { RoleBadge } from './shared/RoleBadge';
-import { TemplatePickerDropdown } from './templates/TemplatePickerDropdown';
 
 type PromptComposerMode = 'text' | 'blocks';
 
@@ -109,6 +110,7 @@ export function PromptComposer({
 }: PromptComposerProps) {
   const api = useApi();
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const pinnedTemplateId = useBlockTemplateStore((s) => s.pinnedTemplateId);
   const promptRoleColors = usePromptSettingsStore((state) => state.promptRoleColors);
   const blocksLayout = usePromptSettingsStore((state) => state.blocksLayout);
   const setBlocksLayout = usePromptSettingsStore((state) => state.setBlocksLayout);
@@ -505,6 +507,21 @@ export function PromptComposer({
           <Icon name="clipboard-paste" size={14} />
         </button>
 
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => openWorkspacePanel('template-builder')}
+          title={pinnedTemplateId ? 'Template pinned — click to manage' : 'Templates'}
+          className={clsx(
+            'p-1 rounded transition-colors',
+            pinnedTemplateId
+              ? 'bg-accent/15 text-accent hover:bg-accent/25'
+              : 'text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800',
+          )}
+        >
+          <Icon name={pinnedTemplateId ? 'pin' : 'shuffle'} size={14} />
+        </button>
+
         {mode === 'blocks' && (
           <>
             <button
@@ -542,11 +559,6 @@ export function PromptComposer({
                 </button>
               </>
             )}
-
-            <TemplatePickerDropdown
-              onUsePrompt={onChange}
-              disabled={disabled}
-            />
 
             <div className="relative">
               <button

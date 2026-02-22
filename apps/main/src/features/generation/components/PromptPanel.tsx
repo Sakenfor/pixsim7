@@ -2,11 +2,13 @@
  * PromptPanel - Text input for generation prompt.
  * Split from QuickGeneratePanels.tsx.
  */
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useDockviewId } from '@lib/dockview';
 import { getDurationOptions } from '@lib/generation-ui';
 
+import type { AssetModel } from '@features/assets';
+import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import {
   CAP_PROMPT_BOX,
   useProvideCapability,
@@ -50,6 +52,22 @@ export function PromptPanel(props: QuickGenPanelProps) {
     "generation",
   );
 
+  const resolvedOperationType = ctx?.operationType ?? controller.operationType;
+  const resolvedOperationInputIndex = ctx?.operationInputIndex ?? controller.operationInputIndex;
+  const defaultDisplayAssets = useMemo(() => resolveDisplayAssets({
+    operationType: resolvedOperationType,
+    inputs: controller.operationInputs,
+    currentIndex: controller.operationInputIndex,
+    lastSelectedAsset: controller.lastSelectedAsset,
+    allowAnySelected,
+  }), [
+    resolvedOperationType,
+    controller.operationInputs,
+    controller.operationInputIndex,
+    controller.lastSelectedAsset,
+    allowAnySelected,
+  ]);
+
   const {
     prompt = controller.prompt,
     setPrompt = controller.setPrompt,
@@ -57,15 +75,9 @@ export function PromptPanel(props: QuickGenPanelProps) {
     model = workbench.dynamicParams?.model as string | undefined,
     paramSpecs = workbench.allParamSpecs,
     generating = controller.generating,
-    operationType = controller.operationType,
-    operationInputIndex = controller.operationInputIndex,
-    displayAssets = resolveDisplayAssets({
-      operationType,
-      inputs: controller.operationInputs,
-      currentIndex: controller.operationInputIndex,
-      lastSelectedAsset: controller.lastSelectedAsset,
-      allowAnySelected,
-    }),
+    operationType = resolvedOperationType,
+    operationInputIndex = resolvedOperationInputIndex,
+    displayAssets = defaultDisplayAssets,
     isFlexibleOperation: _isFlexibleOperation = FLEXIBLE_OPERATIONS.has(operationType),
     transitionPrompts = controller.prompts,
     setTransitionPrompts = controller.setPrompts,
@@ -75,10 +87,57 @@ export function PromptPanel(props: QuickGenPanelProps) {
   } = ctx || {};
   void _isFlexibleOperation; // Used in PromptPanel for future capability hints
 
+  const hydratedDisplayAssetCacheRef = useRef<Map<number, AssetModel>>(new Map());
+  const [hydratedDisplayAssetsById, setHydratedDisplayAssetsById] = useState<Map<number, AssetModel>>(
+    () => new Map(),
+  );
+
+  useEffect(() => {
+    const stubAssets = displayAssets.filter(isStubAssetModel);
+    if (stubAssets.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const hydratedAssets = await Promise.all(
+        stubAssets.map((asset) =>
+          hydrateAssetModel(asset, { cache: hydratedDisplayAssetCacheRef.current }),
+        ),
+      );
+
+      if (cancelled) return;
+
+      setHydratedDisplayAssetsById((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+
+        hydratedAssets.forEach((asset) => {
+          const existing = next.get(asset.id);
+          if (existing !== asset) {
+            next.set(asset.id, asset);
+            changed = true;
+          }
+        });
+
+        return changed ? next : prev;
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayAssets]);
+
+  const resolvedDisplayAssets = useMemo(
+    () => displayAssets.map((asset) => hydratedDisplayAssetsById.get(asset.id) ?? asset),
+    [displayAssets, hydratedDisplayAssetsById],
+  );
+
   const maxChars = resolvePromptLimitForModel(providerId, model, paramSpecs as any);
-  const hasAsset = displayAssets.length > 0;
+  const hasAsset = resolvedDisplayAssets.length > 0;
   const isTransitionMode = operationType === 'video_transition';
-  const transitionCount = Math.max(0, (displayAssets?.length ?? 0) - 1);
+  const transitionCount = Math.max(0, (resolvedDisplayAssets?.length ?? 0) - 1);
   const transitionIndex = Math.max(0, Math.min(operationInputIndex - 1, transitionCount - 1));
   const hasTransitionPrompt = isTransitionMode && transitionCount > 0;
 

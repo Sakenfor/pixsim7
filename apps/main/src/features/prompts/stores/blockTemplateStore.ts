@@ -11,6 +11,7 @@ import type {
   RollResult,
   TemplateSlot,
   CharacterBindings,
+  TemplatePreset,
 } from '@lib/api/blockTemplates';
 import {
   listTemplates,
@@ -72,6 +73,19 @@ interface BlockTemplateState {
   ) => Promise<BlockTemplateDetail | null>;
   deleteTemplate: (id: string) => Promise<boolean>;
 
+  // Presets
+  getPresets: () => TemplatePreset[];
+  savePreset: (name: string) => Promise<void>;
+  loadPreset: (index: number) => void;
+  deletePreset: (index: number) => Promise<void>;
+  renamePreset: (index: number, name: string) => Promise<void>;
+
+  // Template pinning (for auto-roll on generation)
+  pinnedTemplateId: string | null;
+  templateRollMode: 'once' | 'each';
+  setPinnedTemplateId: (id: string | null) => void;
+  setTemplateRollMode: (mode: 'once' | 'each') => void;
+
   // Rolling
   roll: (templateId: string, seed?: number) => Promise<RollResult | null>;
   clearRollResult: () => void;
@@ -101,6 +115,18 @@ function createEmptySlot(index: number): TemplateSlot {
   };
 }
 
+function areBindingsEqual(a: CharacterBindings, b: CharacterBindings): boolean {
+  const aKeys = Object.keys(a).sort();
+  const bKeys = Object.keys(b).sort();
+  if (aKeys.length !== bKeys.length) return false;
+  for (let i = 0; i < aKeys.length; i += 1) {
+    if (aKeys[i] !== bKeys[i]) return false;
+    const key = aKeys[i];
+    if ((a[key]?.character_id ?? '') !== (b[key]?.character_id ?? '')) return false;
+  }
+  return true;
+}
+
 export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   templates: [],
   templatesLoading: false,
@@ -110,6 +136,8 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   draftCharacterBindings: {},
   lastRollResult: null,
   rolling: false,
+  pinnedTemplateId: null,
+  templateRollMode: 'once',
 
   fetchTemplates: async () => {
     set({ templatesLoading: true });
@@ -179,10 +207,11 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
 
   setDraftCharacterBinding: (role, characterId) => {
     const { draftCharacterBindings } = get();
+    const existing = draftCharacterBindings[role];
     set({
       draftCharacterBindings: {
         ...draftCharacterBindings,
-        [role]: { character_id: characterId },
+        [role]: { ...existing, character_id: characterId },
       },
     });
   },
@@ -233,11 +262,83 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
     }
   },
 
+  getPresets: () => {
+    const { activeTemplate } = get();
+    return (activeTemplate?.template_metadata?.presets as TemplatePreset[] | undefined) ?? [];
+  },
+
+  savePreset: async (name) => {
+    const { activeTemplate, draftSlots, draftCharacterBindings } = get();
+    if (!activeTemplate) return;
+    const presets = [...((activeTemplate.template_metadata?.presets as TemplatePreset[] | undefined) ?? [])];
+    presets.push({
+      name,
+      slots: draftSlots.map((s) => ({ ...s })),
+      character_bindings: { ...draftCharacterBindings },
+      composition_strategy: activeTemplate.composition_strategy,
+      target_operation: (activeTemplate.template_metadata?.target_operation as string) || undefined,
+    });
+    const meta = { ...activeTemplate.template_metadata, presets };
+    const updated = await apiUpdateTemplate(activeTemplate.id, {
+      template_metadata: meta,
+    });
+    if (updated) {
+      set({ activeTemplate: updated });
+    }
+  },
+
+  loadPreset: (index) => {
+    const presets = get().getPresets();
+    const preset = presets[index];
+    if (preset) {
+      set({
+        draftSlots: preset.slots.map((s) => ({ ...s })),
+        draftCharacterBindings: { ...preset.character_bindings },
+      });
+    }
+  },
+
+  deletePreset: async (index) => {
+    const { activeTemplate } = get();
+    if (!activeTemplate) return;
+    const presets = [...((activeTemplate.template_metadata?.presets as TemplatePreset[] | undefined) ?? [])];
+    presets.splice(index, 1);
+    const meta = { ...activeTemplate.template_metadata, presets };
+    const updated = await apiUpdateTemplate(activeTemplate.id, {
+      template_metadata: meta,
+    });
+    if (updated) {
+      set({ activeTemplate: updated });
+    }
+  },
+
+  renamePreset: async (index, name) => {
+    const { activeTemplate } = get();
+    if (!activeTemplate) return;
+    const presets = [...((activeTemplate.template_metadata?.presets as TemplatePreset[] | undefined) ?? [])];
+    if (!presets[index]) return;
+    presets[index] = { ...presets[index], name };
+    const meta = { ...activeTemplate.template_metadata, presets };
+    const updated = await apiUpdateTemplate(activeTemplate.id, {
+      template_metadata: meta,
+    });
+    if (updated) {
+      set({ activeTemplate: updated });
+    }
+  },
+
+  setPinnedTemplateId: (id) => set({ pinnedTemplateId: id }),
+  setTemplateRollMode: (mode) => set({ templateRollMode: mode }),
+
   roll: async (templateId, seed) => {
-    const { draftCharacterBindings } = get();
+    const { draftCharacterBindings, activeTemplate } = get();
     set({ rolling: true });
     try {
-      const bindings = Object.keys(draftCharacterBindings).length > 0 ? draftCharacterBindings : undefined;
+      const templateBindings = activeTemplate?.character_bindings ?? {};
+      const bindings =
+        activeTemplate && areBindingsEqual(draftCharacterBindings, templateBindings)
+          ? undefined
+          : draftCharacterBindings;
       const result = await rollTemplate(templateId, { seed, character_bindings: bindings });
       set({ lastRollResult: result });
       return result;
