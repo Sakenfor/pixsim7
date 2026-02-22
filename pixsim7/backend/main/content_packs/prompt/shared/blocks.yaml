@@ -1,0 +1,514 @@
+version: "1.0.0"
+package_name: shared
+
+defaults:
+  source_type: library
+  curation_status: curated
+  is_public: true
+  style: photorealistic
+  created_by: content_pack
+  default_intent: modify
+
+blocks:
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SUBJECT — preservation locks, one concern each
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_lock_pose
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Use the source image as the absolute structural base.
+      Identical limb placement, torso angle, hip alignment, head orientation.
+      No posture reinterpretation. The environment adapts around the subject.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+    complexity_level: simple
+
+  - block_id: ie_lock_identity
+    role: subject
+    category: identity_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve facial identity, body proportions, curves, and skin detail
+      exactly as in the source image. No reinterpretation of features.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: identity
+    complexity_level: simple
+
+  - block_id: ie_lock_framing
+    role: subject
+    category: framing_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Maintain the subject's framing scale, position in frame, and
+      brightness/tonal range exactly as in the source image.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: framing
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # STYLE — rendering and atmosphere (reusable across scenes)
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── rendering styles ─────────────────────────────────────────────
+
+  - block_id: ie_style_game_stylized
+    role: style
+    category: rendering
+    kind: single_state
+    text: >-
+      Rendering inspired by stylized game engines. Strong directional
+      lighting creates defined highlight bands along surfaces. Deep shadow
+      planes retain visible surface texture. Slightly elevated contrast
+      and saturation compared to photographic realism. Clean edges,
+      readable silhouettes.
+    tags:
+      intent: modify
+      rendering: game_stylized
+      contrast: elevated
+      fidelity: stylized
+    complexity_level: moderate
+
+  - block_id: ie_style_film_noir
+    role: style
+    category: rendering
+    kind: single_state
+    text: >-
+      Film noir rendering. High-contrast black and white with selective
+      warm tones. Hard shadow lines, venetian blind patterns on walls.
+      Cigarette smoke haze in light beams. Grain texture. Faces half-lit.
+    tags:
+      intent: modify
+      rendering: film_noir
+      contrast: extreme
+      fidelity: stylized
+    complexity_level: moderate
+
+  - block_id: ie_style_hyperreal
+    role: style
+    category: rendering
+    kind: single_state
+    text: >-
+      Hyper-realistic rendering. Every surface texture rendered at maximum
+      detail — skin pores, fabric weave, metal scratches. Sharp across
+      the entire depth of field. Studio-quality color accuracy.
+      No stylization, no filters.
+    tags:
+      intent: modify
+      rendering: hyperreal
+      contrast: natural
+      fidelity: maximum
+    complexity_level: moderate
+
+  # ── atmosphere / tone ────────────────────────────────────────────
+
+  - block_id: ie_tone_romantic_soft
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Soft romantic atmosphere. Warm diffused light, gentle bokeh in
+      background, intimate framing. Relaxed, inviting mood.
+      Natural skin tones preserved.
+    tags:
+      intent: modify
+      atmosphere: romantic
+      tension: low
+      mood: warm
+    complexity_level: simple
+
+  - block_id: ie_tone_tense_surveillance
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Surveillance tension atmosphere. Slightly desaturated palette,
+      clinical overhead lighting mixed with security-camera grain.
+      Voyeuristic distance, the subject unaware of being observed.
+    tags:
+      intent: modify
+      atmosphere: surveillance
+      tension: high
+      mood: cold
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA — angle and field of view
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── camera angle ─────────────────────────────────────────────────
+
+  - block_id: ie_cam_low_angle
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned low near floor level, angled upward toward the
+      subject. Vertical compression emphasized. The space feels tight
+      and enclosed without altering the subject's posture.
+    tags:
+      intent: modify
+      camera_angle: low
+      perspective: upward
+    complexity_level: simple
+
+  - block_id: ie_cam_eye_level
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera at eye level, straight on. Neutral perspective with no
+      vertical distortion. Natural spatial proportions.
+    tags:
+      intent: modify
+      camera_angle: eye_level
+      perspective: neutral
+    complexity_level: simple
+
+  - block_id: ie_cam_high_angle
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned above, angled downward. The subject appears
+      smaller in the space, environment visible around them.
+      Slight foreshortening of vertical elements.
+    tags:
+      intent: modify
+      camera_angle: high
+      perspective: downward
+    complexity_level: simple
+
+  - block_id: ie_cam_dutch
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera tilted at a diagonal angle. Horizon line runs diagonally
+      across the frame. Creates unease and visual tension.
+    tags:
+      intent: modify
+      camera_angle: dutch
+      perspective: tilted
+    complexity_level: simple
+
+  - block_id: ie_cam_over_shoulder_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned slightly over the shoulder of a background figure,
+      compressing the space between foreground and midground. The nearer
+      shoulder appears softly out of focus in the frame edge. The subject
+      remains clearly lit and dominant.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      perspective: compressed
+    complexity_level: moderate
+
+  - block_id: ie_cam_over_shoulder_02
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Shot framed from behind and above a secondary figure's shoulder,
+      dark clothing forming a soft blur in the lower-right foreground.
+      The subject's workspace and hands are sharp, face in three-quarter
+      profile. Primary light catches the subject's features while the
+      secondary figure remains in shadow.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      perspective: compressed
+    complexity_level: moderate
+
+  - block_id: ie_cam_desk_level_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera at surface level, looking across foreground objects toward
+      the figures beyond. Nearest objects appear soft and oversized,
+      exaggerating depth. Figures occupy the middle distance, the space
+      between them compressed by the low angle.
+    tags:
+      intent: modify
+      camera_angle: desk_level
+      perspective: low
+    complexity_level: moderate
+
+  - block_id: ie_cam_three_quarter_low_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned at hip height, angled slightly upward from a
+      three-quarter perspective. The subject dominates the foreground,
+      contours emphasised by the low vantage. Midground figures are
+      compressed closer by the lens. Background elements read as a
+      smaller, separated layer.
+    tags:
+      intent: modify
+      camera_angle: three_quarter_low
+      perspective: upward
+    complexity_level: moderate
+
+  - block_id: ie_cam_three_quarter_low_02
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Low three-quarter camera captures the subject's full silhouette
+      from waist to shoulder, clothing lines sharpened by the upward
+      perspective. Figures behind appear as near-overlap at this angle,
+      partially eclipsed by the subject. Depth compresses background
+      partitions and distant elements into a single receding layer.
+    tags:
+      intent: modify
+      camera_angle: three_quarter_low
+      perspective: upward
+    complexity_level: moderate
+
+  # ── field of view ────────────────────────────────────────────────
+
+  - block_id: ie_fov_narrow
+    role: camera
+    category: fov
+    kind: single_state
+    text: >-
+      Narrow field of view. Compressed depth, tight framing.
+      Background elements appear closer. Telephoto feel.
+    tags:
+      intent: modify
+      fov: narrow
+    complexity_level: simple
+
+  - block_id: ie_fov_wide
+    role: camera
+    category: fov
+    kind: single_state
+    text: >-
+      Wide field of view. Expanded spatial context, more environment
+      visible. Slight barrel distortion at edges. Environmental storytelling.
+    tags:
+      intent: modify
+      fov: wide
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # LIGHTING — key and fill light sources
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── key light (primary) ─────────────────────────────────────────
+
+  - block_id: ie_key_ceiling_fixtures
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Normal indoor lighting from overhead ceiling fixtures.
+      Even, bright exposure across the scene.
+      Maintain the subject's original light direction and brightness.
+      No dramatic shadows. No heavy contrast grading.
+    tags:
+      intent: modify
+      key_light: ceiling
+      warmth: neutral
+      direction: overhead
+      contrast: low
+    complexity_level: simple
+
+  - block_id: ie_key_directional_sun
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Strong directional sunlight from one side. Clear hard shadows
+      on the opposite side. Warm color temperature.
+      Highlights on skin and reflective surfaces.
+    tags:
+      intent: modify
+      key_light: sun
+      warmth: warm
+      direction: side
+      contrast: high
+    complexity_level: simple
+
+  - block_id: ie_key_neon_ambient
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Colored neon ambient lighting from multiple sources.
+      Mixed warm and cool tones wash across surfaces.
+      No single dominant direction — light wraps around forms.
+      Saturated color spill on skin and clothing.
+    tags:
+      intent: modify
+      key_light: neon
+      warmth: mixed
+      direction: ambient
+      contrast: medium
+    complexity_level: moderate
+
+  # ── fill light (secondary) ─────────────────────────────────────
+
+  - block_id: ie_fill_cool_slit
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      A subtle cool secondary fill from a distant slit window.
+      Preserves dimensional separation and prevents silhouette flattening.
+    tags:
+      intent: modify
+      fill_light: cool_slit
+      warmth: cool
+      purpose: separation
+    complexity_level: simple
+
+  - block_id: ie_fill_warm_bounce
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Warm bounce light reflected from nearby surfaces.
+      Softens shadow edges without eliminating them.
+      Adds warmth to shadow regions.
+    tags:
+      intent: modify
+      fill_light: warm_bounce
+      warmth: warm
+      purpose: shadow_softening
+    complexity_level: simple
+
+  - block_id: ie_fill_none
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      No secondary fill light. Shadows fall to near-black.
+      Maximum contrast between lit and unlit surfaces.
+      Silhouette effect on the shadow side.
+    tags:
+      intent: modify
+      fill_light: none
+      warmth: none
+      purpose: maximum_contrast
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PLACEMENT — depth positioning
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_place_close_behind
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{placed_character}} stands immediately behind the subject, slightly
+      smaller in scale due to depth. Very close, almost directly behind.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_far_background
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{placed_character}} stands clearly farther away in the open space.
+      Several steps back, appearing noticeably smaller due to distance.
+    tags:
+      intent: add
+      layer: background
+      depth: far
+      placement: open_space
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_beside
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{placed_character}} stands beside the subject at roughly the same
+      depth, similar scale, positioned to one side.
+    tags:
+      intent: add
+      layer: foreground
+      depth: same
+      placement: beside
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_partial_midground
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A presence enters from the frame edge at midground height —
+      partial torso and shoulder visible, angled toward the subject.
+      Fully three-dimensional and integrated into the same lighting field,
+      adding spatial compression without touching or repositioning the subject.
+    tags:
+      intent: add
+      layer: midground
+      depth: mid
+      placement: frame_edge
+      visibility: partial
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # COMPOSITION — layer ordering
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_layers_three_depth
+    role: composition
+    category: layer_order
+    kind: single_state
+    text: >-
+      Layer order:
+      Foreground — subject unchanged.
+      Midground — secondary presence close behind.
+      Far background — environment recedes into depth.
+      Clear spatial separation at each layer.
+    tags:
+      intent: modify
+      depth_layers: 3
+    complexity_level: simple
+
+  - block_id: ie_layers_two_depth
+    role: composition
+    category: layer_order
+    kind: single_state
+    text: >-
+      Layer order:
+      Foreground — subject unchanged.
+      Background — scene elements at natural depth.
+      Clear separation between subject and background.
+    tags:
+      intent: modify
+      depth_layers: 2
+    complexity_level: simple

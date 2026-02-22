@@ -17,29 +17,17 @@ templates:
     character_bindings:
       placed_character:
         character_id: ""
+        fallback_name: "A man"
+        cast:
+          label: "Background figure"
+          filter_category: "human"
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
 
     slots:
       # ── Subject preservation ────────────────────────────────────
-      - label: Pose lock
-        role: subject
-        category: pose_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Identity lock
-        role: subject
-        category: identity_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Framing lock
-        role: subject
-        category: framing_lock
-        selection_strategy: uniform
-        optional: false
+      - preset: subject_preservation
 
       # ── Environment ─────────────────────────────────────────────
       - label: Background scene
@@ -104,13 +92,7 @@ templates:
         fallback_text: "Allow the background to be slightly softer than the foreground."
 
       # ── Composition ─────────────────────────────────────────────
-      - label: Layer order
-        role: composition
-        category: layer_order
-        tag_constraints:
-          depth_layers: 3
-        selection_strategy: uniform
-        optional: false
+      - preset: three_layer_composition
 
   # ═══════════════════════════════════════════════════════════════════
   # Undercity Thief — medieval wardrobe rework, game-stylized rendering
@@ -259,23 +241,7 @@ templates:
       mode: image_edit
 
     slots:
-      - label: Pose lock
-        role: subject
-        category: pose_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Identity lock
-        role: subject
-        category: identity_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Framing lock
-        role: subject
-        category: framing_lock
-        selection_strategy: uniform
-        optional: false
+      - preset: subject_preservation
 
       - label: Background scene
         role: environment
@@ -289,13 +255,7 @@ templates:
         selection_strategy: uniform
         optional: false
 
-      - label: Layer order
-        role: composition
-        category: layer_order
-        tag_constraints:
-          depth_layers: 2
-        selection_strategy: uniform
-        optional: false
+      - preset: two_layer_composition
 
   # ═══════════════════════════════════════════════════════════════════
   # Victorian Detective Study — intimate proximity, paper disruption
@@ -319,23 +279,7 @@ templates:
 
     slots:
       # ── Subject preservation ────────────────────────────────────
-      - label: Pose lock
-        role: subject
-        category: pose_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Identity lock
-        role: subject
-        category: identity_lock
-        selection_strategy: uniform
-        optional: false
-
-      - label: Framing lock
-        role: subject
-        category: framing_lock
-        selection_strategy: uniform
-        optional: false
+      - preset: subject_preservation
 
       # ── Wardrobe accent ────────────────────────────────────────
       - label: Wardrobe accent
@@ -420,10 +364,125 @@ templates:
         optional: false
 
       # ── Composition ────────────────────────────────────────────
-      - label: Layer order
-        role: composition
-        category: layer_order
+      - preset: three_layer_composition
+
+  # ═══════════════════════════════════════════════════════════════════
+  # Police Precinct Break Room — uniform rework, coworker proximity,
+  # man behind glass, restrained sensual tension
+  # ═══════════════════════════════════════════════════════════════════
+  - slug: police-precinct-break-room
+    name: "Police Precinct — Break Room Proximity"
+    description: >-
+      Image edit: preserves subject pose and dominance in extreme foreground.
+      Adapts environment to a modern police precinct break area. Reworks her
+      outfit into a sleek, contour-fitted police uniform. A male coworker
+      presses close behind her at the coffee machine. Her man waits behind
+      a glass partition, separated and absorbed in his phone. Three-layer
+      depth with overhead station lighting and glass reflections.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, police, precinct, uniform, proximity, glass, three_layer, sensual_tension]
+    is_public: true
+    character_bindings: {}
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+
+    slots:
+      # ── Subject preservation ────────────────────────────────────
+      - preset: subject_preservation
+
+      # ── Wardrobe — su_lt-ry uniform rework (genre from context) ──
+      - label: Uniform style
+        role: style
+        category: wardrobe
         tag_constraints:
-          depth_layers: 3
+          variant: sultry
         selection_strategy: uniform
         optional: false
+
+      # ── Environment ────────────────────────────────────────────
+      - label: Break room scene
+        role: environment
+        category: scene_build
+        tag_constraints:
+          location: police_break_room
+        selection_strategy: uniform
+        optional: false
+
+      # ── Coworker placement — close behind ──────────────────────
+      - label: Coworker depth
+        role: placement
+        category: depth
+        tag_constraints:
+          depth: close
+          placement: behind
+          genre: police
+        selection_strategy: uniform
+        optional: false
+
+      - label: Coworker description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: coworker
+          genre: police
+        selection_strategy: uniform
+        optional: false
+
+      # ── Her man — behind glass ─────────────────────────────────
+      - label: Man placement
+        role: placement
+        category: depth
+        tag_constraints:
+          depth: far
+          placement: behind_glass
+        selection_strategy: uniform
+        optional: false
+
+      - label: Man description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: separated_partner
+        selection_strategy: uniform
+        optional: false
+
+      # ── Camera ─────────────────────────────────────────────────
+      - label: Camera angle
+        role: camera
+        category: angle
+        tag_constraints:
+          camera_angle: three_quarter_low
+        selection_strategy: uniform
+        optional: false
+
+      # ── Lighting ───────────────────────────────────────────────
+      - label: Key light
+        role: lighting
+        category: key
+        tag_constraints:
+          key_light: station_overhead
+        selection_strategy: uniform
+        optional: false
+
+      - label: Fill light
+        role: lighting
+        category: fill
+        tag_constraints:
+          fill_light: glass_reflection
+        selection_strategy: uniform
+        optional: true
+        fallback_text: "Allow the background beyond the glass to fall slightly softer than the foreground."
+
+      # ── Mood ───────────────────────────────────────────────────
+      - label: Mood
+        role: style
+        category: atmosphere
+        tag_constraints:
+          atmosphere: restrained_sensual
+        selection_strategy: uniform
+        optional: false
+
+      # ── Composition ────────────────────────────────────────────
+      - preset: three_layer_composition

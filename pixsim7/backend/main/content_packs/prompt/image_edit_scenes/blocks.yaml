@@ -12,57 +12,8 @@ defaults:
 blocks:
 
   # ═══════════════════════════════════════════════════════════════════
-  # SUBJECT — preservation locks, one concern each
+  # STYLE — scene-specific wardrobe styles
   # ═══════════════════════════════════════════════════════════════════
-
-  - block_id: ie_lock_pose
-    role: subject
-    category: pose_lock
-    kind: single_state
-    default_intent: preserve
-    text: >-
-      Use the source image as the absolute structural base.
-      Identical limb placement, torso angle, hip alignment, head orientation.
-      No posture reinterpretation. The environment adapts around the subject.
-    tags:
-      intent: preserve
-      layer: foreground
-      lock: pose
-    complexity_level: simple
-
-  - block_id: ie_lock_identity
-    role: subject
-    category: identity_lock
-    kind: single_state
-    default_intent: preserve
-    text: >-
-      Preserve facial identity, body proportions, curves, and skin detail
-      exactly as in the source image. No reinterpretation of features.
-    tags:
-      intent: preserve
-      layer: foreground
-      lock: identity
-    complexity_level: simple
-
-  - block_id: ie_lock_framing
-    role: subject
-    category: framing_lock
-    kind: single_state
-    default_intent: preserve
-    text: >-
-      Maintain the subject's framing scale, position in frame, and
-      brightness/tonal range exactly as in the source image.
-    tags:
-      intent: preserve
-      layer: foreground
-      lock: framing
-    complexity_level: simple
-
-  # ═══════════════════════════════════════════════════════════════════
-  # STYLE — reusable aesthetics (wardrobe, rendering, atmosphere)
-  # ═══════════════════════════════════════════════════════════════════
-
-  # ── wardrobe styles ──────────────────────────────────────────────
 
   - block_id: ie_style_medieval_thief
     role: style
@@ -138,57 +89,7 @@ blocks:
       texture: performance
     complexity_level: moderate
 
-  # ── rendering styles ─────────────────────────────────────────────
-
-  - block_id: ie_style_game_stylized
-    role: style
-    category: rendering
-    kind: single_state
-    text: >-
-      Rendering inspired by stylized game engines. Strong directional
-      lighting creates defined highlight bands along surfaces. Deep shadow
-      planes retain visible surface texture. Slightly elevated contrast
-      and saturation compared to photographic realism. Clean edges,
-      readable silhouettes.
-    tags:
-      intent: modify
-      rendering: game_stylized
-      contrast: elevated
-      fidelity: stylized
-    complexity_level: moderate
-
-  - block_id: ie_style_film_noir
-    role: style
-    category: rendering
-    kind: single_state
-    text: >-
-      Film noir rendering. High-contrast black and white with selective
-      warm tones. Hard shadow lines, venetian blind patterns on walls.
-      Cigarette smoke haze in light beams. Grain texture. Faces half-lit.
-    tags:
-      intent: modify
-      rendering: film_noir
-      contrast: extreme
-      fidelity: stylized
-    complexity_level: moderate
-
-  - block_id: ie_style_hyperreal
-    role: style
-    category: rendering
-    kind: single_state
-    text: >-
-      Hyper-realistic rendering. Every surface texture rendered at maximum
-      detail — skin pores, fabric weave, metal scratches. Sharp across
-      the entire depth of field. Studio-quality color accuracy.
-      No stylization, no filters.
-    tags:
-      intent: modify
-      rendering: hyperreal
-      contrast: natural
-      fidelity: maximum
-    complexity_level: moderate
-
-  # ── atmosphere / tone ────────────────────────────────────────────
+  # ── atmosphere / tone (scene-specific) ─────────────────────────
 
   - block_id: ie_tone_predator
     role: style
@@ -205,127 +106,9 @@ blocks:
       mood: dark
     complexity_level: moderate
 
-  - block_id: ie_tone_romantic_soft
-    role: style
-    category: atmosphere
-    kind: single_state
-    text: >-
-      Soft romantic atmosphere. Warm diffused light, gentle bokeh in
-      background, intimate framing. Relaxed, inviting mood.
-      Natural skin tones preserved.
-    tags:
-      intent: modify
-      atmosphere: romantic
-      tension: low
-      mood: warm
-    complexity_level: simple
-
-  - block_id: ie_tone_tense_surveillance
-    role: style
-    category: atmosphere
-    kind: single_state
-    text: >-
-      Surveillance tension atmosphere. Slightly desaturated palette,
-      clinical overhead lighting mixed with security-camera grain.
-      Voyeuristic distance, the subject unaware of being observed.
-    tags:
-      intent: modify
-      atmosphere: surveillance
-      tension: high
-      mood: cold
-    complexity_level: moderate
-
   # ═══════════════════════════════════════════════════════════════════
-  # CAMERA — angle and field of view
+  # LIGHTING — scene-specific key and fill
   # ═══════════════════════════════════════════════════════════════════
-
-  # ── camera angle ─────────────────────────────────────────────────
-
-  - block_id: ie_cam_low_angle
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera positioned low near floor level, angled upward toward the
-      subject. Vertical compression emphasized. The space feels tight
-      and enclosed without altering the subject's posture.
-    tags:
-      intent: modify
-      camera_angle: low
-      perspective: upward
-    complexity_level: simple
-
-  - block_id: ie_cam_eye_level
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera at eye level, straight on. Neutral perspective with no
-      vertical distortion. Natural spatial proportions.
-    tags:
-      intent: modify
-      camera_angle: eye_level
-      perspective: neutral
-    complexity_level: simple
-
-  - block_id: ie_cam_high_angle
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera positioned above, angled downward. The subject appears
-      smaller in the space, environment visible around them.
-      Slight foreshortening of vertical elements.
-    tags:
-      intent: modify
-      camera_angle: high
-      perspective: downward
-    complexity_level: simple
-
-  - block_id: ie_cam_dutch
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera tilted at a diagonal angle. Horizon line runs diagonally
-      across the frame. Creates unease and visual tension.
-    tags:
-      intent: modify
-      camera_angle: dutch
-      perspective: tilted
-    complexity_level: simple
-
-  # ── field of view ────────────────────────────────────────────────
-
-  - block_id: ie_fov_narrow
-    role: camera
-    category: fov
-    kind: single_state
-    text: >-
-      Narrow field of view. Compressed depth, tight framing.
-      Background elements appear closer. Telephoto feel.
-    tags:
-      intent: modify
-      fov: narrow
-    complexity_level: simple
-
-  - block_id: ie_fov_wide
-    role: camera
-    category: fov
-    kind: single_state
-    text: >-
-      Wide field of view. Expanded spatial context, more environment
-      visible. Slight barrel distortion at edges. Environmental storytelling.
-    tags:
-      intent: modify
-      fov: wide
-    complexity_level: simple
-
-  # ═══════════════════════════════════════════════════════════════════
-  # LIGHTING — key and fill light sources
-  # ═══════════════════════════════════════════════════════════════════
-
-  # ── key light (primary) ─────────────────────────────────────────
 
   - block_id: ie_key_oil_lamp
     role: lighting
@@ -344,102 +127,6 @@ blocks:
       direction: side_above
       contrast: high
     complexity_level: moderate
-
-  - block_id: ie_key_ceiling_fixtures
-    role: lighting
-    category: key
-    kind: single_state
-    text: >-
-      Normal indoor lighting from overhead ceiling fixtures.
-      Even, bright exposure across the scene.
-      Maintain the subject's original light direction and brightness.
-      No dramatic shadows. No heavy contrast grading.
-    tags:
-      intent: modify
-      key_light: ceiling
-      warmth: neutral
-      direction: overhead
-      contrast: low
-    complexity_level: simple
-
-  - block_id: ie_key_directional_sun
-    role: lighting
-    category: key
-    kind: single_state
-    text: >-
-      Strong directional sunlight from one side. Clear hard shadows
-      on the opposite side. Warm color temperature.
-      Highlights on skin and reflective surfaces.
-    tags:
-      intent: modify
-      key_light: sun
-      warmth: warm
-      direction: side
-      contrast: high
-    complexity_level: simple
-
-  - block_id: ie_key_neon_ambient
-    role: lighting
-    category: key
-    kind: single_state
-    text: >-
-      Colored neon ambient lighting from multiple sources.
-      Mixed warm and cool tones wash across surfaces.
-      No single dominant direction — light wraps around forms.
-      Saturated color spill on skin and clothing.
-    tags:
-      intent: modify
-      key_light: neon
-      warmth: mixed
-      direction: ambient
-      contrast: medium
-    complexity_level: moderate
-
-  # ── fill light (secondary) ─────────────────────────────────────
-
-  - block_id: ie_fill_cool_slit
-    role: lighting
-    category: fill
-    kind: single_state
-    text: >-
-      A subtle cool secondary fill from a distant slit window.
-      Preserves dimensional separation and prevents silhouette flattening.
-    tags:
-      intent: modify
-      fill_light: cool_slit
-      warmth: cool
-      purpose: separation
-    complexity_level: simple
-
-  - block_id: ie_fill_warm_bounce
-    role: lighting
-    category: fill
-    kind: single_state
-    text: >-
-      Warm bounce light reflected from nearby surfaces.
-      Softens shadow edges without eliminating them.
-      Adds warmth to shadow regions.
-    tags:
-      intent: modify
-      fill_light: warm_bounce
-      warmth: warm
-      purpose: shadow_softening
-    complexity_level: simple
-
-  - block_id: ie_fill_none
-    role: lighting
-    category: fill
-    kind: single_state
-    text: >-
-      No secondary fill light. Shadows fall to near-black.
-      Maximum contrast between lit and unlit surfaces.
-      Silhouette effect on the shadow side.
-    tags:
-      intent: modify
-      fill_light: none
-      warmth: none
-      purpose: maximum_contrast
-    complexity_level: simple
 
   # ═══════════════════════════════════════════════════════════════════
   # ENVIRONMENT — scene backgrounds
@@ -517,78 +204,8 @@ blocks:
     complexity_level: moderate
 
   # ═══════════════════════════════════════════════════════════════════
-  # PLACEMENT — depth positioning & placed character descriptions
+  # PLACEMENT — scene-specific character descriptions
   # ═══════════════════════════════════════════════════════════════════
-
-  # ── depth positioning ──────────────────────────────────────────
-
-  - block_id: ie_place_close_behind
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      {{placed_character}} stands immediately behind the subject, slightly
-      smaller in scale due to depth. Very close, almost directly behind.
-    tags:
-      intent: add
-      layer: midground
-      depth: close
-      placement: behind
-      visibility: full
-    complexity_level: moderate
-
-  - block_id: ie_place_far_background
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      {{placed_character}} stands clearly farther away in the open space.
-      Several steps back, appearing noticeably smaller due to distance.
-    tags:
-      intent: add
-      layer: background
-      depth: far
-      placement: open_space
-      visibility: full
-    complexity_level: moderate
-
-  - block_id: ie_place_beside
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      {{placed_character}} stands beside the subject at roughly the same
-      depth, similar scale, positioned to one side.
-    tags:
-      intent: add
-      layer: foreground
-      depth: same
-      placement: beside
-      visibility: full
-    complexity_level: simple
-
-  - block_id: ie_place_partial_midground
-    role: placement
-    category: depth
-    kind: single_state
-    default_intent: add
-    text: >-
-      A presence enters from the frame edge at midground height —
-      partial torso and shoulder visible, angled toward the subject.
-      Fully three-dimensional and integrated into the same lighting field,
-      adding spatial compression without touching or repositioning the subject.
-    tags:
-      intent: add
-      layer: midground
-      depth: mid
-      placement: frame_edge
-      visibility: partial
-    complexity_level: moderate
-
-  # ── placed character descriptions ──────────────────────────────
 
   - block_id: ie_char_porter_uniform
     role: placement
@@ -633,39 +250,6 @@ blocks:
       intent: add
       character_type: male_presence
       posture: angled
-    complexity_level: simple
-
-  # ═══════════════════════════════════════════════════════════════════
-  # COMPOSITION — layer ordering
-  # ═══════════════════════════════════════════════════════════════════
-
-  - block_id: ie_layers_three_depth
-    role: composition
-    category: layer_order
-    kind: single_state
-    text: >-
-      Layer order:
-      Foreground — subject unchanged.
-      Midground — secondary presence close behind.
-      Far background — environment recedes into depth.
-      Clear spatial separation at each layer.
-    tags:
-      intent: modify
-      depth_layers: 3
-    complexity_level: simple
-
-  - block_id: ie_layers_two_depth
-    role: composition
-    category: layer_order
-    kind: single_state
-    text: >-
-      Layer order:
-      Foreground — subject unchanged.
-      Background — scene elements at natural depth.
-      Clear separation between subject and background.
-    tags:
-      intent: modify
-      depth_layers: 2
     complexity_level: simple
 
   # ═══════════════════════════════════════════════════════════════════
@@ -734,17 +318,16 @@ blocks:
     category: key
     kind: single_state
     text: >-
-      Warm gas-lamp light pools softly across the desk surface and her
-      figure, creating a cozy enclosed atmosphere. Avoid sharp outlines
-      or dramatic edge highlights. Illumination should feel close and
-      atmospheric, falling off into deep amber shadow at the room edges.
+      Warm gas-lamp light pools softly across nearby surfaces and figures,
+      creating a cozy enclosed atmosphere. Avoid sharp outlines or dramatic
+      edge highlights. Illumination should feel close and atmospheric,
+      falling off into deep amber shadow at the room edges.
     tags:
       intent: modify
       key_light: gas_lamp
       warmth: warm
       direction: desk_level
       contrast: low
-      genre: detective
     complexity_level: moderate
 
   - block_id: ie_key_gas_lamp_02
@@ -753,16 +336,15 @@ blocks:
     kind: single_state
     text: >-
       Two gas-lamp sconces on the wall behind cast overlapping pools
-      of amber light. The illumination wraps around both figures from
-      behind and above, creating warm rim-light on hair and shoulders
-      while the desk surface glows from reflected light below.
+      of amber light. The illumination wraps around figures from behind
+      and above, creating warm rim-light on hair and shoulders while
+      nearby surfaces glow from reflected light below.
     tags:
       intent: modify
       key_light: gas_lamp
       warmth: warm
       direction: behind_above
       contrast: medium
-      genre: detective
     complexity_level: moderate
 
   - block_id: ie_key_gas_lamp_03
@@ -771,16 +353,15 @@ blocks:
     kind: single_state
     text: >-
       A single desk lamp with a green glass shade provides the only
-      light source, casting a concentrated warm pool across the papers
-      and her hands. Everything beyond arm's reach dissolves into soft
-      darkness. Faces are lit from below and to the side.
+      light source, casting a concentrated warm pool across the
+      immediate work surface. Everything beyond arm's reach dissolves
+      into soft darkness. Faces are lit from below and to the side.
     tags:
       intent: modify
       key_light: gas_lamp
       warmth: warm
       direction: desk_below
       contrast: high
-      genre: detective
     complexity_level: moderate
 
   - block_id: ie_fill_fireplace_glow
@@ -998,58 +579,6 @@ blocks:
     complexity_level: complex
 
   # ═══════════════════════════════════════════════════════════════════
-  # CAMERA — over-shoulder compressed framing
-  # ═══════════════════════════════════════════════════════════════════
-
-  - block_id: ie_cam_over_shoulder_01
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera remains slightly over his shoulder, compressing the space
-      between them. His shoulder appears in the near foreground, softly
-      out of focus. She remains clearly lit and dominant in the frame.
-    tags:
-      intent: modify
-      camera_angle: over_shoulder
-      perspective: compressed
-      genre: detective
-    complexity_level: moderate
-
-  - block_id: ie_cam_over_shoulder_02
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Shot framed from behind and above his right shoulder, his dark
-      jacket forming a soft blur in the lower-right foreground. The
-      desk and her hands are sharp, her face in three-quarter profile,
-      the gas-light catching her features while his remain in shadow.
-    tags:
-      intent: modify
-      camera_angle: over_shoulder
-      perspective: compressed
-      genre: detective
-    complexity_level: moderate
-
-  - block_id: ie_cam_desk_level_01
-    role: camera
-    category: angle
-    kind: single_state
-    text: >-
-      Camera at desk surface level, looking across the scattered papers
-      toward both figures. Documents in the extreme foreground are soft
-      and large, their proximity exaggerating the clutter. Both figures
-      occupy the middle distance, the space between them compressed
-      by the low angle.
-    tags:
-      intent: modify
-      camera_angle: desk_level
-      perspective: low
-      genre: detective
-    complexity_level: moderate
-
-  # ═══════════════════════════════════════════════════════════════════
   # MOOD — intimate disruption / tension
   # ═══════════════════════════════════════════════════════════════════
 
@@ -1102,4 +631,534 @@ blocks:
       tension: high
       mood: warm
       genre: detective
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # POLICE PRECINCT — environment, wardrobe, placement, lighting, mood
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── environment — break room variants ───────────────────────────
+
+  - block_id: ie_bg_police_break_room_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into a modern police precinct break area.
+      A brushed-steel coffee machine sits on a narrow counter, its position
+      aligned naturally with her current hand placement. Institutional walls
+      in muted grey-blue, scuffed linoleum, a corkboard with shift rosters
+      pinned to it. The space is functional and confined — counters on both
+      sides create a corridor-like compression that forces anyone present into
+      close proximity. Desks and equipment visible through an open doorway
+      remain understated so she stays the absolute visual focus.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_bg_police_break_room_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her in the narrow kitchenette alcove of a precinct station.
+      A commercial coffee maker sits on the counter at the height of her
+      hands. Overhead strip lighting, pale institutional tile, a small
+      fridge humming in the corner. The alcove is barely wide enough for
+      two people — anyone approaching the machine must press past whoever
+      is already standing there. Through a glass-panelled door at the far
+      end, a hallway stretches toward the lobby.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_bg_police_break_room_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      A utilitarian precinct break room forms around her. Coffee station
+      built into the wall, drip tray, stack of ceramic mugs. Filing cabinets
+      line one side, a wall-mounted TV plays muted news footage. The room
+      is small enough that every movement registers — brushing past someone
+      is unavoidable. A reinforced glass partition separates the break area
+      from the public-facing corridor beyond.
+    tags:
+      intent: modify
+      layer: background
+      location: police_break_room
+      setting_style: modern_institutional
+      genre: police
+    complexity_level: complex
+
+  # ── wardrobe — police uniform rework ────────────────────────────
+
+  - block_id: ie_style_police_uniform_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Refine her existing outfit into a sleek police uniform interpretation
+      while preserving the original garment structure and coverage area.
+      Deep navy tone, smooth fitted tailoring that traces every line and
+      curve of her natural figure with deliberate precision. The fabric
+      sits flush against her waist, hips, and thighs, following the body
+      closely enough that each subtle contour reads clearly through the
+      material. Structured waist with a slim duty belt riding low on her
+      hips. Precise seams run along the sides, drawing the eye down her
+      silhouette. A small polished badge catches the light at her chest.
+      Where her pose creates natural tension — a bent arm, a shifted hip —
+      the fabric pulls slightly taut, revealing the shape beneath with
+      quiet emphasis. The uniform reads as deliberately fitted, form over
+      function, every panel cut to flatter.
+    tags:
+      intent: modify
+      aesthetic: police_uniform
+      genre: police
+      palette: dark_navy
+      texture: smooth_wool
+      sensuality: elevated
+    complexity_level: complex
+
+  - block_id: ie_style_police_uniform_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Adapt her clothing into a modern police duty uniform that clings to
+      her frame as though tailored to a second-skin fit. Matte navy fabric
+      with a faint sheen where it stretches over curves. The shirt buttons
+      follow the centerline precisely, the material drawing smooth between
+      them. Tailored trousers sit high at the waist and follow the hip and
+      thigh line without a single crease of excess fabric. A narrow belt
+      with a polished buckle cinches the waist, accentuating the ratio above
+      and below. Epaulettes at the shoulders, a single breast pocket, collar
+      pressed sharp. The overall effect is regulation on the surface, but
+      every seam and dart exists to sculpt and define her shape beneath.
+    tags:
+      intent: modify
+      aesthetic: police_uniform
+      genre: police
+      palette: dark_navy
+      texture: matte_stretch
+      sensuality: elevated
+    complexity_level: complex
+
+  - block_id: ie_style_police_uniform_03
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Rework her outfit into a fitted precinct uniform with deliberate
+      couture sharpness. Dark navy, almost black. The blouse is tucked
+      tight, its fabric smooth and uninterrupted across her torso, the
+      bottom two buttons left undone where it meets the waistband. Slim
+      tactical trousers hug her hips and upper thighs before tapering.
+      A thin leather duty belt sits on the hip bones, its weight pulling
+      the waistband fractionally lower. Cuffs folded once at the forearm,
+      exposing bare wrists. The silhouette is unmistakably uniform yet
+      reads like something chosen rather than issued — every contour
+      emphasized by the precision of the cut.
+    tags:
+      intent: modify
+      aesthetic: police_uniform
+      genre: police
+      palette: dark_navy
+      texture: smooth_tactical
+      sensuality: elevated
+    complexity_level: complex
+
+  # ── wardrobe — su_lt-ry uniform variants (genre-generic) ────────
+  #
+  # These blocks do NOT name a specific genre. They reference
+  # "the scene's implied dress code / uniform" and let the model
+  # infer the genre from the environment and mood blocks already
+  # present in the assembled prompt.
+
+  - block_id: ie_style_sultry_uniform_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Reinterpret her outfit as a su_lt-ry, daring variant of whatever attire
+      the surrounding scene implies. Keep the genre's palette and key signifiers
+      — badges, buckles, insignia, period details — but shorten hemlines well
+      above mid-thigh, bare the midriff or deepen the neckline, and tighten
+      every panel until fabric maps each curve without ambiguity. The outfit
+      should read as a deliberate fantasy version of the scene's dress code,
+      not as regulation wear. Prioritise skin ratio and silhouette over
+      authenticity.
+    tags:
+      intent: modify
+      variant: sultry
+      sensuality: high
+    complexity_level: complex
+
+  - block_id: ie_style_sultry_uniform_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Transform her clothing into a loosened, provo_ca-tive reading of the
+      scene's implied uniform or dress code. Buttons undone to mid-sternum,
+      shirt untucked or tied at the waist exposing bare skin between hem and
+      waistband. Replace full-length bottoms with a fitted mini-skirt or
+      short shorts in the same palette. Retain just enough genre markers —
+      insignia, period fabric, rank hardware — for recognition, but strip
+      coverage down until the outfit is barely functional. The look should
+      feel like she chose to wear it this way.
+    tags:
+      intent: modify
+      variant: sultry
+      sensuality: high
+    complexity_level: complex
+
+  - block_id: ie_style_sultry_uniform_03
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Replace her outfit with a single-piece body-con garment that inherits
+      the colour palette and texture vocabulary of whatever attire the scene's
+      setting would normally dictate. The piece stops at upper thigh, fits
+      without a wrinkle, and reveals shoulders, arms, and legs. Clip or pin
+      one small genre-appropriate emblem at the neckline — a badge, brooch,
+      crest, or insignia — as the sole reference to the original uniform.
+      The rest is shape, skin, and fabric tension.
+    tags:
+      intent: modify
+      variant: sultry
+      sensuality: high
+    complexity_level: complex
+
+  # ── placement — coworker depth (close behind, police) ───────────
+
+  - block_id: ie_place_coworker_behind_police_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A male coworker stands directly behind her at the coffee machine,
+      angled inward. His hips are aligned with hers, separated only by
+      the minimal clearance the narrow counter allows. He has not stepped
+      back. His chest nearly grazes her upper back as he reaches forward.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+      genre: police
+    complexity_level: moderate
+
+  - block_id: ie_place_coworker_behind_police_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      He stands immediately behind and slightly to one side, his belt line
+      level with the curve of her lower back. The break room's tight layout
+      presses him close — his thigh nearly flush against the outside of hers,
+      their bodies parallel at the counter.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+      genre: police
+    complexity_level: moderate
+
+  - block_id: ie_place_coworker_behind_police_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      He has stepped up behind her to use the machine, his front aligned
+      directly with her back. The counter leaves no lateral space to pass,
+      so his body brackets hers from behind — close enough that any shift
+      in his weight would close the remaining distance entirely.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+      genre: police
+    complexity_level: moderate
+
+  # ── placement — coworker character description ──────────────────
+
+  - block_id: ie_char_coworker_police_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      He wears the same precinct uniform, sleeves pushed to the forearms,
+      collar loosened. He reaches past her to press a button on the machine,
+      his forearm crossing near her shoulder line, his hand lingering on
+      the counter beside her hip after the cup drops. His posture is
+      unhurried and relaxed but angled inward — his weight shifted onto
+      the foot closest to her. His proximity lingers a fraction too long
+      for routine, his breathing steady, his gaze following the line of
+      her neck rather than the coffee filling the cup.
+    tags:
+      intent: add
+      character_type: coworker
+      posture: reaching_lingering
+      proximity: intimate
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_char_coworker_police_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      Same duty uniform, top button undone, shoulders broad. He leans
+      forward to take a cup, his arm extending alongside hers, fingers
+      almost overlapping on the counter edge. His hip presses the counter
+      behind her, reducing the gap between them to fabric thickness.
+      His chin tilts toward her ear as if about to speak, but the words
+      haven't arrived yet — just warm breath and deliberate stillness.
+      One hand rests on the counter behind her waist, not quite touching,
+      a boundary acknowledged by millimetres rather than intention.
+    tags:
+      intent: add
+      character_type: coworker
+      posture: leaning_close
+      proximity: intimate
+      genre: police
+    complexity_level: complex
+
+  - block_id: ie_char_coworker_police_03
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      He mirrors the precinct uniform, duty belt heavy at his waist.
+      He reaches across her to grab a mug from the shelf, his torso
+      rotating so his chest aligns with her shoulder blade. His other
+      hand finds the counter on her opposite side, briefly enclosing
+      her between his arms under the excuse of retrieving something.
+      He withdraws slowly, dragging the moment, his belt catching
+      faintly against the small of her back as he straightens.
+      His expression stays neutral, professional — but his tempo
+      says otherwise.
+    tags:
+      intent: add
+      character_type: coworker
+      posture: enclosing_reach
+      proximity: intimate
+      genre: police
+    complexity_level: complex
+
+  # ── placement — partner behind glass ────────────────────────────
+
+  - block_id: ie_place_behind_glass_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      Through the glass door behind them, a figure stands in the public
+      corridor at a clear remove — visually present but physically
+      separated by the partition. The reflective surface faintly layers
+      his image over theirs, creating visual overlap without connection.
+    tags:
+      intent: add
+      layer: background
+      depth: far
+      placement: behind_glass
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_behind_glass_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      Beyond the reinforced glass partition, a man stands in the corridor
+      waiting area. The glass catches station light, ghosting faint
+      reflections of the two figures at the coffee machine across its
+      surface, merging foreground and background in a layered transparency.
+    tags:
+      intent: add
+      layer: background
+      depth: far
+      placement: behind_glass
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_char_separated_partner_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      Her man waits in casual clothes — soft hoodie, jeans, sneakers —
+      absorbed in his phone, thumb scrolling idly. He leans against the
+      corridor wall with easy patience, unaware of the scene unfolding
+      on the other side of the glass. His relaxed posture contrasts
+      sharply with the tight proximity in the foreground.
+    tags:
+      intent: add
+      character_type: separated_partner
+      posture: distracted
+      awareness: oblivious
+    complexity_level: moderate
+
+  - block_id: ie_char_separated_partner_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      Her partner stands beyond the glass in street clothes — jacket,
+      dark jeans — head bowed over his phone, earbuds in, fully
+      self-contained. He glances up occasionally but sees only his own
+      reflection layered over their silhouettes. A visitor's pass
+      lanyard hangs from his pocket. He is present and peripheral,
+      separated by architecture and attention.
+    tags:
+      intent: add
+      character_type: separated_partner
+      posture: idle_waiting
+      awareness: oblivious
+    complexity_level: moderate
+
+  # ── lighting — station overhead ─────────────────────────────────
+
+  - block_id: ie_key_station_overhead_01
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Overhead fluorescent station lights cast even, clinical illumination
+      across the scene. Soft highlights trace seams, contours, and edges
+      of dark fabric. The light falls without dramatic shadow, keeping
+      forms legible and precise. Subtle reflections appear on chrome
+      surfaces and glass partitions.
+    tags:
+      intent: modify
+      key_light: station_overhead
+      warmth: neutral_cool
+      direction: overhead
+      contrast: low
+      genre: police
+    complexity_level: moderate
+
+  - block_id: ie_key_station_overhead_02
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Flat institutional ceiling panels provide broad overhead light,
+      slightly cool in temperature. Dark fabrics absorb most of it, but
+      polished metal surfaces — badges, buckles, hardware — create small
+      bright points along silhouettes. All figures in the scene share the
+      same even illumination field with no dramatic falloff between layers.
+    tags:
+      intent: modify
+      key_light: station_overhead
+      warmth: neutral_cool
+      direction: overhead
+      contrast: low
+      genre: police
+    complexity_level: moderate
+
+  # ── lighting — glass reflection fill ────────────────────────────
+
+  - block_id: ie_fill_glass_reflection_01
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      A glass partition bounces faint secondary fill back into the
+      foreground space, softening shadow edges on rear-facing surfaces.
+      The reflection carries a cooler tone than the primary key light,
+      adding dimensional separation. Silhouettes ghost faintly on the
+      glass surface, layering foreground and background visually.
+    tags:
+      intent: modify
+      fill_light: glass_reflection
+      warmth: cool
+      purpose: separation
+    complexity_level: moderate
+
+  # ── mood — restrained sensual tension ───────────────────────────
+
+  - block_id: ie_mood_restrained_sensual_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: restrained sensual tension born from closeness, tailored form,
+      and divided attention within a professional setting. Every element
+      is technically innocent — a colleague using the same machine, a
+      uniform that simply fits well, a partner waiting patiently — yet the
+      framing, proximity, and fabric tension collaborate to suggest
+      something unspoken. The narrow space does the work that neither
+      figure acknowledges.
+    tags:
+      intent: modify
+      atmosphere: restrained_sensual
+      tension: high
+      mood: warm
+      genre: police
+    complexity_level: moderate
+
+  - block_id: ie_mood_restrained_sensual_02
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: professional surface, sensual undercurrent. The break room
+      reads as mundane — linoleum, fluorescent light, coffee ritual — but
+      the depth layering tells a different story. Her sculpted uniform in
+      the extreme foreground, his body pressed into her space at midground,
+      and her man separated by glass in the background create a visual
+      hierarchy of intimacy versus exclusion. Tension lives in the gap
+      between what the scene shows and what it means.
+    tags:
+      intent: modify
+      atmosphere: restrained_sensual
+      tension: high
+      mood: warm
+      genre: police
+    complexity_level: moderate
+
+  - block_id: ie_mood_restrained_sensual_03
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: quiet transgression under fluorescent light. Nothing explicit
+      occurs — he reaches for coffee, she stands at the counter, her man
+      waits outside. But the camera angle makes her uniform the visual
+      subject, his closeness the visual verb, and the glass partition the
+      visual sentence break. The mood is held in the fabric's tautness,
+      the lingering hand, and the oblivious figure on the other side of
+      the glass who sees only his own reflection.
+    tags:
+      intent: modify
+      atmosphere: restrained_sensual
+      tension: high
+      mood: warm
+      genre: police
     complexity_level: moderate
