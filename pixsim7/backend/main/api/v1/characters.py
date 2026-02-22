@@ -7,6 +7,7 @@ REST API for managing the character registry including:
 - Usage tracking
 - Game integration
 """
+from datetime import datetime
 from typing import List, Optional, Dict, Any
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -92,8 +93,8 @@ class CharacterResponse(BaseModel):
     render_style: Optional[str]
     version: int
     usage_count: int
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True
@@ -108,7 +109,7 @@ class CharacterDetailResponse(CharacterResponse):
     game_metadata: Dict[str, Any]
     previous_version_id: Optional[UUID]
     version_notes: Optional[str]
-    last_used_at: Optional[str]
+    last_used_at: Optional[datetime]
     tags: Dict[str, Any]
     character_metadata: Dict[str, Any]
     created_by: Optional[str]

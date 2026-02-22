@@ -378,7 +378,6 @@ blocks:
       fill_light: fireplace
       warmth: warm
       purpose: shadow_softening
-      genre: detective
     complexity_level: simple
 
   # ═══════════════════════════════════════════════════════════════════
@@ -441,9 +440,9 @@ blocks:
     category: desk_activity
     kind: single_state
     text: >-
-      She is idly sifting through his papers, lifting and shifting
-      documents in a deliberately careless way, creating mild disorder
-      across the desk. Pages slide, overlap, and drift off alignment.
+      She is idly sifting through {{detective}}'s papers, lifting and
+      shifting documents in a deliberately careless way, creating mild
+      disorder across the desk. Pages slide, overlap, and drift off alignment.
     tags:
       intent: modify
       activity: paper_sifting
@@ -490,7 +489,7 @@ blocks:
     text: >-
       She reads a single document held loosely in one hand, her posture
       relaxed, the other hand resting flat on the desk among the papers,
-      as if she has all the time in the world and none of it is his.
+      as if she has all the time in the world and none of it is {{detective}}'s.
     tags:
       intent: modify
       activity: reading
@@ -508,11 +507,12 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      An older detective stands extremely close behind her. He leans in,
+      {{detective}} stands extremely close behind her, leaning in,
       reaching past her slightly as if to rescue a particular document
       or stop her from misplacing evidence. One hand brushes lightly
-      near hers as he tries to gather the papers she has disturbed.
-      His expression mixes restrained exasperation with clear distraction.
+      near hers as {{detective}} tries to gather the papers she has
+      disturbed. {{detective}}'s expression mixes restrained exasperation
+      with clear distraction.
     tags:
       intent: add
       character_type: detective
@@ -527,11 +527,12 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He stands directly behind her, one hand braced on the desk edge
-      beside her hip, the other reaching across to retrieve a file she
-      has just displaced. He is close enough that his waistcoat presses
-      against her back when he leans forward. His jaw is set, his focus
-      split between the papers and her proximity.
+      {{detective}} stands directly behind her, one hand braced on the
+      desk edge beside her hip, the other reaching across to retrieve a
+      file she has just displaced. {{detective}} is close enough that
+      {{detective}}'s waistcoat presses against her back when leaning
+      forward. {{detective}}'s jaw is set, focus split between the papers
+      and her proximity.
     tags:
       intent: add
       character_type: detective
@@ -546,11 +547,12 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He hovers just behind and to her right, head angled down toward
-      the desk, following her hands as they move through his papers.
-      One arm extends past her shoulder to point at a specific document.
-      He has not quite touched her but the distance is measured in
-      inches, his irritation palpable in the tension of his outstretched hand.
+      {{detective}} hovers just behind and to her right, head angled
+      down toward the desk, following her hands as they move through
+      {{detective}}'s papers. One arm extends past her shoulder to point
+      at a specific document. {{detective}} has not quite touched her but
+      the distance is measured in inches, irritation palpable in the
+      tension of {{detective}}'s outstretched hand.
     tags:
       intent: add
       character_type: detective
@@ -565,11 +567,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He leans past her from behind, both hands flat on the desk on
-      either side of her, bracketing her position, his chin nearly
-      above her shoulder as he reads what she is holding. He has
-      forgotten his own indignation. His breathing is steady but
-      deliberate.
+      {{detective}} leans past her from behind, both hands flat on the
+      desk on either side of her, bracketing her position, chin nearly
+      above her shoulder as {{detective}} reads what she is holding.
+      {{detective}} has forgotten {{detective}}'s own indignation.
+      {{detective}}'s breathing is steady but deliberate.
     tags:
       intent: add
       character_type: detective
@@ -587,9 +589,9 @@ blocks:
     category: atmosphere
     kind: single_state
     text: >-
-      Mood: intimate disruption. She unsettles both his case files and
-      his composure. Playful chaos replacing clinical order. Their
-      shadows fall softly into the room behind them.
+      Mood: intimate disruption. She unsettles both {{detective}}'s
+      files and {{detective}}'s composure. Playful chaos replacing
+      clinical order. Their shadows fall softly into the room behind them.
     tags:
       intent: modify
       atmosphere: intimate_disruption
@@ -622,8 +624,8 @@ blocks:
     text: >-
       Mood: controlled tension. Every surface in the room suggests
       order — the shelved books, the labelled files — except the desk
-      where she sits and the man standing too close behind her. The
-      disruption is localised and deliberate. Warm light conspires
+      where she sits and {{detective}} standing too close behind her.
+      The disruption is localised and deliberate. Warm light conspires
       with the tight framing to make the room feel smaller than it is.
     tags:
       intent: modify
@@ -847,10 +849,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      A male coworker stands directly behind her at the coffee machine,
-      angled inward. His hips are aligned with hers, separated only by
-      the minimal clearance the narrow counter allows. He has not stepped
-      back. His chest nearly grazes her upper back as he reaches forward.
+      {{coworker}} stands directly behind her at the coffee machine,
+      angled inward. {{coworker}}'s hips are aligned with hers, separated
+      only by the minimal clearance the narrow counter allows. {{coworker}}
+      has not stepped back, chest nearly grazing her upper back while
+      reaching forward.
     tags:
       intent: add
       layer: midground
@@ -866,10 +869,10 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He stands immediately behind and slightly to one side, his belt line
-      level with the curve of her lower back. The break room's tight layout
-      presses him close — his thigh nearly flush against the outside of hers,
-      their bodies parallel at the counter.
+      {{coworker}} stands immediately behind and slightly to one side,
+      belt line level with the curve of her lower back. The break room's
+      tight layout presses {{coworker}} close — thigh nearly flush against
+      the outside of hers, their bodies parallel at the counter.
     tags:
       intent: add
       layer: midground
@@ -885,10 +888,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He has stepped up behind her to use the machine, his front aligned
-      directly with her back. The counter leaves no lateral space to pass,
-      so his body brackets hers from behind — close enough that any shift
-      in his weight would close the remaining distance entirely.
+      {{coworker}} has stepped up behind her to use the machine, front
+      aligned directly with her back. The counter leaves no lateral space
+      to pass, so {{coworker}}'s body brackets hers from behind — close
+      enough that any shift in weight would close the remaining distance
+      entirely.
     tags:
       intent: add
       layer: midground
@@ -906,14 +910,14 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He wears the same precinct uniform, sleeves pushed to the forearms,
-      collar loosened. He reaches past her to press a button on the machine,
-      his forearm crossing near her shoulder line, his hand lingering on
-      the counter beside her hip after the cup drops. His posture is
-      unhurried and relaxed but angled inward — his weight shifted onto
-      the foot closest to her. His proximity lingers a fraction too long
-      for routine, his breathing steady, his gaze following the line of
-      her neck rather than the coffee filling the cup.
+      {{coworker}} wears the same precinct uniform, sleeves pushed to the
+      forearms, collar loosened. {{coworker}} reaches past her to press a
+      button on the machine, forearm crossing near her shoulder line, hand
+      lingering on the counter beside her hip after the cup drops.
+      {{coworker}}'s posture is unhurried and relaxed but angled inward —
+      weight shifted onto the foot closest to her. {{coworker}}'s proximity
+      lingers a fraction too long for routine, breathing steady, gaze
+      following the line of her neck rather than the coffee filling the cup.
     tags:
       intent: add
       character_type: coworker
@@ -928,14 +932,15 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      Same duty uniform, top button undone, shoulders broad. He leans
-      forward to take a cup, his arm extending alongside hers, fingers
-      almost overlapping on the counter edge. His hip presses the counter
-      behind her, reducing the gap between them to fabric thickness.
-      His chin tilts toward her ear as if about to speak, but the words
-      haven't arrived yet — just warm breath and deliberate stillness.
-      One hand rests on the counter behind her waist, not quite touching,
-      a boundary acknowledged by millimetres rather than intention.
+      Same duty uniform, top button undone, shoulders broad. {{coworker}}
+      leans forward to take a cup, arm extending alongside hers, fingers
+      almost overlapping on the counter edge. {{coworker}}'s hip presses
+      the counter behind her, reducing the gap between them to fabric
+      thickness. {{coworker}}'s chin tilts toward her ear as if about to
+      speak, but the words haven't arrived yet — just warm breath and
+      deliberate stillness. One hand rests on the counter behind her
+      waist, not quite touching, a boundary acknowledged by millimetres
+      rather than intention.
     tags:
       intent: add
       character_type: coworker
@@ -950,15 +955,15 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      He mirrors the precinct uniform, duty belt heavy at his waist.
-      He reaches across her to grab a mug from the shelf, his torso
-      rotating so his chest aligns with her shoulder blade. His other
-      hand finds the counter on her opposite side, briefly enclosing
-      her between his arms under the excuse of retrieving something.
-      He withdraws slowly, dragging the moment, his belt catching
-      faintly against the small of her back as he straightens.
-      His expression stays neutral, professional — but his tempo
-      says otherwise.
+      {{coworker}} mirrors the precinct uniform, duty belt heavy at the
+      waist. {{coworker}} reaches across her to grab a mug from the shelf,
+      torso rotating so chest aligns with her shoulder blade. {{coworker}}'s
+      other hand finds the counter on her opposite side, briefly enclosing
+      her between both arms under the excuse of retrieving something.
+      {{coworker}} withdraws slowly, dragging the moment, belt catching
+      faintly against the small of her back while straightening.
+      {{coworker}}'s expression stays neutral, professional — but
+      {{coworker}}'s tempo says otherwise.
     tags:
       intent: add
       character_type: coworker
@@ -975,10 +980,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      Through the glass door behind them, a figure stands in the public
-      corridor at a clear remove — visually present but physically
+      Through the glass door behind them, {{partner}} stands in the
+      public corridor at a clear remove — visually present but physically
       separated by the partition. The reflective surface faintly layers
-      his image over theirs, creating visual overlap without connection.
+      {{partner}}'s image over theirs, creating visual overlap without
+      connection.
     tags:
       intent: add
       layer: background
@@ -993,10 +999,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      Beyond the reinforced glass partition, a man stands in the corridor
-      waiting area. The glass catches station light, ghosting faint
-      reflections of the two figures at the coffee machine across its
-      surface, merging foreground and background in a layered transparency.
+      Beyond the reinforced glass partition, {{partner}} stands in the
+      corridor waiting area. The glass catches station light, ghosting
+      faint reflections of the two figures at the coffee machine across
+      its surface, merging foreground and background in a layered
+      transparency.
     tags:
       intent: add
       layer: background
@@ -1011,11 +1018,11 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      Her man waits in casual clothes — soft hoodie, jeans, sneakers —
-      absorbed in his phone, thumb scrolling idly. He leans against the
-      corridor wall with easy patience, unaware of the scene unfolding
-      on the other side of the glass. His relaxed posture contrasts
-      sharply with the tight proximity in the foreground.
+      {{partner}} waits in casual clothes — soft hoodie, jeans, sneakers —
+      absorbed in a phone, thumb scrolling idly. {{partner}} leans against
+      the corridor wall with easy patience, unaware of the scene unfolding
+      on the other side of the glass. {{partner}}'s relaxed posture
+      contrasts sharply with the tight proximity in the foreground.
     tags:
       intent: add
       character_type: separated_partner
@@ -1029,12 +1036,12 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      Her partner stands beyond the glass in street clothes — jacket,
-      dark jeans — head bowed over his phone, earbuds in, fully
-      self-contained. He glances up occasionally but sees only his own
-      reflection layered over their silhouettes. A visitor's pass
-      lanyard hangs from his pocket. He is present and peripheral,
-      separated by architecture and attention.
+      {{partner}} stands beyond the glass in street clothes — jacket,
+      dark jeans — head bowed over a phone, earbuds in, fully
+      self-contained. {{partner}} glances up occasionally but sees only
+      {{partner}}'s own reflection layered over their silhouettes. A
+      visitor's pass lanyard hangs from a pocket. {{partner}} is present
+      and peripheral, separated by architecture and attention.
     tags:
       intent: add
       character_type: separated_partner
@@ -1131,10 +1138,10 @@ blocks:
       Mood: professional surface, sensual undercurrent. The break room
       reads as mundane — linoleum, fluorescent light, coffee ritual — but
       the depth layering tells a different story. Her sculpted uniform in
-      the extreme foreground, his body pressed into her space at midground,
-      and her man separated by glass in the background create a visual
-      hierarchy of intimacy versus exclusion. Tension lives in the gap
-      between what the scene shows and what it means.
+      the extreme foreground, {{coworker}}'s body pressed into her space
+      at midground, and {{partner}} separated by glass in the background
+      create a visual hierarchy of intimacy versus exclusion. Tension
+      lives in the gap between what the scene shows and what it means.
     tags:
       intent: modify
       atmosphere: restrained_sensual
@@ -1149,12 +1156,13 @@ blocks:
     kind: single_state
     text: >-
       Mood: quiet transgression under fluorescent light. Nothing explicit
-      occurs — he reaches for coffee, she stands at the counter, her man
-      waits outside. But the camera angle makes her uniform the visual
-      subject, his closeness the visual verb, and the glass partition the
-      visual sentence break. The mood is held in the fabric's tautness,
-      the lingering hand, and the oblivious figure on the other side of
-      the glass who sees only his own reflection.
+      occurs — {{coworker}} reaches for coffee, she stands at the counter,
+      {{partner}} waits outside. But the camera angle makes her uniform
+      the visual subject, {{coworker}}'s closeness the visual verb, and
+      the glass partition the visual sentence break. The mood is held in
+      the fabric's tautness, the lingering hand, and the oblivious figure
+      on the other side of the glass who sees only {{partner}}'s own
+      reflection.
     tags:
       intent: modify
       atmosphere: restrained_sensual
@@ -1162,3 +1170,610 @@ blocks:
       mood: warm
       genre: police
     complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SUBJECT — clothing preservation lock
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_lock_clothing_01
+    role: subject
+    category: clothing_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Her clothing remains exactly as it appears in the source image.
+      No added layers, no redesign, no structural changes. Maintain
+      fabric type, fit, coverage, and colour precisely. The outfit
+      integrates into the new environment without modification.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: clothing
+    complexity_level: simple
+
+  - block_id: ie_lock_clothing_02
+    role: subject
+    category: clothing_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve every aspect of her clothing exactly as-is — cut, colour,
+      fabric, layering, accessories. Do not adapt, stylise, or reinterpret
+      any garment to match the surrounding scene. She wears what she wears;
+      the environment conforms to her, not the reverse.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: clothing
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # NIGHT TRAIN — environment, placement, lighting, mood
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── environment — luxury night train variants ──────────────────
+
+  - block_id: ie_bg_night_train_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transform the surrounding space into the interior of an older luxury
+      night train. Polished dark wood paneling lines the walls, slightly
+      dulled brass rails run along overhead luggage racks. Deep upholstered
+      seating in faded burgundy flanks the narrow aisle. Dim yellow wall
+      lamps cast warm, low pools of light along the carriage walls. The
+      narrow aisle aligns with her existing stance, reading as if she
+      stands naturally within the carriage.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_02
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Place her inside a pre-war sleeper carriage. Walnut veneer panels
+      with hairline cracks in the lacquer, brass fittings tarnished to a
+      dull gold, heavy curtains half-drawn across compartment doorways.
+      The aisle is barely wide enough for two people to pass. Overhead
+      fixtures cast downward cones of amber light between stretches of
+      warm shadow. The carpet underfoot is patterned and slightly worn.
+      Her position reads as a natural pause mid-carriage.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  - block_id: ie_bg_night_train_03
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Surround her with the corridor of a faded Orient Express-era
+      carriage. Narrow passage, polished wood dado rail at hip height,
+      etched glass panels in compartment doors, brass handles reflecting
+      warm lamp-light. The ceiling is low, upholstered in quilted fabric.
+      Shallow alcoves between compartments compress the space further.
+      She stands where the corridor narrows near a vestibule junction,
+      the carriage's gentle sway implied by the slight blur of objects
+      at the frame edges.
+    tags:
+      intent: modify
+      layer: background
+      location: night_train
+      setting_style: vintage_luxury
+    complexity_level: complex
+
+  # ── placement — conductor depth (close, train aisle) ───────────
+
+  - block_id: ie_place_conductor_close_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} lingers in the confined aisle immediately behind her.
+      The narrow carriage forces {{conductor}} close — shoulder line
+      nearly overlapping hers in the frame, separated by inches rather
+      than choice. The aisle offers no room to step aside.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      setting: train
+      visibility: full
+    complexity_level: moderate
+
+  - block_id: ie_place_conductor_close_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} stands directly behind her in the aisle, the carriage
+      width leaving no lateral clearance. {{conductor}}'s uniform brushes
+      the air close to her back. The train's subtle sway compresses the
+      remaining distance between them at irregular intervals.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      setting: train
+      visibility: full
+    complexity_level: moderate
+
+  # ── placement — conductor character description ────────────────
+
+  - block_id: ie_char_conductor_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}}, slightly shabby in a worn uniform — creases from long
+      shifts visible across the jacket, collar loosened at the throat.
+      A few tickets or folded slips have fallen near her feet. {{conductor}}
+      bends to gather them, forced to lean inward within the tight aisle.
+      As {{conductor}} straightens, one hand steadies against the brass
+      rail close to her shoulder line. The motion brings {{conductor}}
+      fractionally nearer than necessary before adjusting posture, the
+      carriage's subtle sway keeping the space between them compressed a
+      moment longer than comfort allows.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: bending_straightening
+      proximity: close
+      genre: train
+    complexity_level: complex
+
+  - block_id: ie_char_conductor_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}}, uniform softened by years of service — brass buttons
+      dulled, cap slightly askew. {{conductor}} checks a leather-bound
+      manifest, turning sideways to pass but misjudging the clearance.
+      {{conductor}}'s hip grazes the rail beside her while pausing, pen
+      poised, asking a question she cannot quite hear over the wheels.
+      {{conductor}} tilts closer to repeat it, breath warm against her
+      ear, one hand braced on the paneling behind her shoulder. The train
+      rocks gently and neither of them corrects the distance.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: tilting_close
+      proximity: intimate
+      genre: train
+    complexity_level: complex
+
+  - block_id: ie_char_conductor_03
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{conductor}} reaches overhead to adjust a luggage rack latch,
+      torso extending past her, arm crossing above her head.
+      {{conductor}}'s worn jacket rides up, sleeve brushing close to her
+      hair. The aisle is too narrow for her to step aside, so she remains
+      still while {{conductor}} works, their bodies parallel and close for
+      several seconds. {{conductor}} lowers the arm slowly, fingertips
+      trailing the brass rail back down to waist height before stepping
+      back — one measured half-step that the carriage promptly erases
+      with its next sway.
+    tags:
+      intent: add
+      character_type: conductor
+      posture: reaching_overhead
+      proximity: intimate
+      genre: train
+    complexity_level: complex
+
+  # ── lighting — wall lamps (train) ──────────────────────────────
+
+  - block_id: ie_key_wall_lamps_01
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Dim yellow wall lamps mounted at intervals along the carriage
+      cast warm, low pools of light. The illumination integrates
+      naturally with the original shading on her skin so she remains
+      consistent and realistically lit within the space. Between the
+      pools, warm shadow gathers, softening edges and compressing depth.
+    tags:
+      intent: modify
+      key_light: wall_lamps
+      warmth: warm
+      direction: side
+      contrast: low
+    complexity_level: moderate
+
+  - block_id: ie_key_wall_lamps_02
+    role: lighting
+    category: key
+    kind: single_state
+    text: >-
+      Pairs of small brass-hooded lamps glow at shoulder height, their
+      light a deep amber that pools along polished surfaces and catches
+      the underside of overhead racks. The warm tone wraps figures without
+      harsh edges, preserving soft shadow transitions. Her existing
+      lighting direction is maintained — the wall lamps reinforce rather
+      than replace the original light on her skin.
+    tags:
+      intent: modify
+      key_light: wall_lamps
+      warmth: warm
+      direction: side
+      contrast: low
+    complexity_level: moderate
+
+  # ── lighting — train window reflection fill ────────────────────
+
+  - block_id: ie_fill_train_window_01
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Outside the windows, darkness rushes past. Faint interior
+      reflections layer softly across the glass, ghosting warm lamp-light
+      and silhouettes back into the carriage. The moving reflections add
+      a subtle secondary fill that shifts imperceptibly with the train's
+      motion.
+    tags:
+      intent: modify
+      fill_light: window_reflection_train
+      warmth: warm
+      purpose: atmosphere
+    complexity_level: moderate
+
+  - block_id: ie_fill_train_window_02
+    role: lighting
+    category: fill
+    kind: single_state
+    text: >-
+      Night presses against the carriage windows — pure black beyond
+      the glass, broken only by faint reflected doubles of the interior
+      lamps. Her silhouette and {{conductor}}'s overlap as soft ghosts on the window
+      surface, creating a layered transparency that compresses visual
+      depth. The glass acts as a secondary light source, bouncing a
+      fraction of the warm interior glow back into the space.
+    tags:
+      intent: modify
+      fill_light: window_reflection_train
+      warmth: warm
+      purpose: atmosphere
+    complexity_level: moderate
+
+  # ── mood — confined nocturnal tension ──────────────────────────
+
+  - block_id: ie_mood_confined_nocturnal_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: intimate late-night tension inside an aging luxury carriage.
+      Proximity amplified by motion and confined space rather than overt
+      action. The narrow aisle, the low ceiling, the warm amber light,
+      and the darkness outside conspire to make every inch of distance
+      between figures feel deliberate and insufficient.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: high
+      mood: warm
+    complexity_level: moderate
+
+  - block_id: ie_mood_confined_nocturnal_02
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: slow nocturnal compression. The train moves, the carriage
+      sways, and the space between two people contracts and expands
+      with the rhythm of the rails. Neither moves to widen the gap.
+      Warm light, worn surfaces, and the sealed darkness outside create
+      a world that begins and ends within the carriage walls. Time
+      stretches with the journey.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: medium
+      mood: warm
+    complexity_level: moderate
+
+  - block_id: ie_mood_confined_nocturnal_03
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Mood: quiet inevitability. A long corridor, a late hour, two
+      people and no room. The train's rhythm replaces conversation —
+      a steady pulse that makes stillness feel more charged than motion.
+      Amber light pools on polished wood, darkness streams past the
+      glass, and the space between them holds its shape only because
+      neither has yet decided to close it.
+    tags:
+      intent: modify
+      atmosphere: confined_nocturnal
+      tension: high
+      mood: warm
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA — generic directives (reusable across templates)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_cam_lock_observer
+    role: camera
+    category: camera_lock
+    kind: single_state
+    text: >-
+      Camera remains a fixed observer throughout. The vantage holds
+      steady from start to finish, framing the scene from its
+      established position.
+    tags:
+      intent: preserve
+      camera: observer_lock
+      direction: lateral_or_receding
+    complexity_level: simple
+
+  - block_id: ie_cam_lock_observer_02
+    role: camera
+    category: camera_lock
+    kind: single_state
+    text: >-
+      The camera maintains a steady third-person vantage. The framing
+      stays consistent, observing rather than participating. The lens
+      holds its distance and angle throughout.
+    tags:
+      intent: preserve
+      camera: observer_lock
+      direction: lateral_or_receding
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA — over-shoulder angles (generic)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_cam_over_shoulder_01
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Camera positioned behind and slightly above one figure's shoulder,
+      looking past them into the scene. The shoulder and upper arm form
+      a soft foreground frame on one side, giving depth and a voyeuristic
+      intimacy to the composition. Shallow depth of field keeps the
+      shoulder soft while the subject beyond stays sharp.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  - block_id: ie_cam_over_shoulder_02
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Over-the-shoulder framing from behind the rearmost figure. The
+      camera sits at their ear height, their silhouette occupying the
+      left or right third of the frame while the subject fills the
+      remaining space. The asymmetry creates natural tension between
+      the two focal planes.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  - block_id: ie_cam_over_shoulder_03
+    role: camera
+    category: angle
+    kind: single_state
+    text: >-
+      Tight over-shoulder angle, the camera nearly resting on the
+      rearmost figure's collarbone. Their shoulder fills the lower
+      foreground, slightly out of focus, while the subject is framed
+      in sharp relief just beyond. The closeness of the camera to
+      the rear figure implies shared perspective — the viewer sees
+      what they see, from where they stand.
+    tags:
+      intent: modify
+      camera_angle: over_shoulder
+      depth: layered
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # PLACEMENT — generic close-behind depth (spatial only)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: ie_place_close_behind_01
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A figure stands directly behind her, separated by inches. The
+      space they share is narrow enough that proximity is imposed by
+      architecture rather than intention — neither has room to step
+      aside without contact.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_close_behind_02
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      He stands immediately behind and slightly offset, his body
+      angled toward hers. The gap between them is a single breath
+      wide — close enough that any shift in weight from either side
+      would erase it entirely.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  - block_id: ie_place_close_behind_03
+    role: placement
+    category: depth
+    kind: single_state
+    default_intent: add
+    text: >-
+      A figure positioned directly behind her, their front aligned
+      with her back, the vertical lines of both silhouettes nearly
+      overlapping in the frame. The tight clearance reads as
+      deliberate stillness rather than casual proximity.
+    tags:
+      intent: add
+      layer: midground
+      depth: close
+      placement: behind
+      visibility: full
+    complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CAMERA — drift behind (generic opening moves)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: cam_drift_behind_01
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera slowly orbits to reveal the view from directly where her
+      back is, drifting around until her re_a-r is centered in frame
+      regardless of her initial facing direction, smooth cinematic movement
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: simple
+
+  - block_id: cam_drift_behind_02
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera descends from a high angle, tracking slowly downward
+      and behind her until it settles at hip height, the framing
+      placing her lower back and hi_p-s center-screen, the depth of
+      field narrowing to isolate her figure
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate
+
+  - block_id: cam_drift_behind_03
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      A slow tracking shot circles from her side to directly behind,
+      the framing tilting downward as it travels, settling on a low
+      three-quarter re_a-r angle, the shallow depth of field blurring the
+      background while her silhouette sharpens into crisp relief
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate
+
+  - block_id: cam_drift_behind_04
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      Handheld-style camera floats at waist height, drifting laterally
+      and then curving around behind her in one unbroken take, the
+      slight motion blur lending immediacy, the final framing centered
+      on the small of her back
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: simple
+
+  - block_id: cam_drift_behind_05
+    role: camera
+    category: drift
+    kind: single_state
+    text: >-
+      The camera rises from floor level behind her, climbing in a
+      smooth crane-like arc, the low start emphasizing the ground
+      and her stance before settling at hip height, the wide angle
+      compressing the space between her and whatever is behind
+    tags:
+      camera: drift_behind
+      motion: drift
+      temporal_position: opening
+    complexity_level: moderate
+
+  # ═══════════════════════════════════════════════════════════════════
+  # SETTING — generic interior/exterior atmosphere
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: setting_warm_interior
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Warm interior light fills the room, late afternoon sun cutting
+      through half-drawn blinds in golden bars, the floor is hardwood,
+      the space intimate, a sofa and low table defining the boundary
+      of the scene
+    tags:
+      tone: warm
+      setting: interior
+    complexity_level: simple
+
+  - block_id: setting_bedroom_amber
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      A dimly lit bedroom, sheets rumpled, a single lamp casting a
+      cone of amber light across the bed and floor, shadows pooling
+      in the corners, the air close and still
+    tags:
+      tone: intimate
+      setting: interior
+    complexity_level: simple
+
+  - block_id: setting_secluded_patio
+    role: setting
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Outside on a secluded patio, trees screening the view, dappled
+      light shifting across the stone floor, a low bench along one
+      wall, the quiet broken only by birdsong and the distant hum
+      of wind through leaves
+    tags:
+      tone: warm
+      setting: exterior
+    complexity_level: simple

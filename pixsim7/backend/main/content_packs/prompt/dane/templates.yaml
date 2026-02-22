@@ -15,8 +15,14 @@ templates:
     character_bindings:
       dane:
         character_id: "great_dane_01"
+        cast:
+          label: "Animal"
+          filter_species: "canine_large"
       her:
         character_id: "her_01"
+        cast:
+          label: "Subject"
+          filter_category: "human"
     template_metadata:
       target_duration_sec: 8
       max_chars: 2048
@@ -32,7 +38,6 @@ templates:
         category: drift
         tag_constraints:
           camera: drift_behind
-          species: canine_large
         selection_strategy: uniform
         optional: false
 
@@ -48,7 +53,7 @@ templates:
       # ── Lock in anatomy before contact
       - label: Physical reminder
         kind: reinforcement
-        reinforcement_text: "({{dane}}: {{dane.chest}}, {{dane.haunches}}, {{dane.shoulders}}, {{dane.stance}})"
+        reinforcement_text: "({{dane}}: realistic proportions — four {{dane.limbs}} on the ground, back level with her hip, head at her waist. {{dane.limbs}} with claws. Both figures remain distinct and separately rendered. {{dane.chest}}, {{dane.haunches}}, {{dane.shoulders}}, {{dane.stance}})"
 
       # ── Approach / investigation
       - label: Approach
@@ -94,7 +99,7 @@ templates:
       # ── Her reaction audio
       - label: Her audio cue
         kind: audio_cue
-        reinforcement_text: "(she {{her.vocal_pleasure}}, {{her.breath}})"
+        reinforcement_text: "she whispers \"{{her.utterance}}\", {{her.vocal_pleasure}}, {{her.breath}}"
         inherit_intensity: true
 
       # ── Her physical reaction
@@ -106,11 +111,21 @@ templates:
         selection_strategy: uniform
         optional: false
 
-      # ── Final frame
+      # ── Final frame (optional — omit to keep the video less camera-busy)
       - label: Closeup
         role: camera
         category: closeup
         tag_constraints:
           species: canine_large
+        selection_strategy: uniform
+        optional: true
+        fallback_text: ""
+
+      # ── Terminal camera lock (generic block)
+      - label: Camera lock
+        role: camera
+        category: camera_lock
+        tag_constraints:
+          camera: observer_lock
         selection_strategy: uniform
         optional: false
