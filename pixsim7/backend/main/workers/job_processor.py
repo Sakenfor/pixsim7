@@ -532,16 +532,17 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 try:
                     pref_account = await db.get(ProviderAccount, generation.preferred_account_id)
                     if pref_account and pref_account.provider_id == generation.provider_id:
-                        # For user-selected preferred accounts, only check hard
-                        # blockers (disabled/cooldown/daily limit).  Skip concurrency
-                        # check — the provider will queue or reject, and the safety
-                        # net requeues on auth/quota errors.
+                        # For user-selected preferred accounts, check hard blockers
+                        # (disabled/cooldown/daily limit) and concurrency capacity.
                         skip_reason = pref_account.get_operational_skip_reason()
                         if skip_reason is None:
-                            await account_service.reserve_account(pref_account.id)
-                            account = pref_account
-                            gen_logger.info("preferred_account_used", account_id=account.id)
-                            debug.worker("preferred_account_used", account_id=account.id)
+                            reserved = await account_service.reserve_account_if_available(pref_account.id)
+                            if reserved:
+                                account = reserved
+                                gen_logger.info("preferred_account_used", account_id=account.id)
+                                debug.worker("preferred_account_used", account_id=account.id)
+                            else:
+                                gen_logger.info("preferred_account_at_capacity", account_id=pref_account.id)
                         else:
                             gen_logger.info("preferred_account_unavailable", account_id=pref_account.id, reason=skip_reason)
                     elif pref_account:
@@ -557,20 +558,22 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             gen_model = gen_params.get("model")
 
             # Try to reuse previous account on retry.
-            # Skip credit AND concurrency checks — the generation already had
-            # a slot on this account, and the preferred path may have pushed it
-            # past the concurrency limit.  Only hard blockers (disabled/cooldown/
-            # daily limit) prevent reuse.
+            # Skip credit checks — the generation already had a slot on this
+            # account.  Check hard blockers (disabled/cooldown/daily limit)
+            # and concurrency capacity before reserving.
             if generation.account_id:
                 try:
                     prev_account = await db.get(ProviderAccount, generation.account_id)
                     if prev_account:
                         skip_reason = prev_account.get_operational_skip_reason()
                         if skip_reason is None:
-                            await account_service.reserve_account(prev_account.id)
-                            account = prev_account
-                            gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
-                            debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                            reserved = await account_service.reserve_account_if_available(prev_account.id)
+                            if reserved:
+                                account = reserved
+                                gen_logger.info("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                                debug.worker("account_reused", account_id=account.id, provider_id=generation.provider_id)
+                            else:
+                                gen_logger.info("account_reuse_at_capacity", account_id=prev_account.id)
                         else:
                             gen_logger.info("account_reuse_unavailable", account_id=prev_account.id, reason=skip_reason)
                 except Exception as e:
@@ -616,11 +619,37 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         return defer_result
                     # Fall through to fail if defer itself fails
 
+                # Account is operationally OK — defer until a slot frees up.
+                # This covers both the explicit at-capacity case and the race
+                # condition where capacity freed between the reservation attempt
+                # and this check.
+                if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
+                    defer_seconds = CONCURRENT_COOLDOWN_SECONDS + 5  # ~35s
+                    gen_logger.info(
+                        "preferred_account_capacity_defer",
+                        account_id=pref_id,
+                        defer_seconds=defer_seconds,
+                        has_capacity=_pref_acct.has_capacity(),
+                    )
+                    defer_result = await _defer_pinned_generation(
+                        db=db,
+                        generation=generation,
+                        generation_id=generation_id,
+                        account_id=pref_id,
+                        defer_seconds=defer_seconds,
+                        reason="pinned_account_capacity_wait",
+                        gen_logger=gen_logger,
+                        increment_retry=False,
+                    )
+                    if defer_result:
+                        return defer_result
+
                 # Permanent unavailability (disabled, daily limit, etc.)
                 gen_logger.warning(
                     "preferred_account_pinned_unavailable",
                     account_id=pref_id,
                     generation_id=generation_id,
+                    skip_reason=_pref_acct.get_operational_skip_reason() if _pref_acct else "account_not_found",
                 )
                 debug.worker("preferred_account_pinned_unavailable", account_id=pref_id)
                 await generation_service.mark_failed(

@@ -319,6 +319,15 @@ class AssetIngestionService:
                 )
                 return asset
 
+        # Skip if another call is already processing this asset (race between
+        # event handler background task and frontend /sync endpoint).
+        if not force and asset.ingest_status == INGEST_PROCESSING:
+            logger.debug(
+                "ingest_skipped_already_processing",
+                asset_id=asset_id,
+            )
+            return asset
+
         # Mark as processing
         asset.ingest_status = INGEST_PROCESSING
         asset.ingest_error = None

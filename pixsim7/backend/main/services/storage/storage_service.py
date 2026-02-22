@@ -20,6 +20,7 @@ Usage:
 import os
 import asyncio
 import hashlib
+import tempfile
 from pathlib import Path
 from typing import Optional, BinaryIO, Union
 from datetime import datetime
@@ -148,26 +149,43 @@ class LocalStorageService(StorageService):
         content: Union[bytes, BinaryIO],
         content_type: Optional[str] = None,
     ) -> str:
-        """Store content at the given key."""
+        """Store content at the given key.
+
+        Uses atomic write (temp file + rename) so concurrent readers never
+        see a partially-written file.
+        """
         path = self._key_to_path(key)
 
         # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write content
-        if isinstance(content, bytes):
-            async with aiofiles.open(path, 'wb') as f:
-                await f.write(content)
-        else:
-            # File-like object - read and write
-            async with aiofiles.open(path, 'wb') as f:
-                # Read in chunks for large files
-                chunk_size = 1024 * 1024  # 1MB chunks
-                while True:
-                    chunk = content.read(chunk_size)
-                    if not chunk:
-                        break
-                    await f.write(chunk)
+        # Write to temp file in the same directory, then atomic rename.
+        fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+        try:
+            os.close(fd)
+            if isinstance(content, bytes):
+                async with aiofiles.open(tmp_path, 'wb') as f:
+                    await f.write(content)
+            else:
+                # File-like object - read and write
+                async with aiofiles.open(tmp_path, 'wb') as f:
+                    chunk_size = 1024 * 1024  # 1MB chunks
+                    while True:
+                        chunk = content.read(chunk_size)
+                        if not chunk:
+                            break
+                        await f.write(chunk)
+
+            # Atomic rename (same filesystem, so this is atomic on POSIX;
+            # on Windows os.replace is as close as we get).
+            os.replace(tmp_path, str(path))
+        except BaseException:
+            # Clean up temp file on any error
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
 
         logger.debug(
             "file_stored",
