@@ -8,12 +8,34 @@
 
 import { buildMaskFilename, buildMaskUploadContext } from '@pixsim7/shared.media.core';
 import { useToast } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { getAsset } from '@lib/api/assets';
+import { API_BASE_URL } from '@lib/api';
 import { uploadAsset } from '@lib/api/upload';
+import { authService } from '@lib/auth';
 
-import type { ViewerAsset } from '@features/assets';
+import { useAssets, type AssetModel, type ViewerAsset } from '@features/assets';
+import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
+import { getGenerationSettingsStore, useGenerationScopeStores } from '@features/generation';
+import {
+  GENERATION_SCOPE_ID,
+  getInstanceId,
+  getScopeMode,
+  panelSettingsScopeRegistry,
+  resolveScopeInstanceId,
+  usePanelInstanceSettingsStore,
+} from '@features/panels';
+
+
+import {
+  type AnyElement,
+  InteractiveImageSurface,
+  type InteractionMode,
+  type StrokeElement,
+  useInteractionLayer,
+} from '@/components/interactive-surface';
+import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
+
 import {
   OverlaySidePanel,
   SideSection,
@@ -23,18 +45,6 @@ import {
   SideIconButton,
   SidePrimaryButton,
 } from '../shared/OverlaySidePanel';
-import { assetEvents } from '@features/assets/lib/assetEvents';
-import { useGenerationScopeStores } from '@features/generation';
-
-import {
-  type AnyElement,
-  InteractiveImageSurface,
-  type InteractionMode,
-  useInteractionLayer,
-} from '@/components/interactive-surface';
-import { useAuthenticatedMedia } from '@/hooks/useAuthenticatedMedia';
-
-import { resolveViewerAssetProviderId } from '../../utils/providerResolution';
 import type { MediaOverlayComponentProps } from '../types';
 
 import { useMaskOverlayStore } from './maskOverlayStore';
@@ -63,6 +73,20 @@ function getMaskDraftStorageKey(asset: ViewerAsset): string {
     ? String(asset.metadata?.path || asset.id)
     : String(asset.id);
   return `${MASK_DRAFT_STORAGE_PREFIX}:${asset.source}:${encodeURIComponent(identity)}`;
+}
+
+function getViewerBackendAssetId(asset: ViewerAsset): number | null {
+  const metadataAssetId = asset.metadata?.assetId;
+  if (typeof metadataAssetId === 'number' && Number.isFinite(metadataAssetId) && metadataAssetId > 0) {
+    return metadataAssetId;
+  }
+
+  const directId = Number(asset.id);
+  if (Number.isFinite(directId) && directId > 0) {
+    return directId;
+  }
+
+  return null;
 }
 
 function toMaskDraftMode(mode: InteractionMode): MaskDraftMode {
@@ -124,13 +148,150 @@ function writeMaskDraft(asset: ViewerAsset, draft: MaskOverlayDraft | null): voi
   }
 }
 
+function resolveViewerQuickGenScopeId(): string {
+  const panelManagerId = 'viewerQuickGenerate';
+  const panelId = panelManagerId;
+  const instanceId = getInstanceId(panelManagerId, panelId);
+  const scopeDef = panelSettingsScopeRegistry.get(GENERATION_SCOPE_ID);
+  if (!scopeDef) return instanceId;
+
+  const scopes = usePanelInstanceSettingsStore.getState().instances[instanceId]?.scopes;
+  const mode = getScopeMode(scopes, scopeDef, scopeDef.defaultMode);
+
+  if (scopeDef.resolveScopeId) {
+    return resolveScopeInstanceId(scopeDef, mode, {
+      instanceId,
+      panelId,
+      dockviewId: panelManagerId,
+    });
+  }
+
+  return mode === 'global' ? 'global' : instanceId;
+}
+
+function setMaskUrlInRelevantGenerationScopes(maskUrl: string | undefined): void {
+  getGenerationSettingsStore('global').getState().setParam('mask_url', maskUrl);
+  const viewerScopeId = resolveViewerQuickGenScopeId();
+  getGenerationSettingsStore(viewerScopeId).getState().setParam('mask_url', maskUrl);
+}
+
+function makeMaskStrokeId(index: number): string {
+  const rand = globalThis.crypto?.randomUUID?.();
+  return rand ?? `mask-import-${Date.now()}-${index}`;
+}
+
+async function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.decoding = 'async';
+    const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to decode mask image.'));
+    });
+    img.src = objectUrl;
+    return await loaded;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function rasterMaskToEditableStrokes(
+  imageData: ImageData,
+  layerId: string,
+): StrokeElement[] {
+  const { width, height, data } = imageData;
+  if (width <= 0 || height <= 0) return [];
+
+  const strokes: StrokeElement[] = [];
+  const lineSize = 1 / width;
+  let strokeIndex = 0;
+
+  const isWhiteMaskPixel = (idx: number): boolean => {
+    const r = data[idx];
+    const g = data[idx + 1];
+    const b = data[idx + 2];
+    const a = data[idx + 3];
+    if (a < 16) return false;
+    return (r + g + b) >= 384;
+  };
+
+  for (let y = 0; y < height; y++) {
+    let x = 0;
+    while (x < width) {
+      while (x < width && !isWhiteMaskPixel((y * width + x) * 4)) x++;
+      if (x >= width) break;
+
+      const start = x;
+      while (x < width && isWhiteMaskPixel((y * width + x) * 4)) x++;
+      const end = x - 1;
+
+      const yNorm = (y + 0.5) / height;
+      const x1 = (start + 0.5) / width;
+      const x2 = start === end
+        ? Math.min(1, (end + 0.501) / width)
+        : (end + 0.5) / width;
+
+      strokes.push({
+        id: makeMaskStrokeId(strokeIndex++),
+        type: 'stroke',
+        layerId,
+        visible: true,
+        points: [
+          { x: x1, y: yNorm },
+          { x: x2, y: yNorm },
+        ],
+        tool: {
+          size: lineSize,
+          color: '#ffffff',
+          opacity: 0.7,
+        },
+        isErase: false,
+      });
+    }
+  }
+
+  return strokes;
+}
+
+async function fetchMaskAssetAsEditableStrokes(maskAssetId: number, layerId: string): Promise<StrokeElement[]> {
+  const token = authService.getStoredToken();
+  const url = `${API_BASE_URL.replace(/\/$/, '')}/assets/${maskAssetId}/file`;
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to load mask image (${res.status})`);
+  }
+
+  const blob = await res.blob();
+  const decoded = await loadImageFromBlob(blob);
+
+  const maxDim = 512;
+  const scale = Math.min(1, maxDim / Math.max(decoded.naturalWidth || decoded.width, decoded.naturalHeight || decoded.height));
+  const width = Math.max(1, Math.round((decoded.naturalWidth || decoded.width) * scale));
+  const height = Math.max(1, Math.round((decoded.naturalHeight || decoded.height) * scale));
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) {
+    throw new Error('Failed to prepare mask import canvas.');
+  }
+
+  ctx.drawImage(decoded, 0, 0, width, height);
+  const imageData = ctx.getImageData(0, 0, width, height);
+  return rasterMaskToEditableStrokes(imageData, layerId);
+}
+
 // ── MaskOverlayMain ───────────────────────────────────────────────────
 
 export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponentProps) {
   const toast = useToast();
   const store = useMaskOverlayStore;
   const { useSettingsStore } = useGenerationScopeStores();
-  const setParam = useSettingsStore((s) => s.setParam);
+  const currentMaskUrl = useSettingsStore((s) => (s.params as Record<string, unknown>)?.mask_url as string | undefined);
 
   // Resolve authenticated image URL
   const imageUrl = asset.fullUrl || asset.url;
@@ -179,8 +340,66 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   );
 
   const draftStorageKey = useMemo(() => getMaskDraftStorageKey(asset), [asset]);
+  const sourceAssetId = useMemo(() => getViewerBackendAssetId(asset), [asset]);
   const restoredDraftKeyRef = useRef<string | null>(null);
   const persistDraftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isImportingSavedMask, setIsImportingSavedMask] = useState(false);
+  const maskAssetsQuery = useAssets({
+    limit: 50,
+    filters: {
+      source_asset_id: sourceAssetId ?? -1,
+      media_type: 'image',
+      upload_method: 'mask_draw',
+      sort: 'new',
+    },
+  });
+  const anyMaskAssetsQuery = useAssets({
+    limit: 100,
+    filters: {
+      media_type: 'image',
+      upload_method: 'mask_draw',
+      sort: 'new',
+    },
+  });
+
+  const sourceMaskAssets = useMemo(() => {
+    if (!sourceAssetId) return [] as AssetModel[];
+    return maskAssetsQuery.items.filter((candidate) => {
+      const ctx = candidate.uploadContext ?? null;
+      const candidateSourceId =
+        typeof ctx?.source_asset_id === 'number'
+          ? ctx.source_asset_id
+          : (typeof ctx?.source_asset_id === 'string' ? Number(ctx.source_asset_id) : NaN);
+      if (!Number.isFinite(candidateSourceId) || candidateSourceId !== sourceAssetId) return false;
+      return true;
+    });
+  }, [sourceAssetId, maskAssetsQuery.items]);
+
+  const attachSavedMask = useCallback(async (maskAssetId: number) => {
+    if (isImportingSavedMask) return;
+    if (!maskLayer) {
+      toast.error('Mask layer is not ready yet.');
+      return;
+    }
+
+    if (hasContent) {
+      const ok = window.confirm('Replace the current mask strokes with the selected saved mask?');
+      if (!ok) return;
+    }
+
+    setIsImportingSavedMask(true);
+    try {
+      const importedStrokes = await fetchMaskAssetAsEditableStrokes(maskAssetId, MASK_LAYER_ID);
+      updateLayer(MASK_LAYER_ID, { elements: importedStrokes });
+      setMaskUrlInRelevantGenerationScopes(`asset:${maskAssetId}`);
+      toast.success(`Loaded saved mask #${maskAssetId} for editing.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load saved mask.';
+      toast.error(message);
+    } finally {
+      setIsImportingSavedMask(false);
+    }
+  }, [hasContent, isImportingSavedMask, maskLayer, toast, updateLayer]);
 
   // Restore saved draft when entering mask overlay for this asset.
   useEffect(() => {
@@ -279,9 +498,7 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
   const isSavingRef = useRef(false);
   const exportMask = useCallback(async () => {
     if (isSavingRef.current) return;
-
-    const providerId = resolveViewerAssetProviderId(asset);
-    const saveTarget: 'provider' | 'library' = providerId ? 'provider' : 'library';
+    const saveTarget = 'library' as const;
 
     const width = mediaDimensions?.width || 1024;
     const height = mediaDimensions?.height || 1024;
@@ -299,10 +516,10 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const res = await fetch(maskDataUrl);
       const blob = await res.blob();
 
-      const assetId = typeof asset.id === 'number' ? asset.id : Number(asset.id);
-      const filename = buildMaskFilename(assetId);
+      const sourceAssetIdForUpload = getViewerBackendAssetId(asset);
+      const filename = buildMaskFilename(sourceAssetIdForUpload ?? asset.id);
       const uploadContext = buildMaskUploadContext({
-        sourceAssetId: Number.isFinite(assetId) ? assetId : undefined,
+        sourceAssetId: sourceAssetIdForUpload ?? undefined,
         feature: 'mask_overlay',
         source: 'asset_viewer',
       });
@@ -312,7 +529,6 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         file: blob,
         filename,
         saveTarget,
-        providerId: providerId || undefined,
         uploadMethod: 'mask_draw',
         uploadContext,
       });
@@ -320,33 +536,29 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
       const newAssetId = uploadResult.asset_id;
       let attachedToGeneration = false;
 
-      // Fetch and emit so it appears in gallery
+      // Notify gallery so the new mask asset appears without a full refresh
       if (newAssetId) {
         try {
-          const newAsset = await getAsset(newAssetId);
-          assetEvents.emitAssetCreated(newAsset);
+          await notifyGalleryOfNewAsset(newAssetId);
         } catch {
           // Non-critical
         }
 
         // Wire mask into generation flow
-        setParam('mask_url', `asset:${newAssetId}`);
+        setMaskUrlInRelevantGenerationScopes(`asset:${newAssetId}`);
         attachedToGeneration = true;
+        maskAssetsQuery.reset();
+        anyMaskAssetsQuery.reset();
       }
 
-      if (saveTarget === 'provider') {
-        toast.success(attachedToGeneration ? 'Mask uploaded and set for generation.' : 'Mask uploaded.');
-      } else {
-        toast.success(attachedToGeneration ? 'Mask saved to library and set for generation.' : 'Mask saved to library.');
-      }
+      toast.success(attachedToGeneration ? 'Mask saved to library and set for generation.' : 'Mask saved to library.');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save mask.';
-      toast.error(message);
+      toast.error(extractUploadError(err, 'Failed to save mask.'));
     } finally {
       isSavingRef.current = false;
       store.getState()._syncState({ isSaving: false });
     }
-  }, [asset, mediaDimensions, exportLayerAsMask, toast, setParam, store]);
+  }, [asset, mediaDimensions, exportLayerAsMask, toast, store, maskAssetsQuery.reset, anyMaskAssetsQuery.reset]);
 
   // Keep exportMask in ref too
   callbacksRef.current.exportMask = exportMask;
@@ -395,6 +607,9 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
         case 'e':
           callbacksRef.current.setMode('erase');
           break;
+        case 'c':
+          callbacksRef.current.setMode('polygon');
+          break;
         case 'v':
           callbacksRef.current.setMode('view');
           break;
@@ -421,11 +636,21 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
     );
   }
 
-  const cursor = state.mode === 'draw' || state.mode === 'erase' ? 'crosshair' : 'grab';
+  const cursor = state.mode === 'draw' || state.mode === 'erase' || state.mode === 'polygon'
+    ? 'crosshair'
+    : 'grab';
 
   return (
     <div className="absolute inset-0 flex bg-surface-inset">
-      <MaskSidePanel />
+      <MaskSidePanel
+        sourceAssetId={sourceAssetId}
+        masks={sourceMaskAssets}
+        anyMasks={anyMaskAssetsQuery.items}
+        loadingMasks={maskAssetsQuery.loading || isImportingSavedMask}
+        loadingAnyMasks={anyMaskAssetsQuery.loading || isImportingSavedMask}
+        currentMaskUrl={currentMaskUrl}
+        onAttachSavedMask={attachSavedMask}
+      />
       <div className="flex-1 min-w-0 relative">
         <InteractiveImageSurface
           media={media}
@@ -443,11 +668,30 @@ export function MaskOverlayMain({ asset, mediaDimensions }: MediaOverlayComponen
 
 const TOOL_MODES = [
   { mode: 'draw' as const, icon: 'paintbrush' as const, label: 'Draw', shortcut: 'D' },
+  { mode: 'polygon' as const, icon: 'pencil' as const, label: 'Curve', shortcut: 'C' },
   { mode: 'erase' as const, icon: 'xCircle' as const, label: 'Erase', shortcut: 'E' },
   { mode: 'view' as const, icon: 'eye' as const, label: 'View', shortcut: 'V' },
 ];
 
-function MaskSidePanel() {
+interface MaskSidePanelProps {
+  sourceAssetId: number | null;
+  masks: AssetModel[];
+  anyMasks: AssetModel[];
+  loadingMasks: boolean;
+  loadingAnyMasks: boolean;
+  currentMaskUrl?: string;
+  onAttachSavedMask: (assetId: number) => void;
+}
+
+function MaskSidePanel({
+  sourceAssetId,
+  masks,
+  anyMasks,
+  loadingMasks,
+  loadingAnyMasks,
+  currentMaskUrl,
+  onAttachSavedMask,
+}: MaskSidePanelProps) {
   const {
     mode,
     brushSize,
@@ -468,6 +712,28 @@ function MaskSidePanel() {
     resetView,
   } = useMaskOverlayStore();
 
+  const selectedMaskAssetId = useMemo(() => {
+    if (!currentMaskUrl || typeof currentMaskUrl !== 'string') return '';
+    const match = currentMaskUrl.match(/^asset:(\d+)$/);
+    return match ? match[1] : '';
+  }, [currentMaskUrl]);
+
+  const sortedMasks = useMemo(
+    () => [...masks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [masks],
+  );
+  const sortedAnyMasks = useMemo(
+    () => [...anyMasks].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [anyMasks],
+  );
+
+  const formatMaskLabel = useCallback((mask: AssetModel) => {
+    const created = Number.isFinite(Date.parse(mask.createdAt))
+      ? new Date(mask.createdAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+    return created ? `#${mask.id} • ${created}` : `#${mask.id}`;
+  }, []);
+
   return (
     <OverlaySidePanel>
       <SideSection label="Tools">
@@ -481,6 +747,88 @@ function MaskSidePanel() {
             onClick={() => setMode(m)}
           />
         ))}
+      </SideSection>
+
+      {mode === 'polygon' && (
+        <div className="px-2 text-[10px] text-th-muted leading-snug">
+          Click points to place the curve outline. Double-click to close and fill the mask shape.
+        </div>
+      )}
+
+      <SideDivider />
+
+      <SideSection label="Saved Masks" className="gap-1">
+        {!sourceAssetId ? (
+          <div className="text-[10px] text-th-muted leading-snug">
+            Save/upload the source image first to list linked masks here.
+          </div>
+        ) : (
+          <>
+            <select
+              value={selectedMaskAssetId}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) return;
+                onAttachSavedMask(Number(next));
+              }}
+              className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5"
+              title="Choose a saved mask for this asset"
+              disabled={loadingMasks}
+            >
+              <option value="">
+                {loadingMasks
+                  ? 'Loading masks...'
+                  : sortedMasks.length > 0
+                    ? 'Choose saved mask...'
+                    : 'No saved masks'}
+              </option>
+              {sortedMasks.map((mask) => (
+                <option key={mask.id} value={mask.id}>
+                  {formatMaskLabel(mask)}
+                </option>
+              ))}
+            </select>
+            {sortedMasks.length > 0 && (
+              <div className="text-[10px] text-th-muted">
+                {sortedMasks.length} linked mask{sortedMasks.length === 1 ? '' : 's'}
+              </div>
+            )}
+          </>
+        )}
+      </SideSection>
+
+      <SideDivider />
+
+      <SideSection label="Any Mask" className="gap-1">
+        <select
+          value={selectedMaskAssetId}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!next) return;
+            onAttachSavedMask(Number(next));
+          }}
+          className="w-full h-7 rounded bg-th/10 hover:bg-th/15 border border-th/10 text-[11px] text-th-secondary px-1.5"
+          title="Choose any saved mask"
+          disabled={loadingAnyMasks}
+        >
+          <option value="">
+            {loadingAnyMasks
+              ? 'Loading masks...'
+              : sortedAnyMasks.length > 0
+                ? 'Choose any saved mask...'
+                : 'No saved masks'}
+          </option>
+          {sortedAnyMasks.map((mask) => (
+            <option key={mask.id} value={mask.id}>
+              {formatMaskLabel(mask)}
+            </option>
+          ))}
+        </select>
+        {sortedAnyMasks.length > 0 && (
+          <div className="text-[10px] text-th-muted">
+            {sortedAnyMasks.length} recent mask{sortedAnyMasks.length === 1 ? '' : 's'}
+          </div>
+        )}
       </SideSection>
 
       <SideDivider />

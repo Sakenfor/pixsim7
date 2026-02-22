@@ -178,6 +178,13 @@ export { resolveMediaType, resolveMediaTypes } from '@pixsim7/shared.assets.core
 
 export { assetEvents } from './lib/assetEvents';
 
+export {
+  extractUploadError,
+  resolveProviderLabel,
+  notifyGalleryOfNewAsset,
+  notifyGalleryOfUpdatedAsset,
+} from './lib/uploadActions';
+
 export { useQuickTagStore } from './lib/quickTagStore';
 export { applyQuickTag } from './lib/quickTag';
 

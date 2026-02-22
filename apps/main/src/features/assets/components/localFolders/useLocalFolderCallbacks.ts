@@ -1,3 +1,4 @@
+import { createAssetActions } from '@pixsim7/shared.assets.core';
 import { useToast } from '@pixsim7/shared.ui';
 import { useCallback, useMemo } from 'react';
 
@@ -7,6 +8,7 @@ import type { AssetUploadState } from '@/components/media/AssetGallery';
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
+import { extractUploadError, notifyGalleryOfNewAsset, resolveProviderLabel } from '../../lib/uploadActions';
 import type { AssetModel } from '../../models/asset';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 
@@ -41,6 +43,7 @@ export function useLocalFolderCallbacks({
   const controllerPreviews = controller.previews;
   const controllerGetFileForAsset = controller.getFileForAsset;
   const controllerUploadOne = controller.uploadOne;
+  const controllerUploadOneToLibrary = controller.uploadOneToLibrary;
 
   const getAssetKey = useCallback((asset: LocalAsset) => asset.key, []);
   const getPreviewUrl = useCallback(
@@ -179,26 +182,42 @@ export function useLocalFolderCallbacks({
   );
 
   const handleUpload = useCallback(
-    (asset: LocalAsset) => controllerUploadOne(asset),
-    [controllerUploadOne]
+    (asset: LocalAsset) => {
+      if (controllerUploadOneToLibrary) {
+        return controllerUploadOneToLibrary(asset);
+      }
+      return controllerUploadOne(asset);
+    },
+    [controllerUploadOne, controllerUploadOneToLibrary]
   );
 
   const handleUploadToProvider = useCallback(
     async (asset: LocalAsset, providerId: string) => {
       try {
+        let assetId: number | undefined;
         if (providerId === 'library') {
-          await controllerUploadOne(asset);
+          if (controllerUploadOneToLibrary) {
+            await controllerUploadOneToLibrary(asset);
+          } else {
+            await controllerUploadOne(asset);
+          }
           toast.success('Saved to library');
         } else {
-          await controller.uploadOneToProvider(asset, providerId);
-          toast.success(`Uploaded to ${providerId}`);
+          const result = await controller.uploadOneToProvider(asset, providerId);
+          assetId = result?.asset_id;
+          toast.success(`Uploaded to ${resolveProviderLabel(providerId)}`);
+        }
+        // Notify gallery so the new/updated asset appears without a page refresh
+        if (assetId) {
+          try {
+            await notifyGalleryOfNewAsset(assetId);
+          } catch { /* best-effort */ }
         }
       } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : 'Upload failed';
-        toast.error(message);
+        toast.error(extractUploadError(e));
       }
     },
-    [controller, controllerUploadOne, toast],
+    [controller, controllerUploadOne, controllerUploadOneToLibrary, toast],
   );
 
   const getIsFavorite = useCallback(
@@ -235,7 +254,9 @@ export function useLocalFolderCallbacks({
     const createdAt = new Date(asset.lastModified || Date.now()).toISOString();
     const mediaType = asset.kind === 'video' ? 'video' : 'image';
     const providerStatus = uploadedAssetId ? 'ok' : 'local_only';
-    const providerId = uploadedAssetId ? (controller.providerId || 'library') : 'local';
+    const providerId = uploadedAssetId
+      ? (asset.last_upload_provider_id || controller.providerId || 'library')
+      : 'local';
 
     return {
       id: assetId,
@@ -261,43 +282,33 @@ export function useLocalFolderCallbacks({
     };
   }, [controller.providerId, controllerPreviews]);
 
-  const getLocalMediaCardActions = useCallback((asset: LocalAsset): MediaCardActions => ({
-    onAddToGenerate: () => {
-      queueAutoGenerate(toGenerationInputAsset(asset));
-    },
-    onImageToImage: asset.kind === 'video'
-      ? undefined
-      : () => {
-        queueImageToImage(toGenerationInputAsset(asset));
-      },
-    onImageToVideo: asset.kind === 'video'
-      ? undefined
-      : () => {
-        queueImageToVideo(toGenerationInputAsset(asset));
-      },
-    onAddToTransition: asset.kind === 'video'
-      ? undefined
-      : () => {
-        queueAddToTransition(toGenerationInputAsset(asset));
-      },
-    onVideoExtend: asset.kind === 'video'
-      ? () => {
-        queueVideoExtend(toGenerationInputAsset(asset));
-      }
-      : undefined,
-    onQuickAdd: undefined,
-    onQuickGenerate: asset.last_upload_asset_id != null
-      ? () => quickGenerate(toGenerationInputAsset(asset))
-      : undefined,
+  const generationHandlers = useMemo(() => ({
+    onImageToImage: queueImageToImage,
+    onImageToVideo: queueImageToVideo,
+    onVideoExtend: queueVideoExtend,
+    onAddToTransition: queueAddToTransition,
+    onAddToGenerate: queueAutoGenerate,
+    onQuickAdd: quickGenerate,
   }), [
-    quickGenerate,
-    queueAddToTransition,
-    queueAutoGenerate,
     queueImageToImage,
     queueImageToVideo,
     queueVideoExtend,
-    toGenerationInputAsset,
+    queueAddToTransition,
+    queueAutoGenerate,
+    quickGenerate,
   ]);
+
+  const getLocalMediaCardActions = useCallback((asset: LocalAsset): MediaCardActions => {
+    const assetModel = toGenerationInputAsset(asset);
+    const actions = createAssetActions(assetModel, generationHandlers);
+
+    // Gate quick-generate behind upload status (needs a provider asset)
+    if (asset.last_upload_asset_id != null) {
+      actions.onQuickGenerate = () => quickGenerate(assetModel);
+    }
+
+    return actions;
+  }, [generationHandlers, toGenerationInputAsset, quickGenerate]);
 
   return {
     getAssetKey,

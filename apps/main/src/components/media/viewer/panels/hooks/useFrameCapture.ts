@@ -15,11 +15,10 @@ import {
 import { useToast } from '@pixsim7/shared.ui';
 import { useState, useCallback, useMemo, type RefObject } from 'react';
 
-import { getAsset } from '@lib/api/assets';
 import { uploadAsset } from '@lib/api/upload';
 
 import type { ViewerAsset } from '@features/assets';
-import { assetEvents } from '@features/assets/lib/assetEvents';
+import { extractUploadError, notifyGalleryOfNewAsset } from '@features/assets/lib/uploadActions';
 import { useCaptureRegionStore, type AssetRegion } from '@features/mediaViewer';
 
 import { findActiveRegion, type MediaOverlayId } from '../../overlays';
@@ -273,11 +272,10 @@ export function useFrameCapture({
 
       const newAssetId = uploadResult.asset_id;
 
-      // Fetch and emit the new asset so it appears in the gallery
+      // Notify gallery so the new asset appears without a full refresh
       if (newAssetId) {
         try {
-          const newAsset = await getAsset(newAssetId);
-          assetEvents.emitAssetCreated(newAsset);
+          await notifyGalleryOfNewAsset(newAssetId);
         } catch {
           // Non-critical: asset was created but won't auto-appear
         }
@@ -289,8 +287,7 @@ export function useFrameCapture({
           : (isVideo ? 'Frame captured to library.' : 'Cropped image saved to library.');
       toast.success(successMessage);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Capture failed.';
-      toast.error(message);
+      toast.error(extractUploadError(error, 'Capture failed.'));
     } finally {
       setIsCapturing(false);
     }

@@ -4,6 +4,19 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 
 import type { AssetModel } from '../models/asset';
 
+import { assetEvents } from './assetEvents';
+import { extractUploadError, notifyGalleryOfUpdatedAsset } from './uploadActions';
+
+/** Refetch a single asset and patch it in the gallery via the event bus. */
+async function refreshSingleAsset(assetId: number, fullRefresh: () => void): Promise<void> {
+  try {
+    await notifyGalleryOfUpdatedAsset(assetId);
+  } catch {
+    // Fallback to full refresh if single-asset fetch fails
+    fullRefresh();
+  }
+}
+
 interface BuildRemoteAssetActionsOptions {
   baseActions: MediaCardActions;
   providers: Array<{ id: string; name: string }>;
@@ -18,7 +31,7 @@ export function buildRemoteAssetActions(
 ): MediaCardActions {
   return {
     ...baseActions,
-    onReuploadDone: () => refresh(),
+    onReuploadDone: () => refreshSingleAsset(asset.id, refresh),
     onReupload: async () => {
       let targetProviderId = filterProviderId;
 
@@ -52,10 +65,9 @@ export function buildRemoteAssetActions(
         });
         const targetProvider = asset.providerId || 'pixverse';
         await uploadAssetToProvider(frameAsset.id, targetProvider);
-        refresh();
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-        alert(`Failed to extract/upload last frame: ${detail}`);
+        assetEvents.emitAssetCreated(frameAsset);
+      } catch (err: unknown) {
+        alert(`Failed to extract/upload last frame: ${extractUploadError(err, 'Unknown error')}`);
       }
     },
     onExtractFrame: async (_id: number, timestamp: number) => {
@@ -65,14 +77,13 @@ export function buildRemoteAssetActions(
           video_asset_id: asset.id,
           timestamp,
         });
-        refresh();
+        assetEvents.emitAssetCreated(frameAsset);
         const uploadStatuses = frameAsset.last_upload_status_by_provider;
         if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
           alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
         }
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-        alert(`Failed to extract frame: ${detail}`);
+      } catch (err: unknown) {
+        alert(`Failed to extract frame: ${extractUploadError(err, 'Unknown error')}`);
       }
     },
     onExtractLastFrame: async () => {
@@ -82,27 +93,25 @@ export function buildRemoteAssetActions(
           video_asset_id: asset.id,
           last_frame: true,
         });
-        refresh();
+        assetEvents.emitAssetCreated(frameAsset);
         const uploadStatuses = frameAsset.last_upload_status_by_provider;
         if (uploadStatuses && Object.values(uploadStatuses).some(s => s === 'error')) {
           alert('Frame extracted but upload to provider failed. The frame is saved locally — you can retry the upload later.');
         }
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-        alert(`Failed to extract last frame: ${detail}`);
+      } catch (err: unknown) {
+        alert(`Failed to extract last frame: ${extractUploadError(err, 'Unknown error')}`);
       }
     },
     onEnrichMetadata: async () => {
       try {
         const result = await enrichAsset(asset.id);
         if (result.enriched) {
-          refresh();
+          await refreshSingleAsset(asset.id, refresh);
         } else {
           alert(result.message || 'No metadata to refresh');
         }
-      } catch (err: any) {
-        const detail = err?.response?.data?.detail || err?.message || 'Unknown error';
-        alert(`Failed to refresh metadata: ${detail}`);
+      } catch (err: unknown) {
+        alert(`Failed to refresh metadata: ${extractUploadError(err, 'Unknown error')}`);
       }
     },
   };

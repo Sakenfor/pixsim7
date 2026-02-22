@@ -26,6 +26,7 @@ import {
   hasValidStoredHash,
   scheduleAssetsForHashing,
 } from '../lib/localHashing';
+import { extractUploadError } from '../lib/uploadActions';
 import { useAssetViewerStore } from '../stores/assetViewerStore';
 import { useLocalFolderSettingsStore } from '../stores/localFolderSettingsStore';
 import {
@@ -800,7 +801,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       return data;
     } catch (e: unknown) {
-      const errorMsg = e instanceof Error ? e.message : 'Upload failed';
+      const errorMsg = extractUploadError(e);
 
       setUploadStatus(s => ({ ...s, [asset.key]: 'error' }));
       setUploadNotes(n => ({ ...n, [asset.key]: errorMsg }));
@@ -826,7 +827,7 @@ export function useLocalFoldersController(): LocalFoldersController {
 
   // Upload one asset to a specific provider
   const uploadOneToProvider = useCallback(async (keyOrAsset: string | LocalAsset, targetProviderId: string) => {
-    await uploadOneInternal(keyOrAsset, { saveTarget: 'provider', providerId: targetProviderId });
+    return uploadOneInternal(keyOrAsset, { saveTarget: 'provider', providerId: targetProviderId });
   }, [uploadOneInternal]);
 
   // Upload one asset explicitly to library (ignore default provider setting)

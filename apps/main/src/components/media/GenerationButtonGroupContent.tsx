@@ -16,6 +16,7 @@ import type { MenuItem } from '@lib/ui/overlay';
 import type { AssetModel } from '@features/assets';
 import { hydrateAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { getUploadCapableProviders, resolveUploadTarget } from '@features/assets/lib/resolveUploadTarget';
+import { extractUploadError } from '@features/assets/lib/uploadActions';
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
 import {
   CAP_GENERATION_WIDGET,
@@ -291,19 +292,19 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     setIsUploading(true);
     try {
       if (canRouteUploadTarget && cardProps.onUploadToProvider) {
+        // Delegate handles its own toast — don't double-notify
         await cardProps.onUploadToProvider(id, targetId);
       } else if (hasLocalUpload && targetId === 'library') {
         await cardProps.onUploadClick?.(id);
+        toast.success('Uploaded to library');
       } else {
         await uploadAssetToProvider(id, targetId);
+        const targetLabel = uploadTargetOptions.find((o) => o.id === targetId)?.label ?? targetId;
+        toast.success(`Uploaded to ${targetLabel}`);
       }
       cardProps.actions?.onReuploadDone?.();
-      const targetLabel = targetId === 'library'
-        ? 'library'
-        : uploadTargetOptions.find((o) => o.id === targetId)?.label ?? targetId;
-      toast.success(`Uploaded to ${targetLabel}`);
-    } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Upload failed';
+    } catch (err: unknown) {
+      const detail = extractUploadError(err);
       console.error('Upload to provider failed:', detail);
       toast.error(detail);
     } finally {
