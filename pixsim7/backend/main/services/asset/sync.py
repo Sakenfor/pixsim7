@@ -341,8 +341,8 @@ class AssetSyncService:
                     provider=target_provider_id,
                     remote_url=asset.remote_url[:100],
                 )
-                # Cache it for future use
-                asset.provider_uploads[target_provider_id] = asset.remote_url
+                # Cache it for future use (reassign to trigger SQLAlchemy change detection)
+                asset.provider_uploads = {**asset.provider_uploads, target_provider_id: asset.remote_url}
                 await self.db.commit()
                 return asset.remote_url
 
@@ -372,8 +372,10 @@ class AssetSyncService:
                         error=str(e),
                         detail="Cached upload may be invalid, will re-upload"
                     )
-                    # Remove invalid cache and re-upload
-                    asset.provider_uploads.pop(target_provider_id, None)
+                    # Remove invalid cache and re-upload (reassign to trigger change detection)
+                    uploads = {**asset.provider_uploads}
+                    uploads.pop(target_provider_id, None)
+                    asset.provider_uploads = uploads
                     await self.db.commit()
 
             if target_provider_id in asset.provider_uploads:
@@ -394,7 +396,8 @@ class AssetSyncService:
             detail="Successfully uploaded and cached asset to provider"
         )
 
-        asset.provider_uploads[target_provider_id] = provider_asset_id
+        # Reassign the full dict so SQLAlchemy detects the JSON column change
+        asset.provider_uploads = {**asset.provider_uploads, target_provider_id: provider_asset_id}
         await self.db.commit()
         await self.db.refresh(asset)
 
@@ -565,6 +568,6 @@ class AssetSyncService:
         """
         asset = await self.get_asset(asset_id)
 
-        asset.provider_uploads[provider_id] = provider_asset_id
+        asset.provider_uploads = {**asset.provider_uploads, provider_id: provider_asset_id}
         await self.db.commit()
         await self.db.refresh(asset)

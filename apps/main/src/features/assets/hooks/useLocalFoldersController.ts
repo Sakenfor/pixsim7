@@ -774,24 +774,30 @@ export function useLocalFoldersController(): LocalFoldersController {
       const note = data?.note;
       const uploadedAssetId = typeof data?.asset_id === 'number' ? data.asset_id : undefined;
 
+      // Mark success immediately — the server has the file
       setUploadNotes(n => ({ ...n, [asset.key]: note }));
       setUploadStatus(s => ({ ...s, [asset.key]: 'success' }));
 
-      if (sha256) {
-        await setUploadRecordByHash(sha256, {
-          status: 'success',
-          note,
-          provider_id: targetProviderId,
-          asset_id: uploadedAssetId,
-          uploaded_at: Date.now(),
+      // Best-effort bookkeeping — failures logged but don't revert status
+      try {
+        if (sha256) {
+          await setUploadRecordByHash(sha256, {
+            status: 'success',
+            note,
+            provider_id: targetProviderId,
+            asset_id: uploadedAssetId,
+            uploaded_at: Date.now(),
+          });
+        }
+
+        await updateAssetUploadStatus(asset.key, 'success', note, {
+          providerId: targetProviderId,
+          assetId: uploadedAssetId,
         });
+      } catch (bookkeepingError) {
+        console.warn('Post-upload bookkeeping failed (upload succeeded):', asset.name, bookkeepingError);
       }
 
-      // Task 104: Persist upload success to cache
-      await updateAssetUploadStatus(asset.key, 'success', note, {
-        providerId: targetProviderId,
-        assetId: uploadedAssetId,
-      });
       return data;
     } catch (e: unknown) {
       const errorMsg = e instanceof Error ? e.message : 'Upload failed';
@@ -821,6 +827,11 @@ export function useLocalFoldersController(): LocalFoldersController {
   // Upload one asset to a specific provider
   const uploadOneToProvider = useCallback(async (keyOrAsset: string | LocalAsset, targetProviderId: string) => {
     await uploadOneInternal(keyOrAsset, { saveTarget: 'provider', providerId: targetProviderId });
+  }, [uploadOneInternal]);
+
+  // Upload one asset explicitly to library (ignore default provider setting)
+  const uploadOneToLibrary = useCallback(async (keyOrAsset: string | LocalAsset) => {
+    await uploadOneInternal(keyOrAsset, { saveTarget: 'library' });
   }, [uploadOneInternal]);
 
   const toggleFavoriteOne = useCallback(async (keyOrAsset: string | LocalAsset) => {
@@ -916,6 +927,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     uploadNotes,
     uploadOne,
     uploadOneToProvider,
+    uploadOneToLibrary,
     favoriteStatus,
     toggleFavoriteOne,
     supported,

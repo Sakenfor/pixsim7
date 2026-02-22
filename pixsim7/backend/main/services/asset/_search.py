@@ -135,7 +135,7 @@ class AssetSearchMixin:
         similar_to_asset_id: Optional[int] = None,
         similarity_threshold: Optional[float] = None,
     ):
-        from sqlalchemy import and_, or_, case, literal, exists, cast, distinct
+        from sqlalchemy import and_, or_, case, literal, exists, cast, distinct, String
         from sqlalchemy.dialects.postgresql import JSONB
         from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
         from pixsim7.backend.main.domain.assets.lineage import AssetLineage
@@ -240,6 +240,14 @@ class AssetSearchMixin:
                     and_(
                         Asset.provider_asset_id.isnot(None),
                         ~Asset.provider_asset_id.ilike("local_%"),
+                    ),
+                    literal("ok"),
+                ),
+                # Cross-uploaded to at least one provider
+                (
+                    and_(
+                        Asset.provider_uploads.isnot(None),
+                        cast(Asset.provider_uploads, String) != '{}',
                     ),
                     literal("ok"),
                 ),

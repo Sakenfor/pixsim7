@@ -4,7 +4,7 @@
  * Handles smart action, menu, slot picker, and regenerate functionality.
  */
 
-import { ActionHintBadge, ButtonGroup, Dropdown, DropdownItem, DropdownDivider, type ButtonGroupItem } from '@pixsim7/shared.ui';
+import { ActionHintBadge, ButtonGroup, Dropdown, DropdownItem, DropdownDivider, PortalFloat, useToast, type ButtonGroupItem } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 
 import { uploadAssetToProvider } from '@lib/api/assets';
@@ -14,6 +14,7 @@ import { resolveButtonState, makeAsyncStates, UPLOAD_BUTTON_STATES } from '@lib/
 import type { MenuItem } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
+import { hydrateAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { getUploadCapableProviders, resolveUploadTarget } from '@features/assets/lib/resolveUploadTarget';
 import { useUploadProviderStore } from '@features/assets/stores/uploadProviderStore';
 import {
@@ -21,7 +22,7 @@ import {
   useCapability,
   type GenerationWidgetContext,
 } from '@features/contextHub';
-import { useGenerationScopeStores } from '@features/generation';
+import { useGenerationScopeStores, getGenerationSessionStore, getGenerationSettingsStore } from '@features/generation';
 import { providerCapabilityRegistry, useProviderCapabilities, useOperationSpec, useProviderIdForModel } from '@features/providers';
 
 import { OPERATION_METADATA, type OperationType } from '@/types/operations';
@@ -38,8 +39,14 @@ type GenerationButtonGroupContentProps = {
   cardProps: MediaCardResolvedProps;
 };
 
+type UploadTargetOption = {
+  id: string;
+  label: string;
+};
+
 export function GenerationButtonGroupContent({ data, cardProps }: GenerationButtonGroupContentProps) {
   const { id, mediaType, actions } = cardProps;
+  const toast = useToast();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProviderMenuOpen, setIsProviderMenuOpen] = useState(false);
@@ -47,7 +54,6 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const [isUploading, setIsUploading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
-  const uploadBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Use capability to get nearest generation widget, with global fallback
   const { value: widgetContext, provider: widgetProvider } =
@@ -72,13 +78,23 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const scopedProviderId = useSessionStore((s) => s.providerId);
   const inferredProviderId = useProviderIdForModel(activeModel);
   const effectiveProviderId = scopedProviderId ?? inferredProviderId;
+
+  // Widget scope stores — quick generate delegates to the widget's generateWithAsset,
+  // which runs in the widget's scope (not the media card's local scope).
+  // Read model/provider from the widget scope so tooltip and visibility checks are accurate.
+  const widgetScopeId = widgetContext?.scopeId ?? scopedScopeId ?? 'global';
+  const widgetSessionHook = useMemo(() => getGenerationSessionStore(widgetScopeId), [widgetScopeId]);
+  const widgetSettingsHook = useMemo(() => getGenerationSettingsStore(widgetScopeId), [widgetScopeId]);
+  const widgetModel = widgetSettingsHook((s) => s.params?.model as string | undefined);
+  const widgetProviderId = widgetSessionHook((s) => s.providerId);
+  const widgetInferredProviderId = useProviderIdForModel(widgetModel);
+  const widgetEffectiveProviderId = widgetProviderId ?? widgetInferredProviderId;
+
   const operationSpec = useOperationSpec(effectiveProviderId, operationType);
 
   const smartActionLabel = getSmartActionLabel(mediaType, operationType);
   const targetLabel = widgetProvider?.label ?? widgetContext?.widgetId;
   const targetInfo = targetLabel ? `\nTarget: ${targetLabel}` : '';
-  const operationMetadata = OPERATION_METADATA[operationType];
-
   // Resolve max slots the same way AssetPanel does (getArrayParamLimits on composition_assets).
   const maxSlots = useMemo(() => {
     if (operationSpec?.parameters) {
@@ -94,25 +110,29 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     return resolveMaxSlotsForModel(operationType, activeModel);
   }, [operationSpec?.parameters, operationType, activeModel]);
 
-  // Reconstruct asset for slot picker and quick-generation hydration.
+  // Keep the full source asset when available so we preserve providerUploads and
+  // other metadata needed by upload-target resolution.
   const inputAsset = useMemo<AssetModel>(() => ({
-    id: cardProps.id,
-    createdAt: cardProps.createdAt,
-    description: cardProps.description ?? null,
-    durationSec: cardProps.durationSec ?? null,
-    height: cardProps.height ?? null,
-    isArchived: false,
-    mediaType: cardProps.mediaType,
-    previewUrl: cardProps.previewUrl ?? null,
-    providerAssetId: cardProps.providerAssetId,
-    providerId: cardProps.providerId,
-    providerStatus: cardProps.providerStatus ?? null,
-    remoteUrl: cardProps.remoteUrl ?? null,
-    syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
-    thumbnailUrl: cardProps.thumbUrl ?? null,
-    userId: 0,
-    width: cardProps.width ?? null,
+    ...(cardProps.contextMenuAsset ?? {
+      id: cardProps.id,
+      createdAt: cardProps.createdAt,
+      description: cardProps.description ?? null,
+      durationSec: cardProps.durationSec ?? null,
+      height: cardProps.height ?? null,
+      isArchived: false,
+      mediaType: cardProps.mediaType,
+      previewUrl: cardProps.previewUrl ?? null,
+      providerAssetId: cardProps.providerAssetId,
+      providerId: cardProps.providerId,
+      providerStatus: cardProps.providerStatus ?? null,
+      remoteUrl: cardProps.remoteUrl ?? null,
+      syncStatus: (cardProps.status as AssetModel['syncStatus']) ?? 'remote',
+      thumbnailUrl: cardProps.thumbUrl ?? null,
+      userId: 0,
+      width: cardProps.width ?? null,
+    }),
   }), [
+    cardProps.contextMenuAsset,
     cardProps.id,
     cardProps.createdAt,
     cardProps.description,
@@ -128,6 +148,13 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     cardProps.thumbUrl,
     cardProps.width,
   ]);
+  const hydratedAssetCacheRef = useRef<Map<number, AssetModel>>(new Map());
+
+  const resolveInputAsset = useCallback(
+    async (asset: AssetModel): Promise<AssetModel> =>
+      hydrateAssetModel(asset, { cache: hydratedAssetCacheRef.current }),
+    [],
+  );
 
   const {
     isQuickGenerating,
@@ -187,19 +214,22 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isMenuOpen]);
 
-  const handleSmartAction = () => {
-    addInputs({
-      assets: [inputAsset],
-      operationType,
-    });
-    // Open the generation widget if available via capability
-    setWidgetOpen?.(true);
-  };
+  const handleSmartAction = useCallback(() => {
+    void (async () => {
+      const resolvedAsset = await resolveInputAsset(inputAsset);
+      addInputs({
+        assets: [resolvedAsset],
+        operationType,
+      });
+      // Open the generation widget if available via capability
+      setWidgetOpen?.(true);
+    })();
+  }, [resolveInputAsset, inputAsset, addInputs, operationType, setWidgetOpen]);
 
   const handleMiddleClick = (e: React.MouseEvent) => {
     if (e.button !== 1) return;
     e.preventDefault();
-    handleSelectSlot(inputAsset, 0);
+    void handleSelectSlot(inputAsset, 0);
     setWidgetOpen?.(true);
   };
 
@@ -208,13 +238,14 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     setIsMenuOpen(false);
   };
 
-  const handleSelectSlot = (selectedAsset: AssetModel, slotIndex: number) => {
+  const handleSelectSlot = useCallback(async (selectedAsset: AssetModel, slotIndex: number) => {
+    const resolvedAsset = await resolveInputAsset(selectedAsset);
     addInput({
-      asset: selectedAsset,
+      asset: resolvedAsset,
       operationType,
       slotIndex,
     });
-  };
+  }, [resolveInputAsset, addInput, operationType]);
 
   // Upload-to-provider logic
   // useProviderCapabilities ensures registry data is loaded (triggers re-render on load)
@@ -226,53 +257,100 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   const uploadCapableProviders = useMemo(() => getUploadCapableProviders(), [allProviderCaps]);
   const hasLocalUpload = !!cardProps.onUploadClick;
   const hasProviderUpload = uploadCapableProviders.length > 0;
+  const canRouteUploadTarget = typeof cardProps.onUploadToProvider === 'function';
   const showUploadButton = hasLocalUpload || hasProviderUpload;
 
-  const handleUploadToProvider = useCallback(async (providerId: string) => {
+  const uploadTargetOptions = useMemo<UploadTargetOption[]>(() => {
+    const options: UploadTargetOption[] = [];
+    if (hasLocalUpload) {
+      options.push({ id: 'library', label: 'Library' });
+    }
+    if (!hasLocalUpload || canRouteUploadTarget) {
+      for (const provider of uploadCapableProviders) {
+        options.push({ id: provider.providerId, label: provider.name });
+      }
+    }
+    return options;
+  }, [hasLocalUpload, canRouteUploadTarget, uploadCapableProviders]);
+
+  const resolveDefaultUploadTargetId = useCallback((): string | null => {
+    if (hasLocalUpload) {
+      if (
+        defaultUploadProviderId &&
+        uploadTargetOptions.some((option) => option.id === defaultUploadProviderId)
+      ) {
+        return defaultUploadProviderId;
+      }
+      return 'library';
+    }
+    const target = resolveUploadTarget(defaultUploadProviderId);
+    return target?.providerId ?? null;
+  }, [hasLocalUpload, defaultUploadProviderId, uploadTargetOptions]);
+
+  const handleUploadToTarget = useCallback(async (targetId: string) => {
     setIsUploading(true);
     try {
-      await uploadAssetToProvider(id, providerId);
+      if (canRouteUploadTarget && cardProps.onUploadToProvider) {
+        await cardProps.onUploadToProvider(id, targetId);
+      } else if (hasLocalUpload && targetId === 'library') {
+        await cardProps.onUploadClick?.(id);
+      } else {
+        await uploadAssetToProvider(id, targetId);
+      }
       cardProps.actions?.onReuploadDone?.();
+      const targetLabel = targetId === 'library'
+        ? 'library'
+        : uploadTargetOptions.find((o) => o.id === targetId)?.label ?? targetId;
+      toast.success(`Uploaded to ${targetLabel}`);
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Upload failed';
       console.error('Upload to provider failed:', detail);
+      toast.error(detail);
     } finally {
       setIsUploading(false);
     }
-  }, [id, cardProps.actions]);
+  }, [canRouteUploadTarget, cardProps, hasLocalUpload, id, toast, uploadTargetOptions]);
 
   const handleUploadClick = useCallback(() => {
-    if (hasLocalUpload) {
+    if (hasLocalUpload && !canRouteUploadTarget) {
       void cardProps.onUploadClick?.(id);
       return;
     }
-    const target = resolveUploadTarget(defaultUploadProviderId);
-    if (target) {
-      void handleUploadToProvider(target.providerId);
-    } else if (uploadCapableProviders.length > 1) {
+    const targetId = resolveDefaultUploadTargetId();
+    if (targetId) {
+      void handleUploadToTarget(targetId);
+    } else if (uploadTargetOptions.length > 1) {
       // Multiple providers, no default — open the picker
       // Use the button position for fixed dropdown
-      const rect = uploadBtnRef.current?.getBoundingClientRect();
+      const rect = triggerRef.current?.getBoundingClientRect();
       if (rect) {
         setProviderMenuPos({ x: rect.left, y: rect.bottom + 4 });
       }
       setIsProviderMenuOpen(true);
     }
-  }, [hasLocalUpload, cardProps, id, defaultUploadProviderId, handleUploadToProvider, uploadCapableProviders.length]);
+  }, [
+    hasLocalUpload,
+    canRouteUploadTarget,
+    cardProps,
+    id,
+    resolveDefaultUploadTargetId,
+    handleUploadToTarget,
+    uploadTargetOptions.length,
+  ]);
 
   const handleUploadContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!hasProviderUpload) return;
+    if (uploadTargetOptions.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
     setProviderMenuPos({ x: e.clientX, y: e.clientY });
     setIsProviderMenuOpen(true);
-  }, [hasProviderUpload]);
+  }, [uploadTargetOptions.length]);
 
-  const handleProviderSelect = useCallback((providerId: string) => {
-    setDefaultUploadProvider(providerId);
+  const handleProviderSelect = useCallback((targetId: string) => {
+    setDefaultUploadProvider(targetId);
     setIsProviderMenuOpen(false);
-    void handleUploadToProvider(providerId);
-  }, [setDefaultUploadProvider, handleUploadToProvider]);
+    void handleUploadToTarget(targetId);
+  }, [setDefaultUploadProvider, handleUploadToTarget]);
 
   const hasGenContext = data.sourceGenerationId || data.hasGenerationContext;
 
@@ -346,13 +424,15 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
   // Quick generate requires: capability enabled, widget available, and asset accessible to provider.
   // Providers with asset_upload feature (e.g. Pixverse) require the asset uploaded to their platform first.
-  const providerRequiresUpload = effectiveProviderId
-    ? providerCapabilityRegistry.hasFeature(effectiveProviderId, 'asset_upload')
+  // Use widget scope provider for quick-generate visibility — the generation runs in the
+  // widget's scope, so the upload check must match the provider generateWithAsset will use.
+  const providerRequiresUpload = widgetEffectiveProviderId
+    ? providerCapabilityRegistry.hasFeature(widgetEffectiveProviderId, 'asset_upload')
     : false;
   const assetUploadedToProvider = providerRequiresUpload
     ? !!(
-        cardProps.contextMenuAsset?.providerUploads?.[effectiveProviderId!] ||
-        cardProps.contextMenuAsset?.providerId === effectiveProviderId
+        cardProps.contextMenuAsset?.providerUploads?.[widgetEffectiveProviderId!] ||
+        cardProps.contextMenuAsset?.providerId === widgetEffectiveProviderId
       )
     : true;
   const hasQuickGenerate = !!cardProps.presetCapabilities?.showsQuickGenerate
@@ -368,12 +448,16 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   // Both support right-click to choose provider when multiple upload-capable providers exist.
   const externalUploadState = (data.uploadState || 'idle') as keyof typeof UPLOAD_BUTTON_STATES;
   const effectiveUploadState: keyof typeof UPLOAD_BUTTON_STATES = isUploading ? 'uploading' : externalUploadState;
-  if (showUploadButton) {
+  if (showUploadButton && !cardProps.presetCapabilities?.skipPillUpload) {
     const resolved = resolveButtonState(UPLOAD_BUTTON_STATES, effectiveUploadState);
+    const defaultTargetId = resolveDefaultUploadTargetId();
+    const defaultTarget = defaultTargetId
+      ? uploadTargetOptions.find((option) => option.id === defaultTargetId)
+      : null;
     const uploadTitle = hasLocalUpload
-      ? hasProviderUpload
-        ? `${resolved.title} (right-click to choose provider)`
-        : resolved.title
+      ? defaultTarget
+        ? `Upload to ${defaultTarget.label} (right-click to choose target)`
+        : 'Upload (right-click to choose target)'
       : (() => {
           const target = resolveUploadTarget(defaultUploadProviderId);
           if (target) return `Upload to ${target.name}`;
@@ -385,7 +469,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
       title: uploadTitle,
       onClick: handleUploadClick,
       onContextMenu: handleUploadContextMenu,
-      badge: hasProviderUpload && uploadCapableProviders.length > 1 ? (
+      badge: uploadTargetOptions.length > 1 ? (
         <ActionHintBadge icon={<Icon name="chevronDown" size={7} color="#fff" />} />
       ) : undefined,
     });
@@ -394,7 +478,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
   if (menuItems.length > 0) {
     buttonItems.push({
       id: 'menu',
-      icon: <Icon name="chevronDown" size={14} />,
+      icon: <Icon name="chevronDown" size={12} />,
       onClick: () => setIsMenuOpen(!isMenuOpen),
       title: 'Generation options',
     });
@@ -402,7 +486,7 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
   buttonItems.push({
       id: 'smart-action',
-      icon: <Icon name="zap" size={14} />,
+      icon: <Icon name="zap" size={12} />,
       onClick: handleSmartAction,
       onAuxClick: handleMiddleClick,
       title: isReplaceMode
@@ -426,11 +510,14 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
     });
 
   if (hasQuickGenerate) {
+    // Show widget scope values — these match what generateWithAsset will actually use.
+    const widgetOpType = widgetContext!.operationType ?? operationType;
+    const widgetOpMetadata = OPERATION_METADATA[widgetOpType];
     const quickGenStates = makeAsyncStates('sparkles', [
       'Quick generate with current settings',
-      `Op: ${operationMetadata?.label ?? operationType}`,
-      activeModel ? `Model: ${activeModel}` : null,
-      effectiveProviderId ? `Provider: ${effectiveProviderId}` : null,
+      `Op: ${widgetOpMetadata?.label ?? widgetOpType}`,
+      widgetModel ? `Model: ${widgetModel}` : null,
+      widgetEffectiveProviderId ? `Provider: ${widgetEffectiveProviderId}` : null,
       targetLabel ? `Target: ${targetLabel}` : null,
     ].filter(Boolean).join('\n'), 'Generating...');
     buttonItems.push({
@@ -525,46 +612,69 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
 
   return (
     <div className="relative">
-      <div ref={triggerRef}>
-        <ButtonGroup layout="pill" items={buttonItems} expandOffset={8} />
+      <div
+        ref={triggerRef}
+        onClick={(e) => e.stopPropagation()}
+        onAuxClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          // Keep card click handlers from hijacking button interactions,
+          // but allow right-click to bubble so asset context menus can resolve.
+          if (e.button === 0 || e.button === 1) {
+            e.stopPropagation();
+          }
+        }}
+      >
+        <ButtonGroup
+          layout="pill"
+          size="sm"
+          items={buttonItems}
+          expandOffset={8}
+          portal
+          responsiveVisible
+          wheelCycle
+          preferredVisibleId="smart-action"
+        />
       </div>
 
-      {/* Menu dropdown */}
+      {/* Menu dropdown — portaled to escape overflow/stacking-context constraints */}
       {isMenuOpen && menuItems.length > 0 && (
-        <div
-          ref={menuRef}
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="top"
+          offset={4}
           className="
-            absolute bottom-full mb-1 left-1/2 -translate-x-1/2
             min-w-[180px]
             bg-white dark:bg-neutral-800
             border border-neutral-200 dark:border-neutral-700
             rounded-lg shadow-lg
-            py-1 z-50
+            py-1
             overflow-hidden
           "
         >
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleMenuItemClick(item)}
-              disabled={item.disabled}
-              className="
-                w-full px-3 py-2 flex items-center gap-2 text-sm text-left
-                hover:bg-neutral-100 dark:hover:bg-neutral-700
-                transition-colors cursor-pointer
-              "
-            >
-              {item.icon && (
-                <Icon
-                  name={item.icon as any}
-                  size={14}
-                  className="text-neutral-500 dark:text-neutral-400"
-                />
-              )}
-              <span className="flex-1">{item.label}</span>
-            </button>
-          ))}
-        </div>
+          <div ref={menuRef}>
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleMenuItemClick(item)}
+                disabled={item.disabled}
+                className="
+                  w-full px-3 py-2 flex items-center gap-2 text-sm text-left
+                  hover:bg-neutral-100 dark:hover:bg-neutral-700
+                  transition-colors cursor-pointer
+                "
+              >
+                {item.icon && (
+                  <Icon
+                    name={item.icon as any}
+                    size={14}
+                    className="text-neutral-500 dark:text-neutral-400"
+                  />
+                )}
+                <span className="flex-1">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </PortalFloat>
       )}
 
       {/* Provider picker dropdown (right-click on upload button) */}
@@ -577,18 +687,18 @@ export function GenerationButtonGroupContent({ data, cardProps }: GenerationButt
           minWidth="180px"
           portal
         >
-          {uploadCapableProviders.map((p) => (
+          {uploadTargetOptions.map((target) => (
             <DropdownItem
-              key={p.providerId}
-              onClick={() => handleProviderSelect(p.providerId)}
+              key={target.id}
+              onClick={() => handleProviderSelect(target.id)}
               icon={<Icon name="upload" size={12} />}
               rightSlot={
-                defaultUploadProviderId === p.providerId
+                defaultUploadProviderId === target.id
                   ? <Icon name="check" size={12} className="text-accent" />
                   : undefined
               }
             >
-              {p.name}
+              {target.label}
             </DropdownItem>
           ))}
           {defaultUploadProviderId && (

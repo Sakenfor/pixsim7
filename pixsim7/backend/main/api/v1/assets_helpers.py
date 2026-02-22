@@ -26,12 +26,16 @@ async def build_asset_response_with_tags(asset, db: DatabaseSession) -> AssetRes
     provider_asset_id = getattr(asset, "provider_asset_id", None)
     provider_flagged = getattr(asset, "provider_flagged", False)
     remote_url = getattr(asset, "remote_url", None)
+    provider_uploads = getattr(asset, "provider_uploads", None) or {}
 
     if provider_flagged:
         status = "flagged"
     elif remote_url and (remote_url.startswith("http://") or remote_url.startswith("https://")):
         status = "ok"
     elif provider_asset_id and not provider_asset_id.startswith("local_"):
+        status = "ok"
+    elif provider_uploads:
+        # Asset has been cross-uploaded to at least one provider
         status = "ok"
     elif provider_asset_id and provider_asset_id.startswith("local_"):
         status = "local_only"
