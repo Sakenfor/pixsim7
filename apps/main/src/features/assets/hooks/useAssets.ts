@@ -379,7 +379,10 @@ export function useAssets(options?: {
           asset.description?.toLowerCase().includes(filterParams.q.toLowerCase()) ||
           tags.some(t => t.toLowerCase().includes(filterParams.q!.toLowerCase())));
 
-      if (matchesFilters) {
+      // Only live-prepend on page 1 with default sort (newest first).
+      // Filtered/sorted/paginated views stay consistent until the user navigates.
+      const isDefaultSort = !filterParams.sort_by || (filterParams.sort_by === 'created_at' && filterParams.sort_dir === 'desc');
+      if (matchesFilters && currentPageRef.current === 1 && isDefaultSort) {
         prependAsset(asset);
       }
     });

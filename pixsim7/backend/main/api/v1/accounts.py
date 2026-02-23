@@ -107,7 +107,7 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         max_concurrent_jobs=account.max_concurrent_jobs,
         current_processing_jobs=account.current_processing_jobs,
         # Plan capabilities
-        unlimited_image_models=provider_metadata.get("plan_unlimited_image_models", []),
+        unlimited_image_models=provider_metadata.get("plan_unlimited_image_models") or [],
         # Timing
         last_used=account.last_used,
         last_error=account.last_error,
