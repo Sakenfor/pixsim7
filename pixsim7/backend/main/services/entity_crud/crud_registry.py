@@ -1,11 +1,11 @@
 """
-Template CRUD Registry - Generic CRUD infrastructure for template entities.
+Entity CRUD Registry - Generic CRUD infrastructure for entity types.
 
 Provides a registry-based approach for standardized CRUD operations across
-template entity types (LocationTemplate, ItemTemplate, etc.).
+entity types (LocationTemplate, ItemTemplate, GameLocation, etc.).
 
 Usage:
-    # Register a template type
+    # Register an entity type
     registry = get_template_crud_registry()
     registry.register_spec(TemplateCRUDSpec(
         kind="locationTemplate",

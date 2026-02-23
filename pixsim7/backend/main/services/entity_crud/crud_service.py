@@ -1,8 +1,8 @@
 """
-Template CRUD Service - Generic service for template entity CRUD operations.
+Entity CRUD Service - Generic service for entity CRUD operations.
 
 Provides a reusable service class that handles common CRUD operations
-for any registered template type.
+for any registered entity type.
 
 Usage:
     spec = get_template_crud_registry().get("locationTemplate")

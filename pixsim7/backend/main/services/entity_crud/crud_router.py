@@ -1,12 +1,12 @@
 """
-Template CRUD Router Factory - Auto-generates API routes from registry.
+Entity CRUD Router Factory - Auto-generates API routes from registry.
 
 Creates FastAPI routers with standardized CRUD endpoints for all registered
-template types.
+entity types.
 
 Usage:
     # In api/v1/__init__.py or similar
-    from pixsim7.backend.main.services.templates import create_template_crud_router
+    from pixsim7.backend.main.services.entity_crud import create_template_crud_router
 
     templates_router = create_template_crud_router()
     app.include_router(templates_router, prefix="/api/v1/game")
@@ -926,7 +926,7 @@ def create_template_crud_router(
 
     Example:
         # In your API setup
-        from pixsim7.backend.main.services.templates import create_template_crud_router
+        from pixsim7.backend.main.services.entity_crud import create_template_crud_router
 
         # Register templates first (usually in startup)
         register_default_template_specs()

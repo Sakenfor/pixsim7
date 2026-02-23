@@ -1,12 +1,12 @@
 """
-Template CRUD Services
+Entity CRUD Services
 
-Generic infrastructure for CRUD operations on template entities
-(LocationTemplate, ItemTemplate, etc.).
+Generic infrastructure for CRUD operations on entity types
+(LocationTemplate, ItemTemplate, GameLocation, etc.).
 
 Components:
-- TemplateCRUDSpec: Configuration for a template type's CRUD behavior
-- TemplateCRUDRegistry: Registry of all template CRUD configurations
+- TemplateCRUDSpec: Configuration for an entity type's CRUD behavior
+- TemplateCRUDRegistry: Registry of all entity CRUD configurations
 - TemplateCRUDService: Generic service for CRUD operations
 - NestedEntityService: Service for nested/child entities
 - create_template_crud_router: Factory for generating API routes

@@ -6,7 +6,7 @@ Auto-generates CRUD endpoints for all registered template types
 """
 
 from pixsim7.backend.main.infrastructure.plugins.types import PluginManifest
-from pixsim7.backend.main.services.templates import (
+from pixsim7.backend.main.services.entity_crud import (
     create_template_crud_router,
     register_default_template_specs,
 )

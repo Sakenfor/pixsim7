@@ -1,5 +1,5 @@
 """
-Default Template CRUD Specs - Registration for core template types.
+Default Entity CRUD Specs - Registration for core entity types.
 
 Registers CRUD specifications for:
 - LocationTemplate (authoring)
@@ -13,7 +13,7 @@ Registers CRUD specifications for:
 Called during application startup to populate the TemplateCRUDRegistry.
 
 Usage:
-    from pixsim7.backend.main.services.templates.default_specs import register_default_template_specs
+    from pixsim7.backend.main.services.entity_crud.default_specs import register_default_template_specs
 
     # In startup.py
     register_default_template_specs()
