@@ -1,15 +1,16 @@
 import { createAssetActions } from '@pixsim7/shared.assets.core';
+import { useToast } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import type { AssetSearchRequest } from '@lib/api/assets';
 import { BACKEND_BASE } from '@lib/api/client';
-import { extractErrorMessage } from '@lib/api/errorHandling';
 import { getGeneration } from '@lib/api/generations';
 import { authService } from '@lib/auth';
 import { resolveBackendUrl } from '@lib/media/backendUrl';
 
 import { useMediaGenerationActions } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
+import { createGenerationRunDescriptor, createGenerationRunItemContext } from '@features/generation/lib/runContext';
 import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
 import { providerCapabilityRegistry } from '@features/providers';
 import { useWorkspaceStore } from '@features/workspace';
@@ -20,6 +21,7 @@ import type { OperationType } from '@/types/operations';
 
 import { deleteAsset, bulkDeleteAssets, uploadAssetToProvider, archiveAsset } from '../lib/api';
 import { assetEvents } from '../lib/assetEvents';
+import { extractUploadError } from '../lib/uploadActions';
 import { getAssetDisplayUrls, toSelectedAsset } from '../models/asset';
 import { useAssetDetailStore } from '../stores/assetDetailStore';
 import { useAssetPickerStore } from '../stores/assetPickerStore';
@@ -138,6 +140,8 @@ async function operationSupportsSeedParam(
  * wiring UI elements to controller state/actions.
  */
 export function useAssetsController(options?: { initialPage?: number; preservePageOnFilterChange?: boolean; requestOverrides?: Partial<AssetSearchRequest> }) {
+  const toast = useToast();
+
   // Asset picker mode from store
   const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
   const selectAsset = useAssetPickerStore((s) => s.selectAsset);
@@ -305,9 +309,9 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       }
     } catch (err) {
       console.error('Failed to delete asset(s):', err);
-      alert(extractErrorMessage(err, 'Failed to delete asset(s)'));
+      toast.error(extractUploadError(err, 'Failed to delete asset(s)'));
     }
-  }, [deleteModalAssets, closeDeleteModal, viewerAsset, storeRemoveAsset, closeViewer]);
+  }, [deleteModalAssets, closeDeleteModal, viewerAsset, storeRemoveAsset, closeViewer, toast]);
 
   // Cancel deletion
   const cancelDeleteAsset = useCallback(() => {
@@ -322,15 +326,15 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       removeAsset(asset.id);
     } catch (err) {
       console.error('Failed to archive asset:', err);
-      alert(extractErrorMessage(err, 'Failed to archive asset'));
+      toast.error(extractUploadError(err, 'Failed to archive asset'));
     }
-  }, [removeAsset]);
+  }, [removeAsset, toast]);
 
   // Handle re-upload for local or multi-provider assets (provider chosen by caller)
   const reuploadAsset = useCallback(
     async (asset: AssetModel, providerId: string) => {
       if (!providerId) {
-        alert('No provider selected for re-upload.');
+        toast.error('No provider selected for re-upload.');
         return;
       }
       try {
@@ -338,10 +342,10 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
         reset();
       } catch (err) {
         console.error('Failed to re-upload asset:', err);
-        alert(extractErrorMessage(err, 'Failed to re-upload asset'));
+        toast.error(extractUploadError(err, 'Failed to re-upload asset'));
       }
     },
-    [reset],
+    [reset, toast],
   );
 
   // Handle regenerate - re-run the generation that created an asset
@@ -366,21 +370,32 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
       const prompt = (original.final_prompt && original.final_prompt.trim() !== '')
         ? original.final_prompt
         : promptFromParams;
+      const run = createGenerationRunDescriptor({
+        mode: 'asset_regenerate',
+        metadata: {
+          source: 'useAssetsController.handleRegenerateAsset',
+          source_generation_id: generationId,
+        },
+      });
 
       await generateAsset({
         prompt,
         providerId: original.provider_id,
         operationType: original.operation_type as OperationType,
         extraParams: cleanedParams,
+        runContext: createGenerationRunItemContext(run, {
+          itemIndex: 0,
+          itemTotal: 1,
+        }),
       });
 
       // Refresh to show the new generation
       reset();
     } catch (err) {
       console.error('Failed to regenerate:', err);
-      alert(extractErrorMessage(err, 'Failed to regenerate'));
+      toast.error(extractUploadError(err, 'Failed to regenerate'));
     }
-  }, [reset]);
+  }, [reset, toast]);
 
   // Load viewer media source (supports backend-relative URLs with auth)
   useEffect(() => {
@@ -481,7 +496,13 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
 
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetModel) => {
-    return createAssetActions(asset, actionHandlers);
+    const actions = createAssetActions(asset, actionHandlers);
+    // Gesture system uses onQuickGenerate; shared action factory exposes onQuickAdd.
+    // Alias here so default right-swipe quick-generate works in remote gallery.
+    if (!actions.onQuickGenerate && actions.onQuickAdd) {
+      actions.onQuickGenerate = () => actions.onQuickAdd?.();
+    }
+    return actions;
   }, [actionHandlers]);
 
   return {

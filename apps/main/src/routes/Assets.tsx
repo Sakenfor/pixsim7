@@ -1,11 +1,10 @@
 import { Ref } from '@pixsim7/shared.ref.core';
 import type { AssetRef } from '@pixsim7/shared.types';
-import { Dropdown, DropdownItem, DropdownDivider } from '@pixsim7/shared.ui';
+import { Dropdown, DropdownItem, DropdownDivider, useToast } from '@pixsim7/shared.ui';
 import { Button } from '@pixsim7/shared.ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
-import { extractErrorMessage } from '@lib/api/errorHandling';
 import { mediaCardPresets } from '@lib/ui/overlay';
 
 import {
@@ -18,6 +17,7 @@ import {
   deleteAsset,
   bulkDeleteAssets,
   assetEvents,
+  extractUploadError,
 } from '@features/assets';
 import { RelatedAssetsModal } from '@features/assets/components/RelatedAssetsModal';
 import { useAssetViewerStore, selectIsViewerOpen } from '@features/assets/stores/assetViewerStore';
@@ -34,7 +34,6 @@ import {
   deriveOverlayPresetIdFromBadgeConfig,
   getAssetSource,
   getAllAssetSources,
-  registerAssetSources,
   type AssetSourceId,
 } from '@features/gallery';
 import { useGenerationWebSocket } from '@features/generation';
@@ -42,32 +41,24 @@ import { usePanelConfigStore, type GalleryPanelSettings } from '@features/panels
 import { useWorkspaceStore } from '@features/workspace';
 
 
-import { moduleRegistry } from '@app/modules';
-
 import { AssetViewerLayout } from '../components/media/AssetViewerLayout';
 import { Icon, IconBadge } from '../lib/icons';
 
 
 
 export function AssetsRoute() {
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
   const { isConnected: generationWsConnected } = useGenerationWebSocket();
   const { style: layoutStyle } = useControlCenterLayout();
   const [isTransitioning, setIsTransitioning] = useState(false);
-  const [sourcesRegistered, setSourcesRegistered] = useState(false);
 
   // Selection state from stores (no duplicate controller)
   const isSelectionMode = useAssetPickerStore((s) => s.isSelectionMode);
   const exitSelectionMode = useAssetPickerStore((s) => s.exitSelectionMode);
   const selectedAssets = useAssetSelectionStore((s) => s.selectedAssets);
-  const clearSelection = useAssetSelectionStore((s) => s.clearSelection);
   const storeRemoveAsset = useAssetSelectionStore((s) => s.removeAsset);
-
-  const selectedAssetIds = useMemo(
-    () => new Set(selectedAssets.map((a) => String(a.id))),
-    [selectedAssets],
-  );
 
   const cancelSelection = useCallback(() => {
     exitSelectionMode();
@@ -109,17 +100,9 @@ export function AssetsRoute() {
       }
     } catch (err) {
       console.error('Failed to delete asset(s):', err);
-      alert(extractErrorMessage(err, 'Failed to delete asset(s)'));
+      toast.error(extractUploadError(err, 'Failed to delete asset(s)'));
     }
-  }, [deleteModalAssets, closeDeleteModal, isViewerOpen, viewerAsset, storeRemoveAsset, closeViewer]);
-
-  // Register all sources once
-  useEffect(() => {
-    registerAssetSources().then(() => {
-      moduleRegistry.invalidate();
-      setSourcesRegistered(true);
-    });
-  }, []);
+  }, [deleteModalAssets, closeDeleteModal, isViewerOpen, viewerAsset, storeRemoveAsset, closeViewer, toast]);
 
   // Shared layout state for all sources
   const [layout, setLayout] = useState<'masonry' | 'grid'>('masonry');
@@ -246,8 +229,8 @@ export function AssetsRoute() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [allSources, handleSourceChange]);
 
-  // Show loading state while sources are being registered (after all hooks)
-  if (!sourcesRegistered || !sourceDef || !SourceComponent) {
+  // Show loading state if source not available (should be rare since sources register at startup)
+  if (!sourceDef || !SourceComponent) {
     return (
       <div className="flex items-center justify-center h-screen" style={layoutStyle}>
         <div className="text-center">
@@ -276,26 +259,6 @@ export function AssetsRoute() {
               </div>
               <Button variant="secondary" onClick={cancelSelection}>
                 Cancel
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-      {!isSelectionMode && selectedAssetIds.size > 0 && (
-        <div className="flex-shrink-0 px-6 pt-4">
-          <div className="p-4 bg-purple-50 dark:bg-purple-900/20 border-2 border-purple-500 dark:border-purple-400 rounded-lg">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                  <Icon name="wrench" size={20} variant="primary" />
-                  {selectedAssetIds.size} Asset{selectedAssetIds.size !== 1 ? 's' : ''} Selected
-                </h2>
-                <p className="text-sm text-purple-700 dark:text-purple-300">
-                  Use the tools panel below to perform actions on selected assets
-                </p>
-              </div>
-              <Button variant="secondary" onClick={clearSelection}>
-                Clear Selection
               </Button>
             </div>
           </div>

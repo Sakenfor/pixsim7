@@ -5,11 +5,12 @@
  * Shows status, progress, error messages, and retry button for failed generations.
  */
 
+import { useToast } from '@pixsim7/shared.ui';
 import { useState, useEffect } from 'react';
 
-import { extractErrorMessage } from '@lib/api/errorHandling';
 import { logEvent } from '@lib/utils/logging';
 
+import { extractUploadError } from '@features/assets/lib/uploadActions';
 import {
   useGenerationsStore,
   isGenerationTerminal,
@@ -28,6 +29,7 @@ interface GenerationStatusDisplayProps {
 }
 
 export function GenerationStatusDisplay({ generationId }: GenerationStatusDisplayProps) {
+  const toast = useToast();
   const generation = useGenerationsStore(s => s.generations.get(generationId));
   const addOrUpdateGeneration = useGenerationsStore(s => s.addOrUpdate);
   const [retrying, setRetrying] = useState(false);
@@ -79,7 +81,7 @@ export function GenerationStatusDisplay({ generationId }: GenerationStatusDispla
       }, 1000);
     } catch (err) {
       console.error(`Failed to retry generation ${generationId}:`, err);
-      alert(extractErrorMessage(err, 'Failed to retry generation'));
+      toast.error(extractUploadError(err, 'Failed to retry generation'));
     } finally {
       setRetrying(false);
     }
