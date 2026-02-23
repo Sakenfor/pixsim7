@@ -51,7 +51,7 @@ function registerModuleCapabilities(module: Module) {
     }
 
     const showInNav =
-      page.showInNav ?? (!page.hidden && page.category !== 'development');
+      page.showInNav ?? !page.hidden;
     const protectedRoute = page.protected ?? true;
     registerRoute({
       path: page.route,

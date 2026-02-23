@@ -1,9 +1,14 @@
-import { Tooltip } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useHoverExpand } from '@pixsim7/shared.ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { getBaseIcon } from '@lib/icons';
 import { useEdgeInset } from '@lib/layout/edgeInsets';
+import { panelSelectors } from '@lib/plugins/catalogSelectors';
+
+import { getFloatingDefinitionId } from '@features/workspace/lib/floatingPanelUtils';
+import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { useActivityBarStore } from '@/stores/activityBarStore';
 
@@ -13,19 +18,28 @@ import type { PageCategory } from '@app/modules/contracts';
 import { MorePanelsFlyout } from './MorePanelsFlyout';
 import { PanelShortcuts } from './PanelShortcuts';
 import { SettingsFlyout } from './SettingsFlyout';
+import { buildSubNavForPage } from './subNavBuilder';
 import { SubNavFlyout } from './SubNavFlyout';
 
-/** Category display order (development excluded) */
-const CATEGORY_ORDER: PageCategory[] = ['creation', 'automation', 'game', 'management'];
+/** Category display order */
+const CATEGORY_ORDER: PageCategory[] = ['creation', 'automation', 'game', 'management', 'development'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   creation: 'CREATE',
   automation: 'AUTO',
   game: 'GAME',
   management: 'MANAGE',
+  development: 'DEV',
 };
 
 type PageEntry = ReturnType<typeof moduleRegistry.getPages>[number];
+
+function isPageVisibleInNav(page: PageEntry): boolean {
+  if (page.showInNav !== undefined) {
+    return page.showInNav;
+  }
+  return !page.hidden;
+}
 
 /** Reactive pages hook — mirrors the proven pattern from useModuleRoutes */
 function useRegistryPages() {
@@ -37,14 +51,15 @@ function useRegistryPages() {
 
   return useMemo(() => {
     void version; // reactive dependency
-    return moduleRegistry.getPages({ includeHidden: false });
+    const allPages = moduleRegistry.getPages({ includeHidden: true });
+    const visiblePages = allPages.filter(isPageVisibleInNav);
+    return { allPages, visiblePages };
   }, [version]);
 }
 
 function groupByCategory(pages: PageEntry[]) {
   const groups: Partial<Record<PageCategory, PageEntry[]>> = {};
   for (const page of pages) {
-    if (page.category === 'development') continue;
     (groups[page.category] ??= []).push(page);
   }
   return groups;
@@ -75,6 +90,22 @@ function GearButton({ panelId }: { panelId: string }) {
   );
 }
 
+/** Portal-based tooltip label for nav buttons (avoids stacking context clipping) */
+function NavTooltip({ name, triggerRef }: { name: string; triggerRef: React.RefObject<HTMLDivElement | null> }) {
+  const rect = triggerRef.current?.getBoundingClientRect();
+  if (!rect) return null;
+
+  return createPortal(
+    <div
+      className="fixed z-tooltip py-1 px-3 bg-neutral-900/95 border border-neutral-700/60 rounded-lg shadow-xl backdrop-blur-sm text-sm text-neutral-200 whitespace-nowrap pointer-events-none"
+      style={{ top: rect.top + rect.height / 2, left: rect.right + 4, transform: 'translateY(-50%)' }}
+    >
+      {name}
+    </div>,
+    document.body,
+  );
+}
+
 function NavButton({
   page,
   active,
@@ -83,10 +114,15 @@ function NavButton({
   active: boolean;
 }) {
   const navigate = useNavigate();
-  const [hovered, setHovered] = useState(false);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const subNavItems = typeof page.subNav === 'function' ? page.subNav() : page.subNav;
   const hasSubNav = subNavItems != null && subNavItems.length > 0;
   const hasGear = !!page.settingsPanelId;
+
+  const { isExpanded: showTooltip, handlers: tooltipHandlers } = useHoverExpand({
+    expandDelay: 400,
+    collapseDelay: 0,
+  });
 
   const handleClick = useCallback(() => {
     navigate(page.route);
@@ -94,9 +130,9 @@ function NavButton({
 
   const button = (
     <div
+      ref={hasSubNav ? undefined : triggerRef}
       className="relative flex items-center justify-center group/navbtn"
-      onMouseEnter={hasSubNav ? undefined : () => setHovered(true)}
-      onMouseLeave={hasSubNav ? undefined : () => setHovered(false)}
+      {...(hasSubNav ? {} : tooltipHandlers)}
     >
       {/* Active indicator bar */}
       {active && (
@@ -119,8 +155,8 @@ function NavButton({
           <GearButton panelId={page.settingsPanelId!} />
         </div>
       )}
-      {!hasSubNav && (
-        <Tooltip content={page.name} position="right" show={hovered} delay={400} />
+      {!hasSubNav && showTooltip && (
+        <NavTooltip name={page.name} triggerRef={triggerRef} />
       )}
     </div>
   );
@@ -172,15 +208,50 @@ export function ActivityBar() {
   const collapsed = useActivityBarStore((s) => s.collapsed);
   const toggle = useActivityBarStore((s) => s.toggle);
   const location = useLocation();
+  const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
+  const lastFloatingPanelStates = useWorkspaceStore((s) => s.lastFloatingPanelStates);
+  const pinnedQuickAddPanels = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
+  const { allPages, visiblePages } = useRegistryPages();
+  const [panelVersion, setPanelVersion] = useState(0);
+
+  useEffect(() => {
+    return panelSelectors.subscribe(() => setPanelVersion((v) => v + 1));
+  }, []);
+
+  const openPanelIds = useMemo(
+    () => Array.from(new Set(floatingPanels.map((panel) => getFloatingDefinitionId(panel.id)))),
+    [floatingPanels],
+  );
+  const recentPanelIds = useMemo(
+    () => Object.keys(lastFloatingPanelStates).reverse(),
+    [lastFloatingPanelStates],
+  );
 
   // Register edge presence so other widgets can respond
   useEdgeInset('activityBar', 'left', 48, !collapsed, 0, true);
   const navigate = useNavigate();
-  const pages = useRegistryPages();
+  const pages = useMemo(() => {
+    void panelVersion; // reactive dependency for dynamic panel registration changes
+    const panels = panelSelectors.getAll();
+    return visiblePages.map((page) => ({
+      ...page,
+      subNav: buildSubNavForPage({
+        page,
+        allPages,
+        panels,
+        openPanelIds,
+        recentPanelIds,
+        pinnedPanelIds: pinnedQuickAddPanels,
+      }),
+    }));
+  }, [allPages, openPanelIds, panelVersion, pinnedQuickAddPanels, recentPanelIds, visiblePages]);
   const groups = groupByCategory(pages);
 
-  const [homeHovered, setHomeHovered] = useState(false);
-  const [toggleHovered, setToggleHovered] = useState(false);
+  const homeRef = useRef<HTMLDivElement>(null);
+  const toggleRef = useRef<HTMLDivElement>(null);
+
+  const { isExpanded: homeHovered, handlers: homeHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
+  const { isExpanded: toggleHovered, handlers: toggleHandlers } = useHoverExpand({ expandDelay: 400, collapseDelay: 0 });
 
   const isHomeActive = location.pathname === '/';
 
@@ -192,14 +263,12 @@ export function ActivityBar() {
         style={{ transform: collapsed ? 'translateX(-100%)' : 'translateX(0)' }}
       >
         {/* Home button */}
-        <div className="relative flex items-center justify-center">
+        <div ref={homeRef} className="relative flex items-center justify-center" {...homeHandlers}>
           {isHomeActive && (
             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r bg-accent-muted" />
           )}
           <button
             onClick={() => navigate('/')}
-            onMouseEnter={() => setHomeHovered(true)}
-            onMouseLeave={() => setHomeHovered(false)}
             className={`w-10 h-10 flex items-center justify-center rounded-lg transition-colors ${
               isHomeActive
                 ? 'text-accent bg-accent/15'
@@ -209,7 +278,7 @@ export function ActivityBar() {
           >
             <NavIcon name="home" size={20} />
           </button>
-          <Tooltip content="Home" position="right" show={homeHovered} delay={400} />
+          {homeHovered && <NavTooltip name="Home" triggerRef={homeRef} />}
         </div>
 
         <Separator />
@@ -236,17 +305,15 @@ export function ActivityBar() {
         <div className="flex-1" />
 
         {/* Collapse toggle */}
-        <div className="relative flex items-center justify-center mb-1">
+        <div ref={toggleRef} className="relative flex items-center justify-center mb-1" {...toggleHandlers}>
           <button
             onClick={toggle}
-            onMouseEnter={() => setToggleHovered(true)}
-            onMouseLeave={() => setToggleHovered(false)}
             className={`w-10 h-10 flex items-center justify-center rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-neutral-700/50 transition-colors`}
             aria-label="Collapse activity bar"
           >
             <NavIcon name="chevronLeft" size={18} />
           </button>
-          <Tooltip content="Collapse" position="right" show={toggleHovered} delay={400} />
+          {toggleHovered && <NavTooltip name="Collapse" triggerRef={toggleRef} />}
         </div>
       </nav>
 

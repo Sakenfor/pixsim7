@@ -17,6 +17,7 @@ import {
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
+  logViewerTool,
   codegenTool,
 } from './tools';
 
@@ -32,6 +33,7 @@ export {
   blockFitTool,
   typesExplorerTool,
   sqlQueryExplorerTool,
+  logViewerTool,
   codegenTool,
 };
 
@@ -59,6 +61,9 @@ export const builtInDevTools = [
 
   // Database & Diagnostics
   sqlQueryExplorerTool,
+
+  // Log Viewer
+  logViewerTool,
 
   // Codegen
   codegenTool,

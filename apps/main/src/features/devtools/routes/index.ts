@@ -57,8 +57,7 @@ export const healthModule: Module = {
     description: 'Monitor system health and job status',
     category: 'management',
     featureId: 'health',
-    showInNav: false,
-    featured: true,
+    hidden: true,
   },
 };
 

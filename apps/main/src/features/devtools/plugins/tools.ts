@@ -17,6 +17,7 @@ import { CapabilityTestingPanel } from '@features/panels/components/dev/Capabili
 import { DependencyGraphPanel } from '@features/panels/components/dev/DependencyGraphPanel';
 import { GenerationHealthView } from '@features/panels/components/dev/GenerationHealthView';
 import { GizmoSurfacesPanel } from '@features/panels/components/dev/GizmoSurfacesPanel';
+import { LogViewerPanel } from '@features/panels/components/dev/LogViewerPanel';
 import { SessionStateViewer } from '@features/panels/components/dev/SessionStateViewer';
 import { SqlQueryExplorerPanel } from '@features/panels/components/dev/SqlQueryExplorerPanel';
 import { TypesExplorerPanel } from '@features/panels/components/dev/TypesExplorerPanel';
@@ -149,6 +150,21 @@ export const sqlQueryExplorerTool: DevToolDefinition = {
   panelComponent: SqlQueryExplorerPanel,
   tags: ['sql', 'database', 'diagnostics', 'query', 'admin'],
   safeForNonDev: false, // Admin only
+};
+
+// ============================================================================
+// Log Viewer
+// ============================================================================
+
+export const logViewerTool: DevToolDefinition = {
+  id: 'log-viewer',
+  label: 'Log Viewer',
+  description: 'Query and inspect structured backend logs, trace jobs and requests',
+  icon: 'fileText',
+  category: 'debug',
+  panelComponent: LogViewerPanel,
+  tags: ['logs', 'trace', 'debug', 'worker', 'pipeline', 'jobs', 'requests', 'errors'],
+  safeForNonDev: true,
 };
 
 // ============================================================================
