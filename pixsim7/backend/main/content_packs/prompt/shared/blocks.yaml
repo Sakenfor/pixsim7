@@ -15,21 +15,6 @@ blocks:
   # SUBJECT — preservation locks, one concern each
   # ═══════════════════════════════════════════════════════════════════
 
-  - block_id: ie_lock_pose
-    role: subject
-    category: pose_lock
-    kind: single_state
-    default_intent: preserve
-    text: >-
-      Use the source image as the absolute structural base.
-      Identical limb placement, torso angle, hip alignment, head orientation.
-      No posture reinterpretation. The environment adapts around the subject.
-    tags:
-      intent: preserve
-      layer: foreground
-      lock: pose
-    complexity_level: simple
-
   - block_id: ie_lock_identity
     role: subject
     category: identity_lock
@@ -58,229 +43,479 @@ blocks:
       lock: framing
     complexity_level: simple
 
+  # ── graduated pose lock — minimal rigidity ─────────────────────────
+
+  - block_id: pl_minimal_skeletal
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve the posture class and facing direction from the source —
+      standing, sitting, or reclining orientation stays the same. All
+      joint angles, limb positions, and extremities are free to change.
+      Only the broad postural category is retained.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: minimal
+      approach: skeletal
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_minimal_contour
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Retain only the general silhouette category from the source —
+      upright, seated, or reclined outline. The body envelope's broad
+      shape stays recognizable but all internal articulation is free.
+      Limbs, head, and hands may reposition within the outline class.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: minimal
+      approach: contour
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_minimal_gravity
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve only the base of support and facing direction from the
+      source — feet planted in the same stance width, weight on the same
+      side. Upper body, arms, head, and hands are completely free to
+      reposition. The balance point stays anchored.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: minimal
+      approach: gravity
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
   # ── graduated pose lock — low rigidity ─────────────────────────────
 
-  - block_id: pl_gentle_01
+  - block_id: pl_low_skeletal
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Maintain the general feeling of the source pose. Core orientation
-      should be recognizable, but allow natural motion — breathing,
-      weight shifts, and organic micro-movements are encouraged.
+      Maintain recognizable joint positions from the source pose.
+      Shoulder angle, elbow bend, and hip orientation should read as the
+      same configuration. Natural motion is allowed — breathing,
+      weight shifts, and small limb adjustments keep the pose alive
+      without breaking its identity.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: low
+      approach: skeletal
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_gentle_02
+  - block_id: pl_low_contour
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Source posture should feel familiar but organic motion is fine —
-      breathing, gentle turns, subtle weight shifts. The viewer should
-      sense continuity without expecting a freeze-frame.
+      The body silhouette from the source should remain recognizable —
+      same overall outline shape when viewed from the same angle. Internal
+      limb positioning may shift naturally. The outer envelope of the
+      figure stays consistent while allowing organic movement within it.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: low
+      approach: contour
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_gentle_03
+  - block_id: pl_low_gravity
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Preserve stance and facing direction from the source image.
-      Arms, hands, and head may move freely. The overall silhouette
-      should be recognizable but not rigidly held.
+      Preserve the weight distribution and balance point from the source.
+      The center of mass stays over the same support base. Natural sway,
+      breathing shifts, and minor postural adjustments are encouraged.
+      The figure should feel grounded in the same stance without appearing
+      frozen.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: low
+      approach: gravity
       scope: full_body
       mode: any
+    complexity_level: simple
+
+  - block_id: pl_low_i2v
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Frame-to-frame, the source pose should remain recognizable across
+      the clip duration. Joint positions drift naturally with breathing
+      and subtle weight shifts. No pose reset or sudden repositioning
+      between frames. Continuity is loose but unbroken.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: low
+      approach: skeletal
+      scope: full_body
+      mode: i2v
     complexity_level: simple
 
   # ── graduated pose lock — medium rigidity ──────────────────────────
 
-  - block_id: pl_moderate_01
+  - block_id: pl_medium_skeletal
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Preserve the core structure — torso angle, leg position, arm
-      placement — from the source image. Only subtle micro-adjustments
-      are allowed; the overall configuration must read as the same pose.
+      Lock the major joint angles from the source — shoulder rotation,
+      elbow bend, hip angle, and knee position. Wrists, fingers, and
+      head may make small adjustments. The skeletal configuration reads
+      as the same pose with only peripheral articulation allowed.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: medium
+      approach: skeletal
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_moderate_02
+  - block_id: pl_medium_contour
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Lock spine angle and hip alignment to the source. Limb endpoints
-      may drift slightly but major joint positions stay consistent.
-      No large reinterpretation of the pose.
+      The body outline from the source must be preserved — same
+      silhouette shape, same limb extension profile, same negative space
+      between arms and torso. Only small surface-level shifts within the
+      existing envelope are acceptable. The contour is the constraint.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: medium
-      scope: upper
+      approach: contour
+      scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_moderate_03
+  - block_id: pl_medium_gravity
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Hold the source configuration with minor motion acceptable —
-      a hand adjusting position, a slight lean, a head tilt. The
-      fundamental body arrangement stays intact.
+      Anchor the center of mass, lean angle, and weight distribution
+      exactly as in the source. The balance structure is fixed — same
+      load on each foot, same spinal tilt, same hip shift. Extremities
+      may adjust slightly but the gravitational foundation holds.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: medium
+      approach: gravity
       scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_medium_i2v
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Across the clip duration, hold the source pose structure with no
+      accumulated drift. Frame-to-frame joint positions stay within a
+      narrow tolerance. Only breathing-scale oscillation is permitted.
+      No gradual creep of limb positions over time.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      approach: skeletal
+      scope: full_body
+      mode: i2v
+    complexity_level: simple
+
+  - block_id: pl_medium_upper_body
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Lock shoulders, arms, torso angle, and head orientation to match
+      the source image. Shoulder rotation, elbow position, and spine
+      angle are fixed. Hips and legs below the waist are free to shift,
+      step, or adjust weight naturally.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      approach: skeletal
+      scope: upper_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_medium_hands_free
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Lock the full body configuration from the source — torso angle,
+      hip alignment, leg position, arm placement, head orientation.
+      Only the hands and fingers are free to change position, grip,
+      gesture, or interact with objects. All other joints stay fixed.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      approach: skeletal
+      scope: hands_free
       mode: any
     complexity_level: simple
 
   # ── graduated pose lock — high rigidity ────────────────────────────
 
-  - block_id: pl_strict_01
+  - block_id: pl_high_skeletal
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Reproduce the source pose precisely. Identical limb placement,
-      torso angle, head orientation. Only involuntary micro-motion
-      is acceptable — breathing, blink, hair sway.
+      Reproduce every joint angle from the source precisely. Shoulder
+      rotation, elbow bend, wrist angle, hip position, knee flexion,
+      and head tilt all match exactly. Only involuntary micro-motion —
+      breathing, blink, hair sway — is acceptable. No voluntary
+      repositioning of any limb.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: high
+      approach: skeletal
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_strict_02
+  - block_id: pl_high_contour
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Lock all major joints to their source positions. Hold as if
-      frozen with only breath visible. No reposing, no weight-shift,
-      no reinterpretation of the arrangement.
+      The body silhouette must exactly replicate the source outline.
+      Every limb extension, body curve, and negative space gap matches
+      precisely. The figure's outer boundary is a hard constraint — no
+      contour deviation. Internal detail may breathe but the envelope
+      is rigid.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: high
+      approach: contour
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_high_gravity
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Weight distribution is precisely locked to the source. Lean angle,
+      hip shift, shoulder drop, and spinal curve all reproduce the exact
+      balance state. No weight transfer, no postural adjustment, no shift
+      in center of mass. The figure holds as if mid-exposure in a
+      long photograph.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      approach: gravity
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_high_i2v
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Frame-to-frame structural lock across the clip duration. Every
+      joint holds its source position with zero accumulated drift.
+      Only breath-scale chest expansion is permitted. No limb creep,
+      no gradual weight shift, no pose evolution over time.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      approach: skeletal
       scope: full_body
       mode: i2v
     complexity_level: simple
 
-  - block_id: pl_strict_03
+  - block_id: pl_high_torso_head
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Structurally identical to the source — no reinterpretation.
-      Weight distribution, lean angle, limb extension all match
-      exactly. The environment adapts around the locked figure.
+      Lock torso angle, spine curve, shoulder line, and head orientation
+      exactly to the source. The core and head are immovable. Arms from
+      shoulder down, and legs from hip down, are free to reposition,
+      gesture, or shift weight as needed.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: high
-      scope: full_body
+      approach: skeletal
+      scope: torso_head
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_high_lower_free
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Lock everything above the knees to the source — torso, arms, head,
+      and upper legs hold their exact positions. Below the knee, lower
+      legs and feet may adjust stance width, angle, or foot placement.
+      The upper structure is rigid while the base can adapt.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      approach: skeletal
+      scope: lower_free
       mode: any
     complexity_level: simple
 
   # ── graduated pose lock — maximum rigidity ─────────────────────────
 
-  - block_id: pl_absolute_01
+  - block_id: pl_maximum_skeletal
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Use the source image as the absolute structural base.
-      Identical limb placement, torso angle, hip alignment, head orientation.
-      No posture reinterpretation. The environment adapts around the subject.
+      Use the source image as the absolute structural base. Every joint
+      angle, limb placement, finger position, torso angle, hip alignment,
+      and head orientation is fixed. No posture reinterpretation. The
+      environment adapts around the immovable figure.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: maximum
+      approach: skeletal
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_absolute_02
+  - block_id: pl_maximum_contour
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      The subject is a fixed element. Every joint angle, finger curl,
-      and body contour reproduces the source exactly. Zero deviation.
-      All other scene elements conform to this anchor.
+      Pixel-level fidelity to the source body outline. Every curve,
+      limb extension, and negative space gap is an immovable constraint.
+      The figure's silhouette is the absolute anchor for the entire
+      composition. No contour may shift under any circumstance.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: maximum
+      approach: contour
       scope: full_body
       mode: any
     complexity_level: simple
 
-  - block_id: pl_absolute_03
+  - block_id: pl_maximum_gravity
     role: subject
     category: pose_lock
     kind: single_state
     default_intent: preserve
     text: >-
-      Pixel-level fidelity to the source pose. The figure is an
-      immovable structural anchor for the entire composition. No
-      joint, limb, or weight distribution may change under any
-      circumstance.
+      The subject is a fixed structural mass. Every weight distribution
+      point, lean angle, balance axis, and pressure line reproduces the
+      source exactly. Zero deviation in center of mass. All other scene
+      elements conform to this immovable gravitational anchor.
     tags:
       intent: preserve
       layer: foreground
       lock: pose
       rigidity: maximum
+      approach: gravity
       scope: full_body
       mode: any
+    complexity_level: simple
+
+  - block_id: pl_maximum_i2v
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Absolute structural anchor across the full clip duration. Zero
+      frame-to-frame deviation in any joint position. No accumulated
+      drift, no breathing motion, no micro-adjustment. The figure is
+      a frozen reference point for the entire temporal sequence.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: maximum
+      approach: skeletal
+      scope: full_body
+      mode: i2v
     complexity_level: simple
 
   # ── camera stability — graduated ──────────────────────────────────

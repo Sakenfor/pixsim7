@@ -36,23 +36,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
@@ -290,23 +295,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
     slots:
       - preset: pose_lock_graduated
@@ -372,23 +382,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
@@ -534,23 +549,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
@@ -709,23 +729,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
         - id: proximity
           type: slider
@@ -1070,23 +1095,28 @@ templates:
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
               boostTags: { rigidity: low }
               avoidTags: { rigidity: [high, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 3
+              enabledAt: 4
               boostTags: { rigidity: medium }
-              avoidTags: { rigidity: low }
+              avoidTags: { rigidity: [minimal, maximum] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
               enabledAt: 6
-              boostTags: { rigidity: [high, maximum] }
-              avoidTags: { rigidity: [low, medium] }
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
             - kind: slot_tag_boost
               slotLabel: Pose lock
-              enabledAt: 9
+              enabledAt: 8
               boostTags: { rigidity: maximum }
-              avoidTags: { rigidity: [low, medium] }
+              avoidTags: { rigidity: [minimal, low, medium] }
 
     slots:
       # ── Subject preservation (graduated pose lock + absolute identity/framing)
