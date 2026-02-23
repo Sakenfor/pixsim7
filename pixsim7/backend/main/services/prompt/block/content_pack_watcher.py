@@ -1,9 +1,10 @@
 """
-File watcher for content packs — auto-reloads blocks, templates, and characters
-when YAML files change under content_packs/prompt/.
+File watcher for content packs and vocabularies — auto-reloads blocks,
+templates, and characters when YAML files change under content_packs/prompt/,
+and reloads the vocabulary registry when plugin vocab YAMLs change.
 
 Uses `watchfiles` (rust-based, already installed for uvicorn --reload).
-Runs as an asyncio background task started from the app lifespan.
+Runs as asyncio background tasks started from the app lifespan.
 """
 from __future__ import annotations
 
@@ -23,6 +24,10 @@ from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
 logger = logging.getLogger(__name__)
 
 _watcher_task: Optional[asyncio.Task] = None
+_vocab_watcher_task: Optional[asyncio.Task] = None
+
+# plugins/ lives alongside shared/ — derive from content_packs path
+_PLUGINS_DIR = CONTENT_PACKS_DIR.parent.parent / "plugins"
 
 
 async def _watch_content_dirs() -> None:
@@ -69,7 +74,12 @@ async def _watch_content_dirs() -> None:
             async with get_async_session() as db:
                 for pack_name in sorted(affected_packs):
                     try:
-                        stats = await load_pack(db, pack_name, force=True)
+                        stats = await load_pack(
+                            db,
+                            pack_name,
+                            force=True,
+                            prune_missing=True,
+                        )
                         created = (
                             stats["blocks_created"]
                             + stats["templates_created"]
@@ -103,20 +113,59 @@ async def _watch_content_dirs() -> None:
         raise
 
 
+async def _watch_vocab_dirs() -> None:
+    """Watch plugins/*/vocabularies/ for YAML changes and reload the vocab registry."""
+    if not _PLUGINS_DIR.exists():
+        logger.info("vocab_watcher_no_dir", msg="plugins/ does not exist")
+        return
+
+    logger.info("vocab_watcher_started", path=str(_PLUGINS_DIR))
+
+    try:
+        async for changes in awatch(
+            _PLUGINS_DIR,
+            watch_filter=lambda change, path: path.endswith((".yaml", ".yml")),
+            debounce=1500,
+            step=500,
+        ):
+            vocab_changed = any(
+                "vocabularies" in Path(p).parts for _, p in changes
+            )
+            if not vocab_changed:
+                continue
+
+            changed_files = [Path(p).name for _, p in changes if "vocabularies" in Path(p).parts]
+            logger.info("vocab_change_detected", files=changed_files)
+
+            try:
+                from pixsim7.backend.main.shared.ontology.vocabularies.registry import get_registry
+                get_registry(reload=True)
+                logger.info("vocab_registry_hot_reloaded")
+            except Exception as e:
+                logger.warning("vocab_registry_hot_reload_failed", error=str(e))
+
+    except asyncio.CancelledError:
+        logger.info("vocab_watcher_stopped")
+        raise
+
+
 def start_content_pack_watcher() -> asyncio.Task:
-    """Start the background file watcher. Call from lifespan startup."""
-    global _watcher_task
+    """Start the background file watchers. Call from lifespan startup."""
+    global _watcher_task, _vocab_watcher_task
     _watcher_task = asyncio.create_task(_watch_content_dirs(), name="content_pack_watcher")
+    _vocab_watcher_task = asyncio.create_task(_watch_vocab_dirs(), name="vocab_watcher")
     return _watcher_task
 
 
 async def stop_content_pack_watcher() -> None:
-    """Stop the background file watcher. Call from lifespan shutdown."""
-    global _watcher_task
-    if _watcher_task and not _watcher_task.done():
-        _watcher_task.cancel()
-        try:
-            await _watcher_task
-        except asyncio.CancelledError:
-            pass
+    """Stop the background file watchers. Call from lifespan shutdown."""
+    global _watcher_task, _vocab_watcher_task
+    for task in (_watcher_task, _vocab_watcher_task):
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     _watcher_task = None
+    _vocab_watcher_task = None

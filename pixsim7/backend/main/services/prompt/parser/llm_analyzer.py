@@ -6,6 +6,7 @@ Produces output compatible with SimplePromptParser for unified processing.
 """
 
 import logging
+import re
 from typing import Dict, Any, List, Optional
 
 from pixsim7.backend.main.services.prompt.role_registry import PromptRoleRegistry
@@ -53,6 +54,16 @@ RESPONSE FORMAT (JSON only, no other text):
 }
 
 Be precise. Extract meaningful semantic information. Return ONLY valid JSON."""
+
+COMPACT_ANALYSIS_SYSTEM_PROMPT = """Parse this prompt into semantic candidates. Return JSON only.
+
+ROLES:
+{role_lines}
+
+JSON format: {{"candidates":[{{"role":"<role_id>","text":"exact text","ontology_ids":["prefix:name"]}}],"tags":["has:<role>"]}}
+
+Ontology prefixes: mood, location, camera, spatial, pose, rating, part.
+Return ONLY valid JSON."""
 
 
 async def analyze_prompt_with_llm(
@@ -109,9 +120,10 @@ async def analyze_prompt_with_llm(
     }
 
     user_prompt = _build_user_prompt(text, analysis_user_prompt)
+    use_compact_system_prompt = provider_id == "local-llm"
 
     try:
-        full_prompt = f"{_build_system_prompt(role_registry, analysis_system_prompt)}\n\n{user_prompt}"
+        full_prompt = f"{_build_system_prompt(role_registry, analysis_system_prompt, compact=use_compact_system_prompt)}\n\n{user_prompt}"
 
         response_text = await llm_provider.edit_prompt(
             model_id=model_id,
@@ -165,6 +177,27 @@ def _clean_json_response(response: str) -> str:
     return cleaned.strip()
 
 
+_ONTOLOGY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z0-9_]+$")
+_MAX_ONTOLOGY_ID_LEN = 80
+
+
+def _sanitize_ontology_ids(raw: Any) -> List[str]:
+    """Filter ontology IDs to canonical ``prefix:name`` entries only."""
+    if not isinstance(raw, list):
+        return []
+    result: List[str] = []
+    for value in raw:
+        if not isinstance(value, str):
+            continue
+        oid = value.strip().lower()
+        if not oid or len(oid) > _MAX_ONTOLOGY_ID_LEN:
+            continue
+        if not _ONTOLOGY_ID_RE.match(oid):
+            continue
+        result.append(oid)
+    return result
+
+
 def _normalize_candidates(
     candidates: List[Dict[str, Any]],
     role_registry: PromptRoleRegistry,
@@ -182,7 +215,7 @@ def _normalize_candidates(
             "role": role_id,
             "text": candidate.get("text", ""),
             "category": candidate.get("category"),
-            "ontology_ids": candidate.get("ontology_ids", []),
+            "ontology_ids": _sanitize_ontology_ids(candidate.get("ontology_ids")),
             "source_type": "llm",
         })
 
@@ -199,6 +232,8 @@ async def _fallback_to_simple(text: str) -> Dict[str, Any]:
 def _build_system_prompt(
     role_registry: PromptRoleRegistry,
     override_prompt: Optional[str],
+    *,
+    compact: bool = False,
 ) -> str:
     role_lines = []
     for role in role_registry.list_roles(sort_by_priority=True):
@@ -207,7 +242,8 @@ def _build_system_prompt(
     rendered_role_lines = "\n".join(role_lines)
 
     if not override_prompt:
-        return BASE_ANALYSIS_SYSTEM_PROMPT.format(role_lines=rendered_role_lines)
+        template = COMPACT_ANALYSIS_SYSTEM_PROMPT if compact else BASE_ANALYSIS_SYSTEM_PROMPT
+        return template.format(role_lines=rendered_role_lines)
 
     if "{role_lines}" in override_prompt:
         return override_prompt.replace("{role_lines}", rendered_role_lines)

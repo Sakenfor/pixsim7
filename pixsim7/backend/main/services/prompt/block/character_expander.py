@@ -86,7 +86,10 @@ class CharacterBindingExpander:
 
             char_id = binding.get("character_id")
             if not char_id:
-                expansion_errors.append(f"Missing character_id for role '{role}'")
+                # No character bound — _replace_match will use fallback_name
+                # or a generic label.  Only warn if no fallback is configured.
+                if not binding.get("fallback_name"):
+                    unresolved_roles.append(role)
                 continue
 
             character = await self._get_character(char_id)
@@ -115,11 +118,21 @@ class CharacterBindingExpander:
             attr_path = match.group(2)
 
             if role not in role_characters:
-                if role not in [r for r in bindings]:
+                if role not in bindings:
                     # Not a bound role — leave placeholder as-is
                     return match.group(0)
-                # Bound but unresolved
-                return match.group(0)
+                # Bound but unresolved — use fallback_name from binding or
+                # derive a generic label so the placeholder never leaks.
+                binding = bindings[role]
+                fallback = (
+                    binding.get("fallback_name")
+                    if isinstance(binding, dict)
+                    else None
+                ) or "A figure"
+                if attr_path is not None:
+                    # Can't resolve attributes without a character
+                    return match.group(0)
+                return fallback
 
             character = role_characters[role]
             species = role_species.get(role)
@@ -141,15 +154,17 @@ class CharacterBindingExpander:
                 defaults = {"subject": "they", "object": "them", "possessive": "their"}
                 return defaults.get(pronoun_key, "they")
 
-            # Generic modifier lookup — handles movement, stance,
-            # anatomy keys, pronouns, and any YAML word_lists
-            if species and attr_path in species.modifiers:
-                return species.modifiers[attr_path].resolve(rng, intensity)
-
-            # Check character visual_traits as fallback
+            # Character visual_traits override species defaults so that
+            # individual characters can customise specific anatomy entries
+            # (e.g. phallus, sheath) while inheriting the rest from species.
             if character.visual_traits and attr_path in character.visual_traits:
                 val = character.visual_traits[attr_path]
                 return str(val) if val is not None else match.group(0)
+
+            # Species modifier lookup — handles movement, stance,
+            # anatomy keys, pronouns, and any YAML word_lists
+            if species and attr_path in species.modifiers:
+                return species.modifiers[attr_path].resolve(rng, intensity)
 
             expansion_errors.append(
                 f"Unknown attribute '{attr_path}' for role '{role}'"

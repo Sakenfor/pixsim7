@@ -1,0 +1,354 @@
+version: "1.0.0"
+
+characters:
+  # -----------------------------------------------------------------
+  # Large canines (species: canine_large)
+  # -----------------------------------------------------------------
+
+  - character_id: english_mastiff_01
+    name: "English Mastiff"
+    display_name: "the Mastiff"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "massive, heavy-boned, broad"
+      height: "30 inches at the shoulder"
+      coat: "short, dense fawn coat with black mask"
+      eyes: "dark brown, deep-set"
+      ears: "small, V-shaped, folded close"
+      distinguishing_marks: ["heavy dewlap", "wrinkled brow"]
+
+    personality_traits:
+      demeanor: "calm, watchful"
+      intelligence: "steady"
+      temperament: "patient power"
+
+    behavioral_patterns:
+      movement_style: "slow, deliberate, ground-shaking strides"
+      social_behavior: "quietly possessive"
+
+    voice_profile:
+      voice_type: "basso rumble"
+      breathing: "deep, slow, heavy"
+      signature_sounds: ["low groan", "thunderous bark"]
+
+    tags:
+      pack: creatures
+      breed: english_mastiff
+
+  - character_id: irish_wolfhound_01
+    name: "Irish Wolfhound"
+    display_name: "the Wolfhound"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "tall, lean, wiry-muscled"
+      height: "34 inches at the shoulder"
+      coat: "rough, shaggy grey brindle coat"
+      eyes: "dark, slightly hooded"
+      ears: "small, folded back in repose"
+      distinguishing_marks: ["wiry beard", "long rough tail"]
+
+    personality_traits:
+      demeanor: "noble, unhurried"
+      intelligence: "quietly observant"
+      temperament: "gentle intensity"
+
+    behavioral_patterns:
+      movement_style: "long, loping strides"
+      social_behavior: "calmly assertive"
+
+    voice_profile:
+      voice_type: "deep, rough-edged"
+      breathing: "steady, measured"
+      signature_sounds: ["low woof", "rumbling growl"]
+
+    tags:
+      pack: creatures
+      breed: irish_wolfhound
+
+  - character_id: rottweiler_01
+    name: "Rottweiler"
+    display_name: "the Rottweiler"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "stocky, compact, powerful"
+      height: "26 inches at the shoulder"
+      coat: "short, glossy black and tan"
+      eyes: "dark brown, alert"
+      ears: "triangular, pendant, set high"
+      distinguishing_marks: ["rust markings above eyes", "broad skull"]
+
+    personality_traits:
+      demeanor: "focused, direct"
+      intelligence: "sharp"
+      temperament: "controlled aggression"
+
+    behavioral_patterns:
+      movement_style: "purposeful, compact strides"
+      social_behavior: "commanding"
+
+    voice_profile:
+      voice_type: "deep, clipped"
+      breathing: "quick, forceful"
+      signature_sounds: ["guttural growl", "sharp bark"]
+
+    tags:
+      pack: creatures
+      breed: rottweiler
+
+  - character_id: german_shepherd_01
+    name: "German Shepherd"
+    display_name: "the Shepherd"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "athletic, angular, well-muscled"
+      height: "26 inches at the shoulder"
+      coat: "medium double coat, black and tan saddle pattern"
+      eyes: "dark brown, keen"
+      ears: "large, erect, pointed"
+      distinguishing_marks: ["sloped back", "bushy tail"]
+
+    personality_traits:
+      demeanor: "vigilant, eager"
+      intelligence: "highly trainable"
+      temperament: "driven intensity"
+
+    behavioral_patterns:
+      movement_style: "fluid, ground-covering trot"
+      social_behavior: "pack-oriented, assertive"
+
+    voice_profile:
+      voice_type: "clear, carrying"
+      breathing: "efficient, rhythmic"
+      signature_sounds: ["sharp bark", "sustained howl"]
+
+    tags:
+      pack: creatures
+      breed: german_shepherd
+
+  - character_id: cane_corso_01
+    name: "Cane Corso"
+    display_name: "the Corso"
+    category: creature
+    species: canine_large
+    archetype: dominant
+    render_style: realistic
+
+    visual_traits:
+      build: "muscular, athletic, imposing"
+      height: "27 inches at the shoulder"
+      coat: "short, stiff black coat"
+      eyes: "amber, intense"
+      ears: "cropped, triangular"
+      distinguishing_marks: ["heavy jaw", "furrowed brow"]
+
+    personality_traits:
+      demeanor: "reserved, intense"
+      intelligence: "calculating"
+      temperament: "explosive calm"
+
+    behavioral_patterns:
+      movement_style: "catlike, surprisingly agile"
+      social_behavior: "territorial"
+
+    voice_profile:
+      voice_type: "deep, raspy"
+      breathing: "measured, heavy through nostrils"
+      signature_sounds: ["low snarl", "booming bark"]
+
+    tags:
+      pack: creatures
+      breed: cane_corso
+
+  - character_id: bernese_mountain_01
+    name: "Bernese Mountain Dog"
+    display_name: "the Bernese"
+    category: creature
+    species: canine_large
+    archetype: gentle
+    render_style: realistic
+
+    visual_traits:
+      build: "large, sturdy, well-proportioned"
+      height: "27 inches at the shoulder"
+      coat: "long, silky tricolor - black, white, rust"
+      eyes: "warm brown, gentle"
+      ears: "medium, triangular, set high"
+      distinguishing_marks: ["white chest blaze", "rust eyebrows"]
+
+    personality_traits:
+      demeanor: "affectionate, easygoing"
+      intelligence: "eager to please"
+      temperament: "warm, steady"
+
+    behavioral_patterns:
+      movement_style: "heavy but willing strides"
+      social_behavior: "friendly, nuzzling"
+
+    voice_profile:
+      voice_type: "warm, mellow"
+      breathing: "relaxed, deep"
+      signature_sounds: ["gentle woof", "contented groan"]
+
+    tags:
+      pack: creatures
+      breed: bernese_mountain
+
+  # -----------------------------------------------------------------
+  # Medium canines (species: canine)
+  # -----------------------------------------------------------------
+
+  - character_id: husky_01
+    name: "Siberian Husky"
+    display_name: "the Husky"
+    category: creature
+    species: canine
+    archetype: trickster
+    render_style: realistic
+
+    visual_traits:
+      build: "compact, athletic, balanced"
+      height: "22 inches at the shoulder"
+      coat: "thick double coat, grey and white"
+      eyes: "bright blue, piercing"
+      ears: "erect, triangular"
+      distinguishing_marks: ["facial mask pattern", "curled tail"]
+
+    personality_traits:
+      demeanor: "playful, mischievous"
+      intelligence: "cunning"
+      temperament: "restless energy"
+
+    behavioral_patterns:
+      movement_style: "quick, bouncing, tireless"
+      social_behavior: "vocal, pushy"
+
+    voice_profile:
+      voice_type: "high, singing"
+      breathing: "quick, panting"
+      signature_sounds: ["dramatic howl", "chattering talk"]
+
+    tags:
+      pack: creatures
+      breed: husky
+
+  - character_id: border_collie_01
+    name: "Border Collie"
+    display_name: "the Collie"
+    category: creature
+    species: canine
+    archetype: watcher
+    render_style: realistic
+
+    visual_traits:
+      build: "lean, agile, lithe"
+      height: "20 inches at the shoulder"
+      coat: "medium, black and white"
+      eyes: "dark brown, intensely focused"
+      ears: "semi-erect, tipped forward"
+      distinguishing_marks: ["white blaze on face", "feathered tail"]
+
+    personality_traits:
+      demeanor: "laser-focused, eager"
+      intelligence: "exceptionally sharp"
+      temperament: "coiled spring"
+
+    behavioral_patterns:
+      movement_style: "low, stalking crouch to explosive sprints"
+      social_behavior: "herding, circling"
+
+    voice_profile:
+      voice_type: "sharp, insistent"
+      breathing: "controlled"
+      signature_sounds: ["commanding bark", "excited whine"]
+
+    tags:
+      pack: creatures
+      breed: border_collie
+
+  # -----------------------------------------------------------------
+  # Wolves (species: canine_large)
+  # -----------------------------------------------------------------
+
+  - character_id: grey_wolf_01
+    name: "Grey Wolf"
+    display_name: "the Wolf"
+    category: creature
+    species: canine_large
+    archetype: predator
+    render_style: realistic
+
+    visual_traits:
+      build: "lean, powerful, rangy"
+      height: "30 inches at the shoulder"
+      coat: "thick grizzled grey and brown"
+      eyes: "pale gold, unblinking"
+      ears: "erect, rounded tips"
+      distinguishing_marks: ["darker saddle across back", "bushy black-tipped tail"]
+
+    personality_traits:
+      demeanor: "wary, calculating"
+      intelligence: "cunning, patient"
+      temperament: "restrained ferocity"
+
+    behavioral_patterns:
+      movement_style: "tireless, ground-eating lope"
+      social_behavior: "pack-hierarchy driven"
+
+    voice_profile:
+      voice_type: "low, resonant"
+      breathing: "silent through nose"
+      signature_sounds: ["rising howl", "snarling warning"]
+
+    tags:
+      pack: creatures
+      breed: grey_wolf
+
+  - character_id: black_wolf_01
+    name: "Black Wolf"
+    display_name: "the Black Wolf"
+    category: creature
+    species: canine_large
+    archetype: predator
+    render_style: realistic
+
+    visual_traits:
+      build: "large, dense-muscled, heavy"
+      height: "32 inches at the shoulder"
+      coat: "solid glossy black"
+      eyes: "amber, glinting"
+      ears: "erect, alert"
+      distinguishing_marks: ["silver guard hairs along spine"]
+
+    personality_traits:
+      demeanor: "silent, intense"
+      intelligence: "sharply observant"
+      temperament: "cold focus"
+
+    behavioral_patterns:
+      movement_style: "low, silent, stalking"
+      social_behavior: "lone, direct"
+
+    voice_profile:
+      voice_type: "deep, guttural"
+      breathing: "near-silent"
+      signature_sounds: ["bass growl", "long mournful howl"]
+
+    tags:
+      pack: creatures
+      breed: black_wolf

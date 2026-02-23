@@ -13,7 +13,7 @@ templates:
     tags: [dane, mount, encounter, rear, intimate, canine_large, reinforcement, audio_cue]
     is_public: true
     character_bindings:
-      dane:
+      actor:
         character_id: "great_dane_01"
         cast:
           label: "Animal"
@@ -29,7 +29,7 @@ templates:
       provider: pixverse
       mode: image_to_video
       target_operation: image_to_video
-      notes: "Bind 'dane' to canine_large character, 'her' to human character"
+      notes: "Bind 'actor' to canine_large character, 'her' to human character"
       controls:
         - id: pose_lock
           type: slider
@@ -96,7 +96,7 @@ templates:
       # ── Lock in anatomy before contact
       - label: Physical reminder
         kind: reinforcement
-        reinforcement_text: "({{dane}}: realistic proportions — four {{dane.limbs}} on the ground, back level with her hip, head at her waist. {{dane.limbs}} with claws. Both figures remain distinct and separately rendered. {{dane.chest}}, {{dane.haunches}}, {{dane.shoulders}}, {{dane.stance}})"
+        reinforcement_text: "({{actor}}: {{actor.chest}}, {{actor.haunches}}, {{actor.shoulders}}, {{actor.stance}}. Both figures distinct and separately rendered.)"
 
       # ── Approach / investigation
       - label: Approach
@@ -110,7 +110,7 @@ templates:
       # ── Dane vocalizes during approach
       - label: Approach cue
         kind: audio_cue
-        reinforcement_text: "{{dane}} {{dane.vocal_pleasure}}, {{dane.breath}}, {{dane.tail_motion}}"
+        reinforcement_text: "{{actor}} {{actor.vocal_pleasure}}, {{actor.breath}}, {{actor.tail_motion}}"
         inherit_intensity: true
 
       # ── Mount
@@ -126,7 +126,7 @@ templates:
       # ── Dane effort during mount
       - label: Mount cue
         kind: audio_cue
-        reinforcement_text: "({{dane}} {{dane.vocal_effort}}, {{dane.breath}}, {{dane.weight_shift}}; {{dane.press}}, {{dane.muscle}})"
+        reinforcement_text: "({{actor}} {{actor.vocal_effort}}, {{actor.breath}}, {{actor.weight_shift}}; {{actor.press}}, {{actor.muscle}})"
         inherit_intensity: true
 
       # ── Her reaction audio

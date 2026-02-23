@@ -98,8 +98,9 @@ class SimplePromptParser:
 
     # Matches lines like "CABIN INTERIOR:" or "Body Language:" on their own line.
     # Requires at least 2 characters in the label, colon at end, nothing else on line.
+    # Capped at 40 chars — longer lines ending with ":" are instructions, not headers.
     SECTION_HEADER = re.compile(
-        r'^[ \t]*([A-Z][A-Za-z /&\-]{1,}?)\s*:\s*$',
+        r'^[ \t]*([A-Z][A-Za-z /&\-]{1,38}?)\s*:\s*$',
         re.MULTILINE,
     )
 

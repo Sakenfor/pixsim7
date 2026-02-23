@@ -97,14 +97,14 @@ class PromptVariantService:
         prompt_version_id: UUID,
         output_asset_id: int,
         input_asset_ids: Optional[List[int]] = None,
-        generation_artifact_id: Optional[int] = None,
+        generation_id: Optional[int] = None,
         user_id: Optional[int] = None,
     ) -> PromptVariantFeedback:
         """
         Create or fetch a feedback row for a specific prompt+asset combination.
 
         If a row already exists for (prompt_version_id, output_asset_id),
-        it will be returned and updated with any new input_asset_ids / artifact.
+        it will be returned and updated with any new input_asset_ids / generation link.
         """
         result = await self.db.execute(
             select(PromptVariantFeedback).where(
@@ -120,8 +120,8 @@ class PromptVariantService:
                 merged = set(existing.input_asset_ids or [])
                 merged.update(input_asset_ids)
                 existing.input_asset_ids = list(sorted(merged))
-            if generation_artifact_id and not existing.generation_artifact_id:
-                existing.generation_artifact_id = generation_artifact_id
+            if generation_id and not existing.generation_id:
+                existing.generation_id = generation_id
             if user_id and not existing.user_id:
                 existing.user_id = user_id
             await self.db.commit()
@@ -132,7 +132,7 @@ class PromptVariantService:
             prompt_version_id=prompt_version_id,
             output_asset_id=output_asset_id,
             input_asset_ids=input_asset_ids or [],
-            generation_artifact_id=generation_artifact_id,
+            generation_id=generation_id,
             user_id=user_id,
         )
         self.db.add(variant)

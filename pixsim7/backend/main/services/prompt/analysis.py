@@ -26,6 +26,11 @@ from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     normalize_analyzer_id_for_target,
     resolve_prompt_default_analyzer_id,
 )
+from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
+    AnalyzerExecutionRequest,
+    AnalyzerPipelineError,
+    resolve_analyzer_execution,
+)
 from pixsim7.backend.main.services.prompt.parser import (
     analyzer_registry,
     AnalyzerKind,
@@ -36,21 +41,14 @@ from pixsim7.backend.main.services.prompt.semantic_context import (
     PromptSemanticContext,
     build_prompt_semantic_context,
 )
+from pixsim7.backend.main.services.prompt.llm_resolution import (
+    normalize_llm_provider_id,
+)
 
 # Maps LLM provider IDs to the corresponding UserAISettings field name
 _PROVIDER_TO_AI_SETTINGS_KEY: Dict[str, str] = {
     "anthropic-llm": "anthropic_api_key",
     "openai-llm": "openai_api_key",
-}
-
-# Normalize llm_provider values (DB default is "anthropic", frontend sends "anthropic-llm")
-_NORMALIZE_PROVIDER_ID: Dict[str, str] = {
-    "anthropic": "anthropic-llm",
-    "openai": "openai-llm",
-    # Already-normalized values pass through
-    "anthropic-llm": "anthropic-llm",
-    "openai-llm": "openai-llm",
-    "cmd-llm": "cmd-llm",
 }
 
 logger = logging.getLogger(__name__)
@@ -66,7 +64,7 @@ class PromptAnalysisService:
 
     Analyzer selection:
     - Uses analyzer_registry to dispatch to appropriate analyzer
-    - Supports prompt:simple, prompt:claude, prompt:openai (extensible)
+    - Supports prompt:simple, prompt:claude, prompt:openai, prompt:local (extensible)
     """
 
     def __init__(self, db: Optional[AsyncSession] = None):
@@ -391,13 +389,49 @@ class PromptAnalysisService:
         - Provider: user's default llm_provider used as fallback
         - Model: user's llm_default_model used when provider matches preference
         """
-        # Check if analyzer exists
-        analyzer_id = analyzer_registry.resolve_legacy(analyzer_id)
-        analyzer_info = analyzer_registry.get(analyzer_id)
-        if not analyzer_info:
+        user_prefs = await self._load_user_ai_settings(user_id)
+        user_provider_id = (
+            normalize_llm_provider_id(getattr(user_prefs, "llm_provider", None))
+            if user_prefs
+            else None
+        )
+        user_model_id = (
+            getattr(user_prefs, "llm_default_model", None)
+            if user_prefs
+            else None
+        )
+
+        try:
+            resolved_execution = resolve_analyzer_execution(
+                AnalyzerExecutionRequest(
+                    analyzer_id=analyzer_id,
+                    target=AnalyzerTarget.PROMPT,
+                    require_enabled=False,
+                    explicit_provider_id=provider_id,
+                    explicit_model_id=model_id,
+                    user_llm_provider_id=user_provider_id,
+                    user_llm_model_id=user_model_id,
+                    require_provider=False,
+                )
+            )
+            analyzer_id = resolved_execution.analyzer_id
+            analyzer_info = resolved_execution.analyzer
+        except AnalyzerPipelineError:
             logger.warning(f"Unknown analyzer {analyzer_id}, falling back to prompt:simple")
             analyzer_id = "prompt:simple"
             analyzer_info = analyzer_registry.get(analyzer_id)
+            resolved_execution = resolve_analyzer_execution(
+                AnalyzerExecutionRequest(
+                    analyzer_id=analyzer_id,
+                    target=AnalyzerTarget.PROMPT,
+                    require_enabled=False,
+                    explicit_provider_id=provider_id,
+                    explicit_model_id=model_id,
+                    user_llm_provider_id=user_provider_id,
+                    user_llm_model_id=user_model_id,
+                    require_provider=False,
+                )
+            )
 
         merged_config = _resolve_analyzer_config(
             analyzer_info.config if analyzer_info else None,
@@ -419,36 +453,8 @@ class PromptAnalysisService:
             # Use LLM analyzer
             from pixsim7.backend.main.services.prompt.parser import analyze_prompt_with_llm
 
-            # Map to provider
-            provider_map = {
-                "prompt:claude": "anthropic-llm",
-                "prompt:openai": "openai-llm",
-                "llm:claude": "anthropic-llm",
-                "llm:openai": "openai-llm",
-            }
-
-            # Resolve provider: explicit > analyzer default > user pref > fallback
-            user_prefs = await self._load_user_ai_settings(user_id)
-            user_provider = (
-                _NORMALIZE_PROVIDER_ID.get(user_prefs.llm_provider, user_prefs.llm_provider)
-                if user_prefs else None
-            )
-
-            resolved_provider = (
-                provider_id
-                or analyzer_info.provider_id
-                or provider_map.get(analyzer_id)
-                or user_provider
-                or "anthropic-llm"
-            )
-
-            # Resolve model: explicit > user pref (if same provider) > analyzer default
-            user_model = (
-                user_prefs.llm_default_model
-                if user_prefs and user_prefs.llm_default_model and user_provider == resolved_provider
-                else None
-            )
-            resolved_model = model_id or user_model or analyzer_info.model_id
+            resolved_provider = resolved_execution.provider_id or "anthropic-llm"
+            resolved_model = resolved_execution.model_id
 
             # Inject user AI credentials if not already in config
             merged_config = self._inject_api_key_from_settings(

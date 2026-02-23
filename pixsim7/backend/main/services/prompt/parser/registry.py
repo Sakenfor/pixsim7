@@ -5,7 +5,7 @@ Unified registry for all analyzers (prompt and asset).
 Supports dynamic discovery and extensibility.
 
 Analyzer ID convention:
-- prompt:simple, prompt:claude, prompt:openai  -> text analysis
+- prompt:simple, prompt:claude, prompt:openai, prompt:local  -> text analysis
 - asset:object-detection, asset:ocr            -> media analysis
 """
 
@@ -51,7 +51,7 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
 
     Analyzers can be:
     - Built-in parsers (prompt:simple)
-    - LLM-based (prompt:claude, prompt:openai)
+    - LLM-based (prompt:claude, prompt:openai, prompt:local)
     - Vision-based (asset:object-detection, asset:ocr)
     - Custom/plugin-provided
     """
@@ -111,6 +111,19 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             target=AnalyzerTarget.PROMPT,
             provider_id="openai-llm",
             model_id="gpt-4",
+            source_plugin_id="core",
+            enabled=True,
+        ))
+
+        # Local LLM analyzer
+        self.register(AnalyzerInfo(
+            id="prompt:local",
+            name="Local LLM",
+            description="Lightweight local model analysis (SmolLM2, CPU inference)",
+            kind=AnalyzerKind.LLM,
+            target=AnalyzerTarget.PROMPT,
+            provider_id="local-llm",
+            model_id="smollm2-1.7b",
             source_plugin_id="core",
             enabled=True,
         ))
@@ -217,6 +230,16 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             kind=AnalyzerKind.LLM,
             target=AnalyzerTarget.PROMPT,
             provider_id="openai-llm",
+            source_plugin_id="core",
+            is_legacy=True,
+        ))
+        self.register(AnalyzerInfo(
+            id="llm:local",
+            name="Local LLM (legacy)",
+            description="Alias for prompt:local",
+            kind=AnalyzerKind.LLM,
+            target=AnalyzerTarget.PROMPT,
+            provider_id="local-llm",
             source_plugin_id="core",
             is_legacy=True,
         ))
@@ -338,6 +361,7 @@ class AnalyzerRegistry(SimpleRegistry[str, AnalyzerInfo]):
             "parser:simple": "prompt:simple",
             "llm:claude": "prompt:claude",
             "llm:openai": "prompt:openai",
+            "llm:local": "prompt:local",
             "face_detection": "asset:face-detection",
             "scene_tagging": "asset:scene-tagging",
             "content_moderation": "asset:content-moderation",

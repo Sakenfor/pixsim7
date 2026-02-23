@@ -7,7 +7,11 @@ LLM-analyzer paths stay behaviorally aligned.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, Iterable, List, Tuple, TypedDict
+
+_MAX_ONTOLOGY_ID_LEN = 80
+_ONTOLOGY_ID_RE = re.compile(r"^[a-z][a-z0-9_]*:[a-z0-9_]+$")
 
 from pixsim7.backend.main.services.prompt.tag_inference import (
     derive_sub_tags_from_ontology_ids,
@@ -50,8 +54,11 @@ def _extract_ontology_ids(candidate: Dict[str, Any]) -> List[str]:
     for value in raw:
         if not isinstance(value, str):
             continue
-        tag_id = value.strip()
-        if not tag_id:
+        tag_id = value.strip().lower()
+        if not tag_id or len(tag_id) > _MAX_ONTOLOGY_ID_LEN:
+            continue
+        # Only accept canonical prefix:name format
+        if not _ONTOLOGY_ID_RE.match(tag_id):
             continue
         result.append(tag_id)
     return result
@@ -78,7 +85,7 @@ def derive_structured_and_flat_tags(
         role = candidate.get("role")
         confidence = candidate.get("confidence", 0.0)
 
-        if role and role != "other":
+        if role and role != "other" and len(role) <= 40:
             role_tag = f"has:{role}"
             if role_tag not in role_tag_segments:
                 role_tag_segments[role_tag] = []
