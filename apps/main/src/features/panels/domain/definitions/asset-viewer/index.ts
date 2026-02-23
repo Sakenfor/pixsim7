@@ -31,7 +31,7 @@ export default definePanel({
       hasDockview: true,
       subPanelsCanBreakout: true,
       persistLayout: true,
-      storageKey: 'asset-viewer-dockview-layout:v3',
+      storageKey: 'dockview:asset-viewer:v5',
     },
     priority: 80,
   },

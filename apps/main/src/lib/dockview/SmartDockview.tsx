@@ -315,6 +315,9 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   // Context menu (optional - returns null if no provider)
   const contextMenu = useContextMenuOptional();
 
+  // Track global panel registry changes so catalog-reading useMemos recompute
+  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
+
   // Resolve panel IDs from new simplified API or legacy props
   // Priority: panels > scope
   const resolvedPanelDefs = useMemo((): PanelDefinition[] => {
@@ -352,7 +355,8 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
 
     // No panels specified - will use registry mode if provided
     return [];
-  }, [panelsProp, scope, excludePanels, allowedPanels, allowedCategories]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
+  }, [panelsProp, scope, excludePanels, allowedPanels, allowedCategories, globalRegistryVersion]);
 
   // Determine which panels are allowed to be added (context menu)
   const availablePanelDefs = useMemo((): PanelDefinition[] => {
@@ -371,13 +375,13 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     }
 
     return panels;
-  }, [allowedPanels, allowedCategories]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- globalRegistryVersion makes panelSelectors reads reactive
+  }, [allowedPanels, allowedCategories, globalRegistryVersion]);
 
   const [isReady, setIsReady] = useState(false);
   const apiRef = useRef<DockviewReadyEvent['api'] | null>(null);
   const [dockviewApi, setDockviewApi] = useState<DockviewReadyEvent['api'] | null>(null);
   const contextRef = useRef<TContext | undefined>(context);
-  const [globalRegistryVersion, setGlobalRegistryVersion] = useState(0);
   const { scopeHostId, dockviewId } = useDockviewIds(panelManagerId);
   // Determine mode
   const registryMode = isRegistryMode(props);
@@ -385,17 +389,19 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
   const defaultLayout = props.defaultLayout;
   const directComponents = !registryMode ? props.components : undefined;
 
-  // If no panels resolved and no registry/direct components, fail fast
+  // Track whether panels were ever resolved. Once true, we never unmount the
+  // DockviewReact tree — even if the plugin catalog transiently empties during HMR.
+  // This prevents destroying the live dockview layout on hot-reload.
+  const hadPanelsRef = useRef(false);
+
   const hasNoPanels =
     resolvedPanelDefs.length === 0 &&
     !registryMode &&
     !directComponents;
 
-  useEffect(() => {
-    if (hasNoPanels) {
-      console.error("[SmartDockview] No panels resolved for this dockview. Check scope/panels configuration.");
-    }
-  }, [hasNoPanels]);
+  if (!hasNoPanels) {
+    hadPanelsRef.current = true;
+  }
 
   // Keep context ref updated and force panels to re-render
   useEffect(() => {
@@ -548,6 +554,16 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     baseWrapOptions,
   ]);
 
+  // During HMR the catalog briefly empties, producing an empty components map.
+  // Keep the last non-empty map so existing panels don't flash blank.
+  const stableComponentsRef = useRef(components);
+  if (Object.keys(components).length > 0) {
+    stableComponentsRef.current = components;
+  }
+  const stableComponents = Object.keys(components).length > 0
+    ? components
+    : stableComponentsRef.current;
+
   // Handle dockview ready - uses refs for props to stabilize callback
   const handleReady = useCallback(
     (api: DockviewApi) => {
@@ -619,14 +635,11 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
     resetDockviewLayout,
   });
 
-  if (hasNoPanels) {
-    return (
-      <div className={clsx("h-full w-full", className)}>
-        <div className="h-full w-full flex items-center justify-center text-neutral-500 text-sm">
-          No panels available for this dockview.
-        </div>
-      </div>
-    );
+  if (hasNoPanels && !hadPanelsRef.current) {
+    // Catalog still loading (initial mount or async init).
+    // Once globalRegistryVersion bumps, this branch stops matching and
+    // the full DockviewReact tree mounts on the next render.
+    return <div className={clsx("h-full w-full", className)} />;
   }
 
   return (
@@ -642,7 +655,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       >
         <ContextHubHost hostId={scopeHostId}>
           <SmartDockviewBase
-            components={components as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
+            components={stableComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelProps>>}
             tabComponents={tabComponents as unknown as Record<string, React.FunctionComponent<IDockviewPanelHeaderProps>>}
             defaultTabComponent={defaultTabComponent as unknown as React.FunctionComponent<IDockviewPanelHeaderProps>}
             watermarkComponent={watermarkComponent as unknown as React.FunctionComponent}

@@ -101,15 +101,41 @@ export function SmartDockviewBase<TContext = any>({
     });
   }, [context, isReady]);
 
+  // Keep a ref to the latest components map so stable wrappers can look up
+  // the current implementation without changing their own identity.
+  const componentsRef = useRef(components);
+  componentsRef.current = components;
+
+  // Cache of stable wrapper components keyed by panel ID.
+  // Each wrapper has a fixed identity (React won't unmount/remount it)
+  // and delegates to componentsRef.current[key] at render time.
+  const stableWrappersRef = useRef<Record<string, React.ComponentType<IDockviewPanelProps>>>({});
+
   const wrappedComponents = useMemo(() => {
     const map: Record<string, React.ComponentType<IDockviewPanelProps>> = {};
-    Object.entries(components).forEach(([key, Component]) => {
-      const Wrapped = (props: IDockviewPanelProps) => (
-        <Component {...props} context={contextRef.current} panelId={key} />
-      );
-      Wrapped.displayName = `DockviewPanel(${key})`;
-      map[key] = Wrapped;
-    });
+    const wrappers = stableWrappersRef.current;
+
+    for (const key of Object.keys(components)) {
+      if (!wrappers[key]) {
+        // Create a stable wrapper once per panel ID
+        const StablePanel = (props: IDockviewPanelProps) => {
+          const Component = componentsRef.current[key];
+          if (!Component) return null;
+          return <Component {...props} context={contextRef.current} panelId={key} />;
+        };
+        StablePanel.displayName = `DockviewPanel(${key})`;
+        wrappers[key] = StablePanel;
+      }
+      map[key] = wrappers[key];
+    }
+
+    // Clean up wrappers for removed panels
+    for (const key of Object.keys(wrappers)) {
+      if (!(key in components)) {
+        delete wrappers[key];
+      }
+    }
+
     return map;
   }, [components]);
 
