@@ -21,9 +21,6 @@ export type {
   // Kind types
   ConceptKind,
   KnownConceptKind,
-  // Backward-compat role types
-  RoleConceptResponse,
-  RolesListResponse,
 } from '@pixsim7/shared.api.client/domains';
 
 // Re-export utilities
@@ -38,9 +35,7 @@ export const getConceptKinds = conceptsApi.getConceptKinds;
 export const getConcepts = conceptsApi.getConcepts;
 
 // Convenience methods
+export const getRoles = conceptsApi.getRoles;
 export const getParts = conceptsApi.getParts;
 export const getPoses = conceptsApi.getPoses;
 export const getInfluenceRegions = conceptsApi.getInfluenceRegions;
-
-// Backward-compat
-export const getConceptRoles = conceptsApi.getRoles;

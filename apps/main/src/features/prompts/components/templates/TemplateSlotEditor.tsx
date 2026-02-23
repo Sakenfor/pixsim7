@@ -32,11 +32,28 @@ const ROLES = [
 ];
 const INTENTS = ['generate', 'preserve', 'modify', 'add', 'remove'];
 const COMPLEXITY_LEVELS = ['simple', 'moderate', 'complex', 'very_complex'];
+const SELECTION_STRATEGIES: Array<{ value: TemplateSlot['selection_strategy']; label: string }> = [
+  { value: 'uniform', label: 'Uniform' },
+  { value: 'weighted_rating', label: 'Weighted (rating)' },
+  { value: 'weighted_tags', label: 'Weighted (tags)' },
+  { value: 'diverse', label: 'Diverse' },
+  { value: 'coherent_rerank', label: 'Coherent rerank' },
+  { value: 'llm_rerank', label: 'LLM rerank' },
+];
 
 const selectCls =
   'w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none';
 const inputCls =
   'w-full text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none';
+
+function toJsonTextarea(value: unknown): string {
+  if (value == null) return '';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return '';
+  }
+}
 
 export function TemplateSlotEditor({
   slot,
@@ -58,6 +75,25 @@ export function TemplateSlotEditor({
       onChange(index, { ...slot, ...patch });
     },
     [index, onChange, slot],
+  );
+
+  const updateJsonObjectField = useCallback(
+    (field: 'tags' | 'preferences' | 'selection_config', raw: string) => {
+      const trimmed = raw.trim();
+      if (!trimmed) {
+        update({ [field]: null } as Partial<TemplateSlot>);
+        return;
+      }
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          update({ [field]: parsed } as Partial<TemplateSlot>);
+        }
+      } catch {
+        // Keep current value; invalid JSON is ignored until the next valid blur.
+      }
+    },
+    [update],
   );
 
   const isReinforcement = slot.kind === 'reinforcement' || slot.kind === 'audio_cue';
@@ -83,7 +119,18 @@ export function TemplateSlotEditor({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [slot.role, slot.category, slot.kind, slot.package_name, slot.complexity_min, slot.complexity_max, slot.min_rating, isReinforcement]);
+  }, [
+    slot.role,
+    slot.category,
+    slot.kind,
+    slot.package_name,
+    slot.complexity_min,
+    slot.complexity_max,
+    slot.min_rating,
+    JSON.stringify(slot.tags ?? null),
+    JSON.stringify(slot.tag_constraints ?? null),
+    isReinforcement,
+  ]);
 
   // Summary line for collapsed state
   const summary = isReinforcement
@@ -360,12 +407,13 @@ export function TemplateSlotEditor({
                   <Icon name="shuffle" size={10} className="text-neutral-400" />
                   <select
                     value={slot.selection_strategy}
-                    onChange={(e) => update({ selection_strategy: e.target.value as 'uniform' | 'weighted_rating' })}
+                    onChange={(e) => update({ selection_strategy: e.target.value as TemplateSlot['selection_strategy'] })}
                     disabled={disabled}
                     className="text-xs px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200"
                   >
-                    <option value="uniform">Uniform</option>
-                    <option value="weighted_rating">Weighted (rating)</option>
+                    {SELECTION_STRATEGIES.map((strategy) => (
+                      <option key={strategy.value} value={strategy.value}>{strategy.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="flex items-center gap-1.5 cursor-pointer">
@@ -379,6 +427,62 @@ export function TemplateSlotEditor({
                   <span className="text-neutral-600 dark:text-neutral-300">Optional</span>
                 </label>
               </div>
+
+              {/* Advanced structured fields (minimal JSON authoring) */}
+              <details className="rounded border border-neutral-100 dark:border-neutral-700/60 p-2">
+                <summary className="cursor-pointer text-[11px] text-neutral-500 dark:text-neutral-400 select-none">
+                  Advanced Slot Filters & Selector Config
+                </summary>
+                <div className="mt-2 space-y-2">
+                  <label className="space-y-0.5 block">
+                    <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                      <Icon name="tag" size={9} /> Hard tags (JSON)
+                    </span>
+                    <textarea
+                      key={`slot-tags-${index}-${toJsonTextarea(slot.tags)}`}
+                      defaultValue={toJsonTextarea(slot.tags)}
+                      onBlur={(e) => updateJsonObjectField('tags', e.target.value)}
+                      placeholder={`{\n  "all_of": { "mood": "tense" },\n  "any_of": { "camera_angle": ["low", "dutch"] },\n  "none_of": { "atmosphere": ["surveillance"] }\n}`}
+                      disabled={disabled}
+                      rows={5}
+                      className="w-full text-[11px] font-mono px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none resize-y"
+                    />
+                    <span className="text-[10px] text-neutral-400">
+                      Supports alias groups: <code>all_of</code>, <code>any_of</code>, <code>none_of</code>.
+                    </span>
+                  </label>
+
+                  <label className="space-y-0.5 block">
+                    <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                      <Icon name="shuffle" size={9} /> Preferences (JSON)
+                    </span>
+                    <textarea
+                      key={`slot-pref-${index}-${toJsonTextarea(slot.preferences)}`}
+                      defaultValue={toJsonTextarea(slot.preferences)}
+                      onBlur={(e) => updateJsonObjectField('preferences', e.target.value)}
+                      placeholder={`{\n  "boost_tags": { "perspective": "upward" },\n  "avoid_tags": { "cliche": ["yes"] },\n  "diversity_keys": ["camera_angle"],\n  "novelty_weight": 0.6\n}`}
+                      disabled={disabled}
+                      rows={5}
+                      className="w-full text-[11px] font-mono px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none resize-y"
+                    />
+                  </label>
+
+                  <label className="space-y-0.5 block">
+                    <span className="text-[10px] text-neutral-500 flex items-center gap-1">
+                      <Icon name="sliders" size={9} /> Selection config (JSON)
+                    </span>
+                    <textarea
+                      key={`slot-selcfg-${index}-${toJsonTextarea(slot.selection_config)}`}
+                      defaultValue={toJsonTextarea(slot.selection_config)}
+                      onBlur={(e) => updateJsonObjectField('selection_config', e.target.value)}
+                      placeholder={`{\n  "top_k": 12,\n  "temperature": 0.7,\n  "fallback_strategy": "weighted_tags",\n  "timeout_ms": 1200,\n  "weights": { "rating": 0.2, "diversity": 0.5 }\n}`}
+                      disabled={disabled}
+                      rows={6}
+                      className="w-full text-[11px] font-mono px-2 py-1.5 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none resize-y"
+                    />
+                  </label>
+                </div>
+              </details>
 
               {/* Fallback text */}
               {slot.optional || (

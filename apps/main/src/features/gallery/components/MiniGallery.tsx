@@ -5,9 +5,13 @@ import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 import type { OverlayWidget } from '@lib/ui/overlay';
+import type { OverlayContextId } from '@lib/widgets';
+
+import { PaginationStrip } from '@features/assets/components/shared';
 
 import type { AssetModel } from '@features/assets';
 import { useAssetViewerStore, selectIsViewerOpen, toViewerAsset, toViewerAssets } from '@features/assets';
+import { hydrateAssetModel, isStubAssetModel } from '@features/assets/lib/hydrateAssetModel';
 import { useViewerScopeSync } from '@features/assets/hooks/useAssetViewer';
 import { CompactAssetCard } from '@features/assets/components/shared';
 import { GalleryFilters } from '@features/assets/components/shared/GalleryFilters';
@@ -70,6 +74,12 @@ export interface MiniGalleryProps {
   /** Extra overlay widgets to add per card (e.g. pin badge, remove badge). */
   renderItemWidgets?: (asset: AssetModel) => OverlayWidget[] | undefined;
 
+  // --- Pagination ---
+  /** 'infinite' (default) uses intersection observer, 'page' shows page controls. */
+  paginationMode?: 'infinite' | 'page';
+  /** Items per page when paginationMode='page'. Default 20. */
+  pageSize?: number;
+
   // --- Asset resolution ---
   /** Called before addInput / openViewer when asset data may be incomplete
    *  (e.g. history entries that only carry a thumbnail). Return the full
@@ -94,6 +104,7 @@ interface MiniGalleryItemProps {
   extraOverlay?: ReactNode;
   renderActions?: (asset: AssetModel, defaultActions: ReactNode) => ReactNode | null;
   extraWidgets?: OverlayWidget[];
+  overlayContext?: OverlayContextId;
 }
 
 function MiniGalleryItem({
@@ -109,6 +120,7 @@ function MiniGalleryItem({
   extraOverlay,
   renderActions,
   extraWidgets,
+  overlayContext,
 }: MiniGalleryItemProps) {
   const showSlotPicker = isMultiAssetOperation(operationType);
   const zapRef = useRef<HTMLButtonElement | null>(null);
@@ -205,6 +217,7 @@ function MiniGalleryItem({
         overlay={overlay}
         hoverActions={hoverActions}
         extraWidgets={extraWidgets}
+        overlayContext={overlayContext ?? (hoverActions === null ? 'gallery' : undefined)}
       />
 
       {showSlotPicker && slotPickerExpanded && slotPickerPos && createPortal(
@@ -235,6 +248,10 @@ function MiniGalleryItem({
 // MiniGalleryContent — inner component that requires GenerationScopeProvider
 // ---------------------------------------------------------------------------
 
+const DEFAULT_CARD_SIZE = 100;
+const MIN_CARD_SIZE = 60;
+const MAX_CARD_SIZE = 200;
+
 function MiniGalleryContent({
   initialFilters: propInitialFilters,
   showSearch = true,
@@ -249,10 +266,14 @@ function MiniGalleryContent({
   renderItemOverlay,
   renderItemActions,
   renderItemWidgets,
+  paginationMode = 'infinite',
+  pageSize = 20,
   resolveAsset,
 }: MiniGalleryProps) {
   const useExternalData = externalItems !== undefined;
   const showFilters = showFiltersProp ?? !useExternalData;
+  const usePaging = paginationMode === 'page';
+  const [cardSize, setCardSize] = useState(DEFAULT_CARD_SIZE);
 
   // Resolve operation type: controller > prop > context
   const controller = useQuickGenerateController();
@@ -280,20 +301,40 @@ function MiniGalleryContent({
 
   // Data via useAssets — only active when no external items provided
   const assetsHook = useAssets(useExternalData ? undefined : {
-    limit: 30,
+    limit: usePaging ? pageSize : 30,
     filters,
+    paginationMode: usePaging ? 'page' : 'infinite',
   });
 
-  const displayItems = useExternalData ? externalItems : assetsHook.items;
+  // Client-side paging for external items
+  const [clientPage, setClientPage] = useState(1);
+  const clientTotalPages = useExternalData
+    ? Math.max(1, Math.ceil((externalItems?.length ?? 0) / pageSize))
+    : 1;
+
+  // Reset client page when external items change significantly
+  useEffect(() => {
+    if (useExternalData) setClientPage(1);
+  }, [useExternalData, externalItems?.length]);
+
+  const allItems = useExternalData ? externalItems : assetsHook.items;
+  const displayItems = usePaging && useExternalData
+    ? allItems.slice((clientPage - 1) * pageSize, clientPage * pageSize)
+    : allItems;
   const loading = useExternalData ? false : assetsHook.loading;
   const error = useExternalData ? null : assetsHook.error;
   const hasMore = useExternalData ? false : assetsHook.hasMore;
   const loadMore = assetsHook.loadMore;
 
-  // Infinite scroll via intersection observer (only for useAssets mode)
+  // Pagination state (unified for both data sources)
+  const currentPage = useExternalData ? clientPage : assetsHook.currentPage;
+  const totalPages = useExternalData ? clientTotalPages : assetsHook.totalPages;
+  const goToPage = useExternalData ? setClientPage : assetsHook.goToPage;
+
+  // Infinite scroll via intersection observer (only for useAssets mode + infinite)
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (useExternalData) return;
+    if (useExternalData || usePaging) return;
     const el = sentinelRef.current;
     if (!el) return;
 
@@ -307,7 +348,7 @@ function MiniGalleryContent({
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [useExternalData, hasMore, loading, loadMore]);
+  }, [useExternalData, usePaging, hasMore, loading, loadMore]);
 
   // Generation scope stores
   const { useInputStore, useSessionStore, useSettingsStore, id: scopeId } = useGenerationScopeStores();
@@ -330,26 +371,36 @@ function MiniGalleryContent({
   const openViewer = useAssetViewerStore((s) => s.openViewer);
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
-  // Register mini-gallery scope for viewer navigation
-  const viewerItems = useMemo(() => toViewerAssets(displayItems), [displayItems]);
+  // Register mini-gallery scope for viewer navigation (use allItems for full navigation)
+  const viewerItems = useMemo(() => toViewerAssets(allItems), [allItems]);
   const miniScopeLabel = context?.sourceLabel
-    ? `${context.sourceLabel} (${displayItems.length})`
-    : `Gallery (${displayItems.length})`;
+    ? `${context.sourceLabel} (${allItems.length})`
+    : `Gallery (${allItems.length})`;
   useViewerScopeSync('mini-gallery', miniScopeLabel, viewerItems, isViewerOpen);
 
   // Track which assets are currently being resolved
   const [resolvingIds, setResolvingIds] = useState<Set<number>>(new Set());
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const hydratedAssetCacheRef = useRef<Map<number, AssetModel>>(new Map());
 
   /** Resolve an asset (fetch full data if `resolveAsset` is provided). */
   const resolve = useCallback(
     async (asset: AssetModel): Promise<AssetModel | null> => {
-      if (!resolveAsset) return asset;
+      if (!resolveAsset && !isStubAssetModel(asset)) {
+        return asset;
+      }
+
       const id = asset.id;
       setResolvingIds((prev) => new Set(prev).add(id));
       setResolveError(null);
       try {
-        return await resolveAsset(asset);
+        const resolved = resolveAsset ? await resolveAsset(asset) : asset;
+        return await hydrateAssetModel(resolved, {
+          cache: hydratedAssetCacheRef.current,
+          onError: (e) => {
+            setResolveError(e instanceof Error ? e.message : 'Failed to load asset');
+          },
+        });
       } catch (e: unknown) {
         setResolveError(e instanceof Error ? e.message : 'Failed to load asset');
         return null;
@@ -367,10 +418,10 @@ function MiniGalleryContent({
   const openAssetInViewer = useCallback(
     (asset: AssetModel) => {
       const viewerAsset = toViewerAsset(asset);
-      const viewerList = displayItems.length > 0 ? toViewerAssets(displayItems) : undefined;
+      const viewerList = allItems.length > 0 ? toViewerAssets(allItems) : undefined;
       openViewer(viewerAsset, viewerList, 'mini-gallery');
     },
-    [openViewer, displayItems],
+    [openViewer, allItems],
   );
 
   const handleSelect = useCallback(
@@ -430,7 +481,20 @@ function MiniGalleryContent({
       {/* Custom header */}
       {header}
 
-      {/* Error banner */}
+      {/* Grid size slider + error banner */}
+      <div className="flex items-center gap-2 px-3 py-1 border-b border-neutral-200 dark:border-neutral-700">
+        <Icon name="grid" size={12} className="text-neutral-400 shrink-0" />
+        <input
+          type="range"
+          min={MIN_CARD_SIZE}
+          max={MAX_CARD_SIZE}
+          value={cardSize}
+          onChange={(e) => setCardSize(Number(e.target.value))}
+          className="flex-1 h-1 accent-accent cursor-pointer"
+          title={`Card size: ${cardSize}px`}
+        />
+      </div>
+
       {displayError && (
         <div className="px-3 py-1 text-[10px] text-red-500 bg-red-50 dark:bg-red-900/20">
           {displayError}
@@ -454,7 +518,7 @@ function MiniGalleryContent({
         {displayItems.length > 0 && (
           <div
             className="grid gap-2"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}
+            style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))` }}
           >
             {displayItems.map((asset) => (
               <MiniGalleryItem
@@ -476,10 +540,23 @@ function MiniGalleryContent({
           </div>
         )}
 
-        {/* Infinite scroll sentinel (useAssets mode only) */}
-        {!useExternalData && <div ref={sentinelRef} className="h-4" />}
+        {/* Pagination controls (page mode) */}
+        {usePaging && (totalPages > 1 || hasMore) && (
+          <div className="flex justify-center pt-3 pb-1">
+            <PaginationStrip
+              currentPage={currentPage}
+              totalPages={totalPages}
+              hasMore={useExternalData ? undefined : hasMore}
+              loading={loading}
+              onPageChange={goToPage}
+            />
+          </div>
+        )}
 
-        {loading && displayItems.length > 0 && (
+        {/* Infinite scroll sentinel (infinite mode, useAssets only) */}
+        {!usePaging && !useExternalData && <div ref={sentinelRef} className="h-4" />}
+
+        {!usePaging && loading && displayItems.length > 0 && (
           <div className="text-[10px] text-neutral-400 text-center py-2">
             Loading more...
           </div>

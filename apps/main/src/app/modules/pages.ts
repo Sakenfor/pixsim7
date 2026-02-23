@@ -18,4 +18,5 @@ export { pluginManagerModule } from '@features/plugins/routes';
 export { overlayConfigModule } from '@features/componentSettings/routes';
 export { assetDetailModule } from '@features/assets/routes';
 export { generationPageModule } from '@features/generation/routes';
+export { settingsPageModule } from '@features/settings/routes';
 export { routineGraphPageModule } from '@features/routine-graph/routes';

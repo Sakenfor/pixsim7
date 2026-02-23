@@ -12,12 +12,12 @@ import type { CompositionPackage, CompositionRoleDefinition } from '@pixsim7/sha
 import { create } from 'zustand';
 
 import { getCompositionPackages } from '@lib/api/composition';
-import { getConceptRoles, type RoleConceptResponse } from '@lib/api/concepts';
+import { getRoles, type ConceptResponse } from '@lib/api/concepts';
 
 interface CompositionPackageState {
   // Data
   packages: CompositionPackage[];
-  roles: RoleConceptResponse[];
+  roles: CompositionRoleDefinition[];
   priority: string[];
 
   // Derived mappings (computed from roles)
@@ -50,7 +50,7 @@ interface CompositionPackageState {
 /**
  * Build derived mappings from roles
  */
-function buildMappings(roles: RoleConceptResponse[]): {
+function buildMappings(roles: CompositionRoleDefinition[]): {
   slugToRole: Record<string, string>;
   namespaceToRole: Record<string, string>;
 } {
@@ -58,15 +58,55 @@ function buildMappings(roles: RoleConceptResponse[]): {
   const namespaceToRole: Record<string, string> = {};
 
   for (const role of roles) {
-    for (const slug of role.slug_mappings) {
+    for (const slug of role.slugMappings ?? []) {
       slugToRole[slug.toLowerCase()] = role.id;
     }
-    for (const ns of role.namespace_mappings) {
+    for (const ns of role.namespaceMappings ?? []) {
       namespaceToRole[ns.toLowerCase()] = role.id;
     }
   }
 
   return { slugToRole, namespaceToRole };
+}
+
+function toCompositionRole(role: ConceptResponse): CompositionRoleDefinition {
+  const metadata = (role.metadata ?? {}) as Record<string, unknown>;
+  const defaultLayerValue = metadata.default_layer;
+  const defaultLayer = Number.isFinite(Number(defaultLayerValue))
+    ? Number(defaultLayerValue)
+    : 0;
+
+  const parentValue = metadata.parent;
+  const parent =
+    typeof parentValue === 'string' && parentValue.length > 0
+      ? parentValue
+      : undefined;
+
+  const isGroupValue = metadata.is_group;
+  const isGroup =
+    typeof isGroupValue === 'boolean'
+      ? isGroupValue
+      : undefined;
+
+  const normalizeList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.map((item) => String(item));
+  };
+
+  return {
+    id: role.id,
+    label: role.label,
+    description: role.description ?? '',
+    color: role.color ?? 'gray',
+    defaultLayer,
+    tags: normalizeList(role.tags),
+    parent,
+    isGroup,
+    slugMappings: normalizeList(metadata.slug_mappings),
+    namespaceMappings: normalizeList(metadata.namespace_mappings),
+  };
 }
 
 export const useCompositionPackageStore = create<CompositionPackageState>((set, get) => ({
@@ -91,12 +131,13 @@ export const useCompositionPackageStore = create<CompositionPackageState>((set, 
 
     try {
       // Fetch both packages and concept roles in parallel
-      const [packages, conceptRolesResponse] = await Promise.all([
+      const [packages, roleConceptsResponse] = await Promise.all([
         getCompositionPackages(),
-        getConceptRoles(),
+        getRoles(),
       ]);
 
-      const { roles, priority } = conceptRolesResponse;
+      const roles = (roleConceptsResponse.concepts ?? []).map(toCompositionRole);
+      const priority = roleConceptsResponse.priority ?? [];
       const { slugToRole, namespaceToRole } = buildMappings(roles);
 
       set({
@@ -128,12 +169,13 @@ export const useCompositionPackageStore = create<CompositionPackageState>((set, 
     set({ isLoading: true, error: null });
 
     try {
-      const [packages, conceptRolesResponse] = await Promise.all([
+      const [packages, roleConceptsResponse] = await Promise.all([
         getCompositionPackages(),
-        getConceptRoles(),
+        getRoles(),
       ]);
 
-      const { roles, priority } = conceptRolesResponse;
+      const roles = (roleConceptsResponse.concepts ?? []).map(toCompositionRole);
+      const priority = roleConceptsResponse.priority ?? [];
       const { slugToRole, namespaceToRole } = buildMappings(roles);
 
       set({

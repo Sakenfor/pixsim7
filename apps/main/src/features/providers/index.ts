@@ -35,6 +35,7 @@ export type {
 export { useProviderSpecs } from './hooks/useProviderSpecs';
 export { useProviderIdForModel } from './hooks/useProviderIdForModel';
 export { useCostEstimate } from './hooks/useCostEstimate';
+export { useUnlimitedModels } from './hooks/useUnlimitedModels';
 
 export { useAiProviders } from './hooks/useAiProviders';
 export type { AiProviderInfo, UseAiProvidersState } from './hooks/useAiProviders';

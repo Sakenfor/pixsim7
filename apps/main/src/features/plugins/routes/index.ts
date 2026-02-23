@@ -33,7 +33,7 @@ export const pluginManagerModule: Module = {
     featureId: 'plugins',
     featurePrimary: true,
     protected: true,
-    showInNav: true,
+    hidden: true,
     actions: [openPluginManagerAction],
     component: lazy(() => import('../../../components/PluginManager').then(m => ({ default: m.PluginManagerUI }))),
     appMap: {

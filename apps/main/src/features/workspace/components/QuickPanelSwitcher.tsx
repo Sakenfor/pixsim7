@@ -24,6 +24,7 @@ export function QuickPanelSwitcher() {
 
   const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
   const getEnabledPanels = usePanelConfigStore((s) => s.getEnabledPanels);
+  const getPanelConfig = usePanelConfigStore((s) => s.getPanelConfig);
 
   const presets = useWorkspaceStore((s) => s.presets);
   const getPresetLayout = useWorkspaceStore((s) => s.getPresetLayout);
@@ -52,7 +53,7 @@ export function QuickPanelSwitcher() {
 
   const enabledPanelIds = getEnabledPanels();
   const enabledPanels = enabledPanelIds
-    .map((id) => panelConfigs[id])
+    .map((id) => getPanelConfig(id))
     .filter(Boolean)
     .sort((a, b) => a.id.localeCompare(b.id));
 

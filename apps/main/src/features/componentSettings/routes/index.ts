@@ -21,7 +21,7 @@ export const overlayConfigModule: Module = {
     description: 'Customize overlay positioning and styling for all components',
     category: 'management',
     featureId: 'overlay-config',
-    featured: true,
+    hidden: true,
     component: OverlayConfigRedirect,
   },
 };

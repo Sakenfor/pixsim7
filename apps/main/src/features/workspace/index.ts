@@ -38,3 +38,4 @@ export { workspaceManifest } from "./lib/consoleManifest";
 
 // Dockview helpers
 export { resolveWorkspaceDockview } from "./lib/resolveWorkspaceDockview";
+export { openWorkspacePanel, openFloatingWorkspacePanel } from "./lib/openPanel";

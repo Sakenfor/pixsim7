@@ -1,6 +1,7 @@
 import { Dropdown } from '@pixsim7/shared.ui';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -40,6 +41,7 @@ export function ClientFilterBar<T>({
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const triggerRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const hoverTimeoutRef = useRef<number | null>(null);
+  const filterScrollCache = useRef(new Map<string, number>());
 
   const { primaryFilters, overflowFilters } = useMemo(() => {
     const sorted = [...defs].sort(
@@ -92,7 +94,7 @@ export function ClientFilterBar<T>({
   });
 
   return (
-    <div className="relative flex flex-nowrap items-start gap-1.5 w-full overflow-x-auto overflow-y-visible pb-1">
+    <div className="relative flex flex-nowrap items-start gap-1.5 min-w-0 flex-1 pb-1">
       {primaryFilters.map((filter) => (
         <FilterChip
           key={filter.key}
@@ -107,6 +109,8 @@ export function ClientFilterBar<T>({
           setTriggerRef={setTriggerRef}
           triggerRefs={triggerRefs}
           onFilterChange={onFilterChange}
+          scrollCache={filterScrollCache}
+          expandedKeys={expandedKeys}
         />
       ))}
       {overflowFilters.length > 0 && (
@@ -148,6 +152,8 @@ function FilterChip<T>({
   setTriggerRef,
   triggerRefs,
   onFilterChange,
+  scrollCache,
+  expandedKeys,
 }: {
   filter: ClientFilterDef<T>;
   filterState: Record<string, ClientFilterValue>;
@@ -160,6 +166,8 @@ function FilterChip<T>({
   setTriggerRef: (key: string) => (node: HTMLButtonElement | null) => void;
   triggerRefs: React.MutableRefObject<Map<string, HTMLButtonElement | null>>;
   onFilterChange: (key: string, value: ClientFilterValue) => void;
+  scrollCache: React.MutableRefObject<Map<string, number>>;
+  expandedKeys: ReadonlySet<string>;
 }) {
   const isOpen = openFilters.has(filter.key);
   const isHovered = hoveredKey === filter.key;
@@ -172,12 +180,11 @@ function FilterChip<T>({
       : 0;
   const hasSelection = selectedCount > 0;
   const resolvedIcon = filter.icon ?? 'sliders';
-  const isInFlow = hasSelection || isOpen;
+  const showLabel = hasSelection || isOpen || isHovered || expandedKeys.has(filter.key);
 
   return (
     <div
-      className={`relative group flex-none ${isInFlow ? '' : 'w-7 h-7'}`}
-      style={!isInFlow && isVisible ? { zIndex: 30 } : undefined}
+      className="relative flex-none"
       onMouseEnter={() => openHover(filter.key)}
       onMouseLeave={() => closeHover(filter.key)}
     >
@@ -194,7 +201,7 @@ function FilterChip<T>({
             return next;
           })
         }
-        className={`${isInFlow ? 'relative' : 'absolute left-0 top-0 w-7 justify-center'} z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
+        className={`relative z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
           hasSelection
             ? 'border-accent/50 bg-accent/10 text-neutral-800 dark:text-neutral-100'
             : isOpen
@@ -210,25 +217,14 @@ function FilterChip<T>({
             </span>
           )}
         </span>
-        {isInFlow && (
+        {showLabel && (
           <span className="font-medium whitespace-nowrap">{filter.label}</span>
         )}
       </button>
-      {/* Floating label — pointer-events-none so mouse passes through */}
-      {!isInFlow && (
-        <span
-          className={`absolute left-[27px] top-0 z-20 h-7 inline-flex items-center gap-1 pl-1 pr-1.5 rounded-r border border-l-0 text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-150 text-neutral-700 dark:text-neutral-200 ${
-            isVisible
-              ? 'opacity-100 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900'
-              : 'opacity-0 border-transparent'
-          }`}
-        >
-          {filter.label}
-        </span>
-      )}
       <FilterDropdown
         anchorEl={triggerRefs.current.get(filter.key) || null}
         visible={isVisible}
+        wide={(filter.columns ?? 1) > 1}
         onClose={() => {
           setOpenFilters((prev) => {
             if (!prev.has(filter.key)) return prev;
@@ -246,6 +242,7 @@ function FilterChip<T>({
           value={filterState[filter.key]}
           options={derivedOptions[filter.key] || []}
           onChange={(value) => onFilterChange(filter.key, value)}
+          scrollCache={scrollCache}
         />
       </FilterDropdown>
     </div>
@@ -259,6 +256,7 @@ function FilterChip<T>({
 function FilterDropdown({
   anchorEl,
   visible,
+  wide,
   onClose,
   onMouseEnter,
   onMouseLeave,
@@ -266,6 +264,7 @@ function FilterDropdown({
 }: {
   anchorEl: HTMLElement | null;
   visible: boolean;
+  wide?: boolean;
   onClose?: () => void;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -291,8 +290,8 @@ function FilterDropdown({
   if (!visible || !rect) return null;
 
   const spacing = 8;
-  const minWidth = 220;
-  const maxWidth = 360;
+  const minWidth = wide ? 340 : 220;
+  const maxWidth = wide ? 520 : 360;
   const width = Math.min(maxWidth, Math.max(minWidth, rect.width));
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
   const top = rect.bottom + spacing;
@@ -310,7 +309,7 @@ function FilterDropdown({
         onClose={onClose || (() => undefined)}
         positionMode="static"
         minWidth={`${width}px`}
-        className="max-w-[360px]"
+        className={wide ? 'max-w-[520px]' : 'max-w-[360px]'}
       >
         {children}
       </Dropdown>
@@ -328,12 +327,38 @@ function FilterContent<T>({
   value,
   options,
   onChange,
+  scrollCache,
 }: {
   filter: ClientFilterDef<T>;
   value: ClientFilterValue;
   options: Array<{ value: string; label: string; count?: number }>;
   onChange: (value: ClientFilterValue) => void;
+  scrollCache?: React.MutableRefObject<Map<string, number>>;
 }) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Restore scroll position when the enum list mounts
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !scrollCache) return;
+    const saved = scrollCache.current.get(filter.key);
+    if (saved && saved > 0) {
+      el.scrollTop = saved;
+    }
+  }, [filter.key, scrollCache]);
+
+  // Save scroll position on unmount
+  useEffect(() => {
+    const cache = scrollCache;
+    const key = filter.key;
+    return () => {
+      const el = scrollRef.current;
+      if (el && cache) {
+        cache.current.set(key, el.scrollTop);
+      }
+    };
+  }, [filter.key, scrollCache]);
+
   const selectedValues = useMemo(() => {
     if (Array.isArray(value)) return value.map(String);
     if (value === undefined || value === '' || value === false) return [];
@@ -362,9 +387,14 @@ function FilterContent<T>({
         </div>
       );
 
-    case 'enum':
+    case 'enum': {
+      const cols = filter.columns ?? 1;
       return (
-        <div className="flex flex-col gap-1 max-h-[60vh] overflow-y-auto">
+        <div
+          ref={scrollRef}
+          className={`max-h-[60vh] overflow-y-auto ${cols > 1 ? 'grid gap-x-3 gap-y-1' : 'flex flex-col gap-1'}`}
+          style={cols > 1 ? { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` } : undefined}
+        >
           {options.length === 0 && (
             <div className="text-xs text-neutral-500 dark:text-neutral-400">
               No options available.
@@ -404,6 +434,7 @@ function FilterContent<T>({
           })}
         </div>
       );
+    }
 
     case 'boolean':
       return (

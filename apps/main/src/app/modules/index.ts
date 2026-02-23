@@ -27,6 +27,7 @@ import {
   overlayConfigModule,
   assetDetailModule,
   generationPageModule,
+  settingsPageModule,
   routineGraphPageModule,
 } from './pages';
 import { moduleRegistry } from './registry';
@@ -65,6 +66,7 @@ export function registerModules() {
   moduleRegistry.register(generationPageModule);
   moduleRegistry.register(pluginManagerModule);
   moduleRegistry.register(overlayConfigModule);
+  moduleRegistry.register(settingsPageModule);
   moduleRegistry.register(routineGraphPageModule);
 }
 

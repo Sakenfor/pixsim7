@@ -14,8 +14,12 @@ export interface UsePagedItemsResult<T> {
  * Auto-resets to page 1 when the item count changes (e.g. after a filter)
  * and clamps `currentPage` to the valid range.
  */
-export function usePagedItems<T>(items: T[], pageSize: number): UsePagedItemsResult<T> {
-  const [rawPage, setRawPage] = useState(1);
+export function usePagedItems<T>(
+  items: T[],
+  pageSize: number,
+  options?: { initialPage?: number },
+): UsePagedItemsResult<T> {
+  const [rawPage, setRawPage] = useState(options?.initialPage ?? 1);
   const prevLenRef = useRef(items.length);
 
   // Reset to page 1 when item count changes

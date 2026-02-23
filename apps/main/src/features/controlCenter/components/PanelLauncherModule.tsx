@@ -4,12 +4,15 @@ import { getDockviewPanels, resolvePanelDefinitionId } from '@lib/dockview';
 import { Icon } from '@lib/icons';
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { resolveWorkspaceDockview, useWorkspaceStore } from '@features/workspace';
+import {
+  openFloatingWorkspacePanel,
+  openWorkspacePanel,
+  resolveWorkspaceDockview,
+  useWorkspaceStore,
+} from '@features/workspace';
 
 
 export function PanelLauncherModule() {
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
-  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
 
   // Get all panels from catalog
@@ -49,11 +52,11 @@ export function PanelLauncherModule() {
   );
 
   const handleOpenPanel = (panelId: string) => {
-    restorePanel(panelId);
+    openWorkspacePanel(panelId);
   };
 
   const handleOpenFloating = (panelId: string) => {
-    openFloatingPanel(panelId);
+    openFloatingWorkspacePanel(panelId);
   };
 
   // Group panels by category

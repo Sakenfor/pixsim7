@@ -17,7 +17,6 @@ import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/
 import { CATEGORY_LABELS } from "@features/panels/lib/panelConstants";
 import { resolveSiblings } from "@features/panels/lib/siblingResolution";
 
-import { addDockviewPanel, isPanelOpen } from "../../panelAdd";
 import {
   getRegistryChain,
   getAllProviders,
@@ -26,6 +25,8 @@ import {
 } from "../capabilityHelpers";
 import { resolveCurrentDockview } from "../resolveCurrentDockview";
 import type { MenuAction, MenuActionContext } from "../types";
+
+import { addPanelInCurrentDockview, isPanelOpenInCurrentDockview } from "./panelOpenUtils";
 
 /**
  * Get a human-readable label for a capability key.
@@ -357,42 +358,30 @@ function isPanelAlreadyOpen(
   ctx: MenuActionContext,
   panelId: string,
 ): string | false {
-  const { api, host } = resolveCurrentDockview(ctx);
+  const { api } = resolveCurrentDockview(ctx);
   if (!api) return false;
   const def = panelSelectors.get(panelId);
   if (def?.supportsMultipleInstances) return false;
-  const alreadyOpen =
-    host?.isPanelOpen(panelId, false) ?? isPanelOpen(api, panelId, false);
-  return alreadyOpen ? "Already open" : false;
+  return isPanelOpenInCurrentDockview(ctx, panelId, false) ? "Already open" : false;
 }
 
 /**
  * Open a related panel in the same group as the current panel.
  */
 function openRelatedPanel(ctx: MenuActionContext, panelId: string) {
-  const { api, host } = resolveCurrentDockview(ctx);
+  const { api } = resolveCurrentDockview(ctx);
   if (!api) return;
   const def = panelSelectors.get(panelId);
   const allowMultiple = !!def?.supportsMultipleInstances;
   const title = def?.title ?? panelId;
 
-  if (host) {
-    host.addPanel(panelId, {
-      allowMultiple,
-      title,
-      position: ctx.panelId
-        ? { direction: "within", referencePanel: ctx.panelId }
-        : undefined,
-    });
-  } else {
-    addDockviewPanel(api, panelId, {
-      allowMultiple,
-      title,
-      position: ctx.panelId
-        ? { direction: "within", referencePanel: ctx.panelId }
-        : undefined,
-    });
-  }
+  addPanelInCurrentDockview(ctx, panelId, {
+    allowMultiple,
+    title,
+    position: ctx.panelId
+      ? { direction: "within", referencePanel: ctx.panelId }
+      : undefined,
+  });
 }
 
 /**

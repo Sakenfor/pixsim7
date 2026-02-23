@@ -13,14 +13,18 @@ import { useCallback } from 'react';
 import { Icon } from '@lib/icons';
 
 import { usePanelConfigStore } from '@features/panels';
-import { resolveWorkspaceDockview, useWorkspaceStore, useWorkspacePresets } from '@features/workspace';
+import {
+  openWorkspacePanel,
+  resolveWorkspaceDockview,
+  useWorkspaceStore,
+  useWorkspacePresets,
+} from '@features/workspace';
 
 /** Storage key for workspace layout (must match DockviewWorkspace) */
 const WORKSPACE_STORAGE_KEY = 'dockview:workspace:v4';
 
 export function WorkspaceModule() {
   const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
   const closedPanels = useWorkspaceStore((s) => s.closedPanels);
   const floatingPanels = useWorkspaceStore((s) => s.floatingPanels);
   const presets = useWorkspacePresets('workspace');
@@ -116,12 +120,12 @@ export function WorkspaceModule() {
               const panel = panelConfigs[panelId];
               if (!panel) return null;
 
-              return (
-                <button
-                  key={panelId}
-                  onClick={() => restorePanel(panelId)}
-                  className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left flex items-center justify-between"
-                >
+                return (
+                  <button
+                    key={panelId}
+                    onClick={() => openWorkspacePanel(panelId)}
+                    className="w-full px-2 py-1.5 text-xs border border-neutral-200 dark:border-neutral-700 rounded hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors text-left flex items-center justify-between"
+                  >
                   <span>
                     <Icon name={panel.icon as string} size={14} className="mr-1" />
                     {panel.title}

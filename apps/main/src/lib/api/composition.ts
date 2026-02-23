@@ -12,4 +12,3 @@ export type { CompositionPackagesResponse } from '@pixsim7/shared.api.client/dom
 const compositionApi = createCompositionApi(pixsimClient);
 
 export const getCompositionPackages = compositionApi.getPackages;
-export const getCompositionRoles = compositionApi.getRoles;

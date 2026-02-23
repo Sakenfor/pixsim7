@@ -26,6 +26,8 @@ export interface ClientFilterDef<T> {
   deriveOptionsWithCounts?: (items: T[], filterState: ClientFilterState) => ClientEnumFilterOption[];
   /** Optional extra UI rendered after each enum option label (e.g. action buttons). */
   renderOptionExtra?: (optionValue: string) => ReactNode;
+  /** Number of columns for enum option layout (default 1). */
+  columns?: number;
 }
 
 export interface UseClientFiltersResult<T> {

@@ -1,17 +1,29 @@
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
+import { LivePollBadge } from './LivePollBadge';
+
+export interface AccountDiagnosticsProps {
+  selected: boolean;
+  polling: boolean;
+  liveUpdatedAt?: number | null;
+  onToggleSelected: () => void;
+}
 
 interface CompactAccountCardProps {
   account: ProviderAccount;
   onEdit: () => void;
   onToggle: () => void;
+  onUpdateAccountPlan?: () => void;
   onDelete: () => void;
+  diagnostics?: AccountDiagnosticsProps;
 }
 
 export function CompactAccountCard({
   account,
   onEdit,
   onToggle,
+  onUpdateAccountPlan,
   onDelete,
+  diagnostics,
 }: CompactAccountCardProps) {
   const isActive = account.status === 'active';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
@@ -65,7 +77,17 @@ export function CompactAccountCard({
   const status = statusConfig[account.status as keyof typeof statusConfig] || statusConfig.disabled;
 
   return (
-    <div className="group relative bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 p-3 hover:shadow-md hover:border-neutral-300 dark:hover:border-neutral-600 transition-all">
+    <div
+      className={`group relative bg-white dark:bg-neutral-800 rounded-lg border p-3 hover:shadow-md transition-all cursor-pointer ${
+        diagnostics?.selected
+          ? 'border-blue-400 dark:border-blue-600 ring-1 ring-blue-400/30'
+          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
+      }`}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button')) return;
+        diagnostics?.onToggleSelected();
+      }}
+    >
       {/* Top Row: Name & Status */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
@@ -131,6 +153,15 @@ export function CompactAccountCard({
           >
             {isActive ? '⏸' : '▶'}
           </button>
+          {account.provider_id === 'pixverse' && onUpdateAccountPlan && (
+            <button
+              onClick={onUpdateAccountPlan}
+              className="px-1.5 py-1 text-[10px] text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded"
+              title="Refresh Pixverse plan limits (max jobs)"
+            >
+              Upd
+            </button>
+          )}
           <button
             onClick={onDelete}
             className="p-1 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
@@ -195,14 +226,16 @@ export function CompactAccountCard({
         </div>
       </div>
 
-      {/* Bottom Row: Generated Count */}
+      {/* Bottom Row: Generated Count + Live Badge */}
       <div className="mt-2 pt-2 border-t border-neutral-100 dark:border-neutral-700 flex justify-between items-center text-[10px] text-neutral-500 dark:text-neutral-400">
         <span>{account.total_videos_generated} generated</span>
-        {account.last_used && (
+        {diagnostics?.selected ? (
+          <LivePollBadge polling={diagnostics.polling} liveUpdatedAt={diagnostics.liveUpdatedAt} />
+        ) : account.last_used ? (
           <span title={new Date(account.last_used).toLocaleString()}>
             Last: {new Date(account.last_used).toLocaleDateString()}
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -35,6 +35,8 @@ import { useSettingsUiStore } from '@features/settings/stores/settingsUiStore';
 import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
 
 import { applyQuickTag, useQuickTagStore } from '@features/assets';
+import { useAssetSetStore, type ManualAssetSet } from '@features/assets/stores/assetSetStore';
+import { useGalleryApplyTargetStore } from '@features/assets/stores/galleryApplyTargetStore';
 
 import { enrichAsset } from '@/lib/api/assets';
 import { BACKEND_BASE } from '@/lib/api/client';
@@ -944,6 +946,141 @@ const tagsSubmenuAction: MenuAction = {
 // Destructive / Management Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
+function getManualAssetSets(): ManualAssetSet[] {
+  return useAssetSetStore.getState().sets.filter((set): set is ManualAssetSet => set.kind === 'manual');
+}
+
+function getActiveManualSet(): ManualAssetSet | undefined {
+  const activeId = useGalleryApplyTargetStore.getState().activeManualSetId;
+  if (!activeId) return undefined;
+  return getManualAssetSets().find((set) => set.id === activeId);
+}
+
+const addToActiveSetAction: MenuAction = {
+  id: 'asset:sets:add-to-active',
+  label: 'Add to Active Set',
+  icon: 'plus',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  disabled: () => (getActiveManualSet() ? false : 'No active manual set selected'),
+  dynamicLabel: (ctx) => {
+    const count = resolveAssets(ctx).length;
+    const active = getActiveManualSet();
+    const suffix = count > 1 ? ` (${count})` : '';
+    return active ? `Add to Active Set: ${active.name}${suffix}` : `Add to Active Set${suffix}`;
+  },
+  execute: (ctx) => {
+    const active = getActiveManualSet();
+    if (!active) return;
+    const assets = resolveAssets(ctx);
+    if (!assets.length) return;
+    useAssetSetStore.getState().addAssetsToSet(active.id, assets.map((asset) => asset.id));
+    notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${active.name}".`);
+  },
+};
+
+const setActiveManualSetSubmenuAction: MenuAction = {
+  id: 'asset:sets:set-active',
+  label: 'Set Active',
+  icon: 'target',
+  requiredCapabilities: [CAP_ASSET],
+  hideWhenEmpty: true,
+  visible: () => true,
+  children: () => {
+    const manualSets = getManualAssetSets();
+    const activeId = useGalleryApplyTargetStore.getState().activeManualSetId;
+    const items: MenuAction[] = [
+      {
+        id: 'asset:sets:set-active:clear',
+        label: activeId ? 'Clear Active Set' : 'No Active Set',
+        icon: activeId ? 'x' : 'circle',
+        disabled: () => (activeId ? false : true),
+        divider: manualSets.length > 0,
+        execute: () => {
+          if (!activeId) return;
+          useGalleryApplyTargetStore.getState().clearActiveManualSetId();
+          notify('info', 'Cleared active manual set.');
+        },
+      },
+    ];
+
+    if (manualSets.length === 0) {
+      items.push({
+        id: 'asset:sets:set-active:none',
+        label: 'No manual sets available',
+        disabled: () => true,
+        execute: () => {},
+      });
+      return items;
+    }
+
+    manualSets.forEach((set) => {
+      const isActive = set.id === activeId;
+      items.push({
+        id: `asset:sets:set-active:${set.id}`,
+        label: isActive ? `${set.name} (active)` : set.name,
+        icon: isActive ? 'check' : 'folder',
+        execute: () => {
+          useGalleryApplyTargetStore.getState().setActiveManualSetId(set.id);
+          notify('success', `Active set: ${set.name}`);
+        },
+      });
+    });
+
+    return items;
+  },
+  execute: () => {},
+};
+
+const addToAnySetSubmenuAction: MenuAction = {
+  id: 'asset:sets:add-to',
+  label: 'Add to...',
+  icon: 'folderPlus',
+  requiredCapabilities: [CAP_ASSET],
+  hideWhenEmpty: true,
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  children: (ctx) => {
+    const assets = resolveAssets(ctx);
+    const manualSets = getManualAssetSets();
+    if (manualSets.length === 0) {
+      return [
+        {
+          id: 'asset:sets:add-to:none',
+          label: 'No manual sets available',
+          disabled: () => true,
+          execute: () => {},
+        },
+      ];
+    }
+
+    return manualSets.map((set) => ({
+      id: `asset:sets:add-to:${set.id}`,
+      label: `${set.name} (${set.assetIds.length})`,
+      icon: 'folder',
+      execute: () => {
+        useAssetSetStore.getState().addAssetsToSet(set.id, assets.map((asset) => asset.id));
+        notify('success', `Added ${assets.length} asset${assets.length === 1 ? '' : 's'} to "${set.name}".`);
+      },
+    }));
+  },
+  execute: () => {},
+};
+
+const setsSubmenuAction: MenuAction = {
+  id: 'asset:sets',
+  label: 'Sets',
+  icon: 'folderTree',
+  category: 'asset',
+  requiredCapabilities: [CAP_ASSET],
+  visible: (ctx) => resolveAssets(ctx).length > 0,
+  children: () => [
+    { ...addToActiveSetAction, category: undefined, requiredCapabilities: undefined, divider: true },
+    { ...setActiveManualSetSubmenuAction, category: undefined, requiredCapabilities: undefined },
+    { ...addToAnySetSubmenuAction, category: undefined, requiredCapabilities: undefined },
+  ],
+  execute: () => {},
+};
+
 const deleteAssetAction: MenuAction = {
   id: 'asset:delete',
   label: 'Delete',
@@ -1015,6 +1152,8 @@ export const assetActions: MenuAction[] = [
   generateSubmenuAction,
   // Related assets
   moreFromSourceSubmenuAction,
+  // Asset sets
+  setsSubmenuAction,
   // Tags submenu
   tagsSubmenuAction,
   // Copy submenu

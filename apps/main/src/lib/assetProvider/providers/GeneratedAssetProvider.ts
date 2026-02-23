@@ -26,6 +26,11 @@ import {
 } from '@lib/api/generations';
 
 import { getAsset as getAssetApi } from '@features/assets/lib/api';
+import {
+  createGenerationRunDescriptor,
+  createGenerationRunItemContext,
+  type GenerationRunContext,
+} from '@features/generation/lib/runContext';
 
 // ============================================================================
 // Types
@@ -72,7 +77,10 @@ function mapMediaType(mediaType: string): 'video' | 'image' | 'audio' | '3d_mode
   }
 }
 
-function buildGenerationConfig(request: AssetRequest): CreateGenerationRequest['config'] {
+function buildGenerationConfig(
+  request: AssetRequest,
+  runContext?: GenerationRunContext,
+): CreateGenerationRequest['config'] {
   const config: CreateGenerationRequest['config'] = {
     generationType: 'text_to_video',
     purpose: 'gap_fill',
@@ -96,6 +104,10 @@ function buildGenerationConfig(request: AssetRequest): CreateGenerationRequest['
     ...(request.videoUrl ? { video_url: request.videoUrl } : {}),
     ...(request.providerParams ? request.providerParams : {}),
   };
+
+  if (runContext && typeof runContext === 'object') {
+    (config as Record<string, unknown>).run_context = runContext;
+  }
 
   return config;
 }
@@ -153,10 +165,22 @@ export class GeneratedAssetProvider implements IAssetProvider {
   async requestAsset(request: AssetRequest): Promise<Asset> {
     const maxWaitTime = request.maxWaitTime ?? this.config.defaultMaxWaitTime;
     const providerId = request.providerId ?? this.config.defaultProvider;
+    const run = createGenerationRunDescriptor({
+      mode: 'asset_provider',
+      metadata: {
+        source: 'GeneratedAssetProvider',
+      },
+    });
 
     // Build generation request
     const generationRequest: CreateGenerationRequest = {
-      config: buildGenerationConfig(request) as unknown as CreateGenerationRequest['config'],
+      config: buildGenerationConfig(
+        request,
+        createGenerationRunItemContext(run, {
+          itemIndex: 0,
+          itemTotal: 1,
+        }),
+      ) as unknown as CreateGenerationRequest['config'],
       provider_id: providerId,
       force_new: request.preferCached === false,
       priority: 5,

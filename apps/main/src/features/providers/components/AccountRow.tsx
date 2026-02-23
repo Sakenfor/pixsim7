@@ -9,6 +9,8 @@ import { useToast } from '@pixsim7/shared.ui';
 import type { ProviderAccount } from '../hooks/useProviderAccounts';
 import { dryRunPixverseSync, createApiKey, getAccountStats } from '../lib/api/accounts';
 import { AccountInfoModal } from './AccountInfoModal';
+import type { AccountDiagnosticsProps } from './CompactAccountCard';
+import { LivePollBadge } from './LivePollBadge';
 
 /** Status color mapping */
 const STATUS_COLORS: Record<string, string> = {
@@ -23,11 +25,21 @@ interface AccountRowProps {
   account: ProviderAccount;
   onEdit: (account: ProviderAccount) => void;
   onToggleStatus: (account: ProviderAccount) => void;
+  onUpdateAccountPlan?: (account: ProviderAccount) => void;
   onDelete: (account: ProviderAccount) => void;
   onRefresh?: () => void;
+  diagnostics?: AccountDiagnosticsProps;
 }
 
-export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefresh }: AccountRowProps) {
+export function AccountRow({
+  account,
+  onEdit,
+  onToggleStatus,
+  onUpdateAccountPlan,
+  onDelete,
+  onRefresh,
+  diagnostics,
+}: AccountRowProps) {
   const isActive = account.status === 'ACTIVE';
   const isAtCapacity = account.current_processing_jobs >= account.max_concurrent_jobs;
   const statusColor = STATUS_COLORS[account.status] || STATUS_COLORS.DISABLED;
@@ -53,11 +65,26 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
           onClose={() => setShowInfoModal(false)}
         />
       )}
-    <tr className="border-b dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+    <tr
+      className={`border-b dark:border-neutral-700 cursor-pointer transition-colors ${
+        diagnostics?.selected
+          ? 'bg-blue-50/60 dark:bg-blue-900/15 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+          : 'hover:bg-neutral-50 dark:hover:bg-neutral-800/50'
+      }`}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button, a, input, label')) return;
+        diagnostics?.onToggleSelected();
+      }}
+    >
       {/* Name/Email */}
       <td className="px-3 py-2 text-sm">
-        <div className="font-medium text-neutral-800 dark:text-neutral-200">
-          {account.nickname || account.email}
+        <div className="flex items-center gap-2">
+          <div className="font-medium text-neutral-800 dark:text-neutral-200">
+            {account.nickname || account.email}
+          </div>
+          {diagnostics?.selected && (
+            <LivePollBadge polling={diagnostics.polling} liveUpdatedAt={diagnostics.liveUpdatedAt} />
+          )}
         </div>
         {account.nickname && (
           <div className="text-xs text-neutral-500">{account.email}</div>
@@ -169,6 +196,15 @@ export function AccountRow({ account, onEdit, onToggleStatus, onDelete, onRefres
                 ℹ️ Info
               </button>
               <PixverseDryRunButton accountId={account.id} />
+              {onUpdateAccountPlan && (
+                <button
+                  onClick={() => onUpdateAccountPlan(account)}
+                  className="px-2 py-1 text-xs bg-emerald-700 text-white rounded hover:bg-emerald-800 transition-colors"
+                  title="Refresh Pixverse plan limits (max jobs)"
+                >
+                  Update Acc
+                </button>
+              )}
               {!account.has_api_key_paid && account.has_jwt && (
                 <CreateApiKeyButton accountId={account.id} onSuccess={onRefresh} />
               )}

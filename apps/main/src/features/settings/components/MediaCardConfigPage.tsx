@@ -8,7 +8,7 @@
 import { Button, Select } from '@pixsim7/shared.ui';
 import React, { useState, useMemo } from 'react';
 
-import type { OverlayConfiguration } from '@lib/ui/overlay';
+import type { OverlayConfiguration, OverlayPolicyStep } from '@lib/ui/overlay';
 import { mediaCardPresets, PresetManager } from '@lib/ui/overlay';
 import { LocalStoragePresetStorage } from '@lib/ui/overlay';
 import { APIPresetStorage, IndexedDBPresetStorage } from '@lib/ui/overlay';
@@ -100,6 +100,17 @@ export function MediaCardConfigPage() {
     }
     return mediaCardPresets[0].configuration;
   });
+  const [policyChain, setPolicyChain] = useState<OverlayPolicyStep[]>(() => {
+    const saved = localStorage.getItem('mediaCardOverlayPolicyChain');
+    if (saved) {
+      try {
+        return JSON.parse(saved) as OverlayPolicyStep[];
+      } catch {
+        return mediaCardPresets[0]?.policyChain ?? [];
+      }
+    }
+    return mediaCardPresets[0]?.policyChain ?? [];
+  });
 
   // Available widget types for MediaCard
   const availableWidgetTypes = useMemo(() => [
@@ -133,7 +144,9 @@ export function MediaCardConfigPage() {
     const preset = await manager.getPreset(presetId);
     if (preset) {
       setConfiguration(preset.configuration);
+      setPolicyChain(preset.policyChain ?? []);
       localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(preset.configuration));
+      localStorage.setItem('mediaCardOverlayPolicyChain', JSON.stringify(preset.policyChain ?? []));
     }
   };
 
@@ -146,6 +159,7 @@ export function MediaCardConfigPage() {
       await manager.savePresetFromConfig(configuration, {
         name,
         category: 'media',
+        policyChain,
         icon: '⭐',
       });
       alert('Preset saved successfully!');
@@ -158,14 +172,20 @@ export function MediaCardConfigPage() {
   const handleReset = () => {
     if (confirm('Reset to default configuration?')) {
       const defaultConfig = mediaCardPresets[0].configuration;
+      const defaultPolicyChain = mediaCardPresets[0]?.policyChain ?? [];
       setConfiguration(defaultConfig);
+      setPolicyChain(defaultPolicyChain);
       localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(defaultConfig));
+      localStorage.setItem('mediaCardOverlayPolicyChain', JSON.stringify(defaultPolicyChain));
     }
   };
 
   // Export configuration
   const handleExport = () => {
-    const json = JSON.stringify(configuration, null, 2);
+    const json = JSON.stringify({
+      configuration,
+      policyChain,
+    }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -187,9 +207,18 @@ export function MediaCardConfigPage() {
       const reader = new FileReader();
       reader.onload = (e) => {
         try {
-          const config = JSON.parse(e.target?.result as string);
-          setConfiguration(config);
-          localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(config));
+          const parsed = JSON.parse(e.target?.result as string);
+          const importedConfig: OverlayConfiguration =
+            parsed?.configuration && parsed.configuration.widgets
+              ? parsed.configuration
+              : parsed;
+          const importedPolicyChain: OverlayPolicyStep[] =
+            Array.isArray(parsed?.policyChain) ? parsed.policyChain : [];
+
+          setConfiguration(importedConfig);
+          setPolicyChain(importedPolicyChain);
+          localStorage.setItem('mediaCardOverlayConfig', JSON.stringify(importedConfig));
+          localStorage.setItem('mediaCardOverlayPolicyChain', JSON.stringify(importedPolicyChain));
           alert('Configuration imported successfully!');
         } catch (error) {
           alert('Failed to import configuration: ' + error);
@@ -293,6 +322,7 @@ export function MediaCardConfigPage() {
           preview={
             <MediaCard
               {...SAMPLE_MEDIA}
+              overlayPolicyChain={policyChain}
               badgeConfig={{
                 showPrimaryIcon: true,
                 showStatusIcon: true,
@@ -324,3 +354,4 @@ export function MediaCardConfigPage() {
     </div>
   );
 }
+

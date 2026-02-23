@@ -23,6 +23,7 @@ interface TemplateRollResultProps {
 const STATUS_COLORS: Record<string, string> = {
   skipped: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400',
   fallback: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  reinforcement: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
   empty: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300',
 };
 
@@ -44,6 +45,9 @@ export function TemplateRollResult({
         )}
         {result.metadata.slots_fallback > 0 && (
           <span>{result.metadata.slots_fallback} fallback</span>
+        )}
+        {(result.metadata.slots_reinforcement ?? 0) > 0 && (
+          <span>{result.metadata.slots_reinforcement} reinforcement</span>
         )}
         <span className="ml-auto">Roll #{result.metadata.roll_count}</span>
       </div>

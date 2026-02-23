@@ -10,13 +10,13 @@ import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu'
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
-import { useWorkspaceStore } from '@features/workspace/stores/workspaceStore';
+import { useWorkspaceStore } from '@features/workspace';
 
-import { addDockviewPanel, isPanelOpen } from '../../panelAdd';
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
 import type { MenuAction, MenuActionContext } from '../types';
 
 import { DOCKVIEW_ACTION_FEATURE_ID, ensureDockviewActionFeature } from './feature';
+import { addPanelInCurrentDockview, isPanelOpenInCurrentDockview } from './panelOpenUtils';
 
 /**
  * Get panels grouped by category from the panel catalog
@@ -70,27 +70,17 @@ function formatCategoryLabel(category: string): string {
  * Add panel to the current dockview
  */
 function addPanel(ctx: MenuActionContext, panelId: string, allowMultiple: boolean) {
-  const { api, host } = resolveCurrentDockview(ctx);
-  if (!api) return;
-
   const registryEntry = ctx.panelRegistry?.getAll?.().find(p => p.id === panelId);
   const panelTitle = registryEntry?.title ?? panelId;
 
-  if (!allowMultiple && (host?.isPanelOpen(panelId, allowMultiple) ?? isPanelOpen(api, panelId, allowMultiple))) {
+  if (!allowMultiple && isPanelOpenInCurrentDockview(ctx, panelId, allowMultiple)) {
     return;
   }
 
-  if (host) {
-    host.addPanel(panelId, {
-      allowMultiple,
-      title: panelTitle,
-    });
-  } else {
-    addDockviewPanel(api, panelId, {
-      allowMultiple,
-      title: panelTitle,
-    });
-  }
+  addPanelInCurrentDockview(ctx, panelId, {
+    allowMultiple,
+    title: panelTitle,
+  });
 }
 
 /**
@@ -128,7 +118,7 @@ export const addPanelAction: MenuAction = {
 
     // Create category submenus
     const categoryActions: MenuAction[] = [];
-    const { api, host } = resolveCurrentDockview(ctx);
+    const { api } = resolveCurrentDockview(ctx);
 
     // Sort categories (put "Core" first, "Other" last)
     const sortedCategories = Array.from(categories.entries()).sort(([a], [b]) => {
@@ -153,7 +143,7 @@ export const addPanelAction: MenuAction = {
           disabled: () =>
             panel.supportsMultipleInstances
               ? false
-              : api && (host?.isPanelOpen(panel.id, false) ?? isPanelOpen(api, panel.id, false)) ? 'Already open' : false,
+              : api && isPanelOpenInCurrentDockview(ctx, panel.id, false) ? 'Already open' : false,
           execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
         })),
         execute: () => {},
@@ -189,8 +179,8 @@ export function getQuickAddActions(ctx: MenuActionContext): MenuAction[] {
         category: 'quick-add',
         availableIn: ['background'] as const,
         visible: (c: MenuActionContext) => {
-          const { api, host } = resolveCurrentDockview(c);
-          return !!api && !(host?.isPanelOpen(panelId, false) ?? isPanelOpen(api, panelId, false));
+          const { api } = resolveCurrentDockview(c);
+          return !!api && !isPanelOpenInCurrentDockview(c, panelId, false);
         },
         execute: (c: MenuActionContext) => addPanel(c, panelId, !!panel.supportsMultipleInstances),
       } satisfies MenuAction;
@@ -239,8 +229,8 @@ export const quickAddActions: MenuAction[] = [
     category: 'quick-add',
     availableIn: ['background'],
     visible: (ctx) => {
-      const { api, host } = resolveCurrentDockview(ctx);
-      return !!api && !(host?.isPanelOpen('gallery', false) ?? isPanelOpen(api, 'gallery', false));
+      const { api } = resolveCurrentDockview(ctx);
+      return !!api && !isPanelOpenInCurrentDockview(ctx, 'gallery', false);
     },
     execute: (ctx) => addPanel(ctx, 'gallery', false),
   },
@@ -251,8 +241,8 @@ export const quickAddActions: MenuAction[] = [
     category: 'quick-add',
     availableIn: ['background'],
     visible: (ctx) => {
-      const { api, host } = resolveCurrentDockview(ctx);
-      return !!api && !(host?.isPanelOpen('inspector', false) ?? isPanelOpen(api, 'inspector', false));
+      const { api } = resolveCurrentDockview(ctx);
+      return !!api && !isPanelOpenInCurrentDockview(ctx, 'inspector', false);
     },
     execute: (ctx) => addPanel(ctx, 'inspector', false),
   },
