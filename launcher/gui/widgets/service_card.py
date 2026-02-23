@@ -1,5 +1,5 @@
 from typing import Optional
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu, QSizePolicy
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QVBoxLayout, QLabel, QPushButton, QMenu, QSizePolicy, QToolButton
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QAction
 from datetime import datetime
@@ -36,6 +36,7 @@ class ServiceCard(QFrame):
     clicked = Signal(str)
     restart_requested = Signal(str)
     db_logs_requested = Signal(str)
+    account_live_feed_requested = Signal(str)
     openapi_refresh_requested = Signal(str)  # Request to refresh OpenAPI status
     openapi_generate_requested = Signal(str)  # Request to generate OpenAPI types
 
@@ -44,6 +45,7 @@ class ServiceCard(QFrame):
         self.service_def = service_def
         self.service_process = service_process
         self.is_selected = False
+        self.is_expanded = False
         self.start_time = None  # Track when service started
         self.openapi_status: Optional[OpenAPIStatus] = None  # Track OpenAPI freshness
 
@@ -52,13 +54,17 @@ class ServiceCard(QFrame):
         self.setLineWidth(1)
         self.setCursor(Qt.PointingHandCursor)
         self.setMinimumHeight(54)
-        self.setMaximumHeight(66)
+        self.setMaximumHeight(16777215)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_MD, theme.SPACING_LG, theme.SPACING_MD)
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(theme.SPACING_LG, theme.SPACING_MD, theme.SPACING_LG, theme.SPACING_MD)
+        root_layout.setSpacing(6)
+
+        layout = QHBoxLayout()
         layout.setSpacing(theme.SPACING_LG)
+        root_layout.addLayout(layout)
 
         self.status_indicator = QLabel()
         self.status_indicator.setFixedSize(10, 10)
@@ -96,6 +102,28 @@ class ServiceCard(QFrame):
         info_layout.addWidget(self.status_label)
 
         layout.addLayout(info_layout, stretch=1)
+
+        self.expand_btn = QToolButton()
+        self.expand_btn.setText("+")
+        self.expand_btn.setToolTip("Show details")
+        self.expand_btn.setCursor(Qt.PointingHandCursor)
+        self.expand_btn.setFixedSize(20, 20)
+        self.expand_btn.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {theme.BG_SECONDARY};
+                color: {theme.TEXT_SECONDARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_SM}px;
+                font-weight: 700;
+            }}
+            QToolButton:hover {{
+                background-color: {theme.BG_HOVER};
+                color: {theme.TEXT_PRIMARY};
+                border-color: {theme.BORDER_FOCUS};
+            }}
+        """)
+        self.expand_btn.clicked.connect(self._toggle_details)
+        layout.addWidget(self.expand_btn)
 
         # OpenAPI status indicator (only shown for services with openapi_url)
         self.openapi_indicator = QPushButton()
@@ -195,6 +223,27 @@ class ServiceCard(QFrame):
             self.open_btn = None
 
         layout.addLayout(btn_layout)
+
+        self.details_frame = QFrame()
+        self.details_frame.setVisible(False)
+        self.details_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: {theme.BG_SECONDARY};
+                border: 1px solid {theme.BORDER_DEFAULT};
+                border-radius: {theme.RADIUS_SM}px;
+            }}
+        """)
+        details_layout = QVBoxLayout(self.details_frame)
+        details_layout.setContentsMargins(8, 6, 8, 6)
+        details_layout.setSpacing(2)
+        self.details_label = QLabel("")
+        self.details_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: {theme.FONT_SIZE_XS};")
+        self.details_label.setWordWrap(True)
+        self.details_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        details_layout.addWidget(self.details_label)
+        root_layout.addWidget(self.details_frame)
+
+        self._refresh_details_panel()
         self._update_style()
 
         # Connect restart button
@@ -238,6 +287,11 @@ class ServiceCard(QFrame):
         db_logs_action = QAction("View Database Logs", self)
         db_logs_action.triggered.connect(lambda: self.db_logs_requested.emit(self.service_def.key))
         menu.addAction(db_logs_action)
+
+        if self.service_def.key == "worker":
+            live_feed_action = QAction("Open Account Live Feed", self)
+            live_feed_action.triggered.connect(lambda: self.account_live_feed_requested.emit(self.service_def.key))
+            menu.addAction(live_feed_action)
 
         menu.exec_(self.mapToGlobal(position))
 
@@ -419,6 +473,7 @@ class ServiceCard(QFrame):
                 err = err[:77] + '...'
             status_info += f" | {err}"
         self.status_label.setText(status_info)
+        self._refresh_details_panel()
 
         # Build a helpful tooltip with error + recent logs
         tooltip_lines = [self.service_def.title]
@@ -426,12 +481,16 @@ class ServiceCard(QFrame):
             tooltip_lines.append(f"Tool: {self.service_process.tool_check_message}")
         if getattr(self.service_process, 'last_error_line', ''):
             tooltip_lines.append(f"Last error: {self.service_process.last_error_line}")
-        buf = getattr(self.service_process, "log_buffer", None)
-        if buf:
-            recent = [str(l) for l in buf[-2:] if str(l).strip()]
-            if recent:
-                tooltip_lines.append("Recent log lines:")
-                tooltip_lines.extend(recent)
+        try:
+            buf = getattr(self.service_process, "log_buffer", None)
+            if buf:
+                n = len(buf)
+                recent = [str(buf[n - 1 - i]) for i in range(min(2, n)) if str(buf[n - 1 - i]).strip()]
+                if recent:
+                    tooltip_lines.append("Recent log lines:")
+                    tooltip_lines.extend(recent)
+        except (IndexError, RuntimeError):
+            pass  # deque may be mutated concurrently; skip tooltip lines
         self.setToolTip("\n".join(tooltip_lines))
         # Keep title in sync with external flag
         self._refresh_title()
@@ -442,6 +501,86 @@ class ServiceCard(QFrame):
         self.restart_btn.setEnabled(is_running)
         # Update card style based on health state
         self._update_style()
+
+    def _toggle_details(self):
+        if not self._has_card_details():
+            self.is_expanded = False
+            self.details_frame.setVisible(False)
+            self.expand_btn.setText("+")
+            return
+        self.is_expanded = not self.is_expanded
+        self._refresh_details_panel()
+
+    def _has_card_details(self) -> bool:
+        details = getattr(self.service_process, "card_details", None)
+        return isinstance(details, dict) and bool(details)
+
+    def _format_card_details(self) -> str:
+        details = getattr(self.service_process, "card_details", None) or {}
+        if not isinstance(details, dict):
+            return ""
+
+        preferred_order = [
+            "main_worker_running",
+            "main_worker_pid",
+            "retry_worker_running",
+            "retry_worker_pids",
+            "redis_endpoint",
+            "redis_reachable",
+            "queue_pending_fresh",
+            "queue_pending_retry",
+            "queue_in_progress",
+            "queue_pending_legacy_default",
+            "details_updated_at",
+            "note",
+        ]
+        ordered_keys = [k for k in preferred_order if k in details]
+        ordered_keys.extend(k for k in details.keys() if k not in ordered_keys)
+
+        label_map = {
+            "main_worker_running": "Main Worker",
+            "main_worker_pid": "Main PID",
+            "retry_worker_running": "Retry Worker",
+            "retry_worker_pids": "Retry PIDs",
+            "redis_endpoint": "Redis",
+            "redis_reachable": "Redis Reachable",
+            "queue_pending_fresh": "Fresh Queue",
+            "queue_pending_retry": "Retry Queue",
+            "queue_in_progress": "In Progress",
+            "queue_pending_legacy_default": "Legacy Queue",
+            "details_updated_at": "Updated",
+            "note": "Note",
+        }
+
+        lines = []
+        for key in ordered_keys:
+            value = details.get(key)
+            if value is None:
+                continue
+            if isinstance(value, bool):
+                value_str = "yes" if value else "no"
+            elif isinstance(value, (list, tuple)):
+                value_str = ", ".join(str(v) for v in value) if value else "-"
+            else:
+                value_str = str(value)
+            lines.append(f"{label_map.get(key, key)}: {value_str}")
+        return "\n".join(lines)
+
+    def _refresh_details_panel(self):
+        has_details = self._has_card_details()
+        self.expand_btn.setVisible(has_details)
+        if not has_details:
+            self.is_expanded = False
+            self.expand_btn.setText("+")
+            self.expand_btn.setToolTip("No additional details")
+            self.details_frame.setVisible(False)
+            self.details_label.setText("")
+            return
+
+        self.details_label.setText(self._format_card_details())
+        self.expand_btn.setToolTip("Hide details" if self.is_expanded else "Show details")
+        self.expand_btn.setText("-" if self.is_expanded else "+")
+        self.details_frame.setVisible(self.is_expanded)
 
     def _update_style(self):
         # Determine if service is in an unhealthy state

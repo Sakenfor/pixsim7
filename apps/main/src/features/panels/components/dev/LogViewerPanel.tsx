@@ -75,6 +75,8 @@ const AUTO_REFRESH_OPTIONS = [
   { value: 10000, label: '10s' },
 ];
 
+type ViewMode = 'table' | 'plain';
+
 const DEFAULT_FILTERS: FilterState = {
   search: '',
   level: '',
@@ -153,6 +155,53 @@ function formatTimestamp(iso: string): string {
 function truncate(s: string | null | undefined, max: number): string {
   if (!s) return '\u2014';
   return s.length > max ? s.slice(0, max) + '\u2026' : s;
+}
+
+// =============================================================================
+// Plain text formatting
+// =============================================================================
+
+function formatLogAsPlainText(log: LogEntryResponse): string {
+  const ts = formatTimestamp(log.timestamp);
+  const lvl = (log.level ?? '').padEnd(8);
+  const msg = log.msg ?? '';
+
+  // Build context tag: service / channel / stage collapsed into a compact path
+  const parts: string[] = [];
+  if (log.service && log.service !== 'unknown') parts.push(log.service);
+  if (log.channel) parts.push(log.channel);
+  if (log.stage) parts.push(log.stage);
+  const context = parts.length > 0 ? `[${parts.join(' > ')}]` : '';
+
+  // Build trailing metadata tags — only non-empty fields
+  const meta: string[] = [];
+  if (log.job_id != null) meta.push(`job=${log.job_id}`);
+  if (log.request_id) meta.push(`req=${log.request_id.slice(0, 8)}`);
+  if (log.provider_id) meta.push(`provider=${log.provider_id}`);
+  if (log.provider_job_id) meta.push(`pjob=${log.provider_job_id}`);
+  if (log.operation_type) meta.push(`op=${log.operation_type}`);
+  if (log.submission_id != null) meta.push(`sub=${log.submission_id}`);
+  if (log.artifact_id != null) meta.push(`art=${log.artifact_id}`);
+  if (log.duration_ms != null) meta.push(`${log.duration_ms}ms`);
+  if (log.attempt != null) meta.push(`attempt=${log.attempt}`);
+  const metaStr = meta.length > 0 ? `  (${meta.join(', ')})` : '';
+
+  // Error on next line if present
+  const errPart = log.error
+    ? `\n         ${log.error_type ? `${log.error_type}: ` : ''}${log.error}`
+    : '';
+
+  // Extra JSON (compact single-line summary of keys)
+  const extraPart =
+    log.extra && Object.keys(log.extra).length > 0
+      ? `\n         extra: ${JSON.stringify(log.extra)}`
+      : '';
+
+  return `${ts} ${lvl}${context ? ` ${context}` : ''} ${msg}${metaStr}${errPart}${extraPart}`;
+}
+
+function logsToClipboardText(logs: LogEntryResponse[]): string {
+  return logs.map(formatLogAsPlainText).join('\n');
 }
 
 // =============================================================================
@@ -899,6 +948,9 @@ export function LogViewerPanel() {
   const [traceView, setTraceView] = useState<TraceView | null>(null);
   const [autoRefreshMs, setAutoRefreshMs] = useState(0);
   const [activePreset, setActivePreset] = useState<LogFilterPreset | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const [wordWrap, setWordWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   const { data, loading, error, refetch } = useLogQuery(filters);
@@ -1018,6 +1070,81 @@ export function LogViewerPanel() {
         <Icon name="fileText" size={16} className="text-emerald-400" />
         <h2 className="text-sm font-semibold">Log Viewer</h2>
         <span className="text-[11px] text-neutral-500">Structured DB Logs</span>
+
+        <div className="ml-auto flex items-center gap-1">
+          {/* View mode toggle */}
+          <div className="flex bg-neutral-800 rounded border border-neutral-700">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-2 py-1 text-[11px] rounded-l transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="Table view"
+            >
+              <Icon name="rows" size={12} />
+            </button>
+            <button
+              onClick={() => setViewMode('plain')}
+              className={`px-2 py-1 text-[11px] rounded-r transition-colors ${
+                viewMode === 'plain'
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="Plain text view"
+            >
+              <Icon name="code" size={12} />
+            </button>
+          </div>
+
+          {/* Word wrap toggle (plain text mode) */}
+          {viewMode === 'plain' && (
+            <button
+              onClick={() => setWordWrap((v) => !v)}
+              className={`px-2 py-1 text-[11px] rounded border transition-colors ${
+                wordWrap
+                  ? 'bg-emerald-600 border-emerald-600 text-white'
+                  : 'bg-neutral-800 border-neutral-700 text-neutral-400 hover:text-neutral-200'
+              }`}
+              title="Word wrap"
+            >
+              <Icon name="arrowRightLeft" size={12} />
+            </button>
+          )}
+
+          {/* Expand / collapse all (table mode) */}
+          {viewMode === 'table' && displayLogs.length > 0 && (
+            <button
+              onClick={() => {
+                if (expandedRows.size > 0) {
+                  setExpandedRows(new Set());
+                } else {
+                  setExpandedRows(new Set(displayLogs.map((l) => l.id)));
+                }
+              }}
+              className="px-2 py-1 text-[11px] bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+              title={expandedRows.size > 0 ? 'Collapse all' : 'Expand all'}
+            >
+              <Icon name={expandedRows.size > 0 ? 'minimize2' : 'maximize2'} size={12} />
+            </button>
+          )}
+
+          {/* Copy logs */}
+          {displayLogs.length > 0 && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(logsToClipboardText(displayLogs));
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              className="px-2 py-1 text-[11px] bg-neutral-800 border border-neutral-700 rounded text-neutral-400 hover:text-neutral-200 transition-colors"
+              title="Copy logs to clipboard"
+            >
+              <Icon name={copied ? 'check' : 'copy'} size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
@@ -1059,7 +1186,7 @@ export function LogViewerPanel() {
             </div>
           )}
 
-          {/* Table */}
+          {/* Log content */}
           <div className="flex-1 overflow-auto">
             {displayLogs.length === 0 && !loading && !error ? (
               <div className="flex flex-col items-center justify-center h-full text-neutral-500 text-xs gap-2">
@@ -1068,7 +1195,30 @@ export function LogViewerPanel() {
                   ? `No logs match preset "${activePreset.label}" with current filters`
                   : 'No logs match current filters'}
               </div>
+            ) : viewMode === 'plain' ? (
+              /* Plain text view */
+              <pre
+                className={`p-3 text-[11px] font-mono text-neutral-300 leading-relaxed select-text ${
+                  wordWrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'
+                }`}
+              >
+                {displayLogs.map((log) => {
+                  const isHighlighted = clientResult.highlightedIds.has(log.id);
+                  const colorClass = LEVEL_COLORS[log.level] ?? 'text-neutral-300';
+                  return (
+                    <span
+                      key={log.id}
+                      className={`block ${colorClass} ${
+                        isHighlighted ? 'bg-amber-950/30' : ''
+                      } hover:bg-neutral-800/60`}
+                    >
+                      {formatLogAsPlainText(log)}
+                    </span>
+                  );
+                })}
+              </pre>
             ) : (
+              /* Table view */
               <table className="w-full text-left">
                 <thead className="bg-neutral-800/50 sticky top-0 z-10">
                   <tr className="text-[11px] text-neutral-500 uppercase tracking-wider">

@@ -2,6 +2,7 @@ import os
 import signal
 import subprocess
 import threading
+from collections import deque
 from typing import Optional, Union
 from PySide6.QtCore import QProcess, QTimer
 from pixsim_logging.file_rotation import rotate_file, append_line
@@ -73,10 +74,11 @@ class ServiceProcess:
         self.tool_available = True
         self.tool_check_message = ''
         self.last_error_line: str = ''
-        self.log_buffer: list[str] = []  # In-memory log buffer
+        self.log_buffer: deque[str] = deque(maxlen=MAX_LOG_LINES)  # In-memory log buffer
         self.max_log_lines = MAX_LOG_LINES
         self.detected_pid: Optional[int] = None  # PID of externally running process
         self.started_pid: Optional[int] = None  # PID of process we started (for detached processes)
+        self.extra_started_pids: list[int] = []  # Companion processes started with this service (e.g. retry worker)
         self.persisted_pid: Optional[int] = None  # PID loaded from persistent storage (survives launcher restart)
         self.requested_running = False  # User's intended state (start/stop button clicks)
         self.externally_managed = False  # True if service is running outside launcher control
@@ -199,10 +201,68 @@ class ServiceProcess:
         self._stop_log_monitor()
         self.proc = None
         self.started_pid = None
+        self.extra_started_pids = []
         self.detected_pid = None
         self.running = False
         self.health_status = status
         self._clear_persisted_pid()
+
+    def _spawn_detached_subprocess(self, cmd: list[str], env: dict, log_file) -> subprocess.Popen:
+        """Start a detached subprocess with platform-specific process-group handling."""
+        if os.name == 'nt':
+            creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
+            try:
+                creation_flags |= subprocess.CREATE_BREAKAWAY_FROM_JOB
+            except AttributeError:
+                pass
+            if hasattr(subprocess, 'CREATE_NO_WINDOW'):
+                creation_flags |= subprocess.CREATE_NO_WINDOW
+            return subprocess.Popen(
+                cmd,
+                cwd=self.defn.cwd,
+                env=env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                creationflags=creation_flags,
+            )
+
+        return subprocess.Popen(
+            cmd,
+            cwd=self.defn.cwd,
+            env=env,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+    def _build_companion_worker_cmd(self, primary_cmd: list[str]) -> Optional[list[str]]:
+        """Build a companion retry-worker command for the ARQ worker service."""
+        if self.defn.key != "worker":
+            return None
+        marker = "pixsim7.backend.main.workers.arq_worker.WorkerSettings"
+        retry_marker = "pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
+        if not any(arg == marker for arg in primary_cmd):
+            return None
+        return [retry_marker if arg == marker else arg for arg in primary_cmd]
+
+    def _kill_extra_started_processes(self, graceful: bool) -> None:
+        """Best-effort kill companion detached processes started with this service."""
+        if not self.extra_started_pids:
+            return
+        pu = _get_process_utils()
+        force = not graceful
+        for pid in list(self.extra_started_pids):
+            try:
+                success = pu.kill_process_by_pid(pid, force=force)
+                _log(
+                    "detached_companion_process_kill",
+                    service_key=self.defn.key,
+                    pid=pid,
+                    force=force,
+                    success=success,
+                )
+            except Exception:
+                pass
 
     def _load_persisted_logs(self):
         """Load previously saved console logs on startup."""
@@ -237,10 +297,16 @@ class ServiceProcess:
         # formatter can render colors/styles. Only clamp extremely
         # long lines for performance.
         sanitized = self._sanitize_log_line(line)
+        # deque(maxlen) auto-evicts oldest on append (O(1)),
+        # but we need to track char count for the secondary cap.
+        if len(self.log_buffer) == self.log_buffer.maxlen:
+            removed = self.log_buffer[0]  # about to be evicted
+            self._buffer_char_count -= len(removed)
         self.log_buffer.append(sanitized)
         self._buffer_char_count += len(sanitized)
-        while len(self.log_buffer) > self.max_log_lines or self._buffer_char_count > CONSOLE_MAX_BUFFER_CHARS:
-            removed = self.log_buffer.pop(0)
+        # Secondary cap: evict oldest if total chars exceed budget
+        while self._buffer_char_count > CONSOLE_MAX_BUFFER_CHARS and self.log_buffer:
+            removed = self.log_buffer.popleft()
             self._buffer_char_count -= len(removed)
         return sanitized
 
@@ -302,8 +368,11 @@ class ServiceProcess:
                         continue
                     # Format: add timestamp prefix for consistency
                     formatted = f"[{timestamp}] [OUT] {line}"
-                    # Only add if not already in buffer (avoid duplicates)
-                    if formatted not in self.log_buffer[-20:]:
+                    # Only add if not already in recent buffer (avoid duplicates)
+                    # deque doesn't support slicing, so check last N via iteration
+                    n = len(self.log_buffer)
+                    recent = [self.log_buffer[n - 1 - i] for i in range(min(20, n))]
+                    if formatted not in recent:
                         self._append_log_buffer(formatted)
                         self._persist_log_line(formatted, sanitized=True)
         except Exception as e:
@@ -417,47 +486,48 @@ class ServiceProcess:
 
             # Prepare subprocess arguments
             cmd = [self.defn.program] + self.defn.args
-
-            # Platform-specific process group creation
-            if os.name == 'nt':
-                # Windows: CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB
-                # These flags make the process independent of the parent
-                creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP
-                try:
-                    creation_flags |= subprocess.CREATE_BREAKAWAY_FROM_JOB
-                except AttributeError:
-                    # CREATE_BREAKAWAY_FROM_JOB not available in all Python versions
-                    pass
-
-                # Add CREATE_NO_WINDOW to avoid console windows
-                if hasattr(subprocess, 'CREATE_NO_WINDOW'):
-                    creation_flags |= subprocess.CREATE_NO_WINDOW
-
-                self.proc = subprocess.Popen(
-                    cmd,
-                    cwd=self.defn.cwd,
-                    env=env,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,  # Merge stderr into stdout
-                    creationflags=creation_flags
-                )
-            else:
-                # Unix: use start_new_session to create new process group
-                self.proc = subprocess.Popen(
-                    cmd,
-                    cwd=self.defn.cwd,
-                    env=env,
-                    stdout=log_file,
-                    stderr=subprocess.STDOUT,
-                    start_new_session=True  # Creates new process group on Unix
-                )
+            self.proc = self._spawn_detached_subprocess(cmd, env, log_file)
 
             # Store PID and track process
             self.started_pid = self.proc.pid
+            self.extra_started_pids = []
             self.running = True
             self.health_status = HealthStatus.STARTING
             self.last_error_line = ''
             self.detected_pid = None  # Clear any detected PID since we're starting fresh
+
+            # Worker service companion: start retry queue consumer under the same launcher card.
+            companion_cmd = self._build_companion_worker_cmd(cmd)
+            if companion_cmd:
+                try:
+                    companion_proc = self._spawn_detached_subprocess(companion_cmd, env, log_file)
+                    self.extra_started_pids.append(companion_proc.pid)
+                    _log(
+                        "worker_retry_started_detached",
+                        service_key=self.defn.key,
+                        pid=companion_proc.pid,
+                        cmd=companion_cmd,
+                    )
+                except Exception as companion_error:
+                    # Avoid half-started state when the card is expected to manage both workers.
+                    try:
+                        pu = _get_process_utils()
+                        pu.kill_process_by_pid(self.started_pid, force=True)
+                    except Exception:
+                        pass
+                    self.proc = None
+                    self.started_pid = None
+                    self.extra_started_pids = []
+                    self.running = False
+                    self.health_status = HealthStatus.UNHEALTHY
+                    self.last_error_line = f"Failed to start retry worker: {companion_error}"
+                    _log(
+                        "worker_retry_start_failed",
+                        "error",
+                        service_key=self.defn.key,
+                        error=str(companion_error),
+                    )
+                    return False
 
             # Persist PID so it survives launcher restarts
             self._save_persisted_pid(self.started_pid)
@@ -482,7 +552,7 @@ class ServiceProcess:
 
     def stop(self, graceful=True):
         effective_pid = self.get_effective_pid()
-        if not self.running and not effective_pid:
+        if not self.running and not effective_pid and not self.extra_started_pids:
             return
 
         # Mark that user requested the service to be stopped
@@ -525,6 +595,7 @@ class ServiceProcess:
                 force = not graceful
                 success = pu.kill_process_by_pid(target_pid, force=force)
                 _log("detached_process_kill", service_key=self.defn.key, pid=target_pid, force=force, success=success)
+            self._kill_extra_started_processes(graceful=graceful)
             self._mark_stopped()
             return
 

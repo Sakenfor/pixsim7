@@ -37,6 +37,7 @@ try:
     from .dialogs.env_editor_dialog import show_env_editor
     from .database_log_viewer import DatabaseLogViewer
     from .dialogs.log_management_dialog import show_log_management_dialog
+    from .dialogs.account_live_feed_dialog import show_account_live_feed_dialog
 except ImportError:
     # Fallback for running directly
     from services import build_services_from_manifests, ServiceDef
@@ -54,6 +55,7 @@ except ImportError:
     from dialogs.env_editor_dialog import show_env_editor
     from database_log_viewer import DatabaseLogViewer
     from dialogs.log_management_dialog import show_log_management_dialog
+    from dialogs.account_live_feed_dialog import show_account_live_feed_dialog
 
 # Structured logging for the launcher
 try:
@@ -143,7 +145,8 @@ try:
         CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
-        detect_console_level, decorate_console_message,
+        detect_console_level, detect_console_channel,
+        decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
     )
 except Exception:
@@ -151,7 +154,8 @@ except Exception:
         CONSOLE_LEVEL_PATTERNS, CONSOLE_LEVEL_STYLES,
         CONSOLE_TIMESTAMP_REGEX, ISO_TIMESTAMP_REGEX, LEVEL_PREFIX_REGEX,
         URL_LINK_REGEX, READY_REGEX, ERROR_REGEX, WARN_REGEX,
-        detect_console_level, decorate_console_message,
+        detect_console_level, detect_console_channel,
+        decorate_console_message, strip_ansi,
         format_console_log_html_classic, format_console_log_html_enhanced,
     )
 
@@ -291,6 +295,7 @@ class LauncherWindow(QWidget):
                 pass
         self.cards: Dict[str, ServiceCard] = {}
         self.selected_service_key: Optional[str] = None
+        self._account_live_feed_dialog = None
 
         # Widget registry for clean reload
         self.widgets: Dict[str, QWidget] = {}
@@ -420,6 +425,7 @@ class LauncherWindow(QWidget):
             card.force_stop_btn.clicked.connect(lambda checked, k=s.key: self._force_stop_service(k))
             card.restart_requested.connect(self._restart_service)
             card.db_logs_requested.connect(lambda k=s.key: (self._select_service(k), self._open_db_logs_for_current_service()))
+            card.account_live_feed_requested.connect(self._open_account_live_feed)
             card.openapi_refresh_requested.connect(self._refresh_openapi_status)
             card.openapi_generate_requested.connect(self._generate_openapi_types)
             if card.open_btn:
@@ -528,6 +534,11 @@ class LauncherWindow(QWidget):
             idx = self.console_level_combo.findText(self.ui_state.console_level_filter)
             if idx >= 0:
                 self.console_level_combo.setCurrentIndex(idx)
+        if hasattr(self, 'console_channel_toggles') and self.ui_state.console_channel_filter:
+            # Restore disabled channels from comma-separated string
+            disabled = set(self.ui_state.console_channel_filter.split(','))
+            for ch, btn in self.console_channel_toggles.items():
+                btn.setChecked(ch not in disabled)
         if hasattr(self, 'console_search_input') and self.ui_state.console_search_text:
             self.console_search_input.setText(self.ui_state.console_search_text)
 
@@ -1035,6 +1046,25 @@ class LauncherWindow(QWidget):
                 except Exception:
                     pass
 
+    def _open_account_live_feed(self, key: str):
+        """Open worker account live-feed debug dialog."""
+        if key != "worker":
+            return
+        try:
+            # Keep a reference so Qt does not destroy the dialog immediately.
+            self._account_live_feed_dialog = show_account_live_feed_dialog(
+                self,
+                default_account_id="2",
+                default_email="stst1616@gmail.com",
+                default_provider="pixverse",
+            )
+        except Exception as e:
+            if _launcher_logger:
+                try:
+                    _launcher_logger.error("account_live_feed_open_failed", error=str(e))
+                except Exception:
+                    pass
+
     def _generate_openapi_types(self, key: str):
         """Generate OpenAPI types for a service."""
         sp = self.processes.get(key)
@@ -1469,8 +1499,11 @@ class LauncherWindow(QWidget):
                     pass
             # Efficient hash: use buffer length + hash of last 10 lines
             # This avoids creating a massive tuple every second
-            last_lines = sp.log_buffer[-10:] if len(sp.log_buffer) > 10 else sp.log_buffer
-            buffer_signature = hash((len(sp.log_buffer), tuple(last_lines)))
+            # (deque doesn't support slicing, so use indexed access)
+            n = len(sp.log_buffer)
+            tail_count = min(n, 10)
+            last_lines = tuple(sp.log_buffer[n - tail_count + i] for i in range(tail_count))
+            buffer_signature = hash((n, last_lines))
         else:
             buffer_signature = hash((sp.running, sp.health_status.value if sp.health_status else None))
         filter_signature = self._console_filter_signature()
@@ -1491,12 +1524,31 @@ class LauncherWindow(QWidget):
             filtered_buffer = self._filter_console_buffer(sp.log_buffer)
             _startup_trace(f"_refresh_console_logs filtered size={len(filtered_buffer)}")
 
+            # Cap rendered lines to avoid slow setHtml on huge documents.
+            # The full buffer is preserved for filtering/copy — we only
+            # limit what gets formatted into HTML and painted.
+            RENDER_CAP = 500
+            if len(filtered_buffer) > RENDER_CAP:
+                skipped = len(filtered_buffer) - RENDER_CAP
+                render_buffer = filtered_buffer[-RENDER_CAP:]
+            else:
+                skipped = 0
+                render_buffer = filtered_buffer
+
             # Format as HTML with syntax highlighting
             enhanced = getattr(self, "console_style_enhanced", True)
             if enhanced:
-                log_html = format_console_log_html_enhanced(filtered_buffer)
+                log_html = format_console_log_html_enhanced(render_buffer)
             else:
-                log_html = format_console_log_html_classic(filtered_buffer)
+                log_html = format_console_log_html_classic(render_buffer)
+
+            if skipped > 0:
+                log_html = (
+                    f'<div style="color: #888; padding: 4px 8px; font-size: 8pt; border-bottom: 1px solid #444;">'
+                    f'{skipped} older lines not shown (scroll up in full buffer with copy button)'
+                    f'</div>\n'
+                ) + log_html
+
             _startup_trace("_refresh_console_logs formatted html")
 
             # Use unified LogViewWidget API - handles scroll preservation automatically
@@ -1524,11 +1576,11 @@ class LauncherWindow(QWidget):
             self.log_view.update_content(msg, force=True)
 
     def _filter_console_buffer(self, buffer):
-        """Filter raw console lines by level and search text.
+        """Filter raw console lines by level, channel, and search text.
 
         This operates purely on the in-memory buffer and does not affect
-        persisted logs. Level detection is heuristic: it looks for standard
-        level tokens (INFO, ERROR, etc.) in the line.
+        persisted logs. Level and channel detection is heuristic: it looks
+        for standard tokens (INFO, ERROR, channel=pipeline, etc.) in the line.
         """
         if not buffer:
             return buffer
@@ -1540,6 +1592,13 @@ class LauncherWindow(QWidget):
             if lvl and lvl != "All":
                 level_filter = lvl.upper()
 
+        # Channel exclusion set — channels whose toggle is OFF
+        excluded_channels = set()
+        if hasattr(self, 'console_channel_toggles'):
+            for ch, btn in self.console_channel_toggles.items():
+                if not btn.isChecked():
+                    excluded_channels.add(ch)
+
         search_filter = None
         if hasattr(self, 'console_search_input'):
             text = self.console_search_input.text().strip()
@@ -1547,7 +1606,7 @@ class LauncherWindow(QWidget):
                 search_filter = text.lower()
 
         # Fast path: no filters
-        if not level_filter and not search_filter:
+        if not level_filter and not excluded_channels and not search_filter:
             return buffer
 
         filtered = []
@@ -1557,6 +1616,11 @@ class LauncherWindow(QWidget):
             if level_filter:
                 detected_level = detect_console_level(line_str)
                 if not detected_level or detected_level != level_filter:
+                    continue
+
+            if excluded_channels:
+                detected_channel = detect_console_channel(line_str)
+                if detected_channel and detected_channel in excluded_channels:
                     continue
 
             if search_filter and search_filter not in line_str.lower():
@@ -1569,14 +1633,22 @@ class LauncherWindow(QWidget):
     def _console_filter_signature(self):
         """Return current console filter settings as a comparable tuple."""
         level = self.console_level_combo.currentText() if hasattr(self, 'console_level_combo') else "All"
+        channels = tuple(
+            (ch, btn.isChecked())
+            for ch, btn in self.console_channel_toggles.items()
+        ) if hasattr(self, 'console_channel_toggles') else ()
         search = self.console_search_input.text().strip().lower() if hasattr(self, 'console_search_input') else ""
-        return (level, search)
+        return (level, channels, search)
 
     def _on_console_filter_changed(self):
         """React immediately to console filter changes."""
         # Save filter settings
         if hasattr(self, 'console_level_combo'):
             self.ui_state.console_level_filter = self.console_level_combo.currentText()
+        if hasattr(self, 'console_channel_toggles'):
+            # Store as comma-separated list of disabled channels
+            disabled = [ch for ch, btn in self.console_channel_toggles.items() if not btn.isChecked()]
+            self.ui_state.console_channel_filter = ','.join(disabled) if disabled else ''
         if hasattr(self, 'console_search_input'):
             self.ui_state.console_search_text = self.console_search_input.text()
         save_ui_state(self.ui_state)
@@ -1588,6 +1660,29 @@ class LauncherWindow(QWidget):
         self.ui_state.console_style_enhanced = self.console_style_enhanced
         save_ui_state(self.ui_state)
         self._refresh_console_logs(force=True)
+
+    def _copy_console_logs_plain(self):
+        """Copy visible console logs as plain text to clipboard."""
+        if not self.selected_service_key:
+            return
+        sp = self.processes.get(self.selected_service_key)
+        if not sp or not sp.log_buffer:
+            return
+
+        filtered = self._filter_console_buffer(sp.log_buffer)
+        if not filtered:
+            return
+
+        plain_lines = [strip_ansi(str(line)) for line in filtered]
+        text = '\n'.join(plain_lines)
+
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+
+        # Brief visual feedback
+        prev_text = self.status_label.text()
+        self.status_label.setText(f'Copied {len(plain_lines)} lines to clipboard')
+        QTimer.singleShot(1500, lambda: self.status_label.setText(prev_text))
 
     def _clear_console_display(self):
         """Clear the console log display and persisted logs."""

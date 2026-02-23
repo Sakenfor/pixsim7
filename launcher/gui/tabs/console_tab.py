@@ -74,6 +74,38 @@ class ConsoleTab:
         console_level_combo.currentTextChanged.connect(lambda _: launcher._on_console_filter_changed())
         toolbar.addWidget(console_level_combo)
 
+        # Channel toggle pills — all enabled by default, click to toggle off
+        channel_toggles = {}
+        for ch in ("api", "pipeline", "cron", "system"):
+            btn = QPushButton(ch)
+            btn.setCheckable(True)
+            btn.setChecked(True)
+            btn.setFixedHeight(22)
+            btn.setToolTip(f"Show/hide '{ch}' channel logs")
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #3a5f3a;
+                    color: #c8e6c9;
+                    border: 1px solid #4a7a4a;
+                    border-radius: 10px;
+                    padding: 0 8px;
+                    font-size: 8pt;
+                }
+                QPushButton:hover {
+                    border: 1px solid #5a9fd4;
+                }
+                QPushButton:!checked {
+                    background-color: #3d3d3d;
+                    color: #777;
+                    border: 1px solid #555;
+                }
+            """)
+            btn.toggled.connect(lambda _, _ch=ch: launcher._on_console_filter_changed())
+            toolbar.addWidget(btn)
+            channel_toggles[ch] = btn
+        reg('console_channel_toggles', QWidget())  # placeholder for registration
+        launcher.console_channel_toggles = channel_toggles
+
         console_search_input = reg('console_search_input', QLineEdit())
         console_search_input.setPlaceholderText("Search logs (Ctrl+F)...")
         console_search_input.setFixedWidth(180)
@@ -96,6 +128,12 @@ class ConsoleTab:
         btn_clear_logs.setToolTip("Clear console logs (Ctrl+L)")
         btn_clear_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
         toolbar.addWidget(btn_clear_logs)
+
+        btn_copy_logs = reg('btn_copy_logs', QPushButton('\U0001F4CB'))
+        btn_copy_logs.setToolTip("Copy visible logs as plain text (Ctrl+Shift+C)")
+        btn_copy_logs.setStyleSheet(theme.get_icon_button_stylesheet("sm"))
+        btn_copy_logs.clicked.connect(launcher._copy_console_logs_plain)
+        toolbar.addWidget(btn_copy_logs)
 
         autoscroll_checkbox = reg('autoscroll_checkbox', QCheckBox('Force scroll'))
         autoscroll_checkbox.setChecked(False)  # Default OFF for smart scroll
@@ -142,6 +180,10 @@ class ConsoleTab:
         launcher.console_refresh_shortcut.activated.connect(lambda: launcher._refresh_console_logs(force=True))
         launcher.console_clear_shortcut = QShortcut(QKeySequence('Ctrl+L'), console_tab)
         launcher.console_clear_shortcut.activated.connect(launcher._clear_console_display)
+
+        # Copy logs shortcut
+        launcher.console_copy_shortcut = QShortcut(QKeySequence('Ctrl+Shift+C'), console_tab)
+        launcher.console_copy_shortcut.activated.connect(launcher._copy_console_logs_plain)
 
         # Quick focus on console search
         launcher.console_search_shortcut = QShortcut(QKeySequence('Ctrl+F'), console_tab)

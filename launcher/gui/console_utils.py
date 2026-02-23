@@ -27,6 +27,13 @@ CONSOLE_LEVEL_PATTERNS = {
     "CRITICAL": re.compile(r"(?:\[(?:CRITICAL)\])|\bCRITICAL\b", re.IGNORECASE),
 }
 
+# Channel detection: matches channel=VALUE (human format) or "channel": "VALUE" (JSON format)
+CONSOLE_CHANNEL_REGEX = re.compile(
+    r'''(?:channel=(\S+)|"channel"\s*:\s*"([^"]+)")''',
+)
+
+KNOWN_CHANNELS = ("api", "pipeline", "cron", "system")
+
 CONSOLE_LEVEL_STYLES = {
     "DEBUG": {"accent": "#64B5F6", "bg": "rgba(100,181,246,0.08)"},
     "INFO": {"accent": "#81C784", "bg": "rgba(129,199,132,0.08)"},
@@ -212,6 +219,25 @@ def detect_console_level(line: str) -> str | None:
     for level in ("ERROR", "CRITICAL", "WARNING", "DEBUG", "INFO"):
         if CONSOLE_LEVEL_PATTERNS[level].search(line):
             return level
+    return None
+
+
+def detect_console_channel(line: str) -> str | None:
+    """Detect channel from a console log line.
+
+    Matches ``channel=VALUE`` (human/structlog format) or
+    ``"channel": "VALUE"`` (JSON format).  Returns the channel string
+    lowercased if it is one of the known channels, otherwise *None*.
+
+    Note: ANSI color codes are stripped before matching because the
+    ``CleanConsoleRenderer`` wraps key=value pairs in DIM/RESET sequences.
+    """
+    clean = strip_ansi(line)
+    m = CONSOLE_CHANNEL_REGEX.search(clean)
+    if m:
+        value = (m.group(1) or m.group(2) or "").lower()
+        if value in KNOWN_CHANNELS:
+            return value
     return None
 
 

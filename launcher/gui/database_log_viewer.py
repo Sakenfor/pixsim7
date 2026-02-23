@@ -149,6 +149,13 @@ class DatabaseLogViewer(QWidget):
         self.level_combo.currentTextChanged.connect(self.refresh_logs)
         filter_bar.addWidget(self.level_combo)
 
+        # Channel
+        self.channel_combo = self._styled_combo(['All', 'cron', 'pipeline', 'api', 'system'])
+        self.channel_combo.setMinimumWidth(90)
+        self.channel_combo.setToolTip("Filter by log channel")
+        self.channel_combo.currentTextChanged.connect(self.refresh_logs)
+        filter_bar.addWidget(self.channel_combo)
+
         # Search (larger, more prominent)
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText('Search logs... (Ctrl+F)')
@@ -479,6 +486,7 @@ class DatabaseLogViewer(QWidget):
         """Reset all filters to default values."""
         self.service_combo.setCurrentText('All')
         self.level_combo.setCurrentText('All')
+        self.channel_combo.setCurrentText('All')
         self.provider_combo.setCurrentText('All')
         self.stage_combo.setCurrentText('All')
         self.time_combo.setCurrentText('Last hour')
@@ -505,6 +513,10 @@ class DatabaseLogViewer(QWidget):
         level = self.level_combo.currentText()
         if level != 'All':
             filters.append(f"level={level}")
+
+        channel = self.channel_combo.currentText()
+        if channel != 'All':
+            filters.append(f"channel={channel}")
 
         provider = self.provider_combo.currentText()
         if provider != 'All':
@@ -587,6 +599,11 @@ class DatabaseLogViewer(QWidget):
             if level != 'All':
                 params['level'] = level
 
+            # Channel filter
+            channel = self.channel_combo.currentText()
+            if channel != 'All':
+                params['channel'] = channel
+
             # Provider filter
             provider = self.provider_combo.currentText()
             if provider and provider != 'All':
@@ -630,6 +647,8 @@ class DatabaseLogViewer(QWidget):
             filter_info = []
             if service != 'All':
                 filter_info.append(f"service={service}")
+            if channel != 'All':
+                filter_info.append(f"channel={channel}")
             if provider != 'All':
                 filter_info.append(f"provider={provider}")
             if level != 'All':
