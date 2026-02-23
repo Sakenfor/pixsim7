@@ -16,7 +16,6 @@ See: docs/design/SEQUENTIAL_GENERATION_DESIGN.md
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -29,6 +28,7 @@ from pixsim7.backend.main.services.generation.step_executor import (
     StepResult,
     StepTimeoutError,
 )
+from pixsim7.backend.main.services.guidance.chain_inheritance import compile_chain_step_guidance
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
 from pixsim7.backend.main.shared.datetime_utils import utcnow
 
@@ -104,6 +104,7 @@ class ChainExecutor:
         step_timeout: float = 600.0,
         step_poll_interval: float = 3.0,
         execution_metadata: Optional[Dict[str, Any]] = None,
+        existing_execution: Optional[ChainExecution] = None,
     ) -> ChainExecutionResult:
         """
         Execute all steps in a chain sequentially.
@@ -119,6 +120,9 @@ class ChainExecutor:
             step_timeout: Max seconds per step. Default 10 min.
             step_poll_interval: Poll interval for step completion. Default 3s.
             execution_metadata: Extra metadata stored on the execution record.
+            existing_execution: Optional pre-created execution record (e.g.
+                from background task). If provided, reuses it instead of
+                creating a new one.
 
         Returns:
             ChainExecutionResult with final status and per-step states.
@@ -132,27 +136,42 @@ class ChainExecutor:
                 error="Chain has no steps",
             )
 
-        # --- Create execution record ---
-        execution = ChainExecution(
-            chain_id=chain.id,
-            steps_snapshot=list(chain.steps),
-            step_states=[
+        # --- Create or reuse execution record ---
+        if existing_execution is not None:
+            execution = existing_execution
+            execution.steps_snapshot = list(chain.steps)
+            execution.step_states = [
                 {"step_id": s.get("id", f"step_{i}"), "status": "pending"}
                 for i, s in enumerate(chain.steps)
-            ],
-            status="running",
-            current_step_index=0,
-            user_id=user.id,
-            started_at=utcnow(),
-            execution_metadata=execution_metadata or {},
-        )
-        self.db.add(execution)
-        await self.db.commit()
-        await self.db.refresh(execution)
+            ]
+            execution.status = "running"
+            execution.current_step_index = 0
+            execution.started_at = utcnow()
+            if execution_metadata:
+                execution.execution_metadata = execution_metadata
+            await self.db.commit()
+        else:
+            execution = ChainExecution(
+                chain_id=chain.id,
+                steps_snapshot=list(chain.steps),
+                step_states=[
+                    {"step_id": s.get("id", f"step_{i}"), "status": "pending"}
+                    for i, s in enumerate(chain.steps)
+                ],
+                status="running",
+                current_step_index=0,
+                user_id=user.id,
+                started_at=utcnow(),
+                execution_metadata=execution_metadata or {},
+            )
+            self.db.add(execution)
+            await self.db.commit()
+            await self.db.refresh(execution)
 
         # --- Execute steps ---
         step_results: Dict[str, StepResult] = {}
         previous_asset_id = initial_asset_id
+        previous_compiled_guidance: Optional[Dict[str, Any]] = None
         final_asset_id = None
         chain_error = None
 
@@ -163,13 +182,14 @@ class ChainExecutor:
             await self.db.commit()
 
             try:
-                result = await self._execute_single_step(
+                result, compiled_guidance = await self._execute_single_step(
                     step=step,
                     step_index=i,
                     chain=chain,
                     user=user,
                     provider_id=provider_id,
                     previous_asset_id=previous_asset_id,
+                    previous_compiled_guidance=previous_compiled_guidance,
                     step_results=step_results,
                     default_operation=default_operation,
                     workspace_id=workspace_id,
@@ -181,6 +201,7 @@ class ChainExecutor:
 
                 step_results[step_id] = result
                 previous_asset_id = result.asset_id
+                previous_compiled_guidance = compiled_guidance
                 final_asset_id = result.asset_id
 
                 self._update_step_state(
@@ -191,6 +212,7 @@ class ChainExecutor:
                     result_asset_id=result.asset_id,
                     completed_at=utcnow().isoformat(),
                     duration_seconds=result.duration_seconds,
+                    compiled_guidance=compiled_guidance,
                 )
                 await self.db.commit()
 
@@ -201,6 +223,7 @@ class ChainExecutor:
                         "step_id": step_id,
                         "step_index": i,
                         "asset_id": result.asset_id,
+                        "has_guidance": compiled_guidance is not None,
                     },
                 )
 
@@ -259,6 +282,7 @@ class ChainExecutor:
         user: User,
         provider_id: str,
         previous_asset_id: Optional[int],
+        previous_compiled_guidance: Optional[Dict[str, Any]],
         step_results: Dict[str, StepResult],
         default_operation: str,
         workspace_id: Optional[int],
@@ -266,12 +290,41 @@ class ChainExecutor:
         step_timeout: float,
         step_poll_interval: float,
         execution: ChainExecution,
-    ) -> StepResult:
-        """Execute one step: roll template → build params → submit → await."""
+    ) -> tuple[StepResult, Optional[Dict[str, Any]]]:
+        """Execute one step: compile guidance → roll template → build params → submit → await.
+
+        Returns:
+            ``(step_result, compiled_guidance_dict)`` — the generation result
+            and the compiled guidance plan dict (for passing to next step).
+        """
 
         step_id = step.get("id", f"step_{step_index}")
         template_id = step.get("template_id")
         operation = step.get("operation", default_operation)
+
+        # --- Compile guidance (inheritance + step-local) ---
+        step_guidance = step.get("guidance")
+        guidance_inherit = step.get("guidance_inherit")
+
+        compiled_plan, guidance_warnings = compile_chain_step_guidance(
+            previous_compiled=previous_compiled_guidance,
+            step_guidance=step_guidance,
+            guidance_inherit=guidance_inherit,
+        )
+
+        compiled_guidance_dict: Optional[Dict[str, Any]] = None
+        if compiled_plan is not None:
+            compiled_guidance_dict = compiled_plan.model_dump(exclude_none=True)
+
+        if guidance_warnings:
+            logger.info(
+                "chain_executor.guidance_warnings",
+                extra={
+                    "execution_id": str(execution.id),
+                    "step_id": step_id,
+                    "warnings": guidance_warnings,
+                },
+            )
 
         # --- Resolve input asset ---
         source_asset_id = self._resolve_input_asset(
@@ -312,7 +365,7 @@ class ChainExecutor:
                 "warnings": roll_result.get("warnings"),
             }
 
-        # Update step state with roll info
+        # Update step state with roll + guidance info
         self._update_step_state(
             execution,
             step_id,
@@ -323,20 +376,45 @@ class ChainExecutor:
                 "selected_block_ids": roll_metadata.get("selected_block_ids", []),
                 "roll_seed": roll_metadata.get("roll_seed"),
             } if roll_metadata else None,
+            compiled_guidance=compiled_guidance_dict,
+            guidance_warnings=guidance_warnings if guidance_warnings else None,
             started_at=utcnow().isoformat(),
         )
         await self.db.commit()
 
-        # --- Build generation params ---
-        params: Dict[str, Any] = {}
-        if prompt:
-            params["prompt"] = prompt
-        if source_asset_id:
-            params["source_asset_id"] = source_asset_id
-
-        # --- Submit and await ---
+        # --- Build structured generation params ---
         operation_type = OperationType(operation)
 
+        # run_context carries chain provenance + guidance
+        run_context: Dict[str, Any] = {
+            "run_mode": "generation_chain",
+            "chain_id": str(chain.id),
+            "execution_id": str(execution.id),
+            "step_id": step_id,
+            "step_index": step_index,
+        }
+        if compiled_guidance_dict:
+            run_context["guidance_plan"] = compiled_guidance_dict
+
+        gen_config: Dict[str, Any] = {
+            "run_context": run_context,
+        }
+        if prompt:
+            gen_config["prompt"] = prompt
+        if source_asset_id:
+            gen_config["source_asset_id"] = source_asset_id
+            # Also provide as composition_assets for operations that need it
+            gen_config["composition_assets"] = [{
+                "asset_id": source_asset_id,
+                "media_type": "image",
+                "role": "source_image",
+            }]
+
+        params: Dict[str, Any] = {
+            "generation_config": gen_config,
+        }
+
+        # --- Submit and await ---
         result = await self._step_executor.execute_step(
             user=user,
             operation_type=operation_type,
@@ -358,7 +436,7 @@ class ChainExecutor:
         if result.status == GenerationStatus.CANCELLED:
             raise RuntimeError("Generation was cancelled")
 
-        return result
+        return result, compiled_guidance_dict
 
     # ------------------------------------------------------------------
     # Input resolution

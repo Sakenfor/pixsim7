@@ -11,16 +11,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.domain.generation.chain import ChainExecution, GenerationChain
 from pixsim7.backend.main.domain.user import User
-from pixsim7.backend.main.services.generation.chain_executor import (
-    ChainExecutor,
-    ChainExecutionResult,
-)
+from pixsim7.backend.main.services.generation.chain_executor import ChainExecutor
 from pixsim7.backend.main.services.generation.creation import GenerationCreationService
 from pixsim7.backend.main.services.generation.query import GenerationQueryService
 from pixsim7.backend.main.services.generation.step_executor import GenerationStepExecutor
@@ -386,11 +383,13 @@ async def _run_chain_background(
     Run chain execution in background.
 
     Creates its own DB session since background tasks outlive the request.
+    Delegates to ChainExecutor.execute() which owns the full orchestration
+    loop (template rolling, guidance compilation, step submission, asset piping).
     """
     from pixsim7.backend.main.database import async_session_factory
 
     async with async_session_factory() as db:
-        # Load chain and execution
+        # Load chain and pre-created execution
         chain = await db.get(GenerationChain, chain_id)
         execution = await db.get(ChainExecution, execution_id)
         if not chain or not execution:
@@ -405,69 +404,21 @@ async def _run_chain_background(
             await db.commit()
             return
 
-        # Build executor and run
+        # Delegate to ChainExecutor with the pre-created execution
+        # so the caller's execution_id remains valid for progress polling.
         executor = _build_chain_executor(db)
-
-        # The ChainExecutor.execute() will update the existing execution record
-        # but we need to pass it a chain — it creates its own execution internally.
-        # Instead, we run the step loop directly using the pre-created execution.
-        execution.status = "running"
-        execution.started_at = utcnow()
-        await db.commit()
-
-        step_results = {}
-        previous_asset_id = request.initial_asset_id
-        chain_error = None
-
-        for i, step in enumerate(chain.steps):
-            step_id = step.get("id", f"step_{i}")
-            execution.current_step_index = i
-
-            try:
-                result = await executor._execute_single_step(
-                    step=step,
-                    step_index=i,
-                    chain=chain,
-                    user=user,
-                    provider_id=request.provider_id,
-                    previous_asset_id=previous_asset_id,
-                    step_results=step_results,
-                    default_operation=request.default_operation,
-                    workspace_id=request.workspace_id,
-                    preferred_account_id=request.preferred_account_id,
-                    step_timeout=request.step_timeout,
-                    step_poll_interval=3.0,
-                    execution=execution,
-                )
-
-                step_results[step_id] = result
-                previous_asset_id = result.asset_id
-
-                ChainExecutor._update_step_state(
-                    execution, step_id,
-                    status="completed",
-                    generation_id=result.generation_id,
-                    result_asset_id=result.asset_id,
-                    completed_at=utcnow().isoformat(),
-                )
-                await db.commit()
-
-            except Exception as e:
-                chain_error = f"Step '{step_id}' failed: {e}"
-                ChainExecutor._update_step_state(
-                    execution, step_id, status="failed", error=str(e),
-                )
-                break
-
-        # Finalize
-        execution.status = "completed" if chain_error is None else "failed"
-        execution.error_message = chain_error
-        execution.completed_at = utcnow()
-
-        if chain_error is None:
-            chain.execution_count = (chain.execution_count or 0) + 1
-
-        await db.commit()
+        await executor.execute(
+            chain,
+            user,
+            provider_id=request.provider_id,
+            initial_asset_id=request.initial_asset_id,
+            default_operation=request.default_operation,
+            workspace_id=request.workspace_id,
+            preferred_account_id=request.preferred_account_id,
+            step_timeout=request.step_timeout,
+            execution_metadata=request.execution_metadata,
+            existing_execution=execution,
+        )
 
 
 # ===== Response helpers =====
