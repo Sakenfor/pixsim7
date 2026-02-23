@@ -1694,7 +1694,7 @@ blocks:
     kind: single_state
     default_intent: preserve
     text: >-
-      Her clothing remains exactly as it appears in the source image.
+      The subject's clothing remains exactly as it appears in the source image.
       No added layers, no redesign, no structural changes. Maintain
       fabric type, fit, coverage, and colour precisely. The outfit
       integrates into the new environment without modification.
@@ -1710,10 +1710,10 @@ blocks:
     kind: single_state
     default_intent: preserve
     text: >-
-      Preserve every aspect of her clothing exactly as-is — cut, colour,
+      Preserve every aspect of the subject's clothing exactly as-is — cut, colour,
       fabric, layering, accessories. Do not adapt, stylise, or reinterpret
-      any garment to match the surrounding scene. She wears what she wears;
-      the environment conforms to her, not the reverse.
+      any garment to match the surrounding scene. The subject wears what they wear;
+      the environment conforms to the subject, not the reverse.
     tags:
       intent: preserve
       layer: foreground
@@ -1735,9 +1735,7 @@ blocks:
       night train. Polished dark wood paneling lines the walls, slightly
       dulled brass rails run along overhead luggage racks. Deep upholstered
       seating in faded burgundy flanks the narrow aisle. Dim yellow wall
-      lamps cast warm, low pools of light along the carriage walls. The
-      narrow aisle aligns with her existing stance, reading as if she
-      stands naturally within the carriage.
+      lamps cast warm, low pools of light along the carriage walls.
     tags:
       intent: modify
       layer: background
@@ -1750,13 +1748,12 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Place her inside a pre-war sleeper carriage. Walnut veneer panels
+      The interior of a pre-war sleeper carriage. Walnut veneer panels
       with hairline cracks in the lacquer, brass fittings tarnished to a
       dull gold, heavy curtains half-drawn across compartment doorways.
       The aisle is barely wide enough for two people to pass. Overhead
       fixtures cast downward cones of amber light between stretches of
       warm shadow. The carpet underfoot is patterned and slightly worn.
-      Her position reads as a natural pause mid-carriage.
     tags:
       intent: modify
       layer: background
@@ -1769,14 +1766,13 @@ blocks:
     category: scene_build
     kind: single_state
     text: >-
-      Surround her with the corridor of a faded Orient Express-era
-      carriage. Narrow passage, polished wood dado rail at hip height,
-      etched glass panels in compartment doors, brass handles reflecting
-      warm lamp-light. The ceiling is low, upholstered in quilted fabric.
-      Shallow alcoves between compartments compress the space further.
-      She stands where the corridor narrows near a vestibule junction,
-      the carriage's gentle sway implied by the slight blur of objects
-      at the frame edges.
+      The corridor of a faded Orient Express-era carriage. Narrow passage,
+      polished wood dado rail at hip height, etched glass panels in
+      compartment doors, brass handles reflecting warm lamp-light. The
+      ceiling is low, upholstered in quilted fabric. Shallow alcoves
+      between compartments compress the space further. Near a vestibule
+      junction the corridor narrows, the carriage's gentle sway implied
+      by the slight blur of objects at the frame edges.
     tags:
       intent: modify
       layer: background
@@ -1792,10 +1788,10 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      {{conductor}} lingers in the confined aisle immediately behind her.
+      {{conductor}} lingers in the confined aisle immediately behind the subject.
       The narrow carriage forces {{conductor}} close — shoulder line
-      nearly overlapping hers in the frame, separated by inches rather
-      than choice. The aisle offers no room to step aside.
+      nearly overlapping the subject's in the frame, separated by inches
+      rather than choice. The aisle offers no room to step aside.
     tags:
       intent: add
       layer: midground
@@ -1811,10 +1807,10 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      {{conductor}} stands directly behind her in the aisle, the carriage
-      width leaving no lateral clearance. {{conductor}}'s uniform brushes
-      the air close to her back. The train's subtle sway compresses the
-      remaining distance between them at irregular intervals.
+      {{conductor}} stands directly behind the subject in the aisle, the
+      carriage width leaving no lateral clearance. {{conductor}}'s uniform
+      brushes the air close to the subject's back. The train's subtle sway
+      compresses the remaining distance between them at irregular intervals.
     tags:
       intent: add
       layer: midground
@@ -1834,13 +1830,12 @@ blocks:
     text: >-
       {{conductor}}, slightly shabby in a worn uniform — creases from long
       shifts visible across the jacket, collar loosened at the throat.
-      A few tickets or folded slips have fallen near her feet. {{conductor}}
+      A few tickets or folded slips have fallen to the floor. {{conductor}}
       bends to gather them, forced to lean inward within the tight aisle.
       As {{conductor}} straightens, one hand steadies against the brass
-      rail close to her shoulder line. The motion brings {{conductor}}
-      fractionally nearer than necessary before adjusting posture, the
-      carriage's subtle sway keeping the space between them compressed a
-      moment longer than comfort allows.
+      rail. The motion is unhurried, the carriage's subtle sway keeping
+      {{conductor}} close a moment longer than necessary before adjusting
+      posture.
     tags:
       intent: add
       character_type: conductor
@@ -1857,12 +1852,11 @@ blocks:
     text: >-
       {{conductor}}, uniform softened by years of service — brass buttons
       dulled, cap slightly askew. {{conductor}} checks a leather-bound
-      manifest, turning sideways to pass but misjudging the clearance.
-      {{conductor}}'s hip grazes the rail beside her while pausing, pen
-      poised, asking a question she cannot quite hear over the wheels.
-      {{conductor}} tilts closer to repeat it, breath warm against her
-      ear, one hand braced on the paneling behind her shoulder. The train
-      rocks gently and neither of them corrects the distance.
+      manifest, turning sideways in the aisle but misjudging the clearance.
+      {{conductor}} pauses, pen poised, mouthing a question lost under the
+      noise of the wheels. {{conductor}} tilts closer to repeat it, one
+      hand braced on the paneling. The train rocks gently and
+      {{conductor}} holds the leaning posture a beat too long.
     tags:
       intent: add
       character_type: conductor
@@ -1877,12 +1871,10 @@ blocks:
     kind: single_state
     default_intent: add
     text: >-
-      {{conductor}} reaches overhead to adjust a luggage rack latch,
-      torso extending past her, arm crossing above her head.
-      {{conductor}}'s worn jacket rides up, sleeve brushing close to her
-      hair. The aisle is too narrow for her to step aside, so she remains
-      still while {{conductor}} works, their bodies parallel and close for
-      several seconds. {{conductor}} lowers the arm slowly, fingertips
+      {{conductor}} reaches overhead to adjust a luggage rack latch, torso
+      stretching upward, arm extended. {{conductor}}'s worn jacket rides
+      up, exposing a strip of shirt beneath. The narrow aisle leaves no
+      room to manoeuvre. {{conductor}} lowers the arm slowly, fingertips
       trailing the brass rail back down to waist height before stepping
       back — one measured half-step that the carriage promptly erases
       with its next sway.
@@ -1903,9 +1895,9 @@ blocks:
     text: >-
       Dim yellow wall lamps mounted at intervals along the carriage
       cast warm, low pools of light. The illumination integrates
-      naturally with the original shading on her skin so she remains
-      consistent and realistically lit within the space. Between the
-      pools, warm shadow gathers, softening edges and compressing depth.
+      naturally with existing tones in the scene, preserving consistent
+      and realistic shading. Between the pools, warm shadow gathers,
+      softening edges and compressing depth.
     tags:
       intent: modify
       key_light: wall_lamps
@@ -1922,9 +1914,9 @@ blocks:
       Pairs of small brass-hooded lamps glow at shoulder height, their
       light a deep amber that pools along polished surfaces and catches
       the underside of overhead racks. The warm tone wraps figures without
-      harsh edges, preserving soft shadow transitions. Her existing
-      lighting direction is maintained — the wall lamps reinforce rather
-      than replace the original light on her skin.
+      harsh edges, preserving soft shadow transitions. Existing lighting
+      direction is maintained — the wall lamps reinforce rather than
+      replace any original shading.
     tags:
       intent: modify
       key_light: wall_lamps
@@ -1959,10 +1951,10 @@ blocks:
     text: >-
       Night presses against the carriage windows — pure black beyond
       the glass, broken only by faint reflected doubles of the interior
-      lamps. Her silhouette and {{conductor}}'s overlap as soft ghosts on the window
-      surface, creating a layered transparency that compresses visual
-      depth. The glass acts as a secondary light source, bouncing a
-      fraction of the warm interior glow back into the space.
+      lamps. Silhouettes overlap as soft ghosts on the window surface,
+      creating a layered transparency that compresses visual depth. The
+      glass acts as a secondary light source, bouncing a fraction of the
+      warm interior glow back into the space.
     tags:
       intent: modify
       fill_light: window_reflection_train
