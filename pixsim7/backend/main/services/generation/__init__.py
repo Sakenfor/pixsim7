@@ -11,6 +11,8 @@ Services:
 - GenerationRetryService: Retry logic
 - GenerationBillingService: Credit deduction and billing finalization
 - GenerationTrackingService: Read-only facade for unified generation provenance
+- GenerationStepExecutor: Submit + await completion (reusable atom for sequential execution)
+- ChainExecutor: Sequential execution of GenerationChain pipelines
 """
 
 # Main service (backward compatibility)
@@ -23,6 +25,8 @@ from .query import GenerationQueryService
 from .retry import GenerationRetryService
 from .billing import GenerationBillingService
 from .tracking import GenerationTrackingService
+from .step_executor import GenerationStepExecutor, StepResult, StepTimeoutError, StepFailedError
+from .chain_executor import ChainExecutor, ChainExecutionResult
 
 __all__ = [
     "GenerationService",  # Main service (backward compatible)
@@ -32,4 +36,10 @@ __all__ = [
     "GenerationRetryService",
     "GenerationBillingService",
     "GenerationTrackingService",
+    "GenerationStepExecutor",
+    "StepResult",
+    "StepTimeoutError",
+    "StepFailedError",
+    "ChainExecutor",
+    "ChainExecutionResult",
 ]
