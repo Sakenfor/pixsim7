@@ -22,6 +22,7 @@ except ImportError:
     OPENAI_AVAILABLE = False
 
 from pixsim7.backend.main.services.llm.models import LLMRequest, LLMResponse, LLMProvider
+from pixsim7.backend.main.services.llm.local_llm_engine import get_local_llm_engine
 
 logger = logging.getLogger(__name__)
 
@@ -219,25 +220,45 @@ class OpenAIProvider(BaseLLMProvider):
 
 
 class LocalLLMProvider(BaseLLMProvider):
-    """
-    Local LLM provider (Ollama, llama.cpp, etc.)
-    Placeholder for future implementation
-    """
+    """Local llama-cpp backed provider."""
 
     def __init__(self, api_key: Optional[str] = None):
         super().__init__(api_key)
-        # TODO: Initialize local LLM client
-        pass
 
     def get_default_model(self) -> str:
-        return "llama3"
+        return "smollm2-1.7b"
 
     def estimate_cost(self, usage: Dict[str, int]) -> float:
         # Local models are free
         return 0.0
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
-        raise NotImplementedError("Local LLM provider not yet implemented")
+        start_time = time.time()
+        model = request.model or self.get_default_model()
+
+        prompt = request.prompt
+        if request.system_prompt:
+            prompt = f"{request.system_prompt}\n\n{request.prompt}"
+
+        text = await get_local_llm_engine().generate(
+            prompt,
+            model_id=model,
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+        )
+
+        generation_time_ms = (time.time() - start_time) * 1000
+        return LLMResponse(
+            text=text,
+            provider=LLMProvider.LOCAL,
+            model=model,
+            cached=False,
+            cache_key=None,
+            usage=None,
+            estimated_cost=0.0,
+            generation_time_ms=generation_time_ms,
+            metadata=request.metadata,
+        )
 
 
 def get_provider(provider_type: LLMProvider, api_key: Optional[str] = None) -> BaseLLMProvider:

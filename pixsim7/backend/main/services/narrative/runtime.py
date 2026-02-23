@@ -10,12 +10,15 @@ This is the "brain" of the narrative runtime system.
 
 from __future__ import annotations
 from typing import Dict, Any, List, Optional, Tuple
+import logging
 import time
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Use domain entry module for cross-domain imports
 from pixsim7.backend.game import GameSession, GameWorld, GameNPC
+from pixsim7.backend.main.domain import OperationType
 from pixsim7.backend.main.domain.narrative import (
     NarrativeProgram,
     NarrativeNode,
@@ -48,6 +51,12 @@ from pixsim7.backend.main.domain.narrative.schema import (
     SceneTransition,
     StateEffects,
 )
+from pixsim7.backend.main.services.user import UserService
+from pixsim7.backend.main.services.generation import GenerationService
+from pixsim7.backend.main.shared.operation_mapping import resolve_operation_type
+
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -65,7 +74,9 @@ class NarrativeRuntimeEngine:
     def __init__(
         self,
         db: AsyncSession,
-        narrative_engine: Optional[NarrativeEngine] = None
+        narrative_engine: Optional[NarrativeEngine] = None,
+        user_service: Optional[UserService] = None,
+        generation_service: Optional[GenerationService] = None,
     ):
         """
         Initialize the runtime engine.
@@ -76,6 +87,8 @@ class NarrativeRuntimeEngine:
         """
         self.db = db
         self.narrative_engine = narrative_engine or NarrativeEngine()
+        self.user_service = user_service or UserService(db)
+        self.generation_service = generation_service or GenerationService(db, self.user_service)
 
     # ========================================================================
     # Program Execution
@@ -381,12 +394,12 @@ class NarrativeRuntimeEngine:
         # Prepare generation if launching
         generation_launch = None
         if should_launch_immediately(node):
-            gen_request = await prepare_generation_from_sequence(sequence, node, context)
-            # TODO: Actually call generation service here
-            # For now, just return the request as metadata
-            generation_launch = GenerationLaunch(
-                generation_id=0,  # Placeholder
-                status="pending"
+            generation_launch = await self._launch_action_block_generation(
+                sequence=sequence,
+                node=node,
+                context=context,
+                session=session,
+                npc_id=npc_id,
             )
 
         state = get_narrative_state(session, npc_id)
@@ -406,6 +419,183 @@ class NarrativeRuntimeEngine:
             generation=generation_launch,
             finished=False
         )
+
+    async def _launch_action_block_generation(
+        self,
+        *,
+        sequence: Any,
+        node: ActionBlockNode,
+        context: Dict[str, Any],
+        session: GameSession,
+        npc_id: int,
+    ) -> Optional[GenerationLaunch]:
+        """
+        Launch generation for an action-block node using canonical generation service inputs.
+        """
+        try:
+            prepared_request = await prepare_generation_from_sequence(sequence, node, context)
+            generation_config_raw = node.generation_config or {}
+
+            provider_id_raw = prepared_request.get("provider") or generation_config_raw.get("provider") or "pixverse"
+            provider_id = str(provider_id_raw).strip() or "pixverse"
+            if provider_id.lower() == "default":
+                provider_id = "pixverse"
+
+            generation_type_raw = (
+                generation_config_raw.get("generationType")
+                or generation_config_raw.get("generation_type")
+                or generation_config_raw.get("operationType")
+                or generation_config_raw.get("operation_type")
+                or "text_to_video"
+            )
+            generation_type = str(generation_type_raw)
+            try:
+                operation_type = resolve_operation_type(generation_type)
+            except Exception:
+                operation_type = OperationType.TEXT_TO_VIDEO
+                generation_type = "text_to_video"
+
+            prepared_prompt = prepared_request.get("assembledPrompt")
+            prompt = str(prepared_prompt).strip() if isinstance(prepared_prompt, str) else ""
+            if not prompt:
+                prompt_parts = [str(part).strip() for part in sequence.prompts if str(part).strip()]
+                prompt = " ".join(prompt_parts).strip()
+            if not prompt:
+                npc_name = str(context.get("npc", {}).get("name") or "NPC")
+                prompt = f"Narrative action scene featuring {npc_name}"
+
+            style = generation_config_raw.get("style") if isinstance(generation_config_raw.get("style"), dict) else {}
+            if not style:
+                style = {"pacing": "medium"}
+
+            duration = generation_config_raw.get("duration") if isinstance(generation_config_raw.get("duration"), dict) else {}
+            if duration.get("target") is None and sequence.total_duration:
+                duration["target"] = float(sequence.total_duration)
+
+            constraints = (
+                generation_config_raw.get("constraints")
+                if isinstance(generation_config_raw.get("constraints"), dict)
+                else {}
+            )
+
+            fallback = generation_config_raw.get("fallback") if isinstance(generation_config_raw.get("fallback"), dict) else {}
+            fallback_mode = str(fallback.get("mode") or "skip")
+            if fallback_mode not in {"default_content", "skip", "retry", "placeholder"}:
+                fallback_mode = "skip"
+            fallback["mode"] = fallback_mode
+
+            strategy = str(generation_config_raw.get("strategy") or "once")
+            if strategy not in {"once", "per_playthrough", "per_player", "always"}:
+                strategy = "once"
+
+            try:
+                version = int(generation_config_raw.get("version") or 1)
+            except (TypeError, ValueError):
+                version = 1
+
+            metadata = prepared_request.get("metadata")
+            selected_block_ids: List[str] = []
+            for block in sequence.blocks:
+                if not isinstance(block, dict):
+                    continue
+                block_id = block.get("id") or block.get("blockId") or block.get("block_id")
+                if block_id is not None:
+                    selected_block_ids.append(str(block_id))
+
+            world_id = context.get("world", {}).get("id")
+            if world_id is None:
+                world_id = session.world_id
+
+            run_context: Dict[str, Any] = {
+                "mode": "narrative_runtime",
+                "run_id": str(uuid4()),
+                "item_index": 0,
+                "item_total": 1,
+                "node_id": node.id,
+                "npc_id": npc_id,
+                "session_id": session.id,
+                "world_id": world_id,
+                "composition": sequence.composition,
+                "compatibility_score": sequence.compatibility_score,
+                "fallback_reason": sequence.fallback_reason,
+                "selected_block_ids": selected_block_ids,
+                "slot_results": [],
+                "assembled_prompt": prompt,
+            }
+            if isinstance(metadata, dict):
+                for key, value in metadata.items():
+                    run_context.setdefault(str(key), value)
+
+            social_context = prepared_request.get("socialContext")
+            if not isinstance(social_context, dict):
+                social_context = {}
+
+            generation_config = {
+                "generationType": generation_type,
+                "purpose": str(generation_config_raw.get("purpose") or "adaptive"),
+                "style": style,
+                "duration": duration,
+                "constraints": constraints,
+                "strategy": strategy,
+                "fallback": fallback,
+                "enabled": bool(generation_config_raw.get("enabled", True)),
+                "version": version,
+                "prompt": prompt,
+                "run_context": run_context,
+            }
+
+            params = {
+                "generation_config": generation_config,
+                "scene_context": {
+                    "from_scene": {"id": str(world_id)} if world_id is not None else None,
+                    "to_scene": None,
+                },
+                "player_context": {
+                    "session_id": session.id,
+                    "world_id": world_id,
+                    "player_id": session.user_id,
+                },
+                "social_context": social_context,
+            }
+
+            user = await self.user_service.get_user(session.user_id)
+
+            try:
+                priority = int(generation_config_raw.get("priority", 5))
+            except (TypeError, ValueError):
+                priority = 5
+            priority = max(0, min(priority, 10))
+            force_new = bool(generation_config_raw.get("force_new") or generation_config_raw.get("forceNew"))
+
+            generation = await self.generation_service.create_generation(
+                user=user,
+                operation_type=operation_type,
+                provider_id=provider_id,
+                params=params,
+                workspace_id=None,
+                name=str(generation_config_raw.get("name") or f"Narrative action block {node.id}"),
+                description=str(
+                    generation_config_raw.get("description")
+                    or f"Narrative runtime generation for node {node.id}"
+                ),
+                priority=priority,
+                force_new=force_new,
+            )
+
+            status_value = getattr(generation.status, "value", generation.status)
+            status = "queued" if str(status_value).lower() == "queued" else "pending"
+            return GenerationLaunch(generation_id=int(generation.id), status=status)
+        except Exception:
+            logger.warning(
+                "narrative_action_block_generation_launch_failed",
+                extra={
+                    "node_id": node.id,
+                    "npc_id": npc_id,
+                    "session_id": session.id,
+                },
+                exc_info=True,
+            )
+            return None
 
     async def _execute_scene_node(
         self,
@@ -622,7 +812,7 @@ class NarrativeRuntimeEngine:
             "world": {"id": world.id, "meta": world.meta},
             "npc": {"id": npc.id, "name": npc.name, "personality": npc.personality},
             "relationship": relationship,
-            "player": {"id": session.player_id}
+            "player": {"id": session.user_id}
         }
 
     def _evaluate_condition(

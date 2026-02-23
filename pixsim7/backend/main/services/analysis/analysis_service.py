@@ -24,6 +24,11 @@ from pixsim7.backend.main.domain.assets.analysis import (
 from pixsim7.backend.main.services.analysis.analyzer_defaults import (
     resolve_asset_default_analyzer_id,
 )
+from pixsim7.backend.main.services.analysis.analyzer_pipeline import (
+    AnalyzerExecutionRequest,
+    AnalyzerPipelineError,
+    resolve_analyzer_execution,
+)
 from pixsim7.backend.main.services.analysis.analyzer_instance_service import AnalyzerInstanceService
 from pixsim7.backend.main.services.prompt.parser import analyzer_registry, AnalyzerTarget
 from pixsim7.backend.main.shared.errors import (
@@ -350,15 +355,6 @@ class AnalysisService:
     ) -> tuple[str, str, Optional[str]]:
         """Resolve canonical analyzer ID, provider ID, and model ID."""
         canonical_id = analyzer_registry.resolve_legacy(analyzer_id)
-        analyzer = analyzer_registry.get(canonical_id)
-        if not analyzer:
-            raise InvalidOperationError(f"Analyzer '{analyzer_id}' is not registered")
-        if not analyzer.enabled:
-            raise InvalidOperationError(f"Analyzer '{canonical_id}' is disabled")
-        if analyzer.target != AnalyzerTarget.ASSET:
-            raise InvalidOperationError(
-                f"Analyzer '{canonical_id}' is not an asset analyzer"
-            )
 
         instance_service = AnalyzerInstanceService(self.db)
         instances = await instance_service.list_instances(
@@ -373,20 +369,30 @@ class AnalysisService:
             default=None,
         )
 
-        provider_id = (
-            selected_instance.provider_id
-            if selected_instance is not None
-            else analyzer.provider_id or asset.provider_id
-        )
-        if not provider_id:
+        try:
+            resolved = resolve_analyzer_execution(
+                AnalyzerExecutionRequest(
+                    analyzer_id=canonical_id,
+                    target=AnalyzerTarget.ASSET,
+                    require_enabled=True,
+                    explicit_provider_id=(
+                        selected_instance.provider_id if selected_instance is not None else None
+                    ),
+                    explicit_model_id=(
+                        selected_instance.model_id if selected_instance is not None else None
+                    ),
+                    fallback_provider_id=(
+                        None if selected_instance is not None else asset.provider_id
+                    ),
+                    require_provider=True,
+                )
+            )
+        except AnalyzerPipelineError as e:
+            raise InvalidOperationError(e.message)
+
+        if not resolved.provider_id:
             raise InvalidOperationError(
-                f"Analyzer '{canonical_id}' has no resolved provider"
+                f"Analyzer '{resolved.analyzer_id}' has no resolved provider"
             )
 
-        model_id = (
-            selected_instance.model_id
-            if selected_instance is not None
-            else analyzer.model_id
-        )
-
-        return canonical_id, provider_id, model_id
+        return resolved.analyzer_id, resolved.provider_id, resolved.model_id

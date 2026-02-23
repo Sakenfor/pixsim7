@@ -3,15 +3,11 @@ LLM Provider Adapters - concrete implementations for AI Hub
 
 These adapters implement the LlmProvider protocol for prompt editing operations.
 """
-import asyncio
 import os
 import json
 import logging
-import shlex
 import subprocess
-import sys
-import time
-from typing import Optional
+from typing import Optional, Any
 
 try:
     import anthropic
@@ -29,7 +25,13 @@ from pixsim7.backend.main.shared.errors import (
     ProviderError,
     ProviderAuthenticationError,
 )
+from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.domain.providers import ProviderAccount
+from pixsim7.backend.main.services.llm.local_llm_engine import get_local_llm_engine
+from pixsim7.backend.main.services.command_runtime import (
+    parse_shell_args,
+    run_subprocess_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +257,7 @@ class AnthropicLlmProvider:
 
 
 class LocalLlmProvider:
-    """Local LLM provider (stub for future implementation)"""
+    """Local llama-cpp provider for prompt editing/analyzer calls."""
 
     @property
     def provider_id(self) -> str:
@@ -270,23 +272,119 @@ class LocalLlmProvider:
         account: ProviderAccount | None = None,
         instance_config: dict | None = None,
     ) -> str:
-        """
-        Edit prompt using local LLM (not yet implemented)
+        # Local provider does not use account/context credentials.
+        _ = account
+        _ = context
 
-        Args:
-            model_id: Local model name
-            prompt_before: Original prompt
-            context: Optional context
-            account: Not used for local LLM
-            instance_config: Not used for local LLM
+        config = instance_config or {}
+        max_tokens = _coerce_int(config.get("max_tokens"), default=500, minimum=1)
+        temperature = _coerce_float(config.get("temperature"), default=0.3, minimum=0.0)
+        engine = _resolve_local_engine(config)
 
-        Returns:
-            Edited prompt
-        """
-        raise NotImplementedError(
-            "Local LLM provider not yet implemented. "
-            "Please use 'openai-llm' or 'anthropic-llm'."
-        )
+        try:
+            return await engine.generate(
+                prompt_before,
+                model_id=model_id,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        except ImportError as e:
+            raise ProviderError(
+                f"Local LLM dependencies missing: {e}",
+                code="LOCAL_LLM_DEPENDENCY_MISSING",
+                retryable=False,
+            )
+        except FileNotFoundError as e:
+            raise ProviderError(
+                f"Local LLM model file not found: {e}",
+                code="LOCAL_LLM_MODEL_MISSING",
+                retryable=False,
+            )
+        except ProviderError:
+            raise
+        except Exception as e:
+            logger.error("Local LLM prompt edit error: %s", e)
+            raise ProviderError(
+                f"Local LLM prompt edit failed: {e}",
+                code="LOCAL_LLM_ERROR",
+            )
+
+
+def _coerce_int(value: object, *, default: int, minimum: int) -> int:
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, parsed)
+
+
+def _coerce_float(value: object, *, default: float, minimum: float) -> float:
+    try:
+        parsed = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, parsed)
+
+
+def _coerce_bool(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on"}:
+            return True
+        if lowered in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _resolve_local_engine(config: dict) -> Any:
+    model_path = config.get("model_path") or config.get("local_llm_model_path")
+    n_ctx_raw = (
+        config.get("n_ctx")
+        or config.get("context_size")
+        or config.get("local_llm_context_size")
+    )
+    n_threads_raw = (
+        config.get("n_threads")
+        or config.get("threads")
+        or config.get("local_llm_threads")
+    )
+    auto_download_raw = config.get("auto_download")
+    if auto_download_raw is None:
+        auto_download_raw = config.get("local_llm_auto_download")
+
+    has_engine_overrides = any(
+        value is not None
+        for value in (model_path, n_ctx_raw, n_threads_raw, auto_download_raw)
+    )
+    if not has_engine_overrides:
+        return get_local_llm_engine()
+
+    n_ctx = _coerce_int(
+        n_ctx_raw,
+        default=int(settings.local_llm_context_size),
+        minimum=256,
+    )
+    n_threads = _coerce_int(
+        n_threads_raw,
+        default=int(settings.local_llm_threads),
+        minimum=1,
+    )
+    auto_download = _coerce_bool(
+        auto_download_raw,
+        default=bool(settings.local_llm_auto_download),
+    )
+    return get_local_llm_engine(
+        model_path=str(model_path) if model_path is not None else None,
+        n_ctx=n_ctx,
+        n_threads=n_threads,
+        auto_download=auto_download,
+    )
 
 
 class CommandLlmProvider:
@@ -362,18 +460,7 @@ class CommandLlmProvider:
         Returns:
             List of parsed arguments
         """
-        if not args_str.strip():
-            return []
-        # On Windows, use posix=False to handle backslashes in paths correctly
-        posix = sys.platform != "win32"
-        try:
-            return shlex.split(args_str, posix=posix)
-        except ValueError as e:
-            logger.warning(
-                f"Failed to parse arguments with shlex: {e}. "
-                f"Falling back to simple split."
-            )
-            return args_str.strip().split()
+        return parse_shell_args(args_str, logger=logger)
 
     def _get_command_parts(self) -> list[str]:
         """
@@ -526,29 +613,18 @@ class CommandLlmProvider:
             f"model={model_id}, cmd={cmd_executable}, timeout={timeout}s"
         )
 
-        start_time = time.monotonic()
-
         try:
-            # Run the command with stdin/stdout JSON
-            # Use asyncio.to_thread() to avoid blocking event loop
-            def run_subprocess() -> subprocess.CompletedProcess:
-                return subprocess.run(
-                    cmd_list,
-                    input=input_json,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    shell=False,  # Explicit: no shell injection
-                )
-
-            result = await asyncio.to_thread(run_subprocess)
-
-            duration = time.monotonic() - start_time
+            # Run the command with stdin/stdout JSON.
+            result = await run_subprocess_text(
+                cmd_list,
+                input_text=input_json,
+                timeout=timeout,
+            )
 
             logger.info(
                 f"CommandLlmProvider: command completed, "
                 f"provider_id={self.provider_id}, exit_status={result.returncode}, "
-                f"duration={duration:.2f}s"
+                f"duration={result.duration_s:.2f}s"
             )
 
             # Check exit status
@@ -606,10 +682,8 @@ class CommandLlmProvider:
             return edited_prompt
 
         except subprocess.TimeoutExpired:
-            duration = time.monotonic() - start_time
             logger.error(
-                f"CommandLlmProvider: command timed out after {duration:.2f}s "
-                f"(timeout={timeout}s)"
+                f"CommandLlmProvider: command timed out (timeout={timeout}s)"
             )
             raise ProviderError(
                 self.provider_id,

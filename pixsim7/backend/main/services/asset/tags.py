@@ -7,12 +7,9 @@ from typing import Dict, Any, List, Optional
 from sqlmodel import Session
 
 from pixsim7.backend.main.domain.assets.models import Asset
+from pixsim7.backend.main.domain.composition import resolve_role_from_tags
 from pixsim7.backend.main.domain.generation.models import Generation
 from pixsim7.backend.main.services.prompt.parser import SimplePromptParser
-from pixsim7.backend.main.shared.composition import (
-    get_composition_role_priority,
-    map_tag_to_composition_role,
-)
 
 
 async def tag_asset_from_metadata(
@@ -112,7 +109,9 @@ def infer_composition_role_from_namespace(
     """
     Infer composition role from tag namespace/name.
     """
-    return map_tag_to_composition_role(namespace, name=name, slug=slug)
+    tag_slug = slug or (f"{namespace}:{name}" if name else namespace)
+    role_ref = resolve_role_from_tags([tag_slug] if tag_slug else [])
+    return role_ref.id if role_ref else None
 
 
 async def infer_composition_role_from_tags(
@@ -124,8 +123,7 @@ async def infer_composition_role_from_tags(
 
     Strategy:
     1. Load all tags for the asset
-    2. Map each tag to a composition role
-    3. Return the highest-priority role that appears
+    2. Resolve role through the shared domain resolver
     """
     from sqlmodel import select
     from pixsim7.backend.main.domain.assets.tag import AssetTag, Tag
@@ -139,19 +137,19 @@ async def infer_composition_role_from_tags(
     result = await session.execute(query)
     tags = result.scalars().all()
 
-    roles = set()
+    tag_slugs: List[str] = []
     for tag in tags:
-        role = infer_composition_role_from_namespace(
-            tag.namespace,
-            name=getattr(tag, "name", None),
-            slug=getattr(tag, "slug", None),
-        )
-        if role:
-            roles.add(role)
+        slug = getattr(tag, "slug", None)
+        if slug:
+            tag_slugs.append(str(slug))
+            continue
+        namespace = str(getattr(tag, "namespace", "") or "").strip()
+        name = str(getattr(tag, "name", "") or "").strip()
+        if namespace and name:
+            tag_slugs.append(f"{namespace}:{name}")
+        elif namespace:
+            tag_slugs.append(namespace)
 
-    for role in get_composition_role_priority():
-        if role in roles:
-            return role
-
-    return None
+    role_ref = resolve_role_from_tags(tag_slugs)
+    return role_ref.id if role_ref else None
 

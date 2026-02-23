@@ -6,8 +6,9 @@ prompt extraction, and generation lineage creation.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, Any, Dict, List
 from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
@@ -16,6 +17,7 @@ from pixsim7.backend.main.domain import (
     ProviderSubmission,
     MediaType,
     SyncStatus,
+    GenerationBatchItemManifest,
 )
 from pixsim7.backend.main.shared.errors import InvalidOperationError
 from pixsim7.backend.main.infrastructure.events.bus import event_bus, ASSET_CREATED
@@ -215,6 +217,11 @@ class AssetCreationMixin:
         )
 
         self.db.add(asset)
+        await self.db.flush()
+
+        # Persist durable run/batch manifest context when present (e.g. quickgen Each/Burst).
+        await self._upsert_generation_batch_manifest(asset, generation)
+
         await self.db.commit()
         await self.db.refresh(asset)
 
@@ -240,6 +247,136 @@ class AssetCreationMixin:
         await self._create_generation_lineage(asset, generation)
 
         return asset
+
+    @staticmethod
+    def _coerce_uuid(value: Any) -> Optional[UUID]:
+        if isinstance(value, UUID):
+            return value
+        if isinstance(value, str) and value.strip():
+            try:
+                return UUID(value.strip())
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _coerce_int(value: Any, *, default: int = 0) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _extract_input_asset_ids(generation: Any) -> List[int]:
+        ids: List[int] = []
+        inputs = getattr(generation, "inputs", None) or []
+        if not isinstance(inputs, list):
+            return ids
+        for item in inputs:
+            if not isinstance(item, dict):
+                continue
+            asset_ref = item.get("asset")
+            if isinstance(asset_ref, str) and asset_ref.startswith("asset:"):
+                try:
+                    ids.append(int(asset_ref.split(":", 1)[1]))
+                except (TypeError, ValueError):
+                    continue
+        return ids
+
+    @staticmethod
+    def _extract_run_context(generation: Any) -> Optional[Dict[str, Any]]:
+        raw_params = getattr(generation, "raw_params", None)
+        if not isinstance(raw_params, dict):
+            return None
+        gen_config = raw_params.get("generation_config")
+        if not isinstance(gen_config, dict):
+            return None
+        run_context = gen_config.get("run_context") or gen_config.get("runContext")
+        if isinstance(run_context, dict):
+            return dict(run_context)
+        return None
+
+    async def _upsert_generation_batch_manifest(self, asset: Asset, generation: Any) -> None:
+        run_context = self._extract_run_context(generation)
+        if not run_context:
+            return
+
+        batch_id = self._coerce_uuid(run_context.get("run_id") or run_context.get("runId")) or uuid4()
+        block_template_id = self._coerce_uuid(
+            run_context.get("block_template_id") or run_context.get("blockTemplateId")
+        )
+        item_index = self._coerce_int(run_context.get("item_index") or run_context.get("itemIndex"), default=0)
+        roll_seed_raw = run_context.get("roll_seed") or run_context.get("rollSeed")
+        roll_seed = self._coerce_int(roll_seed_raw) if roll_seed_raw is not None else None
+        template_slug = run_context.get("template_slug") or run_context.get("templateSlug")
+        if template_slug is not None:
+            template_slug = str(template_slug)[:120]
+
+        slot_results = run_context.get("slot_results") or run_context.get("slotResults")
+        if not isinstance(slot_results, list):
+            slot_results = []
+        selected_block_ids = run_context.get("selected_block_ids") or run_context.get("selectedBlockIds")
+        if not isinstance(selected_block_ids, list):
+            selected_block_ids = []
+        selected_block_ids = [str(v) for v in selected_block_ids if v is not None]
+
+        input_asset_ids = run_context.get("input_asset_ids") or run_context.get("inputAssetIds")
+        if not isinstance(input_asset_ids, list):
+            input_asset_ids = self._extract_input_asset_ids(generation)
+
+        assembled_prompt = run_context.get("assembled_prompt") or run_context.get("assembledPrompt")
+        if assembled_prompt is None:
+            assembled_prompt = getattr(generation, "final_prompt", None)
+        else:
+            assembled_prompt = str(assembled_prompt)
+
+        prompt_version_id = getattr(generation, "prompt_version_id", None)
+        generation_id = getattr(generation, "id", None)
+
+        consumed_keys = {
+            "run_id", "runId",
+            "item_index", "itemIndex",
+            "block_template_id", "blockTemplateId",
+            "template_slug", "templateSlug",
+            "roll_seed", "rollSeed",
+            "slot_results", "slotResults",
+            "selected_block_ids", "selectedBlockIds",
+            "assembled_prompt", "assembledPrompt",
+        }
+        metadata = {k: v for k, v in run_context.items() if k not in consumed_keys}
+        metadata.setdefault("input_asset_ids", input_asset_ids)
+
+        existing = await self.db.get(GenerationBatchItemManifest, asset.id)
+        if existing is not None:
+            existing.batch_id = batch_id
+            existing.item_index = item_index
+            existing.block_template_id = block_template_id
+            existing.template_slug = template_slug
+            existing.roll_seed = roll_seed
+            existing.slot_results = slot_results
+            existing.selected_block_ids = selected_block_ids
+            existing.assembled_prompt = assembled_prompt
+            existing.prompt_version_id = prompt_version_id
+            existing.generation_id = generation_id
+            existing.manifest_metadata = metadata
+            return
+
+        self.db.add(
+            GenerationBatchItemManifest(
+                asset_id=asset.id,
+                batch_id=batch_id,
+                item_index=item_index,
+                block_template_id=block_template_id,
+                template_slug=template_slug,
+                roll_seed=roll_seed,
+                slot_results=slot_results,
+                selected_block_ids=selected_block_ids,
+                assembled_prompt=assembled_prompt,
+                prompt_version_id=prompt_version_id,
+                generation_id=generation_id,
+                manifest_metadata=metadata,
+            )
+        )
 
     async def _existing_asset_for_generation(self, generation) -> Optional[Asset]:
         """Return an existing output asset for a generation, if present."""

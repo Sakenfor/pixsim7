@@ -3,14 +3,10 @@ Embedding Provider Adapters - concrete implementations
 
 Mirrors the LLM adapter pattern (services/llm/adapters.py).
 """
-import asyncio
 import json
 import logging
 import os
-import shlex
 import subprocess
-import sys
-import time
 from typing import Optional
 
 try:
@@ -24,6 +20,10 @@ from pixsim7.backend.main.shared.errors import (
     ProviderAuthenticationError,
 )
 from pixsim7.backend.main.domain.providers import ProviderAccount
+from pixsim7.backend.main.services.command_runtime import (
+    parse_shell_args,
+    run_subprocess_text,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +147,7 @@ class CommandEmbeddingProvider:
         return 768
 
     def _parse_shell_args(self, args_str: str) -> list[str]:
-        if not args_str.strip():
-            return []
-        posix = sys.platform != "win32"
-        try:
-            return shlex.split(args_str, posix=posix)
-        except ValueError:
-            return args_str.strip().split()
+        return parse_shell_args(args_str, logger=logger)
 
     def _get_command_parts(self, instance_config: dict | None = None) -> list[str]:
         if instance_config:
@@ -209,25 +203,16 @@ class CommandEmbeddingProvider:
             model_id, cmd_executable, len(texts), timeout,
         )
 
-        start_time = time.monotonic()
-
         try:
-            def run_subprocess() -> subprocess.CompletedProcess:
-                return subprocess.run(
-                    cmd_list,
-                    input=input_json,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout,
-                    shell=False,
-                )
-
-            result = await asyncio.to_thread(run_subprocess)
-            duration = time.monotonic() - start_time
+            result = await run_subprocess_text(
+                cmd_list,
+                input_text=input_json,
+                timeout=timeout,
+            )
 
             logger.info(
                 "CommandEmbeddingProvider: completed, exit=%d, duration=%.2fs",
-                result.returncode, duration,
+                result.returncode, result.duration_s,
             )
 
             if result.returncode != 0:

@@ -502,25 +502,15 @@ Return your suggestions as a JSON object following the specified schema."""
         from pixsim7.backend.main.services.llm.instance_service import LlmInstanceService
 
         service = LlmInstanceService(self.db)
-        instance = await service.get_instance(instance_id)
-
-        if not instance:
-            logger.warning(f"LLM instance {instance_id} not found")
-            return None
-
-        if not instance.enabled:
-            logger.warning(f"LLM instance {instance_id} is disabled")
-            return None
-
-        if instance.provider_id != provider_id:
-            logger.warning(
-                f"LLM instance {instance_id} provider mismatch: "
-                f"expected {provider_id}, got {instance.provider_id}"
-            )
+        instance_config = await service.resolve_instance_config(
+            provider_id=provider_id,
+            instance_id=instance_id,
+        )
+        if instance_config is None:
             return None
 
         logger.debug(f"Using LLM instance {instance_id} config for {provider_id}")
-        return instance.config
+        return instance_config
 
     def get_available_providers(self) -> list[dict]:
         """

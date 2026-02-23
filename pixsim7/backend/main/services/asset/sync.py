@@ -350,14 +350,30 @@ class AssetSyncService:
         if target_provider_id in asset.provider_uploads:
             cached_id = asset.provider_uploads[target_provider_id]
 
+            # Self-heal: bare UUIDs are not usable as provider refs (WebAPI
+            # needs full URLs).  Older uploads stored the UUID instead of the
+            # URL — evict them so we fall through to re-upload.
+            if cached_id and not cached_id.startswith(("http://", "https://")):
+                from pixsim7.backend.main.services.provider.adapters.pixverse_ids import looks_like_pixverse_uuid
+                if looks_like_pixverse_uuid(cached_id):
+                    from pixsim_logging import get_logger
+                    get_logger().info(
+                        "evicting_stale_uuid_cache",
+                        asset_id=asset.id,
+                        provider=target_provider_id,
+                        cached_id=cached_id[:40],
+                    )
+                    uploads = {**asset.provider_uploads}
+                    uploads.pop(target_provider_id, None)
+                    asset.provider_uploads = uploads
+                    await self.db.commit()
+
             # Verify the cached upload is still valid (optional verification)
             verify_uploads = os.getenv("PIXSIM_VERIFY_PROVIDER_UPLOADS", "false").lower() == "true"
-            if verify_uploads:
+            if verify_uploads and target_provider_id in asset.provider_uploads:
                 from pixsim_logging import get_logger
                 logger = get_logger()
                 try:
-                    # TODO: Add provider verification method
-                    # For now, just log that we're using cached upload
                     logger.debug(
                         "using_cached_provider_upload",
                         asset_id=asset.id,
@@ -441,7 +457,9 @@ class AssetSyncService:
                 media_type=asset.media_type,
                 tmp_path=local_path,
             )
-            uploaded_id = result.provider_asset_id or result.external_url
+            # Prefer external_url (full https:// URL) over provider_asset_id (UUID).
+            # WebAPI mode (e.g. Pixverse) requires URLs; bare UUIDs are invalid.
+            uploaded_id = result.external_url or result.provider_asset_id
 
             # Record successful upload (Task 104)
             await self.record_upload_attempt(

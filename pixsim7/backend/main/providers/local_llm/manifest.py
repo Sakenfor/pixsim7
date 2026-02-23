@@ -1,10 +1,8 @@
 """
 Local LLM Provider Plugin
 
-LLM provider for local models (Ollama, llama.cpp, etc.) for prompt editing.
+LLM provider for local GGUF models via llama-cpp-python.
 Auto-discovered and registered via provider plugin system.
-
-NOTE: This is a stub implementation for future development.
 """
 
 from pixsim7.backend.main.services.llm.adapters import LocalLlmProvider
@@ -17,10 +15,10 @@ manifest = ProviderManifest(
     id="local-llm",
     name="Local LLM",
     version="1.0.0",
-    description="Local LLM models (Ollama, llama.cpp) for AI-assisted prompt editing",
+    description="Local GGUF inference (llama-cpp-python) for prompt analysis and editing",
     author="PixSim Team",
     kind=ProviderKind.LLM,
-    enabled=False,  # Disabled until implemented
+    enabled=True,
     requires_credentials=False,
 )
 
@@ -37,7 +35,7 @@ def on_register():
     """Called when provider is registered"""
     from pixsim_logging import configure_logging
     logger = configure_logging("provider.local_llm")
-    logger.info("Local LLM provider registered (stub)")
+    logger.info("Local LLM provider registered")
 
 
 def on_unregister():
