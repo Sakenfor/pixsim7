@@ -19,6 +19,7 @@ COMMON_FIELDS = [
     "provider_id",
     "operation_type",
     "stage",
+    "channel",
     "user_id",
     "attempt",
     "duration_ms",
@@ -40,6 +41,9 @@ STAGES = [
 ]
 
 STAGES_SET = set(STAGES)
+
+# Channel taxonomy (what kind of activity)
+CHANNELS = ["cron", "pipeline", "api", "system"]
 
 SENSITIVE_KEYS = {"api_key", "jwt_token", "authorization", "password", "secret"}
 

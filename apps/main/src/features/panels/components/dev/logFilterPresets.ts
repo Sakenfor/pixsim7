@@ -24,6 +24,7 @@ export interface PresetApiFilters {
   level?: string;
   service?: string;
   stage?: string;
+  channel?: string;
   providerId?: string;
   jobId?: string;
   requestId?: string;
@@ -69,6 +70,7 @@ function logToSearchText(log: LogEntryResponse): string {
   const parts: string[] = [
     log.msg ?? '',
     log.stage ?? '',
+    log.channel ?? '',
     log.service,
     log.error ?? '',
     log.error_type ?? '',
@@ -147,6 +149,7 @@ export const BUILTIN_PRESETS: LogFilterPreset[] = [
     description:
       'Debug PROCESSING generations stuck around submit/polling when provider_job_id is missing or a failed submit masks a previous valid submission.',
     apiFilters: {
+      channel: 'pipeline',
       timeRange: '1h',
       limit: 500,
     },
@@ -161,13 +164,7 @@ export const BUILTIN_PRESETS: LogFilterPreset[] = [
       'provider_submission_updated',
       'provider_execute_failed',
     ],
-    excludePatterns: [
-      'cron:poll_device_ads',
-      'cron:tick_active_worlds',
-      'cron:queue_pending_executions',
-      'cron:run_automation_loops',
-      'cron:update_heartbeat',
-    ],
+    excludePatterns: [],
     highlightPatterns: [
       'generation_submission_missing_provider_job_id',
       'generation_failed_unsubmitted_submission_error',
@@ -179,6 +176,7 @@ export const BUILTIN_PRESETS: LogFilterPreset[] = [
     label: 'Provider Concurrent Limit',
     description: 'Track queue capacity, concurrent slot exhaustion, and deferred jobs.',
     apiFilters: {
+      channel: 'pipeline',
       timeRange: '15m',
       limit: 500,
     },
@@ -192,18 +190,14 @@ export const BUILTIN_PRESETS: LogFilterPreset[] = [
       'provider_execute_returned',
       'provider_execute_failed',
     ],
-    excludePatterns: [
-      'cron:poll_device_ads',
-      'cron:tick_active_worlds',
-      'cron:run_automation_loops',
-      'cron:update_heartbeat',
-    ],
+    excludePatterns: [],
   },
   {
     id: 'content-filter-retry',
     label: 'Content Filter Retry',
     description: 'Find generations blocked by content filters and their retry attempts.',
     apiFilters: {
+      channel: 'pipeline',
       timeRange: '6h',
       limit: 500,
     },
@@ -215,12 +209,7 @@ export const BUILTIN_PRESETS: LogFilterPreset[] = [
       'auto_retry',
       'generation_retry',
     ],
-    excludePatterns: [
-      'cron:poll_device_ads',
-      'cron:tick_active_worlds',
-      'cron:run_automation_loops',
-      'cron:update_heartbeat',
-    ],
+    excludePatterns: [],
   },
   {
     id: 'auth-session-failures',

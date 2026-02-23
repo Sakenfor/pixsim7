@@ -26,7 +26,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         # Bind request_id to structlog context for this request
         logger = structlog.get_logger()
         structlog.contextvars.clear_contextvars()
-        structlog.contextvars.bind_contextvars(request_id=request_id)
+        structlog.contextvars.bind_contextvars(request_id=request_id, channel="api")
 
         try:
             response = await call_next(request)

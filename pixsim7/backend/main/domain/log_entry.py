@@ -42,6 +42,7 @@ class LogEntry(SQLModel, table=True):
     provider_id: Optional[str] = Field(default=None, index=True, max_length=50, description="Provider identifier")
     operation_type: Optional[str] = Field(default=None, max_length=50, description="Operation type")
     stage: Optional[str] = Field(default=None, index=True, max_length=50, description="Pipeline stage")
+    channel: Optional[str] = Field(default=None, index=True, max_length=30, description="Log channel (cron, pipeline, api, system)")
     user_id: Optional[int] = Field(default=None, index=True, description="User ID if available")
 
     # Error fields
@@ -68,6 +69,7 @@ class LogEntry(SQLModel, table=True):
         Index("idx_logs_service_level_timestamp", "service", "level", "timestamp"),
         Index("idx_logs_provider_timestamp", "provider_id", "timestamp"),
         Index("idx_logs_stage_timestamp", "stage", "timestamp"),
+        Index("idx_logs_channel_timestamp", "channel", "timestamp"),
     )
 
     class Config:

@@ -21,6 +21,7 @@ LOG_ENTRY_COLUMNS = frozenset(
         "provider_id",
         "operation_type",
         "stage",
+        "channel",
         "user_id",
         "error",
         "error_type",

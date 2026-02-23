@@ -107,6 +107,7 @@ class LogService:
         request_id: Optional[str] = None,
         stage: Optional[str] = None,
         stage_prefix: Optional[str] = None,
+        channel: Optional[str] = None,
         provider_id: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
@@ -124,6 +125,7 @@ class LogService:
             request_id: Filter by request ID
             stage: Filter by pipeline stage (exact match)
             stage_prefix: Filter by pipeline stage prefix (e.g. 'provider')
+            channel: Filter by log channel (cron, pipeline, api, system)
             provider_id: Filter by provider
             start_time: Logs after this time
             end_time: Logs before this time
@@ -150,6 +152,8 @@ class LogService:
         elif stage_prefix:
             # Prefix filter: matches stages like 'provider:submit', 'provider:status', etc.
             filters.append(col(LogEntry.stage).like(f"{stage_prefix}:%"))
+        if channel:
+            filters.append(LogEntry.channel == channel)
         if provider_id:
             filters.append(LogEntry.provider_id == provider_id)
         if start_time:
@@ -289,7 +293,7 @@ class LogService:
         known_cols: Set[str] = {
             "id", "timestamp", "level", "service", "env", "msg", "request_id",
             "job_id", "submission_id", "artifact_id", "provider_job_id",
-            "provider_id", "operation_type", "stage", "user_id", "error",
+            "provider_id", "operation_type", "stage", "channel", "user_id", "error",
             "error_type", "duration_ms", "attempt", "extra", "created_at"
         }
 
@@ -362,7 +366,7 @@ class LogService:
         base_cols = {
             "level", "service", "env", "msg", "request_id", "job_id",
             "submission_id", "artifact_id", "provider_job_id", "provider_id",
-            "operation_type", "stage", "user_id", "error_type", "attempt",
+            "operation_type", "stage", "channel", "user_id", "error_type", "attempt",
             "duration_ms"
         }
 

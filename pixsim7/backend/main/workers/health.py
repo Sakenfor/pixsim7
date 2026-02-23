@@ -12,7 +12,7 @@ import psutil
 
 from pixsim_logging import configure_logging
 
-logger = configure_logging("worker.health")
+logger = configure_logging("worker.health").bind(channel="cron")
 
 # Redis keys for health tracking
 WORKER_HEARTBEAT_KEY = "arq:worker:heartbeat"

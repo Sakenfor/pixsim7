@@ -127,6 +127,7 @@ class LogIngestRequest(BaseModel):
     provider_id: Optional[str] = None
     operation_type: Optional[str] = None
     stage: Optional[str] = None
+    channel: Optional[str] = None
     user_id: Optional[int] = None
 
     # Error fields
@@ -190,6 +191,7 @@ class LogEntryResponse(BaseModel):
     provider_id: Optional[str]
     operation_type: Optional[str]
     stage: Optional[str]
+    channel: Optional[str]
     user_id: Optional[int]
 
     # Error fields
@@ -300,6 +302,7 @@ async def query_logs(
     request_id: Optional[str] = Query(None, description="Filter by request ID"),
     stage: Optional[str] = Query(None, description="Filter by pipeline stage (exact)"),
     stage_prefix: Optional[str] = Query(None, description="Filter by pipeline stage prefix (e.g. provider, pipeline)"),
+    channel: Optional[str] = Query(None, description="Filter by log channel (cron, pipeline, api, system)"),
     provider_id: Optional[str] = Query(None, description="Filter by provider"),
     start_time: Optional[datetime] = Query(None, description="Logs after this time (ISO 8601)"),
     end_time: Optional[datetime] = Query(None, description="Logs before this time (ISO 8601)"),
@@ -323,6 +326,7 @@ async def query_logs(
             request_id=request_id,
             stage=stage,
             stage_prefix=stage_prefix,
+            channel=channel,
             provider_id=provider_id,
             start_time=start_time,
             end_time=end_time,

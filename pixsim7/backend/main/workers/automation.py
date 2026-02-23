@@ -17,7 +17,7 @@ from pathlib import Path
 from pixsim7.backend.main.shared.config import settings
 from pixsim7.backend.main.services.automation.action_executor import ActionExecutor, ExecutionContext, ExecutionError
 
-logger = configure_logging("worker")
+logger = configure_logging("worker").bind(channel="cron")
 
 
 def _preset_uses_pixverse_ad_vars(actions: list) -> bool:

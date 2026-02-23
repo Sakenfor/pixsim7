@@ -32,8 +32,11 @@ from pixsim7.backend.main.shared.operation_mapping import (
     OPERATION_REGISTRY,
 )
 from pixsim7.backend.main.shared.composition_assets import coerce_composition_assets
+from pixsim7.backend.main.services.provider.provider_logging import (
+    summarize_provider_params_for_log,
+)
 
-logger = configure_logging("provider_service")
+logger = configure_logging("provider_service").bind(channel="pipeline")
 
 
 class ProviderService:
@@ -198,26 +201,16 @@ class ProviderService:
         self.db.add(submission)
         await self.db.commit()
         await self.db.refresh(submission)
-
-        def _summarize_execute_params(raw: Dict[str, Any]) -> Dict[str, Any]:
-            image_urls = raw.get("image_urls")
-            summary: Dict[str, Any] = {
-                "keys": list(raw.keys()),
-                "model": raw.get("model"),
-                "quality": raw.get("quality"),
-                "aspect_ratio": raw.get("aspect_ratio"),
-                "seed": raw.get("seed"),
-                "duration": raw.get("duration"),
-                "image_url": str(raw.get("image_url"))[:120] if raw.get("image_url") else None,
-                "video_url": str(raw.get("video_url"))[:120] if raw.get("video_url") else None,
-            }
-            if isinstance(image_urls, list):
-                summary["image_urls_count"] = len(image_urls)
-                summary["image_urls_sample"] = [
-                    str(value)[:80] if value is not None else None
-                    for value in image_urls[:3]
-                ]
-            return summary
+        logger.info(
+            "provider_submission_created",
+            generation_id=generation.id,
+            submission_id=submission.id,
+            account_id=account.id,
+            provider_id=generation.provider_id,
+            retry_attempt=generation.retry_count,
+            submitted_at=submission.submitted_at.isoformat() if submission.submitted_at else None,
+            has_provider_job_id=bool(submission.provider_job_id),
+        )
 
         try:
             # Some providers require uploading local files. For these, we keep the persisted
@@ -251,7 +244,14 @@ class ProviderService:
                 generation_id=generation.id,
                 provider_id=generation.provider_id,
                 operation_type=generation.operation_type.value,
-                execute_params_summary=_summarize_execute_params(execute_params),
+                execute_params_summary=summarize_provider_params_for_log(execute_params),
+            )
+            logger.info(
+                "provider_execute_started",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                operation_type=generation.operation_type.value,
             )
 
             # Execute provider operation
@@ -259,6 +259,16 @@ class ProviderService:
                 operation_type=generation.operation_type,
                 account=account,
                 params=execute_params
+            )
+            logger.info(
+                "provider_execute_returned",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                operation_type=generation.operation_type.value,
+                has_provider_job_id=bool(getattr(result, "provider_job_id", None)),
+                provider_job_id=getattr(result, "provider_job_id", None),
+                status=str(getattr(result, "status", None)),
             )
 
             # Update submission with response
@@ -307,6 +317,15 @@ class ProviderService:
 
             await self.db.commit()
             await self.db.refresh(submission)
+            logger.info(
+                "provider_submission_updated",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                provider_job_id=submission.provider_job_id,
+                submission_status=submission.status,
+                responded_at=submission.responded_at.isoformat() if submission.responded_at else None,
+            )
 
             # Emit success event
             await event_bus.publish(PROVIDER_SUBMITTED, {
@@ -325,7 +344,7 @@ class ProviderService:
                 operation_type=generation.operation_type.value,
                 error=str(e),
                 error_type=e.__class__.__name__,
-                execute_params_summary=_summarize_execute_params(execute_params),
+                execute_params_summary=summarize_provider_params_for_log(execute_params),
             )
             # Update submission with error
             submission.response = {
@@ -338,6 +357,15 @@ class ProviderService:
 
             await self.db.commit()
             await self.db.refresh(submission)
+            logger.info(
+                "provider_submission_updated",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                provider_job_id=submission.provider_job_id,
+                submission_status=submission.status,
+                responded_at=submission.responded_at.isoformat() if submission.responded_at else None,
+            )
 
             # Emit failure event
             await event_bus.publish(PROVIDER_FAILED, {
@@ -345,7 +373,7 @@ class ProviderService:
                 "submission_id": submission.id,
                 "error": str(e),
                 "error_type": e.__class__.__name__,
-                "execute_params_summary": _summarize_execute_params(execute_params),
+                "execute_params_summary": summarize_provider_params_for_log(execute_params),
                 "provider_id": generation.provider_id,
                 "operation_type": generation.operation_type.value,
             })
@@ -370,27 +398,20 @@ class ProviderService:
         Used for retries where we reuse the previous submission's payload
         instead of re-resolving assets.
         """
-        def _summarize_params(raw: Dict[str, Any]) -> Dict[str, Any]:
-            image_urls = raw.get("image_urls")
-            summary: Dict[str, Any] = {
-                "keys": list(raw.keys()),
-                "model": raw.get("model"),
-                "quality": raw.get("quality"),
-            }
-            if raw.get("image_url"):
-                summary["image_url"] = str(raw.get("image_url"))[:120]
-            if raw.get("video_url"):
-                summary["video_url"] = str(raw.get("video_url"))[:120]
-            if isinstance(image_urls, list):
-                summary["image_urls_count"] = len(image_urls)
-            return summary
-
         try:
             logger.info(
                 "provider_execute_with_cached_payload",
                 generation_id=generation.id,
                 submission_id=submission.id,
-                execute_params_summary=_summarize_params(execute_params),
+                execute_params_summary=summarize_provider_params_for_log(execute_params),
+            )
+            logger.info(
+                "provider_execute_started",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                operation_type=generation.operation_type.value,
+                cached_payload=True,
             )
 
             # Execute provider operation
@@ -398,6 +419,17 @@ class ProviderService:
                 operation_type=generation.operation_type,
                 account=account,
                 params=execute_params
+            )
+            logger.info(
+                "provider_execute_returned",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                operation_type=generation.operation_type.value,
+                cached_payload=True,
+                has_provider_job_id=bool(getattr(result, "provider_job_id", None)),
+                provider_job_id=getattr(result, "provider_job_id", None),
+                status=str(getattr(result, "status", None)),
             )
 
             # Update submission with response
@@ -433,6 +465,15 @@ class ProviderService:
 
             await self.db.commit()
             await self.db.refresh(submission)
+            logger.info(
+                "provider_submission_updated",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                provider_job_id=submission.provider_job_id,
+                submission_status=submission.status,
+                responded_at=submission.responded_at.isoformat() if submission.responded_at else None,
+            )
 
             await event_bus.publish(PROVIDER_SUBMITTED, {
                 "job_id": generation.id,
@@ -468,6 +509,15 @@ class ProviderService:
 
             await self.db.commit()
             await self.db.refresh(submission)
+            logger.info(
+                "provider_submission_updated",
+                generation_id=generation.id,
+                submission_id=submission.id,
+                provider_id=generation.provider_id,
+                provider_job_id=submission.provider_job_id,
+                submission_status=submission.status,
+                responded_at=submission.responded_at.isoformat() if submission.responded_at else None,
+            )
 
             await event_bus.publish(PROVIDER_FAILED, {
                 "job_id": generation.id,

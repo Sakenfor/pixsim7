@@ -14,7 +14,13 @@ from sqlalchemy import select, func, distinct
 from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain import Generation
 from pixsim7.backend.main.domain.providers import ProviderSubmission, ProviderAccount
-from pixsim7.backend.main.domain.enums import GenerationStatus, ProviderStatus, OperationType
+from pixsim7.backend.main.domain.enums import (
+    AccountStatus,
+    GenerationStatus,
+    ProviderStatus,
+    OperationType,
+    GenerationErrorCode,
+)
 from pixsim7.backend.main.domain.assets.analysis import AssetAnalysis, AnalysisStatus
 from pixsim7.backend.main.services.generation import GenerationService, GenerationBillingService
 from pixsim7.backend.main.services.analysis import AnalysisService
@@ -23,6 +29,13 @@ from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.asset import AssetService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.queue import (
+    clear_generation_wait_metadata,
+    enqueue_generation_fresh_job,
+    enqueue_generation_retry_job,
+    GENERATION_RETRY_QUEUE_NAME,
+    get_generation_wait_metadata,
+)
 from pixsim7.backend.main.shared.debug import (
     get_global_debug_logger,
     load_global_debug_from_env,
@@ -34,7 +47,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
     stop_event_bus_bridge,
 )
 
-logger = configure_logging("worker")
+logger = configure_logging("worker").bind(channel="pipeline")
 _poller_debug_initialized = False
 
 
@@ -140,6 +153,151 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         await generation_service.mark_failed(generation.id, "Account not found")
                         failed += 1
                         continue
+
+                    if not submission.provider_job_id:
+                        submission_age_seconds = None
+                        if submission.submitted_at:
+                            submission_age_seconds = (
+                                datetime.now(timezone.utc) - submission.submitted_at
+                            ).total_seconds()
+                        generation_started_age_seconds = None
+                        if generation.started_at:
+                            generation_started_age_seconds = (
+                                datetime.now(timezone.utc) - generation.started_at
+                            ).total_seconds()
+
+                        submission_count_result = await db.execute(
+                            select(func.count(ProviderSubmission.id)).where(
+                                ProviderSubmission.generation_id == generation.id
+                            )
+                        )
+                        submission_count = submission_count_result.scalar() or 0
+
+                        previous_valid_result = await db.execute(
+                            select(ProviderSubmission)
+                            .where(ProviderSubmission.generation_id == generation.id)
+                            .where(ProviderSubmission.provider_job_id.is_not(None))
+                            .order_by(ProviderSubmission.submitted_at.desc())
+                            .limit(1)
+                        )
+                        previous_valid_submission = previous_valid_result.scalars().first()
+
+                        response_keys = []
+                        if isinstance(submission.response, dict):
+                            response_keys = list(submission.response.keys())
+
+                        logger.warning(
+                            "generation_submission_missing_provider_job_id",
+                            generation_id=generation.id,
+                            submission_id=submission.id,
+                            submission_status=submission.status,
+                            submission_age_seconds=submission_age_seconds,
+                            generation_started_age_seconds=generation_started_age_seconds,
+                            submitted_at=str(submission.submitted_at) if submission.submitted_at else None,
+                            responded_at=str(submission.responded_at) if submission.responded_at else None,
+                            response_keys=response_keys,
+                            submission_count=submission_count,
+                            has_previous_valid_submission=previous_valid_submission is not None,
+                            previous_valid_submission_id=(
+                                previous_valid_submission.id if previous_valid_submission else None
+                            ),
+                            previous_valid_provider_job_id=(
+                                previous_valid_submission.provider_job_id
+                                if previous_valid_submission
+                                else None
+                            ),
+                            previous_valid_submitted_at=(
+                                str(previous_valid_submission.submitted_at)
+                                if previous_valid_submission and previous_valid_submission.submitted_at
+                                else None
+                            ),
+                        )
+
+                        # Terminal submit failure: provider submit already responded
+                        # with an error and no job id. Do not keep polling forever.
+                        if submission.status == "error" and previous_valid_submission is None:
+                            submit_error = None
+                            if isinstance(submission.response, dict):
+                                submit_error = (
+                                    submission.response.get("error_message")
+                                    or submission.response.get("error")
+                                )
+                            final_error = (
+                                str(submit_error)
+                                if submit_error
+                                else "Generation failed before provider job ID was assigned"
+                            )
+                            logger.warning(
+                                "generation_failed_unsubmitted_submission_error",
+                                generation_id=generation.id,
+                                submission_id=submission.id,
+                                submission_status=submission.status,
+                                error=final_error,
+                            )
+                            await generation_service.mark_failed(generation.id, final_error)
+
+                            try:
+                                billing_service = GenerationBillingService(db)
+                                await db.refresh(generation)
+                                await billing_service.finalize_billing(
+                                    generation=generation,
+                                    final_submission=submission,
+                                    account=account,
+                                )
+                            except Exception as billing_err:
+                                logger.warning(
+                                    "billing_finalization_error",
+                                    generation_id=generation.id,
+                                    error=str(billing_err),
+                                )
+
+                            account.total_videos_failed += 1
+                            account.failure_streak += 1
+                            account.success_rate = account.calculate_success_rate()
+                            if account.current_processing_jobs > 0:
+                                account.current_processing_jobs -= 1
+
+                            failed += 1
+                            continue
+
+                        # Retry/no-job-id edge case: a newer submission may have
+                        # failed before getting a provider job id while an older
+                        # valid submission is still the actual in-flight job.
+                        # Poll the previous valid submission instead of calling
+                        # provider.check_status(None) and looping forever.
+                        if previous_valid_submission is not None:
+                            latest_submission = submission
+                            submission = previous_valid_submission
+                            if submission.account_id != account.id:
+                                fallback_account = await db.get(ProviderAccount, submission.account_id)
+                                if fallback_account:
+                                    account = fallback_account
+                                else:
+                                    logger.error(
+                                        "account_not_found_previous_valid_submission",
+                                        generation_id=generation.id,
+                                        latest_submission_id=latest_submission.id,
+                                        polling_submission_id=submission.id,
+                                        account_id=submission.account_id,
+                                    )
+                                    await generation_service.mark_failed(
+                                        generation.id,
+                                        "Account not found for previous valid provider submission",
+                                    )
+                                    failed += 1
+                                    continue
+
+                            logger.info(
+                                "generation_poll_using_previous_valid_submission",
+                                generation_id=generation.id,
+                                latest_submission_id=latest_submission.id,
+                                latest_submission_status=latest_submission.status,
+                                polling_submission_id=submission.id,
+                                polling_provider_job_id=submission.provider_job_id,
+                                polling_submitted_at=(
+                                    str(submission.submitted_at) if submission.submitted_at else None
+                                ),
+                            )
 
                     # Fail jobs that never got a provider_job_id after the short timeout
                     # (submission to provider failed; no point polling for 2 hours)
@@ -316,9 +474,15 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 status_result.error_message
                                 or f"Provider reported terminal status: {status_result.status.value}"
                             )
+                            error_code = (
+                                GenerationErrorCode.CONTENT_FILTERED.value
+                                if status_result.status == ProviderStatus.FILTERED
+                                else None
+                            )
                             generation = await generation_service.mark_failed(
                                 generation.id,
                                 error_text,
+                                error_code=error_code,
                             )
 
                             # Finalize billing as skipped (no charge for failed generations)
@@ -352,58 +516,16 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                             failed += 1
 
-                            # ===== AUTO-RETRY (worker-side) =====
-                            # For content-filter / transient errors, optionally auto-retry
-                            try:
-                                from pixsim7.backend.main.shared.config import settings
-
-                                # Check if auto-retry should happen
-                                should_retry = await generation_service.should_auto_retry(generation)
-                                logger.debug(
-                                    "auto_retry_check",
-                                    generation_id=generation.id,
-                                    enabled=settings.auto_retry_enabled,
-                                    should_retry=should_retry,
-                                    retry_count=generation.retry_count,
-                                    error_message=generation.error_message[:100] if generation.error_message else None,
-                                )
-
-                                # Respect global toggle
-                                if settings.auto_retry_enabled and should_retry:
-                                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
-                                    from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
-
-                                    # Increment retry_count and reset lifecycle in one operation
-                                    # (avoids double-commit from separate increment_retry call)
-                                    generation.retry_count += 1
-                                    generation.status = GenStatus.PENDING
-                                    generation.started_at = None
-                                    generation.completed_at = None
-                                    generation.updated_at = datetime.now(timezone.utc)
-
-                                    await db.commit()
-                                    await db.refresh(generation)
-
-                                    # Re-enqueue the same generation
-                                    arq_pool = await get_arq_pool()
-                                    await arq_pool.enqueue_job(
-                                        "process_generation",
-                                        generation_id=generation.id,
-                                    )
-
-                                    logger.info(
-                                        "auto_retry_requeued_worker",
-                                        generation_id=generation.id,
-                                        retry_attempt=generation.retry_count,
-                                        max_attempts=settings.auto_retry_max_attempts,
-                                    )
-                            except Exception as auto_retry_err:
-                                logger.error(
-                                    "auto_retry_worker_error",
-                                    generation_id=generation.id,
-                                    error=str(auto_retry_err),
-                                    exc_info=True,
-                                )
+                            # Poll-time terminal retries are owned by the
+                            # job:failed event auto-retry handler. Do not also
+                            # requeue here, or poller and event-handler race to
+                            # retry the same generation.
+                            logger.debug(
+                                "auto_retry_delegated_to_event_handler",
+                                generation_id=generation.id,
+                                status=str(status_result.status),
+                                error_code=getattr(generation, "error_code", None),
+                            )
 
                         elif status_result.status == ProviderStatus.PROCESSING:
                             still_processing += 1
@@ -712,7 +834,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
 
     This runs periodically to find generations that:
     1. Are in PENDING status
-    2. Have been pending for more than STALE_THRESHOLD_SECONDS
+    2. Have had no lifecycle updates for more than STALE_THRESHOLD_SECONDS
     3. Are not scheduled for the future
 
     These generations likely failed to enqueue properly when created
@@ -728,6 +850,7 @@ async def requeue_pending_generations(ctx: dict) -> dict:
     MAX_REQUEUE_PER_RUN = 10  # Limit to avoid overwhelming the queue
 
     requeued = 0
+    pinned_dispatched = 0
     skipped = 0
     errors = 0
 
@@ -736,16 +859,95 @@ async def requeue_pending_generations(ctx: dict) -> dict:
             from datetime import timedelta
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
-            # Find stale PENDING generations
-            threshold = datetime.now(timezone.utc) - timedelta(seconds=STALE_THRESHOLD_SECONDS)
+            now = datetime.now(timezone.utc)
+
+            # First pass: capacity-aware dispatch for pinned waiting generations.
+            # This is an early-admission fallback that dispatches only when the
+            # preferred account currently has room.
+            capacity_accounts_result = await db.execute(
+                select(ProviderAccount).where(
+                    ProviderAccount.status == AccountStatus.ACTIVE,
+                    ProviderAccount.max_concurrent_jobs > ProviderAccount.current_processing_jobs,
+                )
+            )
+            capacity_accounts = list(capacity_accounts_result.scalars().all())
+
+            if capacity_accounts:
+                try:
+                    arq_pool = await get_arq_pool()
+                except Exception as e:
+                    logger.error("requeue_pool_error", error=str(e))
+                    return {"requeued": 0, "pinned_dispatched": 0, "skipped": 0, "errors": 1}
+
+                for account in capacity_accounts:
+                    free_slots = max(
+                        0,
+                        int(account.max_concurrent_jobs or 0) - int(account.current_processing_jobs or 0),
+                    )
+                    if free_slots <= 0:
+                        continue
+
+                    ready_pinned_result = await db.execute(
+                        select(Generation)
+                        .where(Generation.status == GenerationStatus.PENDING)
+                        .where(Generation.preferred_account_id == account.id)
+                        .where(Generation.account_id == None)
+                        .where(
+                            (Generation.scheduled_at == None) |
+                            (Generation.scheduled_at <= now)
+                        )
+                        .order_by(Generation.priority.desc(), Generation.created_at)
+                        .limit(free_slots)
+                    )
+                    ready_pinned = list(ready_pinned_result.scalars().all())
+                    if not ready_pinned:
+                        continue
+
+                    for generation in ready_pinned:
+                        try:
+                            wait_meta = await get_generation_wait_metadata(arq_pool, generation.id)
+                            wait_reason = (
+                                str(wait_meta.get("reason"))
+                                if isinstance(wait_meta, dict) and wait_meta.get("reason")
+                                else None
+                            )
+                            await enqueue_generation_fresh_job(arq_pool, generation.id)
+                            await clear_generation_wait_metadata(arq_pool, generation.id)
+                            generation.scheduled_at = None
+                            generation.updated_at = now
+                            await db.commit()
+                            pinned_dispatched += 1
+                            requeued += 1
+                            logger.info(
+                                "dispatch_pinned_ready_generation",
+                                generation_id=generation.id,
+                                account_id=account.id,
+                                free_slots=free_slots,
+                                wait_reason=wait_reason,
+                            )
+                        except Exception as e:
+                            await db.rollback()
+                            logger.error(
+                                "dispatch_pinned_ready_generation_error",
+                                generation_id=generation.id,
+                                account_id=account.id,
+                                error=str(e),
+                            )
+                            errors += 1
+
+            # Find stale non-pinned PENDING generations by last update time (not created_at).
+            # This avoids requeueing intentionally deferred retries that remain
+            # in PENDING while waiting for their next scheduled attempt.
+            threshold = now - timedelta(seconds=STALE_THRESHOLD_SECONDS)
 
             result = await db.execute(
                 select(Generation)
                 .where(Generation.status == GenerationStatus.PENDING)
-                .where(Generation.created_at < threshold)
+                .where(Generation.preferred_account_id == None)
+                .where(Generation.updated_at < threshold)
                 .where(
                     (Generation.scheduled_at == None) |
-                    (Generation.scheduled_at <= datetime.now(timezone.utc))
+                    (Generation.scheduled_at <= now)
                 )
                 .order_by(Generation.created_at)
                 .limit(MAX_REQUEUE_PER_RUN)
@@ -754,16 +956,21 @@ async def requeue_pending_generations(ctx: dict) -> dict:
 
             if not stuck_generations:
                 logger.debug("requeue_idle", msg="No stuck pending generations found")
-                return {"requeued": 0, "skipped": 0, "errors": 0}
+                return {"requeued": requeued, "pinned_dispatched": pinned_dispatched, "skipped": 0, "errors": errors}
 
             logger.info("requeue_found_stuck", count=len(stuck_generations))
 
-            # Get ARQ pool for enqueueing
+            # Get ARQ pool for enqueueing stale non-pinned work
             try:
                 arq_pool = await get_arq_pool()
             except Exception as e:
                 logger.error("requeue_pool_error", error=str(e))
-                return {"requeued": 0, "skipped": 0, "errors": len(stuck_generations)}
+                return {
+                    "requeued": requeued,
+                    "pinned_dispatched": pinned_dispatched,
+                    "skipped": skipped,
+                    "errors": errors + len(stuck_generations),
+                }
 
             for generation in stuck_generations:
                 try:
@@ -771,13 +978,14 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                     # ARQ doesn't have a great way to check this, so we just requeue
                     # The job processor will skip if status changed
 
-                    await arq_pool.enqueue_job(
-                        "process_generation",
-                        generation_id=generation.id,
-                    )
+                    await enqueue_generation_retry_job(arq_pool, generation.id)
 
-                    logger.info("requeue_generation", generation_id=generation.id,
-                               age_seconds=(datetime.now(timezone.utc) - generation.created_at).total_seconds())
+                    logger.info(
+                        "requeue_generation",
+                        generation_id=generation.id,
+                        age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
+                        age_basis="updated_at",
+                    )
                     requeued += 1
 
                 except Exception as e:
@@ -787,9 +995,10 @@ async def requeue_pending_generations(ctx: dict) -> dict:
 
             stats = {
                 "requeued": requeued,
+                "pinned_dispatched": pinned_dispatched,
                 "skipped": skipped,
                 "errors": errors,
-                "timestamp": datetime.now(timezone.utc).isoformat()
+                "timestamp": now.isoformat()
             }
 
             logger.info("requeue_complete", **stats)

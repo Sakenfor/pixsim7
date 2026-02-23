@@ -16,6 +16,13 @@ from pixsim7.backend.main.services.account import AccountService
 from pixsim7.backend.main.services.provider import ProviderService
 from pixsim7.backend.main.services.user import UserService
 from pixsim7.backend.main.infrastructure.database.session import get_db
+from pixsim7.backend.main.infrastructure.queue import (
+    clear_generation_wait_metadata,
+    enqueue_generation_retry_job,
+    GENERATION_RETRY_QUEUE_NAME,
+    release_generation_enqueue_lease,
+    set_generation_wait_metadata,
+)
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
     AccountCooldownError,
@@ -30,6 +37,16 @@ from pixsim7.backend.main.shared.errors import (
 from pixsim7.backend.main.shared.policies import (
     with_fallback,
     FallbackExhaustedError,
+)
+from pixsim7.backend.main.shared.policies.content_filter_retry import (
+    MAX_SUBMIT_CONTENT_FILTER_RETRIES,
+    should_rotate_content_filter_account,
+    should_yield_pinned_content_filter_retry,
+    content_filter_yield_defer_seconds,
+    content_filter_yield_counts_as_retry,
+    content_filter_max_yields,
+    try_acquire_content_filter_yield,
+    reset_content_filter_yield_counter,
 )
 
 # Expected errors that don't need stack traces - these are business logic, not bugs
@@ -65,6 +82,7 @@ AUTH_FAILURE_COOLDOWN_SECONDS = 300
 
 # Cooldown applied when an account hits its concurrent job limit.
 CONCURRENT_COOLDOWN_SECONDS = 30
+NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
 
 # Max times a pinned-account generation will be deferred waiting for a
 # concurrent slot before giving up.
@@ -170,7 +188,7 @@ def _get_worker_logger():
     """Get or initialize worker logger."""
     global _base_logger
     if _base_logger is None:
-        _base_logger = configure_logging("worker")
+        _base_logger = configure_logging("worker").bind(channel="pipeline")
     return _base_logger
 
 
@@ -331,6 +349,7 @@ async def _requeue_generation_for_account_rotation(
     gen_logger,
     clear_preferred_on_account_match: bool = False,
     error_code: str | None = None,
+    increment_retry: bool = False,
 ) -> dict | None:
     """
     Reset generation state and enqueue it to retry with a different account.
@@ -351,16 +370,15 @@ async def _requeue_generation_for_account_rotation(
         from pixsim7.backend.main.infrastructure.redis import get_arq_pool
         from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
+        if increment_retry:
+            generation.retry_count = (generation.retry_count or 0) + 1
         generation.status = GenStatus.PENDING
         generation.started_at = None
         await db.commit()
         await db.refresh(generation)
 
         arq_pool = await get_arq_pool()
-        await arq_pool.enqueue_job(
-            "process_generation",
-            generation_id=generation.id,
-        )
+        await enqueue_generation_retry_job(arq_pool, generation.id)
 
         payload = {
             "generation_id": generation.id,
@@ -370,13 +388,18 @@ async def _requeue_generation_for_account_rotation(
             payload["cleared_preferred_account"] = cleared_preferred
         if error_code:
             payload["error_code"] = error_code
+        if increment_retry:
+            payload["retry_attempt"] = generation.retry_count
         gen_logger.info(log_event, **payload)
 
-        return {
+        result = {
             "status": "requeued",
             "reason": reason,
             "generation_id": generation_id,
         }
+        if increment_retry:
+            result["retry_attempt"] = generation.retry_count
+        return result
     except Exception as requeue_err:
         gen_logger.error(
             "generation_requeue_failed",
@@ -398,48 +421,70 @@ async def _defer_pinned_generation(
     increment_retry: bool = True,
 ) -> dict | None:
     """
-    Reset a pinned generation to PENDING and re-enqueue with a delay.
+    Reset a pinned generation to PENDING and hold it for account-dispatch.
 
     Used when the pinned account is temporarily at capacity (concurrent limit)
     or on cooldown.  Set ``increment_retry=False`` for passive cooldown waits
     that shouldn't count against the retry budget.
 
-    Returns requeue payload on success; None on failure so the caller can fall
+    Returns defer payload on success; None on failure so the caller can fall
     through to standard failure handling.
     """
     try:
-        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
         from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
 
         if increment_retry:
             generation.retry_count = (generation.retry_count or 0) + 1
+        now = datetime.now(timezone.utc)
         generation.status = GenStatus.PENDING
         generation.started_at = None
         generation.account_id = None
+        generation.scheduled_at = now + timedelta(seconds=defer_seconds)
+        generation.updated_at = now
         await db.commit()
         await db.refresh(generation)
 
-        arq_pool = await get_arq_pool()
-        await arq_pool.enqueue_job(
-            "process_generation",
-            generation_id=generation.id,
-            _defer_by=timedelta(seconds=defer_seconds),
-        )
+        logged_defer_seconds = defer_seconds
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            arq_pool = await get_arq_pool()
+            await set_generation_wait_metadata(
+                arq_pool,
+                generation.id,
+                reason=reason,
+                account_id=account_id,
+                next_attempt_at=generation.scheduled_at,
+                source="job_processor",
+            )
+        except Exception:
+            gen_logger.debug(
+                "generation_wait_meta_set_failed",
+                generation_id=generation.id,
+                account_id=account_id,
+                reason=reason,
+                exc_info=True,
+            )
 
         gen_logger.info(
             "generation_deferred_pinned",
             generation_id=generation.id,
             account_id=account_id,
             retry_attempt=generation.retry_count,
-            defer_seconds=defer_seconds,
+            defer_seconds=logged_defer_seconds,
+            base_defer_seconds=defer_seconds,
             reason=reason,
+            target_queue=None,
+            dispatch_mode="account_dispatcher",
         )
 
         return {
-            "status": "requeued",
+            "status": "waiting",
             "reason": reason,
             "generation_id": generation_id,
             "retry_attempt": generation.retry_count,
+            "defer_seconds": logged_defer_seconds,
+            "dispatch_mode": "account_dispatcher",
         }
     except Exception as requeue_err:
         gen_logger.error(
@@ -489,6 +534,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
     gen_logger = bind_job_context(logger, job_id=generation_id)
     gen_logger.info("pipeline:start", msg="generation_processing_started")
 
+    # Best-effort: clear the single-flight enqueue lease once the worker
+    # starts consuming this generation so future intentional requeues can proceed.
+    try:
+        from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+        arq_pool = await get_arq_pool()
+        await release_generation_enqueue_lease(arq_pool, generation_id)
+    except Exception as lease_err:
+        gen_logger.debug("enqueue_lease_release_failed", error=str(lease_err))
+
     # Global worker debug logger (no user context yet)
     worker_debug = get_global_debug_logger()
     worker_debug.worker("process_generation_start", generation_id=generation_id)
@@ -509,6 +564,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             debug.worker("loaded_generation", generation_id=generation.id, status=str(generation.status))
 
             if generation.status != "pending":
+                try:
+                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                    arq_pool = await get_arq_pool()
+                    await clear_generation_wait_metadata(arq_pool, generation_id)
+                except Exception:
+                    pass
                 gen_logger.warning("generation_not_pending", status=generation.status)
                 return {"status": "skipped", "reason": f"Generation status is {generation.status}"}
 
@@ -517,6 +579,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 gen_logger.info("generation_scheduled", scheduled_at=str(generation.scheduled_at))
                 debug.worker("scheduled_in_future", scheduled_at=str(generation.scheduled_at))
                 return {"status": "scheduled", "scheduled_for": str(generation.scheduled_at)}
+
+            # The generation has been admitted for execution (not future-scheduled),
+            # so clear any explicit wait marker used by the pinned dispatcher.
+            try:
+                from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                arq_pool = await get_arq_pool()
+                await clear_generation_wait_metadata(arq_pool, generation_id)
+            except Exception as wait_clear_err:
+                gen_logger.debug("wait_meta_clear_failed", error=str(wait_clear_err))
 
             # Select and reserve account atomically (prevents race conditions)
             # If generation already has an account_id (from previous attempt), try to reuse it
@@ -976,21 +1048,92 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         gen_logger.warning("account_release_failed", error=str(release_err))
 
                     # Check retry count - don't retry forever
-                    MAX_CONTENT_FILTER_RETRIES = 3
+                    MAX_CONTENT_FILTER_RETRIES = MAX_SUBMIT_CONTENT_FILTER_RETRIES
                     current_retries = getattr(generation, 'retry_count', 0) or 0
 
                     if current_retries < MAX_CONTENT_FILTER_RETRIES:
                         try:
-                            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                            content_filter_error_code = _extract_error_code(e)
+                            is_pinned = _is_pinned_account(generation, account)
 
-                            # Increment retry count and reset to pending
-                            generation = await generation_service.increment_retry(generation.id)
+                            if is_pinned:
+                                if should_yield_pinned_content_filter_retry(current_retries):
+                                    siblings = await _count_pending_pinned_siblings(
+                                        db, generation.preferred_account_id, generation.id,
+                                    )
+                                    if siblings > 0:
+                                        yield_allowed, yield_count = await try_acquire_content_filter_yield(
+                                            generation.id,
+                                        )
+                                        if not yield_allowed:
+                                            gen_logger.info(
+                                                "pinned_content_filter_yield_cap_reached",
+                                                generation_id=generation.id,
+                                                retry_count=current_retries,
+                                                yield_count=yield_count,
+                                                max_yields=content_filter_max_yields(),
+                                            )
+                                        else:
+                                            defer_seconds = content_filter_yield_defer_seconds()
+                                            gen_logger.info(
+                                                "pinned_content_filter_yielding",
+                                                generation_id=generation.id,
+                                                retry_count=current_retries,
+                                                siblings_pending=siblings,
+                                                defer_seconds=defer_seconds,
+                                                yield_count=yield_count,
+                                            )
+                                            defer_result = await _defer_pinned_generation(
+                                                db=db,
+                                                generation=generation,
+                                                generation_id=generation_id,
+                                                account_id=account.id,
+                                                defer_seconds=defer_seconds,
+                                                reason="pinned_content_filter_yield",
+                                                gen_logger=gen_logger,
+                                                increment_retry=content_filter_yield_counts_as_retry(),
+                                            )
+                                            if defer_result:
+                                                return defer_result
+                                        # Fall through to immediate same-account retry if defer fails
+
+                            # Non-pinned content filter retries can rotate after a small
+                            # number of same-account failures to avoid hammering one account.
+                            if (
+                                not is_pinned
+                                and should_rotate_content_filter_account(current_retries)
+                            ):
+                                await reset_content_filter_yield_counter(generation.id)
+                                requeue_result = await _requeue_generation_for_account_rotation(
+                                    db=db,
+                                    generation=generation,
+                                    generation_id=generation_id,
+                                    failed_account_id=account.id,
+                                    reason="content_filtered_account_rotation",
+                                    log_event="generation_requeued_content_filter_rotation",
+                                    account_log_field="filtered_account_id",
+                                    gen_logger=gen_logger,
+                                    error_code=content_filter_error_code,
+                                    increment_retry=True,
+                                )
+                                if requeue_result:
+                                    return requeue_result
+                                # Fall through to immediate retry if rotation requeue fails
+
+                            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+                            from pixsim7.backend.main.domain.enums import GenerationStatus as GenStatus
+
+                            await reset_content_filter_yield_counter(generation.id)
+                            # Increment retry count and reset to pending on the same account
+                            generation.retry_count = (generation.retry_count or 0) + 1
+                            generation.status = GenStatus.PENDING
+                            generation.started_at = None
+                            generation.completed_at = None
+                            await db.commit()
+                            await db.refresh(generation)
 
                             arq_pool = await get_arq_pool()
-                            await arq_pool.enqueue_job(
-                                "process_generation",
-                                generation_id=generation.id,
-                            )
+                            await enqueue_generation_retry_job(arq_pool, generation.id)
 
                             gen_logger.info(
                                 "generation_requeued_content_filter_retry",
@@ -1013,6 +1156,11 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             )
                             # Fall through to mark as failed if requeue fails
                     else:
+                        # Prevent the event-driven auto-retry handler from
+                        # applying its larger retry budget after this worker-
+                        # managed content-filter retry budget is exhausted.
+                        if _extract_error_code(e) == "content_filtered":
+                            setattr(e, "error_code", "content_output_rejected")
                         gen_logger.warning(
                             "content_filter_max_retries_exceeded",
                             generation_id=generation.id,
@@ -1064,6 +1212,66 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     }
 
                 raise
+
+        except (NoAccountAvailableError, AccountCooldownError) as e:
+            gen_logger.warning(
+                "generation_waiting_for_account_capacity",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                target_queue=GENERATION_RETRY_QUEUE_NAME,
+            )
+            worker_debug.worker(
+                "generation_waiting_for_account_capacity",
+                error=str(e),
+                error_type=e.__class__.__name__,
+                generation_id=generation_id,
+                defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+            )
+
+            # If we loaded the generation and it is still pending, explicitly
+            # defer to the retry queue so fresh jobs stay on the primary queue.
+            try:
+                if (
+                    'generation' in locals()
+                    and generation
+                    and str(getattr(generation, "status", "")).lower() in {"pending", "generationstatus.pending"}
+                ):
+                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                    arq_pool = await get_arq_pool()
+                    actual_defer_seconds = await enqueue_generation_retry_job(
+                        arq_pool,
+                        generation_id,
+                        defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                    )
+                    logged_defer_seconds = (
+                        actual_defer_seconds or NO_ACCOUNT_AVAILABLE_DEFER_SECONDS
+                    )
+                    gen_logger.info(
+                        "generation_waiting_for_account_capacity_deferred",
+                        generation_id=generation_id,
+                        error_type=e.__class__.__name__,
+                        defer_seconds=logged_defer_seconds,
+                        base_defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
+                        target_queue=GENERATION_RETRY_QUEUE_NAME,
+                    )
+                    return {
+                        "status": "requeued",
+                        "reason": "account_unavailable_deferred",
+                        "generation_id": generation_id,
+                        "defer_seconds": logged_defer_seconds,
+                        "target_queue": GENERATION_RETRY_QUEUE_NAME,
+                    }
+            except Exception as requeue_err:
+                gen_logger.error(
+                    "account_unavailable_requeue_failed",
+                    generation_id=generation_id,
+                    error=str(requeue_err),
+                )
+
+            # Fall back to existing ARQ retry behavior if explicit defer fails.
+            raise
 
         except Exception as e:
             # Expected errors (content filtered, quota, etc) - warn without stack trace

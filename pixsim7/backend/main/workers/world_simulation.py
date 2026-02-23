@@ -11,18 +11,18 @@ Usage:
 """
 
 import os
-import logging
 from datetime import datetime, timezone
 from typing import Dict, Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pixsim_logging import configure_logging
 from pixsim7.backend.main.infrastructure.database.session import get_async_session
 from pixsim7.backend.simulation import WorldScheduler
 from pixsim7.backend.game import GameWorld, GameWorldState
 
-logger = logging.getLogger(__name__)
+logger = configure_logging("worker.world_sim").bind(channel="cron")
 
 # Configuration
 SIMULATION_ENABLED = os.getenv("SIMULATION_ENABLED", "false").lower() == "true"

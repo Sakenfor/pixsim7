@@ -96,6 +96,7 @@ class DBLogHandler:
             Column("provider_id", String(50)),
             Column("operation_type", String(50)),
             Column("stage", String(50)),
+            Column("channel", String(30)),
             Column("user_id", Integer),
             Column("error", Text),
             Column("error_type", String(100)),
@@ -136,6 +137,7 @@ class DBLogHandler:
             "provider_id": 50,
             "operation_type": 50,
             "stage": 50,
+            "channel": 30,
             "error_type": 100,
         }
 
@@ -277,6 +279,7 @@ class DBLogHandler:
         row.setdefault("provider_id", None)
         row.setdefault("operation_type", None)
         row.setdefault("stage", None)
+        row.setdefault("channel", None)
         row.setdefault("user_id", None)
         row.setdefault("error", None)
         row.setdefault("error_type", None)

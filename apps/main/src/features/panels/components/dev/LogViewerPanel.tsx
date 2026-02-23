@@ -38,6 +38,7 @@ interface FilterState {
   level: string;
   service: string;
   stage: string;
+  channel: string;
   providerId: string;
   jobId: string;
   requestId: string;
@@ -54,6 +55,7 @@ interface TraceView {
 }
 
 const LEVEL_OPTIONS = ['', 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
+const CHANNEL_OPTIONS = ['', 'cron', 'pipeline', 'api', 'system'] as const;
 
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: '5m', label: '5m' },
@@ -78,6 +80,7 @@ const DEFAULT_FILTERS: FilterState = {
   level: '',
   service: '',
   stage: '',
+  channel: '',
   providerId: '',
   jobId: '',
   requestId: '',
@@ -121,6 +124,7 @@ function buildQueryParams(filters: FilterState): LogQueryParams {
       params.stage = filters.stage;
     }
   }
+  if (filters.channel) params.channel = filters.channel;
   if (filters.providerId) params.provider_id = filters.providerId;
   if (filters.jobId) {
     const n = parseInt(filters.jobId, 10);
@@ -177,6 +181,7 @@ function useLogQuery(filters: FilterState) {
     filters.level,
     filters.service,
     filters.stage,
+    filters.channel,
     filters.providerId,
     filters.jobId,
     filters.requestId,
@@ -427,6 +432,18 @@ function FilterBar({
           className="w-28 px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-emerald-500"
         />
 
+        <select
+          value={filters.channel}
+          onChange={(e) => onChange({ channel: e.target.value })}
+          className="px-2 py-1 bg-neutral-800 border border-neutral-700 rounded text-xs focus:outline-none"
+        >
+          {CHANNEL_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c || 'All Channels'}
+            </option>
+          ))}
+        </select>
+
         <input
           type="text"
           placeholder="Provider"
@@ -533,6 +550,11 @@ function LogRow({
           {log.service}
         </td>
 
+        {/* Channel */}
+        <td className="px-2 py-1 font-mono text-amber-400 whitespace-nowrap max-w-[80px] truncate">
+          {log.channel ?? '\u2014'}
+        </td>
+
         {/* Stage */}
         <td className="px-2 py-1 font-mono text-cyan-400 whitespace-nowrap max-w-[120px] truncate">
           {log.stage ?? '\u2014'}
@@ -589,7 +611,7 @@ function LogRow({
       {/* Expanded details */}
       {expanded && (
         <tr className="bg-neutral-850">
-          <td colSpan={8} className="px-4 py-2">
+          <td colSpan={9} className="px-4 py-2">
             <LogRowDetail log={log} />
           </td>
         </tr>
@@ -631,6 +653,7 @@ function LogRowDetail({ log }: { log: LogEntryResponse }) {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1">
         <MetaField label="ID" value={String(log.id)} />
         <MetaField label="Service" value={log.service} />
+        <MetaField label="Channel" value={log.channel} />
         <MetaField label="Stage" value={log.stage} />
         <MetaField label="Level" value={log.level} />
         <MetaField label="Env" value={log.env} />
@@ -918,6 +941,7 @@ export function LogViewerPanel() {
       level: preset.apiFilters.level ?? DEFAULT_FILTERS.level,
       service: preset.apiFilters.service ?? DEFAULT_FILTERS.service,
       stage: preset.apiFilters.stage ?? DEFAULT_FILTERS.stage,
+      channel: preset.apiFilters.channel ?? DEFAULT_FILTERS.channel,
       providerId: preset.apiFilters.providerId ?? DEFAULT_FILTERS.providerId,
       jobId: preset.apiFilters.jobId ?? DEFAULT_FILTERS.jobId,
       requestId: preset.apiFilters.requestId ?? DEFAULT_FILTERS.requestId,
@@ -1051,6 +1075,7 @@ export function LogViewerPanel() {
                     <th className="px-2 py-1.5">Time</th>
                     <th className="px-2 py-1.5">Level</th>
                     <th className="px-2 py-1.5">Service</th>
+                    <th className="px-2 py-1.5">Channel</th>
                     <th className="px-2 py-1.5">Stage</th>
                     <th className="px-2 py-1.5">Message</th>
                     <th className="px-2 py-1.5">Job</th>

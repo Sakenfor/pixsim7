@@ -13,7 +13,7 @@ from pixsim_logging import configure_logging
 from pixsim7.backend.main.domain.automation import AndroidDevice, DeviceStatus, DeviceType, ConnectionMethod
 from .adb import ADB
 
-logger = configure_logging("device_sync")
+logger = configure_logging("device_sync").bind(channel="cron")
 
 
 class DeviceSyncService:

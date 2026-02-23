@@ -28,6 +28,10 @@ from pixsim7.backend.main.services.automation.device_sync_service import poll_de
 from pixsim7.backend.main.workers.health import update_heartbeat, get_health_tracker
 from pixsim7.backend.main.workers.world_simulation import tick_active_worlds, SIMULATION_ENABLED
 from pixsim7.backend.main.shared.config import settings
+from pixsim7.backend.main.infrastructure.queue import (
+    GENERATION_FRESH_QUEUE_NAME,
+    GENERATION_RETRY_QUEUE_NAME,
+)
 from pixsim7.backend.main.shared.debug import load_global_debug_from_env
 from pixsim_logging import configure_logging
 import logging as stdlib_logging
@@ -37,7 +41,7 @@ from pixsim7.backend.main.infrastructure.events.redis_bridge import (
 )
 
 # Configure structured logging and optional ingestion via env
-logger = configure_logging("worker")
+logger = configure_logging("worker").bind(channel="system")
 
 # Configure root logger to capture ALL logging.getLogger() calls
 # This ensures any module using standard logging will output to stdout
@@ -68,6 +72,7 @@ if log_level_env in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
 
 
 _event_bridge = None
+_retry_event_bridge = None
 
 
 async def startup(ctx: dict) -> None:
@@ -153,6 +158,32 @@ async def shutdown(ctx: dict) -> None:
         _event_bridge = None
 
 
+async def retry_startup(ctx: dict) -> None:
+    """Startup for generation retry worker (no cron/bootstrap side effects)."""
+    global _retry_event_bridge
+    logger.info("worker_start", msg="PixSim7 Generation Retry Worker Starting")
+
+    debug_flags = load_global_debug_from_env()
+    if debug_flags:
+        enabled = [name for name, enabled in debug_flags.items() if enabled]
+        logger.info("worker_debug_flags", flags=",".join(sorted(enabled)))
+
+    from pixsim7.backend.main.domain.providers.registry import register_default_providers
+
+    register_default_providers()
+    logger.info("worker_component_registered", component="process_generation", queue=GENERATION_RETRY_QUEUE_NAME)
+    _retry_event_bridge = await start_event_bus_bridge(role="arq_generation_retry_worker")
+
+
+async def retry_shutdown(ctx: dict) -> None:
+    """Shutdown for generation retry worker."""
+    global _retry_event_bridge
+    logger.info("worker_shutdown", msg="PixSim7 Generation Retry Worker Shutting Down")
+    if _retry_event_bridge:
+        await stop_event_bus_bridge()
+        _retry_event_bridge = None
+
+
 class WorkerSettings:
     """
     ARQ worker settings
@@ -167,6 +198,7 @@ class WorkerSettings:
 
     # Redis connection (shared with API via settings.redis_url)
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    queue_name = GENERATION_FRESH_QUEUE_NAME
 
     # Task functions that can be queued
     functions = [
@@ -259,6 +291,30 @@ class WorkerSettings:
 
     # Health check
     health_check_interval = 60  # Check worker health every 60 seconds
+
+
+class GenerationRetryWorkerSettings:
+    """ARQ worker for deferred/retry generation jobs only."""
+
+    redis_settings = RedisSettings.from_dsn(settings.redis_url)
+    queue_name = GENERATION_RETRY_QUEUE_NAME
+
+    functions = [
+        process_generation,
+    ]
+    cron_jobs = []
+
+    on_startup = retry_startup
+    on_shutdown = retry_shutdown
+
+    max_jobs = int(os.getenv("ARQ_GENERATION_RETRY_MAX_JOBS", os.getenv("ARQ_MAX_JOBS", "10")))
+    job_timeout = int(os.getenv("ARQ_JOB_TIMEOUT", "3600"))
+    max_tries = int(os.getenv("ARQ_MAX_TRIES", "3"))
+    retry_jobs = True
+
+    log_results = True
+    verbose = True
+    health_check_interval = 60
 
 
 # For testing/debugging
