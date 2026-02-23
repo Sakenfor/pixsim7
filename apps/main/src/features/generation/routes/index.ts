@@ -1,4 +1,6 @@
 import type { ActionDefinition } from '@pixsim7/shared.types';
+import { createElement } from 'react';
+import { Navigate } from 'react-router-dom';
 
 import { useControlCenterStore } from '@features/controlCenter/stores/controlCenterStore';
 
@@ -49,6 +51,10 @@ const selectProviderAction: ActionDefinition = {
   },
 };
 
+function GenerationRedirect() {
+  return createElement(Navigate, { to: '/workspace?openPanel=quickgen-asset', replace: true });
+}
+
 export const generationPageModule: Module = {
   id: 'generation-page',
   name: 'Generation',
@@ -62,6 +68,7 @@ export const generationPageModule: Module = {
     hidden: true,
     showInNav: true,
     protected: true,
+    component: GenerationRedirect,
     actions: [quickGenerateAction, openPresetsAction, selectProviderAction],
     appMap: {
       docs: [

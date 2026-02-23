@@ -26,7 +26,7 @@ import {
   useContextHubOverridesStore,
 } from '@features/contextHub';
 import { useGenerationWorkbench, useGenerationScopeStores, usePersistedScopeState } from '@features/generation';
-import { useCostEstimate, useProviderIdForModel, useProviderAccounts } from '@features/providers';
+import { useCostEstimate, useProviderIdForModel, useProviderAccounts, useUnlimitedModels } from '@features/providers';
 
 import { OPERATION_METADATA } from '@/types/operations';
 
@@ -73,7 +73,7 @@ export interface GenerationSettingsPanelProps {
   onGenerateBurst?: (count: number) => void;
   /** Callback for generate-each mode (one generation per queued asset or group) */
   onGenerateEach?: (strategy?: CombinationStrategy, setId?: string) => void;
-  /** Optional node rendered in Row 2 next to Input Sets (e.g. Asset/My Settings toggle) */
+  /** Optional node rendered in Row 2 next to Presets (e.g. Asset/My Settings toggle) */
   sourceToggle?: ReactNode;
 }
 
@@ -138,6 +138,12 @@ export function GenerationSettingsPanel({
     params: workbench.dynamicParams,
   });
   const creditEstimate = costEstimate?.estimated_credits ?? null;
+
+  // Models that are currently free (unlimited) for the selected account context
+  const preferredAccountId = workbench.dynamicParams?.preferred_account_id;
+  const unlimitedModels = useUnlimitedModels(preferredAccountId, inferredProviderId);
+  const currentModel = workbench.dynamicParams?.model as string | undefined;
+  const isModelUnlimited = !!currentModel && unlimitedModels.has(currentModel);
 
   // Filter params based on operation type
   const filteredParamSpecs = useMemo(() => {
@@ -245,7 +251,7 @@ export function GenerationSettingsPanel({
           {sourceToggle && <div className="ml-auto">{sourceToggle}</div>}
         </div>
 
-        {/* Row 2: Input Sets */}
+        {/* Row 2: Generation presets */}
         {showPresets && (
           <div className="flex items-center gap-1">
             <PresetSelector disabled={generating} />
@@ -341,6 +347,7 @@ export function GenerationSettingsPanel({
                 {options.map((opt: string) => {
                   const icon = getParamIcon(param.name, opt);
                   const isSelected = currentValue === opt;
+                  const isFreeModel = param.name === 'model' && unlimitedModels.has(opt);
 
                   return (
                     <button
@@ -356,10 +363,20 @@ export function GenerationSettingsPanel({
                           ? 'bg-accent text-accent-text shadow-sm'
                           : 'bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 hover:bg-accent-subtle dark:hover:bg-neutral-700'
                       )}
-                      title={opt}
+                      title={isFreeModel ? `${opt} (currently free)` : opt}
                     >
                       {icon}
                       {!isIconOnly && <span>{opt}</span>}
+                      {isFreeModel && (
+                        <span className={clsx(
+                          'px-1 py-px rounded text-[8px] font-bold leading-none',
+                          isSelected
+                            ? 'bg-green-300/30 text-green-100'
+                            : 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
+                        )}>
+                          free
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -377,11 +394,15 @@ export function GenerationSettingsPanel({
               className="w-full px-2 py-1.5 text-[11px] rounded-lg bg-white dark:bg-neutral-800 border-0 shadow-sm"
               title={param.name}
             >
-              {options.map((opt: string) => (
-                <option key={opt} value={opt}>
-                  {param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt}
-                </option>
-              ))}
+              {options.map((opt: string) => {
+                const label = param.name === 'aspect_ratio' ? getAspectRatioLabel(opt) : opt;
+                const isFree = param.name === 'model' && unlimitedModels.has(opt);
+                return (
+                  <option key={opt} value={opt}>
+                    {isFree ? `${label} (free)` : label}
+                  </option>
+                );
+              })}
             </select>
           );
         })}
@@ -466,9 +487,15 @@ export function GenerationSettingsPanel({
               ) : creditEstimate !== null ? (
                 <span className="flex items-center justify-center gap-1">
                   Go
-                  <span className="text-amber-200 text-[10px]">
-                    +{Math.round(creditEstimate * burstCount)}
-                  </span>
+                  {isModelUnlimited ? (
+                    <span className="text-green-200 text-[10px]" title="Currently free for this account">
+                      <span className="line-through opacity-50">+{Math.round(creditEstimate * burstCount)}</span>
+                    </span>
+                  ) : (
+                    <span className="text-amber-200 text-[10px]">
+                      +{Math.round(creditEstimate * burstCount)}
+                    </span>
+                  )}
                 </span>
               ) : (
                 'Go'
@@ -530,7 +557,14 @@ export function GenerationSettingsPanel({
                 secondaryButton.label || 'Go'
               ) : creditEstimate !== null ? (
                 <span className="flex items-center justify-center gap-1">
-                  {secondaryButton.label || 'Go'} <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
+                  {secondaryButton.label || 'Go'}
+                  {isModelUnlimited ? (
+                    <span className="text-green-200 text-[10px]" title="Currently free for this account">
+                      <span className="line-through opacity-50">+{Math.round(creditEstimate)}</span>
+                    </span>
+                  ) : (
+                    <span className="text-amber-200 text-[10px]">+{Math.round(creditEstimate)}</span>
+                  )}
                 </span>
               ) : (
                 secondaryButton.label || 'Go'

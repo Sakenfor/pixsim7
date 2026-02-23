@@ -55,6 +55,7 @@ export interface GenerationModel {
   errorMessage: string | null;
   errorCode: string | null;
   retryCount: number;
+  attemptCount: number | null;
   priority: number;
 
   // Generation metadata
@@ -118,6 +119,8 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
   const latestSubmissionPayload =
     (response as { latest_submission_payload?: Record<string, unknown> | null })
       .latest_submission_payload ?? null;
+  const attemptCount =
+    (response as { attempt_count?: number | null }).attempt_count ?? null;
 
   return {
     // Identity
@@ -135,6 +138,7 @@ export function fromGenerationResponse(response: GenerationResponse): Generation
     errorMessage: response.error_message,
     errorCode: response.error_code ?? null,
     retryCount: response.retry_count,
+    attemptCount,
     priority: response.priority,
 
     // Generation metadata
@@ -261,6 +265,7 @@ export function createPendingGeneration(options: CreatePendingGenerationOptions)
     errorMessage: null,
     errorCode: null,
     retryCount: 0,
+    attemptCount: null,
     priority: 5,
     name: null,
     description: null,

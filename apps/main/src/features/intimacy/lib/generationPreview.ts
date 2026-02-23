@@ -9,6 +9,7 @@
  * @see frontend/src/lib/api/generations.ts - API client
  */
 
+import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 import { normalizeProviderParams } from '@pixsim7/shared.generation.core';
 
 import { createGeneration, getGeneration } from '@lib/api/generations';
@@ -18,10 +19,14 @@ import type {
   GeneratedContentPayload,
 } from '@lib/registries';
 
-import { fromGenerationResponse, type GenerationModel } from '@features/generation';
+import {
+  fromGenerationResponse,
+  type GenerationModel,
+  createGenerationRunDescriptor,
+  createGenerationRunItemContext,
+  type GenerationRunContext,
+} from '@features/generation';
 
-
-import type { SimulatedRelationshipState } from '@pixsim7/game.engine';
 import { deriveSocialContext } from './socialContextDerivation';
 
 /**
@@ -92,6 +97,23 @@ export interface PreviewPollingOptions {
   onStatusUpdate?: (result: IntimacyPreviewResult) => void;
 }
 
+function createIntimacyPreviewRunContext(
+  scene: IntimacySceneConfig,
+  source: 'generateIntimacyPreview' | 'startIntimacyPreview',
+): GenerationRunContext {
+  const run = createGenerationRunDescriptor({
+    mode: 'intimacy_preview',
+    metadata: {
+      source,
+      scene_type: scene.sceneType || 'dialogue',
+    },
+  });
+  return createGenerationRunItemContext(run, {
+    itemIndex: 0,
+    itemTotal: 1,
+  });
+}
+
 /**
  * Generate intimacy scene preview
  *
@@ -156,6 +178,7 @@ export async function generateIntimacyPreview(
       socialContext,
       // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
       provider_params: normalizeProviderParams(generationParams || {}),
+      run_context: createIntimacyPreviewRunContext(scene, 'generateIntimacyPreview'),
     },
     provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,
@@ -267,6 +290,7 @@ export async function startIntimacyPreview(
       socialContext,
       // Include shared generation parameters (model, quality, duration, multi_shot, audio, off_peak, etc.)
       provider_params: normalizeProviderParams(generationParams || {}),
+      run_context: createIntimacyPreviewRunContext(scene, 'startIntimacyPreview'),
     },
     provider_id: providerId || 'pixverse', // Default to Pixverse for video generation
     social_context: socialContext,

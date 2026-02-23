@@ -89,8 +89,8 @@ export function registerQuickGenerateComponentSettings() {
             },
             {
               id: "showInputSets",
-              label: "Show input sets",
-              description: "Save and load prompt + inputs + settings as named sets",
+              label: "Show generation presets",
+              description: "Save and load prompt + inputs + settings as named presets",
               type: "toggle",
               defaultValue: QUICKGEN_SETTINGS_DEFAULTS.showInputSets,
             },

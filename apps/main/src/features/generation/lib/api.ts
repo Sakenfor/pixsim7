@@ -3,6 +3,7 @@ import { devValidateParams, devLogParams } from '@lib/utils/validation/devValida
 
 import type { OperationType } from '@/types/operations';
 
+import type { GenerationRunContext } from './runContext';
 import { nextRandomGenerationSeed } from './seed';
 
 export interface GenerateAssetRequest {
@@ -10,6 +11,7 @@ export interface GenerateAssetRequest {
   providerId?: string;
   operationType?: OperationType;
   extraParams?: Record<string, any>;
+  runContext?: GenerationRunContext;
 }
 
 export interface GenerateAssetResponse {
@@ -67,7 +69,8 @@ const CANONICAL_CONFIG_KEYS = new Set([
 function buildGenerationConfig(
   generationType: OperationType,
   params: Record<string, any>,
-  providerId: string = 'pixverse'
+  providerId: string = 'pixverse',
+  runContext?: GenerationRunContext,
 ): GenerationNodeConfigSchema {
   const merged = { ...params };
 
@@ -148,6 +151,12 @@ function buildGenerationConfig(
     ...(merged.mask_url ? { mask_url: merged.mask_url } : {}),
   };
 
+  if (runContext && typeof runContext === 'object') {
+    // GenerationNodeConfigSchema accepts extra keys; this is consumed by backend
+    // tracking/manifests and ignored by provider param mapping.
+    (config as Record<string, any>).run_context = runContext;
+  }
+
   return config;
 }
 
@@ -186,7 +195,8 @@ export async function generateAsset(req: GenerateAssetRequest): Promise<Generate
   const config = buildGenerationConfig(
     generationType,
     mergedParams,
-    providerId
+    providerId,
+    req.runContext,
   );
 
   // Create generation request

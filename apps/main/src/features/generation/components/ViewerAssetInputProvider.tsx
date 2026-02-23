@@ -47,7 +47,12 @@ export function ViewerAssetInputProvider({
       isAvailable: () => !!asset,
       getValue: () => {
         const id = asset ? Number(asset.id) : NaN;
-        const ref = Number.isFinite(id) ? Ref.asset(id) : null;
+        const metadataAssetId = asset?.metadata?.assetId;
+        const backendAssetId =
+          typeof metadataAssetId === 'number' && Number.isFinite(metadataAssetId) && metadataAssetId > 0
+            ? metadataAssetId
+            : (Number.isFinite(id) && id > 0 ? id : NaN);
+        const ref = Number.isFinite(backendAssetId) ? Ref.asset(backendAssetId) : null;
         const refs = ref ? ([ref] as AssetRef[]) : [];
         const resolvedType = resolveMediaType(asset);
         const types =

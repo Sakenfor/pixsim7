@@ -310,6 +310,44 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
   const canRetry = generation.status === 'failed' || generation.status === 'cancelled';
   const canCancel = isActive;
   const canDelete = isTerminal;
+  const activityBadge = useMemo(() => {
+    const hasSubmitEvidence =
+      (generation.attemptCount != null && generation.attemptCount > 0) ||
+      generation.latestSubmissionPayload != null;
+    if (generation.status === 'processing') {
+      if (!hasSubmitEvidence) {
+        return {
+          label: 'START',
+          className:
+            'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+          title: 'Starting / processing state without visible submit attempt yet',
+        };
+      }
+      return {
+        label: 'LIVE',
+        className:
+          'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+        title: 'Actively processing at the provider',
+      };
+    }
+    if (generation.status === 'pending' || generation.status === 'queued') {
+      if (generation.retryCount > 0) {
+        return {
+          label: 'RETRY',
+          className:
+            'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+          title: 'Waiting for a retry attempt',
+        };
+      }
+      return {
+        label: 'WAIT',
+        className:
+          'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+        title: 'Queued / waiting to start',
+      };
+    }
+    return null;
+  }, [generation.status, generation.retryCount, generation.attemptCount, generation.latestSubmissionPayload]);
 
   // Manual refresh for debugging stuck generations
   const handleRefresh = useCallback(async () => {
@@ -388,9 +426,19 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
         {/* Content */}
         <div className="flex-1 min-w-0">
           {/* Prompt preview */}
-          <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1 truncate">
-            {promptPreview}
-          </p>
+          <div className="flex items-center gap-2 mb-1 min-w-0">
+            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate flex-1 min-w-0">
+              {promptPreview}
+            </p>
+            {activityBadge && (
+              <span
+                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold tracking-wide ${activityBadge.className}`}
+                title={activityBadge.title}
+              >
+                {activityBadge.label}
+              </span>
+            )}
+          </div>
 
           {/* Metadata row */}
           <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 flex-wrap">
@@ -405,13 +453,24 @@ function GenerationItem({ generation, onRetry, onCancel, onDelete, onOpenAsset, 
                 </span>
               </>
             )}
-            <span className="text-neutral-400 dark:text-neutral-600">•</span>
+            <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
             <span>{timeAgo}</span>
             {generation.retryCount > 0 && (
               <>
-                <span className="text-neutral-400 dark:text-neutral-600">•</span>
+                <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
                 <span className="text-amber-600 dark:text-amber-400">
                   {generation.retryCount} {generation.retryCount === 1 ? 'retry' : 'retries'}
+                </span>
+              </>
+            )}
+            {generation.attemptCount != null && generation.attemptCount > 1 && (
+              <>
+                <span className="text-neutral-400 dark:text-neutral-600">&bull;</span>
+                <span
+                  className="text-rose-600 dark:text-rose-400"
+                  title="Provider submission attempts for this generation"
+                >
+                  {generation.attemptCount} attempts
                 </span>
               </>
             )}

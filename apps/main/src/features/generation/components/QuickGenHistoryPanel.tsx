@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { getAsset } from '@lib/api/assets';
 import { createBadgeWidget, type OverlayWidget } from '@lib/ui/overlay';
 
 import type { AssetModel } from '@features/assets';
-import { fromAssetResponse } from '@features/assets';
+import { hydrateAssetModel } from '@features/assets/lib/hydrateAssetModel';
+import { useLinkedCardAssetAdapter } from '@features/assets/lib/useLinkedCardAssetAdapter';
 import { MiniGallery } from '@features/gallery/components/MiniGallery';
 import { useQuickGenerateController } from '@features/prompts';
 
+import {
+  COMPACT_TOP_RIGHT_BADGE_OFFSET,
+  TOP_RIGHT_BADGE_STACK_GROUP,
+} from '@/components/media/assetCardLocalWidgets';
 import type { OperationType } from '@/types/operations';
 import { OPERATION_METADATA, OPERATION_TYPES } from '@/types/operations';
 
@@ -48,21 +52,38 @@ function assetFromHistoryEntry(entry: AssetHistoryEntry): AssetModel {
 
 /** Resolve a minimal history AssetModel to a full one by fetching from API. */
 async function resolveHistoryAsset(asset: AssetModel): Promise<AssetModel> {
-  const response = await getAsset(asset.id);
-  return fromAssetResponse(response);
+  return hydrateAssetModel(asset);
+}
+
+function mergeHistoryLinkedAsset(
+  _entry: AssetHistoryEntry,
+  linkedAsset: AssetModel,
+  fallbackAsset: AssetModel,
+): AssetModel {
+  return {
+    ...linkedAsset,
+    thumbnailUrl: linkedAsset.thumbnailUrl ?? fallbackAsset.thumbnailUrl,
+    previewUrl: linkedAsset.previewUrl ?? fallbackAsset.previewUrl,
+    remoteUrl: linkedAsset.remoteUrl ?? fallbackAsset.remoteUrl,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Overlay — use count badge (bottom-left, passive)
+// Use count badge (bottom-left) — overlay widget
 // ---------------------------------------------------------------------------
 
-function UseCountOverlay({ entry }: { entry: AssetHistoryEntry }) {
+function buildUseCountWidget(entry: AssetHistoryEntry): OverlayWidget | null {
   if (entry.useCount <= 1) return null;
-  return (
-    <div className="absolute bottom-1 left-1 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium pointer-events-none">
-      {entry.useCount}x
-    </div>
-  );
+  return createBadgeWidget({
+    id: 'use-count',
+    position: { anchor: 'bottom-left', offset: { x: 4, y: -4 } },
+    visibility: { trigger: 'always', transition: 'none' },
+    variant: 'text',
+    labelBinding: { id: 'label', resolve: () => `${entry.useCount}x` },
+    color: 'gray',
+    className: '!bg-black/80 !text-white text-[10px] font-medium',
+    priority: 5,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -123,10 +144,19 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
     return map;
   }, [visibleHistory]);
 
-  // Convert to AssetModel[]
+  const { getMediaCardAsset } = useLinkedCardAssetAdapter<AssetHistoryEntry>({
+    visibleItems: visibleHistory,
+    getItemKey: (entry) => String(entry.assetId),
+    getLinkedAssetId: (entry) => entry.assetId,
+    toFallbackAsset: assetFromHistoryEntry,
+    mergeLinkedWithSource: mergeHistoryLinkedAsset,
+  });
+
+  // Convert history entries into canonical assets when available.
+  // Fallback to minimal stubs while hydration is in-flight.
   const items = useMemo(
-    () => visibleHistory.map(assetFromHistoryEntry),
-    [visibleHistory],
+    () => visibleHistory.map((entry) => getMediaCardAsset(entry)),
+    [visibleHistory, getMediaCardAsset],
   );
 
   // Operation dropdown options
@@ -139,29 +169,19 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
     [],
   );
 
-  // Card overlay — use count only (pin + remove moved to widgets)
-  const renderItemOverlay = useCallback(
-    (asset: AssetModel) => {
-      const entry = entryByAssetId.get(asset.id);
-      if (!entry) return null;
-      return <UseCountOverlay entry={entry} />;
-    },
-    [entryByAssetId],
-  );
-
   // Suppress hover actions — generation button group from overlay system handles generation
   const renderItemActions = useCallback(
     () => null,
     [],
   );
 
-  // Card widgets — pin (top-left) + remove (top-right)
+  // Card widgets — pin (top-left) + remove (top-right) + use count (bottom-left)
   const renderItemWidgets = useCallback(
     (asset: AssetModel): OverlayWidget[] | undefined => {
       const entry = entryByAssetId.get(asset.id);
       if (!entry) return undefined;
 
-      return [
+      const widgets: OverlayWidget[] = [
         createBadgeWidget({
           id: 'pin-toggle',
           position: { anchor: 'top-left', offset: { x: 4, y: 4 } },
@@ -179,7 +199,8 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
         }),
         createBadgeWidget({
           id: 'remove-history',
-          position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
+          position: { anchor: 'top-right', offset: COMPACT_TOP_RIGHT_BADGE_OFFSET },
+          stackGroup: TOP_RIGHT_BADGE_STACK_GROUP,
           visibility: { trigger: 'hover-container' },
           variant: 'icon',
           icon: 'x',
@@ -191,6 +212,11 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
           priority: 30,
         }),
       ];
+
+      const useCountWidget = buildUseCountWidget(entry);
+      if (useCountWidget) widgets.push(useCountWidget);
+
+      return widgets;
     },
     [entryByAssetId, historyOperation, togglePin, removeFromHistory],
   );
@@ -253,8 +279,9 @@ export function QuickGenHistoryPanel(props: QuickGenHistoryPanelProps) {
       operationType={operationType}
       generationScopeId={props.generationScopeId ?? props.context?.generationScopeId}
       context={props.context}
+      paginationMode="page"
+      pageSize={20}
       resolveAsset={resolveHistoryAsset}
-      renderItemOverlay={renderItemOverlay}
       renderItemActions={renderItemActions}
       renderItemWidgets={renderItemWidgets}
     />

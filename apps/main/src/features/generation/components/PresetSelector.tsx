@@ -1,8 +1,8 @@
 /**
- * InputSetSelector (formerly PresetSelector)
+ * GenerationPresetSelector (formerly PresetSelector)
  *
- * Compact UI for selecting, saving, and managing generation input sets.
- * An "input set" bundles: prompt + input assets + generation params.
+ * Compact UI for selecting, saving, and managing generation presets.
+ * A generation preset bundles: prompt + input assets + generation params.
  * Designed to fit in the GenerationSettingsPanel.
  *
  * Note: This is different from the "Presets" module in Control Center which
@@ -127,11 +127,11 @@ export function PresetSelector({
           'transition-colors',
           presetLoading && 'animate-pulse'
         )}
-        title="Input Sets - Save and load prompt + inputs + settings"
+        title="Generation Presets - Save and load prompt + inputs + settings"
       >
         <Icon name="archive" size={12} className={presetLoading ? 'animate-spin' : ''} />
         <span className="max-w-[60px] truncate">
-          {presetLoading ? 'Loading...' : lastUsedPreset?.name ?? 'Sets'}
+          {presetLoading ? 'Loading...' : lastUsedPreset?.name ?? 'Presets'}
         </span>
         {!presetLoading && (
           <Icon name="chevronDown" size={10} className={clsx('transition-transform', isOpen && 'rotate-180')} />
@@ -157,7 +157,7 @@ export function PresetSelector({
                       setNewPresetName('');
                     }
                   }}
-                  placeholder="Input set name..."
+                  placeholder="Preset name..."
                   className="flex-1 px-2 py-1 text-[11px] rounded bg-neutral-100 dark:bg-neutral-700 border-0 outline-none"
                 />
                 <button
@@ -186,7 +186,7 @@ export function PresetSelector({
                 className="flex items-center gap-1.5 w-full px-2 py-1.5 text-[11px] font-medium text-accent hover:bg-accent-subtle rounded"
               >
                 <Icon name="save" size={12} />
-                Save current as input set
+                Save current preset
               </button>
             )}
           </div>
@@ -195,7 +195,7 @@ export function PresetSelector({
           <div className="max-h-[200px] overflow-y-auto">
             {!hasPresets ? (
               <div className="px-3 py-4 text-[11px] text-neutral-500 text-center">
-                No input sets for {operationType.replace(/_/g, ' ')}
+                No presets for {operationType.replace(/_/g, ' ')}
               </div>
             ) : (
               presetsForOperation.map((preset) => (
