@@ -51,6 +51,40 @@ logger = configure_logging("worker").bind(channel="pipeline")
 _poller_debug_initialized = False
 
 
+def _processing_generations_snapshot(processing_generations: list[Generation]) -> dict:
+    now = datetime.now(timezone.utc)
+    by_account: dict[str, int] = {}
+    sample: list[dict] = []
+    oldest_age_seconds = 0.0
+
+    for generation in processing_generations:
+        account_key = str(generation.account_id) if generation.account_id is not None else "unassigned"
+        by_account[account_key] = by_account.get(account_key, 0) + 1
+
+        age_seconds = None
+        if generation.started_at:
+            age_seconds = (now - generation.started_at).total_seconds()
+            if age_seconds > oldest_age_seconds:
+                oldest_age_seconds = age_seconds
+
+        if len(sample) < 10:
+            sample.append(
+                {
+                    "generation_id": generation.id,
+                    "account_id": generation.account_id,
+                    "operation_type": getattr(generation.operation_type, "value", generation.operation_type),
+                    "started_age_seconds": round(age_seconds, 1) if age_seconds is not None else None,
+                }
+            )
+
+    return {
+        "count": len(processing_generations),
+        "oldest_started_age_seconds": round(oldest_age_seconds, 1),
+        "by_account": by_account,
+        "sample": sample,
+    }
+
+
 def _init_poller_debug_flags() -> None:
     """Initialize global debug flags for the status poller from environment."""
     global _poller_debug_initialized
@@ -81,12 +115,15 @@ async def poll_job_statuses(ctx: dict) -> dict:
     completed = 0
     failed = 0
     still_processing = 0
+    still_processing_ids: list[int] = []
+    missing_provider_job_generation_ids: list[int] = []
 
     # Analysis stats
     analyses_checked = 0
     analyses_completed = 0
     analyses_failed = 0
     analyses_still_processing = 0
+    poll_status_cache: dict[str, object] = {}
 
     async for db in get_db():
         try:
@@ -106,6 +143,11 @@ async def poll_job_statuses(ctx: dict) -> dict:
             if processing_generations:
                 logger.info("poll_found_generations", count=len(processing_generations))
                 worker_debug.worker("poll_found_generations", count=len(processing_generations))
+                snapshot = _processing_generations_snapshot(processing_generations)
+                if snapshot["count"] >= 5 or snapshot["oldest_started_age_seconds"] >= 60:
+                    logger.warning("poll_processing_snapshot", **snapshot)
+                else:
+                    logger.info("poll_processing_snapshot", **snapshot)
 
             # Timeout threshold (processing > 2 hours = stuck)
             TIMEOUT_HOURS = 2
@@ -114,11 +156,19 @@ async def poll_job_statuses(ctx: dict) -> dict:
             # (submission to provider failed, no point waiting 2 hours)
             UNSUBMITTED_TIMEOUT_MINUTES = 15
             unsubmitted_timeout_threshold = datetime.now(timezone.utc) - timedelta(minutes=UNSUBMITTED_TIMEOUT_MINUTES)
+            # Mixed-submission recovery: latest submit failed without a job id
+            # while an older valid provider job exists. These can stay stuck in
+            # PROCESSING if provider status polling never resolves the older job.
+            MIXED_SUBMISSION_TIMEOUT_MINUTES = 20
+            mixed_submission_timeout_threshold = datetime.now(timezone.utc) - timedelta(
+                minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES
+            )
 
             for generation in processing_generations:
                 checked += 1
 
                 try:
+                    latest_error_submission_without_job_id = None
                     submission_result = await db.execute(
                         select(ProviderSubmission)
                         .where(ProviderSubmission.generation_id == generation.id)
@@ -155,6 +205,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         continue
 
                     if not submission.provider_job_id:
+                        missing_provider_job_generation_ids.append(generation.id)
                         submission_age_seconds = None
                         if submission.submitted_at:
                             submission_age_seconds = (
@@ -254,8 +305,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             account.total_videos_failed += 1
                             account.failure_streak += 1
                             account.success_rate = account.calculate_success_rate()
-                            if account.current_processing_jobs > 0:
-                                account.current_processing_jobs -= 1
+                            account = await account_service.release_account(account.id)
 
                             failed += 1
                             continue
@@ -267,6 +317,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         # provider.check_status(None) and looping forever.
                         if previous_valid_submission is not None:
                             latest_submission = submission
+                            if latest_submission.status == "error":
+                                latest_error_submission_without_job_id = latest_submission
                             submission = previous_valid_submission
                             if submission.account_id != account.id:
                                 fallback_account = await db.get(ProviderAccount, submission.account_id)
@@ -298,6 +350,52 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                     str(submission.submitted_at) if submission.submitted_at else None
                                 ),
                             )
+
+                    if (
+                        latest_error_submission_without_job_id is not None
+                        and generation.started_at
+                        and generation.started_at < mixed_submission_timeout_threshold
+                    ):
+                        logger.warning(
+                            "generation_timeout_mixed_submissions",
+                            generation_id=generation.id,
+                            started_at=str(generation.started_at),
+                            timeout_minutes=MIXED_SUBMISSION_TIMEOUT_MINUTES,
+                            latest_submission_id=latest_error_submission_without_job_id.id,
+                            latest_submission_status=latest_error_submission_without_job_id.status,
+                            polling_submission_id=submission.id,
+                            polling_provider_job_id=submission.provider_job_id,
+                        )
+                        await generation_service.mark_failed(
+                            generation.id,
+                            (
+                                "Generation stuck after mixed provider submissions "
+                                f"(timed out after {MIXED_SUBMISSION_TIMEOUT_MINUTES} minutes)"
+                            ),
+                        )
+
+                        try:
+                            billing_service = GenerationBillingService(db)
+                            await db.refresh(generation)
+                            await billing_service.finalize_billing(
+                                generation=generation,
+                                final_submission=latest_error_submission_without_job_id,
+                                account=account,
+                            )
+                        except Exception as billing_err:
+                            logger.warning(
+                                "billing_finalization_error",
+                                generation_id=generation.id,
+                                error=str(billing_err),
+                            )
+
+                        account.total_videos_failed += 1
+                        account.failure_streak += 1
+                        account.success_rate = account.calculate_success_rate()
+                        account = await account_service.release_account(account.id)
+
+                        failed += 1
+                        continue
 
                     # Fail jobs that never got a provider_job_id after the short timeout
                     # (submission to provider failed; no point polling for 2 hours)
@@ -337,8 +435,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         account.failure_streak += 1
                         account.success_rate = account.calculate_success_rate()
 
-                        if account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
+                        account = await account_service.release_account(account.id)
 
                         failed += 1
                         continue
@@ -368,9 +465,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                         account.failure_streak += 1
                         account.success_rate = account.calculate_success_rate()
 
-                        # Decrement account's concurrent job count
-                        if account.current_processing_jobs > 0:
-                            account.current_processing_jobs -= 1
+                        # Decrement account's concurrent job count and wake pinned waiters
+                        account = await account_service.release_account(account.id)
 
                         failed += 1
                         continue
@@ -380,6 +476,7 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             submission=submission,
                             account=account,
                             operation_type=generation.operation_type,
+                            poll_cache=poll_status_cache,
                         )
 
                         # Include provider's raw status/metadata for debugging
@@ -449,9 +546,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                                 account.update_ema_generation_time(status_result.duration_sec)
                             account.success_rate = account.calculate_success_rate()
 
-                            # Decrement account's concurrent job count
-                            if account.current_processing_jobs > 0:
-                                account.current_processing_jobs -= 1
+                            # Decrement account's concurrent job count and wake pinned waiters
+                            account = await account_service.release_account(account.id)
 
                             # Refresh credits from provider to sync actual balance
                             await refresh_account_credits(account, account_service, logger)
@@ -506,9 +602,8 @@ async def poll_job_statuses(ctx: dict) -> dict:
                             account.failure_streak += 1
                             account.success_rate = account.calculate_success_rate()
 
-                            # Decrement account's concurrent job count
-                            if account.current_processing_jobs > 0:
-                                account.current_processing_jobs -= 1
+                            # Decrement account's concurrent job count and wake pinned waiters
+                            account = await account_service.release_account(account.id)
 
                             # Refresh credits from provider to sync actual balance
                             # (Pixverse auto-refunds for failed/filtered generations)
@@ -529,10 +624,12 @@ async def poll_job_statuses(ctx: dict) -> dict:
 
                         elif status_result.status == ProviderStatus.PROCESSING:
                             still_processing += 1
+                            still_processing_ids.append(generation.id)
 
                         else:
                             logger.debug("generation_pending", generation_id=generation.id)
                             still_processing += 1
+                            still_processing_ids.append(generation.id)
 
                     except ProviderError as e:
                         # Expected provider errors (content filter, quota, etc.) → WARNING
@@ -705,6 +802,12 @@ async def poll_job_statuses(ctx: dict) -> dict:
                     generations_completed=completed,
                     generations_failed=failed,
                     generations_still_processing=still_processing,
+                    still_processing_ids_sample=still_processing_ids[:10] if still_processing_ids else None,
+                    missing_provider_job_ids_sample=(
+                        missing_provider_job_generation_ids[:10]
+                        if missing_provider_job_generation_ids
+                        else None
+                    ),
                     analyses_checked=analyses_checked,
                     analyses_completed=analyses_completed,
                     analyses_failed=analyses_failed,
@@ -868,6 +971,10 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                 select(ProviderAccount).where(
                     ProviderAccount.status == AccountStatus.ACTIVE,
                     ProviderAccount.max_concurrent_jobs > ProviderAccount.current_processing_jobs,
+                    (
+                        (ProviderAccount.cooldown_until == None)
+                        | (ProviderAccount.cooldown_until <= now)
+                    ),
                 )
             )
             capacity_accounts = list(capacity_accounts_result.scalars().all())
@@ -891,7 +998,10 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                         select(Generation)
                         .where(Generation.status == GenerationStatus.PENDING)
                         .where(Generation.preferred_account_id == account.id)
-                        .where(Generation.account_id == None)
+                        .where(
+                            (Generation.account_id == None)
+                            | (Generation.account_id == account.id)
+                        )
                         .where(
                             (Generation.scheduled_at == None) |
                             (Generation.scheduled_at <= now)
@@ -911,7 +1021,18 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                                 if isinstance(wait_meta, dict) and wait_meta.get("reason")
                                 else None
                             )
-                            await enqueue_generation_fresh_job(arq_pool, generation.id)
+                            enqueued = await enqueue_generation_fresh_job(arq_pool, generation.id)
+                            if not enqueued:
+                                skipped += 1
+                                logger.warning(
+                                    "dispatch_pinned_ready_generation_deduped",
+                                    generation_id=generation.id,
+                                    account_id=account.id,
+                                    free_slots=free_slots,
+                                    wait_reason=wait_reason,
+                                )
+                                continue
+
                             await clear_generation_wait_metadata(arq_pool, generation.id)
                             generation.scheduled_at = None
                             generation.updated_at = now
@@ -978,15 +1099,24 @@ async def requeue_pending_generations(ctx: dict) -> dict:
                     # ARQ doesn't have a great way to check this, so we just requeue
                     # The job processor will skip if status changed
 
-                    await enqueue_generation_retry_job(arq_pool, generation.id)
+                    enqueue_result = await enqueue_generation_retry_job(arq_pool, generation.id)
 
-                    logger.info(
-                        "requeue_generation",
-                        generation_id=generation.id,
-                        age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
-                        age_basis="updated_at",
-                    )
-                    requeued += 1
+                    if enqueue_result.get("deduped"):
+                        logger.warning(
+                            "requeue_generation_deduped",
+                            generation_id=generation.id,
+                            age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
+                            age_basis="updated_at",
+                        )
+                        skipped += 1
+                    else:
+                        logger.info(
+                            "requeue_generation",
+                            generation_id=generation.id,
+                            age_seconds=(datetime.now(timezone.utc) - generation.updated_at).total_seconds(),
+                            age_basis="updated_at",
+                        )
+                        requeued += 1
 
                 except Exception as e:
                     logger.error("requeue_generation_error",

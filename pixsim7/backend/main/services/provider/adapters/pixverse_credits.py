@@ -14,17 +14,17 @@ from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_timeout,
     log_provider_error,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_concurrency import (
+    PIXVERSE_FREE_MAX_CONCURRENT_JOBS,
+    PIXVERSE_PRO_MAX_CONCURRENT_JOBS,
+    resolve_pixverse_max_concurrent_jobs,
+)
 
 logger = get_logger()
 # Allow a bit more time for Pixverse web dashboard credits endpoint, which can
 # be slow or occasionally rate-limited. We still wrap calls in wait_for so
 # hung requests won't block forever.
 PIXVERSE_CREDITS_TIMEOUT_SEC = 8.0
-
-# Default max concurrent jobs for free vs pro accounts
-PIXVERSE_FREE_MAX_CONCURRENT_JOBS = 2
-PIXVERSE_PRO_MAX_CONCURRENT_JOBS = 5
-
 
 class PixverseCreditsMixin:
     """Mixin for Pixverse credits operations"""
@@ -450,12 +450,25 @@ class PixverseCreditsMixin:
         except ImportError:  # pragma: no cover
             return None
 
-        try:
-            from pixverse.api.client import PixverseAPI  # type: ignore
-        except ImportError:  # pragma: no cover
-            return None
-
         async def _operation(session: PixverseSessionData) -> Optional[Dict[str, Any]]:
+            def _extract_invited_count(user_info: Dict[str, Any]) -> int:
+                candidate_keys = {
+                    "invited_count",
+                    "invite_count",
+                    "invitedCount",
+                    "inviteCount",
+                    "referral_count",
+                    "referralCount",
+                }
+                for key in candidate_keys:
+                    value = user_info.get(key)
+                    try:
+                        if value is not None:
+                            return max(0, int(float(value)))
+                    except Exception:
+                        continue
+                return 0
+
             # JWT is required for pixverse-py SDK calls
             temp_account = Account(
                 email=account.email,
@@ -467,8 +480,13 @@ class PixverseCreditsMixin:
             api = self._get_cached_api(account)
 
             try:
-                stats = await api.get_account_stats(temp_account)
-                return stats
+                # pixverse-py no longer exposes get_account_stats(); compose a
+                # lightweight stats payload from get_user_info().
+                user_info = await api.get_user_info(temp_account)
+                return {
+                    "invited_count": _extract_invited_count(user_info),
+                    "user_info": user_info or {},
+                }
             except Exception as e:
                 logger.warning(
                     "Failed to fetch account stats for %s: %s",
@@ -610,15 +628,25 @@ class PixverseCreditsMixin:
         plan_name = plan_details.get("plan_name", "Unknown")
         is_pro = plan_type >= 1
 
-        # Use provider-reported concurrency limit, fall back to hardcoded defaults
-        gen_simultaneously = plan_details.get("gen_simultaneously")
-        if gen_simultaneously and isinstance(gen_simultaneously, int) and gen_simultaneously > 0:
-            new_max_concurrent = gen_simultaneously
-        else:
+        # Plan sync should trust Pixverse's explicit plan field (`gen_simultaneously`)
+        # and only use a single backend fallback from plan_type.
+        resolved_concurrency = resolve_pixverse_max_concurrent_jobs(
+            plan_details,
+            allow_sdk_max=False,
+            allow_plan_type_fallback=True,
+        )
+        concurrency_source = resolved_concurrency.get("source")
+        new_max_concurrent = resolved_concurrency.get("max_concurrent_jobs")
+        gen_simultaneously = resolved_concurrency.get("plan_gen_simultaneously")
+        sdk_max_concurrent_raw = resolved_concurrency.get("plan_max_concurrent_jobs_raw")
+        sdk_max_concurrent = resolved_concurrency.get("plan_max_concurrent_jobs_parsed")
+        if not isinstance(new_max_concurrent, int) or new_max_concurrent <= 0:
+            # Defensive fallback (should not happen when plan_type is present)
             new_max_concurrent = (
                 PIXVERSE_PRO_MAX_CONCURRENT_JOBS if is_pro
                 else PIXVERSE_FREE_MAX_CONCURRENT_JOBS
             )
+            concurrency_source = "backend_plan_type_fallback"
         account.max_concurrent_jobs = new_max_concurrent
 
         # Store plan details in provider_metadata
@@ -634,7 +662,9 @@ class PixverseCreditsMixin:
         metadata["plan_preview_mode_discount"] = plan_details.get("preview_mode_discount")
         metadata["plan_unlimited_image_models"] = plan_details.get("unlimited_image_models", [])
         metadata["plan_external_models"] = plan_details.get("external_models", [])
-        metadata["plan_gen_simultaneously"] = gen_simultaneously
+        metadata["plan_max_concurrent_jobs"] = sdk_max_concurrent_raw
+        metadata["plan_max_concurrent_jobs_parsed"] = sdk_max_concurrent
+        metadata["plan_gen_simultaneously"] = plan_details.get("gen_simultaneously")
         metadata["plan_synced_at"] = datetime.now(timezone.utc).isoformat()
         account.provider_metadata = metadata
 
@@ -646,10 +676,17 @@ class PixverseCreditsMixin:
             plan_type=plan_type,
             is_pro=is_pro,
             max_concurrent_jobs=new_max_concurrent,
+            concurrency_source=concurrency_source,
+            plan_gen_simultaneously=gen_simultaneously,
+            plan_max_concurrent_jobs_raw=sdk_max_concurrent_raw,
         )
 
         return {
             "max_concurrent_jobs": new_max_concurrent,
             "is_pro": is_pro,
             "plan_name": plan_name,
+            "concurrency_source": concurrency_source,
+            "plan_gen_simultaneously": gen_simultaneously,
+            "plan_max_concurrent_jobs_raw": sdk_max_concurrent_raw,
+            "plan_max_concurrent_jobs_parsed": sdk_max_concurrent,
         }

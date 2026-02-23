@@ -14,6 +14,9 @@ from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
 )
+from pixsim7.backend.main.services.provider.adapters.pixverse_concurrency import (
+    resolve_pixverse_max_concurrent_jobs,
+)
 
 logger = get_logger()
 
@@ -83,6 +86,7 @@ class PixverseAuthMixin:
                   'username': str,
                   'nickname': str,
                   'account_id': str,
+                  'max_concurrent_jobs': int | None,
                   'raw_data': dict,  # Full getUserInfo response
               }
 
@@ -166,6 +170,7 @@ class PixverseAuthMixin:
             'username': username,
             'nickname': nickname,
             'account_id': str(acc_id) if acc_id else None,
+            'max_concurrent_jobs': user_info_data.get("max_concurrent_jobs"),
             'raw_data': user_info_data,  # Save entire response
         }
 
@@ -418,6 +423,7 @@ class PixverseAuthMixin:
         nickname = None
         account_id = None
         provider_metadata = None
+        inferred_max_concurrent_jobs = None
 
         try:
             # Call getUserInfo API (now natively async via httpx)
@@ -427,6 +433,19 @@ class PixverseAuthMixin:
             nickname = user_info.get('nickname')
             account_id = user_info.get('account_id')
             provider_metadata = user_info.get('raw_data')
+            resolved_concurrency = resolve_pixverse_max_concurrent_jobs(
+                user_info,
+                allow_sdk_max=True,
+                allow_plan_type_fallback=False,
+            )
+            inferred_max_concurrent_jobs = resolved_concurrency.get("max_concurrent_jobs")
+            if isinstance(inferred_max_concurrent_jobs, int) and inferred_max_concurrent_jobs > 0:
+                logger.info(
+                    "pixverse_user_info_concurrency_resolved",
+                    email=email,
+                    max_concurrent_jobs=inferred_max_concurrent_jobs,
+                    source=resolved_concurrency.get("source"),
+                )
             logger.debug(
                 f"[Pixverse] getUserInfo success: email={email}, username={username}"
             )
@@ -588,5 +607,6 @@ class PixverseAuthMixin:
             'username': username,
             'nickname': nickname,
             'account_id': account_id,
+            'max_concurrent_jobs': inferred_max_concurrent_jobs,
             'provider_metadata': provider_metadata,  # Full getUserInfo response
         }

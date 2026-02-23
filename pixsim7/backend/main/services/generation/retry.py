@@ -73,6 +73,14 @@ RETRYABLE_TEMPORARY_ERROR_PATTERNS = [
     "server error",
 ]
 
+# Submit-time content filter rejections are retried directly in the worker
+# (job_processor.py) with a dedicated, shorter retry budget. Exclude them from
+# event-driven auto-retry to avoid double-retrying the same generation.
+WORKER_MANAGED_CONTENT_FILTER_ERROR_CODES = frozenset({
+    "content_output_rejected",
+    "content_image_rejected",
+})
+
 
 class GenerationRetryService:
     """
@@ -216,6 +224,12 @@ class GenerationRetryService:
             )
             try:
                 code = GenerationErrorCode(generation.error_code)
+                if code.value in WORKER_MANAGED_CONTENT_FILTER_ERROR_CODES:
+                    logger.info(
+                        f"Generation {generation.id} will NOT auto-retry: "
+                        f"worker-managed content filter code '{generation.error_code}'"
+                    )
+                    return False
                 is_retryable = code in RETRYABLE_ERROR_CODES
                 logger.info(
                     f"Generation {generation.id} error_code={generation.error_code} "

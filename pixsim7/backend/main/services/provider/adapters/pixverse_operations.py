@@ -22,6 +22,7 @@ from pixsim7.backend.main.domain.provider_auth import PixverseSessionData
 from pixsim7.backend.main.services.provider.provider_logging import (
     log_provider_error,
     log_provider_timeout,
+    summarize_provider_params_for_log,
 )
 from pixsim7.backend.main.services.provider.adapters.pixverse_url_resolver import (
     normalize_url as _normalize_pixverse_url,
@@ -137,6 +138,7 @@ def _extract_pixverse_error_code(error: Exception) -> Optional[int]:
             pass
 
     return None
+
 
 
 def _is_invalid_media_error(error: Exception) -> bool:
@@ -256,7 +258,7 @@ class PixverseOperationsMixin:
                 msg="pixverse_request_params",
                 operation_type=operation_type.value,
                 account_id=account.id,
-                params=params,
+                params_summary=summarize_provider_params_for_log(params),
             )
 
             # Store context for error handling
@@ -1043,6 +1045,71 @@ class PixverseOperationsMixin:
         return await self.session_manager.run_with_session(
             account=account,
             op_name="check_image_status_from_list",
+            operation=_operation,
+            retry_on_session_error=True,
+        )
+
+    async def check_image_statuses_from_list(
+        self,
+        account: ProviderAccount,
+        *,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> Dict[str, ProviderStatusResult]:
+        """
+        Batch image status lookup using the personal image list.
+
+        Returns a mapping of ``image_id -> ProviderStatusResult`` for images
+        present in the fetched page. Intended for per-poll caching in the
+        status poller to reduce one-request-per-generation status checks.
+        """
+
+        async def _operation(session: PixverseSessionData) -> Dict[str, ProviderStatusResult]:
+            client = self._create_client_from_session(session, account)
+            images = await client.api._image_ops.list_images(  # type: ignore[attr-defined]
+                account=client.pool.get_next(),
+                limit=limit,
+                offset=offset,
+            )
+
+            results: Dict[str, ProviderStatusResult] = {}
+            for img in images:
+                raw_image_id = img.get("image_id") or img.get("id")
+                if raw_image_id is None:
+                    continue
+                image_id = str(raw_image_id)
+                raw_status = img.get("image_status") or img.get("status") or 0
+                image_url = img.get("image_url") or img.get("url")
+
+                if raw_status == 1 or raw_status == "completed":
+                    status = ProviderStatus.COMPLETED
+                elif raw_status == 7 or raw_status == "filtered":
+                    status = ProviderStatus.FILTERED
+                elif raw_status in (-1, 8, 9) or raw_status == "failed":
+                    status = ProviderStatus.FAILED
+                else:
+                    status = ProviderStatus.PROCESSING
+
+                results[image_id] = ProviderStatusResult(
+                    status=status,
+                    video_url=image_url,
+                    thumbnail_url=image_url,
+                    width=img.get("width"),
+                    height=img.get("height"),
+                    duration_sec=None,
+                    provider_video_id=image_id,
+                    metadata={
+                        "provider_status": raw_status,
+                        "is_image": True,
+                        "source": "list_batch",
+                    },
+                )
+
+            return results
+
+        return await self.session_manager.run_with_session(
+            account=account,
+            op_name="check_image_statuses_from_list",
             operation=_operation,
             retry_on_session_error=True,
         )

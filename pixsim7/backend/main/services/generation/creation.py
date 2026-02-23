@@ -18,7 +18,7 @@ Implementation is split across creation_helpers/ for maintainability:
 """
 import logging
 from typing import Optional, Dict, Any, List, Tuple
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from uuid import UUID
@@ -29,6 +29,7 @@ from pixsim7.backend.main.domain import (
     OperationType,
     BillingState,
     User,
+    ProviderAccount,
 )
 from pixsim7.backend.main.domain.prompt import PromptVersion
 from pixsim7.backend.main.shared.errors import (
@@ -41,6 +42,13 @@ from pixsim7.backend.main.services.user.user_service import UserService
 from pixsim7.backend.main.services.generation.cache import GenerationCacheService
 from pixsim7.backend.main.services.generation.preferences_fetcher import fetch_world_meta, fetch_user_preferences
 from pixsim7.backend.main.shared.debug import DebugLogger
+from pixsim7.backend.main.infrastructure.queue import (
+    set_generation_wait_metadata,
+    enqueue_generation_fresh_job,
+    enqueue_generation_retry_job,
+    release_generation_enqueue_lease,
+    GENERATION_RETRY_QUEUE_NAME,
+)
 
 # Import helper modules
 from pixsim7.backend.main.services.generation.creation_helpers.inputs import (
@@ -82,6 +90,10 @@ from pixsim7.backend.main.services.generation.creation_helpers.cache import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Keep pinned jobs eligible quickly; release_account() will wake them early
+# when capacity opens, so long fixed holds tend to underfill provider slots.
+PINNED_CREATION_CAPACITY_DEFER_SECONDS = 2
 
 
 class GenerationCreationService:
@@ -486,12 +498,89 @@ class GenerationCreationService:
             debug.generation(f"Enqueuing generation {generation.id}...")
             from pixsim7.backend.main.infrastructure.redis import get_arq_pool
             arq_pool = await get_arq_pool()
-            result = await arq_pool.enqueue_job(
-                "process_generation",  # ARQ worker function (see workers/job_processor.py)
-                generation_id=generation.id,
-            )
+            enqueued_deferred = False
+            if (
+                generation.preferred_account_id
+                and (
+                    generation.scheduled_at is None
+                    or generation.scheduled_at <= datetime.now(timezone.utc)
+                )
+            ):
+                pref_account = await self.db.get(ProviderAccount, generation.preferred_account_id)
+                if (
+                    pref_account
+                    and pref_account.provider_id == generation.provider_id
+                    and pref_account.status == "active"
+                    and int(pref_account.max_concurrent_jobs or 0) > 0
+                    and int(pref_account.current_processing_jobs or 0) >= int(pref_account.max_concurrent_jobs or 0)
+                ):
+                    now = datetime.now(timezone.utc)
+                    generation.scheduled_at = now + timedelta(seconds=PINNED_CREATION_CAPACITY_DEFER_SECONDS)
+                    generation.updated_at = now
+                    await self.db.commit()
+                    await self.db.refresh(generation)
+                    try:
+                        await set_generation_wait_metadata(
+                            arq_pool,
+                            generation.id,
+                            reason="pinned_account_capacity_wait",
+                            account_id=pref_account.id,
+                            next_attempt_at=generation.scheduled_at,
+                            source="creation",
+                        )
+                    except Exception:
+                        # Fail open: the DB hold is still sufficient; metadata is
+                        # for observability/dispatch hints only.
+                        logger.debug(
+                            "generation_wait_meta_set_failed",
+                            generation_id=generation.id,
+                            account_id=pref_account.id,
+                            exc_info=True,
+                        )
+                    logger.info(
+                        "generation_waiting_pinned_capacity_on_create",
+                        generation_id=generation.id,
+                        account_id=pref_account.id,
+                        current_jobs=pref_account.current_processing_jobs,
+                        max_jobs=pref_account.max_concurrent_jobs,
+                        defer_seconds=PINNED_CREATION_CAPACITY_DEFER_SECONDS,
+                        base_defer_seconds=PINNED_CREATION_CAPACITY_DEFER_SECONDS,
+                        target_queue=None,
+                    )
+                    try:
+                        enqueue_result = await enqueue_generation_retry_job(
+                            arq_pool,
+                            generation.id,
+                            defer_seconds=PINNED_CREATION_CAPACITY_DEFER_SECONDS,
+                        )
+                        if enqueue_result.get("enqueued"):
+                            await release_generation_enqueue_lease(arq_pool, generation.id)
+                        logger.debug(
+                            "generation_waiting_pinned_capacity_on_create_safety_enqueued",
+                            generation_id=generation.id,
+                            account_id=pref_account.id,
+                            defer_seconds=PINNED_CREATION_CAPACITY_DEFER_SECONDS,
+                            actual_defer_seconds=enqueue_result.get("actual_defer_seconds"),
+                            enqueue_deduped=bool(enqueue_result.get("deduped")),
+                            lease_released_for_early_wake=bool(enqueue_result.get("enqueued")),
+                            target_queue=GENERATION_RETRY_QUEUE_NAME,
+                        )
+                    except Exception:
+                        logger.debug(
+                            "generation_waiting_pinned_capacity_on_create_safety_enqueue_failed",
+                            generation_id=generation.id,
+                            account_id=pref_account.id,
+                            exc_info=True,
+                        )
+                    enqueued_deferred = True
+
+            if not enqueued_deferred:
+                result = await enqueue_generation_fresh_job(arq_pool, generation.id)
+                logger.info(f"Generation {generation.id} queued for processing")
+            else:
+                result = None
+                logger.info(f"Generation {generation.id} held before processing (pinned account at capacity)")
             debug.generation(f"Enqueue result: {result}")
-            logger.info(f"Generation {generation.id} queued for processing")
         except Exception as e:
             debug.generation(f"Failed to enqueue: {e}")
             logger.error(f"Failed to queue generation {generation.id}: {e}")

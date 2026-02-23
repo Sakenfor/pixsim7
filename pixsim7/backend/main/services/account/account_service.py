@@ -10,13 +10,18 @@ from sqlalchemy import select
 
 from pixsim_logging import get_logger
 
-from pixsim7.backend.main.domain import AccountStatus
+from pixsim7.backend.main.domain import AccountStatus, Generation, GenerationStatus
 from pixsim7.backend.main.domain.providers import ProviderAccount, ProviderCredit
 from pixsim7.backend.main.domain.provider_auth import PixverseAuthMethod
 from pixsim7.backend.main.shared.errors import (
     NoAccountAvailableError,
     AccountExhaustedError,
     ResourceNotFoundError,
+)
+from pixsim7.backend.main.infrastructure.queue import (
+    clear_generation_wait_metadata,
+    enqueue_generation_fresh_job,
+    get_generation_wait_metadata,
 )
 
 logger = get_logger()
@@ -170,6 +175,30 @@ class AccountService:
 
         return account
 
+    async def reserve_account_if_available(self, account_id: int) -> ProviderAccount | None:
+        """
+        Reserve account only if it has capacity. Returns None if at limit.
+
+        Uses SELECT FOR UPDATE with a capacity filter to atomically check
+        and reserve in one query, preventing race conditions.
+        """
+        query = select(ProviderAccount).where(
+            ProviderAccount.id == account_id,
+            ProviderAccount.current_processing_jobs < ProviderAccount.max_concurrent_jobs,
+        ).with_for_update()
+
+        result = await self.db.execute(query)
+        account = result.scalar_one_or_none()
+
+        if not account:
+            return None
+
+        account.current_processing_jobs += 1
+        account.last_used = datetime.now(timezone.utc)
+        await self.db.commit()
+        await self.db.refresh(account)
+        return account
+
     async def select_and_reserve_account(
         self,
         provider_id: str,
@@ -314,6 +343,125 @@ class AccountService:
 
         await self.db.commit()
         await self.db.refresh(account)
+
+        # Best-effort wake trigger: if a slot just opened, dispatch one ready
+        # pinned generation waiting on this account (early-pipeline admission).
+        try:
+            now = datetime.now(timezone.utc)
+            cooldown_active = bool(account.cooldown_until and account.cooldown_until > now)
+            if (
+                account.status == AccountStatus.ACTIVE
+                and int(account.max_concurrent_jobs or 0) > 0
+                and int(account.current_processing_jobs or 0) < int(account.max_concurrent_jobs or 0)
+                and not cooldown_active
+            ):
+                free_slots = max(
+                    0,
+                    int(account.max_concurrent_jobs or 0) - int(account.current_processing_jobs or 0),
+                )
+                if free_slots <= 0:
+                    return account
+                result = await self.db.execute(
+                    select(Generation)
+                    .where(Generation.status == GenerationStatus.PENDING)
+                    .where(Generation.preferred_account_id == account.id)
+                    .where(
+                        (Generation.account_id == None)
+                        | (Generation.account_id == account.id)
+                    )
+                    .order_by(Generation.priority.desc(), Generation.created_at)
+                    .limit(max(10, free_slots * 4))
+                )
+                candidates = list(result.scalars().all())
+                if candidates:
+                    from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+                    arq_pool = await get_arq_pool()
+                    capacity_wait_reasons = {
+                        "pinned_account_capacity_wait",
+                        "pinned_account_concurrent_wait",
+                        "pinned_account_concurrent_yield",
+                        "pinned_content_filter_yield",
+                    }
+                    woke_count = 0
+
+                    for ready_pinned in candidates:
+                        if woke_count >= free_slots:
+                            break
+                        wait_meta = await get_generation_wait_metadata(arq_pool, ready_pinned.id)
+                        wait_reason = (
+                            str(wait_meta.get("reason"))
+                            if isinstance(wait_meta, dict) and wait_meta.get("reason")
+                            else None
+                        )
+                        scheduled_ready = (
+                            ready_pinned.scheduled_at is None or ready_pinned.scheduled_at <= now
+                        )
+                        early_capacity_wake = wait_reason in capacity_wait_reasons
+                        if not scheduled_ready and not early_capacity_wake:
+                            continue
+
+                        if not scheduled_ready and early_capacity_wake:
+                            original_scheduled_at = ready_pinned.scheduled_at
+                            ready_pinned.scheduled_at = None
+                            ready_pinned.updated_at = now
+                            await self.db.commit()
+                            await self.db.refresh(ready_pinned)
+                        else:
+                            original_scheduled_at = ready_pinned.scheduled_at
+
+                        enqueued = await enqueue_generation_fresh_job(arq_pool, ready_pinned.id)
+                        if not enqueued:
+                            if not scheduled_ready and early_capacity_wake:
+                                try:
+                                    ready_pinned.scheduled_at = original_scheduled_at
+                                    ready_pinned.updated_at = datetime.now(timezone.utc)
+                                    await self.db.commit()
+                                    await self.db.refresh(ready_pinned)
+                                except Exception as restore_err:
+                                    await self.db.rollback()
+                                    logger.warning(
+                                        "account_release_restore_scheduled_after_dedupe_failed",
+                                        account_id=account.id,
+                                        generation_id=ready_pinned.id,
+                                        error=str(restore_err),
+                                    )
+                            logger.warning(
+                                "account_release_wake_enqueue_deduped",
+                                account_id=account.id,
+                                generation_id=ready_pinned.id,
+                                wait_reason=wait_reason,
+                                free_slots=free_slots,
+                            )
+                            continue
+
+                        await clear_generation_wait_metadata(arq_pool, ready_pinned.id)
+                        woke_count += 1
+                        logger.info(
+                            "account_release_woke_pinned_generation",
+                            account_id=account.id,
+                            generation_id=ready_pinned.id,
+                            current_jobs=account.current_processing_jobs,
+                            max_jobs=account.max_concurrent_jobs,
+                            free_slots=free_slots,
+                            wake_index=woke_count,
+                            wait_reason=wait_reason,
+                            early_capacity_wake=bool(early_capacity_wake and not scheduled_ready),
+                        )
+            elif cooldown_active:
+                logger.debug(
+                    "account_release_skip_wake_cooldown",
+                    account_id=account.id,
+                    cooldown_until=str(account.cooldown_until),
+                    current_jobs=account.current_processing_jobs,
+                    max_jobs=account.max_concurrent_jobs,
+                )
+        except Exception as wake_err:
+            logger.warning(
+                "account_release_wake_pinned_failed",
+                account_id=account.id,
+                error=str(wake_err),
+            )
 
         return account
 

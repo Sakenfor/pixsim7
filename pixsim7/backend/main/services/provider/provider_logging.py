@@ -12,6 +12,65 @@ from pixsim_logging import get_logger
 from pixsim_logging.spec import ensure_valid_stage
 
 
+def truncate_log_value(value: Any, *, max_len: int = 160) -> Optional[str]:
+    """Convert any value to a short log-safe string preview."""
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}…"
+
+
+def summarize_provider_params_for_log(raw: Mapping[str, Any]) -> dict[str, Any]:
+    """
+    Generic compact summary for provider request params.
+
+    Avoids dumping full prompts / URL arrays while preserving the key debugging
+    signals (field presence, sizes, selected options, short previews).
+    """
+    image_urls = raw.get("image_urls")
+    prompts = raw.get("prompts")
+    prompt = raw.get("prompt")
+    negative_prompt = raw.get("negative_prompt")
+
+    summary: dict[str, Any] = {
+        "keys": list(raw.keys()),
+        "model": raw.get("model"),
+        "quality": raw.get("quality"),
+        "aspect_ratio": raw.get("aspect_ratio"),
+        "seed": raw.get("seed"),
+        "duration": raw.get("duration"),
+        "motion_mode": raw.get("motion_mode"),
+        "image_url": truncate_log_value(raw.get("image_url"), max_len=120),
+        "video_url": truncate_log_value(raw.get("video_url"), max_len=120),
+    }
+
+    if isinstance(prompt, str):
+        summary["prompt_len"] = len(prompt)
+        summary["prompt_preview"] = truncate_log_value(prompt, max_len=180)
+    elif prompt is not None:
+        summary["prompt_type"] = type(prompt).__name__
+
+    if isinstance(negative_prompt, str) and negative_prompt:
+        summary["negative_prompt_len"] = len(negative_prompt)
+        summary["negative_prompt_preview"] = truncate_log_value(negative_prompt, max_len=120)
+
+    if isinstance(image_urls, list):
+        summary["image_urls_count"] = len(image_urls)
+        summary["image_urls_sample"] = [
+            truncate_log_value(value, max_len=80) for value in image_urls[:3]
+        ]
+
+    if isinstance(prompts, list):
+        summary["prompts_count"] = len(prompts)
+        summary["prompts_sample"] = [
+            truncate_log_value(value, max_len=100) for value in prompts[:2]
+        ]
+
+    return summary
+
+
 def _build_base_fields(
     provider_id: str,
     operation: str,
@@ -125,5 +184,6 @@ def log_provider_error(
 __all__ = [
     "log_provider_timeout",
     "log_provider_error",
+    "truncate_log_value",
+    "summarize_provider_params_for_log",
 ]
-

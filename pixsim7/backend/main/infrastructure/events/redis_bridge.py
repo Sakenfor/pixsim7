@@ -209,6 +209,31 @@ def _summarize_event_data(event_type: str, data: dict) -> dict:
             "generation_id": data.get("generation_id"),
             "error": str(data.get("error"))[:200] if data.get("error") else None,
         }
+    if event_type == "job:started":
+        return {
+            "job_id": data.get("job_id"),
+            "generation_id": data.get("generation_id"),
+            "analysis_id": data.get("analysis_id"),
+            "function": data.get("function"),
+        }
+    if event_type == "job:completed":
+        return {
+            "job_id": data.get("job_id"),
+            "generation_id": data.get("generation_id"),
+            "analysis_id": data.get("analysis_id"),
+            "status": data.get("status"),
+        }
+    if event_type == "provider:submitted":
+        summary = {
+            "job_id": data.get("job_id"),
+            "generation_id": data.get("generation_id"),
+            "submission_id": data.get("submission_id"),
+            "provider_id": data.get("provider_id"),
+            "operation_type": data.get("operation_type"),
+        }
+        if data.get("provider_job_id"):
+            summary["provider_job_id"] = data.get("provider_job_id")
+        return summary
     return {}
 
 

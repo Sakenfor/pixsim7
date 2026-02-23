@@ -15,7 +15,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain import (
@@ -47,7 +47,7 @@ class GenerationTrackingService:
 
     async def get_asset_tracking(
         self, asset_id: int, user: User
-    ) -> Dict[str, Any]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Unified tracking view for a single asset.
 
@@ -74,10 +74,15 @@ class GenerationTrackingService:
                 warnings.append(
                     f"manifest.generation_id={generation_id} references a missing generation row"
                 )
+            elif not self._is_generation_visible(generation, user):
+                warnings.append(
+                    f"manifest.generation_id={generation_id} is not accessible to current user"
+                )
+                generation = None
 
         # 4. Cross-check: asset might have a generation pointing to it
         if generation is None:
-            generation = await self._find_generation_for_asset(asset_id)
+            generation = await self._find_generation_for_asset(asset_id, user)
 
         # 5. Consistency checks
         if generation and manifest:
@@ -121,10 +126,10 @@ class GenerationTrackingService:
 
         # 2. Collect generation_ids and load generations in batch
         gen_ids = [m.generation_id for m in manifests if m.generation_id]
-        generations_map = await self._load_generations(gen_ids)
+        generations_map = await self._load_generations(gen_ids, user)
 
         # 3. Load latest submissions for all generations in batch
-        submissions_map = await self._load_latest_submissions(gen_ids)
+        submissions_map = await self._load_latest_submissions(list(generations_map.keys()))
 
         # 4. Build ordered items
         items: List[Dict[str, Any]] = []
@@ -134,7 +139,7 @@ class GenerationTrackingService:
 
             if manifest.generation_id and manifest.generation_id not in generations_map:
                 item_warnings.append(
-                    f"manifest.generation_id={manifest.generation_id} references a missing generation"
+                    f"manifest.generation_id={manifest.generation_id} references a missing or inaccessible generation"
                 )
 
             if gen and gen.asset_id and gen.asset_id != manifest.asset_id:
@@ -240,31 +245,38 @@ class GenerationTrackingService:
         """Load manifest by asset_id (PK)."""
         return await self.db.get(GenerationBatchItemManifest, asset_id)
 
-    async def _find_generation_for_asset(self, asset_id: int) -> Optional[Generation]:
-        """Find generation that produced this asset (via Generation.asset_id)."""
-        result = await self.db.execute(
+    async def _find_generation_for_asset(
+        self, asset_id: int, user: Optional[User] = None
+    ) -> Optional[Generation]:
+        """Find newest visible generation that produced this asset (via Generation.asset_id)."""
+        stmt = (
             select(Generation)
             .where(Generation.asset_id == asset_id)
             .order_by(Generation.created_at.desc())
             .limit(1)
         )
+        if user is not None and not user.is_admin():
+            stmt = stmt.where(Generation.user_id == user.id)
+        result = await self.db.execute(stmt)
         return result.scalars().first()
 
     async def _get_manifests_for_run(
         self, run_id: UUID, user: User
     ) -> List[GenerationBatchItemManifest]:
         """Load all manifests for a batch, scoped to user via asset ownership."""
-        result = await self.db.execute(
+        stmt = (
             select(GenerationBatchItemManifest)
             .join(Asset, Asset.id == GenerationBatchItemManifest.asset_id)
             .where(GenerationBatchItemManifest.batch_id == run_id)
-            .where(Asset.user_id == user.id)
             .order_by(
                 GenerationBatchItemManifest.item_index.asc(),
                 GenerationBatchItemManifest.created_at.asc(),
                 GenerationBatchItemManifest.asset_id.asc(),
             )
         )
+        if not user.is_admin():
+            stmt = stmt.where(Asset.user_id == user.id)
+        result = await self.db.execute(stmt)
         return list(result.scalars().all())
 
     async def _get_latest_submission(self, generation_id: int) -> Optional[ProviderSubmission]:
@@ -281,13 +293,14 @@ class GenerationTrackingService:
         )
         return result.scalars().first()
 
-    async def _load_generations(self, generation_ids: List[int]) -> Dict[int, Generation]:
+    async def _load_generations(self, generation_ids: List[int], user: User) -> Dict[int, Generation]:
         """Batch-load generations by ID."""
         if not generation_ids:
             return {}
-        result = await self.db.execute(
-            select(Generation).where(Generation.id.in_(generation_ids))
-        )
+        stmt = select(Generation).where(Generation.id.in_(generation_ids))
+        if not user.is_admin():
+            stmt = stmt.where(Generation.user_id == user.id)
+        result = await self.db.execute(stmt)
         return {g.id: g for g in result.scalars().all()}
 
     async def _load_latest_submissions(
@@ -357,7 +370,7 @@ class GenerationTrackingService:
             "prompt_version_id": str(manifest.prompt_version_id) if manifest.prompt_version_id else None,
             "mode": meta.get("mode"),
             "strategy": meta.get("strategy"),
-            "input_asset_ids": meta.get("input_asset_ids", []),
+            "input_asset_ids": GenerationTrackingService._coerce_input_asset_ids(meta.get("input_asset_ids")),
             "created_at": manifest.created_at.isoformat() if manifest.created_at else None,
         }
 
@@ -374,3 +387,19 @@ class GenerationTrackingService:
             "responded_at": sub.responded_at.isoformat() if sub.responded_at else None,
             "duration_ms": sub.duration_ms,
         }
+
+    @staticmethod
+    def _coerce_input_asset_ids(value: Any) -> List[int]:
+        if not isinstance(value, list):
+            return []
+        coerced: List[int] = []
+        for item in value:
+            try:
+                coerced.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return coerced
+
+    @staticmethod
+    def _is_generation_visible(generation: Generation, user: User) -> bool:
+        return bool(user.is_admin() or generation.user_id == user.id)

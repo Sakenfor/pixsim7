@@ -23,13 +23,13 @@ except Exception:  # pragma: no cover
     pixverse_normalize_quality = None  # type: ignore
 
 # Fallback credit table (only used if SDK not available)
-# Uses image-native quality labels (2k, 4k) for consistency
+# Uses both *p format (1440p, 2160p) and legacy labels (2k, 4k) for compatibility
 _FALLBACK_IMAGE_CREDITS: dict[str, dict[str, int]] = {
     "qwen-image": {"720p": 5, "1080p": 10},
-    "gemini-3.0": {"1080p": 50, "2k": 50, "4k": 90},
+    "gemini-3.0": {"1080p": 50, "1440p": 50, "2160p": 90, "2k": 50, "4k": 90},
     "gemini-2.5-flash": {"1080p": 15},
-    "seedream-4.0": {"1080p": 10, "2k": 10, "4k": 10},
-    "seedream-4.5": {"2k": 10, "4k": 10},
+    "seedream-4.0": {"1080p": 10, "1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
+    "seedream-4.5": {"1440p": 10, "2160p": 10, "2k": 10, "4k": 10},
 }
 
 

@@ -82,7 +82,15 @@ AUTH_FAILURE_COOLDOWN_SECONDS = 300
 
 # Cooldown applied when an account hits its concurrent job limit.
 CONCURRENT_COOLDOWN_SECONDS = 30
+PIXVERSE_CONCURRENT_COOLDOWN_SECONDS = int(
+    os.getenv("PIXVERSE_CONCURRENT_COOLDOWN_SECONDS", "6")
+)
+PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS = int(
+    os.getenv("PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS", "2")
+)
 NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
+PINNED_WAIT_PADDING_SECONDS = int(os.getenv("PINNED_WAIT_PADDING_SECONDS", "1"))
+MIN_PINNED_COOLDOWN_DEFER_SECONDS = int(os.getenv("MIN_PINNED_COOLDOWN_DEFER_SECONDS", "2"))
 
 # Max times a pinned-account generation will be deferred waiting for a
 # concurrent slot before giving up.
@@ -152,6 +160,29 @@ def _is_pinned_account(generation: Generation, account: ProviderAccount) -> bool
     """Return True when the account is the user's explicitly-pinned choice."""
     pref = getattr(generation, 'preferred_account_id', None)
     return pref is not None and pref == account.id
+
+
+def _get_operation_value(generation: Generation) -> str | None:
+    op = getattr(generation, "operation_type", None)
+    if op is None:
+        return None
+    return getattr(op, "value", str(op))
+
+
+def _get_concurrent_limit_cooldown_seconds(
+    generation: Generation,
+    account: ProviderAccount,
+) -> int:
+    """Return provider/operation-specific cooldown after concurrent-limit submit failures."""
+    provider_id = str(getattr(account, "provider_id", "") or "").lower()
+    operation_type = (_get_operation_value(generation) or "").lower()
+
+    if provider_id == "pixverse" and operation_type == "image_to_image":
+        return max(1, PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS)
+    if provider_id == "pixverse":
+        return max(1, PIXVERSE_CONCURRENT_COOLDOWN_SECONDS)
+
+    return CONCURRENT_COOLDOWN_SECONDS
 
 
 def _get_max_tries() -> int:
@@ -378,11 +409,12 @@ async def _requeue_generation_for_account_rotation(
         await db.refresh(generation)
 
         arq_pool = await get_arq_pool()
-        await enqueue_generation_retry_job(arq_pool, generation.id)
+        enqueue_result = await enqueue_generation_retry_job(arq_pool, generation.id)
 
         payload = {
             "generation_id": generation.id,
             account_log_field: failed_account_id,
+            "enqueue_deduped": bool(enqueue_result.get("deduped")),
         }
         if clear_preferred_on_account_match:
             payload["cleared_preferred_account"] = cleared_preferred
@@ -460,6 +492,40 @@ async def _defer_pinned_generation(
         except Exception:
             gen_logger.debug(
                 "generation_wait_meta_set_failed",
+                generation_id=generation.id,
+                account_id=account_id,
+                reason=reason,
+                exc_info=True,
+            )
+
+        # Safety-net deferred enqueue: ensures the generation is revisited even
+        # if no account release wake sees it promptly after `scheduled_at`
+        # expires. We intentionally release the enqueue lease immediately after
+        # scheduling so an earlier capacity wake can still preempt this timer.
+        try:
+            from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+
+            arq_pool = await get_arq_pool()
+            enqueue_result = await enqueue_generation_retry_job(
+                arq_pool,
+                generation.id,
+                defer_seconds=defer_seconds,
+            )
+            if enqueue_result.get("enqueued"):
+                await release_generation_enqueue_lease(arq_pool, generation.id)
+            gen_logger.debug(
+                "generation_deferred_pinned_safety_enqueued",
+                generation_id=generation.id,
+                account_id=account_id,
+                defer_seconds=defer_seconds,
+                actual_defer_seconds=enqueue_result.get("actual_defer_seconds"),
+                enqueue_deduped=bool(enqueue_result.get("deduped")),
+                lease_released_for_early_wake=bool(enqueue_result.get("enqueued")),
+                target_queue=GENERATION_RETRY_QUEUE_NAME,
+            )
+        except Exception:
+            gen_logger.debug(
+                "generation_deferred_pinned_safety_enqueue_failed",
                 generation_id=generation.id,
                 account_id=account_id,
                 reason=reason,
@@ -670,7 +736,10 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     remaining = (
                         _pref_acct.cooldown_until - datetime.now(timezone.utc)
                     ).total_seconds()
-                    defer_seconds = max(int(remaining) + 5, 10)
+                    defer_seconds = max(
+                        int(remaining) + PINNED_WAIT_PADDING_SECONDS,
+                        MIN_PINNED_COOLDOWN_DEFER_SECONDS,
+                    )
                     gen_logger.info(
                         "preferred_account_cooldown_defer",
                         account_id=pref_id,
@@ -696,11 +765,15 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 # condition where capacity freed between the reservation attempt
                 # and this check.
                 if _pref_acct and _pref_acct.get_operational_skip_reason() is None:
-                    defer_seconds = CONCURRENT_COOLDOWN_SECONDS + 5  # ~35s
+                    base_cooldown = _get_concurrent_limit_cooldown_seconds(
+                        generation, _pref_acct
+                    )
+                    defer_seconds = base_cooldown + PINNED_WAIT_PADDING_SECONDS
                     gen_logger.info(
                         "preferred_account_capacity_defer",
                         account_id=pref_id,
                         defer_seconds=defer_seconds,
+                        base_cooldown_seconds=base_cooldown,
                         has_capacity=_pref_acct.has_capacity(),
                     )
                     defer_result = await _defer_pinned_generation(
@@ -851,6 +924,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                 }
 
             except ProviderError as e:
+                account_released = False
                 # Log expected errors as warning, unexpected as error
                 if isinstance(e, EXPECTED_ERRORS):
                     gen_logger.warning("provider:error", error=str(e), error_type=e.__class__.__name__)
@@ -881,6 +955,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
+                    account_released = True
                     # Don't rotate away from a pinned account — let standard
                     # retry/failure handling inform the user.
                     if not _is_pinned_account(generation, account):
@@ -900,10 +975,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
 
                 # Concurrent limit reached - put account in short cooldown and try different account
                 elif isinstance(e, ProviderConcurrentLimitError):
+                    concurrent_cooldown_seconds = _get_concurrent_limit_cooldown_seconds(
+                        generation, account
+                    )
                     await _apply_account_cooldown(
                         db=db,
                         account=account,
-                        cooldown_seconds=CONCURRENT_COOLDOWN_SECONDS,
+                        cooldown_seconds=concurrent_cooldown_seconds,
                         gen_logger=gen_logger,
                         event_name="account_cooldown_concurrent_limit",
                     )
@@ -912,12 +990,13 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
+                    account_released = True
                     if _is_pinned_account(generation, account):
                         # Pinned account at capacity — wait for a slot to free
                         # up instead of rotating to a different account.
                         current_retries = getattr(generation, 'retry_count', 0) or 0
                         if current_retries < MAX_PINNED_CONCURRENT_RETRIES:
-                            base_defer = CONCURRENT_COOLDOWN_SECONDS + 5
+                            base_defer = concurrent_cooldown_seconds + PINNED_WAIT_PADDING_SECONDS
                             defer_seconds = base_defer
                             reason = "pinned_account_concurrent_wait"
 
@@ -993,6 +1072,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         account_id=account.id,
                         gen_logger=gen_logger,
                     )
+                    account_released = True
                     # Don't rotate away from a pinned account — the user
                     # needs to fix auth on their chosen account.
                     if not _is_pinned_account(generation, account):
@@ -1030,6 +1110,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         )
                         try:
                             await account_service.release_account(account.id)
+                            account_released = True
                         except Exception as release_err:
                             gen_logger.warning("account_release_failed", error=str(release_err))
                         # Return instead of raise to prevent ARQ retry
@@ -1044,6 +1125,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     # Release account reservation
                     try:
                         await account_service.release_account(account.id)
+                        account_released = True
                     except Exception as release_err:
                         gen_logger.warning("account_release_failed", error=str(release_err))
 
@@ -1133,13 +1215,16 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                             await db.refresh(generation)
 
                             arq_pool = await get_arq_pool()
-                            await enqueue_generation_retry_job(arq_pool, generation.id)
+                            enqueue_result = await enqueue_generation_retry_job(
+                                arq_pool, generation.id,
+                            )
 
                             gen_logger.info(
                                 "generation_requeued_content_filter_retry",
                                 generation_id=generation.id,
                                 retry_attempt=generation.retry_count,
                                 max_retries=MAX_CONTENT_FILTER_RETRIES,
+                                enqueue_deduped=bool(enqueue_result.get("deduped")),
                             )
 
                             return {
@@ -1169,11 +1254,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         # Fall through to mark as failed
 
                 # Release account reservation on failure
-                await _release_account_reservation(
-                    account_service=account_service,
-                    account_id=account.id,
-                    gen_logger=gen_logger,
-                )
+                if not account_released:
+                    await _release_account_reservation(
+                        account_service=account_service,
+                        account_id=account.id,
+                        gen_logger=gen_logger,
+                    )
 
                 # Check if this error should NOT be retried
                 is_non_retryable = _is_non_retryable_error(e)
@@ -1240,11 +1326,12 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                     from pixsim7.backend.main.infrastructure.redis import get_arq_pool
 
                     arq_pool = await get_arq_pool()
-                    actual_defer_seconds = await enqueue_generation_retry_job(
+                    enqueue_result = await enqueue_generation_retry_job(
                         arq_pool,
                         generation_id,
                         defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
                     )
+                    actual_defer_seconds = enqueue_result.get("actual_defer_seconds")
                     logged_defer_seconds = (
                         actual_defer_seconds or NO_ACCOUNT_AVAILABLE_DEFER_SECONDS
                     )
@@ -1255,6 +1342,7 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
                         defer_seconds=logged_defer_seconds,
                         base_defer_seconds=NO_ACCOUNT_AVAILABLE_DEFER_SECONDS,
                         target_queue=GENERATION_RETRY_QUEUE_NAME,
+                        enqueue_deduped=bool(enqueue_result.get("deduped")),
                     )
                     return {
                         "status": "requeued",
