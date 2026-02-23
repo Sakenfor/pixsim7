@@ -25,6 +25,49 @@ export type PlayerContextSnapshot = PlayerContextSnapshotSchema;
 
 export type ListGenerationsQuery = ListGenerationsApiV1GenerationsGetParams;
 
+export interface GenerationBatchSummary {
+  batch_id: string;
+  created_at: string;
+  item_count: number;
+  first_item_index: number;
+  last_item_index: number;
+}
+
+export interface GenerationBatchItem {
+  asset_id: number;
+  item_index: number;
+  generation_id?: number | null;
+  prompt_version_id?: string | null;
+  block_template_id?: string | null;
+  template_slug?: string | null;
+  roll_seed?: number | null;
+  selected_block_ids: string[];
+  slot_results: Record<string, any>[];
+  assembled_prompt?: string | null;
+  mode?: string | null;
+  strategy?: string | null;
+  input_asset_ids: number[];
+  manifest_metadata: Record<string, any>;
+  created_at: string;
+}
+
+export interface GenerationBatchListResponse {
+  batches: GenerationBatchSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GenerationBatchDetailResponse {
+  batch: GenerationBatchSummary;
+  items: GenerationBatchItem[];
+}
+
+export interface ListGenerationBatchesQuery {
+  limit?: number;
+  offset?: number;
+}
+
 export function createGenerationsApi(client: PixSimApiClient) {
   return {
     async createGeneration(request: CreateGenerationRequest): Promise<GenerationResponse> {
@@ -69,6 +112,17 @@ export function createGenerationsApi(client: PixSimApiClient) {
         params: { ...params, _: 'social' },
       });
     },
+
+    async listGenerationBatches(
+      query?: ListGenerationBatchesQuery,
+    ): Promise<GenerationBatchListResponse> {
+      return client.get<GenerationBatchListResponse>('/generation-batches', {
+        params: { ...(query as any), _: 'batch-list' },
+      });
+    },
+
+    async getGenerationBatch(batchId: string): Promise<GenerationBatchDetailResponse> {
+      return client.get<GenerationBatchDetailResponse>(`/generation-batches/${batchId}?_=batch-detail`);
+    },
   };
 }
-

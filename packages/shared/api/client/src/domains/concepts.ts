@@ -4,16 +4,12 @@ import type {
   ConceptKindsResponse,
   ConceptResponse,
   ConceptsListResponse,
-  RoleConceptResponse,
-  RolesListResponse,
 } from '@pixsim7/shared.api.model';
 export type {
   ConceptKindInfo,
   ConceptKindsResponse,
   ConceptResponse,
   ConceptsListResponse,
-  RoleConceptResponse,
-  RolesListResponse,
 };
 
 // ============================================================================
@@ -44,22 +40,6 @@ export type ConceptKind = KnownConceptKind | (string & {});
 export function isKnownConceptKind(kind: string): kind is KnownConceptKind {
   return (KNOWN_KINDS as readonly string[]).includes(kind);
 }
-
-// ============================================================================
-// Role-Specific Types (Backward Compatibility)
-// ============================================================================
-
-/**
- * Role concept from the /concepts/roles API.
- *
- * Includes all metadata needed for frontend role inference.
- * @deprecated Use ConceptResponse via getConcepts('role') for new code.
- */
-
-/**
- * Response from GET /concepts/roles
- * @deprecated Use ConceptsListResponse via getConcepts('role') for new code.
- */
 
 // ============================================================================
 // API Client
@@ -98,33 +78,9 @@ export function createConceptsApi(client: PixSimApiClient) {
     getConcepts,
 
     // Convenience methods for known kinds (use closure, not `this`)
+    getRoles: (packageIds?: string[]) => getConcepts('role', packageIds),
     getParts: (packageIds?: string[]) => getConcepts('part', packageIds),
     getPoses: (packageIds?: string[]) => getConcepts('pose', packageIds),
     getInfluenceRegions: (packageIds?: string[]) => getConcepts('influence_region', packageIds),
-
-    /**
-     * Get composition roles with full metadata for frontend inference.
-     *
-     * Includes:
-     * - All roles from core + active packages (or all if no filter)
-     * - Slug/namespace mappings for inferring role from tags
-     * - Priority list for conflict resolution
-     *
-     * This provides plugin roles that build-time generators cannot include.
-     * Frontend should merge with generated core constants and dedupe by id.
-     *
-     * @param packageIds - Optional list of package IDs to filter by.
-     *                     If not provided, returns roles from all packages.
-     *                     Core package (core.base) is always included.
-     * @deprecated Use getConcepts('role') for new code.
-     */
-    async getRoles(packageIds?: string[]): Promise<RolesListResponse> {
-      const params = packageIds?.length
-        ? { packages: packageIds.join(',') }
-        : undefined;
-
-      return client.get<RolesListResponse>('/concepts/roles', { params });
-    },
   };
 }
-

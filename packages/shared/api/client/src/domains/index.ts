@@ -50,6 +50,8 @@ export type {
   ListTemplatesQuery,
   SearchBlocksQuery,
   BlockTagFacetsQuery,
+  ReloadContentPacksQuery,
+  ReloadContentPacksResponse,
   PromptBlockResponse,
   BlockRoleSummary,
 } from './blockTemplates';
@@ -136,6 +138,11 @@ export type {
   SceneRef,
   PlayerContextSnapshot,
   ListGenerationsQuery,
+  GenerationBatchSummary,
+  GenerationBatchItem,
+  GenerationBatchListResponse,
+  GenerationBatchDetailResponse,
+  ListGenerationBatchesQuery,
 } from './generations';
 
 export type {
@@ -167,7 +174,6 @@ export type {
 
 export type { CompositionPackagesResponse } from './composition';
 
-export type { RoleConceptResponse, RolesListResponse } from './concepts';
 export {
   KNOWN_KINDS,
   isKnownConceptKind,

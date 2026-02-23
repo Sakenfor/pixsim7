@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useHoverExpand } from './useHoverExpand';
+import { PortalFloat, type AnchorPlacement } from './PortalFloat';
 
 // ============================================================================
 // Types
@@ -93,6 +94,25 @@ export interface ButtonGroupProps {
   expandOffset?: number;
   /** Show labels alongside icons */
   showLabels?: boolean;
+  /** Render expand content in a portal to escape overflow/stacking-context constraints */
+  portal?: boolean;
+  /**
+   * Enable mouse-wheel cycling through items (useful when the group is wider
+   * than compact cards). Cycles one item per wheel step.
+   */
+  wheelCycle?: boolean;
+  /**
+   * Enable responsive windowing of visible items based on nearest `.cq-scale`
+   * container width. Intended for compact media-card overlays.
+   */
+  responsiveVisible?: boolean;
+  /** Optional fixed visible-item count (overrides responsiveVisible). */
+  visibleCount?: number;
+  /**
+   * When windowing is active, start with a window that includes this item id
+   * (centered when possible). Useful for keeping a primary action visible.
+   */
+  preferredVisibleId?: string;
 }
 
 // ============================================================================
@@ -116,14 +136,14 @@ const LAYOUT_CONFIG: Record<ButtonGroupLayout, {
   divider: string;
   firstRounding: string;
   lastRounding: string;
-  expandDirection: 'up' | 'down' | 'left' | 'right';
+  expandDirection: AnchorPlacement;
 }> = {
   pill: {
     container: 'flex-row rounded-full',
     divider: 'w-px h-auto',
     firstRounding: 'rounded-l-full',
     lastRounding: 'rounded-r-full',
-    expandDirection: 'up',
+    expandDirection: 'top',
   },
   stack: {
     container: 'flex-col rounded-full',
@@ -137,7 +157,7 @@ const LAYOUT_CONFIG: Record<ButtonGroupLayout, {
     divider: 'w-px h-auto',
     firstRounding: 'rounded-l-md',
     lastRounding: 'rounded-r-md',
-    expandDirection: 'up',
+    expandDirection: 'top',
   },
 };
 
@@ -189,24 +209,126 @@ export function ButtonGroup({
   className,
   expandOffset = 6,
   showLabels = false,
+  portal = false,
+  wheelCycle = false,
+  responsiveVisible = false,
+  visibleCount,
+  preferredVisibleId,
 }: ButtonGroupProps) {
   if (items.length === 0) return null;
 
   const config = LAYOUT_CONFIG[layout];
   const sizeClass = SIZE_CLASSES[size];
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+  const [hasResponsiveHost, setHasResponsiveHost] = useState(false);
+  const [windowOffset, setWindowOffset] = useState(0);
+  const itemIds = useMemo(() => items.map((item) => item.id), [items]);
+  const itemIdsSignature = useMemo(() => itemIds.join('|'), [itemIds]);
+
+  useEffect(() => {
+    if (!responsiveVisible || !rootRef.current) return;
+
+    const host = rootRef.current.closest('.cq-scale') as HTMLElement | null;
+    if (!host) {
+      setHasResponsiveHost(false);
+      setContainerWidth(0);
+      return;
+    }
+
+    setHasResponsiveHost(true);
+
+    const update = () => {
+      setContainerWidth(host.clientWidth || 0);
+    };
+
+    update();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [responsiveVisible]);
+
+  const resolvedVisibleCount = useMemo(() => {
+    if (typeof visibleCount === 'number') {
+      return Math.max(1, Math.min(items.length, Math.floor(visibleCount)));
+    }
+    if (!responsiveVisible || !hasResponsiveHost || containerWidth <= 0) {
+      return items.length;
+    }
+    if (containerWidth < 78) return Math.min(items.length, 1);
+    if (containerWidth < 112) return Math.min(items.length, 2);
+    if (containerWidth < 152) return Math.min(items.length, 3);
+    if (containerWidth < 188) return Math.min(items.length, 4);
+    return items.length;
+  }, [visibleCount, responsiveVisible, hasResponsiveHost, containerWidth, items.length]);
+
+  useEffect(() => {
+    if (resolvedVisibleCount >= items.length) {
+      setWindowOffset(0);
+      return;
+    }
+    if (!preferredVisibleId) {
+      setWindowOffset(0);
+      return;
+    }
+
+    const preferredIndex = itemIds.findIndex((id) => id === preferredVisibleId);
+    if (preferredIndex < 0) {
+      setWindowOffset(0);
+      return;
+    }
+
+    const centered = preferredIndex - Math.floor(resolvedVisibleCount / 2);
+    const normalized = ((centered % items.length) + items.length) % items.length;
+    setWindowOffset(normalized);
+  }, [itemIdsSignature, items.length, preferredVisibleId, resolvedVisibleCount]);
+
+  const renderedItems = useMemo(() => {
+    if (!wheelCycle || resolvedVisibleCount >= items.length) {
+      return items;
+    }
+
+    const next: ButtonGroupItem[] = [];
+    for (let i = 0; i < resolvedVisibleCount; i += 1) {
+      next.push(items[(windowOffset + i) % items.length]);
+    }
+    return next;
+  }, [items, wheelCycle, resolvedVisibleCount, windowOffset]);
+
+  const handleWheelCycle = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    if (!wheelCycle || resolvedVisibleCount >= items.length) return;
+    const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+    if (Math.abs(delta) < 1) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const step = delta > 0 ? 1 : -1;
+    setWindowOffset((prev) => {
+      const next = prev + step;
+      if (next < 0) return items.length - 1;
+      if (next >= items.length) return 0;
+      return next;
+    });
+  }, [wheelCycle, resolvedVisibleCount, items.length]);
 
   return (
     <div
+      ref={rootRef}
+      onWheelCapture={handleWheelCycle}
       className={clsx(
         'flex shadow-lg',
         colorClass,
         config.container,
+        wheelCycle && resolvedVisibleCount < items.length && 'cursor-ew-resize',
         className
       )}
     >
-      {items.map((item, index) => {
+      {renderedItems.map((item, index) => {
         const isFirst = index === 0;
-        const isLast = index === items.length - 1;
+        const isLast = index === renderedItems.length - 1;
 
         return (
           <React.Fragment key={item.id}>
@@ -226,6 +348,7 @@ export function ButtonGroup({
                 hoverClass={hoverClass}
                 expandOffset={expandOffset}
                 showLabels={showLabels}
+                portal={portal}
               />
             ) : (
               <div className="relative">
@@ -271,6 +394,7 @@ interface ExpandableItemProps {
   hoverClass: string;
   expandOffset: number;
   showLabels: boolean;
+  portal: boolean;
 }
 
 function ExpandableItem({
@@ -282,28 +406,25 @@ function ExpandableItem({
   hoverClass,
   expandOffset,
   showLabels,
+  portal,
 }: ExpandableItemProps) {
   const { isExpanded, handlers } = useHoverExpand({
     expandDelay: item.expandDelay,
     collapseDelay: item.collapseDelay,
   });
+  const containerRef = useRef<HTMLDivElement>(null);
 
-  // Position expand content based on direction
-  const getExpandPositionStyle = (): React.CSSProperties => {
-    switch (config.expandDirection) {
-      case 'up':
-        return { bottom: `calc(100% + ${expandOffset}px)`, left: '50%', transform: 'translateX(-50%)' };
-      case 'down':
-        return { top: `calc(100% + ${expandOffset}px)`, left: '50%', transform: 'translateX(-50%)' };
-      case 'left':
-        return { right: `calc(100% + ${expandOffset}px)`, top: '50%', transform: 'translateY(-50%)' };
-      case 'right':
-        return { left: `calc(100% + ${expandOffset}px)`, top: '50%', transform: 'translateY(-50%)' };
-    }
+  // Inline (non-portal) expand position styles
+  const INLINE_EXPAND: Record<AnchorPlacement, React.CSSProperties> = {
+    top: { bottom: `calc(100% + ${expandOffset}px)`, left: '50%', transform: 'translateX(-50%)' },
+    bottom: { top: `calc(100% + ${expandOffset}px)`, left: '50%', transform: 'translateX(-50%)' },
+    left: { right: `calc(100% + ${expandOffset}px)`, top: '50%', transform: 'translateY(-50%)' },
+    right: { left: `calc(100% + ${expandOffset}px)`, top: '50%', transform: 'translateY(-50%)' },
   };
 
   return (
     <div
+      ref={containerRef}
       className="relative"
       {...handlers}
     >
@@ -328,14 +449,22 @@ function ExpandableItem({
       </button>
       {item.badge}
 
-      {/* Expand content */}
       {isExpanded && item.expandContent && (
-        <div
-          className="absolute z-50"
-          style={getExpandPositionStyle()}
-        >
-          {item.expandContent}
-        </div>
+        portal ? (
+          <PortalFloat
+            anchor={containerRef.current}
+            placement={config.expandDirection}
+            offset={expandOffset}
+            onMouseEnter={handlers.onMouseEnter}
+            onMouseLeave={handlers.onMouseLeave}
+          >
+            {item.expandContent}
+          </PortalFloat>
+        ) : (
+          <div className="absolute z-dropdown" style={INLINE_EXPAND[config.expandDirection]}>
+            {item.expandContent}
+          </div>
+        )
       )}
     </div>
   );

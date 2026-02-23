@@ -112,7 +112,7 @@ export function ExpandableButtonGroup({
             }}
             variants={containerVariants}
             className={clsx(
-              'absolute z-30',
+              'absolute z-dropdown',
               positionClasses[direction],
               contentClassName
             )}

@@ -6,6 +6,50 @@
  */
 
 /** Slot constraint definition within a template */
+export type TemplateSlotSelectionStrategy =
+  | 'uniform'
+  | 'weighted_rating'
+  | 'weighted_tags'
+  | 'diverse'
+  | 'coherent_rerank'
+  | 'llm_rerank';
+
+export interface TemplateSlotTagQuery {
+  all?: Record<string, unknown>;
+  all_of?: Record<string, unknown>;
+  any?: Record<string, unknown>;
+  any_of?: Record<string, unknown>;
+  not?: Record<string, unknown>;
+  none_of?: Record<string, unknown>;
+}
+
+export interface TemplateSlotPreferences {
+  boost_tags?: Record<string, unknown>;
+  avoid_tags?: Record<string, unknown>;
+  diversity_keys?: string[];
+  novelty_weight?: number;
+  coherence_weight?: number;
+}
+
+export interface TemplateSlotSelectionWeights {
+  hard_match_bonus?: number;
+  boost_tags?: number;
+  avoid_tags?: number;
+  rating?: number;
+  diversity?: number;
+  coherence?: number;
+  novelty?: number;
+}
+
+export interface TemplateSlotSelectionConfig {
+  top_k?: number;
+  temperature?: number;
+  fallback_strategy?: TemplateSlotSelectionStrategy;
+  timeout_ms?: number;
+  model?: string;
+  weights?: TemplateSlotSelectionWeights;
+}
+
 export interface TemplateSlot {
   slot_index: number;
   label: string;
@@ -16,9 +60,12 @@ export interface TemplateSlot {
   complexity_min?: string | null;
   complexity_max?: string | null;
   package_name?: string | null;
+  tags?: TemplateSlotTagQuery | null;
   tag_constraints?: Record<string, unknown> | null;
   min_rating?: number | null;
-  selection_strategy: 'uniform' | 'weighted_rating';
+  preferences?: TemplateSlotPreferences | null;
+  selection_strategy: TemplateSlotSelectionStrategy;
+  selection_config?: TemplateSlotSelectionConfig | null;
   weight: number;
   optional: boolean;
   fallback_text?: string | null;
@@ -41,15 +88,34 @@ export interface BlockTemplateSummary {
   is_public: boolean;
   roll_count: number;
   created_at: string;
+  updated_at?: string;
+}
+
+/** Cast spec: marks a binding as castable with filter hints */
+export interface CastSpec {
+  label: string;
+  filter_species?: string;
+  filter_category?: string;
 }
 
 /** A single character binding: maps a role to a character */
 export interface CharacterBinding {
   character_id: string;
+  fallback_name?: string;
+  cast?: CastSpec;
 }
 
 /** Character bindings map: role name -> binding */
 export type CharacterBindings = Record<string, CharacterBinding>;
+
+/** A named preset: a full saved variant of a template's editable state */
+export interface TemplatePreset {
+  name: string;
+  slots: TemplateSlot[];
+  character_bindings: CharacterBindings;
+  composition_strategy: string;
+  target_operation?: string;
+}
 
 /** Full block template detail */
 export interface BlockTemplateDetail extends BlockTemplateSummary {
@@ -89,7 +155,9 @@ export interface RollResult {
     slots_filled: number;
     slots_skipped: number;
     slots_fallback: number;
+    slots_reinforcement?: number;
     composition_strategy: string;
+    composition_strategy_applied?: boolean;
     seed?: number | null;
     roll_count: number;
     character_bindings?: CharacterBindings | null;

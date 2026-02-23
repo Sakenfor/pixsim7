@@ -101,6 +101,8 @@ export interface SubNavItem {
   icon?: string;
   /** Query param appended to page route when navigating */
   param?: { key: string; value: string };
+  /** Absolute route to navigate to (overrides parent route + param) */
+  route?: string;
 }
 
 export interface ModulePageConfig<DevToolCategory = string, CapabilityCategory = string> {
