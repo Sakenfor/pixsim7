@@ -652,12 +652,12 @@ async def sync_account_plan(
         await db.refresh(account)
 
         logger.info(
-            "sync_account_plan_success",
-            account_id=account.id,
-            email=account.email,
-            plan_name=result.get("plan_name"),
-            is_pro=result.get("is_pro"),
-            max_concurrent_jobs=result.get("max_concurrent_jobs"),
+            "sync_account_plan_success account_id=%s email=%s plan_name=%s is_pro=%s max_concurrent_jobs=%s",
+            account.id,
+            account.email,
+            result.get("plan_name"),
+            result.get("is_pro"),
+            result.get("max_concurrent_jobs"),
         )
 
         return SyncPlanResponse(

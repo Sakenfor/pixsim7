@@ -112,7 +112,7 @@ const output = `// Auto-generated from roles vocabulary - DO NOT EDIT
 // ========================================================================
 // NOTE: For dynamic/plugin-aware data, prefer the runtime API:
 //   - compositionPackageStore (apps/main/src/stores/compositionPackageStore.ts)
-//   - Fetches from /api/v1/concepts/roles at runtime, including plugin roles
+//   - Fetches from /api/v1/concepts/role at runtime, including plugin roles
 //
 // This file provides:
 //   - Type definitions (ImageCompositionRole, RoleId) - always valid

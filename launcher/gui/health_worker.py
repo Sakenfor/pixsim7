@@ -54,6 +54,169 @@ class HealthWorker(QThread):
     def stop(self):
         self._stop = True
 
+    def _redis_simple_int(self, host: str, port: int, command: str, key: str) -> Optional[int]:
+        """Issue a simple Redis integer command (e.g. LLEN/ZCARD) using raw RESP."""
+        import socket
+
+        def _bulk(s: str) -> bytes:
+            encoded = s.encode("utf-8")
+            return b"$" + str(len(encoded)).encode("ascii") + b"\r\n" + encoded + b"\r\n"
+
+        payload = b"*2\r\n" + _bulk(command) + _bulk(key)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.75)
+        try:
+            sock.connect((host, port))
+            sock.sendall(payload)
+            response = sock.recv(128)
+            if not response:
+                return None
+            # Redis integer reply: :123\r\n
+            if response.startswith(b":"):
+                raw = response[1:].split(b"\r\n", 1)[0]
+                return int(raw)
+            return None
+        except Exception:
+            return None
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+
+    def _scan_arq_worker_processes(self) -> Dict[str, list[int]]:
+        """Best-effort scan for ARQ worker processes by command line."""
+        import os
+        import json
+        import subprocess
+
+        main_pids: list[int] = []
+        retry_pids: list[int] = []
+
+        try:
+            if os.name == 'nt':
+                ps_cmd = (
+                    "Get-CimInstance Win32_Process | "
+                    "Where-Object { $_.CommandLine -and $_.CommandLine -like '*pixsim7.backend.main.workers.arq_worker*' } | "
+                    "Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"
+                )
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", ps_cmd],
+                    capture_output=True,
+                    text=True,
+                    timeout=4,
+                )
+                raw = (result.stdout or "").strip()
+                if not raw:
+                    return {"main_pids": [], "retry_pids": []}
+                data = json.loads(raw)
+                rows = data if isinstance(data, list) else [data]
+                for row in rows:
+                    pid = row.get("ProcessId")
+                    cmd = (row.get("CommandLine") or "")
+                    if not pid or not cmd:
+                        continue
+                    if "GenerationRetryWorkerSettings" in cmd:
+                        retry_pids.append(int(pid))
+                    elif "arq_worker.WorkerSettings" in cmd:
+                        main_pids.append(int(pid))
+            else:
+                result = subprocess.run(
+                    ["ps", "-eo", "pid=,args="],
+                    capture_output=True,
+                    text=True,
+                    timeout=3,
+                )
+                for line in (result.stdout or "").splitlines():
+                    line = line.strip()
+                    if not line or "pixsim7.backend.main.workers.arq_worker" not in line:
+                        continue
+                    try:
+                        pid_str, cmd = line.split(None, 1)
+                        pid = int(pid_str)
+                    except Exception:
+                        continue
+                    if "GenerationRetryWorkerSettings" in cmd:
+                        retry_pids.append(pid)
+                    elif "arq_worker.WorkerSettings" in cmd:
+                        main_pids.append(pid)
+        except Exception:
+            pass
+
+        return {"main_pids": sorted(set(main_pids)), "retry_pids": sorted(set(retry_pids))}
+
+    def _update_worker_card_details(
+        self,
+        sp,
+        *,
+        process_alive: bool,
+        main_pid: Optional[int],
+        redis_url: Optional[str],
+        redis_reachable: bool,
+    ) -> None:
+        """Populate extra ARQ worker details for the launcher service card."""
+        now = time.time()
+        refresh_every = 5.0
+        last_refresh = float(getattr(sp, "_worker_card_details_ts", 0.0) or 0.0)
+        cached = getattr(sp, "card_details", None)
+
+        if cached and (now - last_refresh) < refresh_every:
+            details = dict(cached)
+            details["main_worker_running"] = bool(process_alive)
+            details["main_worker_pid"] = main_pid
+            details["redis_reachable"] = bool(redis_reachable)
+            details["details_updated_at"] = time.strftime("%H:%M:%S")
+            sp.card_details = details
+            return
+
+        host = "localhost"
+        port = 6379
+        if redis_url:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(redis_url)
+                host = parsed.hostname or host
+                port = parsed.port or port
+            except Exception:
+                pass
+
+        fresh_pending = None
+        retry_pending = None
+        legacy_pending = None
+        in_progress = None
+        if redis_reachable:
+            fresh_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue")
+            retry_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:generation-retry")
+            legacy_pending = self._redis_simple_int(host, port, "LLEN", "arq:queue:default")
+            in_progress = self._redis_simple_int(host, port, "ZCARD", "arq:in-progress")
+
+        proc_scan = self._scan_arq_worker_processes()
+        retry_pids = proc_scan.get("retry_pids", [])
+        main_pids = proc_scan.get("main_pids", [])
+
+        details = {
+            "main_worker_running": bool(process_alive),
+            "main_worker_pid": main_pid,
+            "retry_worker_running": bool(retry_pids),
+            "retry_worker_pids": retry_pids or None,
+            "redis_endpoint": f"{host}:{port}",
+            "redis_reachable": bool(redis_reachable),
+            "queue_pending_fresh": fresh_pending,
+            "queue_pending_retry": retry_pending,
+            "queue_in_progress": in_progress,
+            "queue_pending_legacy_default": legacy_pending if legacy_pending not in (None, 0) else None,
+            "details_updated_at": time.strftime("%H:%M:%S"),
+        }
+        if main_pids and main_pid and main_pid not in main_pids:
+            details["note"] = f"Launcher PID {main_pid} differs from detected ARQ main PIDs {main_pids}"
+        elif retry_pending and retry_pending > 0 and not retry_pids:
+            details["note"] = "Retry queue has jobs but no retry worker process detected"
+        elif not retry_pids:
+            details["note"] = "Retry worker not detected (may be started separately)"
+
+        sp.card_details = details
+        sp._worker_card_details_ts = now
+
     def _update_adaptive_interval(self):
         """Dynamically adjust health check interval based on service states."""
         if not self.adaptive_enabled:
@@ -300,6 +463,8 @@ class HealthWorker(QThread):
                         # CRITICAL: First check if the worker PROCESS is actually alive
                         pid = getattr(sp, "started_pid", None) or getattr(sp, "detected_pid", None)
                         process_alive = False
+                        redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
+                        redis_reachable = False
 
                         if pid:
                             try:
@@ -316,6 +481,13 @@ class HealthWorker(QThread):
                             sp.running = False
                             sp.detected_pid = None
                             sp.started_pid = None
+                            self._update_worker_card_details(
+                                sp,
+                                process_alive=False,
+                                main_pid=pid,
+                                redis_url=redis_url,
+                                redis_reachable=False,
+                            )
                             self._emit_health_update(key, HealthStatus.STOPPED)
                             if _launcher_logger:
                                 try:
@@ -331,7 +503,6 @@ class HealthWorker(QThread):
                         # If process is alive, verify Redis connection as additional health check
                         if sp.running and process_alive:
                             try:
-                                redis_url = os.getenv('ARQ_REDIS_URL') or os.getenv('REDIS_URL') or 'redis://localhost:6380/0'
                                 # Parse host:port
                                 host_port = redis_url.split('://', 1)[-1].split('/', 1)[0]
                                 host, port = host_port.split(':') if ':' in host_port else (host_port, '6379')
@@ -346,6 +517,7 @@ class HealthWorker(QThread):
                                         sock.recv(16)
                                     except Exception:
                                         pass
+                                    redis_reachable = True
                                     # Process alive and Redis accessible = healthy
                                     self._emit_health_update(key, HealthStatus.HEALTHY)
                                     self.failure_counts[key] = 0
@@ -375,9 +547,23 @@ class HealthWorker(QThread):
                             except Exception:
                                 self.failure_counts[key] = self.failure_counts.get(key, 0) + 1
                                 self._emit_health_update(key, HealthStatus.UNHEALTHY)
+                            self._update_worker_card_details(
+                                sp,
+                                process_alive=True,
+                                main_pid=pid,
+                                redis_url=redis_url,
+                                redis_reachable=redis_reachable,
+                            )
                         else:
                             # Not running or no PID - mark as stopped
                             sp.running = False
+                            self._update_worker_card_details(
+                                sp,
+                                process_alive=False,
+                                main_pid=pid,
+                                redis_url=redis_url,
+                                redis_reachable=False,
+                            )
                             self._emit_health_update(key, HealthStatus.STOPPED)
                         continue
 
