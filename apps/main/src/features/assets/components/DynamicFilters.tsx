@@ -98,6 +98,8 @@ interface DynamicFiltersProps {
   showCounts?: boolean;
   /** Compact mode (icons only) */
   compact?: boolean;
+  /** Extra chip elements rendered after primary filters and before the overflow menu */
+  extraChips?: ReactNode;
 }
 
 /**
@@ -111,6 +113,7 @@ export function DynamicFilters({
   exclude = [],
   showCounts = false,
   compact = false,
+  extraChips,
 }: DynamicFiltersProps) {
   const [openFilters, setOpenFilters] = useState<Set<string>>(new Set());
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
@@ -402,6 +405,7 @@ export function DynamicFilters({
           </div>
         );
       })}
+      {extraChips}
       {overflowFilters.length > 0 && (
         <OverflowMenu
           filters={overflowFilters}

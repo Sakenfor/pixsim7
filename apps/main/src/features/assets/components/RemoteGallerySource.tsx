@@ -1,5 +1,6 @@
-import { Button } from '@pixsim7/shared.ui';
+import { Button, Dropdown } from '@pixsim7/shared.ui';
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 
@@ -69,6 +70,197 @@ import { BottomPagination } from './shared/BottomPagination';
 import { GalleryToolsStrip } from './shared/GalleryToolsStrip';
 import { PaginationStrip } from './shared/PaginationStrip';
 
+
+// ---------------------------------------------------------------------------
+// ActiveSetChip — compact chip for the DynamicFilters extra-chips slot
+// ---------------------------------------------------------------------------
+
+function ActiveSetChip({
+  manualSets,
+  activeManualSet,
+  activeManualSetId,
+  setActiveManualSetId,
+  clearActiveManualSetId,
+  selectedCount,
+  onAddSelected,
+}: {
+  manualSets: ManualAssetSet[];
+  activeManualSet: ManualAssetSet | undefined;
+  activeManualSetId: string | undefined;
+  setActiveManualSetId: (id?: string) => void;
+  clearActiveManualSetId: () => void;
+  selectedCount: number;
+  onAddSelected: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const hoverTimeout = useRef<number | null>(null);
+
+  const isActive = !!activeManualSet;
+  const isVisible = open || hovered;
+  const isInFlow = isActive;
+
+  useLayoutEffect(() => {
+    if (!isVisible || !anchorRef.current) {
+      setRect(null);
+      return;
+    }
+    const update = () => setRect(anchorRef.current?.getBoundingClientRect() ?? null);
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [isVisible]);
+
+  const openHover = useCallback(() => {
+    if (hoverTimeout.current !== null) {
+      window.clearTimeout(hoverTimeout.current);
+      hoverTimeout.current = null;
+    }
+    setHovered(true);
+  }, []);
+
+  const closeHover = useCallback(() => {
+    if (hoverTimeout.current !== null) {
+      window.clearTimeout(hoverTimeout.current);
+    }
+    hoverTimeout.current = window.setTimeout(() => {
+      setHovered(false);
+    }, 120);
+  }, []);
+
+  if (manualSets.length === 0) return null;
+
+  return (
+    <div
+      className={`relative group flex-none ${isInFlow ? '' : 'w-7 h-7'}`}
+      style={!isInFlow && isVisible ? { zIndex: 30 } : undefined}
+      onMouseEnter={openHover}
+      onMouseLeave={closeHover}
+    >
+      <button
+        type="button"
+        ref={anchorRef}
+        title="Active Set"
+        aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className={`${isInFlow ? 'relative' : 'absolute left-0 top-0 w-7 justify-center'} z-20 inline-flex items-center gap-1.5 h-7 px-1.5 rounded border text-xs transition-[background-color,border-color] duration-200 ${
+          isActive
+            ? 'border-emerald-500/50 bg-emerald-500/10 text-neutral-800 dark:text-neutral-100'
+            : open
+              ? 'border-neutral-300 dark:border-neutral-600 bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200'
+              : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-700 dark:hover:text-neutral-200'
+        }`}
+      >
+        <span className="relative flex-shrink-0">
+          <Icon name="target" size={14} className="w-3.5 h-3.5" />
+        </span>
+        {isInFlow && (
+          <span className="font-medium whitespace-nowrap">
+            {activeManualSet!.name}
+          </span>
+        )}
+        {isInFlow && (
+          <span className="text-[9px] leading-none px-1 min-w-[14px] text-center rounded-full bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+            {activeManualSet!.assetIds.length}
+          </span>
+        )}
+      </button>
+      {/* Floating label for idle state */}
+      {!isInFlow && (
+        <span
+          className={`absolute left-[27px] top-0 z-20 h-7 inline-flex items-center gap-1 pl-1 pr-1.5 rounded-r border border-l-0 text-xs font-medium whitespace-nowrap pointer-events-none transition-opacity duration-150 text-neutral-700 dark:text-neutral-200 ${
+            isVisible
+              ? 'opacity-100 border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-900'
+              : 'opacity-0 border-transparent'
+          }`}
+        >
+          Active Set
+        </span>
+      )}
+      {/* Dropdown */}
+      {isVisible && rect && createPortal(
+        <div
+          className="z-popover"
+          style={{
+            position: 'fixed',
+            left: Math.max(8, Math.min(rect.left, window.innerWidth - 240 - 8)),
+            top: rect.bottom + 6,
+          }}
+          onMouseEnter={openHover}
+          onMouseLeave={closeHover}
+        >
+          <Dropdown
+            isOpen={isVisible}
+            onClose={() => { setOpen(false); setHovered(false); }}
+            positionMode="static"
+            minWidth="200px"
+            className="max-w-[280px]"
+          >
+            <div className="flex flex-col gap-0.5">
+              {/* "None" option */}
+              <label
+                className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+              >
+                <input
+                  type="radio"
+                  name="active-set-chip"
+                  checked={!activeManualSetId}
+                  onChange={() => { clearActiveManualSetId(); setOpen(false); }}
+                  className="accent-emerald-500"
+                />
+                <span className={!activeManualSetId ? 'text-neutral-400 dark:text-neutral-500' : ''}>
+                  None
+                </span>
+              </label>
+              {/* Manual sets */}
+              {manualSets.map((s) => (
+                <label
+                  key={s.id}
+                  className="flex items-center gap-2 px-1.5 py-1 text-sm text-neutral-700 dark:text-neutral-200 cursor-pointer rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  <input
+                    type="radio"
+                    name="active-set-chip"
+                    checked={activeManualSetId === s.id}
+                    onChange={() => { setActiveManualSetId(s.id); setOpen(false); }}
+                    className="accent-emerald-500"
+                  />
+                  <span className="flex-1 truncate">{s.name}</span>
+                  <span className="text-[10px] text-neutral-400 dark:text-neutral-500 tabular-nums">
+                    {s.assetIds.length}
+                  </span>
+                </label>
+              ))}
+              {/* Add selected action */}
+              {selectedCount > 0 && activeManualSet && (
+                <>
+                  <div className="border-t border-neutral-200 dark:border-neutral-700 my-1" />
+                  <button
+                    type="button"
+                    onClick={() => { onAddSelected(); setOpen(false); }}
+                    className="flex items-center gap-1.5 px-1.5 py-1 text-sm text-emerald-700 dark:text-emerald-300 rounded hover:bg-emerald-500/10 transition-colors"
+                  >
+                    <Icon name="plus" size={12} />
+                    <span>Add {selectedCount} selected</span>
+                  </button>
+                </>
+              )}
+            </div>
+          </Dropdown>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 interface RemoteGallerySourceProps {
   layout: 'masonry' | 'grid';
@@ -1023,67 +1215,23 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             currentFilters={controller.filters}
             onLoadPreset={(filters) => controller.replaceFilters(filters)}
           />
-          <div className="flex flex-wrap items-center gap-2 px-0.5">
-            <span className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 font-semibold">
-              Active Set
-            </span>
-            <select
-              className="h-7 min-w-[170px] max-w-[280px] px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-200 focus:outline-none focus:border-accent transition-colors"
-              value={activeManualSet?.id ?? ''}
-              onChange={(e) => setActiveManualSetId(e.target.value || undefined)}
-              disabled={manualSets.length === 0}
-              title={manualSets.length === 0 ? 'Create a manual asset set first' : 'Choose an active manual set for quick add'}
-            >
-              <option value="">
-                {manualSets.length === 0 ? 'No manual sets available' : 'None (disabled)'}
-              </option>
-              {manualSets.map((set) => (
-                <option key={set.id} value={set.id}>
-                  {set.name} ({set.assetIds.length})
-                </option>
-              ))}
-            </select>
-            {activeManualSet && (
-              <>
-                <span className="inline-flex items-center h-7 px-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-[11px] text-emerald-700 dark:text-emerald-300">
-                  {activeManualSet.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => clearActiveManualSetId()}
-                  className="inline-flex items-center gap-1 h-7 px-2 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-xs text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                >
-                  <Icon name="x" size={11} />
-                  Clear
-                </button>
-                {controller.selectedAssetIds.size > 0 && (
-                  <button
-                    type="button"
-                    onClick={addSelectedToActiveManualSet}
-                    className="inline-flex items-center gap-1 h-7 px-2 rounded border border-accent/40 bg-accent/10 text-xs text-accent hover:bg-accent/15"
-                    title={`Add ${controller.selectedAssetIds.size} selected asset${controller.selectedAssetIds.size === 1 ? '' : 's'} to ${activeManualSet.name}`}
-                  >
-                    <Icon name="plus" size={11} />
-                    Add Selected ({controller.selectedAssetIds.size})
-                  </button>
-                )}
-                <span className="text-[10px] text-neutral-400">
-                  Gesture available: bind "Add to Active Set" in Settings &gt; Gestures.
-                </span>
-              </>
-            )}
-            {!activeManualSet && manualSets.length > 0 && (
-              <span className="text-[10px] text-neutral-400">
-                Pick a manual set, then hover cards to add while browsing.
-              </span>
-            )}
-          </div>
           <div>
             <DynamicFilters
               filters={controller.filters}
               onFiltersChange={(f) => setFilters(f)}
               exclude={['q']}
               showCounts
+              extraChips={
+                <ActiveSetChip
+                  manualSets={manualSets}
+                  activeManualSet={activeManualSet}
+                  activeManualSetId={activeManualSetId}
+                  setActiveManualSetId={setActiveManualSetId}
+                  clearActiveManualSetId={clearActiveManualSetId}
+                  selectedCount={controller.selectedAssetIds.size}
+                  onAddSelected={addSelectedToActiveManualSet}
+                />
+              }
             />
           </div>
         </div>
