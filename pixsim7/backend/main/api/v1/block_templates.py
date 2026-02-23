@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.api.dependencies import get_db, get_current_user
 from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
+from pixsim7.backend.main.services.prompt.block.block_query import (
+    build_prompt_block_query,
+)
+from pixsim7.backend.main.services.prompt.block.template_slots import TemplateSlotSpec
 from pixsim7.backend.main.domain.user import User
 
 router = APIRouter(prefix="/block-templates", tags=["block-templates"])
@@ -22,26 +26,8 @@ router = APIRouter(prefix="/block-templates", tags=["block-templates"])
 
 # ===== Request/Response Models =====
 
-class TemplateSlotInput(BaseModel):
-    slot_index: int = Field(0, description="Ordering index")
-    label: str = Field("", description="Human-readable slot label")
-    role: Optional[str] = Field(None, description="Required block role")
-    category: Optional[str] = Field(None, description="Required block category")
-    kind: Optional[str] = Field(None, description="Block kind filter")
-    intent: Optional[str] = Field(None, description="Block intent filter (generate/preserve/modify/add/remove)")
-    complexity_min: Optional[str] = Field(None, description="Min complexity level")
-    complexity_max: Optional[str] = Field(None, description="Max complexity level")
-    package_name: Optional[str] = Field(None, description="Package filter")
-    tag_constraints: Optional[Dict[str, Any]] = Field(None, description="Tag key-value filters")
-    min_rating: Optional[float] = Field(None, description="Minimum avg_rating")
-    selection_strategy: str = Field("uniform", description="uniform or weighted_rating")
-    weight: float = Field(1.0, description="Composition weight")
-    optional: bool = Field(False, description="Skip if no matches")
-    fallback_text: Optional[str] = Field(None, description="Fallback text if no matches")
-    reinforcement_text: Optional[str] = Field(None, description="Freeform text for reinforcement slots (supports {{role.attr}} placeholders)")
-    intensity: Optional[int] = Field(None, ge=1, le=10, description="Intensity 1-10 for graded modifiers in reinforcement text (null = random)")
-    inherit_intensity: bool = Field(False, description="If true, inherit intensity from the previous block's tags")
-    exclude_block_ids: Optional[List[UUID]] = Field(None, description="Block IDs to exclude")
+class TemplateSlotInput(TemplateSlotSpec):
+    """Canonical template slot input shape (strict)."""
 
 
 class CreateTemplateRequest(BaseModel):
@@ -59,6 +45,7 @@ class CreateTemplateRequest(BaseModel):
 
 class UpdateTemplateRequest(BaseModel):
     name: Optional[str] = None
+    slug: Optional[str] = None
     description: Optional[str] = None
     slots: Optional[List[TemplateSlotInput]] = None
     composition_strategy: Optional[str] = None
@@ -73,6 +60,7 @@ class RollTemplateRequest(BaseModel):
     seed: Optional[int] = Field(None, description="Random seed for reproducibility")
     exclude_block_ids: Optional[List[UUID]] = Field(None, description="Block IDs to exclude globally")
     character_bindings: Optional[Dict[str, Any]] = Field(None, description="Override character bindings for this roll")
+    control_values: Optional[Dict[str, float]] = Field(None, description="Slider control overrides (control_id -> value); defaults to each control's defaultValue")
 
 
 class PreviewSlotRequest(BaseModel):
@@ -113,9 +101,53 @@ class TemplateSummaryResponse(BaseModel):
     is_public: bool = True
     roll_count: int = 0
     created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class TemplateSlotPackageCountResponse(BaseModel):
+    package_name: Optional[str] = None
+    count: int = 0
+
+
+class TemplateSlotDiagnosticsResponse(BaseModel):
+    slot_index: int
+    label: str
+    kind: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None
+    selection_strategy: str
+    optional: bool = False
+    slot_package_name: Optional[str] = None
+    template_package_name: Optional[str] = None
+    status_hint: str = "queryable"
+    total_matches: int = 0
+    package_match_counts: List[TemplateSlotPackageCountResponse] = Field(default_factory=list)
+    template_package_match_count: int = 0
+    other_package_match_count: int = 0
+    has_matches_outside_template_package: bool = False
+    would_need_fallback_if_template_package_restricted: bool = False
+
+
+class TemplateDiagnosticsTemplateSummaryResponse(BaseModel):
+    id: str
+    name: str
+    slug: str
+    package_name: Optional[str] = None
+    composition_strategy: str
+    slot_count: int
+    slot_schema_version: Optional[int] = None
+    source: Dict[str, Any] = Field(default_factory=dict)
+    dependencies: Dict[str, Any] = Field(default_factory=dict)
+    updated_at: Optional[str] = None
+
+
+class TemplateDiagnosticsResponse(BaseModel):
+    success: bool = True
+    template: TemplateDiagnosticsTemplateSummaryResponse
+    slots: List[TemplateSlotDiagnosticsResponse] = Field(default_factory=list)
 
 
 # ===== CRUD Endpoints =====
@@ -175,6 +207,7 @@ async def list_templates(
             is_public=t.is_public,
             roll_count=t.roll_count,
             created_at=t.created_at,
+            updated_at=t.updated_at,
         )
         for t in templates
     ]
@@ -215,6 +248,11 @@ async def update_template(
 ):
     """Update a template."""
     service = BlockTemplateService(db)
+
+    if request.slug is not None:
+        existing = await service.get_template_by_slug(request.slug)
+        if existing and existing.id != template_id:
+            raise HTTPException(400, f"Template with slug '{request.slug}' already exists")
 
     updates = {}
     for key, value in request.model_dump(exclude_unset=True).items():
@@ -260,9 +298,26 @@ async def roll_template(
         seed=request.seed,
         exclude_block_ids=request.exclude_block_ids,
         character_bindings=request.character_bindings,
+        control_values=request.control_values,
     )
     if not result.get("success"):
         raise HTTPException(404, result.get("error", "Roll failed"))
+    return result
+
+
+@router.get("/{template_id}/diagnostics", response_model=TemplateDiagnosticsResponse)
+async def get_template_diagnostics(
+    template_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Inspect slot candidate counts by package for a template."""
+    service = BlockTemplateService(db)
+    result = await service.diagnose_template(template_id)
+    if not result.get("success"):
+        error = str(result.get("error") or "Diagnostics failed")
+        if "not found" in error.lower():
+            raise HTTPException(404, error)
+        raise HTTPException(400, error)
     return result
 
 
@@ -321,37 +376,25 @@ async def search_blocks(
     db: AsyncSession = Depends(get_db),
 ):
     """Search prompt blocks with optional filters."""
-    from sqlalchemy import or_
-
     from pixsim7.backend.main.domain.prompt import PromptBlock
 
-    query = select(PromptBlock)
-
-    if role:
-        query = query.where(PromptBlock.role == role)
-    if category:
-        query = query.where(PromptBlock.category == category)
-    if kind:
-        query = query.where(PromptBlock.kind == kind)
-    if package_name:
-        query = query.where(PromptBlock.package_name == package_name)
-    if q:
-        pattern = f"%{q}%"
-        query = query.where(
-            or_(
-                PromptBlock.block_id.ilike(pattern),
-                PromptBlock.text.ilike(pattern),
-            )
-        )
+    tag_constraints: Dict[str, str] = {}
     if tags:
         for pair in tags.split(","):
             pair = pair.strip()
             if ":" not in pair:
                 continue
             tag_key, tag_value = pair.split(":", 1)
-            query = query.where(
-                func.jsonb_extract_path_text(PromptBlock.tags, tag_key.strip()) == tag_value.strip()
-            )
+            tag_constraints[tag_key.strip()] = tag_value.strip()
+
+    query = build_prompt_block_query(
+        role=role,
+        category=category,
+        kind=kind,
+        package_name=package_name,
+        text_query=q,
+        tag_constraints=tag_constraints or None,
+    )
 
     query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
     query = query.offset(offset).limit(limit)
@@ -453,6 +496,7 @@ async def list_content_packs():
 async def reload_content_packs(
     pack: Optional[str] = Query(None, description="Specific pack to reload (default: all)"),
     force: bool = Query(False, description="Overwrite existing blocks/templates"),
+    prune: bool = Query(False, description="Delete rows for this pack missing from YAML"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -471,7 +515,12 @@ async def reload_content_packs(
 
     for pack_name in packs:
         try:
-            stats = await load_pack(db, pack_name, force=force)
+            stats = await load_pack(
+                db,
+                pack_name,
+                force=force,
+                prune_missing=prune,
+            )
             results[pack_name] = stats
         except FileNotFoundError:
             results[pack_name] = {"error": f"Content pack '{pack_name}' not found"}

@@ -662,6 +662,378 @@ templates:
       - preset: three_layer_composition
 
   # ═══════════════════════════════════════════════════════════════════
+  # Afternoon Metro — playful trio proximity, tight group framing
+  # ═══════════════════════════════════════════════════════════════════
+  - slug: afternoon-metro-elderly-trio
+    name: "Afternoon Metro - Playful Trio Proximity"
+    description: >-
+      Image edit: preserves subject pose, clothing, and identity. Places her
+      standing in an afternoon metro car with three elderly men in tight group
+      proximity. Playful engagement dynamics, metro sway contact, warm window
+      sunlight. Tight intimate group framing with narrow field of view.
+    composition_strategy: sequential
+    package_name: image_edit_scenes
+    tags: [image_edit, metro, afternoon, transit, close_framing, trio, elderly, playful, proximity]
+    is_public: true
+    character_bindings:
+      elderly_man_1:
+        character_id: ""
+        fallback_name: "An elderly man"
+        cast:
+          label: "Nearest man"
+          filter_category: "human"
+      elderly_man_2:
+        character_id: ""
+        fallback_name: "A second elderly man"
+        cast:
+          label: "Second man"
+          filter_category: "human"
+      elderly_man_3:
+        character_id: ""
+        fallback_name: "A third elderly man"
+        cast:
+          label: "Third man"
+          filter_category: "human"
+    template_metadata:
+      target_operation: image_to_image
+      mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
+
+        - id: proximity
+          type: slider
+          label: Proximity
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 7
+          effects:
+            # ── Nearest man placement ──
+            - kind: slot_tag_boost
+              slotLabel: Nearest man placement
+              enabledAt: 0
+              boostTags: { proximity: relaxed }
+              avoidTags: { proximity: intimate }
+            - kind: slot_tag_boost
+              slotLabel: Nearest man placement
+              enabledAt: 4
+              boostTags: { proximity: close }
+              avoidTags: { proximity: relaxed }
+            - kind: slot_tag_boost
+              slotLabel: Nearest man placement
+              enabledAt: 7
+              boostTags: { proximity: intimate }
+              avoidTags: { proximity: relaxed }
+            # ── Second man placement ──
+            - kind: slot_tag_boost
+              slotLabel: Second man placement
+              enabledAt: 0
+              boostTags: { proximity: relaxed }
+              avoidTags: { proximity: intimate }
+            - kind: slot_tag_boost
+              slotLabel: Second man placement
+              enabledAt: 4
+              boostTags: { proximity: close }
+              avoidTags: { proximity: relaxed }
+            - kind: slot_tag_boost
+              slotLabel: Second man placement
+              enabledAt: 7
+              boostTags: { proximity: intimate }
+              avoidTags: { proximity: relaxed }
+            # ── Third man placement ──
+            - kind: slot_tag_boost
+              slotLabel: Third man placement
+              enabledAt: 0
+              boostTags: { proximity: relaxed }
+              avoidTags: { proximity: intimate }
+            - kind: slot_tag_boost
+              slotLabel: Third man placement
+              enabledAt: 4
+              boostTags: { proximity: close }
+              avoidTags: { proximity: relaxed }
+            - kind: slot_tag_boost
+              slotLabel: Third man placement
+              enabledAt: 7
+              boostTags: { proximity: intimate }
+              avoidTags: { proximity: relaxed }
+
+        - id: men_count
+          type: slider
+          label: "Men"
+          min: 1
+          max: 3
+          step: 1
+          defaultValue: 3
+          effects:
+            # At 1: push 2nd + 3rd men toward background
+            - kind: slot_tag_boost
+              slotLabel: Second man placement
+              enabledAt: 1
+              boostTags: { prominence: background }
+              avoidTags: { prominence: featured }
+            - kind: slot_tag_boost
+              slotLabel: Second man description
+              enabledAt: 1
+              boostTags: { prominence: background }
+              avoidTags: { prominence: featured }
+            - kind: slot_tag_boost
+              slotLabel: Third man placement
+              enabledAt: 1
+              boostTags: { prominence: background }
+              avoidTags: { prominence: featured }
+            - kind: slot_tag_boost
+              slotLabel: Third man description
+              enabledAt: 1
+              boostTags: { prominence: background }
+              avoidTags: { prominence: featured }
+            # At 2: 2nd man becomes featured, 3rd stays background
+            - kind: slot_tag_boost
+              slotLabel: Second man placement
+              enabledAt: 2
+              boostTags: { prominence: featured }
+            - kind: slot_tag_boost
+              slotLabel: Second man description
+              enabledAt: 2
+              boostTags: { prominence: featured }
+            # At 3: 3rd man also featured
+            - kind: slot_tag_boost
+              slotLabel: Third man placement
+              enabledAt: 3
+              boostTags: { prominence: featured }
+            - kind: slot_tag_boost
+              slotLabel: Third man description
+              enabledAt: 3
+              boostTags: { prominence: featured }
+
+        - id: engagement
+          type: slider
+          label: Engagement
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Woman engagement beat
+              enabledAt: 0
+              boostTags: { boldness: subtle }
+              avoidTags: { boldness: bold }
+            - kind: slot_tag_boost
+              slotLabel: Woman engagement beat
+              enabledAt: 4
+              boostTags: { boldness: moderate }
+              avoidTags: { boldness: subtle }
+            - kind: slot_tag_boost
+              slotLabel: Woman engagement beat
+              enabledAt: 7
+              boostTags: { boldness: bold }
+              avoidTags: { boldness: subtle }
+
+    slots:
+      # ── Subject preservation (graduated pose lock + absolute identity/framing/clothing)
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
+
+      - label: Clothing lock
+        role: subject
+        category: clothing_lock
+        selection_strategy: uniform
+        optional: false
+
+      # ── Environment ─────────────────────────────────────────────
+      - label: Metro scene
+        role: environment
+        category: scene_build
+        tag_constraints:
+          location: metro_car
+          time_of_day: afternoon
+          occupancy: moderate
+          passenger_state: standing
+        selection_strategy: uniform
+        optional: false
+
+      # ── Lighting ────────────────────────────────────────────────
+      - label: Key light
+        role: lighting
+        category: key
+        tag_constraints:
+          key_light: metro_window_sun
+        selection_strategy: uniform
+        optional: false
+
+      - label: Fill light
+        role: lighting
+        category: fill
+        tag_constraints:
+          fill_light: metro_window_bounce
+        selection_strategy: uniform
+        optional: true
+        fallback_text: "Allow the ambient interior light to soften shadows naturally."
+
+      # ── Camera ──────────────────────────────────────────────────
+      - label: Camera angle
+        role: camera
+        category: angle
+        tag_constraints:
+          camera_angle: metro_group_close
+        selection_strategy: uniform
+        optional: false
+
+      - label: Field of view
+        role: camera
+        category: fov
+        tag_constraints:
+          fov: narrow
+        selection_strategy: uniform
+        optional: false
+
+      # ── Composition ─────────────────────────────────────────────
+      - label: Group framing
+        role: composition
+        category: framing
+        tag_constraints:
+          framing: tight_intimate_group
+          focus_priority: nearest_male_primary
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — subject anchor ─────────────────────────────
+      - label: Subject anchor at pole
+        role: placement
+        category: depth
+        tag_constraints:
+          setting: metro
+          anchor: pole
+          subject_position: standing
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — nearest man ────────────────────────────────
+      - label: Nearest man placement
+        role: placement
+        category: depth
+        tag_constraints:
+          setting: metro
+          focus_priority: primary
+          placement: beside
+        selection_strategy: weighted_tags
+        optional: false
+
+      - label: Nearest man description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: elderly_male
+          focus_priority: primary
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — second man ─────────────────────────────────
+      - label: Second man placement
+        role: placement
+        category: depth
+        tag_constraints:
+          setting: metro
+          focus_priority: secondary
+          placement: beside
+        selection_strategy: weighted_tags
+        optional: false
+
+      - label: Second man description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: elderly_male
+          focus_priority: secondary
+        selection_strategy: uniform
+        optional: false
+
+      # ── Placement — third man ──────────────────────────────────
+      - label: Third man placement
+        role: placement
+        category: depth
+        tag_constraints:
+          setting: metro
+          focus_priority: tertiary
+          reaction_mode: watching
+        selection_strategy: weighted_tags
+        optional: false
+
+      - label: Third man description
+        role: placement
+        category: character_desc
+        tag_constraints:
+          character_type: elderly_male
+          focus_priority: tertiary
+        selection_strategy: uniform
+        optional: false
+
+      # ── Action ──────────────────────────────────────────────────
+      - label: Woman engagement beat
+        role: action
+        category: interaction_beat
+        tag_constraints:
+          interaction_style: playful_flirt
+          subject_agency: active
+        selection_strategy: weighted_tags
+        optional: false
+
+      - label: Metro sway contact beat
+        role: action
+        category: motion_beat
+        tag_constraints:
+          vehicle_motion: metro_sway
+          contact_dynamic: maintained_proximity
+        selection_strategy: uniform
+        optional: false
+
+      # ── Atmosphere ──────────────────────────────────────────────
+      - label: Atmosphere
+        role: style
+        category: atmosphere
+        tag_constraints:
+          atmosphere: playful_group_proximity
+          time_of_day: afternoon
+        selection_strategy: uniform
+        optional: false
+
+  # ═══════════════════════════════════════════════════════════════════
   # Night Train Conductor — clothing preserved, confined aisle proximity
   # ═══════════════════════════════════════════════════════════════════
   - slug: night-train-conductor

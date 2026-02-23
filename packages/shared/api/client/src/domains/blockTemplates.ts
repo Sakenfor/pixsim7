@@ -5,8 +5,10 @@ import type {
   RollResult,
   SlotPreviewResult,
   TemplateSlot,
+  CastSpec,
   CharacterBinding,
   CharacterBindings,
+  TemplatePreset,
 } from '@pixsim7/shared.types';
 
 export type {
@@ -15,8 +17,10 @@ export type {
   RollResult,
   SlotPreviewResult,
   TemplateSlot,
+  CastSpec,
   CharacterBinding,
   CharacterBindings,
+  TemplatePreset,
 };
 
 export interface CreateTemplateRequest {
@@ -34,6 +38,7 @@ export interface CreateTemplateRequest {
 
 export interface UpdateTemplateRequest {
   name?: string;
+  slug?: string;
   description?: string;
   slots?: TemplateSlot[];
   composition_strategy?: string;
@@ -48,6 +53,7 @@ export interface RollTemplateRequest {
   seed?: number;
   exclude_block_ids?: string[];
   character_bindings?: CharacterBindings;
+  control_values?: Record<string, number>;
 }
 
 export interface ListTemplatesQuery {
@@ -96,6 +102,74 @@ export interface BlockRoleSummary {
   count: number;
 }
 
+export interface ReloadContentPacksQuery {
+  pack?: string;
+  force?: boolean;
+  prune?: boolean;
+}
+
+export interface ReloadContentPackStats {
+  blocks_created?: number;
+  blocks_updated?: number;
+  blocks_skipped?: number;
+  blocks_pruned?: number;
+  templates_created?: number;
+  templates_updated?: number;
+  templates_skipped?: number;
+  templates_pruned?: number;
+  characters_created?: number;
+  characters_updated?: number;
+  characters_skipped?: number;
+  characters_pruned?: number;
+  error?: string;
+}
+
+export interface ReloadContentPacksResponse {
+  packs_processed: number;
+  results: Record<string, ReloadContentPackStats>;
+}
+
+export interface TemplateSlotPackageCount {
+  package_name: string | null;
+  count: number;
+}
+
+export interface TemplateSlotDiagnostics {
+  slot_index: number;
+  label: string;
+  kind?: string | null;
+  role?: string | null;
+  category?: string | null;
+  selection_strategy: string;
+  optional: boolean;
+  slot_package_name?: string | null;
+  template_package_name?: string | null;
+  status_hint: 'queryable' | 'reinforcement' | 'audio_cue' | string;
+  total_matches: number;
+  package_match_counts: TemplateSlotPackageCount[];
+  template_package_match_count: number;
+  other_package_match_count: number;
+  has_matches_outside_template_package: boolean;
+  would_need_fallback_if_template_package_restricted: boolean;
+}
+
+export interface TemplateDiagnosticsResponse {
+  success: boolean;
+  template: {
+    id: string;
+    name: string;
+    slug: string;
+    package_name?: string | null;
+    composition_strategy: string;
+    slot_count: number;
+    slot_schema_version?: number | null;
+    source?: Record<string, unknown>;
+    dependencies?: Record<string, unknown>;
+    updated_at?: string | null;
+  };
+  slots: TemplateSlotDiagnostics[];
+}
+
 export function createBlockTemplatesApi(client: PixSimApiClient) {
   return {
     async listTemplates(query?: ListTemplatesQuery): Promise<BlockTemplateSummary[]> {
@@ -109,6 +183,12 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
     async getTemplate(templateId: string): Promise<BlockTemplateDetail> {
       return client.get<BlockTemplateDetail>(
         `/block-templates/${encodeURIComponent(templateId)}`,
+      );
+    },
+
+    async getTemplateDiagnostics(templateId: string): Promise<TemplateDiagnosticsResponse> {
+      return client.get<TemplateDiagnosticsResponse>(
+        `/block-templates/${encodeURIComponent(templateId)}/diagnostics`,
       );
     },
 
@@ -163,6 +243,23 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
         '/block-templates/meta/packages',
       );
       return [...response];
+    },
+
+    async listContentPacks(): Promise<string[]> {
+      const response = await client.get<readonly string[]>(
+        '/block-templates/meta/content-packs',
+      );
+      return [...response];
+    },
+
+    async reloadContentPacks(
+      query?: ReloadContentPacksQuery,
+    ): Promise<ReloadContentPacksResponse> {
+      return client.post<ReloadContentPacksResponse>(
+        '/block-templates/meta/content-packs/reload',
+        undefined,
+        { params: query },
+      );
     },
 
     async searchBlocks(query?: SearchBlocksQuery): Promise<PromptBlockResponse[]> {

@@ -142,7 +142,7 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   fetchTemplates: async () => {
     set({ templatesLoading: true });
     try {
-      const templates = await listTemplates();
+      const templates = await listTemplates({ limit: 200 });
       set({ templates });
     } finally {
       set({ templatesLoading: false });
