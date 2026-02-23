@@ -2,7 +2,7 @@ import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Icons } from '@lib/icons';
+import { Icon, Icons } from '@lib/icons';
 
 import { ClientFilterBar } from '@features/gallery/components/ClientFilterBar';
 import { useClientFilterPersistence } from '@features/gallery/lib/useClientFilterPersistence';
@@ -17,7 +17,7 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
-import { extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
+import { bucketLocalAssets, buildFavoriteGroupKey, extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
@@ -113,6 +113,8 @@ export function LocalFoldersContent({
   const setLocalGroupBy = useLocalFolderSettingsStore((s) => s.setLocalGroupBy);
   const setLocalGroupView = useLocalFolderSettingsStore((s) => s.setLocalGroupView);
   const setLocalGroupSort = useLocalFolderSettingsStore((s) => s.setLocalGroupSort);
+  const favoriteGroups = useLocalFolderSettingsStore((s) => s.favoriteGroups);
+  const toggleFavoriteGroup = useLocalFolderSettingsStore((s) => s.toggleFavoriteGroup);
 
   const hasActiveGrouping = hasFolderScope && localGroupBy !== 'none';
 
@@ -146,24 +148,11 @@ export function LocalFoldersContent({
     return sortGroups(groups, localGroupSort);
   }, [groups, localGroupSort]);
 
-  // --- Group overview pagination ---
-  const [groupPage, setGroupPage] = useState(1);
-  useEffect(() => { setGroupPage(1); }, [localGroupBy, localGroupSort, filterState]);
-
-  const groupTotalPages = Math.max(1, Math.ceil(sortedGroups.length / GROUP_PAGE_SIZE));
-  const pagedGroups = useMemo(() => {
-    const start = (groupPage - 1) * GROUP_PAGE_SIZE;
-    return sortedGroups.slice(start, start + GROUP_PAGE_SIZE);
-  }, [sortedGroups, groupPage]);
-  const showGroupPagination = sortedGroups.length > GROUP_PAGE_SIZE;
-
   // --- Drilled-in: filter items to matching group ---
   const drilledItems = useMemo(() => {
     if (!hasActiveGrouping || drilledGroupKey === null) return filteredItems;
-    // Re-derive by matching group key
     const gb = localGroupBy as LocalGroupBy;
     return filteredItems.filter((asset) => {
-      // Re-extract group key using same logic as localGroupEngine
       const key = extractGroupKey(asset, gb);
       return key === drilledGroupKey;
     });
@@ -171,6 +160,62 @@ export function LocalFoldersContent({
 
   const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
   const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
+
+  // --- Eagerly pre-load previews for group tile assets ---
+  const groupPreviewKeys = useMemo(() => {
+    if (!showGroupOverview) return [];
+    const buckets = bucketLocalAssets(filteredItems, localGroupBy as LocalGroupBy);
+    const keys: string[] = [];
+    const MAX_TOTAL = 20;
+    const PER_GROUP = 4;
+    for (const bucket of buckets.values()) {
+      for (let i = 0; i < Math.min(bucket.length, PER_GROUP); i++) {
+        keys.push(bucket[i].key);
+        if (keys.length >= MAX_TOTAL) return keys;
+      }
+    }
+    return keys;
+  }, [showGroupOverview, filteredItems, localGroupBy]);
+
+  useEffect(() => {
+    if (groupPreviewKeys.length === 0) return;
+    for (const key of groupPreviewKeys) {
+      controller.loadPreview(key);
+    }
+  }, [groupPreviewKeys, controller]);
+
+  // --- Favorite groups: partition to top ---
+  const favoriteGroupSet = useMemo(
+    () => new Set(favoriteGroups),
+    [favoriteGroups],
+  );
+
+  const favoriteSortedGroups = useMemo(() => {
+    if (sortedGroups.length === 0) return [];
+    if (favoriteGroupSet.size === 0) return sortedGroups;
+    const gb = localGroupBy as LocalGroupBy;
+    const favs: typeof sortedGroups = [];
+    const rest: typeof sortedGroups = [];
+    for (const g of sortedGroups) {
+      if (favoriteGroupSet.has(buildFavoriteGroupKey(gb, g.key))) {
+        favs.push(g);
+      } else {
+        rest.push(g);
+      }
+    }
+    return [...favs, ...rest];
+  }, [sortedGroups, favoriteGroupSet, localGroupBy]);
+
+  // --- Group overview pagination ---
+  const [groupPage, setGroupPage] = useState(1);
+  useEffect(() => { setGroupPage(1); }, [localGroupBy, localGroupSort, filterState]);
+
+  const groupTotalPages = Math.max(1, Math.ceil(favoriteSortedGroups.length / GROUP_PAGE_SIZE));
+  const pagedGroups = useMemo(() => {
+    const start = (groupPage - 1) * GROUP_PAGE_SIZE;
+    return favoriteSortedGroups.slice(start, start + GROUP_PAGE_SIZE);
+  }, [favoriteSortedGroups, groupPage]);
+  const showGroupPagination = favoriteSortedGroups.length > GROUP_PAGE_SIZE;
 
   // --- Pagination (persisted) — used for flat view and drilled-in view ---
   const itemsForPaging = showGroupOverview ? [] : (showDrilledView ? drilledItems : filteredItems);
@@ -384,7 +429,7 @@ export function LocalFoldersContent({
 
     // --- Group overview (folder tiles or list rows) ---
     if (showGroupOverview) {
-      if (sortedGroups.length === 0) {
+      if (favoriteSortedGroups.length === 0) {
         return (
           <GalleryEmptyState
             icon="layers"
@@ -397,7 +442,7 @@ export function LocalFoldersContent({
       return (
         <>
           <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
-            {sortedGroups.length} {sortedGroups.length === 1 ? 'group' : 'groups'}
+            {favoriteSortedGroups.length} {favoriteSortedGroups.length === 1 ? 'group' : 'groups'}
           </div>
           {localGroupView === 'folders' ? (
             <div
@@ -408,25 +453,59 @@ export function LocalFoldersContent({
                 columnGap: '12px',
               }}
             >
-              {pagedGroups.map((group) => (
-                <GroupFolderTile
-                  key={group.key}
-                  group={group}
-                  cardSize={cardSize}
-                  onOpen={() => openGroup(group.key)}
-                />
-              ))}
+              {pagedGroups.map((group) => {
+                const compositeKey = buildFavoriteGroupKey(localGroupBy as LocalGroupBy, group.key);
+                const isFav = favoriteGroupSet.has(compositeKey);
+                return (
+                  <div key={group.key} className="relative group/gtile">
+                    <GroupFolderTile
+                      group={group}
+                      cardSize={cardSize}
+                      onOpen={() => openGroup(group.key)}
+                    />
+                    <button
+                      type="button"
+                      className={`absolute top-2 right-2 z-10 p-1 rounded-md transition-colors ${
+                        isFav
+                          ? 'text-amber-400 hover:text-amber-500'
+                          : 'text-neutral-400 opacity-0 group-hover/gtile:opacity-100 hover:text-amber-400'
+                      }`}
+                      title={isFav ? 'Unpin group' : 'Pin group'}
+                      onClick={(e) => { e.stopPropagation(); toggleFavoriteGroup(compositeKey); }}
+                    >
+                      <Icon name="star" size={14} className={isFav ? 'fill-current' : ''} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              {pagedGroups.map((group) => (
-                <GroupListRow
-                  key={group.key}
-                  group={group}
-                  cardSize={cardSize}
-                  onOpen={() => openGroup(group.key)}
-                />
-              ))}
+              {pagedGroups.map((group) => {
+                const compositeKey = buildFavoriteGroupKey(localGroupBy as LocalGroupBy, group.key);
+                const isFav = favoriteGroupSet.has(compositeKey);
+                return (
+                  <div key={group.key} className="relative group/grow">
+                    <GroupListRow
+                      group={group}
+                      cardSize={cardSize}
+                      onOpen={() => openGroup(group.key)}
+                    />
+                    <button
+                      type="button"
+                      className={`absolute top-1/2 -translate-y-1/2 right-3 z-10 p-1 rounded-md transition-colors ${
+                        isFav
+                          ? 'text-amber-400 hover:text-amber-500'
+                          : 'text-neutral-400 opacity-0 group-hover/grow:opacity-100 hover:text-amber-400'
+                      }`}
+                      title={isFav ? 'Unpin group' : 'Pin group'}
+                      onClick={(e) => { e.stopPropagation(); toggleFavoriteGroup(compositeKey); }}
+                    >
+                      <Icon name="star" size={14} className={isFav ? 'fill-current' : ''} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </>

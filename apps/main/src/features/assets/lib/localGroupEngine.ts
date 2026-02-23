@@ -140,6 +140,40 @@ export function localAssetToPreviewShim(
 }
 
 // ---------------------------------------------------------------------------
+// Bucketing (shared by groupLocalAssets and eager preview logic)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bucket assets by a grouping dimension. Returns a Map<groupKey, LocalAsset[]>.
+ * Shared between the full grouping function and callers that only need buckets
+ * (e.g. to collect preview keys for eager loading).
+ */
+export function bucketLocalAssets(
+  assets: LocalAsset[],
+  groupBy: LocalGroupBy,
+): Map<string, LocalAsset[]> {
+  const buckets = new Map<string, LocalAsset[]>();
+  for (const asset of assets) {
+    const key = extractGroupKey(asset, groupBy);
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = [];
+      buckets.set(key, bucket);
+    }
+    bucket.push(asset);
+  }
+  return buckets;
+}
+
+// ---------------------------------------------------------------------------
+// Favorite group composite key
+// ---------------------------------------------------------------------------
+
+export function buildFavoriteGroupKey(groupBy: LocalGroupBy, groupKey: string): string {
+  return `${groupBy}::${groupKey}`;
+}
+
+// ---------------------------------------------------------------------------
 // Main grouping function
 // ---------------------------------------------------------------------------
 
@@ -155,17 +189,7 @@ export function groupLocalAssets(
   groupBy: LocalGroupBy,
   opts?: GroupLocalAssetsOptions,
 ): AssetGroup[] {
-  const buckets = new Map<string, LocalAsset[]>();
-
-  for (const asset of assets) {
-    const key = extractGroupKey(asset, groupBy);
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = [];
-      buckets.set(key, bucket);
-    }
-    bucket.push(asset);
-  }
+  const buckets = bucketLocalAssets(assets, groupBy);
 
   const groups: AssetGroup[] = [];
 

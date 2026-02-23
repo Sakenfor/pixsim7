@@ -31,6 +31,8 @@ export interface LocalFolderSettingsState {
   localGroupView: 'folders' | 'inline';
   /** Sort order for groups */
   localGroupSort: GroupSortKey;
+  /** Favorited group composite keys (persisted) */
+  favoriteGroups: string[];
 
   setAutoHashOnSelect: (value: boolean) => void;
   setAutoCheckBackend: (value: boolean) => void;
@@ -42,6 +44,8 @@ export interface LocalFolderSettingsState {
   setLocalGroupBy: (value: LocalGroupBy | 'none') => void;
   setLocalGroupView: (value: 'folders' | 'inline') => void;
   setLocalGroupSort: (value: GroupSortKey) => void;
+  toggleFavoriteGroup: (compositeKey: string) => void;
+  isFavoriteGroup: (compositeKey: string) => boolean;
 }
 
 export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
@@ -56,6 +60,7 @@ export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
       localGroupBy: 'none',
       localGroupView: 'folders',
       localGroupSort: 'name',
+      favoriteGroups: [],
 
       setAutoHashOnSelect: (value) => set({ autoHashOnSelect: value }),
       setAutoCheckBackend: (value) => set({ autoCheckBackend: value }),
@@ -73,6 +78,14 @@ export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
         set({ favoriteFolders: next });
       },
       isFavoriteFolder: (path) => get().favoriteFolders.includes(path),
+      toggleFavoriteGroup: (compositeKey) => {
+        const current = get().favoriteGroups;
+        const next = current.includes(compositeKey)
+          ? current.filter((k) => k !== compositeKey)
+          : [...current, compositeKey];
+        set({ favoriteGroups: next });
+      },
+      isFavoriteGroup: (compositeKey) => get().favoriteGroups.includes(compositeKey),
     }),
     {
       name: 'local_folder_settings_v1',
@@ -86,6 +99,7 @@ export const useLocalFolderSettingsStore = create<LocalFolderSettingsState>()(
         localGroupBy: state.localGroupBy,
         localGroupView: state.localGroupView,
         localGroupSort: state.localGroupSort,
+        favoriteGroups: state.favoriteGroups,
       }),
     }
   )
