@@ -126,6 +126,7 @@ def resolve_role_from_tags(
     role_by_namespace: Dict[str, str] = {}
 
     active_roles = get_available_roles(active_package_ids)
+    active_role_ids = {role.id for role in active_roles}
     for role in active_roles:
         for slug in role.slug_mappings:
             role_by_slug[slug.lower()] = role.id
@@ -155,7 +156,9 @@ def resolve_role_from_tags(
             namespace=namespace_part,
             slug=normalized,
         )
-        if core_role:
+        if core_role and (
+            active_package_ids is None or core_role in active_role_ids
+        ):
             roles_found.add(core_role)
 
     # Return highest priority role

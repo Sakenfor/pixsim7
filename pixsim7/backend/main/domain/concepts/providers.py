@@ -207,7 +207,7 @@ class ConceptProvider(ABC):
     Optional overrides:
         - supports_packages: bool - Whether package filtering is supported (default: False)
         - include_in_labels: bool - Whether to include in label autocomplete (default: True)
-        - get_priority() - Priority ordering of concept IDs
+        - get_priority(package_ids) - Priority ordering of concept IDs
     """
 
     # Subclasses must override these
@@ -236,7 +236,7 @@ class ConceptProvider(ABC):
         """
         ...
 
-    def get_priority(self) -> List[str]:
+    def get_priority(self, package_ids: Optional[List[str]] = None) -> List[str]:
         """Return priority ordering of concept IDs (if applicable).
 
         Default returns empty list (no priority).
@@ -347,9 +347,9 @@ class RoleConceptProvider(ConceptProvider):
     def get_concepts(
         self, package_ids: Optional[List[str]] = None
     ) -> List[ConceptResponse]:
-        from pixsim7.backend.main.domain.composition import get_available_roles
+        from pixsim7.backend.main.domain.composition import get_role_catalog
 
-        roles = get_available_roles(package_ids)
+        roles, _priority = get_role_catalog(package_ids)
 
         concepts = []
         for role in roles:
@@ -364,19 +364,23 @@ class RoleConceptProvider(ConceptProvider):
                     tags=role.tags,
                     metadata={
                         "default_layer": role.default_layer,
-                        "slug_mappings": role.slug_mappings,
-                        "namespace_mappings": role.namespace_mappings,
+                        "slug_mappings": list(role.slug_mappings),
+                        "namespace_mappings": list(role.namespace_mappings),
+                        "parent": role.parent,
+                        "is_group": role.is_group,
+                        "aliases": list(role.aliases),
+                        "default_influence": role.default_influence,
                     },
                 )
             )
 
         return concepts
 
-    def get_priority(self) -> List[str]:
-        from pixsim7.backend.main.shared.ontology.vocabularies import get_registry
+    def get_priority(self, package_ids: Optional[List[str]] = None) -> List[str]:
+        from pixsim7.backend.main.domain.composition import get_role_catalog
 
-        priority = get_registry().role_priority
-        return [role_id[5:] if role_id.startswith("role:") else role_id for role_id in priority]
+        _roles, priority = get_role_catalog(package_ids)
+        return priority
 
 
 @concept_provider

@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 import pixsim_logging
 from pixsim7.backend.main.shared.storage_utils import storage_key_to_url
-from pixsim7.backend.main.shared.composition import map_tag_to_composition_role
+from pixsim7.backend.main.domain.composition import resolve_role_from_tags
 
 from .types_unified import (
     ActionBlock,
@@ -287,13 +287,9 @@ class ActionEngine:
             return ref.role
 
         for tag in ref.tags or []:
-            if ":" in tag:
-                namespace, name = tag.split(":", 1)
-                role = map_tag_to_composition_role(namespace, name=name, slug=tag)
-            else:
-                role = map_tag_to_composition_role(tag, slug=tag)
-            if role:
-                return role
+            role_ref = resolve_role_from_tags([tag])
+            if role_ref:
+                return role_ref.id
 
         if block.tags.location:
             return "environment"

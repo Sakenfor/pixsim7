@@ -38,6 +38,10 @@ from .role_resolver import (
     resolve_role_from_tags,
     resolve_role_from_prompt_role,
 )
+from .role_catalog import (
+    parse_package_ids,
+    get_role_catalog,
+)
 
 __all__ = [
     # Types
@@ -62,4 +66,7 @@ __all__ = [
     "resolve_role",
     "resolve_role_from_tags",
     "resolve_role_from_prompt_role",
+    # Role catalog helpers
+    "parse_package_ids",
+    "get_role_catalog",
 ]

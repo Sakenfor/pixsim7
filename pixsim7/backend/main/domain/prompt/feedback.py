@@ -6,7 +6,7 @@ Tracks user feedback on prompt variants and their outputs.
 from typing import Optional, List
 from datetime import datetime
 from sqlmodel import SQLModel, Field, Column, Index
-from sqlalchemy import JSON
+from sqlalchemy import JSON, ForeignKey, Integer
 from uuid import UUID
 
 from pixsim7.backend.main.shared.datetime_utils import utcnow
@@ -43,8 +43,12 @@ class PromptVariantFeedback(SQLModel, table=True):
     )
     generation_id: Optional[int] = Field(
         default=None,
-        foreign_key="generations.id",
-        index=True,
+        sa_column=Column(
+            Integer,
+            ForeignKey("generations.id", ondelete="SET NULL"),
+            index=True,
+            nullable=True,
+        ),
         description="Optional link back to the unified generation record"
     )
 

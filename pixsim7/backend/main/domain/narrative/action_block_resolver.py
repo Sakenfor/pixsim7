@@ -313,10 +313,15 @@ async def prepare_generation_from_sequence(
             "personality": npc.get("personality", {})
         })
 
+    prompt_parts = [str(prompt).strip() for prompt in sequence.prompts if str(prompt).strip()]
+    assembled_prompt = " ".join(prompt_parts).strip()
+
     # Build generation request
     request = {
         "provider": gen_config.get("provider", "default"),
         "actionBlocks": sequence.blocks,
+        "prompts": sequence.prompts,
+        "assembledPrompt": assembled_prompt,
         "socialContext": social_context,
         "composition": sequence.composition,
         "metadata": {

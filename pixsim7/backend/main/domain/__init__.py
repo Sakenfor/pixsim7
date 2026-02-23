@@ -71,7 +71,7 @@ from .user import User, UserSession, UserQuotaUsage, UserRole
 from .workspace import Workspace
 from .assets.models import Asset, AssetVariant
 from .assets.content import ContentBlob
-from .generation.models import Generation
+from .generation.models import Generation, GenerationBatchItemManifest
 from .providers import ProviderSubmission, ProviderAccount, ProviderCredit
 
 # Asset metadata tables
@@ -129,6 +129,7 @@ __all__ = [
     "AssetVariant",
     "ContentBlob",
     "Generation",
+    "GenerationBatchItemManifest",
     "ProviderSubmission",
     "ProviderAccount",
     "ProviderCredit",

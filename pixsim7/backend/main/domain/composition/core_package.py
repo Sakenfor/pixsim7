@@ -81,6 +81,8 @@ def _build_core_roles() -> List[CompositionRoleDefinition]:
                 is_group=role.is_group,
                 slug_mappings=sorted(slug_by_role.get(role_id, [])),
                 namespace_mappings=sorted(namespace_by_role.get(role_id, [])),
+                aliases=list(role.aliases or []),
+                default_influence=role.default_influence or "content",
             )
         )
     return roles

@@ -57,6 +57,12 @@ class CompositionRoleDefinition:
     namespace_mappings: List[str] = field(default_factory=list)
     """Tag namespace prefixes that map to this role (e.g., ['pov', 'hands'])"""
 
+    aliases: List[str] = field(default_factory=list)
+    """Alias role IDs for normalization (e.g., ['bg', 'character'])"""
+
+    default_influence: str = "content"
+    """Default influence type (content/style/structure/mask/blend/replacement/reference)"""
+
 
 @dataclass
 class CompositionPackage:
@@ -195,7 +201,7 @@ class CompositionPackageRegistry(
 _registry = CompositionPackageRegistry()
 
 
-# Public API functions (backwards compatible)
+# Public API
 def register_composition_package(pkg: CompositionPackage) -> None:
     """Register or update a composition package."""
     _registry.register_package(pkg)
