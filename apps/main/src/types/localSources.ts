@@ -10,6 +10,8 @@
 
 import type { FolderSourceController, SourceIdentity } from '@pixsim7/shared.sources.core';
 
+import type { UploadAssetResponse } from '@lib/api/upload';
+
 import type { LocalAsset } from '@features/assets';
 
 export type LocalSourceId = 'local-fs';
@@ -71,6 +73,8 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   cancelHashing: () => void;
   /** Manually trigger hashing for a specific folder path (works even when auto-hash is off) */
   hashFolder: (path: string) => void;
+  /** Hash only the given asset keys (for scoped actions like drilled group views) */
+  hashAssets: (keys: string[]) => void;
 
   // Missing folders (exist in backend but IndexedDB was cleared)
   /** Combined list of real folders + missing folder placeholders */
@@ -82,8 +86,11 @@ export interface LocalFoldersController extends FolderSourceController<LocalAsse
   /** Dismiss the missing folders warning */
   dismissMissingFolders: () => void;
 
-  /** Upload one asset to a specific provider (bypasses default provider setting) */
-  uploadOneToProvider: (asset: LocalAsset | string, providerId: string) => Promise<void>;
+  /** Upload one asset to a specific provider (bypasses default provider setting).
+   *  Returns the upload response (includes asset_id) when available. */
+  uploadOneToProvider: (asset: LocalAsset | string, providerId: string) => Promise<UploadAssetResponse | null>;
+  /** Upload one asset explicitly to library (ignores default provider setting) */
+  uploadOneToLibrary: (asset: LocalAsset | string) => Promise<void>;
 
   // Local favorites (maps local asset key -> favorite state in backend library)
   favoriteStatus: Record<string, boolean>;

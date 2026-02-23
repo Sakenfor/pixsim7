@@ -164,7 +164,12 @@ function getAssetsKey(folderId: string): string {
 }
 
 function getThumbnailKey(asset: LocalAsset): string {
-  const version = asset.lastModified ?? 0;
+  // Use asset key + file size as cache key.  Avoid lastModified because
+  // refreshFolder re-scans from disk and can report a different timestamp,
+  // orphaning the cached thumbnail and forcing a slow re-generate.
+  // Size is a cheap proxy: if the file content actually changed the size
+  // almost certainly differs, and a re-add / folder refresh clears state anyway.
+  const version = asset.size ?? 0;
   return `${STORAGE_KEY_PREFIX}_thumb_${getUserNamespace()}_${asset.key}_${version}`;
 }
 
@@ -684,29 +689,49 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
         // Include ALL folders in state - those needing permission just won't load assets yet
         const allFolders = [...ok, ...needsPermission];
         set({ folders: allFolders });
-        // Load from cache first for instant display, then always kick off a fresh
-        // scan in the background so newly added files appear without manual refresh.
-        for (const f of ok) {
-          const cachedItems = await loadCachedAssets(f.id);
-          if (cachedItems.length > 0) {
-            set(s => ({
-              assets: {
-                ...s.assets,
-                ...Object.fromEntries(cachedItems.map(a => [a.key, a])),
-              },
-            }));
-            // Background refresh to pick up any changes since last cache write (silent - no progress indicator)
-            void get().refreshFolder(f.id, true);
+        // Load all folder caches in parallel, then batch-set assets in one update
+        // so the UI doesn't stagger folder-by-folder.
+        const cacheResults = await Promise.all(
+          ok.map(async (f) => ({ folder: f, items: await loadCachedAssets(f.id) })),
+        );
+
+        const allCachedAssets: Record<string, LocalAsset> = {};
+        const foldersNeedingScan: FolderEntry[] = [];
+        for (const { folder, items } of cacheResults) {
+          if (items.length > 0) {
+            for (const a of items) allCachedAssets[a.key] = a;
           } else {
-            // No cache, do full scan now (also writes cache)
-            const items = await scanFolder(f.id, f.handle, 5);
-            set(s => ({
-              assets: {
-                ...s.assets,
-                ...Object.fromEntries(items.map(a => [a.key, a])),
-              },
-            }));
-            await cacheAssets(f.id, items);
+            foldersNeedingScan.push(folder);
+          }
+        }
+
+        // Single state update for all cached assets
+        if (Object.keys(allCachedAssets).length > 0) {
+          set(s => ({ assets: { ...s.assets, ...allCachedAssets } }));
+        }
+
+        // Folders that had a cache get a silent background refresh
+        for (const { folder, items } of cacheResults) {
+          if (items.length > 0) {
+            void get().refreshFolder(folder.id, true);
+          }
+        }
+
+        // Folders without cache need a full scan (parallel, then single merge)
+        if (foldersNeedingScan.length > 0) {
+          const scanResults = await Promise.all(
+            foldersNeedingScan.map(async (f) => {
+              const items = await scanFolder(f.id, f.handle, 5);
+              void cacheAssets(f.id, items);
+              return items;
+            }),
+          );
+          const scannedAssets: Record<string, LocalAsset> = {};
+          for (const items of scanResults) {
+            for (const a of items) scannedAssets[a.key] = a;
+          }
+          if (Object.keys(scannedAssets).length > 0) {
+            set(s => ({ assets: { ...s.assets, ...scannedAssets } }));
           }
         }
       }

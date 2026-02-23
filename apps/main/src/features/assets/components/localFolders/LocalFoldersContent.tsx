@@ -16,9 +16,11 @@ import { AssetGallery, GalleryEmptyState, type AssetUploadState } from '@/compon
 import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
+
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
-import { bucketLocalAssets, buildFavoriteGroupKey, extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
+import { buildFavoriteGroupKey, extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
+import type { AssetModel } from '../../models/asset';
 import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
 import { GroupFolderTile, GroupListRow } from '../GroupCards';
@@ -32,6 +34,7 @@ import {
 } from './constants';
 import { LocalGroupBreadcrumb } from './LocalGroupBreadcrumb';
 import { LocalGroupingMenu } from './LocalGroupingMenu';
+import { useLocalFolderCardAssetAdapter } from './useLocalFolderCardAssetAdapter';
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
@@ -55,6 +58,7 @@ export interface LocalFoldersContentProps {
   getIsFavorite: (asset: LocalAsset) => boolean;
   handleToggleFavorite: (asset: LocalAsset) => Promise<void>;
   getLocalMediaCardActions: (asset: LocalAsset) => MediaCardActions;
+  toGenerationInputAsset: (asset: LocalAsset) => AssetModel;
   // Grouping helpers
   getSubfolderValue: (asset: LocalAsset) => string;
   getSubfolderLabelForAsset: (asset: LocalAsset) => string;
@@ -81,6 +85,7 @@ export function LocalFoldersContent({
   getIsFavorite,
   handleToggleFavorite,
   getLocalMediaCardActions,
+  toGenerationInputAsset,
   getSubfolderValue,
   getSubfolderLabelForAsset,
 }: LocalFoldersContentProps) {
@@ -161,29 +166,6 @@ export function LocalFoldersContent({
   const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
   const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
 
-  // --- Eagerly pre-load previews for group tile assets ---
-  const groupPreviewKeys = useMemo(() => {
-    if (!showGroupOverview) return [];
-    const buckets = bucketLocalAssets(filteredItems, localGroupBy as LocalGroupBy);
-    const keys: string[] = [];
-    const MAX_TOTAL = 20;
-    const PER_GROUP = 4;
-    for (const bucket of buckets.values()) {
-      for (let i = 0; i < Math.min(bucket.length, PER_GROUP); i++) {
-        keys.push(bucket[i].key);
-        if (keys.length >= MAX_TOTAL) return keys;
-      }
-    }
-    return keys;
-  }, [showGroupOverview, filteredItems, localGroupBy]);
-
-  useEffect(() => {
-    if (groupPreviewKeys.length === 0) return;
-    for (const key of groupPreviewKeys) {
-      controller.loadPreview(key);
-    }
-  }, [groupPreviewKeys, controller]);
-
   // --- Favorite groups: partition to top ---
   const favoriteGroupSet = useMemo(
     () => new Set(favoriteGroups),
@@ -216,6 +198,28 @@ export function LocalFoldersContent({
     return favoriteSortedGroups.slice(start, start + GROUP_PAGE_SIZE);
   }, [favoriteSortedGroups, groupPage]);
   const showGroupPagination = favoriteSortedGroups.length > GROUP_PAGE_SIZE;
+
+  // --- Eagerly pre-load previews for current + next page of group tiles ---
+  const groupPreviewKeys = useMemo(() => {
+    if (!showGroupOverview || favoriteSortedGroups.length === 0) return [];
+    // Current page + one page lookahead so page transitions are instant
+    const start = (groupPage - 1) * GROUP_PAGE_SIZE;
+    const end = Math.min(start + GROUP_PAGE_SIZE * 2, favoriteSortedGroups.length);
+    const keys: string[] = [];
+    for (let i = start; i < end; i++) {
+      for (const pa of favoriteSortedGroups[i].previewAssets) {
+        if (pa.providerAssetId) keys.push(pa.providerAssetId);
+      }
+    }
+    return keys;
+  }, [showGroupOverview, favoriteSortedGroups, groupPage]);
+
+  useEffect(() => {
+    if (groupPreviewKeys.length === 0) return;
+    for (const key of groupPreviewKeys) {
+      controller.loadPreview(key);
+    }
+  }, [groupPreviewKeys, controller]);
 
   // --- Pagination (persisted) — used for flat view and drilled-in view ---
   const itemsForPaging = showGroupOverview ? [] : (showDrilledView ? drilledItems : filteredItems);
@@ -265,34 +269,54 @@ export function LocalFoldersContent({
     [],
   );
 
+  // Resolve local-folder cards to canonical AssetModels when a linked library
+  // asset exists, while preserving local preview/path metadata for display.
+  const visibleCardAssets = useMemo(
+    () => (showGroupOverview ? [] : pageItems),
+    [showGroupOverview, pageItems],
+  );
+  const { getMediaCardAsset } = useLocalFolderCardAssetAdapter({
+    visibleAssets: visibleCardAssets,
+    toFallbackAsset: toGenerationInputAsset,
+  });
+
   // --- Tools dropdown (hash + batch upload) ---
   const [toolsOpen, setToolsOpen] = useState(false);
   const toolsBtnRef = useRef<HTMLButtonElement>(null);
 
+  // When drilled into a group, scope counts to only the visible items
+  const visibleItems = showDrilledView ? drilledItems : filteredItems;
+
   const unhashedCount = useMemo(
-    () => filteredItems.filter((a) => !a.sha256).length,
-    [filteredItems],
+    () => visibleItems.filter((a) => !a.sha256).length,
+    [visibleItems],
   );
 
   const { pendingUploadCount, failedUploadCount } = useMemo(() => {
     let pending = 0;
     let failed = 0;
-    for (const a of filteredItems) {
+    for (const a of visibleItems) {
       const st = controller.uploadStatus[a.key] || a.last_upload_status;
       if (!st || st === 'idle') pending++;
       else if (st === 'error') failed++;
     }
     return { pendingUploadCount: pending, failedUploadCount: failed };
-  }, [filteredItems, controller.uploadStatus]);
+  }, [visibleItems, controller.uploadStatus]);
 
   const handleHashUnhashed = useCallback(() => {
-    const folders = filterState.folder;
-    if (!Array.isArray(folders)) return;
-    for (const folderId of folders) {
-      controller.hashFolder(folderId);
+    if (showDrilledView) {
+      // When drilled into a group, only hash the visible unhashed items
+      const unhashedKeys = drilledItems.filter((a) => !a.sha256).map((a) => a.key);
+      controller.hashAssets(unhashedKeys);
+    } else {
+      const folders = filterState.folder;
+      if (!Array.isArray(folders)) return;
+      for (const folderId of folders) {
+        controller.hashFolder(folderId);
+      }
     }
     setToolsOpen(false);
-  }, [controller, filterState.folder]);
+  }, [controller, filterState.folder, showDrilledView, drilledItems]);
 
   const batchUploadingRef = useRef(false);
 
@@ -303,7 +327,7 @@ export function LocalFoldersContent({
     batchUploadingRef.current = true;
     setToolsOpen(false);
 
-    const pending = filteredItems.filter((a) => {
+    const pending = visibleItems.filter((a) => {
       const st = controller.uploadStatus[a.key] || a.last_upload_status;
       return !st || st === 'idle' || st === 'error';
     });
@@ -326,7 +350,7 @@ export function LocalFoldersContent({
 
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, pending.length) }, runWorker));
     batchUploadingRef.current = false;
-  }, [filteredItems, controller.uploadStatus, handleUpload, handleUploadToProvider]);
+  }, [visibleItems, controller.uploadStatus, handleUpload, handleUploadToProvider]);
 
   const uploadActionCount = pendingUploadCount + failedUploadCount;
   const hasToolActions = unhashedCount > 0 || uploadActionCount > 0;
@@ -387,6 +411,7 @@ export function LocalFoldersContent({
       getIsFavorite={getIsFavorite}
       onToggleFavorite={handleToggleFavorite}
       getActions={getLocalMediaCardActions}
+      getMediaCardAsset={getMediaCardAsset}
       layout={layout}
       cardSize={cardSize}
       showAssetCount={!groupByFn}

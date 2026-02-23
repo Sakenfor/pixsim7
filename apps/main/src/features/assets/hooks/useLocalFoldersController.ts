@@ -63,6 +63,14 @@ const LOCAL_SOURCE: SourceIdentity & SourceInfo = {
 
 const PREVIEW_LOAD_CONCURRENCY = 4;
 
+/**
+ * Module-level blob URL cache that survives panel mount/unmount cycles.
+ * Without this, every blob URL is revoked on unmount and thumbnails must
+ * be re-read from IndexedDB when the user switches back to Local Folders.
+ */
+const globalBlobUrlCache = new Map<string, string>();
+const globalLoadingKeys = new Set<string>();
+
 function isAssetDirectlyInFolderPath(asset: LocalAsset, folderPath: string): boolean {
   // Root folder selected: path is just folderId
   if (folderPath === asset.folderId) {
@@ -128,12 +136,14 @@ export function useLocalFoldersController(): LocalFoldersController {
     'ps7_localFolders_selectedFolderPath',
     null,
   );
-  const [manualHashRequest, setManualHashRequest] = useState<{ path: string; id: number } | null>(null);
+  const [manualHashRequest, setManualHashRequest] = useState<{ path: string; id: number; assetKeys?: string[] } | null>(null);
   const manualHashRequestIdRef = useRef(0);
   const consumedManualHashRequestIdRef = useRef(0);
 
-  // Preview state
-  const [previews, setPreviews] = useState<Record<string, string>>({});
+  // Preview state — hydrated from module-level cache so thumbnails survive panel remounts
+  const [previews, setPreviews] = useState<Record<string, string>>(
+    () => Object.fromEntries(globalBlobUrlCache),
+  );
   const loadingPreviewsRef = useRef<Set<string>>(new Set());
 
   // Track blob URLs for cleanup when they're no longer needed
@@ -232,6 +242,12 @@ export function useLocalFoldersController(): LocalFoldersController {
     setManualHashRequest({ path, id: manualHashRequestIdRef.current });
   }, []);
 
+  const hashAssets = useCallback((keys: string[]) => {
+    if (keys.length === 0) return;
+    manualHashRequestIdRef.current += 1;
+    setManualHashRequest({ path: '__asset_keys__', id: manualHashRequestIdRef.current, assetKeys: keys });
+  }, []);
+
   // Viewer items list (depends on view mode)
   const viewerItems = useMemo(() => {
     return viewMode === 'tree' && selectedFolderPath ? filteredAssets : assetList;
@@ -262,9 +278,15 @@ export function useLocalFoldersController(): LocalFoldersController {
       return;
     }
 
-    const currentFilteredAssets = isManualHashRun
-      ? assetListRef.current.filter((asset) => isAssetDirectlyInFolderPath(asset, targetPath))
-      : filteredAssetsRef.current;
+    let currentFilteredAssets: typeof assetListRef.current;
+    if (isManualHashRun && pendingManualHashRequest?.assetKeys) {
+      const keySet = new Set(pendingManualHashRequest.assetKeys);
+      currentFilteredAssets = assetListRef.current.filter((a) => keySet.has(a.key));
+    } else if (isManualHashRun) {
+      currentFilteredAssets = assetListRef.current.filter((asset) => isAssetDirectlyInFolderPath(asset, targetPath));
+    } else {
+      currentFilteredAssets = filteredAssetsRef.current;
+    }
     if (currentFilteredAssets.length === 0) {
       if (manualHashRequestId) {
         consumedManualHashRequestIdRef.current = manualHashRequestId;
@@ -273,7 +295,7 @@ export function useLocalFoldersController(): LocalFoldersController {
       return;
     }
 
-    const scopeKey = targetPath;
+    const scopeKey = pendingManualHashRequest?.assetKeys ? '__asset_keys__' : targetPath;
     const scopeSignature = isManualHashRun
       ? computeLocalAssetScopeSignature(currentFilteredAssets)
       : filteredAssetsScopeSignature;
@@ -617,14 +639,16 @@ export function useLocalFoldersController(): LocalFoldersController {
     const asset = typeof keyOrAsset === 'string' ? assetsRecordRef.current[keyOrAsset] : keyOrAsset;
     if (!asset) return;
 
-    // Check if already loaded (via ref) or currently loading
-    if (blobUrlsRef.current.has(asset.key) || loadingPreviewsRef.current.has(asset.key)) return;
+    // Check if already loaded (via ref or global cache) or currently loading
+    if (blobUrlsRef.current.has(asset.key) || globalBlobUrlCache.has(asset.key) || loadingPreviewsRef.current.has(asset.key) || globalLoadingKeys.has(asset.key)) return;
 
-    // Mark as loading
+    // Mark as loading (both local and global)
     loadingPreviewsRef.current.add(asset.key);
+    globalLoadingKeys.add(asset.key);
 
     let url: string | undefined;
     let acquiredSlot = false;
+    let isThumbnail = false;
     try {
       // "Original" mode for images: skip thumbnails entirely, show the file directly
       if (shouldUseOriginal(asset)) {
@@ -636,6 +660,7 @@ export function useLocalFoldersController(): LocalFoldersController {
           url = URL.createObjectURL(file);
         }
       } else {
+        isThumbnail = true;
         // Thumbnail mode: try cached thumbnail blob first (persisted in IndexedDB)
         try {
           const cached = await getLocalThumbnailBlob(asset);
@@ -668,8 +693,11 @@ export function useLocalFoldersController(): LocalFoldersController {
       }
 
       if (url) {
-        // Track the blob URL for later cleanup
         blobUrlsRef.current.set(asset.key, url);
+        // Only persist thumbnails in the global cache (originals are too large)
+        if (isThumbnail) {
+          globalBlobUrlCache.set(asset.key, url);
+        }
         setPreviews(p => ({ ...p, [asset.key]: url }));
       }
     } finally {
@@ -677,6 +705,7 @@ export function useLocalFoldersController(): LocalFoldersController {
         releasePreviewSlot();
       }
       loadingPreviewsRef.current.delete(asset.key);
+      globalLoadingKeys.delete(asset.key);
     }
   }, [acquirePreviewSlot, getFileForAsset, releasePreviewSlot, shouldUseOriginal]);
 
@@ -686,6 +715,7 @@ export function useLocalFoldersController(): LocalFoldersController {
     if (url) {
       URL.revokeObjectURL(url);
       blobUrlsRef.current.delete(assetKey);
+      globalBlobUrlCache.delete(assetKey);
       setPreviews(p => {
         const next = { ...p };
         delete next[assetKey];
@@ -694,12 +724,17 @@ export function useLocalFoldersController(): LocalFoldersController {
     }
   }, []);
 
-  // Cleanup all blob URLs on unmount
+  // On unmount, clear local ref but keep blob URLs alive in the global cache
+  // so thumbnails are instantly available when the panel remounts.
   useEffect(() => {
     const blobUrls = blobUrlsRef.current;
     return () => {
-      blobUrls.forEach((url) => {
-        URL.revokeObjectURL(url);
+      // Only revoke URLs that are NOT in the global cache (e.g. "original" mode
+      // large file URLs that shouldn't persist across sessions).
+      blobUrls.forEach((url, key) => {
+        if (!globalBlobUrlCache.has(key)) {
+          URL.revokeObjectURL(url);
+        }
       });
       blobUrls.clear();
     };
@@ -944,5 +979,6 @@ export function useLocalFoldersController(): LocalFoldersController {
     resumeHashing,
     cancelHashing,
     hashFolder,
+    hashAssets,
   };
 }
