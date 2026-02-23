@@ -80,6 +80,7 @@
 // Bridge pattern modules (use DynamicSettingsPanel + schema)
 import './ContextSettings';
 import './GenerationSettings';
+import './GesturesSettings';
 import './IconSettings';
 import './ThemeSettings';
 import './LibrarySettings';

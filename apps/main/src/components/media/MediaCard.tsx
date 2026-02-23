@@ -25,6 +25,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
 import { useContextMenuOptional } from '@lib/dockview';
+import {
+  useMouseGesture,
+  useGestureConfigStore,
+  getActionForDirection,
+  resolveGestureHandler,
+  getGestureActionLabel,
+  computeGestureCount,
+  isScalableAction,
+  type GestureDirection,
+  type GestureEvent,
+} from '@lib/gestures';
 import { Icon } from '@lib/icons';
 import {
   OverlayContainer,
@@ -32,12 +43,8 @@ import {
   getDefaultMediaCardConfig,
   mergeConfigurations,
 } from '@lib/ui/overlay';
-import type { OverlayConfiguration, OverlayWidget } from '@lib/ui/overlay';
-import {
-  useOverlayWidgetSettingsStore,
-  CONFIGURABLE_WIDGET_IDS,
-  type ConfigurableWidgetId,
-} from '@lib/widgets';
+import type { OverlayConfiguration, OverlayPolicyStep, OverlayWidget } from '@lib/ui/overlay';
+import { useOverlayWidgetSettingsStore } from '@lib/widgets';
 
 import { type AssetModel } from '@features/assets';
 import { mediaCardPropsFromAsset } from '@features/assets/components/shared/mediaCardPropsFromAsset';
@@ -47,6 +54,7 @@ import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 
 
 import { createDefaultMediaCardWidgets, type MediaCardOverlayData } from './mediaCardWidgets';
+import { applyMediaOverlayPolicyChain } from './overlayWidgetPolicy';
 
 /** Get crossOrigin attribute - required for CDN URLs to enable canvas operations */
 function getCrossOrigin(url: string | undefined): 'anonymous' | undefined {
@@ -69,8 +77,9 @@ export interface MediaCardActions {
   onExtractLastFrame?: (id: number) => void | Promise<void>;
   // Generation actions
   onAddToGenerate?: (id: number, operation?: string) => void;
+  onAddToActiveSet?: (id: number) => void;
   onQuickAdd?: (id: number) => void;
-  onQuickGenerate?: (id: number) => void | Promise<void>;
+  onQuickGenerate?: (id: number, count?: number) => void | Promise<void>;
   onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   onImageToImage?: (id: number) => void;
   onImageToVideo?: (id: number) => void;
@@ -140,6 +149,12 @@ export interface MediaCardRuntimeProps {
    * Can be overridden for custom behavior.
    */
   presetCapabilities?: import('@lib/ui/overlay').PresetCapabilities;
+
+  /**
+   * Optional runtime overlay policy chain.
+   * When omitted, falls back to the selected preset's policyChain and then defaults.
+   */
+  overlayPolicyChain?: OverlayPolicyStep[];
 
   /** Callback to toggle the favorite tag */
   onToggleFavorite?: () => void;
@@ -212,6 +227,32 @@ function resolveMediaCardProps(props: MediaCardProps): MediaCardResolvedProps {
   }
   return props as MediaCardResolvedProps;
 }
+
+// ─── Gesture visual feedback overlay ────────────────────────────────────────
+
+const DIRECTION_ARROWS: Record<GestureDirection, string> = {
+  up: '↑',
+  down: '↓',
+  left: '←',
+  right: '→',
+};
+
+function GestureOverlay({ direction, actionId, count }: { direction: GestureDirection; actionId: string; count?: number }) {
+  const label = getGestureActionLabel(actionId);
+  const showCount = count != null && count > 1 && isScalableAction(actionId);
+  return (
+    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 rounded-t-md pointer-events-none select-none">
+      <span className="text-3xl text-white drop-shadow-md">{DIRECTION_ARROWS[direction]}</span>
+      {actionId !== 'none' && (
+        <span className="mt-1 text-xs font-medium text-white/90 drop-shadow-sm">
+          {label}{showCount && <span className="ml-1 tabular-nums font-bold">&times;{count}</span>}
+        </span>
+      )}
+    </div>
+  );
+}
+
+// ─── MediaCard ──────────────────────────────────────────────────────────────
 
 export function MediaCard(props: MediaCardProps) {
   const resolved = resolveMediaCardProps(props);
@@ -300,7 +341,53 @@ export function MediaCard(props: MediaCardProps) {
   // Extract tag slugs for overlay data (quick tag matching, technical tag filtering)
   const tagSlugs = useMemo(() => tags?.map(t => t.slug) || [], [tags]);
 
+  // ── Gesture support ────────────────────────────────────────────────────
+  const gestureEnabled = useGestureConfigStore((s) => s.enabled);
+  const gestureThreshold = useGestureConfigStore((s) => s.threshold);
+  const gestureEdgeInset = useGestureConfigStore((s) => s.edgeInset);
+  const gestureUp = useGestureConfigStore((s) => s.gestureUp);
+  const gestureDown = useGestureConfigStore((s) => s.gestureDown);
+  const gestureLeft = useGestureConfigStore((s) => s.gestureLeft);
+  const gestureRight = useGestureConfigStore((s) => s.gestureRight);
+
+  const gestureDirections = useMemo(
+    () => ({ gestureUp, gestureDown, gestureLeft, gestureRight }),
+    [gestureUp, gestureDown, gestureLeft, gestureRight],
+  );
+
+  const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
+    enabled: gestureEnabled,
+    threshold: gestureThreshold,
+    edgeInset: gestureEdgeInset,
+    onGesture: useCallback(
+      (event: GestureEvent) => {
+        if (event.type !== 'swipe') return;
+        const actionId = getActionForDirection(gestureDirections, event.direction);
+        const handler = resolveGestureHandler(actionId, resolved.actions, {
+          onToggleFavorite: resolved.onToggleFavorite,
+        });
+        const count = isScalableAction(actionId)
+          ? computeGestureCount(event.distance, gestureThreshold)
+          : undefined;
+        handler?.(id, count);
+      },
+      [gestureDirections, gestureThreshold, resolved.actions, resolved.onToggleFavorite, id],
+    ),
+  });
+
+  const isGestureCommitted = activeGesture?.phase === 'committed';
+
+  const gestureActiveActionId = isGestureCommitted
+    ? getActionForDirection(gestureDirections, activeGesture.direction)
+    : null;
+
+  const gestureActiveCount = isGestureCommitted && gestureActiveActionId
+    ? computeGestureCount(activeGesture.distance, gestureThreshold)
+    : undefined;
+
   const handleOpen = () => {
+    // Suppress open when gesture just completed (click fires after pointerup)
+    if (gestureConsumed.current) return;
     if (onOpen) {
       onOpen(id);
     }
@@ -400,21 +487,13 @@ export function MediaCard(props: MediaCardProps) {
       };
     }
 
-    // Apply per-context visibility settings from overlayWidgetSettingsStore
-    const configurableSet = new Set<string>(CONFIGURABLE_WIDGET_IDS);
     result = {
       ...result,
-      widgets: result.widgets
-        .filter((w) => {
-          if (!configurableSet.has(w.id)) return true;
-          return getVisibility('gallery', w.id as ConfigurableWidgetId) !== 'hidden';
-        })
-        .map((w) => {
-          if (!configurableSet.has(w.id)) return w;
-          const mode = getVisibility('gallery', w.id as ConfigurableWidgetId);
-          const trigger = mode === 'always' ? 'always' : 'hover-container';
-          return { ...w, visibility: { ...w.visibility, trigger: trigger as any } };
-        }),
+      widgets: applyMediaOverlayPolicyChain(result.widgets, {
+        context: 'gallery',
+        getVisibility,
+        chain: resolved.overlayPolicyChain ?? preset?.policyChain,
+      }),
     };
 
     return result;
@@ -478,11 +557,13 @@ export function MediaCard(props: MediaCardProps) {
         }}
       >
         <div
-          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md ${
+          className={`relative w-full bg-neutral-100 dark:bg-neutral-800 cursor-pointer overflow-hidden rounded-t-md touch-none ${
             !videoSrc && !thumbSrc ? 'aspect-[4/3]' : ''
           }`}
           data-pixsim7="media-thumbnail"
           onClick={handleOpen}
+          onDragStart={gestureEnabled ? (e) => e.preventDefault() : undefined}
+          {...gestureHandlers}
           style={mediaType === 'video' && videoAspectRatio ? { aspectRatio: `${videoAspectRatio}` } : undefined}
         >
           {videoSrc || thumbSrc ? (
@@ -491,7 +572,7 @@ export function MediaCard(props: MediaCardProps) {
                 <img
                   src={thumbSrc}
                   alt={`Media ${id}`}
-                  className="w-full h-auto object-cover"
+                  className="w-full h-full object-cover"
                   loading="lazy"
                 />
               ) : (
@@ -540,6 +621,9 @@ export function MediaCard(props: MediaCardProps) {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-6 h-6 border-2 border-neutral-300 dark:border-neutral-600 border-t-transparent rounded-full animate-spin" />
             </div>
+          )}
+          {isGestureCommitted && gestureActiveActionId && (
+            <GestureOverlay direction={activeGesture.direction} actionId={gestureActiveActionId} count={gestureActiveCount} />
           )}
         </div>
       </OverlayContainer>

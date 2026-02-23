@@ -7,7 +7,7 @@ import { listAssetGroups } from '@lib/api/assets';
 import type { AssetGroupListResponse, AssetGroupRequest } from '@lib/api/assets';
 import { extractErrorMessage } from '@lib/api/errorHandling';
 import { Icon } from '@lib/icons';
-import { getMediaCardPreset } from '@lib/ui/overlay';
+import { createBadgeWidget, getMediaCardPreset } from '@lib/ui/overlay';
 
 import type { GalleryToolContext, GalleryAsset } from '@features/gallery/lib/core/types';
 import { galleryToolSelectors } from '@features/gallery/lib/registry';
@@ -36,7 +36,9 @@ import { GROUP_BY_LABELS, normalizeGroupBySelection } from '../lib/groupBy';
 import { normalizeGroupScopeSelection } from '../lib/groupScope';
 import { buildAssetSearchRequest } from '../lib/searchParams';
 import { fromAssetResponses, toViewerAssets } from '../models/asset';
+import { useAssetSetStore, type ManualAssetSet } from '../stores/assetSetStore';
 import { useAssetViewerStore, selectIsViewerOpen } from '../stores/assetViewerStore';
+import { useGalleryApplyTargetStore } from '../stores/galleryApplyTargetStore';
 
 import { CuratorSurfaceContent } from './CuratorGallerySurface';
 import { DebugSurfaceContent } from './DebugGallerySurface';
@@ -135,6 +137,15 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     requestOverrides: groupSearchOverrides,
   });
   const { providers } = useProviders();
+  const allSets = useAssetSetStore((state) => state.sets);
+  const manualSets = useMemo(
+    () => allSets.filter((set): set is ManualAssetSet => set.kind === 'manual'),
+    [allSets],
+  );
+  const addAssetsToSet = useAssetSetStore((s) => s.addAssetsToSet);
+  const activeManualSetId = useGalleryApplyTargetStore((s) => s.activeManualSetId);
+  const setActiveManualSetId = useGalleryApplyTargetStore((s) => s.setActiveManualSetId);
+  const clearActiveManualSetId = useGalleryApplyTargetStore((s) => s.clearActiveManualSetId);
   const { openGalleryAsset } = useAssetViewer({ source: 'gallery' });
   const isViewerOpen = useAssetViewerStore(selectIsViewerOpen);
 
@@ -167,6 +178,14 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // Layout settings (gaps)
   const [layoutSettings] = useState({ rowGap: 16, columnGap: 16 });
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
+  const activeManualSet = useMemo(
+    () => manualSets.find((set) => set.id === activeManualSetId),
+    [manualSets, activeManualSetId],
+  );
+  const activeManualSetAssetIds = useMemo(
+    () => new Set(activeManualSet?.assetIds ?? []),
+    [activeManualSet],
+  );
 
   // Get overlay configuration from preset
   const overlayConfig = useMemo(() => {
@@ -181,6 +200,12 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
       setExpandedToolId(null);
     }
   }, [controller.selectedAssetIds.size]);
+
+  useEffect(() => {
+    if (activeManualSetId && !activeManualSet) {
+      clearActiveManualSetId();
+    }
+  }, [activeManualSet, activeManualSetId, clearActiveManualSetId]);
 
   // Subscribe to open-tools-panel events (from context menu)
   useEffect(() => {
@@ -755,6 +780,19 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
     return controller.assets.filter((a) => controller.selectedAssetIds.has(String(a.id)));
   }, [controller.assets, controller.selectedAssetIds]);
 
+  const addAssetToActiveManualSet = useCallback(
+    (assetId: number) => {
+      if (!activeManualSet) return;
+      addAssetsToSet(activeManualSet.id, [assetId]);
+    },
+    [activeManualSet, addAssetsToSet],
+  );
+
+  const addSelectedToActiveManualSet = useCallback(() => {
+    if (!activeManualSet || selectedAssets.length === 0) return;
+    addAssetsToSet(activeManualSet.id, selectedAssets.map((asset) => asset.id));
+  }, [activeManualSet, addAssetsToSet, selectedAssets]);
+
   // Gallery tool context
   const galleryContext: GalleryToolContext = useMemo(
     () => ({
@@ -792,6 +830,7 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
   // Render cards
   const cardItems = visibleAssets.map((a) => {
     const isSelected = controller.selectedAssetIds.has(String(a.id));
+    const isInActiveManualSet = activeManualSetAssetIds.has(a.id);
 
     if (controller.isSelectionMode) {
       return (
@@ -801,7 +840,10 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
               asset={a}
               onOpen={undefined}
               onToggleFavorite={() => toggleFavoriteTag(a)}
-              actions={controller.getAssetActions(a)}
+              actions={{
+                ...controller.getAssetActions(a),
+                onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+              }}
               contextMenuSelection={selectedAssets}
               overlayConfig={overlayConfig}
               overlayPresetId={overlayPresetId}
@@ -835,18 +877,49 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
           }
         }}
       >
+        {activeManualSet && !isInActiveManualSet && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              addAssetToActiveManualSet(a.id);
+            }}
+            className="absolute top-1.5 left-1.5 z-20 inline-flex items-center gap-1 px-1.5 h-6 rounded-md border text-[10px] font-medium shadow-sm transition-opacity opacity-0 group-hover:opacity-100 border-neutral-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/95 text-neutral-700 dark:text-neutral-200 hover:bg-accent/10 hover:border-accent/40"
+            title={`Add to active set: ${activeManualSet.name}`}
+          >
+            <Icon name="plus" size={10} />
+            <span>Add</span>
+          </button>
+        )}
         <MediaCard
           asset={a}
           onOpen={() => openGalleryAsset(a, controller.assets)}
           onToggleFavorite={() => toggleFavoriteTag(a)}
           actions={buildRemoteAssetActions(a, {
-            baseActions: controller.getAssetActions(a),
+            baseActions: {
+              ...controller.getAssetActions(a),
+              onAddToActiveSet: activeManualSet ? addAssetToActiveManualSet : undefined,
+            },
             providers,
             filterProviderId,
             reuploadAsset: controller.reuploadAsset,
             refresh: resetAssets,
           })}
           contextMenuSelection={selectedAssets}
+          customWidgets={isInActiveManualSet ? [
+            createBadgeWidget({
+              id: 'active-set-indicator',
+              position: { anchor: 'top-left', offset: { x: 9, y: 36 } },
+              visibility: { trigger: 'always' },
+              variant: 'icon',
+              color: 'green',
+              shape: 'circle',
+              tooltip: `In active set: ${activeManualSet?.name ?? 'Active Set'}`,
+              className: '!w-2.5 !h-2.5 !min-w-0 !min-h-0 !p-0 !bg-emerald-500 ring-2 ring-white/90 dark:ring-neutral-900/90 shadow-sm',
+              priority: 11,
+            }),
+          ] : undefined}
           overlayConfig={overlayConfig}
           overlayPresetId={overlayPresetId}
         />
@@ -950,6 +1023,61 @@ export function RemoteGallerySource({ layout, cardSize, overlayPresetId, toolbar
             currentFilters={controller.filters}
             onLoadPreset={(filters) => controller.replaceFilters(filters)}
           />
+          <div className="flex flex-wrap items-center gap-2 px-0.5">
+            <span className="text-[10px] uppercase tracking-wide text-neutral-500 dark:text-neutral-400 font-semibold">
+              Active Set
+            </span>
+            <select
+              className="h-7 min-w-[170px] max-w-[280px] px-2 text-xs border border-neutral-200 dark:border-neutral-700 rounded bg-white dark:bg-neutral-900/60 text-neutral-700 dark:text-neutral-200 focus:outline-none focus:border-accent transition-colors"
+              value={activeManualSet?.id ?? ''}
+              onChange={(e) => setActiveManualSetId(e.target.value || undefined)}
+              disabled={manualSets.length === 0}
+              title={manualSets.length === 0 ? 'Create a manual asset set first' : 'Choose an active manual set for quick add'}
+            >
+              <option value="">
+                {manualSets.length === 0 ? 'No manual sets available' : 'None (disabled)'}
+              </option>
+              {manualSets.map((set) => (
+                <option key={set.id} value={set.id}>
+                  {set.name} ({set.assetIds.length})
+                </option>
+              ))}
+            </select>
+            {activeManualSet && (
+              <>
+                <span className="inline-flex items-center h-7 px-2 rounded border border-emerald-500/30 bg-emerald-500/10 text-[11px] text-emerald-700 dark:text-emerald-300">
+                  {activeManualSet.name}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => clearActiveManualSetId()}
+                  className="inline-flex items-center gap-1 h-7 px-2 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900/60 text-xs text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                >
+                  <Icon name="x" size={11} />
+                  Clear
+                </button>
+                {controller.selectedAssetIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={addSelectedToActiveManualSet}
+                    className="inline-flex items-center gap-1 h-7 px-2 rounded border border-accent/40 bg-accent/10 text-xs text-accent hover:bg-accent/15"
+                    title={`Add ${controller.selectedAssetIds.size} selected asset${controller.selectedAssetIds.size === 1 ? '' : 's'} to ${activeManualSet.name}`}
+                  >
+                    <Icon name="plus" size={11} />
+                    Add Selected ({controller.selectedAssetIds.size})
+                  </button>
+                )}
+                <span className="text-[10px] text-neutral-400">
+                  Gesture available: bind "Add to Active Set" in Settings &gt; Gestures.
+                </span>
+              </>
+            )}
+            {!activeManualSet && manualSets.length > 0 && (
+              <span className="text-[10px] text-neutral-400">
+                Pick a manual set, then hover cards to add while browsing.
+              </span>
+            )}
+          </div>
           <div>
             <DynamicFilters
               filters={controller.filters}
