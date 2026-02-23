@@ -4,7 +4,7 @@ Generic concept response schemas.
 These schemas support the unified ConceptRef system where all concept kinds
 share a common structure. Group names and metadata come from providers.
 """
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from pydantic import BaseModel, Field, computed_field
 
 
@@ -73,47 +73,3 @@ class ConceptKindsResponse(BaseModel):
     """Response from GET /concepts listing available kinds."""
 
     kinds: List[ConceptKindInfo] = Field(description="Available concept kinds")
-
-
-# =============================================================================
-# Role-Specific Schemas (Backward Compatibility)
-# =============================================================================
-
-
-class RoleConceptResponse(BaseModel):
-    """A composition role as a concept.
-
-    Kept for backward compatibility with existing /concepts/roles endpoint.
-    New code should use the generic ConceptResponse via /concepts/{kind}.
-    """
-
-    id: str = Field(description="Role ID (e.g., 'entities:main_character', 'world:environment')")
-    label: str = Field(description="Human-readable label")
-    description: str = Field(description="Role description")
-    color: str = Field(description="Tailwind color name for UI badges")
-    default_layer: int = Field(
-        default=0, description="Layer order (0=background, higher=foreground)"
-    )
-    tags: List[str] = Field(default_factory=list, description="Tags for filtering")
-    parent: Optional[str] = Field(default=None, description="Parent group ID (e.g., 'entities')")
-    is_group: bool = Field(default=False, description="Whether this is a group entry vs leaf role")
-    slug_mappings: List[str] = Field(
-        default_factory=list,
-        description="Exact tag slugs that map to this role (e.g., 'bg', 'char:hero')",
-    )
-    namespace_mappings: List[str] = Field(
-        default_factory=list,
-        description="Tag namespace prefixes that map to this role (e.g., 'npc', 'location')",
-    )
-
-
-class RolesListResponse(BaseModel):
-    """Response containing composition roles with inference metadata.
-
-    Kept for backward compatibility with existing /concepts/roles endpoint.
-    """
-
-    roles: List[RoleConceptResponse] = Field(description="Available composition roles")
-    priority: List[str] = Field(
-        description="Role IDs in priority order for conflict resolution"
-    )

@@ -36,7 +36,7 @@ async def create_prompt_variant(
         prompt_version_id=request.prompt_version_id,
         output_asset_id=request.output_asset_id,
         input_asset_ids=request.input_asset_ids,
-        generation_artifact_id=request.generation_artifact_id,
+        generation_id=request.generation_id,
         user_id=user.id,
     )
 

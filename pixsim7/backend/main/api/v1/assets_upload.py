@@ -210,8 +210,10 @@ async def upload_asset_to_provider(
     local_path = prep.local_path
     existing = prep.existing_asset
 
-    # Library-only uploads require successful local persistence.
-    if provider_id == "local" and (not stored_key or not local_path):
+    # Library-only uploads require successful local persistence unless the
+    # upload deduplicated to an asset already persisted on the local library.
+    local_library_dedup = bool(existing and prep.dedup_note and "already on" in prep.dedup_note)
+    if provider_id == "local" and (not stored_key or not local_path) and not local_library_dedup:
         try:
             os.unlink(tmp_path)
         except Exception:
@@ -283,7 +285,7 @@ async def upload_asset_to_provider(
             result = await upload_service.upload(provider_id=provider_id, media_type=media_type, tmp_path=tmp_path)
         # Persist as Asset (best-effort):
         # Derive provider_asset_id and remote_url with fallbacks
-        provider_asset_id_raw = result.provider_asset_id or (result.external_url or "")
+        provider_asset_id_raw = result.external_url or result.provider_asset_id or ""
         remote_url = result.external_url or (f"{provider_id}:{provider_asset_id_raw}")
         if provider_id == "local":
             remote_url = None
@@ -345,11 +347,12 @@ async def upload_asset_to_provider(
             # Check if we're updating an existing asset (cross-provider upload)
             if provider_id != "local" and existing and not (existing.provider_id == provider_id or provider_id in (existing.provider_uploads or {})):
                 # Update existing asset with new provider mapping
-                if not existing.provider_uploads:
-                    existing.provider_uploads = {}
-                existing.provider_uploads[provider_id] = provider_asset_id
+                # Reassign full dict so SQLAlchemy detects the JSON column change
+                existing.provider_uploads = {
+                    **(existing.provider_uploads or {}),
+                    provider_id: provider_asset_id,
+                }
 
-                # Mark as modified
                 db.add(existing)
                 await db.commit()
                 await db.refresh(existing)

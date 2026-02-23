@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 
 from pixsim7.backend.main.domain.composition import (
     list_composition_packages,
-    get_available_roles,
     CompositionPackage,
     CompositionRoleDefinition,
 )
@@ -32,6 +31,8 @@ class CompositionRoleResponse(BaseModel):
     is_group: bool = Field(default=False, description="Whether this is a group entry")
     slug_mappings: List[str] = Field(default_factory=list, description="Exact tag slugs that map to this role")
     namespace_mappings: List[str] = Field(default_factory=list, description="Tag namespace prefixes for this role")
+    aliases: List[str] = Field(default_factory=list, description="Alias role IDs that normalize to this role")
+    default_influence: str = Field(default="content", description="Default influence type for lineage tracking")
 
     @classmethod
     def from_domain(cls, role: CompositionRoleDefinition) -> "CompositionRoleResponse":
@@ -46,6 +47,8 @@ class CompositionRoleResponse(BaseModel):
             is_group=role.is_group,
             slug_mappings=list(role.slug_mappings),
             namespace_mappings=list(role.namespace_mappings),
+            aliases=list(role.aliases),
+            default_influence=role.default_influence,
         )
 
 
@@ -101,24 +104,3 @@ async def list_packages():
         packages=response_packages,
         total=len(response_packages),
     )
-
-
-@router.get("/roles", response_model=List[CompositionRoleResponse])
-async def list_roles(
-    packages: Optional[str] = None,
-):
-    """
-    List available composition roles.
-
-    Optionally filter by active package IDs (comma-separated).
-    If no filter, returns roles from all registered packages.
-    Core package (core.base) is always included.
-
-    Example: /api/v1/composition/roles?packages=core.base,pov.first_person
-    """
-    active_ids = None
-    if packages:
-        active_ids = [p.strip() for p in packages.split(",") if p.strip()]
-
-    roles = get_available_roles(active_ids)
-    return [CompositionRoleResponse.from_domain(r) for r in roles]

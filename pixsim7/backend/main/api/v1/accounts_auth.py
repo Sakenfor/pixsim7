@@ -83,6 +83,8 @@ def _to_response(account: ProviderAccount, current_user_id: int) -> AccountRespo
         # Concurrency
         max_concurrent_jobs=account.max_concurrent_jobs,
         current_processing_jobs=account.current_processing_jobs,
+        # Plan capabilities
+        unlimited_image_models=provider_metadata.get("plan_unlimited_image_models", []),
         # Timing
         last_used=account.last_used,
         last_error=account.last_error,
@@ -133,6 +135,15 @@ async def _apply_extracted_account_data(
     if provider_metadata:
         account.provider_metadata = provider_metadata
         updated_fields.append("provider_metadata")
+
+    extracted_max_concurrent = extracted.get("max_concurrent_jobs")
+    if (
+        isinstance(extracted_max_concurrent, int)
+        and extracted_max_concurrent > 0
+        and account.max_concurrent_jobs != extracted_max_concurrent
+    ):
+        account.max_concurrent_jobs = extracted_max_concurrent
+        updated_fields.append("max_concurrent_jobs")
 
     await db.commit()
     await db.refresh(account)
@@ -586,6 +597,16 @@ async def import_cookies(
                 existing.provider_metadata = new_meta
                 updated_fields.append("provider_metadata")
 
+            extracted_max_concurrent = extracted.get("max_concurrent_jobs")
+            if (
+                isinstance(extracted_max_concurrent, int)
+                and extracted_max_concurrent > 0
+                and existing.max_concurrent_jobs != extracted_max_concurrent
+            ):
+                existing.max_concurrent_jobs = extracted_max_concurrent
+                if "max_concurrent_jobs" not in updated_fields:
+                    updated_fields.append("max_concurrent_jobs")
+
             existing.updated_at = datetime.now(timezone.utc)
 
             # Remaker accounts should run one generation at a time per account.
@@ -689,6 +710,9 @@ async def import_cookies(
                 account.provider_user_id = provider_user_id
             if provider_metadata:
                 account.provider_metadata = provider_metadata
+            extracted_max_concurrent = extracted.get("max_concurrent_jobs")
+            if isinstance(extracted_max_concurrent, int) and extracted_max_concurrent > 0:
+                account.max_concurrent_jobs = extracted_max_concurrent
 
             await db.commit()
             await db.refresh(account)

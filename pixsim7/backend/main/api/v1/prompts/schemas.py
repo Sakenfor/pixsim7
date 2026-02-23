@@ -100,7 +100,7 @@ class CreatePromptVariantRequest(BaseModel):
     prompt_version_id: UUID
     output_asset_id: int
     input_asset_ids: List[int] = Field(default_factory=list)
-    generation_artifact_id: Optional[int] = None
+    generation_id: Optional[int] = None
 
 
 class RatePromptVariantRequest(BaseModel):

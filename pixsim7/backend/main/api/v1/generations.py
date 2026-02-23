@@ -75,6 +75,27 @@ async def _get_latest_submission_payloads(
     return payloads
 
 
+async def _get_generation_attempt_counts(
+    db: DatabaseSession,
+    generation_ids: List[int],
+) -> Dict[int, int]:
+    """Return provider submission counts per generation ID (analysis submissions excluded)."""
+    from sqlmodel import select
+    from sqlalchemy import func
+    from pixsim7.backend.main.domain.providers import ProviderSubmission
+
+    if not generation_ids:
+        return {}
+
+    result = await db.execute(
+        select(ProviderSubmission.generation_id, func.count(ProviderSubmission.id))
+        .where(ProviderSubmission.generation_id.in_(generation_ids))
+        .where(ProviderSubmission.analysis_id.is_(None))
+        .group_by(ProviderSubmission.generation_id)
+    )
+    return {int(gid): int(count or 0) for gid, count in result.fetchall()}
+
+
 # ===== CREATE GENERATION =====
 
 @router.post("/generations", response_model=GenerationResponse, status_code=201)
@@ -123,7 +144,45 @@ async def create_generation(
             # For now, just use provided social context
             pass
 
-        # Build canonical params from generation config
+        generation_type = request.config.generation_type
+        operation_type = resolve_operation_type_from_config(request.config)
+
+        # Roll block template from config.run_context (server-side template resolution)
+        existing_run_context = (request.config.model_extra or {}).get("run_context") or {}
+        run_context = existing_run_context if isinstance(existing_run_context, dict) else {}
+        raw_block_template_id = run_context.get("block_template_id")
+        block_template_id: Optional[UUID] = None
+        if raw_block_template_id:
+            try:
+                block_template_id = raw_block_template_id if isinstance(raw_block_template_id, UUID) else UUID(str(raw_block_template_id))
+            except (TypeError, ValueError):
+                block_template_id = None
+        character_bindings = run_context.get("character_bindings")
+        if not isinstance(character_bindings, dict):
+            character_bindings = None
+
+        if block_template_id:
+            from pixsim7.backend.main.services.prompt.block.template_service import BlockTemplateService
+            template_service = BlockTemplateService(generation_service.db)
+            roll_result = await template_service.roll_template(
+                block_template_id,
+                character_bindings=character_bindings,
+            )
+            if roll_result.get("success") and roll_result.get("assembled_prompt"):
+                request.config.prompt = roll_result["assembled_prompt"]
+                # Stash roll metadata in run_context for manifest tracking
+                updated_run_context = dict(run_context)
+                updated_run_context["block_template_id"] = str(block_template_id)
+                updated_run_context["roll_seed"] = roll_result.get("metadata", {}).get("seed")
+                updated_run_context["selected_block_ids"] = [
+                    str(bid) for bid in roll_result.get("metadata", {}).get("selected_block_ids", [])
+                ]
+                updated_run_context["assembled_prompt"] = roll_result["assembled_prompt"]
+                if request.config.__pydantic_extra__ is None:
+                    request.config.__pydantic_extra__ = {}
+                request.config.__pydantic_extra__["run_context"] = updated_run_context
+
+        # Build canonical params from generation config after any server-side mutations
         canonical_params = {
             "generation_config": request.config.model_dump() if request.config else {},
             "scene_context": {
@@ -133,9 +192,6 @@ async def create_generation(
             "player_context": request.player_context.model_dump() if request.player_context else None,
             "social_context": social_context_dict,
         }
-
-        generation_type = request.config.generation_type
-        operation_type = resolve_operation_type_from_config(request.config)
 
         # Build prompt config if template_id or prompt_version_id provided
         prompt_config = None
@@ -438,7 +494,9 @@ async def get_generation(
         generation = await generation_service.get_generation_for_user(generation_id, user)
         response = GenerationResponse.model_validate(generation)
         latest_payloads = await _get_latest_submission_payloads(db, [generation.id])
+        attempt_counts = await _get_generation_attempt_counts(db, [generation.id])
         response.latest_submission_payload = latest_payloads.get(generation.id)
+        response.attempt_count = attempt_counts.get(generation.id, 0)
 
         # Populate account_email for UI display (same as list endpoint)
         if generation.account_id:
@@ -538,6 +596,10 @@ async def list_generations(
             db,
             [g.id for g in generations],
         )
+        attempt_counts = await _get_generation_attempt_counts(
+            db,
+            [g.id for g in generations],
+        )
 
         # Convert to response with account_email populated
         responses = []
@@ -546,6 +608,7 @@ async def list_generations(
             if g.account_id and g.account_id in account_emails:
                 resp.account_email = account_emails[g.account_id]
             resp.latest_submission_payload = latest_payloads.get(g.id)
+            resp.attempt_count = attempt_counts.get(g.id, 0)
             responses.append(resp)
 
         return GenerationListResponse(
@@ -801,12 +864,10 @@ async def retry_generation(
 
         # Enqueue the same generation for processing
         from pixsim7.backend.main.infrastructure.redis import get_arq_pool
+        from pixsim7.backend.main.infrastructure.queue import enqueue_generation_fresh_job
 
         arq_pool = await get_arq_pool()
-        await arq_pool.enqueue_job(
-            "process_generation",
-            generation_id=generation.id,
-        )
+        await enqueue_generation_fresh_job(arq_pool, generation.id)
 
         logger.info(
             "manual_retry_requeued",
@@ -1338,7 +1399,9 @@ class GenerationTrackingDetailResponse(BaseModel):
 )
 async def get_asset_tracking(
     asset_id: int,
+    req: Request,
     user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1351,6 +1414,14 @@ async def get_asset_tracking(
     Auth: scoped to current user via asset ownership.
     """
     try:
+        proxy = await generation_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/generation-tracking/assets/{asset_id}",
+        )
+        if proxy.called:
+            return AssetTrackingResponse.model_validate(proxy.data)
+
         result = await tracking_service.get_asset_tracking(asset_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")
@@ -1368,7 +1439,9 @@ async def get_asset_tracking(
 )
 async def get_run_tracking(
     run_id: UUID,
+    req: Request,
     user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1381,6 +1454,14 @@ async def get_run_tracking(
     Auth: scoped to current user via asset ownership of batch items.
     """
     try:
+        proxy = await generation_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/generation-tracking/runs/{run_id}",
+        )
+        if proxy.called:
+            return RunTrackingResponse.model_validate(proxy.data)
+
         result = await tracking_service.get_run_tracking(run_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Generation run {run_id} not found")
@@ -1398,7 +1479,9 @@ async def get_run_tracking(
 )
 async def get_generation_tracking(
     generation_id: int,
+    req: Request,
     user: CurrentUser,
+    generation_gateway: GenerationGatewaySvc,
     tracking_service: GenerationTrackingSvc,
 ):
     """
@@ -1411,6 +1494,14 @@ async def get_generation_tracking(
     Auth: scoped to generation owner or admin.
     """
     try:
+        proxy = await generation_gateway.proxy(
+            req,
+            "GET",
+            f"/api/v1/generation-tracking/generations/{generation_id}",
+        )
+        if proxy.called:
+            return GenerationTrackingDetailResponse.model_validate(proxy.data)
+
         result = await tracking_service.get_generation_tracking(generation_id, user)
         if result is None:
             raise HTTPException(status_code=404, detail=f"Generation {generation_id} not found")

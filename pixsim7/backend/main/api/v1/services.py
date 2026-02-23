@@ -182,29 +182,66 @@ async def stop_backend() -> ServiceControlResponse:
 
 async def start_worker(root: str) -> ServiceControlResponse:
     """Start ARQ worker"""
-    # Check for both old and new paths for backward compatibility
-    procs = find_process_by_command("arq pixsim7.backend.main.workers") or find_process_by_command("arq pixsim7_backend.workers")
-    if procs:
+    main_worker_pattern = "arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"
+    retry_worker_pattern = "arq pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"
+
+    main_procs = find_process_by_command(main_worker_pattern)
+    retry_procs = find_process_by_command(retry_worker_pattern)
+
+    started = []
+    already_running = []
+
+    if main_procs:
+        already_running.append(f"main(PID {main_procs[0].pid})")
+    else:
+        if is_windows():
+            cmd = (
+                f'start "PixSim7 Worker" /min cmd /c '
+                f'"set PYTHONPATH={root} && arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"'
+            )
+            subprocess.Popen(cmd, shell=True)
+        else:
+            cmd = (
+                f'PYTHONPATH={root} nohup arq '
+                f'pixsim7.backend.main.workers.arq_worker.WorkerSettings > /dev/null 2>&1 &'
+            )
+            subprocess.Popen(cmd, shell=True, executable='/bin/bash')
+        started.append("main")
+
+    if retry_procs:
+        already_running.append(f"retry(PID {retry_procs[0].pid})")
+    else:
+        if is_windows():
+            cmd = (
+                f'start "PixSim7 Worker Retry" /min cmd /c '
+                f'"set PYTHONPATH={root} && arq pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings"'
+            )
+            subprocess.Popen(cmd, shell=True)
+        else:
+            cmd = (
+                f'PYTHONPATH={root} nohup arq '
+                f'pixsim7.backend.main.workers.arq_worker.GenerationRetryWorkerSettings > /dev/null 2>&1 &'
+            )
+            subprocess.Popen(cmd, shell=True, executable='/bin/bash')
+        started.append("retry")
+
+    if not started:
         return ServiceControlResponse(
             service="worker",
             action="start",
             success=False,
-            message=f"Worker already running (PID: {procs[0].pid})",
-            pid=procs[0].pid
+            message=f"Workers already running ({', '.join(already_running)})",
+            pid=main_procs[0].pid if main_procs else (retry_procs[0].pid if retry_procs else None),
         )
-
-    if is_windows():
-        cmd = f'start "PixSim7 Worker" /min cmd /c "set PYTHONPATH={root} && arq pixsim7.backend.main.workers.arq_worker.WorkerSettings"'
-        subprocess.Popen(cmd, shell=True)
-    else:
-        cmd = f'PYTHONPATH={root} nohup arq pixsim7.backend.main.workers.arq_worker.WorkerSettings > /dev/null 2>&1 &'
-        subprocess.Popen(cmd, shell=True, executable='/bin/bash')
 
     return ServiceControlResponse(
         service="worker",
         action="start",
         success=True,
-        message="Worker starting..."
+        message=(
+            f"Started worker(s): {', '.join(started)}"
+            + (f"; already running: {', '.join(already_running)}" if already_running else "")
+        ),
     )
 
 

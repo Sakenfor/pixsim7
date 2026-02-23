@@ -137,6 +137,10 @@ class SyncPlanResponse(BaseModel):
     plan_name: Optional[str] = None
     is_pro: bool = False
     max_concurrent_jobs: int = 2
+    concurrency_source: Optional[str] = None
+    plan_gen_simultaneously: Optional[int] = None
+    plan_max_concurrent_jobs_raw: Optional[Any] = None
+    plan_max_concurrent_jobs_parsed: Optional[int] = None
 
 
 # ===== ENDPOINTS =====
@@ -662,6 +666,10 @@ async def sync_account_plan(
             plan_name=result.get("plan_name"),
             is_pro=result.get("is_pro", False),
             max_concurrent_jobs=result.get("max_concurrent_jobs", 2),
+            concurrency_source=result.get("concurrency_source"),
+            plan_gen_simultaneously=result.get("plan_gen_simultaneously"),
+            plan_max_concurrent_jobs_raw=result.get("plan_max_concurrent_jobs_raw"),
+            plan_max_concurrent_jobs_parsed=result.get("plan_max_concurrent_jobs_parsed"),
         )
 
     except ResourceNotFoundError:
@@ -670,10 +678,8 @@ async def sync_account_plan(
         raise
     except Exception as e:
         logger.error(
-            "sync_account_plan_error",
-            account_id=account_id,
-            error=str(e),
-            error_type=e.__class__.__name__,
+            f"sync_account_plan_error account_id={account_id} "
+            f"error={str(e)} error_type={e.__class__.__name__}",
             exc_info=True,
         )
         raise HTTPException(
@@ -952,13 +958,11 @@ async def get_invited_accounts(
         # Use pixverse-py to fetch invited accounts
         try:
             from pixverse import Account as PixverseAccount  # type: ignore
-            from pixverse.api.client import PixverseAPI  # type: ignore
         except ImportError:
             raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "pixverse-py not installed")
 
-        # Get session data
-        from pixsim7.backend.main.services.provider.adapters.pixverse import PixverseAdapter
-        if not isinstance(provider, PixverseAdapter):
+        # Capability-based check (adapter class name changed from PixverseAdapter -> PixverseProvider)
+        if not hasattr(provider, "session_manager") or not hasattr(provider, "_get_cached_api"):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid provider adapter")
 
         # Use session manager to get valid session
@@ -971,6 +975,11 @@ async def get_invited_accounts(
                 },
             )
             api = provider._get_cached_api(account)
+            if not hasattr(api, "get_invited_accounts"):
+                raise HTTPException(
+                    status.HTTP_501_NOT_IMPLEMENTED,
+                    "Current pixverse-py version does not support invited accounts API",
+                )
             return await api.get_invited_accounts(temp_account, page_size=page_size, offset=offset)
 
         result = await provider.session_manager.run_with_session(
