@@ -17,9 +17,12 @@ import type { MediaCardActions } from '@/components/media/MediaCard';
 import type { LocalFoldersController } from '@/types/localSources';
 
 import { useLocalAssetPreview } from '../../hooks/useLocalAssetPreview';
+import { extractGroupKey, groupLocalAssets, type LocalGroupBy } from '../../lib/localGroupEngine';
 import { getUploadCapableProviders } from '../../lib/resolveUploadTarget';
+import { useLocalFolderSettingsStore } from '../../stores/localFolderSettingsStore';
 import type { LocalAsset } from '../../stores/localFoldersStore';
-import { GROUP_PAGE_SIZE } from '../groupHelpers';
+import { GroupFolderTile, GroupListRow } from '../GroupCards';
+import { GROUP_PAGE_SIZE, sortGroups } from '../groupHelpers';
 import { PaginationStrip } from '../shared/PaginationStrip';
 
 import {
@@ -27,6 +30,8 @@ import {
   LOCAL_MEDIA_CARD_PRESET,
   PAGE_KEY,
 } from './constants';
+import { LocalGroupBreadcrumb } from './LocalGroupBreadcrumb';
+import { LocalGroupingMenu } from './LocalGroupingMenu';
 
 export interface LocalFoldersContentProps {
   controller: LocalFoldersController;
@@ -101,27 +106,95 @@ export function LocalFoldersContent({
     return hasFolderFilter || hasFavFolderScope;
   }, [filterState.folder, filterState.favorites, favoriteFoldersSet.size]);
 
-  // --- Pagination (persisted) ---
+  // --- Group settings from persisted store ---
+  const localGroupBy = useLocalFolderSettingsStore((s) => s.localGroupBy);
+  const localGroupView = useLocalFolderSettingsStore((s) => s.localGroupView);
+  const localGroupSort = useLocalFolderSettingsStore((s) => s.localGroupSort);
+  const setLocalGroupBy = useLocalFolderSettingsStore((s) => s.setLocalGroupBy);
+  const setLocalGroupView = useLocalFolderSettingsStore((s) => s.setLocalGroupView);
+  const setLocalGroupSort = useLocalFolderSettingsStore((s) => s.setLocalGroupSort);
+
+  const hasActiveGrouping = hasFolderScope && localGroupBy !== 'none';
+
+  // --- Drill-down state for group navigation ---
+  const [drilledGroupKey, setDrilledGroupKey] = useState<string | null>(null);
+
+  // Reset drill-down when groupBy changes, filters change, or folder scope changes
+  const groupResetKeyRef = useRef({ localGroupBy, filterState, hasFolderScope });
+  useEffect(() => {
+    const prev = groupResetKeyRef.current;
+    if (
+      prev.localGroupBy !== localGroupBy ||
+      prev.filterState !== filterState ||
+      prev.hasFolderScope !== hasFolderScope
+    ) {
+      setDrilledGroupKey(null);
+      groupResetKeyRef.current = { localGroupBy, filterState, hasFolderScope };
+    }
+  }, [localGroupBy, filterState, hasFolderScope]);
+
+  // --- Group overview: compute groups from all filteredItems ---
+  const groups = useMemo(() => {
+    if (!hasActiveGrouping || drilledGroupKey !== null) return [];
+    return groupLocalAssets(filteredItems, localGroupBy as LocalGroupBy, {
+      getPreviewUrl,
+    });
+  }, [hasActiveGrouping, drilledGroupKey, filteredItems, localGroupBy, getPreviewUrl]);
+
+  const sortedGroups = useMemo(() => {
+    if (groups.length === 0) return [];
+    return sortGroups(groups, localGroupSort);
+  }, [groups, localGroupSort]);
+
+  // --- Group overview pagination ---
+  const [groupPage, setGroupPage] = useState(1);
+  useEffect(() => { setGroupPage(1); }, [localGroupBy, localGroupSort, filterState]);
+
+  const groupTotalPages = Math.max(1, Math.ceil(sortedGroups.length / GROUP_PAGE_SIZE));
+  const pagedGroups = useMemo(() => {
+    const start = (groupPage - 1) * GROUP_PAGE_SIZE;
+    return sortedGroups.slice(start, start + GROUP_PAGE_SIZE);
+  }, [sortedGroups, groupPage]);
+  const showGroupPagination = sortedGroups.length > GROUP_PAGE_SIZE;
+
+  // --- Drilled-in: filter items to matching group ---
+  const drilledItems = useMemo(() => {
+    if (!hasActiveGrouping || drilledGroupKey === null) return filteredItems;
+    // Re-derive by matching group key
+    const gb = localGroupBy as LocalGroupBy;
+    return filteredItems.filter((asset) => {
+      // Re-extract group key using same logic as localGroupEngine
+      const key = extractGroupKey(asset, gb);
+      return key === drilledGroupKey;
+    });
+  }, [hasActiveGrouping, drilledGroupKey, filteredItems, localGroupBy]);
+
+  const showGroupOverview = hasActiveGrouping && drilledGroupKey === null;
+  const showDrilledView = hasActiveGrouping && drilledGroupKey !== null;
+
+  // --- Pagination (persisted) — used for flat view and drilled-in view ---
+  const itemsForPaging = showGroupOverview ? [] : (showDrilledView ? drilledItems : filteredItems);
   const persistedPage = useMemo(() => {
     try { const v = localStorage.getItem(PAGE_KEY); return v ? Math.max(1, parseInt(v, 10) || 1) : 1; }
     catch { return 1; }
-     
+
   }, []);
   const { pageItems, currentPage, totalPages, setCurrentPage, showPagination } =
-    usePagedItems(filteredItems, GROUP_PAGE_SIZE, { initialPage: persistedPage });
+    usePagedItems(itemsForPaging, GROUP_PAGE_SIZE, { initialPage: persistedPage });
 
   useEffect(() => {
     try { localStorage.setItem(PAGE_KEY, String(currentPage)); } catch { /* quota */ }
   }, [currentPage]);
 
   // --- Scroll to top on page change ---
-  useScrollToTopOnChange(contentScrollRef, [currentPage]);
+  useScrollToTopOnChange(contentScrollRef, [currentPage, groupPage, drilledGroupKey]);
 
-  // --- groupBy integration (always subfolder when folder scope active) ---
+  // --- Legacy inline subfolder groupBy for AssetGallery (only when not using new grouping) ---
   const groupByFn = useMemo(() => {
+    if (hasActiveGrouping) return undefined;
     if (!hasFolderScope) return undefined;
     return (asset: LocalAsset) => getSubfolderValue(asset);
-  }, [hasFolderScope, getSubfolderValue]);
+  }, [hasActiveGrouping, hasFolderScope, getSubfolderValue]);
 
   // Build a label map from pageItems so getGroupLabel can resolve keys
   const groupLabelMap = useMemo(() => {
@@ -142,8 +215,8 @@ export function LocalFoldersContent({
   );
 
   const sortGroupSections = useCallback(
-    (groups: Array<{ key: string; label: string; count: number }>) =>
-      [...groups].sort((a, b) => a.label.localeCompare(b.label)),
+    (sections: Array<{ key: string; label: string; count: number }>) =>
+      [...sections].sort((a, b) => a.label.localeCompare(b.label)),
     [],
   );
 
@@ -216,10 +289,22 @@ export function LocalFoldersContent({
 
   // --- Gallery onOpen wrapper ---
   const handleOpen = useCallback(
-    (asset: LocalAsset, resolvedPreviewUrl?: string) =>
-      openAssetInViewer(asset, filteredItems, resolvedPreviewUrl),
-    [openAssetInViewer, filteredItems],
+    (asset: LocalAsset, resolvedPreviewUrl?: string) => {
+      const viewerItems = showDrilledView ? drilledItems : filteredItems;
+      return openAssetInViewer(asset, viewerItems, resolvedPreviewUrl);
+    },
+    [openAssetInViewer, filteredItems, drilledItems, showDrilledView],
   );
+
+  // --- Group drill-down handlers ---
+  const openGroup = useCallback((key: string) => {
+    setDrilledGroupKey(key);
+    setCurrentPage(1);
+  }, [setCurrentPage]);
+
+  const handleGroupBack = useCallback(() => {
+    setDrilledGroupKey(null);
+  }, []);
 
   // --- Empty states ---
   const filteredEmptyState = (
@@ -234,6 +319,38 @@ export function LocalFoldersContent({
       icon="folder"
       title="Choose a folder to start"
       description="Pick a folder from the Folder filter above."
+    />
+  );
+
+  // --- Render gallery (shared between flat & drilled views) ---
+  const renderAssetGallery = (assets: LocalAsset[]) => (
+    <AssetGallery
+      assets={assets}
+      getAssetKey={getAssetKey}
+      getPreviewUrl={getPreviewUrl}
+      resolvePreviewUrl={useLocalAssetPreview}
+      loadPreview={controller.loadPreview}
+      getMediaType={getMediaType}
+      getDescription={getDescription}
+      getTags={getTags}
+      getCreatedAt={getCreatedAt}
+      getUploadState={getUploadState}
+      getHashStatus={getHashStatus}
+      onOpen={handleOpen}
+      onUpload={handleUpload}
+      onUploadToProvider={handleUploadToProvider}
+      getIsFavorite={getIsFavorite}
+      onToggleFavorite={handleToggleFavorite}
+      getActions={getLocalMediaCardActions}
+      layout={layout}
+      cardSize={cardSize}
+      showAssetCount={!groupByFn}
+      overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
+      initialDisplayLimit={Infinity}
+      groupBy={groupByFn}
+      getGroupLabel={getGroupLabel}
+      sortGroupSections={groupByFn ? sortGroupSections : undefined}
+      collapsibleGroups={!!groupByFn}
     />
   );
 
@@ -265,37 +382,77 @@ export function LocalFoldersContent({
       return filteredEmptyState;
     }
 
-    return (
-      <AssetGallery
-        assets={pageItems}
-        getAssetKey={getAssetKey}
-        getPreviewUrl={getPreviewUrl}
-        resolvePreviewUrl={useLocalAssetPreview}
-        loadPreview={controller.loadPreview}
-        getMediaType={getMediaType}
-        getDescription={getDescription}
-        getTags={getTags}
-        getCreatedAt={getCreatedAt}
-        getUploadState={getUploadState}
-        getHashStatus={getHashStatus}
-        onOpen={handleOpen}
-        onUpload={handleUpload}
-        onUploadToProvider={handleUploadToProvider}
-        getIsFavorite={getIsFavorite}
-        onToggleFavorite={handleToggleFavorite}
-        getActions={getLocalMediaCardActions}
-        layout={layout}
-        cardSize={cardSize}
-        showAssetCount={!groupByFn}
-        overlayPresetId={LOCAL_MEDIA_CARD_PRESET}
-        initialDisplayLimit={Infinity}
-        groupBy={groupByFn}
-        getGroupLabel={getGroupLabel}
-        sortGroupSections={groupByFn ? sortGroupSections : undefined}
-        collapsibleGroups={!!groupByFn}
-      />
-    );
+    // --- Group overview (folder tiles or list rows) ---
+    if (showGroupOverview) {
+      if (sortedGroups.length === 0) {
+        return (
+          <GalleryEmptyState
+            icon="layers"
+            title="No groups found"
+            description="All items may belong to a single group, or try a different grouping dimension."
+          />
+        );
+      }
+
+      return (
+        <>
+          <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
+            {sortedGroups.length} {sortedGroups.length === 1 ? 'group' : 'groups'}
+          </div>
+          {localGroupView === 'folders' ? (
+            <div
+              className="grid"
+              style={{
+                gridTemplateColumns: `repeat(auto-fill, minmax(${cardSize}px, 1fr))`,
+                rowGap: '12px',
+                columnGap: '12px',
+              }}
+            >
+              {pagedGroups.map((group) => (
+                <GroupFolderTile
+                  key={group.key}
+                  group={group}
+                  cardSize={cardSize}
+                  onOpen={() => openGroup(group.key)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {pagedGroups.map((group) => (
+                <GroupListRow
+                  key={group.key}
+                  group={group}
+                  cardSize={cardSize}
+                  onOpen={() => openGroup(group.key)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      );
+    }
+
+    // --- Drilled-in view ---
+    if (showDrilledView) {
+      return (
+        <>
+          <LocalGroupBreadcrumb
+            groupPath={[{ groupBy: localGroupBy as LocalGroupBy, groupKey: drilledGroupKey! }]}
+            itemCount={drilledItems.length}
+            onBack={handleGroupBack}
+          />
+          {drilledItems.length === 0 ? filteredEmptyState : renderAssetGallery(pageItems)}
+        </>
+      );
+    }
+
+    // --- Flat view (no grouping active) ---
+    return renderAssetGallery(pageItems);
   };
+
+  // Determine which pagination to show
+  const showFlatPagination = !showGroupOverview && hasFolderScope && showPagination;
 
   return (
     <div ref={contentScrollRef} className="flex-1 overflow-y-auto overflow-x-hidden pb-6">
@@ -357,6 +514,16 @@ export function LocalFoldersContent({
                 </Dropdown>
               </div>
             )}
+            {hasFolderScope && (
+              <LocalGroupingMenu
+                groupBy={localGroupBy}
+                groupView={localGroupView}
+                groupSort={localGroupSort}
+                setGroupBy={setLocalGroupBy}
+                setGroupView={setLocalGroupView}
+                setGroupSort={setLocalGroupSort}
+              />
+            )}
             <ClientFilterBar
               defs={visibleDefs}
               filterState={filterState}
@@ -365,12 +532,23 @@ export function LocalFoldersContent({
               onReset={resetFilters}
             />
           </div>
-          {hasFolderScope && showPagination && (
+          {/* Flat/drilled pagination */}
+          {showFlatPagination && (
             <div className="mt-2">
               <PaginationStrip
                 currentPage={currentPage}
                 totalPages={totalPages}
                 onPageChange={setCurrentPage}
+              />
+            </div>
+          )}
+          {/* Group overview pagination */}
+          {showGroupOverview && showGroupPagination && (
+            <div className="mt-2">
+              <PaginationStrip
+                currentPage={groupPage}
+                totalPages={groupTotalPages}
+                onPageChange={setGroupPage}
               />
             </div>
           )}
