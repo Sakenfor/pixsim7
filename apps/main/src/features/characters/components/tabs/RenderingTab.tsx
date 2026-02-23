@@ -53,6 +53,9 @@ export function RenderingTab({ character, onChange }: RenderingTabProps) {
       </FormField>
 
       <FormField label="Reference Images">
+        <p className="mb-1.5 text-xs text-neutral-500">
+          For structured reference management (by kind, shot, view), use the References tab.
+        </p>
         <div className="space-y-2">
           {images.map((url, i) => (
             <div key={i} className="flex items-center gap-2">

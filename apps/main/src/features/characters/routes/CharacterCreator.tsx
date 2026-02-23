@@ -11,6 +11,7 @@ import {
   type CharacterDetail,
   type CreateCharacterRequest,
   type UpdateCharacterRequest,
+  type ReferenceAsset,
 } from '@lib/api/characters';
 
 import {
@@ -36,6 +37,7 @@ const EMPTY_CHARACTER: Partial<CharacterDetail> = {
   render_style: 'realistic',
   render_instructions: '',
   reference_images: [],
+  reference_assets: [],
   game_npc_id: null,
   sync_with_game: false,
   tags: {},
@@ -145,6 +147,7 @@ export function CharacterCreator() {
           render_style: editBuffer.render_style || undefined,
           render_instructions: editBuffer.render_instructions || undefined,
           reference_images: editBuffer.reference_images,
+          reference_assets: editBuffer.reference_assets as ReferenceAsset[],
           game_npc_id: editBuffer.game_npc_id,
           sync_with_game: editBuffer.sync_with_game,
           tags: editBuffer.tags as Record<string, unknown>,
@@ -162,6 +165,12 @@ export function CharacterCreator() {
           behavioral_patterns: editBuffer.behavioral_patterns as Record<string, unknown>,
           voice_profile: editBuffer.voice_profile as Record<string, unknown>,
           render_instructions: editBuffer.render_instructions || undefined,
+          reference_images: editBuffer.reference_images,
+          reference_assets: editBuffer.reference_assets as ReferenceAsset[],
+          tags: editBuffer.tags as Record<string, unknown>,
+          render_style: editBuffer.render_style || undefined,
+          game_npc_id: editBuffer.game_npc_id,
+          sync_with_game: editBuffer.sync_with_game,
         };
         const updated = await updateCharacter(selectedCharacterId!, req);
         setEditBuffer({ ...updated });

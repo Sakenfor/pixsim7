@@ -13,6 +13,7 @@ export type {
   CreateCharacterRequest,
   UpdateCharacterRequest,
   ListCharactersQuery,
+  ReferenceAsset,
 } from '@pixsim7/shared.api.client/domains';
 
 const charactersApi = createCharactersApi(pixsimClient);

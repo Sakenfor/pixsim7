@@ -92,6 +92,16 @@ class Character(SQLModel, table=True):
         sa_column=Column(JSON)
     )  # URLs or file paths
 
+    # Structured reference assets — per-asset metadata (kind, shot, view, pose, etc.)
+    reference_assets: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default="[]")
+    )
+    surface_assets: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSONB, nullable=False, server_default="[]")
+    )
+
     # Game integration
     game_npc_id: Optional[int] = Field(None, foreign_key="game_npcs.id", index=True)
     sync_with_game: bool = Field(default=False)  # Auto-sync changes with game NPC

@@ -54,6 +54,7 @@ class CreateCharacterRequest(BaseModel):
     render_style: str = Field(default="realistic", description="Rendering style")
     render_instructions: Optional[str] = Field(None, description="Rendering instructions")
     reference_images: List[str] = Field(default_factory=list, description="Reference image URLs")
+    reference_assets: List[Dict[str, Any]] = Field(default_factory=list, description="Structured reference assets")
 
     game_npc_id: Optional[UUID] = Field(None, description="Link to game NPC")
     sync_with_game: bool = Field(default=False, description="Auto-sync with game")
@@ -69,6 +70,12 @@ class UpdateCharacterRequest(BaseModel):
     behavioral_patterns: Optional[Dict[str, Any]] = None
     voice_profile: Optional[Dict[str, Any]] = None
     render_instructions: Optional[str] = None
+    reference_images: Optional[List[str]] = None
+    reference_assets: Optional[List[Dict[str, Any]]] = None
+    tags: Optional[Dict[str, Any]] = None
+    render_style: Optional[str] = None
+    game_npc_id: Optional[int] = None
+    sync_with_game: Optional[bool] = None
     create_version: bool = Field(default=False, description="Create new version instead of updating")
     version_notes: Optional[str] = Field(None, description="Notes about this version")
 
@@ -104,6 +111,8 @@ class CharacterDetailResponse(CharacterResponse):
     voice_profile: Dict[str, Any]
     render_instructions: Optional[str]
     reference_images: List[str]
+    reference_assets: List[Dict[str, Any]]
+    surface_assets: List[Dict[str, Any]]
     game_npc_id: Optional[UUID]
     sync_with_game: bool
     game_metadata: Dict[str, Any]
@@ -162,6 +171,7 @@ async def create_character(
             voice_profile=request.voice_profile,
             render_instructions=request.render_instructions,
             reference_images=request.reference_images,
+            reference_assets=request.reference_assets,
             game_npc_id=request.game_npc_id,
             sync_with_game=request.sync_with_game,
             tags=request.tags

@@ -57,6 +57,7 @@ export type {
 } from './blockTemplates';
 
 export type {
+  ReferenceAsset,
   CharacterSummary,
   CharacterDetail,
   CreateCharacterRequest,

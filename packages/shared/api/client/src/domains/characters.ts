@@ -1,5 +1,20 @@
 import type { PixSimApiClient } from '../client';
 
+// ===== Structured Reference Asset =====
+
+export interface ReferenceAsset {
+  asset_id: string;
+  kind: string; // identity, expression_ref, pose_ref, outfit_ref
+  shot?: string; // full_body, bust, closeup_face
+  view?: string; // front, three_quarter_left, profile_left, side, back
+  pose?: string; // neutral_stand, sit, reach, turn, walk_ready
+  expression_state?: string; // idle, thinking, smile, surprised, angry, sad
+  outfit?: string; // base_neutral, uniform_a, ...
+  background?: string; // neutral_gray, ...
+  is_primary?: boolean;
+  tags?: Record<string, unknown>;
+}
+
 // ===== Response Types =====
 
 export interface CharacterSummary {
@@ -24,6 +39,8 @@ export interface CharacterDetail extends CharacterSummary {
   voice_profile: Record<string, unknown>;
   render_instructions: string | null;
   reference_images: string[];
+  reference_assets: ReferenceAsset[];
+  surface_assets: Record<string, unknown>[];
   game_npc_id: number | null;
   sync_with_game: boolean;
   game_metadata: Record<string, unknown>;
@@ -51,6 +68,7 @@ export interface CreateCharacterRequest {
   render_style?: string;
   render_instructions?: string;
   reference_images?: string[];
+  reference_assets?: ReferenceAsset[];
   game_npc_id?: number | null;
   sync_with_game?: boolean;
   tags?: Record<string, unknown>;
@@ -64,6 +82,12 @@ export interface UpdateCharacterRequest {
   behavioral_patterns?: Record<string, unknown>;
   voice_profile?: Record<string, unknown>;
   render_instructions?: string;
+  reference_images?: string[];
+  reference_assets?: ReferenceAsset[];
+  tags?: Record<string, unknown>;
+  render_style?: string;
+  game_npc_id?: number | null;
+  sync_with_game?: boolean;
   create_version?: boolean;
   version_notes?: string;
 }
