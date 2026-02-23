@@ -303,8 +303,10 @@ export function useLocalFolderCallbacks({
     const actions = createAssetActions(assetModel, generationHandlers);
 
     // Gate quick-generate behind upload status (needs a provider asset)
+    // Forward burst count and duration from gesture system for swipe-distance scaling.
     if (asset.last_upload_asset_id != null) {
-      actions.onQuickGenerate = () => quickGenerate(assetModel);
+      actions.onQuickGenerate = (_id?: number, count?: number, overrides?: { duration?: number }) =>
+        quickGenerate(assetModel, { count, duration: overrides?.duration });
     }
 
     return actions;

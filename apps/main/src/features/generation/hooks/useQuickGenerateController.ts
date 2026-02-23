@@ -264,6 +264,21 @@ export function useQuickGenerateController() {
     };
   }
 
+  function withServerTemplateRollRunContext(
+    runContext?: GenerationRunContext,
+  ): GenerationRunContext | undefined {
+    if (!runContext || !pinnedTemplateId || templateRollMode !== 'each') {
+      return runContext;
+    }
+    const draftBindings = useBlockTemplateStore.getState().draftCharacterBindings;
+    const hasBindings = Object.keys(draftBindings).length > 0;
+    return {
+      ...runContext,
+      block_template_id: pinnedTemplateId,
+      ...(hasBindings ? { character_bindings: draftBindings } : {}),
+    };
+  }
+
   /** Submit a single generation to the API and seed the generations store */
   async function submitOne(
     request: { finalPrompt: string; params: any; effectiveOperationType: string },
@@ -274,7 +289,7 @@ export function useQuickGenerateController() {
       providerId,
       operationType: request.effectiveOperationType,
       extraParams: request.params,
-      runContext,
+      runContext: withServerTemplateRollRunContext(runContext),
     });
 
     const genId = result.job_id;
@@ -302,8 +317,12 @@ export function useQuickGenerateController() {
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      const rolledPrompt = await maybeRollTemplate();
-      const request = buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledPrompt });
+      // Template handling:
+      // - 'each' mode: backend rolls per request using run_context
+      // - 'once' mode: roll once client-side and pass prompt override
+      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
+      const request = buildRequest(dynamicParams, effectiveInputs, currentInput, { promptOverride: rolledOnce });
       if ('error' in request) {
         setError(request.error);
         setGenerating(false);
@@ -358,8 +377,11 @@ export function useQuickGenerateController() {
 
       await applyFrameExtraction(dynamicParams, currentInput, transitionInputs);
 
-      // Roll template once upfront for 'once' mode (or when no template is pinned)
-      const rollOnce = pinnedTemplateId && templateRollMode === 'each' ? null : await maybeRollTemplate();
+      // Template handling:
+      // - 'each' mode: backend rolls per request using run_context
+      // - 'once' mode: roll once client-side, pass prompt override for all items
+      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const rollOnce = !useServerRolling ? await maybeRollTemplate() : null;
       const baseRequest = buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rollOnce });
       if ('error' in baseRequest) {
         setError(baseRequest.error);
@@ -372,16 +394,8 @@ export function useQuickGenerateController() {
 
       for (let i = 0; i < count; i++) {
         try {
-          // In 'each' mode with a pinned template, re-roll per item
-          let request = baseRequest;
-          if (pinnedTemplateId && templateRollMode === 'each') {
-            const rolledPrompt = await maybeRollTemplate();
-            const rebuilt = buildRequest(dynamicParams, currentInputs, currentInput, { promptOverride: rolledPrompt });
-            if (!('error' in rebuilt)) request = rebuilt;
-          }
-
           const genId = await submitOne(
-            request,
+            baseRequest,
             createGenerationRunItemContext(run, {
               itemIndex: i,
               itemTotal: total,
@@ -495,8 +509,11 @@ export function useQuickGenerateController() {
 
         const overrideParams = options?.overrideDynamicParams || {};
 
-        // Pre-roll template once for 'once' mode
-        const rolledOnce = pinnedTemplateId && templateRollMode === 'once' ? await maybeRollTemplate() : null;
+        // Template handling:
+        // - 'each' mode: backend rolls per request using run_context
+        // - 'once' mode: roll once client-side, pass prompt override for all items
+        const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+        const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
         for (let i = 0; i < groups.length; i++) {
           const group = groups[i];
@@ -506,8 +523,7 @@ export function useQuickGenerateController() {
             const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
             await applyFrameExtraction(dynamicParams, primaryInput, []);
 
-            const rolledPrompt = templateRollMode === 'each' ? await maybeRollTemplate() : rolledOnce;
-            const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledPrompt });
+            const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
             if ('error' in request) {
               logEvent('ERROR', 'generate_each_item_skipped', {
                 index: i,
@@ -587,8 +603,11 @@ export function useQuickGenerateController() {
     try {
       const overrideParams = options?.overrideDynamicParams || {};
 
-      // Pre-roll template once for 'once' mode
-      const rolledOnce = pinnedTemplateId && templateRollMode === 'once' ? await maybeRollTemplate() : null;
+      // Template handling:
+      // - 'each' mode: backend rolls per request using run_context
+      // - 'once' mode: roll once client-side, pass prompt override for all items
+      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
 
       for (let i = 0; i < groups.length; i++) {
         const group = groups[i];
@@ -599,8 +618,7 @@ export function useQuickGenerateController() {
           const dynamicParams = { ...bindings.dynamicParams, ...overrideParams };
           await applyFrameExtraction(dynamicParams, primaryInput, []);
 
-          const rolledPrompt = templateRollMode === 'each' ? await maybeRollTemplate() : rolledOnce;
-          const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledPrompt });
+          const request = buildRequest(dynamicParams, group, primaryInput, { promptOverride: rolledOnce });
           if ('error' in request) {
             logEvent('ERROR', 'generate_each_item_skipped', {
               index: i,
@@ -680,12 +698,21 @@ export function useQuickGenerateController() {
    * Generate using current settings with a specific asset as sole input.
    * Used by media card quick-generate buttons to delegate to the controller
    * instead of duplicating the generation logic.
+   *
+   * When count > 1, submits multiple generations (burst mode) using the asset.
    */
-  async function generateWithAsset(asset: AssetModel) {
+  async function generateWithAsset(asset: AssetModel, count?: number, overrides?: { duration?: number }) {
     resetForGeneration();
+
+    const burstCount = count && count > 1 ? count : 1;
 
     try {
       const dynamicParams = { ...bindings.dynamicParams };
+
+      // Merge gesture-driven overrides (e.g., duration from secondary axis)
+      if (overrides?.duration !== undefined) {
+        dynamicParams.duration = overrides.duration;
+      }
 
       // Create an InputItem for the asset
       const inputItem = {
@@ -697,42 +724,98 @@ export function useQuickGenerateController() {
 
       await applyFrameExtraction(dynamicParams, inputItem, []);
 
+      // Match main Quick Generate behavior:
+      // - 'each' mode: backend rolls per request via run_context in submitOne()
+      // - 'once' mode: roll once client-side and use prompt override
+      const useServerRolling = pinnedTemplateId && templateRollMode === 'each';
+      const rolledOnce = !useServerRolling ? await maybeRollTemplate() : null;
+
       const request = buildRequest(
         dynamicParams,
         [inputItem],
         inputItem,
-        { activeAsset: toSelectedAsset(asset, 'gallery') },
+        {
+          activeAsset: toSelectedAsset(asset, 'gallery'),
+          promptOverride: rolledOnce,
+        },
       );
       if ('error' in request) {
         setError(request.error);
         return;
       }
 
+      const isBurst = burstCount > 1;
       const run = createGenerationRunDescriptor({
-        mode: 'quickgen_single',
+        mode: isBurst ? 'quickgen_burst' : 'quickgen_single',
         metadata: {
           source: 'generateWithAsset',
         },
       });
-      const genId = await submitOne(
-        request,
-        createGenerationRunItemContext(run, {
-          itemIndex: 0,
-          itemTotal: 1,
-          inputAssetIds: [asset.id],
-        }),
-      );
-      setGenerationId(genId);
-      setWatchingGeneration(genId);
-      recordInputHistory(operationType, [inputItem]);
 
-      logEvent('INFO', 'generation_created', {
-        generationId: genId,
-        operationType,
-        providerId: providerId || 'pixverse',
-        status: 'pending',
-        source: 'generateWithAsset',
-      });
+      if (isBurst) {
+        const generatedIds: number[] = [];
+        setQueueProgress({ queued: 0, total: burstCount });
+
+        for (let i = 0; i < burstCount; i++) {
+          try {
+            const genId = await submitOne(
+              request,
+              createGenerationRunItemContext(run, {
+                itemIndex: i,
+                itemTotal: burstCount,
+                inputAssetIds: [asset.id],
+              }),
+            );
+            generatedIds.push(genId);
+            setQueueProgress({ queued: generatedIds.length, total: burstCount });
+
+            logEvent('INFO', 'burst_generation_created', {
+              generationId: genId,
+              operationType,
+              providerId: providerId || 'pixverse',
+              burstIndex: i + 1,
+              burstTotal: burstCount,
+              source: 'generateWithAsset',
+            });
+          } catch (itemErr) {
+            logEvent('ERROR', 'burst_item_failed', {
+              burstIndex: i + 1,
+              error: extractErrorMessage(itemErr, 'Unknown error'),
+              source: 'generateWithAsset',
+            });
+          }
+        }
+
+        if (generatedIds.length > 0) {
+          const lastId = generatedIds[generatedIds.length - 1];
+          setGenerationId(lastId);
+          setWatchingGeneration(lastId);
+        }
+        recordInputHistory(operationType, [inputItem]);
+        setTimeout(() => setQueueProgress(null), 2000);
+      } else {
+        const genId = await submitOne(
+          request,
+          createGenerationRunItemContext(run, {
+            itemIndex: 0,
+            itemTotal: 1,
+            inputAssetIds: [asset.id],
+          }),
+        );
+        setGenerationId(genId);
+        setWatchingGeneration(genId);
+        recordInputHistory(operationType, [inputItem]);
+
+        logEvent('INFO', 'generation_created', {
+          generationId: genId,
+          operationType,
+          providerId: providerId || 'pixverse',
+          status: 'pending',
+          source: 'generateWithAsset',
+        });
+      }
+    } catch (err) {
+      setError(extractErrorMessage(err, 'Failed to generate asset'));
     } finally {
       setGenerating(false);
     }

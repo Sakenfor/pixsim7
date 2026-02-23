@@ -499,11 +499,13 @@ export function useAssetsController(options?: { initialPage?: number; preservePa
     const actions = createAssetActions(asset, actionHandlers);
     // Gesture system uses onQuickGenerate; shared action factory exposes onQuickAdd.
     // Alias here so default right-swipe quick-generate works in remote gallery.
-    if (!actions.onQuickGenerate && actions.onQuickAdd) {
-      actions.onQuickGenerate = () => actions.onQuickAdd?.();
+    // Forward burst count and duration from gesture system for swipe-distance scaling.
+    if (!actions.onQuickGenerate) {
+      actions.onQuickGenerate = (_id?: number, count?: number, overrides?: { duration?: number }) =>
+        quickGenerate(asset, { count, duration: overrides?.duration });
     }
     return actions;
-  }, [actionHandlers]);
+  }, [actionHandlers, quickGenerate]);
 
   return {
     // Filters

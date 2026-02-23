@@ -6,13 +6,17 @@
  * builds the widget context, and provides it at both local + root scope.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+
+import { getDurationOptions } from '@lib/generation-ui/utils/parameterUtils';
+import { useGestureSecondaryStore } from '@lib/gestures';
 
 import {
   CAP_GENERATION_WIDGET,
   useProvideCapability,
   type GenerationWidgetContext,
 } from '@features/contextHub';
+import { providerCapabilityRegistry } from '@features/providers';
 
 import { useGenerationScopeStores } from './useGenerationScope';
 import { useQuickGenerateController } from './useQuickGenerateController';
@@ -85,6 +89,25 @@ export function useProvideGenerationWidget(config: UseProvideGenerationWidgetCon
   useProvideCapability(CAP_GENERATION_WIDGET, generationWidgetProvider, [generationWidgetValue], {
     scope: 'root',
   });
+
+  // ── Sync duration options to gesture secondary store ──
+  const opSpec = providerCapabilityRegistry.getOperationSpec(
+    controller.providerId ?? '', controller.operationType);
+  const model = controller.dynamicParams?.model;
+  const durationOpts = getDurationOptions(opSpec?.parameters ?? [], model);
+  const durationOptions = durationOpts?.options ?? [];
+  const durationOptsKey = durationOptions.join(',');
+  const currentDuration = Number(controller.dynamicParams?.duration) || durationOptions[0] || 0;
+
+  useEffect(() => {
+    if (durationOptsKey) {
+      const options = durationOptsKey.split(',').map(Number);
+      useGestureSecondaryStore.getState().setDurationOptions(options, currentDuration);
+    } else {
+      useGestureSecondaryStore.getState().clear();
+    }
+    return () => useGestureSecondaryStore.getState().clear();
+  }, [durationOptsKey, currentDuration]);
 
   return {
     ...controller,

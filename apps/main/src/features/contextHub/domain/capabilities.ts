@@ -309,8 +309,10 @@ export interface GenerationWidgetContext {
     assets: AssetModel[];
     operationType: OperationType;
   }) => void;
-  /** Generate using current settings with a specific asset as sole input */
-  generateWithAsset?: (asset: AssetModel) => void | Promise<void>;
+  /** Generate using current settings with a specific asset as sole input.
+   *  When count > 1, submits multiple generations (burst mode).
+   *  Optional overrides allow gesture-driven parameter adjustments (e.g., duration). */
+  generateWithAsset?: (asset: AssetModel, count?: number, overrides?: { duration?: number }) => void | Promise<void>;
   /** Unique identifier for this widget instance */
   widgetId: string;
 }

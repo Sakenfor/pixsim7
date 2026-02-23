@@ -107,6 +107,7 @@ export function useMouseGesture({
     startY: 0,
     committed: false,
     pointerId: -1,
+    lockedDirection: null as GestureDirection | null,
   });
 
   const onGestureRef = useRef(onGesture);
@@ -149,6 +150,7 @@ export function useMouseGesture({
         startY: e.clientY,
         committed: false,
         pointerId: e.pointerId,
+        lockedDirection: null,
       };
 
       // Enter pending phase
@@ -168,12 +170,15 @@ export function useMouseGesture({
         const dx = ev.clientX - state.startX;
         const dy = ev.clientY - state.startY;
         const distance = Math.hypot(dx, dy);
-        const direction = resolveDirection(dx, dy);
 
         const wasCommitted = state.committed;
         if (!state.committed && distance > threshold) {
           state.committed = true;
+          // Lock direction at commit so vertical adjustment doesn't flip it
+          state.lockedDirection = resolveDirection(dx, dy);
         }
+
+        const direction = state.lockedDirection ?? resolveDirection(dx, dy);
 
         const gesture: ActiveGesture = {
           type: 'swipe',
@@ -203,7 +208,7 @@ export function useMouseGesture({
 
           onGestureRef.current({
             type: 'swipe',
-            direction: resolveDirection(dx, dy),
+            direction: stateRef.current.lockedDirection ?? resolveDirection(dx, dy),
             distance,
             dx,
             dy,

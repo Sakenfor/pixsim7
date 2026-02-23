@@ -118,8 +118,14 @@ export function useGallerySurfaceController(config: GallerySurfaceConfig = {}) {
 
   // Get per-asset actions
   const getAssetActions = useCallback((asset: AssetModel) => {
-    return createAssetActions(asset, actionHandlers);
-  }, [actionHandlers]);
+    const actions = createAssetActions(asset, actionHandlers);
+    // Wire onQuickGenerate to forward burst count and duration from gesture system
+    if (!actions.onQuickGenerate) {
+      actions.onQuickGenerate = (_id?: number, count?: number, overrides?: { duration?: number }) =>
+        quickGenerate(asset, { count, duration: overrides?.duration });
+    }
+    return actions;
+  }, [actionHandlers, quickGenerate]);
 
   // Update filters
   const updateFilters = useCallback((partial: Partial<AssetFilters>) => {

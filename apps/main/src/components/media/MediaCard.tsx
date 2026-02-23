@@ -29,10 +29,14 @@ import {
   useMouseGesture,
   useGestureConfigStore,
   getActionForDirection,
+  getChainActionForDirection,
   resolveGestureHandler,
   getGestureActionLabel,
   computeGestureCount,
   isScalableAction,
+  isChainDurationAction,
+  useGestureSecondaryStore,
+  resolveDurationFromDy,
   type GestureDirection,
   type GestureEvent,
 } from '@lib/gestures';
@@ -79,7 +83,7 @@ export interface MediaCardActions {
   onAddToGenerate?: (id: number, operation?: string) => void;
   onAddToActiveSet?: (id: number) => void;
   onQuickAdd?: (id: number) => void;
-  onQuickGenerate?: (id: number, count?: number) => void | Promise<void>;
+  onQuickGenerate?: (id: number, count?: number, overrides?: { duration?: number }) => void | Promise<void>;
   onRegenerateAsset?: (generationId: number) => void | Promise<void>;
   onImageToImage?: (id: number) => void;
   onImageToVideo?: (id: number) => void;
@@ -237,15 +241,24 @@ const DIRECTION_ARROWS: Record<GestureDirection, string> = {
   right: '→',
 };
 
-function GestureOverlay({ direction, actionId, count }: { direction: GestureDirection; actionId: string; count?: number }) {
+function GestureOverlay({ direction, actionId, count, duration, durationUnit }: {
+  direction: GestureDirection;
+  actionId: string;
+  count?: number;
+  duration?: number;
+  durationUnit?: string;
+}) {
   const label = getGestureActionLabel(actionId);
   const showCount = count != null && count > 1 && isScalableAction(actionId);
+  const showDuration = duration != null;
   return (
     <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/40 rounded-t-md pointer-events-none select-none">
       <span className="text-3xl text-white drop-shadow-md">{DIRECTION_ARROWS[direction]}</span>
       {actionId !== 'none' && (
         <span className="mt-1 text-xs font-medium text-white/90 drop-shadow-sm">
-          {label}{showCount && <span className="ml-1 tabular-nums font-bold">&times;{count}</span>}
+          {label}
+          {showCount && <span className="ml-1 tabular-nums font-bold">&times;{count}</span>}
+          {showDuration && <span className="ml-1 tabular-nums opacity-80">&middot; {duration}{durationUnit || 's'}</span>}
         </span>
       )}
     </div>
@@ -349,10 +362,19 @@ export function MediaCard(props: MediaCardProps) {
   const gestureDown = useGestureConfigStore((s) => s.gestureDown);
   const gestureLeft = useGestureConfigStore((s) => s.gestureLeft);
   const gestureRight = useGestureConfigStore((s) => s.gestureRight);
+  const chainUp = useGestureConfigStore((s) => s.chainUp);
+  const chainDown = useGestureConfigStore((s) => s.chainDown);
+  const chainLeft = useGestureConfigStore((s) => s.chainLeft);
+  const chainRight = useGestureConfigStore((s) => s.chainRight);
 
   const gestureDirections = useMemo(
     () => ({ gestureUp, gestureDown, gestureLeft, gestureRight }),
     [gestureUp, gestureDown, gestureLeft, gestureRight],
+  );
+
+  const chainDirections = useMemo(
+    () => ({ chainUp, chainDown, chainLeft, chainRight }),
+    [chainUp, chainDown, chainLeft, chainRight],
   );
 
   const { gestureHandlers, activeGesture, gestureConsumed } = useMouseGesture({
@@ -367,11 +389,15 @@ export function MediaCard(props: MediaCardProps) {
           onToggleFavorite: resolved.onToggleFavorite,
         });
         const count = isScalableAction(actionId)
-          ? computeGestureCount(event.distance, gestureThreshold)
+          ? computeGestureCount(Math.abs(event.dx), gestureThreshold)
           : undefined;
-        handler?.(id, count);
+        const chainAction = getChainActionForDirection(chainDirections, event.direction);
+        const duration = isChainDurationAction(chainAction)
+          ? resolveDurationFromDy(event.dy, useGestureSecondaryStore.getState())
+          : undefined;
+        handler?.(id, count, duration !== undefined ? { duration } : undefined);
       },
-      [gestureDirections, gestureThreshold, resolved.actions, resolved.onToggleFavorite, id],
+      [gestureDirections, chainDirections, gestureThreshold, resolved.actions, resolved.onToggleFavorite, id],
     ),
   });
 
@@ -382,7 +408,17 @@ export function MediaCard(props: MediaCardProps) {
     : null;
 
   const gestureActiveCount = isGestureCommitted && gestureActiveActionId
-    ? computeGestureCount(activeGesture.distance, gestureThreshold)
+    ? computeGestureCount(Math.abs(activeGesture.dx), gestureThreshold)
+    : undefined;
+
+  const secondaryState = useGestureSecondaryStore();
+  const gestureActiveChainAction = isGestureCommitted
+    ? getChainActionForDirection(chainDirections, activeGesture.direction)
+    : 'none';
+  const gestureActiveDuration = isGestureCommitted
+    && isChainDurationAction(gestureActiveChainAction)
+    && secondaryState.options.length > 0
+    ? resolveDurationFromDy(activeGesture.dy, secondaryState)
     : undefined;
 
   const handleOpen = () => {
@@ -623,7 +659,13 @@ export function MediaCard(props: MediaCardProps) {
             </div>
           )}
           {isGestureCommitted && gestureActiveActionId && (
-            <GestureOverlay direction={activeGesture.direction} actionId={gestureActiveActionId} count={gestureActiveCount} />
+            <GestureOverlay
+              direction={activeGesture.direction}
+              actionId={gestureActiveActionId}
+              count={gestureActiveCount}
+              duration={gestureActiveDuration}
+              durationUnit={secondaryState.unit}
+            />
           )}
         </div>
       </OverlayContainer>

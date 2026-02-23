@@ -52,6 +52,32 @@ export function isScalableAction(actionId: string): boolean {
   return !!def && 'scalable' in def && !!def.scalable;
 }
 
+// ─── Chain gesture actions (perpendicular axis after primary commit) ─────────
+
+export interface ChainGestureActionDef {
+  readonly id: string;
+  readonly label: string;
+}
+
+export const CHAIN_GESTURE_ACTIONS = [
+  { id: 'none', label: 'None' },
+  { id: 'cycleDuration', label: 'Cycle Duration' },
+] as const satisfies readonly ChainGestureActionDef[];
+
+export type ChainGestureActionId = (typeof CHAIN_GESTURE_ACTIONS)[number]['id'];
+
+export function getChainActionLabel(chainActionId: string): string {
+  const def = CHAIN_GESTURE_ACTIONS.find((a) => a.id === chainActionId);
+  return def?.label ?? chainActionId;
+}
+
+/**
+ * Check whether a chain action controls duration (vertical axis → duration cycling).
+ */
+export function isChainDurationAction(chainActionId: string): boolean {
+  return chainActionId === 'cycleDuration';
+}
+
 /**
  * Resolve a gesture action ID to a callable handler.
  * Returns undefined if the action is 'none', not found, or the handler isn't provided.
@@ -60,7 +86,7 @@ export function resolveGestureHandler(
   actionId: string,
   actions: MediaCardActions | undefined,
   extra?: { onToggleFavorite?: () => void },
-): ((id: number, count?: number) => void) | undefined {
+): ((id: number, count?: number, overrides?: { duration?: number }) => void) | undefined {
   if (actionId === 'none' || !actions) return undefined;
 
   // Special case: toggleFavorite doesn't take an id
@@ -81,5 +107,5 @@ export function resolveGestureHandler(
   const handler = actions[def.actionKey];
   if (typeof handler !== 'function') return undefined;
 
-  return handler as (id: number, count?: number) => void;
+  return handler as (id: number, count?: number, overrides?: { duration?: number }) => void;
 }

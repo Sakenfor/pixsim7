@@ -147,8 +147,10 @@ export function useMediaGenerationActions() {
 
   // Quick generate - delegates to the controller's generateWithAsset method
   // which uses the full generation pipeline (provider resolution, param building, etc.)
+  // When count > 1, triggers burst mode (multiple generations).
+  // Optional duration override from gesture secondary axis.
   const quickGenerate = useCallback(
-    async (asset: AssetModel, options?: { addToQueue?: boolean }) => {
+    async (asset: AssetModel, options?: { addToQueue?: boolean; count?: number; duration?: number }) => {
       // Optionally add to inputs (default: no)
       if (options?.addToQueue) {
         addInputs({ assets: [asset], operationType: currentOperationType });
@@ -165,7 +167,7 @@ export function useMediaGenerationActions() {
       }
 
       try {
-        await widgetContext.generateWithAsset(asset);
+        await widgetContext.generateWithAsset(asset, options?.count, { duration: options?.duration });
       } catch (err) {
         useToastStore.getState().addToast({
           type: 'error',
