@@ -215,10 +215,12 @@ export function useQuickGenerateController() {
   async function maybeRollTemplate(): Promise<string | null> {
     if (!pinnedTemplateId) return null;
     try {
-      const bindings = useBlockTemplateStore.getState().draftCharacterBindings;
+      const { draftCharacterBindings: bindings, controlValues } = useBlockTemplateStore.getState();
       const hasBindings = Object.keys(bindings).length > 0;
+      const hasControlOverrides = Object.keys(controlValues).length > 0;
       const result = await rollTemplate(pinnedTemplateId, {
         character_bindings: hasBindings ? bindings : undefined,
+        control_values: hasControlOverrides ? controlValues : undefined,
       });
       return result?.success ? result.assembled_prompt : null;
     } catch {

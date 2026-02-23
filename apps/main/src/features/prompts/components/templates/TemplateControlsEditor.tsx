@@ -439,22 +439,22 @@ function SliderControlCard({
   );
 
   return (
-    <DisclosureSection
-      label={sliderLabel}
-      className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-800/40 p-2"
-      actions={
-        <button
-          type="button"
-          onClick={() => onChange(controls.filter((_, i) => i !== index))}
-          disabled={disabled}
-          className="text-neutral-400 hover:text-red-500 disabled:opacity-50 shrink-0"
-          title="Remove control"
-        >
-          <Icon name="x" size={12} />
-        </button>
-      }
-    >
-      <div className="space-y-2 mt-1">
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/70 dark:bg-neutral-800/40 p-2 space-y-2">
+      <DisclosureSection
+        label={sliderLabel}
+        actions={
+          <button
+            type="button"
+            onClick={() => onChange(controls.filter((_, i) => i !== index))}
+            disabled={disabled}
+            className="text-neutral-400 hover:text-red-500 disabled:opacity-50 shrink-0"
+            title="Remove control"
+          >
+            <Icon name="x" size={12} />
+          </button>
+        }
+      >
+        <div className="space-y-2 mt-1">
         <div className="flex flex-wrap items-center gap-1">
           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-100 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300">
             {slotIntensityTargets.length} intensity target{slotIntensityTargets.length === 1 ? '' : 's'}
@@ -721,32 +721,34 @@ function SliderControlCard({
             })}
           </div>
 
-          <div className="mt-2">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                Default slider
-              </span>
-              <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-300">
-                {slider.defaultValue}
-              </span>
-            </div>
-            <input
-              type="range"
-              min={slider.min}
-              max={slider.max}
-              step={slider.step}
-              value={slider.defaultValue}
-              onChange={(e) => {
-                const defaultValue = Number(e.target.value);
-                onChange(setControlIndex(controls, index, (c) => ({ ...c, defaultValue })));
-              }}
-              disabled={disabled}
-              className={clsx('w-full h-1 accent-blue-500', disabled && 'opacity-60')}
-            />
-          </div>
         </div>
       </div>
-    </DisclosureSection>
+      </DisclosureSection>
+
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+            Default
+          </span>
+          <span className="text-[10px] font-mono text-neutral-600 dark:text-neutral-300">
+            {slider.defaultValue}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={slider.min}
+          max={slider.max}
+          step={slider.step}
+          value={slider.defaultValue}
+          onChange={(e) => {
+            const defaultValue = Number(e.target.value);
+            onChange(setControlIndex(controls, index, (c) => ({ ...c, defaultValue })));
+          }}
+          disabled={disabled}
+          className={clsx('w-full h-1 accent-blue-500', disabled && 'opacity-60')}
+        />
+      </div>
+    </div>
   );
 }
 

@@ -25,6 +25,7 @@ import { TemplateBuilder } from '@features/prompts/components/templates/Template
 import type { CastableRole } from '@features/prompts/components/templates/TemplateCastPanel';
 import { TemplateCastPanel } from '@features/prompts/components/templates/TemplateCastPanel';
 import { TemplateRollResult } from '@features/prompts/components/templates/TemplateRollResult';
+import { readTemplateControls } from '@features/prompts/lib/templateControls';
 import {
   useBlockTemplateStore,
   createEmptySlot,
@@ -51,6 +52,8 @@ export function TemplateBuilderPanel() {
   const setPinnedTemplateId = useBlockTemplateStore((s) => s.setPinnedTemplateId);
   const templateRollMode = useBlockTemplateStore((s) => s.templateRollMode);
   const setTemplateRollMode = useBlockTemplateStore((s) => s.setTemplateRollMode);
+  const controlValues = useBlockTemplateStore((s) => s.controlValues);
+  const setControlValue = useBlockTemplateStore((s) => s.setControlValue);
 
   // All prompt boxes across all dockview groups
   const allPromptBoxes = useCapabilityAll<PromptBoxContext>(CAP_PROMPT_BOX);
@@ -140,6 +143,11 @@ export function TemplateBuilderPanel() {
   const pinnedTemplateName = useMemo(
     () => pinnedTemplateId ? templates.find((t) => t.id === pinnedTemplateId)?.name ?? null : null,
     [templates, pinnedTemplateId],
+  );
+
+  const pinnedControls = useMemo(
+    () => readTemplateControls(activeTemplate?.template_metadata),
+    [activeTemplate?.template_metadata],
   );
 
   const handleNew = useCallback(() => {
@@ -363,6 +371,31 @@ export function TemplateBuilderPanel() {
                     </button>
                   </div>
                 </div>
+                {pinnedControls.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {pinnedControls.map((control) => {
+                      if (control.type !== 'slider') return null;
+                      const value = controlValues[control.id] ?? control.defaultValue;
+                      return (
+                        <div key={control.id} className="flex items-center gap-2">
+                          <span className="text-[10px] text-accent/70 shrink-0 w-16 truncate" title={control.label}>
+                            {control.label}
+                          </span>
+                          <input
+                            type="range"
+                            min={control.min}
+                            max={control.max}
+                            step={control.step}
+                            value={value}
+                            onChange={(e) => setControlValue(control.id, Number(e.target.value))}
+                            className="flex-1 h-1 accent-[var(--color-accent)]"
+                          />
+                          <span className="text-[10px] font-mono text-accent/70 w-5 text-right">{value}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

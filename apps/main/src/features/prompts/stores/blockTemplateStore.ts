@@ -86,6 +86,11 @@ interface BlockTemplateState {
   setPinnedTemplateId: (id: string | null) => void;
   setTemplateRollMode: (mode: 'once' | 'each') => void;
 
+  // Control slider overrides (control_id -> value)
+  controlValues: Record<string, number>;
+  setControlValue: (controlId: string, value: number) => void;
+  resetControlValues: () => void;
+
   // Rolling
   roll: (templateId: string, seed?: number) => Promise<RollResult | null>;
   clearRollResult: () => void;
@@ -138,6 +143,7 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   rolling: false,
   pinnedTemplateId: null,
   templateRollMode: 'once',
+  controlValues: {},
 
   fetchTemplates: async () => {
     set({ templatesLoading: true });
@@ -327,11 +333,17 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
     }
   },
 
-  setPinnedTemplateId: (id) => set({ pinnedTemplateId: id }),
+  setPinnedTemplateId: (id) => set({ pinnedTemplateId: id, controlValues: {} }),
   setTemplateRollMode: (mode) => set({ templateRollMode: mode }),
 
+  setControlValue: (controlId, value) => {
+    const { controlValues } = get();
+    set({ controlValues: { ...controlValues, [controlId]: value } });
+  },
+  resetControlValues: () => set({ controlValues: {} }),
+
   roll: async (templateId, seed) => {
-    const { draftCharacterBindings, activeTemplate } = get();
+    const { draftCharacterBindings, activeTemplate, controlValues } = get();
     set({ rolling: true });
     try {
       const templateBindings = activeTemplate?.character_bindings ?? {};
@@ -339,7 +351,12 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
         activeTemplate && areBindingsEqual(draftCharacterBindings, templateBindings)
           ? undefined
           : draftCharacterBindings;
-      const result = await rollTemplate(templateId, { seed, character_bindings: bindings });
+      const hasControlOverrides = Object.keys(controlValues).length > 0;
+      const result = await rollTemplate(templateId, {
+        seed,
+        character_bindings: bindings,
+        control_values: hasControlOverrides ? controlValues : undefined,
+      });
       set({ lastRollResult: result });
       return result;
     } catch {
