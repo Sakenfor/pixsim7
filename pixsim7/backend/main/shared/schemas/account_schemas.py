@@ -8,7 +8,7 @@ Credit system (normalized, queryable):
 - Supports unlimited credit types per provider
 """
 from datetime import datetime
-from typing import Optional, Dict
+from typing import List, Optional, Dict
 from pydantic import BaseModel, EmailStr
 from pixsim7.backend.main.domain.enums import AccountStatus
 
@@ -80,6 +80,9 @@ class AccountResponse(BaseModel):
     # Concurrency
     max_concurrent_jobs: int
     current_processing_jobs: int
+
+    # Plan capabilities
+    unlimited_image_models: List[str] = []
 
     # Timing
     last_used: Optional[datetime]

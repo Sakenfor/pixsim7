@@ -148,6 +148,52 @@ class Settings(BaseSettings):
         le=50,
         description="Maximum retry attempts per generation (default: 20 for content filters and transient errors)"
     )
+    content_filter_submit_max_retries: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Worker-local retry budget for submit-time retryable content-filter errors."
+    )
+    content_filter_rotate_after_retries: int = Field(
+        default=2,
+        ge=0,
+        le=20,
+        description="After this many content-filter retries, clear account affinity for non-pinned generations."
+    )
+    content_filter_pinned_yield_after_retries: int = Field(
+        default=1,
+        ge=0,
+        le=20,
+        description="Pinned generations start yielding after this many content-filter retries when siblings are queued."
+    )
+    content_filter_retry_defer_seconds: int = Field(
+        default=10,
+        ge=1,
+        le=600,
+        description="Base defer delay in seconds when yielding due to content-filter retry fairness."
+    )
+    content_filter_pinned_yield_defer_multiplier: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Multiplier applied to content_filter_retry_defer_seconds for pinned-yield defers."
+    )
+    content_filter_yield_counts_as_retry: bool = Field(
+        default=False,
+        description="Whether fairness-only content-filter yields consume retry_count."
+    )
+    content_filter_max_yields: int = Field(
+        default=12,
+        ge=0,
+        le=200,
+        description="Maximum fairness-only content-filter yields per generation before falling back to normal retry/rotation. Set 0 to disable the cap."
+    )
+    content_filter_yield_counter_ttl_seconds: int = Field(
+        default=86400,
+        ge=60,
+        le=2592000,
+        description="Redis TTL for per-generation content-filter yield counters."
+    )
     validate_composition_vocabs: bool = Field(
         default=False,
         description="Validate composition asset vocab fields (role, pose_id, location_id, etc.) against the vocabulary registry. Logs warnings for unknown values."
@@ -240,7 +286,6 @@ class Settings(BaseSettings):
         default=0.0,
         description="Default cache freshness threshold (0.0=always use cache, 1.0=always regenerate)"
     )
-
     # ===== LOGGING =====
     log_level: str = Field(
         default="INFO",

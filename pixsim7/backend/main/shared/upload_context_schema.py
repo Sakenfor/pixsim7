@@ -109,6 +109,21 @@ UPLOAD_CONTEXT_SPEC: dict[str, Any] = json.loads(r'''{
           "description": "True if a crop/region was selected"
         }
       }
+    },
+    "mask_draw": {
+      "label": "Mask Draw",
+      "fields": {
+        "source_asset_id": {
+          "type": "number",
+          "label": "Source Asset",
+          "description": "Asset ID the mask was drawn on"
+        },
+        "mask_type": {
+          "type": "string",
+          "label": "Mask Type",
+          "description": "Mask semantic type (e.g., inpaint)"
+        }
+      }
     }
   }
 }''')

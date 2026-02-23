@@ -33,37 +33,86 @@ def _normalize_mapping_values(mapping: Dict[str, str]) -> Dict[str, str]:
 
 
 def _load_role_data() -> Dict[str, Any]:
-    """Load and normalize composition role data from VocabularyRegistry."""
-    registry = get_registry()
-
+    """Load and normalize composition role data from package registry when available."""
     roles_data: Dict[str, Dict[str, Any]] = {}
     aliases: Dict[str, str] = {}
+    slug_mappings: Dict[str, str] = {}
+    namespace_mappings: Dict[str, str] = {}
+    registry = get_registry()
+    loaded_from_packages = False
 
-    for role in registry.all_roles():
-        role_id = _strip_role_prefix(role.id)
-        parent = _strip_role_prefix(role.parent) if role.parent else None
-        roles_data[role_id] = {
-            "label": role.label,
-            "description": role.description,
-            "color": role.color,
-            "defaultLayer": role.default_layer,
-            "defaultInfluence": role.default_influence,
-            "tags": list(role.tags),
-            "parent": parent,
-            "isGroup": role.is_group,
-        }
+    try:
+        from pixsim7.backend.main.domain.composition.package_registry import (
+            get_available_roles,
+        )
 
-        for alias in role.aliases:
-            alias_key = str(alias).strip().lower()
-            if alias_key:
-                aliases[alias_key] = role_id
+        roles = get_available_roles()
+        if roles:
+            loaded_from_packages = True
+            for role in roles:
+                role_id = _strip_role_prefix(role.id)
+                parent = _strip_role_prefix(role.parent) if role.parent else None
+                roles_data[role_id] = {
+                    "label": role.label,
+                    "description": role.description,
+                    "color": role.color,
+                    "defaultLayer": role.default_layer,
+                    "defaultInfluence": getattr(role, "default_influence", "content"),
+                    "tags": list(role.tags),
+                    "parent": parent,
+                    "isGroup": role.is_group,
+                }
+
+                for slug in role.slug_mappings:
+                    slug_key = str(slug).strip().lower()
+                    if slug_key:
+                        slug_mappings[slug_key] = role_id
+
+                for namespace in role.namespace_mappings:
+                    namespace_key = str(namespace).strip().lower()
+                    if namespace_key:
+                        namespace_mappings[namespace_key] = role_id
+
+                for alias in getattr(role, "aliases", []):
+                    alias_key = str(alias).strip().lower()
+                    if alias_key:
+                        aliases[alias_key] = role_id
+    except Exception:
+        loaded_from_packages = False
+
+    if not loaded_from_packages:
+        for role in registry.all_roles():
+            role_id = _strip_role_prefix(role.id)
+            parent = _strip_role_prefix(role.parent) if role.parent else None
+            roles_data[role_id] = {
+                "label": role.label,
+                "description": role.description,
+                "color": role.color,
+                "defaultLayer": role.default_layer,
+                "defaultInfluence": role.default_influence,
+                "tags": list(role.tags),
+                "parent": parent,
+                "isGroup": role.is_group,
+            }
+            for alias in role.aliases:
+                alias_key = str(alias).strip().lower()
+                if alias_key:
+                    aliases[alias_key] = role_id
+
+        slug_mappings = _normalize_mapping_values(registry.role_slug_mappings)
+        namespace_mappings = _normalize_mapping_values(registry.role_namespace_mappings)
 
     priority = [_strip_role_prefix(role_id) for role_id in registry.role_priority]
-    if not priority:
-        priority = list(roles_data.keys())
-
-    slug_mappings = _normalize_mapping_values(registry.role_slug_mappings)
-    namespace_mappings = _normalize_mapping_values(registry.role_namespace_mappings)
+    leaf_ids = {
+        role_id for role_id, meta in roles_data.items() if not meta.get("isGroup", False)
+    }
+    if priority:
+        ordered = [role_id for role_id in priority if role_id in leaf_ids]
+        ordered_set = set(ordered)
+        extras = sorted(role_id for role_id in leaf_ids if role_id not in ordered_set)
+        priority = [*ordered, *extras]
+    else:
+        priority = sorted(leaf_ids)
 
     return {
         "roles": roles_data,

@@ -382,6 +382,7 @@ class GenerationResponse(BaseModel):
     error_message: Optional[str]
     error_code: Optional[str] = None
     retry_count: int
+    attempt_count: Optional[int] = None
     parent_generation: Optional[GenerationRef] = Field(
         default=None, validation_alias=AliasChoices("parent_generation", "parent_generation_id")
     )
