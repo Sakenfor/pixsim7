@@ -236,7 +236,7 @@ function CompositionRolesView({ searchQuery }: { searchQuery: string }) {
         <p>
           Source:{' '}
           <code className="text-neutral-400">
-            /api/v1/concepts/roles (runtime)
+            /api/v1/concepts/role (runtime)
           </code>
         </p>
         <p className="mt-1 text-emerald-400/70">

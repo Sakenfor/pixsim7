@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['npc', 'portraits', 'expressions', 'preferences'],
   icon: 'user',
   description: 'Configure NPC expressions mapped to assets',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
+    order: 30,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

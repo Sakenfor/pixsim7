@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { EdgeEffectsPanel } from '@features/panels/components/tools/EdgeEffectsPanel';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'edge-effects',
@@ -9,6 +10,11 @@ export default definePanel({
   tags: ['scene', 'edges', 'effects', 'relationships', 'quests', 'inventory'],
   icon: 'zap',
   description: 'Inspect and edit edge effects for the active scene graph.',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game-2d'],
+    order: 40,
+  },
   contextLabel: 'scene',
   supportsCompactMode: false,
   supportsMultipleInstances: false,

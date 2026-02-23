@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['routine', 'graph', 'schedule', 'npc'],
   icon: 'clock',
   description: 'Design NPC daily routines and schedules',
+  navigation: {
+    featureIds: ['routine-graph'],
+    modules: ['workspace', 'arc-graph', 'routine-graph-page'],
+    order: 25,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

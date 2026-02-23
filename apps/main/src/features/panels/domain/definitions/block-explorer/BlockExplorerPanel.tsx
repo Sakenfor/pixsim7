@@ -16,7 +16,11 @@ import {
   type PromptBlockResponse,
   type BlockRoleSummary,
 } from '@lib/api/blockTemplates';
-import { Icon } from '@lib/icons';
+
+import {
+  SidebarTreeGroup,
+  SidebarTreeLeafButton,
+} from '@features/panels/components/shared/SidebarTree';
 
 import { BlockFilters, type TagFilter } from './BlockFilters';
 import { useVocabResolver, type ResolvedTag } from './useVocabResolver';
@@ -67,96 +71,26 @@ function roleColor(role: string | null): string {
 
 interface RoleNode {
   role: string;
-  categories: { category: string; count: number }[];
+  categories: { category: string | null; label: string; count: number }[];
   totalCount: number;
 }
 
 function buildRoleTree(summaries: BlockRoleSummary[]): RoleNode[] {
-  const map = new Map<string, { category: string; count: number }[]>();
+  const map = new Map<string, { category: string | null; label: string; count: number }[]>();
   for (const s of summaries) {
     const role = s.role ?? 'uncategorized';
     if (!map.has(role)) map.set(role, []);
-    map.get(role)!.push({ category: s.category ?? 'default', count: s.count });
+    map.get(role)!.push({
+      category: s.category ?? null,
+      label: s.category ?? 'default',
+      count: s.count,
+    });
   }
   return Array.from(map.entries()).map(([role, categories]) => ({
     role,
     categories,
     totalCount: categories.reduce((sum, c) => sum + c.count, 0),
   }));
-}
-
-// ============================================================================
-// Sidebar
-// ============================================================================
-
-function SidebarRoleNode({
-  node,
-  selectedRole,
-  selectedCategory,
-  onSelectRole,
-  onSelectCategory,
-}: {
-  node: RoleNode;
-  selectedRole: string | null;
-  selectedCategory: string | null;
-  onSelectRole: (role: string) => void;
-  onSelectCategory: (role: string, category: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const color = roleColor(node.role);
-  const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
-  const isRoleSelected = selectedRole === node.role && !selectedCategory;
-
-  return (
-    <div className="mb-0.5">
-      <button
-        onClick={() => {
-          setExpanded(!expanded);
-          onSelectRole(node.role);
-        }}
-        className={`w-full flex items-center gap-1.5 px-2 py-1 rounded transition-colors ${
-          isRoleSelected
-            ? 'bg-neutral-700/80 text-neutral-100'
-            : 'hover:bg-neutral-800/60 text-neutral-300'
-        }`}
-      >
-        <Icon
-          name={expanded ? 'chevronDown' : 'chevronRight'}
-          size={10}
-          className="text-neutral-500 shrink-0"
-        />
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
-        <span className="text-[11px] font-semibold uppercase tracking-wider truncate">
-          {node.role}
-        </span>
-        <span className="text-[10px] text-neutral-500 ml-auto">{node.totalCount}</span>
-      </button>
-
-      {expanded && (
-        <div className="ml-3 mt-px">
-          {node.categories.map((cat) => {
-            const isCatSelected =
-              selectedRole === node.role && selectedCategory === cat.category;
-            return (
-              <button
-                key={cat.category}
-                onClick={() => onSelectCategory(node.role, cat.category)}
-                className={`w-full flex items-center gap-1.5 px-2 py-0.5 rounded text-left transition-colors ${
-                  isCatSelected
-                    ? 'bg-neutral-700/80 text-neutral-100'
-                    : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-200'
-                }`}
-              >
-                <span className={`w-1 h-1 rounded-full shrink-0 ${dotClass}`} />
-                <span className="text-[11px] truncate flex-1">{cat.category}</span>
-                <span className="text-[9px] text-neutral-600 tabular-nums">{cat.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ============================================================================
@@ -384,6 +318,19 @@ export function BlockExplorerPanel() {
       .catch(() => setBlocks([]));
   }, [selectedRole, selectedCategory, selectedPackage, searchQuery, activeTagFilters]);
 
+  // Clear or refresh detail selection when filtered results change.
+  useEffect(() => {
+    if (!selectedBlock) return;
+    const nextSelected = blocks.find((b) => b.block_id === selectedBlock.block_id);
+    if (!nextSelected) {
+      setSelectedBlock(null);
+      return;
+    }
+    if (nextSelected !== selectedBlock) {
+      setSelectedBlock(nextSelected);
+    }
+  }, [blocks, selectedBlock]);
+
   const handleSelectRole = useCallback((role: string) => {
     setSelectedRole(role);
     setSelectedCategory(null);
@@ -392,7 +339,7 @@ export function BlockExplorerPanel() {
     setActiveTagFilters([]);
   }, []);
 
-  const handleSelectCategory = useCallback((role: string, category: string) => {
+  const handleSelectCategory = useCallback((role: string, category: string | null) => {
     setSelectedRole(role);
     setSelectedCategory(category);
     setSelectedBlock(null);
@@ -451,16 +398,46 @@ export function BlockExplorerPanel() {
           <p className="text-[10px] text-neutral-500">{totalBlocks} total</p>
         </div>
         <div className="flex-1 overflow-y-auto py-1 px-1">
-          {roleTree.map((node) => (
-            <SidebarRoleNode
-              key={node.role}
-              node={node}
-              selectedRole={selectedRole}
-              selectedCategory={selectedCategory}
-              onSelectRole={handleSelectRole}
-              onSelectCategory={handleSelectCategory}
-            />
-          ))}
+          {roleTree.map((node) => {
+            const color = roleColor(node.role);
+            const dotClass = COLOR_DOT[color] ?? COLOR_DOT.gray;
+            const isRoleSelected = selectedRole === node.role && !selectedCategory;
+
+            return (
+              <SidebarTreeGroup
+                key={node.role}
+                label={node.role}
+                dotClassName={dotClass}
+                selected={isRoleSelected}
+                onClick={() => handleSelectRole(node.role)}
+                trailing={
+                  <span className="text-[10px] text-neutral-500 ml-auto">
+                    {node.totalCount}
+                  </span>
+                }
+              >
+                {node.categories.map((cat) => {
+                  const isCatSelected =
+                    selectedRole === node.role && selectedCategory === cat.category;
+                  return (
+                    <SidebarTreeLeafButton
+                      key={cat.category ?? '__default__'}
+                      label={cat.label}
+                      dotClassName={dotClass}
+                      selected={isCatSelected}
+                      onClick={() => handleSelectCategory(node.role, cat.category)}
+                      compact
+                      trailing={
+                        <span className="text-[9px] text-neutral-600 tabular-nums">
+                          {cat.count}
+                        </span>
+                      }
+                    />
+                  );
+                })}
+              </SidebarTreeGroup>
+            );
+          })}
         </div>
       </div>
 

@@ -55,6 +55,23 @@ export type CoreEditorRole = "game-view" | "flow-view" | "world-editor";
 
 export type PanelOrchestrationMetadata = Omit<PanelMetadata, "id" | "title">;
 
+export interface PanelNavigationContribution {
+  /** Sidebar module IDs this panel contributes to (e.g. "workspace"). */
+  modules?: string[];
+  /** Feature IDs this panel contributes to (e.g. "game"). */
+  featureIds?: string[];
+  /** Route paths this panel contributes to (e.g. "/workspace"). */
+  routes?: string[];
+  /** Optional label override when rendered in generated subNav items. */
+  label?: string;
+  /** Optional icon override when rendered in generated subNav items. */
+  icon?: string;
+  /** Lower values sort earlier in generated subNav lists. */
+  order?: number;
+  /** Hide this contribution from generated subNav lists. */
+  hidden?: boolean;
+}
+
 /**
  * Settings update helpers provided to panel settings components.
  * Centralizes persistence and debouncing logic.
@@ -226,6 +243,11 @@ export interface PanelDefinition<TSettings = any> extends BasePanelDefinition {
    * alongside this one via a "+" dropdown in the group header.
    */
   siblings?: string[];
+
+  /**
+   * Optional navigation contribution metadata for generated sidebar flyouts.
+   */
+  navigation?: PanelNavigationContribution;
 }
 
 function resolveInstancePolicy(

@@ -171,14 +171,14 @@ export class PanelManager {
     const workspaceHost = getDockviewHost('workspace');
     if (workspaceHost) {
       // Lazy import to avoid circular dependency (workspace → panels → workspace).
-      import('@features/workspace/stores/workspaceStore').then(({ useWorkspaceStore }) => {
+      import('@features/workspace/lib/openPanel').then(({ openFloatingWorkspacePanel, openWorkspacePanel }) => {
         if (options.zone === 'floating') {
-          useWorkspaceStore.getState().openFloatingPanel(panelId);
+          openFloatingWorkspacePanel(panelId);
         } else {
-          useWorkspaceStore.getState().restorePanel(panelId);
+          openWorkspacePanel(panelId);
         }
       }).catch(() => {
-        // Workspace store not available
+        // Workspace helpers not available
       });
     }
   }

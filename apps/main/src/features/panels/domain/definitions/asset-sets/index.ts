@@ -1,5 +1,6 @@
+import { AssetSetsPanel } from '@features/assets/components/asset-sets';
+
 import { definePanel } from '../../../lib/definePanel';
-import { AssetSetsPanel } from './AssetSetsPanel';
 
 export default definePanel({
   id: 'asset-sets',

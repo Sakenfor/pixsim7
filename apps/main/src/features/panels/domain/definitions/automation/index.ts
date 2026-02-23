@@ -10,6 +10,10 @@ export default definePanel({
   tags: ['automation', 'devices', 'loops', 'presets'],
   icon: 'bot',
   description: 'Manage Android devices and automation loops',
+  navigation: {
+    featureIds: ['automation'],
+    order: 10,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

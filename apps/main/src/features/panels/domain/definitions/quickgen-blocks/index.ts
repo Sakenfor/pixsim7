@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['generation', 'prompt', 'blocks', 'quickgen', 'control-center'],
   icon: 'grid',
   description: 'Prompt companion blocks for quick generation',
+  navigation: {
+    featureIds: ['generation'],
+    modules: ['generation-page'],
+    order: 40,
+  },
   settingScopes: ['generation'],
   supportsCompactMode: false,
   supportsMultipleInstances: false,

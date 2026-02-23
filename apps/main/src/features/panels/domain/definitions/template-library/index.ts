@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { TemplateLibraryPanel } from '@features/panels/components/tools/TemplateLibraryPanel';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'template-library',
@@ -10,6 +11,11 @@ export default definePanel({
   icon: 'library',
   description:
     'Browse and manage templates and runtime entities via the generic CRUD API. Create, edit, and delete location templates, item templates, NPCs, scenes, and more.',
+  navigation: {
+    featureIds: ['automation'],
+    modules: ['automation'],
+    order: 20,
+  },
   supportsCompactMode: false,
   supportsMultipleInstances: false,
   orchestration: {

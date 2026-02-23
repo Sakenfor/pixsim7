@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['interaction', 'npc', 'design', 'prototype'],
   icon: 'sparkles',
   description: 'Design and prototype NPC interactions visually',
+  navigation: {
+    featureIds: ['game', 'interactions'],
+    modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
+    order: 40,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

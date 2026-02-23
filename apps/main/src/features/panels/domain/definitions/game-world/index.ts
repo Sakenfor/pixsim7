@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['game', 'world', 'locations', 'hotspots', 'presets'],
   icon: 'map',
   description: 'Configure locations and hotspots for 3D scenes',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game'],
+    order: 10,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

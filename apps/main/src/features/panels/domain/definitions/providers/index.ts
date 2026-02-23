@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { ProviderSettingsPanel } from '@features/providers/components/ProviderSettingsPanel';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'providers',
@@ -9,6 +10,11 @@ export default definePanel({
   tags: ['providers', 'api', 'settings'],
   icon: 'plug',
   description: 'API provider settings and configuration',
+  navigation: {
+    featureIds: ['generation'],
+    modules: ['generation-page', 'settings-page'],
+    order: 50,
+  },
   supportsCompactMode: false,
   supportsMultipleInstances: false,
 });

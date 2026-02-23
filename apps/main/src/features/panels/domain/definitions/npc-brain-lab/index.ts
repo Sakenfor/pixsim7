@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { NpcBrainLab } from '@features/brainTools';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'npc-brain-lab',
@@ -9,6 +10,11 @@ export default definePanel({
   tags: ['npc', 'ai', 'brain', 'behavior'],
   icon: 'bot',
   description: 'NPC behavior testing and debugging',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game', 'npc-brain-lab', 'npcs', 'interaction-studio'],
+    order: 20,
+  },
   supportsCompactMode: false,
   supportsMultipleInstances: false,
 });

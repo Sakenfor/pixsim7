@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['prompts', 'templates', 'blocks', 'composition', 'generation'],
   icon: 'shuffle',
   description: 'Create and manage block templates for random prompt composition',
+  navigation: {
+    featureIds: ['automation'],
+    modules: ['automation'],
+    order: 30,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

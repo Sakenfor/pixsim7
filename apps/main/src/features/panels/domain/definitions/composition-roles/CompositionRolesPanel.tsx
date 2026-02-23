@@ -7,14 +7,17 @@
  */
 
 import type { CompositionRoleDefinition } from '@pixsim7/shared.types';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { getTemplate, listBlockRoles, listTemplates, type BlockRoleSummary, type BlockTemplateDetail } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 
 import {
   SidebarTreeGroup,
   SidebarTreeLeafButton,
 } from '@features/panels/components/shared/SidebarTree';
+import { useWorkspaceStore } from '@features/workspace';
+
 
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
@@ -71,6 +74,28 @@ const COLOR_TEXT: Record<string, string> = {
 interface RoleGroup {
   group: CompositionRoleDefinition;
   leaves: CompositionRoleDefinition[];
+}
+
+interface RoleUsageTemplateMatch {
+  id: string;
+  name: string;
+  slug: string;
+  packageName: string | null | undefined;
+  matchingSlots: Array<{
+    slotIndex: number;
+    label: string;
+    category: string | null | undefined;
+    packageName: string | null | undefined;
+  }>;
+}
+
+interface RoleUsageSummary {
+  loading: boolean;
+  error: string | null;
+  blockTotal: number;
+  blockCategories: Array<{ category: string | null; count: number }>;
+  templateCount: number;
+  templates: RoleUsageTemplateMatch[];
 }
 
 function buildRoleTree(roles: CompositionRoleDefinition[]): {
@@ -132,12 +157,18 @@ function RoleDetail({
   inboundSlugs,
   inboundNamespaces,
   packageName,
+  usage,
+  onOpenPromptLibraryForRole,
+  onOpenPromptLibraryTemplate,
 }: {
   role: CompositionRoleDefinition;
   priorityIndex: number | undefined;
   inboundSlugs: [string, string][];
   inboundNamespaces: [string, string][];
   packageName: string | null;
+  usage?: RoleUsageSummary;
+  onOpenPromptLibraryForRole?: (tab: 'templates' | 'blocks') => void;
+  onOpenPromptLibraryTemplate?: (templateId: string) => void;
 }) {
   const badgeClass = COLOR_BADGE[role.color] ?? COLOR_BADGE.gray;
   const textClass = COLOR_TEXT[role.color] ?? COLOR_TEXT.gray;
@@ -250,6 +281,102 @@ function RoleDetail({
           </div>
         </DetailSection>
       )}
+
+      <DetailSection label="Usage">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => onOpenPromptLibraryForRole?.('templates')}
+              className="text-[10px] px-2 py-0.5 rounded border border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+            >
+              Open Prompt Library (Templates)
+            </button>
+            <button
+              type="button"
+              onClick={() => onOpenPromptLibraryForRole?.('blocks')}
+              className="text-[10px] px-2 py-0.5 rounded border border-neutral-700 hover:bg-neutral-800 text-neutral-300"
+            >
+              Open Prompt Library (Blocks)
+            </button>
+          </div>
+          {usage?.loading && (
+            <div className="text-[11px] text-neutral-500">Loading usage…</div>
+          )}
+          {usage?.error && (
+            <div className="text-[11px] text-red-400">{usage.error}</div>
+          )}
+          {!usage?.loading && !usage?.error && usage && (
+            <>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                <div className="text-neutral-500">Blocks</div>
+                <div className="text-neutral-300">{usage.blockTotal}</div>
+                <div className="text-neutral-500">Templates</div>
+                <div className="text-neutral-300">{usage.templateCount}</div>
+              </div>
+
+              {usage.blockCategories.length > 0 && (
+                <div>
+                  <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Block categories</div>
+                  <div className="flex flex-wrap gap-1">
+                    {usage.blockCategories.slice(0, 8).map((row) => (
+                      <span
+                        key={row.category ?? 'default'}
+                        className="px-1.5 py-0.5 rounded text-[10px] bg-neutral-800 text-neutral-300 border border-neutral-700/50"
+                      >
+                        {(row.category ?? 'default')}: {row.count}
+                      </span>
+                    ))}
+                    {usage.blockCategories.length > 8 && (
+                      <span className="text-[10px] text-neutral-500">
+                        +{usage.blockCategories.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {usage.templates.length > 0 && (
+                <div>
+                  <div className="text-[10px] text-neutral-500 uppercase tracking-wider mb-1">Templates using role</div>
+                  <div className="space-y-1">
+                    {usage.templates.slice(0, 6).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => onOpenPromptLibraryTemplate?.(t.id)}
+                        className="w-full text-left p-2 rounded border border-neutral-700/60 hover:bg-neutral-800/50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-neutral-200 truncate">{t.name}</span>
+                          <span className="text-[10px] text-neutral-500 shrink-0">{t.matchingSlots.length} slot{t.matchingSlots.length === 1 ? '' : 's'}</span>
+                        </div>
+                        <div className="text-[10px] text-neutral-500 truncate">{t.slug}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {t.matchingSlots.slice(0, 3).map((slot) => (
+                            <span
+                              key={`${t.id}:${slot.slotIndex}`}
+                              className="px-1 py-0.5 rounded text-[9px] bg-neutral-800 text-neutral-400 border border-neutral-700/50"
+                            >
+                              {slot.label || `slot ${slot.slotIndex + 1}`}
+                            </span>
+                          ))}
+                          {t.matchingSlots.length > 3 && (
+                            <span className="text-[9px] text-neutral-500">+{t.matchingSlots.length - 3}</span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                    {usage.templates.length > 6 && (
+                      <div className="text-[10px] text-neutral-500">+{usage.templates.length - 6} more templates</div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </DetailSection>
     </div>
   );
 }
@@ -325,11 +452,26 @@ function PackageFilterBar({
 // Main panel
 // ============================================================================
 
-export function CompositionRolesPanel() {
+interface CompositionRolesPanelProps {
+  focusRoleId?: string;
+  context?: Record<string, unknown>;
+}
+
+export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activePackageIds, setActivePackageIds] = useState<Set<string> | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const templateDetailsCacheRef = useRef<Map<string, BlockTemplateDetail>>(new Map());
+  const [allTemplateSummaries, setAllTemplateSummaries] = useState<Awaited<ReturnType<typeof listTemplates>> | null>(null);
+  const [allBlockRoleSummaries, setAllBlockRoleSummaries] = useState<BlockRoleSummary[] | null>(null);
+  const [roleUsageById, setRoleUsageById] = useState<Record<string, RoleUsageSummary>>({});
+  const openFloatingPanel = useWorkspaceStore((s) => s.openFloatingPanel);
+  const focusRoleIdFromContext =
+    typeof props.context?.focusRoleId === 'string'
+      ? props.context.focusRoleId
+      : undefined;
+  const focusRoleId = props.focusRoleId ?? focusRoleIdFromContext;
 
   const { roles, packages, priority, slugToRole, namespaceToRole, isLoading, error } =
     useCompositionPackages();
@@ -441,6 +583,141 @@ export function CompositionRolesPanel() {
   );
 
   const selectedRole = selectedId ? roleMap.get(selectedId) : undefined;
+
+  useEffect(() => {
+    if (!focusRoleId) return;
+    if (selectedId === focusRoleId) return;
+    setSelectedId(focusRoleId);
+  }, [focusRoleId, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    if (roleUsageById[selectedId]?.loading || roleUsageById[selectedId]) return;
+
+    let cancelled = false;
+    setRoleUsageById((prev) => ({
+      ...prev,
+      [selectedId]: {
+        loading: true,
+        error: null,
+        blockTotal: 0,
+        blockCategories: [],
+        templateCount: 0,
+        templates: [],
+      },
+    }));
+
+    void (async () => {
+      try {
+        let roleSummaries = allBlockRoleSummaries;
+        if (!roleSummaries) {
+          roleSummaries = await listBlockRoles();
+          if (!cancelled) {
+            setAllBlockRoleSummaries(roleSummaries);
+          }
+        }
+
+        let templateSummaries = allTemplateSummaries;
+        if (!templateSummaries) {
+          templateSummaries = await listTemplates({ limit: 200 });
+          if (!cancelled) {
+            setAllTemplateSummaries(templateSummaries);
+          }
+        }
+
+        const missing = templateSummaries.filter((t) => !templateDetailsCacheRef.current.has(t.id));
+        for (const t of missing) {
+          const detail = await getTemplate(t.id);
+          templateDetailsCacheRef.current.set(t.id, detail);
+        }
+
+        const blockRows = (roleSummaries ?? []).filter((r) => (r.role ?? 'uncategorized') === selectedId);
+        const blockTotal = blockRows.reduce((sum, r) => sum + (r.count ?? 0), 0);
+        const blockCategories = blockRows
+          .map((r) => ({ category: r.category ?? null, count: r.count ?? 0 }))
+          .sort((a, b) => b.count - a.count || (a.category ?? '').localeCompare(b.category ?? ''));
+
+        const templateMatches: RoleUsageTemplateMatch[] = [];
+        for (const t of templateSummaries) {
+          const detail = templateDetailsCacheRef.current.get(t.id);
+          if (!detail) continue;
+          const matchingSlots = (detail.slots ?? [])
+            .map((slot, index) => ({ slot, index }))
+            .filter(({ slot }) => slot.role === selectedId)
+            .map(({ slot, index }) => ({
+              slotIndex: slot.slot_index ?? index,
+              label: slot.label ?? '',
+              category: slot.category ?? null,
+              packageName: slot.package_name ?? null,
+            }));
+          if (matchingSlots.length > 0) {
+            templateMatches.push({
+              id: detail.id,
+              name: detail.name,
+              slug: detail.slug,
+              packageName: detail.package_name,
+              matchingSlots,
+            });
+          }
+        }
+
+        if (!cancelled) {
+          setRoleUsageById((prev) => ({
+            ...prev,
+            [selectedId]: {
+              loading: false,
+              error: null,
+              blockTotal,
+              blockCategories,
+              templateCount: templateMatches.length,
+              templates: templateMatches.sort((a, b) => a.name.localeCompare(b.name)),
+            },
+          }));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRoleUsageById((prev) => ({
+            ...prev,
+            [selectedId]: {
+              loading: false,
+              error: err instanceof Error ? err.message : 'Failed to load role usage',
+              blockTotal: 0,
+              blockCategories: [],
+              templateCount: 0,
+              templates: [],
+            },
+          }));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [allBlockRoleSummaries, allTemplateSummaries, roleUsageById, selectedId]);
+
+  const openPromptLibraryForRole = (roleId: string, tab: 'templates' | 'blocks') => {
+    openFloatingPanel('prompt-library-inspector', {
+      width: 1200,
+      height: 760,
+      context: {
+        tab,
+        focusRoleId: roleId,
+      },
+    });
+  };
+
+  const openPromptLibraryTemplate = (roleId: string, templateId: string) => {
+    openFloatingPanel('prompt-library-inspector', {
+      width: 1200,
+      height: 760,
+      context: {
+        tab: 'templates',
+        focusRoleId: roleId,
+        focusTemplateId: templateId,
+      },
+    });
+  };
 
   // Inbound mappings for selected role
   const inboundSlugs = useMemo(
@@ -603,6 +880,9 @@ export function CompositionRolesPanel() {
               inboundSlugs={inboundSlugs}
               inboundNamespaces={inboundNamespaces}
               packageName={packageLabels.get(roleToPackage.get(selectedRole.id) ?? '') ?? null}
+              usage={roleUsageById[selectedRole.id]}
+              onOpenPromptLibraryForRole={(tab) => openPromptLibraryForRole(selectedRole.id, tab)}
+              onOpenPromptLibraryTemplate={(templateId) => openPromptLibraryTemplate(selectedRole.id, templateId)}
             />
           ) : (
             <EmptyDetail leafCount={leafCount} groupCount={groups.length} />

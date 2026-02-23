@@ -10,7 +10,7 @@
  * - Roll & Go to connected prompt boxes
  */
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { BlockTemplateSummary, CharacterBindings } from '@lib/api/blockTemplates';
 import { getTemplate } from '@lib/api/blockTemplates';
@@ -75,10 +75,54 @@ export function TemplateBuilderPanel() {
   const [castTemplateId, setCastTemplateId] = useState<string | null>(null);
   const [castRoles, setCastRoles] = useState<CastableRole[]>([]);
   const [castLoading, setCastLoading] = useState(false);
+  const [updatedTemplateIds, setUpdatedTemplateIds] = useState<Set<string>>(() => new Set());
+  const templateUpdatedAtByIdRef = useRef<Map<string, string>>(new Map());
+  const hasTemplateListBaselineRef = useRef(false);
 
   useEffect(() => {
     void fetchTemplates();
   }, [fetchTemplates]);
+
+  useEffect(() => {
+    const previous = templateUpdatedAtByIdRef.current;
+    const next = new Map<string, string>();
+    const changedYamlBackedIds: string[] = [];
+    const liveIds = new Set<string>();
+
+    for (const template of templates) {
+      liveIds.add(template.id);
+      const stamp = template.updated_at ?? template.created_at ?? '';
+      next.set(template.id, stamp);
+      if (!hasTemplateListBaselineRef.current) continue;
+      if (!template.package_name) continue;
+      const prevStamp = previous.get(template.id);
+      if (prevStamp && stamp && prevStamp !== stamp) {
+        changedYamlBackedIds.push(template.id);
+      }
+    }
+
+    setUpdatedTemplateIds((prev) => {
+      let changed = false;
+      const merged = new Set<string>();
+      for (const id of prev) {
+        if (liveIds.has(id)) {
+          merged.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      for (const id of changedYamlBackedIds) {
+        if (!merged.has(id)) {
+          merged.add(id);
+          changed = true;
+        }
+      }
+      return changed ? merged : prev;
+    });
+
+    templateUpdatedAtByIdRef.current = next;
+    hasTemplateListBaselineRef.current = true;
+  }, [templates]);
 
   // Fetch template detail when pinned (for presets + character_bindings)
   useEffect(() => {
@@ -106,6 +150,12 @@ export function TemplateBuilderPanel() {
 
   const handleEdit = useCallback(
     async (t: BlockTemplateSummary) => {
+      setUpdatedTemplateIds((prev) => {
+        if (!prev.has(t.id)) return prev;
+        const next = new Set(prev);
+        next.delete(t.id);
+        return next;
+      });
       await fetchTemplate(t.id);
       setView('edit');
     },
@@ -351,6 +401,7 @@ export function TemplateBuilderPanel() {
               )}
               {filteredTemplates.map((t) => {
                 const isPinned = pinnedTemplateId === t.id;
+                const hasUpdateNotice = updatedTemplateIds.has(t.id);
                 return (
                   <div
                     key={t.id}
@@ -363,12 +414,14 @@ export function TemplateBuilderPanel() {
                     )}
                   >
                     <div className="flex items-center justify-between">
-                      <span className={clsx(
-                        'text-sm font-medium truncate',
-                        isPinned ? 'text-accent' : 'text-neutral-700 dark:text-neutral-200',
-                      )}>
-                        {t.name}
-                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={clsx(
+                          'text-sm font-medium truncate',
+                          isPinned ? 'text-accent' : 'text-neutral-700 dark:text-neutral-200',
+                        )}>
+                          {t.name}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
                         {selectedBox && (
                           <button
@@ -389,6 +442,14 @@ export function TemplateBuilderPanel() {
                         >
                           <Icon name="shuffle" size={14} />
                         </button>
+                        {hasUpdateNotice && (
+                          <span
+                            className="p-1 rounded text-amber-600 dark:text-amber-400"
+                            title="Template was updated on the server (likely from YAML reload). Open it to review or reload."
+                          >
+                            <Icon name="refresh" size={14} />
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleEdit(t)}

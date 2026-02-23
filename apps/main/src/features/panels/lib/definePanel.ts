@@ -28,6 +28,7 @@ import type {
   ContextLabelStrategy,
   CoreEditorRole,
   PanelDefinition,
+  PanelNavigationContribution,
   PanelCategory,
   PanelSettingsFormSchema,
   PanelSettingsProps,
@@ -100,6 +101,9 @@ export interface DefinePanelOptions<TSettings = any> {
   // Sibling panels (related panels for quick-add dropdown)
   siblings?: string[];
 
+  // Optional sidebar navigation contribution metadata
+  navigation?: PanelNavigationContribution;
+
   // Internal panel (hidden from user lists)
   internal?: boolean;
 
@@ -162,6 +166,7 @@ export function definePanel<TSettings = any>(
     contextLabel,
     coreEditorRole,
     siblings,
+    navigation,
     internal = false,
     onMount,
     onUnmount,
@@ -235,6 +240,7 @@ export function definePanel<TSettings = any>(
     contextLabel,
     coreEditorRole,
     siblings,
+    navigation,
     onMount,
     onUnmount,
     isInternal: internal,

@@ -1,5 +1,5 @@
-import { definePanel } from '../../../lib/definePanel';
 import { HudDesignerPanel } from '../../../components/HudDesignerPanel';
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'hud-designer',
@@ -9,6 +9,11 @@ export default definePanel({
   tags: ['hud', 'designer', 'layout', 'ui', 'widgets'],
   icon: 'layoutGrid',
   description: 'Design HUD layouts using widget compositions',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game-2d'],
+    order: 30,
+  },
   supportsCompactMode: false,
   supportsMultipleInstances: false,
 });

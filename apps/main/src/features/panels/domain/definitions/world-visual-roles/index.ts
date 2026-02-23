@@ -1,5 +1,6 @@
-import { definePanel } from '../../../lib/definePanel';
 import { WorldVisualRolesPanel } from '@features/worldTools';
+
+import { definePanel } from '../../../lib/definePanel';
 
 export default definePanel({
   id: 'world-visual-roles',
@@ -10,6 +11,11 @@ export default definePanel({
   icon: 'user',
   description:
     'Bind gallery assets to world visual roles (portraits, POV, backgrounds)',
+  navigation: {
+    featureIds: ['game'],
+    modules: ['game'],
+    order: 70,
+  },
   contextLabel: 'world',
   supportsCompactMode: false,
   supportsMultipleInstances: false,

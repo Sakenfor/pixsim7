@@ -10,6 +10,11 @@ export default definePanel({
   tags: ['arc', 'graph', 'quest', 'narrative'],
   icon: 'fileText',
   description: 'Manage story arcs, quests, and narrative flow',
+  navigation: {
+    featureIds: ['graph'],
+    modules: ['workspace', 'arc-graph', 'routine-graph-page'],
+    order: 15,
+  },
   orchestration: {
     type: 'zone-panel',
     defaultZone: 'center',

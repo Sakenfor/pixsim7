@@ -9,6 +9,7 @@ import {
 } from "@lib/utils";
 
 import type { MediaCardBadgeConfig } from "@/components/media/MediaCard";
+import { panelSelectors } from "@/lib/plugins/catalogSelectors";
 import { pluginCatalog } from "@/lib/plugins/pluginSystem";
 
 import type { PanelCategory } from "../lib/panelConstants";
@@ -265,7 +266,51 @@ const defaultPanelConfigs: Partial<Record<string, PanelConfig>> = {
     description: "Design HUD layouts for game worlds",
     icon: "🎨",
   },
+  "prompt-library-inspector": {
+    id: "prompt-library-inspector",
+    enabled: true,
+    settings: {},
+    category: "generation",
+    tags: ["prompts", "blocks", "templates", "content-packs", "inspector", "library"],
+    description: "Inspect content packs, prompt templates, and blocks with package-focused diagnostics",
+    icon: "📚",
+  },
 };
+
+function buildPanelConfigFromRegistry(
+  panelId: string,
+  existing?: PanelConfig,
+): PanelConfig | undefined {
+  const panel = panelSelectors.get(panelId);
+  if (!panel) return existing;
+  return {
+    id: panel.id,
+    enabled: existing?.enabled ?? true,
+    settings: existing?.settings ?? {},
+    category: panel.category,
+    tags: panel.tags ?? existing?.tags,
+    description: panel.description ?? existing?.description,
+    icon: typeof panel.icon === "string" ? panel.icon : existing?.icon,
+    registryOverride: existing?.registryOverride,
+  };
+}
+
+function getRegistryBackedPanelConfigs(
+  panelConfigs: Partial<Record<string, PanelConfig>>,
+): PanelConfig[] {
+  const mergedById = new Map<string, PanelConfig>();
+  for (const panel of panelSelectors.getPublicPanels()) {
+    const merged = buildPanelConfigFromRegistry(panel.id, panelConfigs[panel.id]);
+    if (merged) mergedById.set(panel.id, merged);
+  }
+  for (const config of Object.values(panelConfigs)) {
+    if (!config) continue;
+    if (!mergedById.has(config.id)) {
+      mergedById.set(config.id, config);
+    }
+  }
+  return Array.from(mergedById.values());
+}
 
 const STORAGE_KEY = "panel_config_v1";
 
@@ -281,11 +326,18 @@ export const usePanelConfigStore = create<
 
       // Panel configuration
       setPanelConfig: (panelId, config) => {
+        const base =
+          get().panelConfigs[panelId] ??
+          buildPanelConfigFromRegistry(panelId) ?? {
+            id: panelId,
+            enabled: true,
+            settings: {},
+          };
         set((state) => ({
           panelConfigs: {
             ...state.panelConfigs,
             [panelId]: {
-              ...state.panelConfigs[panelId],
+              ...base,
               ...config,
             },
           },
@@ -293,7 +345,7 @@ export const usePanelConfigStore = create<
       },
 
       getPanelConfig: (panelId) => {
-        return get().panelConfigs[panelId];
+        return get().panelConfigs[panelId] ?? buildPanelConfigFromRegistry(panelId);
       },
 
       togglePanelEnabled: (panelId) => {
@@ -307,7 +359,7 @@ export const usePanelConfigStore = create<
           return;
         }
 
-        const config = get().panelConfigs[panelId];
+        const config = get().getPanelConfig(panelId);
         if (config) {
           get().setPanelConfig(panelId, { enabled: !config.enabled });
         }
@@ -385,24 +437,28 @@ export const usePanelConfigStore = create<
 
       // Bulk operations
       getEnabledPanels: () => {
-        const configs = get().panelConfigs;
-        return Object.values(configs)
+        const configs = getRegistryBackedPanelConfigs(get().panelConfigs);
+        return configs
           .filter((config) => config.enabled)
           .map((config) => config.id);
       },
 
       getPanelsByCategory: (category) => {
-        const configs = get().panelConfigs;
-        return Object.values(configs).filter(
+        const configs = getRegistryBackedPanelConfigs(get().panelConfigs);
+        return configs.filter(
           (config) => config.category === category,
         );
       },
 
       searchPanels: (query) => {
-        const configs = get().panelConfigs;
+        const configs = getRegistryBackedPanelConfigs(get().panelConfigs);
         const lowerQuery = query.toLowerCase();
 
-        return Object.values(configs).filter((config) => {
+        if (!lowerQuery.trim()) {
+          return configs;
+        }
+
+        return configs.filter((config) => {
           const matchesId = config.id.toLowerCase().includes(lowerQuery);
           const matchesDescription = config.description
             ?.toLowerCase()
@@ -456,6 +512,18 @@ export const usePanelConfigStore = create<
       name: STORAGE_KEY,
       storage: createJSONStorage(() => createBackendStorage("panel-config")),
       version: 1,
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<PanelConfigState> | undefined) ?? {};
+        const current = currentState as PanelConfigState & PanelConfigActions;
+        return {
+          ...current,
+          ...persisted,
+          panelConfigs: {
+            ...(current.panelConfigs ?? {}),
+            ...(persisted.panelConfigs ?? {}),
+          },
+        };
+      },
     },
   ),
 );
