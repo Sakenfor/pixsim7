@@ -12,8 +12,11 @@ import { useWidgetData, type DataSourceBinding } from '@lib/dataBinding';
 
 import { OverlayWidget } from './OverlayWidget';
 import type { OverlayConfiguration, WidgetContext, WidgetPosition } from './types';
+import { SPACING_VALUES } from './types';
 import { handleCollisions } from './utils/collision';
 import { applyDefaults } from './utils/merge';
+import { positionToStyle } from './utils/position';
+import { partitionByStackGroup } from './utils/stacking';
 import { validateAndLog } from './utils/validation';
 
 
@@ -104,6 +107,12 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
   const config = useMemo(
     () => applyDefaults(configuration),
     [configuration],
+  );
+
+  // Partition widgets into stack groups and ungrouped
+  const { stackGroups, ungrouped } = useMemo(
+    () => partitionByStackGroup(config.widgets),
+    [config.widgets],
   );
 
   // Validate configuration in development (runs when configuration changes)
@@ -216,8 +225,8 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
       {/* Main content */}
       {children}
 
-      {/* Overlay widgets */}
-      {config.widgets.map((widget) => {
+      {/* Ungrouped overlay widgets (absolute-positioned, collision detection) */}
+      {ungrouped.map((widget) => {
         // Use adjusted position if collision detection found one
         const adjustedPosition = adjustedPositions.get(widget.id);
         const effectiveWidget = adjustedPosition
@@ -240,6 +249,50 @@ export const OverlayContainer: React.FC<OverlayContainerProps> = ({
               }
             }}
           />
+        );
+      })}
+
+      {/* Stack groups: flex containers with auto-stacked children.
+          Spacing is handled per-child via margin (not gap) so collapsed
+          widgets don't leave empty gaps. */}
+      {stackGroups.map((group) => {
+        const spacing = config.spacing ?? 'normal';
+        const containerStyle = positionToStyle({
+          anchor: group.anchor,
+          offset: group.offset,
+        });
+
+        return (
+          <div
+            key={group.key}
+            style={{
+              ...containerStyle,
+              display: 'flex',
+              flexDirection: group.flexDirection,
+              alignItems: group.alignItems,
+              zIndex: group.maxPriority,
+              pointerEvents: 'none',
+            }}
+          >
+            {group.widgets.map((widget) => (
+              <OverlayWidget
+                key={widget.id}
+                widget={widget}
+                context={context}
+                data={data}
+                spacing={spacing}
+                onWidgetClick={handleWidgetClick}
+                inStack
+                onRef={(el) => {
+                  if (el) {
+                    widgetRefs.current.set(widget.id, el);
+                  } else {
+                    widgetRefs.current.delete(widget.id);
+                  }
+                }}
+              />
+            ))}
+          </div>
         );
       })}
     </div>

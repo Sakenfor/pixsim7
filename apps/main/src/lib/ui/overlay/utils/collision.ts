@@ -32,6 +32,101 @@ export interface CollisionResult {
   adjustedPositions: Map<string, WidgetPosition>;
 }
 
+function parseNumericToken(token: string): number | null {
+  const value = Number.parseFloat(token);
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Resolve a CSS length token to pixels.
+ * Supports numbers, px, %, rem/em (approx), and simple calc() sums.
+ */
+function resolveCssLengthPx(
+  value: string | number | undefined,
+  axisSize: number,
+): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const raw = value.trim();
+  if (!raw) return null;
+
+  const parseSingleToken = (token: string): number | null => {
+    const normalized = token.replace(/\s+/g, '');
+    if (!normalized) return null;
+
+    if (normalized.endsWith('%')) {
+      const pct = parseNumericToken(normalized.slice(0, -1));
+      return pct == null ? null : (axisSize * pct) / 100;
+    }
+    if (normalized.endsWith('px')) {
+      return parseNumericToken(normalized.slice(0, -2));
+    }
+    if (normalized.endsWith('rem') || normalized.endsWith('em')) {
+      const em = parseNumericToken(normalized.slice(0, -3));
+      return em == null ? null : em * 16;
+    }
+    return parseNumericToken(normalized);
+  };
+
+  if (raw.startsWith('calc(') && raw.endsWith(')')) {
+    const expression = raw.slice(5, -1).replace(/\s+/g, '');
+    const terms = expression.match(/[+-]?[^+-]+/g);
+    if (!terms || terms.length === 0) return null;
+
+    let total = 0;
+    for (const term of terms) {
+      const resolved = parseSingleToken(term);
+      if (resolved == null) return null;
+      total += resolved;
+    }
+    return total;
+  }
+
+  return parseSingleToken(raw);
+}
+
+/**
+ * Parse translate(...) components from computed transform and return pixel deltas.
+ * Percent translations are relative to the widget's own box size.
+ */
+function extractTranslateOffsets(
+  transform: string | undefined,
+  width: number,
+  height: number,
+): { x: number; y: number } {
+  if (!transform) return { x: 0, y: 0 };
+
+  let x = 0;
+  let y = 0;
+  const functionPattern = /([a-zA-Z0-9]+)\(([^)]*)\)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = functionPattern.exec(transform)) !== null) {
+    const fn = match[1];
+    const args = match[2].split(',').map((arg) => arg.trim()).filter(Boolean);
+
+    if (fn === 'translateX' && args[0]) {
+      x += resolveCssLengthPx(args[0], width) ?? 0;
+      continue;
+    }
+    if (fn === 'translateY' && args[0]) {
+      y += resolveCssLengthPx(args[0], height) ?? 0;
+      continue;
+    }
+    if ((fn === 'translate' || fn === 'translate3d') && args[0]) {
+      x += resolveCssLengthPx(args[0], width) ?? 0;
+      y += resolveCssLengthPx(args[1] ?? '0', height) ?? 0;
+    }
+  }
+
+  return { x, y };
+}
+
 /**
  * Calculate bounding box for a widget at its current position
  */
@@ -68,16 +163,20 @@ export function calculateWidgetBounds(
   let y = 0;
 
   if (position.left) {
-    x = parseFloat(position.left);
+    x = resolveCssLengthPx(position.left, containerRect.width) ?? 0;
   } else if (position.right) {
-    x = containerRect.width - parseFloat(position.right) - width;
+    x = containerRect.width - (resolveCssLengthPx(position.right, containerRect.width) ?? 0) - width;
   }
 
   if (position.top) {
-    y = parseFloat(position.top);
+    y = resolveCssLengthPx(position.top, containerRect.height) ?? 0;
   } else if (position.bottom) {
-    y = containerRect.height - parseFloat(position.bottom) - height;
+    y = containerRect.height - (resolveCssLengthPx(position.bottom, containerRect.height) ?? 0) - height;
   }
+
+  const transformOffsets = extractTranslateOffsets(position.transform, width, height);
+  x += transformOffsets.x;
+  y += transformOffsets.y;
 
   return {
     id: widget.id,
@@ -315,17 +414,26 @@ export function handleCollisions(
   containerRect: DOMRect,
   widgetElements?: Map<string, HTMLElement>,
 ): CollisionResult {
+  const candidates = widgets.filter((widget) => !widget.ignoreCollisions);
+  if (candidates.length < 2) {
+    return {
+      hasCollisions: false,
+      collisions: [],
+      adjustedPositions: new Map(),
+    };
+  }
+
   // Calculate bounds for all widgets
   const bounds = new Map<string, WidgetBounds>();
 
-  for (const widget of widgets) {
+  for (const widget of candidates) {
     const element = widgetElements?.get(widget.id);
     const widgetBounds = calculateWidgetBounds(widget, containerRect, element);
     bounds.set(widget.id, widgetBounds);
   }
 
   // Detect collisions
-  const collisions = detectCollisions(widgets, bounds);
+  const collisions = detectCollisions(candidates, bounds);
 
   if (collisions.length === 0) {
     return {
@@ -336,7 +444,7 @@ export function handleCollisions(
   }
 
   // Resolve collisions
-  const adjustedPositions = resolveCollisions(widgets, bounds, containerRect);
+  const adjustedPositions = resolveCollisions(candidates, bounds, containerRect);
 
   return {
     hasCollisions: true,

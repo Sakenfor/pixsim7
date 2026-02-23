@@ -34,6 +34,10 @@ export interface DisclosureSectionProps {
   bordered?: boolean;
   /** Disable the toggle interaction */
   disabled?: boolean;
+  /** Actions rendered at the end of the header row, outside the toggle click area */
+  actions?: React.ReactNode;
+  /** When true, only show actions when the section is open */
+  actionsWhenOpen?: boolean;
 }
 
 /**
@@ -59,6 +63,8 @@ export function DisclosureSection({
   contentClassName,
   bordered = false,
   disabled = false,
+  actions,
+  actionsWhenOpen = false,
 }: DisclosureSectionProps) {
   const disclosure = useDisclosure({
     defaultOpen,
@@ -90,23 +96,34 @@ export function DisclosureSection({
   };
 
   const sizes = sizeClasses[size];
+  const showActions = actions && (!actionsWhenOpen || isOpen);
 
-  return (
-    <div className={clsx('disclosure-section', className)}>
-      {/* Header/Trigger */}
-      <button
-        type="button"
+  const headerRow = (
+    <div
+      className={clsx(
+        'flex items-center gap-1.5',
+        sizes.header,
+        headerClassName,
+      )}
+    >
+      <div
+        role="button"
+        tabIndex={disabled ? -1 : 0}
         onClick={handleToggle}
-        disabled={disabled}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleToggle();
+          }
+        }}
         aria-expanded={isOpen}
         className={clsx(
-          'flex items-center gap-1.5 w-full text-left font-medium',
+          'flex items-center gap-1.5 flex-1 min-w-0 font-medium select-none',
           'text-neutral-700 dark:text-neutral-300',
-          'hover:text-neutral-900 dark:hover:text-neutral-100',
-          'disabled:opacity-50 disabled:cursor-not-allowed',
+          disabled
+            ? 'opacity-50 cursor-not-allowed'
+            : 'cursor-pointer hover:text-neutral-900 dark:hover:text-neutral-100',
           'transition-colors',
-          sizes.header,
-          headerClassName
         )}
       >
         {/* Icon */}
@@ -125,8 +142,17 @@ export function DisclosureSection({
           )}
         </span>
         {/* Label */}
-        <span className="flex-1">{label}</span>
-      </button>
+        <span className="flex-1 min-w-0">{label}</span>
+      </div>
+      {showActions && (
+        <div className="flex items-center gap-1 shrink-0">{actions}</div>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={clsx('disclosure-section', className)}>
+      {headerRow}
 
       {/* Content */}
       {isOpen && (

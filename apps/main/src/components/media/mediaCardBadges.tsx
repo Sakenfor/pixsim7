@@ -127,7 +127,8 @@ export function createQueueStatusWidget(props: MediaCardResolvedProps): OverlayW
   return {
     id: 'queue-status',
     type: 'custom',
-    position: { anchor: 'top-right', offset: { x: -8, y: 32 } },
+    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'always' },
     priority: 15,
     render: () => {

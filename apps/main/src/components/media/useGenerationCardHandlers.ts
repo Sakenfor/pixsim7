@@ -19,6 +19,7 @@ import {
 } from '@features/generation';
 import { generateAsset } from '@features/generation/lib/api';
 import { buildCompositionAssetsFromAssetIds, buildGenerationRequest } from '@features/generation/lib/quickGenerateLogic';
+import { createGenerationRunDescriptor, createGenerationRunItemContext } from '@features/generation/lib/runContext';
 import { nextRandomGenerationSeed } from '@features/generation/lib/seed';
 import { createPendingGeneration } from '@features/generation/models';
 import { useGenerationsStore } from '@features/generation/stores/generationsStore';
@@ -148,12 +149,23 @@ export function useGenerationCardHandlers(args: UseGenerationCardHandlersArgs) {
       const { operationType: requestedOperationType, providerId, prompt, params, successMessage } = options;
       const hasAssetInput = hasAssetInputs(params);
       const effectiveOperationType = getFallbackOperation(requestedOperationType, hasAssetInput);
+      const run = createGenerationRunDescriptor({
+        mode: 'media_card_direct',
+        metadata: {
+          source: 'useGenerationCardHandlers.submitDirectGeneration',
+          operation_type: effectiveOperationType,
+        },
+      });
 
       const result = await generateAsset({
         prompt,
         providerId,
         operationType: effectiveOperationType,
         extraParams: params,
+        runContext: createGenerationRunItemContext(run, {
+          itemIndex: 0,
+          itemTotal: 1,
+        }),
       });
 
       const genId = result.job_id;

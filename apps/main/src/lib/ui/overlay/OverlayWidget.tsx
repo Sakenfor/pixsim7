@@ -37,6 +37,9 @@ export interface OverlayWidgetProps {
 
   /** Ref callback for collision detection */
   onRef?: (el: HTMLDivElement | null) => void;
+
+  /** When true, widget is inside a stack group flex container — skip absolute positioning */
+  inStack?: boolean;
 }
 
 /**
@@ -49,11 +52,13 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   spacing,
   onWidgetClick,
   onRef,
+  inStack = false,
 }) => {
   const widgetRef = useRef<HTMLDivElement>(null);
   const [isWidgetHovered, setIsWidgetHovered] = useState(false);
   const [isWidgetFocused, setIsWidgetFocused] = useState(false);
-  const [isSiblingHovered, setIsSiblingHovered] = useState(false);
+  // TODO: wire up sibling hover detection via OverlayContainer
+  const isSiblingHovered = false;
   const [reducedMotion, setReducedMotion] = useState(false);
 
   // Adapt visibility for touch devices
@@ -83,10 +88,10 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
     customConditions: context.customState,
   });
 
-  // Calculate position styles
+  // Calculate position styles (skipped when inside a stack group flex container)
   const positionStyles = useMemo(
-    () => positionToStyle(widget.position),
-    [widget.position],
+    () => inStack ? {} : positionToStyle(widget.position),
+    [widget.position, inStack],
   );
 
   // Calculate transition styles
@@ -94,6 +99,19 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
     () => getTransitionStyle(visibility, isVisible, reducedMotion),
     [visibility, isVisible, reducedMotion],
   );
+
+  // Keep anchor translation and transition transforms together.
+  // Without composition, transition transform can override anchor centering
+  // (e.g. bottom-center translateX(-50%)), causing visual/click drift.
+  const composedTransform = useMemo(() => {
+    const positionTransform = (positionStyles as React.CSSProperties).transform;
+    const transitionTransform = (transitionStyles as React.CSSProperties).transform;
+
+    if (positionTransform && transitionTransform) {
+      return `${positionTransform} ${transitionTransform}`;
+    }
+    return positionTransform ?? transitionTransform;
+  }, [positionStyles, transitionStyles]);
 
   // Calculate size
   const size = widget.style?.size;
@@ -115,26 +133,50 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
   // Calculate spacing offset (if in a group)
   const spacingValue = SPACING_VALUES[spacing];
 
+  // Render widget content (done early so inStack can detect null renders)
+  const content = widget.render(data, context);
+
+  // For stacked widgets: determine if this item should be collapsed.
+  // Collapsed when the visibility system hides it OR the render returns null.
+  const isStackCollapsed = inStack && (!isVisible || content == null);
+
   // Combine all styles
   // Note: widget.style properties override positionStyles if specified
-  const combinedStyles: React.CSSProperties = {
-    ...positionStyles,
-    ...transitionStyles,
-    zIndex,
-    opacity: widget.style?.opacity,
-    padding: widget.style?.padding,
-    // Position overrides (for widgets that need inset-0 style positioning)
-    ...(widget.style?.top !== undefined && { top: widget.style.top }),
-    ...(widget.style?.left !== undefined && { left: widget.style.left }),
-    ...(widget.style?.right !== undefined && { right: widget.style.right }),
-    ...(widget.style?.bottom !== undefined && { bottom: widget.style.bottom }),
-    width: widget.style?.width,
-    height: widget.style?.height,
-    maxWidth: widget.style?.maxWidth,
-    maxHeight: widget.style?.maxHeight,
-    pointerEvents: widget.style?.pointerEvents ?? (isVisible ? 'auto' : 'none'),
-    ...(sizeValue ? { width: sizeValue, height: sizeValue } : {}),
-  };
+  const combinedStyles: React.CSSProperties = inStack
+    ? {
+        // Stack items use grid-template-rows for smooth height collapse.
+        // Margin-bottom handles spacing (not flex gap) so collapsed items
+        // don't leave empty gaps.
+        display: 'grid',
+        gridTemplateRows: isStackCollapsed ? '0fr' : '1fr',
+        opacity: isStackCollapsed ? 0 : (widget.style?.opacity ?? 1),
+        marginBottom: isStackCollapsed ? 0 : spacingValue,
+        pointerEvents: widget.style?.pointerEvents ?? (isStackCollapsed ? 'none' : 'auto'),
+        transition: 'grid-template-rows 150ms ease-out, opacity 150ms ease-out, margin-bottom 150ms ease-out',
+        zIndex,
+        padding: widget.style?.padding,
+        maxWidth: widget.style?.maxWidth,
+        ...(sizeValue ? { width: sizeValue } : {}),
+      }
+    : {
+        ...positionStyles,
+        ...transitionStyles,
+        ...(composedTransform ? { transform: composedTransform } : {}),
+        zIndex,
+        opacity: widget.style?.opacity,
+        padding: widget.style?.padding,
+        // Position overrides (for widgets that need inset-0 style positioning)
+        ...(widget.style?.top !== undefined && { top: widget.style.top }),
+        ...(widget.style?.left !== undefined && { left: widget.style.left }),
+        ...(widget.style?.right !== undefined && { right: widget.style.right }),
+        ...(widget.style?.bottom !== undefined && { bottom: widget.style.bottom }),
+        width: widget.style?.width,
+        height: widget.style?.height,
+        maxWidth: widget.style?.maxWidth,
+        maxHeight: widget.style?.maxHeight,
+        pointerEvents: widget.style?.pointerEvents ?? (isVisible ? 'auto' : 'none'),
+        ...(sizeValue ? { width: sizeValue, height: sizeValue } : {}),
+      };
 
   // Handle widget hover
   const handleMouseEnter = () => {
@@ -169,9 +211,6 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
     }
   };
 
-  // Render widget content
-  const content = widget.render(data, context);
-
   // Additional classes
   const className = widget.style?.className ?? '';
   // Only apply cursor-pointer for wrapper-driven interactive widgets
@@ -202,7 +241,9 @@ export const OverlayWidget: React.FC<OverlayWidgetProps> = ({
       data-widget-id={widget.id}
       data-widget-type={widget.type}
     >
-      {content}
+      {/* Inner overflow:hidden wrapper is required for grid-template-rows
+          collapse animation when inStack. Without it 0fr won't clip content. */}
+      {inStack ? <div style={{ overflow: 'hidden' }}>{content}</div> : content}
     </div>
   );
 };

@@ -80,7 +80,345 @@ export interface MenuWidgetConfig {
 
   /** Priority for layering */
   priority?: number;
+
+  /** Stack group for auto-stacking with other widgets */
+  stackGroup?: string;
 }
+
+// ── Stable renderer component (module-level to avoid remount on parent re-render) ──
+
+interface MenuWidgetRendererProps {
+  payload: any;
+  items: MenuItem[] | ((data: any) => MenuItem[]);
+  trigger: NonNullable<MenuWidgetConfig['trigger']>;
+  triggerType: NonNullable<MenuWidgetConfig['triggerType']>;
+  placement: NonNullable<MenuWidgetConfig['placement']>;
+  closeOnClick: boolean;
+  className: string;
+}
+
+function MenuWidgetRenderer({
+  payload,
+  items,
+  trigger,
+  triggerType,
+  placement,
+  closeOnClick,
+  className,
+}: MenuWidgetRendererProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [openSubMenus, setOpenSubMenus] = useState<Set<string>>(new Set());
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const menuItems = typeof items === 'function' ? items(payload) : items;
+
+  // Update trigger position when menu opens
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      setTriggerRect(triggerRef.current.getBoundingClientRect());
+    }
+  }, [isOpen]);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(event.target as Node) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(event.target as Node)
+      ) {
+        setIsOpen(false);
+        setOpenSubMenus(new Set());
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+        setOpenSubMenus(new Set());
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
+
+  const handleTriggerClick = () => {
+    if (triggerType === 'click') {
+      setIsOpen(!isOpen);
+    }
+  };
+
+  const handleTriggerHover = () => {
+    if (triggerType === 'hover') {
+      setIsOpen(true);
+    }
+  };
+
+  const handleTriggerLeave = () => {
+    if (triggerType === 'hover') {
+      // Delay closing to allow moving to menu
+      setTimeout(() => setIsOpen(false), 200);
+    }
+  };
+
+  const handleItemClick = (item: MenuItem) => {
+    if (item.disabled) return;
+
+    if (item.children && item.children.length > 0) {
+      // Toggle submenu
+      const newOpenSubMenus = new Set(openSubMenus);
+      if (newOpenSubMenus.has(item.id)) {
+        newOpenSubMenus.delete(item.id);
+      } else {
+        newOpenSubMenus.add(item.id);
+      }
+      setOpenSubMenus(newOpenSubMenus);
+    } else {
+      // Execute action
+      if (item.onClick) {
+        item.onClick(payload);
+      }
+
+      if (closeOnClick) {
+        setIsOpen(false);
+        setOpenSubMenus(new Set());
+      }
+    }
+  };
+
+  const renderMenuItem = (item: MenuItem, depth: number = 0) => {
+    // Custom content — renders directly instead of the standard button row
+    if (item.content) {
+      return (
+        <div key={item.id}>
+          <div className="px-3 py-2">{item.content}</div>
+          {item.divider && (
+            <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+          )}
+        </div>
+      );
+    }
+
+    const hasChildren = item.children && item.children.length > 0;
+    const isSubMenuOpen = openSubMenus.has(item.id);
+    const variantClasses = {
+      default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700',
+      danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20',
+      success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20',
+    };
+
+    return (
+      <div key={item.id}>
+        <button
+          onClick={() => handleItemClick(item)}
+          disabled={item.disabled}
+          className={`
+            w-full px-3 py-2 flex items-center gap-2 text-sm text-left
+            ${item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            ${variantClasses[item.variant || 'default']}
+            transition-colors
+          `}
+          style={{ paddingLeft: `${0.75 + depth * 0.5}rem` }}
+        >
+          {/* Icon */}
+          {item.icon && (
+            <Icon
+              name={item.icon}
+              size={14}
+              className={item.iconColor || 'text-neutral-500 dark:text-neutral-400'}
+            />
+          )}
+
+          {/* Label */}
+          <span className="flex-1">{item.label}</span>
+
+          {/* Shortcut hint */}
+          {item.shortcut && (
+            <span className="text-xs text-neutral-400 dark:text-neutral-500">
+              {item.shortcut}
+            </span>
+          )}
+
+          {/* Submenu indicator */}
+          {hasChildren && (
+            <Icon
+              name="chevronRight"
+              size={12}
+              className="text-neutral-400 dark:text-neutral-500"
+            />
+          )}
+        </button>
+
+        {/* Submenu */}
+        {hasChildren && isSubMenuOpen && (
+          <div className="border-l-2 border-neutral-200 dark:border-neutral-700 ml-2">
+            {item.children!.map((child) => renderMenuItem(child, depth + 1))}
+          </div>
+        )}
+
+        {/* Divider */}
+        {item.divider && (
+          <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+        )}
+      </div>
+    );
+  };
+
+  const renderTrigger = () => {
+    if (trigger.variant === 'icon') {
+      return (
+        <button
+          ref={triggerRef}
+          onClick={handleTriggerClick}
+          onMouseEnter={handleTriggerHover}
+          onMouseLeave={handleTriggerLeave}
+          className={`
+            p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700
+            transition-colors ${trigger.className || ''}
+          `}
+          aria-label="Open menu"
+        >
+          {trigger.icon && (
+            <Icon name={trigger.icon} size={16} className="text-neutral-700 dark:text-neutral-300" />
+          )}
+        </button>
+      );
+    }
+
+    if (trigger.variant === 'button') {
+      return (
+        <button
+          ref={triggerRef}
+          onClick={handleTriggerClick}
+          onMouseEnter={handleTriggerHover}
+          onMouseLeave={handleTriggerLeave}
+          className={`
+            px-3 py-1.5 rounded text-sm font-medium
+            bg-neutral-100 dark:bg-neutral-700
+            hover:bg-neutral-200 dark:hover:bg-neutral-600
+            transition-colors ${trigger.className || ''}
+          `}
+        >
+          {trigger.icon && <Icon name={trigger.icon} size={14} className="mr-1.5" />}
+          {trigger.label || 'Menu'}
+        </button>
+      );
+    }
+
+    // Badge variant
+    return (
+      <button
+        ref={triggerRef}
+        onClick={handleTriggerClick}
+        onMouseEnter={handleTriggerHover}
+        onMouseLeave={handleTriggerLeave}
+        className={`
+          px-2 py-1 rounded-full text-xs font-medium
+          bg-blue-100 dark:bg-blue-900/30
+          text-blue-700 dark:text-blue-300
+          hover:bg-blue-200 dark:hover:bg-blue-900/50
+          transition-colors ${trigger.className || ''}
+        `}
+      >
+        {trigger.icon && <Icon name={trigger.icon} size={12} className="mr-1" />}
+        {trigger.label || 'Menu'}
+      </button>
+    );
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      {renderTrigger()}
+
+      {/* Menu dropdown - rendered via portal to avoid clipping */}
+      {isOpen && menuItems.length > 0 && triggerRect && createPortal(
+        <div
+          ref={menuRef}
+          className={`
+            fixed
+            min-w-[180px] max-w-[280px]
+            bg-white dark:bg-neutral-800
+            border border-neutral-200 dark:border-neutral-700
+            rounded-lg shadow-lg
+            py-1 z-popover
+            overflow-hidden
+          `}
+          style={(() => {
+            // Calculate initial position
+            let top = placement.includes('bottom')
+              ? triggerRect.bottom + 4
+              : triggerRect.top - 4;
+            let left = placement.includes('right')
+              ? triggerRect.right
+              : triggerRect.left;
+            let transform = placement.includes('right')
+              ? 'translateX(-100%)'
+              : undefined;
+
+            // Viewport boundary detection
+            const menuWidth = 280; // max-w-[280px]
+            const menuHeight = 300; // estimated max height
+            const viewportWidth = window.innerWidth;
+            const viewportHeight = window.innerHeight;
+            const padding = 8; // padding from viewport edge
+
+            // Adjust horizontal position if off-screen
+            if (placement.includes('right')) {
+              const menuLeft = triggerRect.right - menuWidth;
+              if (menuLeft < padding) {
+                // Menu would be off left edge, align to left of trigger instead
+                left = triggerRect.left;
+                transform = undefined;
+              }
+            } else {
+              if (left + menuWidth > viewportWidth - padding) {
+                // Menu would be off right edge, align to right of trigger instead
+                left = triggerRect.right;
+                transform = 'translateX(-100%)';
+              }
+            }
+
+            // Adjust vertical position if off-screen
+            if (placement.includes('bottom') && top + menuHeight > viewportHeight - padding) {
+              // Menu would be off bottom edge, show above trigger instead
+              top = triggerRect.top - 4;
+              transform = (transform || '') + ' translateY(-100%)';
+            } else if (placement.includes('top') && top - menuHeight < padding) {
+              // Menu would be off top edge, show below trigger instead
+              top = triggerRect.bottom + 4;
+            }
+
+            return { top, left, transform };
+          })()}
+          onMouseEnter={() => {
+            if (triggerType === 'hover') {
+              setIsOpen(true);
+            }
+          }}
+        >
+          {menuItems.map((item) => renderMenuItem(item))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+// ── Factory ─────────────────────────────────────────────────────────────────
 
 /**
  * Creates a menu widget from configuration
@@ -97,6 +435,7 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
     closeOnClick = true,
     className = '',
     priority,
+    stackGroup,
   } = config;
 
   return {
@@ -105,326 +444,19 @@ export function createMenuWidget(config: MenuWidgetConfig): OverlayWidget {
     position,
     visibility,
     priority,
+    stackGroup,
     interactive: true,
     handlesOwnInteraction: true, // Menu manages its own click/keyboard interaction internally
-    render: (data: any) => {
-      const [isOpen, setIsOpen] = useState(false);
-      const [openSubMenus, setOpenSubMenus] = useState<Set<string>>(new Set());
-      const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
-      const menuRef = useRef<HTMLDivElement>(null);
-      const triggerRef = useRef<HTMLButtonElement>(null);
-
-      const menuItems = typeof items === 'function' ? items(data) : items;
-
-      // Update trigger position when menu opens
-      useEffect(() => {
-        if (isOpen && triggerRef.current) {
-          setTriggerRect(triggerRef.current.getBoundingClientRect());
-        }
-      }, [isOpen]);
-
-      // Close menu when clicking outside
-      useEffect(() => {
-        if (!isOpen) return;
-
-        const handleClickOutside = (event: MouseEvent) => {
-          if (
-            menuRef.current &&
-            !menuRef.current.contains(event.target as Node) &&
-            triggerRef.current &&
-            !triggerRef.current.contains(event.target as Node)
-          ) {
-            setIsOpen(false);
-            setOpenSubMenus(new Set());
-          }
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-      }, [isOpen]);
-
-      // Handle keyboard navigation
-      useEffect(() => {
-        if (!isOpen) return;
-
-        const handleKeyDown = (event: KeyboardEvent) => {
-          if (event.key === 'Escape') {
-            setIsOpen(false);
-            setOpenSubMenus(new Set());
-          }
-        };
-
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-      }, [isOpen]);
-
-      const handleTriggerClick = () => {
-        if (triggerType === 'click') {
-          setIsOpen(!isOpen);
-        }
-      };
-
-      const handleTriggerHover = () => {
-        if (triggerType === 'hover') {
-          setIsOpen(true);
-        }
-      };
-
-      const handleTriggerLeave = () => {
-        if (triggerType === 'hover') {
-          // Delay closing to allow moving to menu
-          setTimeout(() => setIsOpen(false), 200);
-        }
-      };
-
-      const handleItemClick = (item: MenuItem) => {
-        if (item.disabled) return;
-
-        if (item.children && item.children.length > 0) {
-          // Toggle submenu
-          const newOpenSubMenus = new Set(openSubMenus);
-          if (newOpenSubMenus.has(item.id)) {
-            newOpenSubMenus.delete(item.id);
-          } else {
-            newOpenSubMenus.add(item.id);
-          }
-          setOpenSubMenus(newOpenSubMenus);
-        } else {
-          // Execute action
-          if (item.onClick) {
-            item.onClick(data);
-          }
-
-          if (closeOnClick) {
-            setIsOpen(false);
-            setOpenSubMenus(new Set());
-          }
-        }
-      };
-
-      const renderMenuItem = (item: MenuItem, depth: number = 0) => {
-        // Custom content — renders directly instead of the standard button row
-        if (item.content) {
-          return (
-            <div key={item.id}>
-              <div className="px-3 py-2">{item.content}</div>
-              {item.divider && (
-                <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
-              )}
-            </div>
-          );
-        }
-
-        const hasChildren = item.children && item.children.length > 0;
-        const isSubMenuOpen = openSubMenus.has(item.id);
-        const variantClasses = {
-          default: 'hover:bg-neutral-100 dark:hover:bg-neutral-700',
-          danger: 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20',
-          success: 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20',
-        };
-
-        return (
-          <div key={item.id}>
-            <button
-              onClick={() => handleItemClick(item)}
-              disabled={item.disabled}
-              className={`
-                w-full px-3 py-2 flex items-center gap-2 text-sm text-left
-                ${item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                ${variantClasses[item.variant || 'default']}
-                transition-colors
-              `}
-              style={{ paddingLeft: `${0.75 + depth * 0.5}rem` }}
-            >
-              {/* Icon */}
-              {item.icon && (
-                <Icon
-                  name={item.icon}
-                  size={14}
-                  className={item.iconColor || 'text-neutral-500 dark:text-neutral-400'}
-                />
-              )}
-
-              {/* Label */}
-              <span className="flex-1">{item.label}</span>
-
-              {/* Shortcut hint */}
-              {item.shortcut && (
-                <span className="text-xs text-neutral-400 dark:text-neutral-500">
-                  {item.shortcut}
-                </span>
-              )}
-
-              {/* Submenu indicator */}
-              {hasChildren && (
-                <Icon
-                  name="chevronRight"
-                  size={12}
-                  className="text-neutral-400 dark:text-neutral-500"
-                />
-              )}
-            </button>
-
-            {/* Submenu */}
-            {hasChildren && isSubMenuOpen && (
-              <div className="border-l-2 border-neutral-200 dark:border-neutral-700 ml-2">
-                {item.children!.map((child) => renderMenuItem(child, depth + 1))}
-              </div>
-            )}
-
-            {/* Divider */}
-            {item.divider && (
-              <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
-            )}
-          </div>
-        );
-      };
-
-      const renderTrigger = () => {
-        if (trigger.variant === 'icon') {
-          return (
-            <button
-              ref={triggerRef}
-              onClick={handleTriggerClick}
-              onMouseEnter={handleTriggerHover}
-              onMouseLeave={handleTriggerLeave}
-              className={`
-                p-1.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700
-                transition-colors ${trigger.className || ''}
-              `}
-              aria-label="Open menu"
-            >
-              {trigger.icon && (
-                <Icon name={trigger.icon} size={16} className="text-neutral-700 dark:text-neutral-300" />
-              )}
-            </button>
-          );
-        }
-
-        if (trigger.variant === 'button') {
-          return (
-            <button
-              ref={triggerRef}
-              onClick={handleTriggerClick}
-              onMouseEnter={handleTriggerHover}
-              onMouseLeave={handleTriggerLeave}
-              className={`
-                px-3 py-1.5 rounded text-sm font-medium
-                bg-neutral-100 dark:bg-neutral-700
-                hover:bg-neutral-200 dark:hover:bg-neutral-600
-                transition-colors ${trigger.className || ''}
-              `}
-            >
-              {trigger.icon && <Icon name={trigger.icon} size={14} className="mr-1.5" />}
-              {trigger.label || 'Menu'}
-            </button>
-          );
-        }
-
-        // Badge variant
-        return (
-          <button
-            ref={triggerRef}
-            onClick={handleTriggerClick}
-            onMouseEnter={handleTriggerHover}
-            onMouseLeave={handleTriggerLeave}
-            className={`
-              px-2 py-1 rounded-full text-xs font-medium
-              bg-blue-100 dark:bg-blue-900/30
-              text-blue-700 dark:text-blue-300
-              hover:bg-blue-200 dark:hover:bg-blue-900/50
-              transition-colors ${trigger.className || ''}
-            `}
-          >
-            {trigger.icon && <Icon name={trigger.icon} size={12} className="mr-1" />}
-            {trigger.label || 'Menu'}
-          </button>
-        );
-      };
-
-      const placementClasses = {
-        'bottom-left': 'top-full left-0 mt-1',
-        'bottom-right': 'top-full right-0 mt-1',
-        'top-left': 'bottom-full left-0 mb-1',
-        'top-right': 'bottom-full right-0 mb-1',
-      };
-
-      return (
-        <div className={`relative ${className}`}>
-          {renderTrigger()}
-
-          {/* Menu dropdown - rendered via portal to avoid clipping */}
-          {isOpen && menuItems.length > 0 && triggerRect && createPortal(
-            <div
-              ref={menuRef}
-              className={`
-                fixed
-                min-w-[180px] max-w-[280px]
-                bg-white dark:bg-neutral-800
-                border border-neutral-200 dark:border-neutral-700
-                rounded-lg shadow-lg
-                py-1 z-popover
-                overflow-hidden
-              `}
-              style={(() => {
-                // Calculate initial position
-                let top = placement.includes('bottom')
-                  ? triggerRect.bottom + 4
-                  : triggerRect.top - 4;
-                let left = placement.includes('right')
-                  ? triggerRect.right
-                  : triggerRect.left;
-                let transform = placement.includes('right')
-                  ? 'translateX(-100%)'
-                  : undefined;
-
-                // Viewport boundary detection
-                const menuWidth = 280; // max-w-[280px]
-                const menuHeight = 300; // estimated max height
-                const viewportWidth = window.innerWidth;
-                const viewportHeight = window.innerHeight;
-                const padding = 8; // padding from viewport edge
-
-                // Adjust horizontal position if off-screen
-                if (placement.includes('right')) {
-                  const menuLeft = triggerRect.right - menuWidth;
-                  if (menuLeft < padding) {
-                    // Menu would be off left edge, align to left of trigger instead
-                    left = triggerRect.left;
-                    transform = undefined;
-                  }
-                } else {
-                  if (left + menuWidth > viewportWidth - padding) {
-                    // Menu would be off right edge, align to right of trigger instead
-                    left = triggerRect.right;
-                    transform = 'translateX(-100%)';
-                  }
-                }
-
-                // Adjust vertical position if off-screen
-                if (placement.includes('bottom') && top + menuHeight > viewportHeight - padding) {
-                  // Menu would be off bottom edge, show above trigger instead
-                  top = triggerRect.top - 4;
-                  transform = (transform || '') + ' translateY(-100%)';
-                } else if (placement.includes('top') && top - menuHeight < padding) {
-                  // Menu would be off top edge, show below trigger instead
-                  top = triggerRect.bottom + 4;
-                }
-
-                return { top, left, transform };
-              })()}
-              onMouseEnter={() => {
-                if (triggerType === 'hover') {
-                  setIsOpen(true);
-                }
-              }}
-            >
-              {menuItems.map((item) => renderMenuItem(item))}
-            </div>,
-            document.body
-          )}
-        </div>
-      );
-    },
+    render: (data: any) => (
+      <MenuWidgetRenderer
+        payload={data}
+        items={items}
+        trigger={trigger}
+        triggerType={triggerType}
+        placement={placement}
+        closeOnClick={closeOnClick}
+        className={className}
+      />
+    ),
   };
 }

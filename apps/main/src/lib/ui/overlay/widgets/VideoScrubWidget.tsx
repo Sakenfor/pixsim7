@@ -653,9 +653,10 @@ export function VideoScrubWidgetRenderer({
       }
     };
 
-    // Make container focusable and focus it
+    // Make container focusable and focus it (preventScroll avoids
+    // the browser scrolling the gallery to center the hovered card)
     container.tabIndex = -1;
-    container.focus();
+    container.focus({ preventScroll: true });
     container.addEventListener('keydown', handleKeyDown);
     return () => container.removeEventListener('keydown', handleKeyDown);
   }, [isHovering, isVideoLoaded, goToPrevious, goToNext, seekTo, currentTime]);
@@ -727,7 +728,7 @@ export function VideoScrubWidgetRenderer({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
       onContextMenu={handleContextMenu}
-      className={`relative w-full h-full cursor-pointer ${className}`}
+      className={`absolute inset-0 cursor-pointer ${className}`}
     >
       {/* Video element for scrubbing - shown when hovering */}
       {/* Use crossOrigin="anonymous" for external URLs (CDN), omit for local paths */}
@@ -954,6 +955,7 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
   return {
     id,
     type: 'video-scrub',
+    ignoreCollisions: true,
     position,
     visibility,
     priority,
@@ -961,13 +963,11 @@ export function createVideoScrubWidget(config: VideoScrubWidgetConfig): OverlayW
     handlesOwnInteraction: true, // Video scrub manages its own mouse/hover interaction internally
     // Fill entire container - use inset to ensure exact alignment
     style: {
-      // These get merged with position styles, overriding top/left
+      // Fill entire container via inset override
       top: 0,
       left: 0,
       right: 0,
       bottom: 0,
-      width: 'auto',
-      height: 'auto',
       zIndex: priority ?? 1,
     },
     render: (data: any, context: any) => {

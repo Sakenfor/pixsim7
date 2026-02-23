@@ -31,6 +31,7 @@ import type { ReactNode } from 'react';
 import { useCallback, useMemo, useState, useEffect, useRef } from 'react';
 
 import { Icons } from '@lib/icons';
+import type { AssetModel } from '@features/assets';
 
 import { useLazyPreview } from '@/hooks/useLazyPreview';
 
@@ -155,6 +156,13 @@ export interface AssetGalleryProps<T> {
   onOpen?: (asset: T, resolvedPreviewUrl?: string) => void;
 
   /**
+   * Optional adapter for rendering MediaCard in asset-first mode.
+   * Use this when the source item is not already an AssetModel but can be
+   * converted to one (e.g. local-folder assets with upload metadata).
+   */
+  getMediaCardAsset?: (asset: T) => AssetModel;
+
+  /**
    * Callback when upload is requested for an asset.
    */
   onUpload?: (asset: T) => Promise<void>;
@@ -248,6 +256,12 @@ export interface AssetGalleryProps<T> {
    * Optional sort for group sections before rendering.
    */
   sortGroupSections?: (groups: GroupSection[]) => GroupSection[];
+
+  /**
+   * When true, grouped sections are collapsible (click header to toggle).
+   * All groups start expanded by default.
+   */
+  collapsibleGroups?: boolean;
 
   /**
    * Function to get the hash status for an asset.
@@ -345,6 +359,7 @@ function GalleryItem({
   badgeConfig,
   actions,
   overlayPresetId,
+  mediaCardAsset,
 }: {
   asset: unknown;
   previewUrl: string | undefined;
@@ -369,6 +384,7 @@ function GalleryItem({
   badgeConfig?: MediaCardBadgeConfig;
   actions?: MediaCardActions;
   overlayPresetId?: string;
+  mediaCardAsset?: AssetModel;
 }) {
   const resolvedPreviewUrl = resolvePreviewUrl(asset, previewUrl);
   const ref = useLazyPreview(!!previewUrl, loadPreview, {
@@ -379,6 +395,27 @@ function GalleryItem({
 
   // Convert string tags to MediaCard's expected format
   const tagObjects = tags.map(tag => ({ slug: tag, display_name: tag }));
+
+  if (mediaCardAsset) {
+    return (
+      <div ref={ref}>
+        <MediaCard
+          asset={mediaCardAsset}
+          onOpen={onOpen ? () => onOpen(resolvedPreviewUrl) : undefined}
+          hashStatus={hashStatus}
+          uploadState={uploadState}
+          uploadProgress={uploadProgress}
+          onUploadClick={onUpload ? async () => { await onUpload(); } : undefined}
+          onUploadToProvider={onUploadToProvider}
+          isFavorite={isFavorite}
+          onToggleFavorite={onToggleFavorite}
+          badgeConfig={badgeConfig}
+          actions={actions}
+          overlayPresetId={overlayPresetId}
+        />
+      </div>
+    );
+  }
 
   return (
     <div ref={ref}>
@@ -413,17 +450,45 @@ function GalleryItem({
 
 /**
  * Default group header matching LocalFoldersContent's styling.
+ * Supports an optional collapsible toggle.
  */
-function DefaultGroupHeader({ label, count }: { label: string; count: number }) {
+function DefaultGroupHeader({
+  label,
+  count,
+  collapsible,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
+  const Tag = collapsible ? 'button' : 'header';
   return (
-    <header className="flex items-center justify-between pb-1 border-b border-neutral-200 dark:border-neutral-700">
-      <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200 truncate pr-3">
-        {label}
-      </h3>
+    <Tag
+      type={collapsible ? 'button' : undefined}
+      onClick={collapsible ? onToggle : undefined}
+      className={`flex items-center justify-between pb-1 border-b border-neutral-200 dark:border-neutral-700 w-full text-left ${
+        collapsible ? 'cursor-pointer select-none hover:bg-neutral-50 dark:hover:bg-neutral-800/40 -mx-1 px-1 rounded transition-colors' : ''
+      }`}
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        {collapsible && (
+          <Icons.chevronRight
+            size={14}
+            className={`flex-shrink-0 text-neutral-400 transition-transform duration-150 ${collapsed ? '' : 'rotate-90'}`}
+          />
+        )}
+        <h3 className="text-sm font-semibold text-neutral-700 dark:text-neutral-200 truncate pr-3">
+          {label}
+        </h3>
+      </div>
       <span className="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
         {count.toLocaleString()} items
       </span>
-    </header>
+    </Tag>
   );
 }
 
@@ -452,6 +517,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getIsFavorite,
     getHashStatus,
     onOpen,
+    getMediaCardAsset,
     onUpload,
     onUploadToProvider,
     onToggleFavorite,
@@ -466,6 +532,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getGroupLabel,
     renderGroupHeader,
     sortGroupSections,
+    collapsibleGroups,
     badgeConfig,
     actions,
     getActions,
@@ -524,6 +591,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     const isFavorite = getIsFavorite?.(asset);
     const hashStatus = getHashStatus?.(asset);
     const assetActions = getActions?.(asset) ?? actions;
+    const mediaCardAsset = getMediaCardAsset?.(asset);
 
     return (
       <GalleryItem
@@ -543,6 +611,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
         uploadProgress={uploadProgress}
         isFavorite={isFavorite}
         hashStatus={hashStatus}
+        mediaCardAsset={mediaCardAsset}
         onOpen={onOpen ? (resolvedUrl) => onOpen(asset, resolvedUrl) : undefined}
         onUpload={onUpload ? () => onUpload(asset) : undefined}
         onUploadToProvider={onUploadToProvider
@@ -572,6 +641,7 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     getHashStatus,
     loadPreview,
     onOpen,
+    getMediaCardAsset,
     onUpload,
     onUploadToProvider,
     onToggleFavorite,
@@ -682,6 +752,19 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
     </div>
   );
 
+  // ---------- Collapse state for groups ----------
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const toggleGroupCollapse = useCallback((key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   // ---------- Grouped layout ----------
 
   if (groupedSections) {
@@ -693,13 +776,22 @@ export function AssetGallery<T>(props: AssetGalleryProps<T>) {
           {sections.map(({ key, label, count }) => {
             const groupAssets = groupMap.get(key);
             if (!groupAssets || groupAssets.length === 0) return null;
-            const cards = groupAssets.map(buildCardElement);
+            const isCollapsed = collapsibleGroups && collapsedGroups.has(key);
+            const cards = isCollapsed ? null : groupAssets.map(buildCardElement);
             return (
               <section key={key} className="space-y-2">
                 {renderGroupHeader
                   ? renderGroupHeader(key, label, count)
-                  : <DefaultGroupHeader label={label} count={count} />}
-                {renderGrid(cards)}
+                  : (
+                    <DefaultGroupHeader
+                      label={label}
+                      count={count}
+                      collapsible={collapsibleGroups}
+                      collapsed={isCollapsed}
+                      onToggle={() => toggleGroupCollapse(key)}
+                    />
+                  )}
+                {cards && renderGrid(cards)}
               </section>
             );
           })}

@@ -8,6 +8,12 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 
+import {
+  smoothPoints as smoothPathPoints,
+  findNearestVertex as findNearestPolygonVertex,
+  calculateVertexThreshold as calculatePolygonVertexThreshold,
+  moveVertex as movePolygonVertex,
+} from '@pixsim7/graphics.geometry';
 import { generateUUID } from '@lib/utils/uuid';
 
 import type {
@@ -174,6 +180,9 @@ export function useInteractionLayer(
   const lastPointRef = useRef<NormalizedPoint | null>(null);
   /** Layers snapshot taken BEFORE stroke starts, used by pushHistory on pointer-up */
   const preStrokeLayersRef = useRef<InteractionLayer[] | null>(null);
+  const preShapeLayersRef = useRef<InteractionLayer[] | null>(null);
+  const currentPolygonRef = useRef<{ layerId: string; elementId: string } | null>(null);
+  const activePolygonVertexDragRef = useRef<{ layerId: string; elementId: string; vertexIndex: number } | null>(null);
 
   // View ref (avoids stale closures in pointer/wheel handlers)
   const viewRef = useRef<ViewState>(view);
@@ -272,8 +281,36 @@ export function useInteractionLayer(
   // ============================================================================
 
   const setMode = useCallback((newMode: InteractionMode) => {
+    // Finalize or discard in-progress polygon when leaving polygon mode.
+    if (mode === 'polygon' && newMode !== 'polygon' && currentPolygonRef.current) {
+      const { layerId, elementId } = currentPolygonRef.current;
+      let shouldPushHistory = false;
+
+      setLayers((prev) =>
+        prev.map((l) => {
+          if (l.id !== layerId) return l;
+          return {
+            ...l,
+            elements: l.elements.flatMap((e) => {
+              if (e.id !== elementId || e.type !== 'polygon') return [e];
+              const poly = e as PolygonElement;
+              if (poly.points.length < 3) return [];
+              shouldPushHistory = true;
+              return [{ ...poly, closed: true }];
+            }),
+          };
+        })
+      );
+
+      if (shouldPushHistory && preShapeLayersRef.current) {
+        pushHistory('Create polygon', { layers: preShapeLayersRef.current });
+      }
+      preShapeLayersRef.current = null;
+      currentPolygonRef.current = null;
+    }
+
     setModeState(newMode);
-  }, []);
+  }, [mode, pushHistory]);
 
   const setTool = useCallback((config: Partial<DrawToolConfig>) => {
     setToolState((prev) => ({ ...prev, ...config }));
@@ -518,6 +555,57 @@ export function useInteractionLayer(
             l.id === activeLayerId ? { ...l, elements: [...l.elements, stroke] } : l
           )
         );
+      } else if (currentMode === 'polygon') {
+        if (!currentPolygonRef.current) {
+          preShapeLayersRef.current = layers;
+
+          const polygonId = addElement(activeLayerId!, {
+            type: 'polygon',
+            visible: true,
+            closed: false,
+            points: [event.normalized],
+            style: {
+              strokeColor: tool.color,
+              fillColor: 'rgba(255,255,255,0.18)',
+              strokeWidth: 2,
+            },
+            metadata: {
+              curved: true,
+            },
+          } as Omit<PolygonElement, 'id' | 'layerId'>);
+
+          currentPolygonRef.current = { layerId: activeLayerId!, elementId: polygonId };
+        } else {
+          const { layerId, elementId } = currentPolygonRef.current;
+          const polygonLayer = layers.find((l) => l.id === layerId);
+          const polygonElement = polygonLayer?.elements.find((e) => e.id === elementId && e.type === 'polygon') as PolygonElement | undefined;
+
+          if (polygonElement && polygonElement.points.length > 0) {
+            const threshold = Math.max(
+              0.015,
+              calculatePolygonVertexThreshold(polygonElement.points, 0.08),
+            );
+            const hit = findNearestPolygonVertex(event.normalized, polygonElement.points, threshold);
+            if (hit.index >= 0) {
+              activePolygonVertexDragRef.current = { layerId, elementId, vertexIndex: hit.index };
+              return;
+            }
+          }
+
+          setLayers((prev) =>
+            prev.map((l) => {
+              if (l.id !== layerId) return l;
+              return {
+                ...l,
+                elements: l.elements.map((e) => {
+                  if (e.id !== elementId || e.type !== 'polygon') return e;
+                  const poly = e as PolygonElement;
+                  return { ...poly, points: [...poly.points, event.normalized] };
+                }),
+              };
+            })
+          );
+        }
       } else if (currentMode === 'point') {
         addElement(activeLayerId!, {
           type: 'point',
@@ -543,6 +631,37 @@ export function useInteractionLayer(
             y: panStartViewRef.current.y + dy,
           },
         });
+        return;
+      }
+
+      if (activePolygonVertexDragRef.current) {
+        const { layerId, elementId, vertexIndex } = activePolygonVertexDragRef.current;
+        const clampedPoint: NormalizedPoint = {
+          x: Math.max(0, Math.min(1, event.normalized.x)),
+          y: Math.max(0, Math.min(1, event.normalized.y)),
+        };
+
+        setLayers((prev) =>
+          prev.map((l) => {
+            if (l.id !== layerId) return l;
+            return {
+              ...l,
+              elements: l.elements.map((e) => {
+                if (e.id !== elementId || e.type !== 'polygon') return e;
+                const poly = e as PolygonElement;
+                return {
+                  ...poly,
+                  points: movePolygonVertex(poly.points, vertexIndex, clampedPoint, {
+                    x: 0,
+                    y: 0,
+                    width: 1,
+                    height: 1,
+                  }) as NormalizedPoint[],
+                };
+              }),
+            };
+          })
+        );
         return;
       }
 
@@ -587,6 +706,11 @@ export function useInteractionLayer(
         return;
       }
 
+      if (activePolygonVertexDragRef.current) {
+        activePolygonVertexDragRef.current = null;
+        return;
+      }
+
       void event;
       if (!isDrawingRef.current) return;
 
@@ -610,6 +734,39 @@ export function useInteractionLayer(
     },
     [pushHistory, onStrokeComplete]
   );
+
+  const handleDoubleClick = useCallback((event: SurfacePointerEvent) => {
+    void event;
+    if (modeRef.current !== 'polygon') return;
+    const current = currentPolygonRef.current;
+    if (!current) return;
+    if (activePolygonVertexDragRef.current) return;
+
+    let finalized = false;
+    setLayers((prev) =>
+      prev.map((l) => {
+        if (l.id !== current.layerId) return l;
+        return {
+          ...l,
+          elements: l.elements.flatMap((e) => {
+            if (e.id !== current.elementId || e.type !== 'polygon') return [e];
+            const poly = e as PolygonElement;
+            if (poly.points.length < 3) {
+              return [];
+            }
+            finalized = true;
+            return [{ ...poly, closed: true }];
+          }),
+        };
+      })
+    );
+
+    if (finalized && preShapeLayersRef.current) {
+      pushHistory('Create polygon', { layers: preShapeLayersRef.current });
+    }
+    preShapeLayersRef.current = null;
+    currentPolygonRef.current = null;
+  }, [pushHistory]);
 
   // ── Wheel → zoom centered on cursor ──────────────────────────────────
 
@@ -738,6 +895,38 @@ export function useInteractionLayer(
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
 
+      const tracePolygonPath = (poly: PolygonElement) => {
+        if (poly.points.length < 2) return false;
+        const curved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
+        const pts = poly.points;
+        const sx = (x: number) => x * width;
+        const sy = (y: number) => y * height;
+
+        const pathPoints = curved && pts.length >= 3
+          ? smoothPathPoints(pts, poly.closed, 0.5, 8)
+          : pts;
+
+        if (pathPoints.length < 2) return false;
+
+        if (!curved || pts.length < 3) {
+          ctx.moveTo(sx(pts[0].x), sy(pts[0].y));
+          for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(sx(pts[i].x), sy(pts[i].y));
+          }
+          if (poly.closed) ctx.closePath();
+          return true;
+        }
+
+        ctx.moveTo(sx(pathPoints[0].x), sy(pathPoints[0].y));
+        for (let i = 1; i < pathPoints.length; i++) {
+          ctx.lineTo(sx(pathPoints[i].x), sy(pathPoints[i].y));
+        }
+        if (poly.closed) {
+          ctx.closePath();
+        }
+        return true;
+      };
+
       for (const element of layer.elements) {
         if (element.type === 'stroke' && !element.isErase) {
           const stroke = element as StrokeElement;
@@ -752,6 +941,27 @@ export function useInteractionLayer(
           }
 
           ctx.stroke();
+          continue;
+        }
+
+        if (element.type === 'polygon') {
+          const poly = element as PolygonElement;
+          if (!poly.closed || poly.points.length < 3) continue;
+          ctx.beginPath();
+          if (tracePolygonPath(poly)) {
+            ctx.fill();
+          }
+          continue;
+        }
+
+        if (element.type === 'region') {
+          const region = element as RegionElement;
+          ctx.fillRect(
+            region.bounds.x * width,
+            region.bounds.y * height,
+            region.bounds.width * width,
+            region.bounds.height * height,
+          );
         }
       }
 
@@ -795,9 +1005,10 @@ export function useInteractionLayer(
       onPointerDown: handlePointerDown,
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
+      onDoubleClick: handleDoubleClick,
       onWheel: handleWheel,
     }),
-    [handlePointerDown, handlePointerMove, handlePointerUp, handleWheel]
+    [handlePointerDown, handlePointerMove, handlePointerUp, handleDoubleClick, handleWheel]
   );
 
   // ============================================================================

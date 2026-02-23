@@ -5,7 +5,12 @@ import { useState, useEffect } from 'react';
 
 import { createGeneration, type SceneRef } from '@lib/api/generations';
 
-import { fromGenerationResponse, type GenerationModel } from '@features/generation';
+import {
+  fromGenerationResponse,
+  type GenerationModel,
+  createGenerationRunDescriptor,
+  createGenerationRunItemContext,
+} from '@features/generation';
 import { useGraphStore } from '@features/graph';
 
 import type { DraftSceneNode } from '@domain/sceneBuilder';
@@ -75,6 +80,13 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
 
     try {
       const config = buildConfig();
+      const run = createGenerationRunDescriptor({
+        mode: 'scene_node',
+        metadata: {
+          source: 'generation_node_editor_test',
+          node_id: node.id,
+        },
+      });
 
       // Build SceneRefs from current scene
       const currentScene = getCurrentScene();
@@ -89,7 +101,13 @@ export function GenerationNodeEditor({ node, onUpdate }: GenerationNodeEditorPro
 
       // Use canonical generations API and map to internal model
       const response = await createGeneration({
-        config,
+        config: {
+          ...config,
+          run_context: createGenerationRunItemContext(run, {
+            itemIndex: 0,
+            itemTotal: 1,
+          }),
+        } as any,
         provider_id: 'pixverse',
         from_scene: fromScene,
         to_scene: undefined,

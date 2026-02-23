@@ -6,9 +6,9 @@
  * These can be used directly, extended, or completely replaced via overlay config.
  */
 
-import { Button, useHoverExpand } from '@pixsim7/shared.ui';
+import { Button, useHoverExpand, PortalFloat } from '@pixsim7/shared.ui';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+
 
 import { createBindingFromValue } from '@lib/editing-core';
 import { Icon } from '@lib/icons';
@@ -35,6 +35,7 @@ import { useProviders } from '@features/providers';
 
 import { MEDIA_TYPE_ICON, MEDIA_STATUS_ICON } from './mediaBadgeConfig';
 import type { MediaCardResolvedProps } from './MediaCard';
+import { buildMediaCardRuntimeWidgets } from './mediaCardRuntimeWidgetBuilder';
 import { UploadProviderMenu } from './UploadProviderMenu';
 
 // Re-export from split files for backwards compatibility
@@ -179,6 +180,7 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
     return createMenuWidget({
       id: 'status-menu',
       position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+      stackGroup: 'badges-tr',
       visibility: { trigger: 'always' },
       items: (data: MediaCardOverlayData) => {
         const menuItems: MenuItem[] = [];
@@ -263,6 +265,7 @@ export function createStatusWidget(props: MediaCardResolvedProps): OverlayWidget
   return createBadgeWidget({
     id: 'status-badge',
     position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'always' },
     variant: 'icon',
     icon: statusMeta.icon,
@@ -313,14 +316,15 @@ export function createProviderWidget(props: MediaCardResolvedProps): OverlayWidg
 
   return createBadgeWidget({
     id: 'provider',
-    position: { anchor: 'top-right', offset: { x: -8, y: 48 } },
+    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'hover-container' },
     variant: 'text',
     labelBinding: createBindingFromValue('label', () => providerId),
     color: 'gray',
     className: '!bg-white/90 dark:!bg-neutral-800/90 backdrop-blur-sm text-[10px]',
     tooltip: `Provider: ${providerId}`,
-    priority: 15,
+    priority: 14,
   });
 }
 
@@ -716,7 +720,8 @@ export function createInfoPopover(props: MediaCardResolvedProps): OverlayWidget<
 export function createFavoriteWidget(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> {
   return createBadgeWidget({
     id: 'favorite-toggle',
-    position: { anchor: 'top-right', offset: { x: -8, y: 44 } },
+    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'always' },
     variant: 'icon',
     icon: 'heart',
@@ -748,19 +753,12 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const blurTimeoutRef = useRef<number>(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null);
 
   const { results, loading, parsedQuery, hasExplicitNamespace } =
     useTagAutocomplete(inputValue, { enabled: isExpanded && inputFocused, namespaceOverride: selectedNamespace });
 
   // Typed namespace (from colon syntax) takes priority over dropdown selection
   const activeNamespace = hasExplicitNamespace ? typedNamespace : selectedNamespace;
-
-  useEffect(() => {
-    if (isExpanded && triggerRef.current) {
-      setTriggerRect(triggerRef.current.getBoundingClientRect());
-    }
-  }, [isExpanded]);
 
   // Clear blur timeout on unmount
   useEffect(() => () => window.clearTimeout(blurTimeoutRef.current), []);
@@ -869,15 +867,17 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
         <Icon name={flash === 'success' ? 'check' : flash === 'error' ? 'x' : 'tag'} />
       </button>
 
-      {isExpanded && triggerRect && createPortal(
+      {isExpanded && (
+        <PortalFloat
+          anchor={triggerRef.current}
+          placement="bottom"
+          align="end"
+          offset={4}
+          className="min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1"
+          onMouseEnter={handlers.onMouseEnter}
+          onMouseLeave={handlers.onMouseLeave}
+        >
         <div
-          className="fixed min-w-[180px] max-w-[240px] bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg py-1 z-popover"
-          style={{
-            top: triggerRect.bottom + 4,
-            left: triggerRect.right,
-            transform: 'translateX(-100%)',
-          }}
-          {...handlers}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -1030,8 +1030,8 @@ function QuickTagWidgetContent({ data }: { data: MediaCardOverlayData }) {
               )}
             </div>
           )}
-        </div>,
-        document.body,
+        </div>
+        </PortalFloat>
       )}
     </div>
   );
@@ -1045,7 +1045,8 @@ export function createQuickTagWidget(): OverlayWidget<MediaCardOverlayData> {
   return {
     id: 'quick-tag',
     type: 'custom',
-    position: { anchor: 'top-right', offset: { x: -8, y: 80 } },
+    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'always' },
     priority: 17,
     interactive: true,
@@ -1076,39 +1077,19 @@ import {
  * Create default widget set for MediaCard
  */
 export function createDefaultMediaCardWidgets(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData>[] {
-  const { presetCapabilities } = props;
-
-  // All presets rely on runtime widgets for the primary icon. The Generation
-  // preset has an empty widgets array specifically to use runtime widgets.
-  const widgets = [
-    createPrimaryIconWidget(props),
-    createStatusWidget(props),
-    createFavoriteWidget(props),
-    createQuickTagWidget(),
-    createQueueStatusWidget(props),
-    createSelectionStatusWidget(props),
-    // Note: Generation status widget is opt-in via customWidgets or overlay config
-    createDurationWidget(props),
-    createProviderWidget(props),
-    createVideoScrubber(props),
-    createUploadButton(props),
-    createInfoPopover(props),
-    createQuickAddButton(),
-    createGenerationButtonGroup(props),
-  ];
-
-  // Tag all runtime widgets for validation/linting and filter out nulls
-  let result = widgets
-    .filter((w): w is OverlayWidget<MediaCardOverlayData> => w !== null)
-    .map((w) => ({ ...w, group: 'media-card-runtime' }));
-
-  // Apply forceHoverOnly: override all widget visibility to hover-container
-  if (presetCapabilities?.forceHoverOnly) {
-    result = result.map((w) => ({
-      ...w,
-      visibility: { trigger: 'hover-container' as const },
-    }));
-  }
-
-  return result;
+  return buildMediaCardRuntimeWidgets(props, {
+    createPrimaryIconWidget,
+    createStatusWidget,
+    createFavoriteWidget,
+    createQueueStatusWidget,
+    createSelectionStatusWidget,
+    createDurationWidget,
+    createProviderWidget,
+    createVideoScrubber,
+    createUploadButton,
+    createInfoPopover,
+    createGenerationButtonGroup,
+    createQuickTagWidget,
+    createQuickAddButton,
+  });
 }

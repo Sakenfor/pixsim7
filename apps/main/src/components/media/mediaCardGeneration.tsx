@@ -161,7 +161,7 @@ export function createGenerationMenu(props: MediaCardResolvedProps): OverlayWidg
  * Two merged buttons: menu (left) + smart action (right)
  */
 export function createGenerationButtonGroup(props: MediaCardResolvedProps): OverlayWidget<MediaCardOverlayData> | null {
-  const { actions, badgeConfig, presetCapabilities } = props;
+  const { badgeConfig, presetCapabilities } = props;
 
   // Only show if preset capabilities enable it
   if (!presetCapabilities?.showsGenerationMenu) {
@@ -220,12 +220,10 @@ export function createGenerationStatusWidget(props: MediaCardResolvedProps): Ove
     tooltip: generationStatus === 'failed' ? (generationError || statusCfg.description) : statusCfg.description,
   };
 
-  // Position below the provider badge (or top-right if no provider badge)
-  const offsetY = badgeConfig?.showFooterProvider ? 88 : 48;
-
   return createBadgeWidget({
     id: 'generation-status',
-    position: { anchor: 'top-right', offset: { x: -8, y: offsetY } },
+    position: { anchor: 'top-right', offset: { x: -8, y: 8 } },
+    stackGroup: 'badges-tr',
     visibility: { trigger: 'always' },
     variant: 'icon',
     icon: config.icon,
@@ -233,6 +231,6 @@ export function createGenerationStatusWidget(props: MediaCardResolvedProps): Ove
     shape: 'circle',
     tooltip: config.tooltip,
     className: `${config.className} backdrop-blur-md`,
-    priority: 18,
+    priority: 16,
   });
 }

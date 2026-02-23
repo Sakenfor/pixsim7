@@ -10,12 +10,10 @@
 
 import { useMemo } from 'react';
 
-import type { OverlayConfiguration } from '@lib/ui/overlay';
+import type { OverlayConfiguration, OverlayPolicyStep, OverlayWidget } from '@lib/ui/overlay';
 import {
   useOverlayWidgetSettingsStore,
-  type ConfigurableWidgetId,
   type OverlayContextId,
-  type WidgetVisibilityMode,
 } from '@lib/widgets';
 
 import type { AssetModel } from '@features/assets';
@@ -30,6 +28,7 @@ import {
   createInfoPopover,
   createGenerationButtonGroup,
 } from '../mediaCardWidgets';
+import { applyMediaOverlayPolicyChain } from '../overlayWidgetPolicy';
 
 export interface UseOverlayWidgetsForAssetOptions {
   /** The asset to build widgets for (null = return empty config) */
@@ -38,6 +37,14 @@ export interface UseOverlayWidgetsForAssetOptions {
   context: OverlayContextId;
   /** Optional runtime props (actions, badge config, etc.) to pass through to widget factories */
   runtimeProps?: Partial<MediaCardRuntimeProps>;
+  /** Apply compact position offsets regardless of context.
+   *  Set to true when rendering inside CompactAssetCard, which always needs
+   *  tighter offsets even when using 'gallery' context for visibility. */
+  useCompactPositions?: boolean;
+  /** Optional conflict rule: suppress generation bar widget for custom hover UI. */
+  suppressGenerationButtonGroup?: boolean;
+  /** Optional ordered policy chain override. Defaults to MediaCard runtime chain. */
+  policyChain?: OverlayPolicyStep[];
 }
 
 export interface UseOverlayWidgetsForAssetResult {
@@ -65,21 +72,13 @@ const EMPTY_DATA: MediaCardOverlayData = {
   remoteUrl: '',
 };
 
-/** Map WidgetVisibilityMode to overlay trigger string */
-function toOverlayTrigger(mode: WidgetVisibilityMode): 'always' | 'hover-container' {
-  return mode === 'always' ? 'always' : 'hover-container';
-}
-
-/** Position adjustments for compact context (tighter layout) */
-const COMPACT_POSITION_OVERRIDES: Partial<Record<ConfigurableWidgetId, { x: number; y: number }>> = {
-  'favorite-toggle': { x: -4, y: 4 },
-  'info-popover': { x: 4, y: -4 },
-};
-
 export function useOverlayWidgetsForAsset({
   asset,
   context,
   runtimeProps = {},
+  useCompactPositions = false,
+  suppressGenerationButtonGroup = false,
+  policyChain,
 }: UseOverlayWidgetsForAssetOptions): UseOverlayWidgetsForAssetResult {
   const getVisibility = useOverlayWidgetSettingsStore((s) => s.getContextVisibility);
 
@@ -92,6 +91,14 @@ export function useOverlayWidgetsForAsset({
     const baseProps = mediaCardPropsFromAsset(asset);
     const isFavorite = isFavoriteAsset(asset);
 
+    // Destructure nested objects from runtimeProps to merge them properly
+    // (spreading runtimeProps at top level would overwrite the merged nested objects)
+    const {
+      badgeConfig: rtBadgeConfig,
+      presetCapabilities: rtPresetCaps,
+      ...restRuntimeProps
+    } = runtimeProps;
+
     // Build resolved props for widget factories
     const resolvedProps: MediaCardResolvedProps = {
       ...baseProps,
@@ -103,55 +110,33 @@ export function useOverlayWidgetsForAsset({
         showTagsInOverlay: true,
         showGenerationBadge: true,
         showGenerationInMenu: true,
-        ...runtimeProps.badgeConfig,
+        ...rtBadgeConfig,
       },
       presetCapabilities: {
         showsGenerationMenu: true,
         showsQuickGenerate: true,
-        ...runtimeProps.presetCapabilities,
+        ...rtPresetCaps,
       },
-      ...runtimeProps,
+      ...restRuntimeProps,
     };
 
-    // Create candidate widgets
-    const candidates: Array<{
-      id: ConfigurableWidgetId;
-      widget: ReturnType<typeof createFavoriteWidget> | null;
-    }> = [
-      { id: 'favorite-toggle', widget: createFavoriteWidget(resolvedProps) },
-      { id: 'quick-tag', widget: createQuickTagWidget() },
-      { id: 'generation-button-group', widget: createGenerationButtonGroup(resolvedProps) },
-      { id: 'info-popover', widget: createInfoPopover(resolvedProps) },
-    ];
+    const candidates = [
+      createFavoriteWidget(resolvedProps),
+      createQuickTagWidget(),
+      createGenerationButtonGroup(resolvedProps),
+      createInfoPopover(resolvedProps),
+    ].filter((widget): widget is OverlayWidget<MediaCardOverlayData> => widget !== null);
 
-    // Filter by visibility and remap triggers
-    const widgets = candidates
-      .filter((c) => {
-        if (!c.widget) return false;
-        const mode = getVisibility(context, c.id);
-        return mode !== 'hidden';
-      })
-      .map((c) => {
-        const mode = getVisibility(context, c.id);
-        const widget = c.widget!;
-
-        // Remap visibility trigger
-        const remapped = {
-          ...widget,
-          visibility: { ...widget.visibility, trigger: toOverlayTrigger(mode) as any },
-        };
-
-        // Apply compact position overrides
-        if (context === 'compact' && COMPACT_POSITION_OVERRIDES[c.id]) {
-          const offset = COMPACT_POSITION_OVERRIDES[c.id]!;
-          remapped.position = {
-            ...remapped.position,
-            offset,
-          };
-        }
-
-        return remapped;
-      });
+    const widgets = applyMediaOverlayPolicyChain(candidates, {
+      context,
+      getVisibility,
+      chain: policyChain,
+      configurableDefaults: {
+        useCompactPositions,
+        skipInfoPopoverInCompact: true,
+        suppressGenerationButtonGroup,
+      },
+    });
 
     // Build overlay config
     const overlayConfig: OverlayConfiguration = {
@@ -185,5 +170,5 @@ export function useOverlayWidgetsForAsset({
     };
 
     return { overlayConfig, overlayData };
-  }, [asset, context, runtimeProps, getVisibility]);
+  }, [asset, context, runtimeProps, getVisibility, useCompactPositions, suppressGenerationButtonGroup, policyChain]);
 }

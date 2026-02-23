@@ -43,6 +43,7 @@ export type {
   OverlayWidget,
   WidgetSpacing,
   OverlayConfiguration,
+  OverlayPolicyStep,
   PresetCategory,
   PresetCapabilities,
   OverlayPreset,
@@ -163,6 +164,15 @@ export {
   boundsOverlap,
   resolveCollisions,
 } from './utils/collision';
+
+export {
+  partitionByStackGroup,
+} from './utils/stacking';
+
+export type {
+  StackGroupInfo,
+  PartitionResult,
+} from './utils/stacking';
 
 export type {
   CollisionResult,

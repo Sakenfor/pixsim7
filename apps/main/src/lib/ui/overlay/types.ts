@@ -245,6 +245,15 @@ export interface OverlayWidget<TData = any> {
   /** Render priority (higher = on top) */
   priority?: number;
 
+  /** Widgets sharing the same stackGroup AND anchor are auto-stacked in a
+   *  flex container. Priority determines order (highest = closest to anchor). */
+  stackGroup?: string;
+
+  /** Exclude this widget from collision detection/repositioning.
+   *  Useful for full-bleed overlays (e.g. video scrub layer) that are
+   *  intentionally designed to overlap other widgets. */
+  ignoreCollisions?: boolean;
+
   /** Widget-specific configuration props (stored alongside core fields). */
   [key: string]: unknown;
 }
@@ -328,6 +337,25 @@ export interface PresetCapabilities {
 
   /** Whether to show the quick-generate (sparkles) button in the generation button group */
   showsQuickGenerate?: boolean;
+
+  /** Hide the upload button inside the generation button group pill only.
+   *  Unlike skipUploadButton (which also hides the standalone upload widget),
+   *  this only affects the button within the pill — used by CompactAssetCard
+   *  in gallery contexts where assets are already in the library. */
+  skipPillUpload?: boolean;
+}
+
+/**
+ * Serializable policy step applied to runtime widgets after preset/runtime merge.
+ * Policies are interpreted by the consumer (e.g. MediaCard runtime).
+ */
+export interface OverlayPolicyStep {
+  /** Registered policy identifier */
+  policyId: string;
+  /** Whether this policy step is active */
+  enabled?: boolean;
+  /** Policy-specific JSON-serializable parameters */
+  params?: Record<string, unknown>;
 }
 
 /**
@@ -351,6 +379,9 @@ export interface OverlayPreset {
 
   /** Runtime capabilities for widget configuration */
   capabilities?: PresetCapabilities;
+
+  /** Optional ordered policy chain for runtime widget transformation */
+  policyChain?: OverlayPolicyStep[];
 
   /** Whether this was created by a user */
   isUserCreated?: boolean;

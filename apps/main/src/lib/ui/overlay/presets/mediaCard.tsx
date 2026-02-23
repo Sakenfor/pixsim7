@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * Media Card Overlay Presets
  *
@@ -187,11 +188,13 @@ export const localFoldersPreset: OverlayPreset = {
   category: 'media',
   capabilities: {
     showsGenerationMenu: true,
+    showsQuickGenerate: true,
+    skipUploadButton: true,
   },
   configuration: {
     id: 'media-card-local-folders',
     name: 'Local Folders',
-    description: 'Local-folder cards with upload + generation actions',
+    description: 'Local-folder cards with generation actions and compact upload targets',
     spacing: 'normal',
     widgets: [],
   },

@@ -18,6 +18,7 @@
  * ```
  */
 
+import { smoothPoints as smoothPathPoints } from '@pixsim7/graphics.geometry';
 import {
   useRef,
   useState,
@@ -36,7 +37,6 @@ import type {
   Dimensions,
   ViewState,
   ScreenPoint,
-  InteractionLayer,
   AnyElement,
   StrokeElement,
   PointElement,
@@ -339,6 +339,35 @@ export const InteractiveImageSurface = forwardRef<
 
       const toScreenX = (nx: number) => nx * imageRect.width + imageRect.x;
       const toScreenY = (ny: number) => ny * imageRect.height + imageRect.y;
+      const tracePolygonPath = (poly: PolygonElement) => {
+        if (poly.points.length < 2) return false;
+        const curved = !!(poly.metadata as Record<string, unknown> | undefined)?.curved;
+        const pts = poly.points;
+
+        const pathPoints = curved && pts.length >= 3
+          ? smoothPathPoints(pts, poly.closed, 0.5, 8)
+          : pts;
+
+        if (pathPoints.length < 2) return false;
+
+        if (!curved || pts.length < 3) {
+          ctx.moveTo(toScreenX(pts[0].x), toScreenY(pts[0].y));
+          for (let i = 1; i < pts.length; i++) {
+            ctx.lineTo(toScreenX(pts[i].x), toScreenY(pts[i].y));
+          }
+          if (poly.closed) ctx.closePath();
+          return true;
+        }
+
+        ctx.moveTo(toScreenX(pathPoints[0].x), toScreenY(pathPoints[0].y));
+        for (let i = 1; i < pathPoints.length; i++) {
+          ctx.lineTo(toScreenX(pathPoints[i].x), toScreenY(pathPoints[i].y));
+        }
+        if (poly.closed) {
+          ctx.closePath();
+        }
+        return true;
+      };
 
       switch (element.type) {
         case 'point': {
@@ -389,15 +418,7 @@ export const InteractiveImageSurface = forwardRef<
           if (poly.points.length < 2) break;
 
           ctx.beginPath();
-          ctx.moveTo(toScreenX(poly.points[0].x), toScreenY(poly.points[0].y));
-
-          for (let i = 1; i < poly.points.length; i++) {
-            ctx.lineTo(toScreenX(poly.points[i].x), toScreenY(poly.points[i].y));
-          }
-
-          if (poly.closed) {
-            ctx.closePath();
-          }
+          if (!tracePolygonPath(poly)) break;
 
           if (poly.style?.fillColor) {
             ctx.fillStyle = poly.style.fillColor;
@@ -407,6 +428,23 @@ export const InteractiveImageSurface = forwardRef<
           ctx.strokeStyle = poly.style?.strokeColor ?? '#0000ff';
           ctx.lineWidth = (poly.style?.strokeWidth ?? 2) * viewState.zoom;
           ctx.stroke();
+
+          // Show editable vertex handles for open polygons (e.g. mask curve tool)
+          if (!poly.closed) {
+            const handleRadius = Math.max(3, 5 * Math.min(2, viewState.zoom));
+            for (let i = 0; i < poly.points.length; i++) {
+              const p = poly.points[i];
+              const x = toScreenX(p.x);
+              const y = toScreenY(p.y);
+              ctx.beginPath();
+              ctx.arc(x, y, handleRadius, 0, Math.PI * 2);
+              ctx.fillStyle = i === 0 ? '#f59e0b' : '#ffffff';
+              ctx.fill();
+              ctx.strokeStyle = '#111827';
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
+          }
           break;
         }
 
@@ -431,7 +469,8 @@ export const InteractiveImageSurface = forwardRef<
             ? 'rgba(0,0,0,1)'
             : stroke.tool.color;
           ctx.lineWidth =
-            stroke.tool.size * imageRect.width * viewState.zoom;
+            // tool.size is normalized to image width; imageRect.width already includes zoom
+            stroke.tool.size * imageRect.width;
           ctx.lineCap = 'round';
           ctx.lineJoin = 'round';
           ctx.globalAlpha = stroke.tool.opacity;
@@ -554,6 +593,10 @@ export const InteractiveImageSurface = forwardRef<
       top: imageRect.y,
       width: imageRect.width,
       height: imageRect.height,
+      // Override global img/video resets (e.g. Tailwind preflight max-width:100%)
+      // so zoomed media can exceed the container without aspect distortion.
+      maxWidth: 'none' as const,
+      maxHeight: 'none' as const,
       pointerEvents: 'none' as const,
     }),
     [imageRect]

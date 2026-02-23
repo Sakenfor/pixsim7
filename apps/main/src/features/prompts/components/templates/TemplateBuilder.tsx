@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listBlockPackages, reloadContentPacks, type ReloadContentPacksResponse } from '@lib/api/blockTemplates';
 import { listCharacters, type CharacterSummary } from '@lib/api/characters';
 import { Icon } from '@lib/icons';
+import { DisclosureSection } from '@pixsim7/shared.ui';
 
 import { OPERATION_TYPES } from '@/types/operations';
 
@@ -66,6 +67,11 @@ function summarizeReloadResults(response: ReloadContentPacksResponse): string {
   return parts.join(' • ');
 }
 
+function getReloadFailedPacks(response: ReloadContentPacksResponse | null): Array<[string, { error?: string }]> {
+  if (!response?.results) return [];
+  return Object.entries(response.results).filter(([, stats]) => Boolean(stats?.error));
+}
+
 export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, className }: TemplateBuilderProps) {
   const activeTemplate = useBlockTemplateStore((s) => s.activeTemplate);
   const draftSlots = useBlockTemplateStore((s) => s.draftSlots);
@@ -107,6 +113,8 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
   const [yamlReloading, setYamlReloading] = useState(false);
   const [yamlReloadMessage, setYamlReloadMessage] = useState<string | null>(null);
   const [yamlReloadError, setYamlReloadError] = useState<string | null>(null);
+  const [yamlReloadResult, setYamlReloadResult] = useState<ReloadContentPacksResponse | null>(null);
+  const [showYamlReloadDetails, setShowYamlReloadDetails] = useState(false);
   const [serverTemplateReloading, setServerTemplateReloading] = useState(false);
   const [serverTemplateReloadMessage, setServerTemplateReloadMessage] = useState<string | null>(null);
   const [serverTemplateReloadError, setServerTemplateReloadError] = useState<string | null>(null);
@@ -146,11 +154,14 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
     setYamlReloading(true);
     setYamlReloadError(null);
     setYamlReloadMessage(null);
+    setYamlReloadResult(null);
+    setShowYamlReloadDetails(false);
     try {
       const result = await reloadContentPacks({
         force: true,
         prune: true,
       });
+      setYamlReloadResult(result);
       setYamlReloadMessage(summarizeReloadResults(result));
       void fetchTemplates();
       void listBlockPackages().then(setPackageNames).catch(() => {});
@@ -160,6 +171,21 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
       setYamlReloading(false);
     }
   }, [fetchTemplates]);
+
+  const yamlReloadFailedPacks = useMemo(
+    () => getReloadFailedPacks(yamlReloadResult),
+    [yamlReloadResult],
+  );
+  const statusSource = serverTemplateReloadError
+    ? 'server_error'
+    : yamlReloadError
+      ? 'yaml_error'
+      : serverTemplateReloadMessage
+        ? 'server_message'
+        : yamlReloadMessage
+          ? 'yaml_message'
+          : null;
+  const canInspectYamlReloadErrors = statusSource === 'yaml_message' && yamlReloadFailedPacks.length > 0;
 
   const handleReloadActiveTemplateFromServer = useCallback(async () => {
     if (!activeTemplate?.id) return;
@@ -200,15 +226,64 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
       for (const control of templateControls) {
         if (control.type !== 'slider') continue;
         for (const effect of control.effects) {
-          if (effect.kind !== 'slot_intensity') continue;
           if (!slot.label || slot.label !== effect.slotLabel) continue;
-          if ((nextSlot.inherit_intensity ?? false) || nextSlot.intensity !== control.defaultValue) {
-            nextSlot = {
-              ...nextSlot,
-              inherit_intensity: false,
-              intensity: control.defaultValue,
-            };
-            changed = true;
+
+          if (effect.kind === 'slot_intensity') {
+            if ((nextSlot.inherit_intensity ?? false) || nextSlot.intensity !== control.defaultValue) {
+              nextSlot = {
+                ...nextSlot,
+                inherit_intensity: false,
+                intensity: control.defaultValue,
+              };
+              changed = true;
+            }
+            continue;
+          }
+
+          if (effect.kind === 'slot_tag_boost') {
+            const enabledAt = effect.enabledAt ?? control.min;
+            if (control.defaultValue < enabledAt) {
+              continue;
+            }
+
+            const currentPreferences =
+              nextSlot.preferences && typeof nextSlot.preferences === 'object' && !Array.isArray(nextSlot.preferences)
+                ? (nextSlot.preferences as Record<string, unknown>)
+                : {};
+
+            const nextPreferences: Record<string, unknown> = { ...currentPreferences };
+
+            if (effect.boostTags && Object.keys(effect.boostTags).length > 0) {
+              const currentBoost =
+                currentPreferences.boost_tags && typeof currentPreferences.boost_tags === 'object' && !Array.isArray(currentPreferences.boost_tags)
+                  ? (currentPreferences.boost_tags as Record<string, unknown>)
+                  : {};
+              nextPreferences.boost_tags = {
+                ...currentBoost,
+                ...effect.boostTags,
+              };
+            }
+
+            if (effect.avoidTags && Object.keys(effect.avoidTags).length > 0) {
+              const currentAvoid =
+                currentPreferences.avoid_tags && typeof currentPreferences.avoid_tags === 'object' && !Array.isArray(currentPreferences.avoid_tags)
+                  ? (currentPreferences.avoid_tags as Record<string, unknown>)
+                  : {};
+              nextPreferences.avoid_tags = {
+                ...currentAvoid,
+                ...effect.avoidTags,
+              };
+            }
+
+            const before = JSON.stringify(nextSlot.preferences ?? null);
+            const after = JSON.stringify(nextPreferences);
+            if (before !== after) {
+              nextSlot = {
+                ...nextSlot,
+                preferences: nextPreferences as any,
+              };
+              changed = true;
+            }
           }
         }
       }
@@ -348,38 +423,122 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
         </label>
       </div>
 
-      {/* Declarative template controls */}
+      {/* Source sync / reload */}
       <div className="space-y-2">
-        <TemplateControlsEditor
-          controls={templateControls}
-          onChange={setTemplateControls}
-          availableSlotLabels={availableSlotLabels}
-          disabled={saving}
-        />
-        {templateControls.some((c) => c.type === 'slider' && c.effects.length > 0) && (
-          <div className="flex items-center justify-between gap-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/40 px-2 py-1.5">
-            <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-              Apply current control defaults to linked slot intensities for authoring preview.
-            </div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
+            <Icon name="refresh" size={12} /> Sync
+          </span>
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleApplyControlDefaultsToSlots}
-              disabled={saving}
+              onClick={() => void handleReloadYaml()}
+              disabled={yamlReloading}
               className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+              title="Reload content-pack YAML from disk (force + prune). Does not overwrite your current draft slots."
             >
-              <Icon name="sliders" size={10} className="inline mr-1" />
-              Apply to slots
+              <Icon name="refresh" size={10} className={clsx('inline mr-1', yamlReloading && 'animate-spin')} />
+              {yamlReloading ? 'Reloading YAML...' : 'Reload YAML'}
             </button>
+            {activeTemplate && (
+              <button
+                type="button"
+                onClick={() => void handleReloadActiveTemplateFromServer()}
+                disabled={serverTemplateReloading || saving}
+                className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                title="Replace current draft with the latest template from the server"
+              >
+                <Icon name="refresh" size={10} className={clsx('inline mr-1', serverTemplateReloading && 'animate-spin')} />
+                {serverTemplateReloading ? 'Reloading template...' : 'Reload Active Template'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {(yamlReloadMessage || yamlReloadError || serverTemplateReloadMessage || serverTemplateReloadError) && (
+          <div
+            className={clsx(
+              'text-[11px] px-2 py-1 rounded border',
+              (yamlReloadError || serverTemplateReloadError)
+                ? 'border-red-200 text-red-700 bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:bg-red-900/15'
+                : 'border-emerald-200 text-emerald-700 bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:bg-emerald-900/15',
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                {serverTemplateReloadError ?? yamlReloadError ?? serverTemplateReloadMessage ?? yamlReloadMessage}
+                {!(yamlReloadError || serverTemplateReloadError) && yamlReloadMessage && !serverTemplateReloadMessage && (
+                  <span className="ml-2 text-neutral-500 dark:text-neutral-400">
+                    Draft slots were kept as-is.
+                  </span>
+                )}
+              </div>
+              {canInspectYamlReloadErrors && (
+                <button
+                  type="button"
+                  onClick={() => setShowYamlReloadDetails((v) => !v)}
+                  className="shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-amber-300/70 text-amber-700 hover:bg-amber-100/60 dark:border-amber-700/60 dark:text-amber-300 dark:hover:bg-amber-900/20"
+                  title={showYamlReloadDetails ? 'Hide YAML reload errors' : 'Inspect YAML reload errors'}
+                >
+                  <Icon name="alertCircle" size={11} />
+                  <Icon name={showYamlReloadDetails ? 'chevronUp' : 'chevronDown'} size={11} />
+                </button>
+              )}
+            </div>
+            {canInspectYamlReloadErrors && showYamlReloadDetails && (
+              <div className="mt-2 space-y-1 border-t border-amber-200/60 dark:border-amber-800/40 pt-2">
+                {yamlReloadFailedPacks.map(([packName, stats]) => (
+                  <div
+                    key={packName}
+                    className="rounded border border-amber-200/70 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-900/10 px-2 py-1"
+                  >
+                    <div className="font-medium text-amber-800 dark:text-amber-200">{packName}</div>
+                    <div className="text-amber-700/90 dark:text-amber-300/90 break-words">
+                      {stats.error ?? 'Unknown error'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
 
+      {/* Declarative template controls */}
+      <DisclosureSection
+        label={<span className="flex items-center gap-1"><Icon name="sliders" size={12} /> Controls ({templateControls.length})</span>}
+      >
+        <div className="space-y-2 mt-1">
+          <TemplateControlsEditor
+            controls={templateControls}
+            onChange={setTemplateControls}
+            availableSlotLabels={availableSlotLabels}
+            disabled={saving}
+          />
+          {templateControls.some((c) => c.type === 'slider' && c.effects.length > 0) && (
+            <div className="flex items-center justify-between gap-2 rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/40 px-2 py-1.5">
+              <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                Apply current control defaults to linked slot intensities and slot tag preferences for authoring preview.
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyControlDefaultsToSlots}
+                disabled={saving}
+                className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+              >
+                <Icon name="sliders" size={10} className="inline mr-1" />
+                Apply to slots
+              </button>
+            </div>
+          )}
+        </div>
+      </DisclosureSection>
+
       {/* Character Bindings */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
-            <Icon name="user" size={12} /> Character Bindings ({Object.keys(draftCharacterBindings).length})
-          </span>
+      <DisclosureSection
+        label={<span className="flex items-center gap-1"><Icon name="user" size={12} /> Character Bindings ({Object.keys(draftCharacterBindings).length})</span>}
+        actionsWhenOpen
+        actions={
           <button
             type="button"
             onClick={() => {
@@ -394,125 +553,123 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
             <Icon name="plus" size={10} className="inline mr-1" />
             Add binding
           </button>
-        </div>
-        {Object.entries(draftCharacterBindings).map(([role, binding]) => {
-          const updateBinding = (patch: Partial<typeof binding>) => {
-            setDraftCharacterBindings({
-              ...draftCharacterBindings,
-              [role]: { ...binding, ...patch },
+        }
+      >
+        <div className="space-y-2 mt-1">
+          {Object.entries(draftCharacterBindings).map(([role, binding]) => {
+            const updateBinding = (patch: Partial<typeof binding>) => {
+              setDraftCharacterBindings({
+                ...draftCharacterBindings,
+                [role]: { ...binding, ...patch },
+              });
+            };
+            const updateCast = (patch: Partial<NonNullable<typeof binding.cast>>) => {
+              updateBinding({ cast: { ...binding.cast, label: binding.cast?.label ?? '', ...patch } });
+            };
+            const filteredCharacters = characters.filter((c) => {
+              if (binding.cast?.filter_species && c.species) {
+                return c.species === `species:${binding.cast.filter_species}` || c.species === binding.cast.filter_species;
+              }
+              if (binding.cast?.filter_category && c.species) {
+                return c.species?.includes(binding.cast.filter_category);
+              }
+              return true;
             });
-          };
-          const updateCast = (patch: Partial<NonNullable<typeof binding.cast>>) => {
-            updateBinding({ cast: { ...binding.cast, label: binding.cast?.label ?? '', ...patch } });
-          };
-          // Filter characters by cast spec when available
-          const filteredCharacters = characters.filter((c) => {
-            if (binding.cast?.filter_species && c.species) {
-              return c.species === `species:${binding.cast.filter_species}` || c.species === binding.cast.filter_species;
-            }
-            if (binding.cast?.filter_category && c.species) {
-              // category-based filtering: match humanoid/mammal/etc from species prefix
-              return c.species?.includes(binding.cast.filter_category);
-            }
-            return true;
-          });
 
-          return (
-            <div key={role} className="rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 p-2 space-y-1.5">
-              {/* Row 1: role name + character dropdown + remove */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={role}
-                  placeholder="role name"
-                  onChange={(e) => {
-                    const newRole = e.target.value;
-                    if (newRole && newRole !== role) {
-                      const next = { ...draftCharacterBindings };
-                      delete next[role];
-                      next[newRole] = binding;
-                      setDraftCharacterBindings(next);
-                    }
-                  }}
-                  className="w-28 shrink-0 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
-                />
-                <select
-                  value={filteredCharacters.some((c) => c.character_id === binding.character_id) ? binding.character_id : ''}
-                  onChange={(e) => updateBinding({ character_id: e.target.value })}
-                  className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none"
-                >
-                  <option value="">{characters.length === 0 ? 'No characters loaded' : 'Select character...'}</option>
-                  {filteredCharacters.map((c) => (
-                    <option key={c.character_id} value={c.character_id}>
-                      {c.display_name || c.name || c.character_id}
-                      {c.species ? ` (${c.species.replace('species:', '')})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="text"
-                  value={binding.character_id}
-                  placeholder="character_id"
-                  onChange={(e) => updateBinding({ character_id: e.target.value })}
-                  className="w-32 shrink-0 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
-                  title="Direct character_id (overrides dropdown)"
-                />
-                <button
-                  type="button"
-                  onClick={() => removeDraftCharacterBinding(role)}
-                  className="text-neutral-400 hover:text-red-500"
-                  title="Remove binding"
-                >
-                  <Icon name="x" size={14} />
-                </button>
+            return (
+              <div key={role} className="rounded border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800/30 p-2 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={role}
+                    placeholder="role name"
+                    onChange={(e) => {
+                      const newRole = e.target.value;
+                      if (newRole && newRole !== role) {
+                        const next = { ...draftCharacterBindings };
+                        delete next[role];
+                        next[newRole] = binding;
+                        setDraftCharacterBindings(next);
+                      }
+                    }}
+                    className="w-28 shrink-0 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
+                  />
+                  <select
+                    value={filteredCharacters.some((c) => c.character_id === binding.character_id) ? binding.character_id : ''}
+                    onChange={(e) => updateBinding({ character_id: e.target.value })}
+                    className="flex-1 text-sm px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 outline-none"
+                  >
+                    <option value="">{characters.length === 0 ? 'No characters loaded' : 'Select character...'}</option>
+                    {filteredCharacters.map((c) => (
+                      <option key={c.character_id} value={c.character_id}>
+                        {c.display_name || c.name || c.character_id}
+                        {c.species ? ` (${c.species.replace('species:', '')})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={binding.character_id}
+                    placeholder="character_id"
+                    onChange={(e) => updateBinding({ character_id: e.target.value })}
+                    className="w-32 shrink-0 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
+                    title="Direct character_id (overrides dropdown)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeDraftCharacterBinding(role)}
+                    className="text-neutral-400 hover:text-red-500"
+                    title="Remove binding"
+                  >
+                    <Icon name="x" size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={binding.fallback_name ?? ''}
+                    placeholder="Fallback name"
+                    onChange={(e) => updateBinding({ fallback_name: e.target.value || undefined })}
+                    title="Display name used when no character is bound"
+                    className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+                  />
+                  <input
+                    type="text"
+                    value={binding.cast?.label ?? ''}
+                    placeholder="Cast label"
+                    onChange={(e) => updateCast({ label: e.target.value })}
+                    title="Label shown in cast picker (e.g. 'Animal', 'Authority figure')"
+                    className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={binding.cast?.filter_species ?? ''}
+                    placeholder="filter_species"
+                    onChange={(e) => updateCast({ filter_species: e.target.value || undefined })}
+                    title="Species filter (e.g. canine_large, equine)"
+                    className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
+                  />
+                  <input
+                    type="text"
+                    value={binding.cast?.filter_category ?? ''}
+                    placeholder="filter_category"
+                    onChange={(e) => updateCast({ filter_category: e.target.value || undefined })}
+                    title="Category filter (e.g. human, mammal)"
+                    className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
+                  />
+                </div>
               </div>
-              {/* Row 2: fallback_name + cast label */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={binding.fallback_name ?? ''}
-                  placeholder="Fallback name"
-                  onChange={(e) => updateBinding({ fallback_name: e.target.value || undefined })}
-                  title="Display name used when no character is bound"
-                  className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
-                />
-                <input
-                  type="text"
-                  value={binding.cast?.label ?? ''}
-                  placeholder="Cast label"
-                  onChange={(e) => updateCast({ label: e.target.value })}
-                  title="Label shown in cast picker (e.g. 'Animal', 'Authority figure')"
-                  className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35"
-                />
-              </div>
-              {/* Row 3: cast filters */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={binding.cast?.filter_species ?? ''}
-                  placeholder="filter_species"
-                  onChange={(e) => updateCast({ filter_species: e.target.value || undefined })}
-                  title="Species filter (e.g. canine_large, equine)"
-                  className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
-                />
-                <input
-                  type="text"
-                  value={binding.cast?.filter_category ?? ''}
-                  placeholder="filter_category"
-                  onChange={(e) => updateCast({ filter_category: e.target.value || undefined })}
-                  title="Category filter (e.g. human, mammal)"
-                  className="flex-1 text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 bg-transparent outline-none focus:ring-2 focus:ring-blue-500/35 font-mono"
-                />
-              </div>
+            );
+          })}
+          {Object.keys(draftCharacterBindings).length === 0 && (
+            <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center py-2">
+              {'No bindings. Use {{role}} and {{role.attr}} in blocks to reference characters.'}
             </div>
-          );
-        })}
-        {Object.keys(draftCharacterBindings).length === 0 && (
-          <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center py-2">
-            {'No bindings. Use {{role}} and {{role.attr}} in blocks to reference characters.'}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      </DisclosureSection>
 
       {/* Presets */}
       {activeTemplate && (
@@ -623,87 +780,46 @@ export function TemplateBuilder({ onSaved, onRollAndGo, rollingAndGoing, classNa
       )}
 
       {/* Slots */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-neutral-600 dark:text-neutral-300 flex items-center gap-1">
-            <Icon name="layers" size={12} /> Slots ({draftSlots.length})
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void handleReloadYaml()}
-              disabled={yamlReloading}
-              className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-              title="Reload content-pack YAML from disk (force + prune). Does not overwrite your current draft slots."
-            >
-              <Icon name="refresh" size={10} className={clsx('inline mr-1', yamlReloading && 'animate-spin')} />
-              {yamlReloading ? 'Reloading YAML...' : 'Reload YAML'}
-            </button>
-            <button
-              type="button"
-              onClick={handleAddSlot}
-              className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-            >
-              <Icon name="plus" size={10} className="inline mr-1" />
-              Add slot
-            </button>
-          </div>
-        </div>
-
-        {(yamlReloadMessage || yamlReloadError || serverTemplateReloadMessage || serverTemplateReloadError) && (
-          <div
-            className={clsx(
-              'text-[11px] px-2 py-1 rounded border',
-              (yamlReloadError || serverTemplateReloadError)
-                ? 'border-red-200 text-red-700 bg-red-50 dark:border-red-900/40 dark:text-red-300 dark:bg-red-900/15'
-                : 'border-emerald-200 text-emerald-700 bg-emerald-50 dark:border-emerald-900/40 dark:text-emerald-300 dark:bg-emerald-900/15',
-            )}
+      <DisclosureSection
+        label={<span className="flex items-center gap-1"><Icon name="layers" size={12} /> Slots ({draftSlots.length})</span>}
+        actionsWhenOpen
+        actions={
+          <button
+            type="button"
+            onClick={handleAddSlot}
+            className="text-xs px-2 py-1 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
-            {serverTemplateReloadError ?? yamlReloadError ?? serverTemplateReloadMessage ?? yamlReloadMessage}
-            {!(yamlReloadError || serverTemplateReloadError) && yamlReloadMessage && !serverTemplateReloadMessage && (
-              <span className="ml-2 text-neutral-500 dark:text-neutral-400">
-                Draft slots were kept as-is.
-              </span>
-            )}
-          </div>
-        )}
+            <Icon name="plus" size={10} className="inline mr-1" />
+            Add slot
+          </button>
+        }
+      >
+        <div className="space-y-2 mt-1">
+          {draftSlots.map((slot, i) => (
+            <TemplateSlotEditor
+              key={i}
+              slot={slot}
+              index={i}
+              onChange={updateDraftSlot}
+              onRemove={removeDraftSlot}
+              onMoveUp={i > 0 ? () => reorderDraftSlot(i, i - 1) : undefined}
+              onMoveDown={i < draftSlots.length - 1 ? () => reorderDraftSlot(i, i + 1) : undefined}
+              packageNames={packageNames}
+            />
+          ))}
 
-        {draftSlots.map((slot, i) => (
-          <TemplateSlotEditor
-            key={i}
-            slot={slot}
-            index={i}
-            onChange={updateDraftSlot}
-            onRemove={removeDraftSlot}
-            onMoveUp={i > 0 ? () => reorderDraftSlot(i, i - 1) : undefined}
-            onMoveDown={i < draftSlots.length - 1 ? () => reorderDraftSlot(i, i + 1) : undefined}
-            packageNames={packageNames}
-          />
-        ))}
-
-        {draftSlots.length === 0 && (
-          <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center py-4">
-            No slots yet. Add one to define block constraints.
-          </div>
-        )}
-      </div>
+          {draftSlots.length === 0 && (
+            <div className="text-xs text-neutral-400 dark:text-neutral-500 text-center py-4">
+              No slots yet. Add one to define block constraints.
+            </div>
+          )}
+        </div>
+      </DisclosureSection>
 
       {/* Save */}
       {error && <div className="text-xs text-red-600 dark:text-red-400">{error}</div>}
 
       <div className="flex items-center gap-2">
-        {activeTemplate && (
-          <button
-            type="button"
-            onClick={() => void handleReloadActiveTemplateFromServer()}
-            disabled={serverTemplateReloading || saving}
-            className="px-3 py-1.5 rounded text-sm font-medium transition-colors border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
-            title="Replace current draft with the latest template from the server"
-          >
-            <Icon name="refresh" size={12} className={clsx('inline mr-1', serverTemplateReloading && 'animate-spin')} />
-            {serverTemplateReloading ? 'Reloading template...' : 'Reload Active Template'}
-          </button>
-        )}
         <button
           type="button"
           onClick={handleSave}

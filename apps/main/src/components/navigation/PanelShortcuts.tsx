@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
-import { useWorkspaceStore } from '@features/workspace';
+import { openWorkspacePanel, useWorkspaceStore } from '@features/workspace';
 
 import { NavIcon } from './ActivityBar';
 
@@ -13,7 +13,6 @@ import { NavIcon } from './ActivityBar';
  */
 export function PanelShortcuts() {
   const pinnedIds = useWorkspaceStore((s) => s.pinnedQuickAddPanels);
-  const restorePanel = useWorkspaceStore((s) => s.restorePanel);
 
   // Re-render when plugin catalog changes (panels registered/unregistered)
   const [, setVersion] = useState(0);
@@ -38,7 +37,7 @@ export function PanelShortcuts() {
           key={panel.id}
           icon={panel.icon ?? 'layout'}
           title={panel.title}
-          onClick={() => restorePanel(panel.id)}
+          onClick={() => openWorkspacePanel(panel.id)}
         />
       ))}
     </div>

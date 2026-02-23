@@ -13,7 +13,7 @@ import {
 } from '@lib/editing-core';
 
 import { toUnifiedSurfaceConfig, fromUnifiedSurfaceConfig } from '../overlayConfig';
-import type { OverlayPreset, OverlayConfiguration, PresetCategory } from '../types';
+import type { OverlayPreset, OverlayConfiguration, OverlayPolicyStep, PresetCategory } from '../types';
 
 import { mediaCardPresets } from './mediaCard';
 
@@ -48,6 +48,7 @@ export class OverlayPresetManager extends GenericPresetManager<OverlayPreset, Pr
       icon?: string;
       category: PresetCategory;
       thumbnail?: string;
+      policyChain?: OverlayPolicyStep[];
     },
   ): Promise<OverlayPreset> {
     const preset: OverlayPreset = {
@@ -56,6 +57,7 @@ export class OverlayPresetManager extends GenericPresetManager<OverlayPreset, Pr
       icon: metadata.icon,
       category: metadata.category,
       configuration,
+      policyChain: metadata.policyChain,
       isUserCreated: true,
       thumbnail: metadata.thumbnail,
     };

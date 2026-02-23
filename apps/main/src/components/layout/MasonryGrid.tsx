@@ -55,6 +55,9 @@ export function MasonryGrid({
     };
   }, [containerWidth]);
 
+  // Track last-known heights to avoid spurious re-layouts (e.g. hover overlays)
+  const lastHeightsRef = useRef<Map<HTMLElement, number>>(new Map());
+
   // Watch for item height changes (images loading, content wrapping, etc.)
   useEffect(() => {
     if (typeof window === 'undefined' || !('ResizeObserver' in window)) return;
@@ -62,13 +65,31 @@ export function MasonryGrid({
     const observers: ResizeObserver[] = [];
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const scheduleLayout = () => {
+    const scheduleLayout = (entries: ResizeObserverEntry[]) => {
+      // Only re-layout if at least one item's height actually changed (> 2px)
+      let heightChanged = false;
+      for (const entry of entries) {
+        const el = entry.target as HTMLElement;
+        const newHeight = el.offsetHeight;
+        const prevHeight = lastHeightsRef.current.get(el);
+        if (prevHeight === undefined || Math.abs(newHeight - prevHeight) > 2) {
+          lastHeightsRef.current.set(el, newHeight);
+          heightChanged = true;
+        }
+      }
+      if (!heightChanged) return;
+
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         // Trigger re-layout when any item's height changes
         setLayoutVersion(v => v + 1);
       }, 50); // Debounce by 50ms to avoid excessive re-layouts
     };
+
+    // Seed initial heights
+    itemRefs.current.forEach((el) => {
+      if (el) lastHeightsRef.current.set(el, el.offsetHeight);
+    });
 
     itemRefs.current.forEach((el) => {
       if (!el) return;

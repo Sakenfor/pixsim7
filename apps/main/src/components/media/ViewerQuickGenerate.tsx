@@ -44,6 +44,20 @@ let _lastViewerAssetId: string | number | undefined;
 
 const VIEWER_PANEL_IDS = ['quickgen-asset', 'quickgen-prompt', 'quickgen-settings'] as const;
 
+function getViewerBackendAssetId(asset: ViewerAsset): number | null {
+  const metadataAssetId = asset.metadata?.assetId;
+  if (typeof metadataAssetId === 'number' && Number.isFinite(metadataAssetId) && metadataAssetId > 0) {
+    return metadataAssetId;
+  }
+
+  const directId = Number(asset.id);
+  if (Number.isFinite(directId) && directId > 0) {
+    return directId;
+  }
+
+  return null;
+}
+
 interface ViewerQuickGenerateProps {
   asset: ViewerAsset;
   /** When true, always show expanded state (no collapse button) */
@@ -157,12 +171,15 @@ function ViewerQuickGenerateChrome({
       const next = { ...prev };
       delete next.video_url;
       delete next.image_url;
-      if (asset.source === 'gallery') {
-        next.source_asset_id = asset.id;
+      const backendAssetId = getViewerBackendAssetId(asset);
+      if (backendAssetId != null) {
+        next.source_asset_id = backendAssetId;
+      } else {
+        delete next.source_asset_id;
       }
       return next;
     });
-  }, [asset.id, asset.type, asset.source, ctx.setDynamicParams]);
+  }, [asset.id, asset.metadata?.assetId, asset.type, asset.source, ctx.setDynamicParams]);
 
   return (
     <div className="space-y-2">

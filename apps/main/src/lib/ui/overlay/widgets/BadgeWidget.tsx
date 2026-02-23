@@ -56,6 +56,9 @@ export interface BadgeWidgetConfig {
 
   /** Priority for layering */
   priority?: number;
+
+  /** Stack group for auto-stacking with other widgets */
+  stackGroup?: string;
 }
 
 /**
@@ -76,6 +79,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     onClick,
     className = '',
     priority,
+    stackGroup,
   } = config;
 
   return {
@@ -84,6 +88,7 @@ export function createBadgeWidget(config: BadgeWidgetConfig): OverlayWidget {
     position,
     visibility,
     priority,
+    stackGroup,
     interactive: Boolean(onClick),
     ariaLabel: tooltip,
     onClick,
