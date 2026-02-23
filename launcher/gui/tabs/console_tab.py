@@ -76,12 +76,12 @@ class ConsoleTab:
 
         # Channel toggle pills — all enabled by default, click to toggle off
         channel_toggles = {}
-        for ch in ("api", "pipeline", "cron", "system"):
+        for ch in ("api", "pipeline", "cron", "system", "other"):
             btn = QPushButton(ch)
             btn.setCheckable(True)
             btn.setChecked(True)
             btn.setFixedHeight(22)
-            btn.setToolTip(f"Show/hide '{ch}' channel logs")
+            btn.setToolTip("Show/hide uncategorized logs (no channel)" if ch == "other" else f"Show/hide '{ch}' channel logs")
             btn.setStyleSheet("""
                 QPushButton {
                     background-color: #3a5f3a;

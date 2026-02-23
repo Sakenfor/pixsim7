@@ -180,7 +180,10 @@ class ProviderService:
                 "mapped_keys": list(mapped_params.keys()),
                 "has_aspect_ratio": "aspect_ratio" in mapped_params,
                 "has_camera_movement": "camera_movement" in mapped_params,
-                "mapped_params": mapped_params,
+                "mapped_params": {
+                    k: (v[:80] + "…" if isinstance(v, str) and len(v) > 80 else v)
+                    for k, v in mapped_params.items()
+                },
             }
         )
 
@@ -696,6 +699,7 @@ class ProviderService:
         submission: ProviderSubmission,
         account: ProviderAccount,
         operation_type: Optional[OperationType] = None,
+        poll_cache: Optional[Dict[str, Any]] = None,
     ) -> ProviderStatusResult:
         """
         Check job status on provider
@@ -715,12 +719,48 @@ class ProviderService:
         # Get provider from registry
         provider = registry.get(submission.provider_id)
 
-        # Check status via provider
-        status_result = await provider.check_status(
-            account=account,
-            provider_job_id=submission.provider_job_id,
-            operation_type=operation_type,
-        )
+        status_result: ProviderStatusResult | None = None
+
+        # Pixverse image status batch fast-path (per-poll cache): one image list
+        # call can satisfy many IMAGE_TO_IMAGE checks on the same account.
+        if (
+            poll_cache is not None
+            and submission.provider_id == "pixverse"
+            and operation_type in get_image_operations()
+            and submission.provider_job_id
+            and hasattr(provider, "check_image_statuses_from_list")
+        ):
+            cache_key = f"pixverse:image_status_batch:{account.id}"
+            status_map = poll_cache.get(cache_key)
+            if status_map is None:
+                try:
+                    status_map = await provider.check_image_statuses_from_list(
+                        account=account,
+                        limit=200,
+                        offset=0,
+                    )
+                except Exception as batch_err:
+                    logger.debug(
+                        "pixverse_image_status_batch_failed",
+                        submission_id=submission.id,
+                        account_id=account.id,
+                        error=str(batch_err),
+                    )
+                    status_map = {}
+                poll_cache[cache_key] = status_map
+
+            if isinstance(status_map, dict):
+                cached_result = status_map.get(str(submission.provider_job_id))
+                if cached_result is not None:
+                    status_result = cached_result
+
+        # Default provider status check (or batch-cache miss)
+        if status_result is None:
+            status_result = await provider.check_status(
+                account=account,
+                provider_job_id=submission.provider_job_id,
+                operation_type=operation_type,
+            )
 
         # Pixverse image fallback: bypass message list after a threshold.
         # Skip when provider_job_id is null (job was never submitted to provider).

@@ -1607,7 +1607,7 @@ class LauncherWindow(QWidget):
 
         # Fast path: no filters
         if not level_filter and not excluded_channels and not search_filter:
-            return buffer
+            return list(buffer)
 
         filtered = []
         for line in buffer:
@@ -1621,6 +1621,8 @@ class LauncherWindow(QWidget):
             if excluded_channels:
                 detected_channel = detect_console_channel(line_str)
                 if detected_channel and detected_channel in excluded_channels:
+                    continue
+                if not detected_channel and "other" in excluded_channels:
                     continue
 
             if search_filter and search_filter not in line_str.lower():
