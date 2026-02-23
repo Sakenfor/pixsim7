@@ -311,9 +311,9 @@ export function RoutineGraphPanel() {
   const isDirty = useRoutineGraphStore(routineGraphSelectors.isDirty);
 
   return (
-    <div className="flex h-full bg-neutral-50 dark:bg-neutral-900">
+    <div className="flex h-full overflow-hidden bg-neutral-50 dark:bg-neutral-900">
       {/* Graph Surface */}
-      <div className="flex-1 h-full">
+      <div className="flex-1 min-w-0 relative">
         <ReactFlowProvider>
           <RoutineGraphSurface />
         </ReactFlowProvider>

@@ -250,7 +250,7 @@ export function RoutineGraphSurface() {
   }, []);
 
   return (
-    <div className="w-full h-full">
+    <div className="absolute inset-0">
       <ReactFlow
         nodes={nodes}
         edges={edges}

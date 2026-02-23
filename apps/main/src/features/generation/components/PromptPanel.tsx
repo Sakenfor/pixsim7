@@ -2,7 +2,7 @@
  * PromptPanel - Text input for generation prompt.
  * Split from QuickGeneratePanels.tsx.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { useDockviewId } from '@lib/dockview';
 import { getDurationOptions } from '@lib/generation-ui';
@@ -37,7 +37,8 @@ export function PromptPanel(props: QuickGenPanelProps) {
   // Use scope instanceId if available, else fall back to dockview-computed instanceId
   const scopeInstanceId = useScopeInstanceId(GENERATION_SCOPE_ID);
   const dockviewId = useDockviewId();
-  const panelInstanceId = props.api?.id ?? props.panelId ?? 'quickgen-prompt';
+  const reactId = useId();
+  const panelInstanceId = props.api?.id ?? props.panelId ?? `quickgen-prompt-${reactId.replace(/:/g, '')}`;
   const instanceId = scopeInstanceId ?? getInstanceId(dockviewId, panelInstanceId);
 
   // Get workbench for fallback model and paramSpecs when no context provided
