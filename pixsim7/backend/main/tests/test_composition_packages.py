@@ -1,12 +1,24 @@
 """
 Tests for composition package system.
 """
+import shutil
+from pathlib import Path
+from uuid import uuid4
+
 import pytest
 
 
-def test_load_composition_package_from_yaml(tmp_path):
+def _make_tmp_dir() -> Path:
+    root = Path.cwd() / ".tmp-test" / "composition-packages" / str(uuid4())
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def test_load_composition_package_from_yaml():
     """Loads a package YAML into CompositionPackage and validates fields."""
-    yaml_content = """
+    root = _make_tmp_dir()
+    try:
+        yaml_content = """
 package:
   id: test.package
   label: Test Package
@@ -22,28 +34,60 @@ roles:
     slugMappings: [pov:hands]
     namespaceMappings: [pov]
 """
-    package_path = tmp_path / "composition-package.yaml"
-    package_path.write_text(yaml_content, encoding="utf-8")
+        package_path = root / "composition-package.yaml"
+        package_path.write_text(yaml_content, encoding="utf-8")
 
-    from pixsim7.backend.main.domain.composition.package_loader import (
-        load_composition_package_from_yaml,
-    )
+        from pixsim7.backend.main.domain.composition.package_loader import (
+            load_composition_package_from_yaml,
+        )
 
-    package = load_composition_package_from_yaml(package_path, plugin_id="test-plugin")
+        package = load_composition_package_from_yaml(package_path, plugin_id="test-plugin")
 
-    assert package.id == "test.package"
-    assert package.plugin_id == "test-plugin"
-    assert package.label == "Test Package"
-    assert package.description == "Test package description"
-    assert package.version == "0.1.0"
-    assert len(package.roles) == 1
+        assert package.id == "test.package"
+        assert package.plugin_id == "test-plugin"
+        assert package.label == "Test Package"
+        assert package.description == "Test package description"
+        assert package.version == "0.1.0"
+        assert len(package.roles) == 1
 
-    role = package.roles[0]
-    assert role.id == "pov_hands"
-    assert role.label == "POV Hands"
-    assert role.default_layer == 2
-    assert "pov:hands" in role.slug_mappings
-    assert "pov" in role.namespace_mappings
+        role = package.roles[0]
+        assert role.id == "pov_hands"
+        assert role.label == "POV Hands"
+        assert role.default_layer == 2
+        assert "pov:hands" in role.slug_mappings
+        assert "pov" in role.namespace_mappings
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_load_composition_package_rejects_legacy_snake_case_keys():
+    """Rejects non-canonical snake_case YAML keys."""
+    root = _make_tmp_dir()
+    try:
+        yaml_content = """
+package:
+  id: test.package
+  label: Test Package
+  recommended_for: [legacy]
+roles:
+  pov_hands:
+    description: First-person player hands overlay
+    color: amber
+    default_layer: 2
+    slug_mappings: [pov:hands]
+    namespace_mappings: [pov]
+"""
+        package_path = root / "composition-package.yaml"
+        package_path.write_text(yaml_content, encoding="utf-8")
+
+        from pixsim7.backend.main.domain.composition.package_loader import (
+            load_composition_package_from_yaml,
+        )
+
+        with pytest.raises(ValueError, match="Invalid composition package schema"):
+            load_composition_package_from_yaml(package_path, plugin_id="test-plugin")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_composition_response_dto_mapping():

@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from pixsim7.backend.main.services.asset.core import ASSET_DELETED, AssetCoreService, event_bus
+from pixsim7.backend.main.domain.generation.models import GenerationBatchItemManifest
 
 
 class _ScalarResult:
@@ -124,3 +125,80 @@ async def test_delete_asset_uses_owner_id_and_deletes_storage_after_commit() -> 
     assert payload["user_id"] == 42
     assert payload["deleted_by_user_id"] == 1
 
+
+@pytest.mark.asyncio
+async def test_create_from_submission_persists_batch_manifest_from_run_context() -> None:
+    db = AsyncMock()
+    service = AssetCoreService(db=db, user_service=MagicMock())
+
+    generation = MagicMock()
+    generation.id = 101
+    generation.asset_id = None
+    generation.user_id = 42
+    generation.prompt_version_id = None
+    generation.reproducible_hash = "abc123"
+    generation.final_prompt = "A test prompt"
+    generation.operation_type = MagicMock()
+    generation.operation_type.value = "image_to_video"
+    generation.raw_params = {
+        "generation_config": {
+            "run_context": {
+                "mode": "quickgen_each",
+                "run_id": "c8ff6f4d-5af8-4f36-a768-f8d4d9097b78",
+                "strategy": "each",
+                "item_index": 2,
+                "item_total": 5,
+                "input_asset_ids": [11, 22],
+            }
+        }
+    }
+    generation.inputs = [{"asset": "asset:11"}, {"asset": "asset:22"}]
+
+    submission = MagicMock()
+    submission.status = "success"
+    submission.provider_id = "pixverse"
+    submission.account_id = 9
+    submission.model = "v4.5"
+    submission.response = {
+        "provider_asset_id": "pv-asset-1",
+        "asset_url": "https://example.com/out.mp4",
+        "media_type": "video",
+        "metadata": {},
+    }
+
+    db.execute = AsyncMock(
+        side_effect=[
+            _OneResult(generation),  # SELECT ... FOR UPDATE generation
+            _OneResult(None),        # SELECT asset by source_generation_id
+        ]
+    )
+    db.get = AsyncMock(return_value=None)
+    db.refresh = AsyncMock()
+    db.flush = AsyncMock()
+    db.commit = AsyncMock()
+    added: list = []
+
+    def _add(obj):
+        # Simulate DB assigning primary key after flush for the new asset.
+        if obj.__class__.__name__ == "Asset" and getattr(obj, "id", None) is None:
+            obj.id = 555
+        added.append(obj)
+
+    db.add = MagicMock(side_effect=_add)
+
+    service._extract_prompt_from_generation = MagicMock(return_value="Prompt from generation")
+    service._auto_tag_generated_asset = AsyncMock()
+    service._create_generation_lineage = AsyncMock()
+
+    with patch.object(event_bus, "publish", new=AsyncMock()):
+        asset = await service.create_from_submission(submission=submission, generation=generation)
+
+    assert asset.id == 555
+    manifest = next((obj for obj in added if isinstance(obj, GenerationBatchItemManifest)), None)
+    assert manifest is not None
+    assert manifest.asset_id == 555
+    assert str(manifest.batch_id) == "c8ff6f4d-5af8-4f36-a768-f8d4d9097b78"
+    assert manifest.item_index == 2
+    assert manifest.generation_id == 101
+    assert manifest.manifest_metadata.get("strategy") == "each"
+    assert manifest.manifest_metadata.get("input_asset_ids") == [11, 22]

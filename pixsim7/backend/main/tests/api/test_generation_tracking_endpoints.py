@@ -12,9 +12,8 @@ Covers:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -45,19 +44,28 @@ def _mock_user(user_id: int = 42):
     return user
 
 
-def _gateway_stub():
+def _gateway_stub(*, proxy_called: bool = False, proxy_data=None):
     return SimpleNamespace(
-        proxy=AsyncMock(return_value=SimpleNamespace(called=False, data=None)),
+        proxy=AsyncMock(return_value=SimpleNamespace(called=proxy_called, data=proxy_data)),
         local=SimpleNamespace(),
     )
 
 
-def _app(tracking_service, *, user_id: int = 42):
+def _app(
+    tracking_service,
+    *,
+    user_id: int = 42,
+    gateway_proxy_called: bool = False,
+    gateway_data=None,
+):
     """Build a test FastAPI app with the tracking service injected."""
     app = FastAPI()
     app.include_router(router, prefix="/api/v1")
     app.dependency_overrides[get_current_user] = lambda: _mock_user(user_id)
-    app.dependency_overrides[get_generation_gateway] = _gateway_stub
+    app.dependency_overrides[get_generation_gateway] = lambda: _gateway_stub(
+        proxy_called=gateway_proxy_called,
+        proxy_data=gateway_data,
+    )
     app.dependency_overrides[get_generation_tracking_service] = lambda: tracking_service
     # Provide a dummy DB for other endpoints that need it
     app.dependency_overrides[get_database] = lambda: SimpleNamespace(execute=AsyncMock())
@@ -177,6 +185,29 @@ class TestAssetTrackingEndpoint:
         assert payload["consistency_warnings"] == []
 
     @pytest.mark.asyncio
+    async def test_asset_tracking_uses_gateway_proxy_when_available(self):
+        tracking = MagicMock(spec=GenerationTrackingService)
+        tracking.get_asset_tracking = AsyncMock(return_value=None)
+        proxy_data = _make_asset_tracking_result(
+            generation=_sample_generation_summary(),
+            manifest=_sample_manifest_summary(),
+            submission=_sample_submission_summary(),
+        )
+        app = _app(
+            tracking,
+            gateway_proxy_called=True,
+            gateway_data=proxy_data,
+        )
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/generation-tracking/assets/10")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["asset_id"] == 10
+        tracking.get_asset_tracking.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_asset_tracking_missing_generation_with_manifest(self):
         """Manifest exists but generation is missing — still returns data with warnings."""
         tracking = MagicMock(spec=GenerationTrackingService)
@@ -294,6 +325,36 @@ class TestRunTrackingEndpoint:
         assert payload["consistency_warnings"] == []
 
     @pytest.mark.asyncio
+    async def test_run_tracking_uses_gateway_proxy_when_available(self):
+        run_id = uuid4()
+        tracking = MagicMock(spec=GenerationTrackingService)
+        tracking.get_run_tracking = AsyncMock(return_value=None)
+        proxy_data = {
+            "run": {
+                "run_id": str(run_id),
+                "item_count": 0,
+                "created_at": "2026-02-21T12:00:00+00:00",
+                "first_item_index": 0,
+                "last_item_index": 0,
+            },
+            "items": [],
+            "consistency_warnings": [],
+        }
+        app = _app(
+            tracking,
+            gateway_proxy_called=True,
+            gateway_data=proxy_data,
+        )
+
+        async with _client(app) as c:
+            response = await c.get(f"/api/v1/generation-tracking/runs/{run_id}")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["run"]["run_id"] == str(run_id)
+        tracking.get_run_tracking.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_run_tracking_not_found(self):
         """Run not found returns 404."""
         tracking = MagicMock(spec=GenerationTrackingService)
@@ -379,6 +440,30 @@ class TestGenerationTrackingEndpoint:
         assert payload["manifest"]["asset_id"] == 10
         assert payload["latest_submission"]["provider_job_id"] == "pv-job-abc"
         assert payload["consistency_warnings"] == []
+
+    @pytest.mark.asyncio
+    async def test_generation_tracking_uses_gateway_proxy_when_available(self):
+        tracking = MagicMock(spec=GenerationTrackingService)
+        tracking.get_generation_tracking = AsyncMock(return_value=None)
+        proxy_data = {
+            "generation": _sample_generation_summary(),
+            "manifest": _sample_manifest_summary(),
+            "latest_submission": _sample_submission_summary(),
+            "consistency_warnings": [],
+        }
+        app = _app(
+            tracking,
+            gateway_proxy_called=True,
+            gateway_data=proxy_data,
+        )
+
+        async with _client(app) as c:
+            response = await c.get("/api/v1/generation-tracking/generations/100")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["generation"]["id"] == 100
+        tracking.get_generation_tracking.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_generation_tracking_not_found(self):

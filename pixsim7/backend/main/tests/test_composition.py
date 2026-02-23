@@ -309,3 +309,52 @@ class TestHierarchicalStructure:
         assert entities is not None
         assert entities["parent"] is None
         assert entities["isGroup"] is True
+
+
+class TestRoleResolverScope:
+    """Tests for package-scoped role inference."""
+
+    def test_resolve_role_from_tags_respects_active_packages(self):
+        """Fallback vocab mapping should not bypass active package filtering."""
+        from pixsim7.backend.main.domain.composition import (
+            CompositionPackage,
+            CompositionRoleDefinition,
+            clear_composition_packages,
+            register_composition_package,
+            register_core_composition_package,
+            resolve_role_from_tags,
+        )
+
+        clear_composition_packages()
+        register_core_composition_package()
+        register_composition_package(
+            CompositionPackage(
+                id="test.scope",
+                label="Test Scope",
+                roles=[
+                    CompositionRoleDefinition(
+                        id="test:scoped_role",
+                        label="Scoped Role",
+                        description="Role for scope testing",
+                        color="teal",
+                        namespace_mappings=["scopedns"],
+                    )
+                ],
+            )
+        )
+
+        outside_scope = resolve_role_from_tags(
+            ["scopedns:item"],
+            active_package_ids=["core.base"],
+        )
+        assert outside_scope is None
+
+        inside_scope = resolve_role_from_tags(
+            ["scopedns:item"],
+            active_package_ids=["test.scope"],
+        )
+        assert inside_scope is not None
+        assert inside_scope.id == "test:scoped_role"
+
+        clear_composition_packages()
+        register_core_composition_package()

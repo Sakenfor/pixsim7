@@ -81,6 +81,8 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
         cooldown_until=None,
     )
     preferred_account.is_available = lambda: True
+    preferred_account.get_operational_skip_reason = lambda: None
+    preferred_account.has_capacity = lambda: True
 
     class _FakeDB:
         def __init__(self) -> None:
@@ -145,6 +147,10 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
             self.reserved.append(account_id)
             return preferred_account
 
+        async def reserve_account_if_available(self, account_id: int):
+            self.reserved.append(account_id)
+            return preferred_account
+
         async def release_account(self, account_id: int):
             self.released.append(account_id)
             return preferred_account
@@ -166,7 +172,7 @@ async def test_process_generation_requeues_and_clears_preferred_on_auth_failure(
         def __init__(self) -> None:
             self.jobs = []
 
-        async def enqueue_job(self, name: str, generation_id: int) -> None:
+        async def enqueue_job(self, name: str, generation_id: int, **kwargs) -> None:
             self.jobs.append((name, generation_id))
 
     async def _fake_refresh_account_credits(*args, **kwargs):
