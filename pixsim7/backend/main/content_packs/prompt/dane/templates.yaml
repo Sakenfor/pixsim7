@@ -30,6 +30,35 @@ templates:
       mode: image_to_video
       target_operation: image_to_video
       notes: "Bind 'dane' to canine_large character, 'her' to human character"
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
       # ── Opening
@@ -41,12 +70,26 @@ templates:
         selection_strategy: uniform
         optional: false
 
-      # ── Dane enters
+      # ── Pose lock (graduated via slider control)
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: weighted_tags
+        tag_constraints:
+          lock: pose
+          mode: [i2v, any]
+        preferences:
+          boost_tags:
+            rigidity: medium
+        optional: false
+
+      # ── Dane enters on hindlegs from behind
       - label: Dane Entrance
         role: action
         category: entrance
         tag_constraints:
           species: canine_large
+          element: dane
         selection_strategy: uniform
         optional: false
 
@@ -86,16 +129,6 @@ templates:
         reinforcement_text: "({{dane}} {{dane.vocal_effort}}, {{dane.breath}}, {{dane.weight_shift}}; {{dane.press}}, {{dane.muscle}})"
         inherit_intensity: true
 
-      # ── Anatomical detail
-      - label: Detail Shot
-        role: camera
-        category: detail
-        tag_constraints:
-          camera: detail_shot
-          element: dane
-        selection_strategy: uniform
-        optional: false
-
       # ── Her reaction audio
       - label: Her audio cue
         kind: audio_cue
@@ -110,16 +143,6 @@ templates:
           element: dane
         selection_strategy: uniform
         optional: false
-
-      # ── Final frame (optional — omit to keep the video less camera-busy)
-      - label: Closeup
-        role: camera
-        category: closeup
-        tag_constraints:
-          species: canine_large
-        selection_strategy: uniform
-        optional: true
-        fallback_text: ""
 
       # ── Terminal camera lock (generic block)
       - label: Camera lock

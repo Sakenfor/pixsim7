@@ -58,6 +58,312 @@ blocks:
       lock: framing
     complexity_level: simple
 
+  # ── graduated pose lock — low rigidity ─────────────────────────────
+
+  - block_id: pl_gentle_01
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Maintain the general feeling of the source pose. Core orientation
+      should be recognizable, but allow natural motion — breathing,
+      weight shifts, and organic micro-movements are encouraged.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: low
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_gentle_02
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Source posture should feel familiar but organic motion is fine —
+      breathing, gentle turns, subtle weight shifts. The viewer should
+      sense continuity without expecting a freeze-frame.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: low
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_gentle_03
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve stance and facing direction from the source image.
+      Arms, hands, and head may move freely. The overall silhouette
+      should be recognizable but not rigidly held.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: low
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  # ── graduated pose lock — medium rigidity ──────────────────────────
+
+  - block_id: pl_moderate_01
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Preserve the core structure — torso angle, leg position, arm
+      placement — from the source image. Only subtle micro-adjustments
+      are allowed; the overall configuration must read as the same pose.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_moderate_02
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Lock spine angle and hip alignment to the source. Limb endpoints
+      may drift slightly but major joint positions stay consistent.
+      No large reinterpretation of the pose.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      scope: upper
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_moderate_03
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Hold the source configuration with minor motion acceptable —
+      a hand adjusting position, a slight lean, a head tilt. The
+      fundamental body arrangement stays intact.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: medium
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  # ── graduated pose lock — high rigidity ────────────────────────────
+
+  - block_id: pl_strict_01
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Reproduce the source pose precisely. Identical limb placement,
+      torso angle, head orientation. Only involuntary micro-motion
+      is acceptable — breathing, blink, hair sway.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_strict_02
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Lock all major joints to their source positions. Hold as if
+      frozen with only breath visible. No reposing, no weight-shift,
+      no reinterpretation of the arrangement.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      scope: full_body
+      mode: i2v
+    complexity_level: simple
+
+  - block_id: pl_strict_03
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Structurally identical to the source — no reinterpretation.
+      Weight distribution, lean angle, limb extension all match
+      exactly. The environment adapts around the locked figure.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: high
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  # ── graduated pose lock — maximum rigidity ─────────────────────────
+
+  - block_id: pl_absolute_01
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Use the source image as the absolute structural base.
+      Identical limb placement, torso angle, hip alignment, head orientation.
+      No posture reinterpretation. The environment adapts around the subject.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: maximum
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_absolute_02
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      The subject is a fixed element. Every joint angle, finger curl,
+      and body contour reproduces the source exactly. Zero deviation.
+      All other scene elements conform to this anchor.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: maximum
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  - block_id: pl_absolute_03
+    role: subject
+    category: pose_lock
+    kind: single_state
+    default_intent: preserve
+    text: >-
+      Pixel-level fidelity to the source pose. The figure is an
+      immovable structural anchor for the entire composition. No
+      joint, limb, or weight distribution may change under any
+      circumstance.
+    tags:
+      intent: preserve
+      layer: foreground
+      lock: pose
+      rigidity: maximum
+      scope: full_body
+      mode: any
+    complexity_level: simple
+
+  # ── camera stability — graduated ──────────────────────────────────
+
+  - block_id: cs_gentle_01
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Camera moves dynamically — tracking shots, orbits, and slow drift
+      are encouraged. The camera is a storytelling participant, not a
+      fixed observer.
+    tags:
+      lock: camera
+      camera_rigidity: low
+    complexity_level: simple
+
+  - block_id: cs_gentle_02
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Gentle handheld feel. Natural sway and breathing-like rhythm
+      in the frame. The shot feels alive, not mechanical.
+    tags:
+      lock: camera
+      camera_rigidity: low
+    complexity_level: simple
+
+  - block_id: cs_moderate_01
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Slow, deliberate camera movement only. No sudden shifts or
+      whip pans. Transitions are smooth and intentional.
+    tags:
+      lock: camera
+      camera_rigidity: medium
+    complexity_level: simple
+
+  - block_id: cs_moderate_02
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Hold the camera angle with minimal drift. Smooth transitions
+      if any movement occurs. The frame stays composed and steady.
+    tags:
+      lock: camera
+      camera_rigidity: medium
+    complexity_level: simple
+
+  - block_id: cs_strict_01
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Locked tripod. The camera does not move. Only breathing-level
+      micro-vibration is acceptable. Frame composition is fixed.
+    tags:
+      lock: camera
+      camera_rigidity: high
+    complexity_level: simple
+
+  - block_id: cs_absolute_01
+    role: camera
+    category: camera_stability
+    kind: single_state
+    default_intent: modify
+    text: >-
+      Completely fixed camera. Zero motion, zero drift, zero shake.
+      The frame is an immovable window into the scene.
+    tags:
+      lock: camera
+      camera_rigidity: maximum
+    complexity_level: simple
+
   # ═══════════════════════════════════════════════════════════════════
   # STYLE — rendering and atmosphere (reusable across scenes)
   # ═══════════════════════════════════════════════════════════════════

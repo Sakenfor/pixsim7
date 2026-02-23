@@ -24,10 +24,49 @@ templates:
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
-      # ── Subject preservation ────────────────────────────────────
-      - preset: subject_preservation
+      # ── Subject preservation (graduated pose lock + absolute identity/framing)
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
 
       # ── Environment ─────────────────────────────────────────────
       - label: Background scene
@@ -239,9 +278,48 @@ templates:
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
-      - preset: subject_preservation
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
 
       - label: Background scene
         role: environment
@@ -282,10 +360,49 @@ templates:
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
-      # ── Subject preservation ────────────────────────────────────
-      - preset: subject_preservation
+      # ── Subject preservation (graduated pose lock + absolute identity/framing)
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
 
       # ── Wardrobe accent ────────────────────────────────────────
       - label: Wardrobe accent
@@ -405,10 +522,49 @@ templates:
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
-      # ── Subject preservation ────────────────────────────────────
-      - preset: subject_preservation
+      # ── Subject preservation (graduated pose lock + absolute identity/framing)
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
 
       # ── Wardrobe — su_lt-ry uniform rework (genre from context) ──
       - label: Uniform style
@@ -530,10 +686,49 @@ templates:
     template_metadata:
       target_operation: image_to_image
       mode: image_edit
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 3
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: low }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 6
+              boostTags: { rigidity: [high, maximum] }
+              avoidTags: { rigidity: [low, medium] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [low, medium] }
 
     slots:
-      # ── Subject preservation ────────────────────────────────────
-      - preset: subject_preservation
+      # ── Subject preservation (graduated pose lock + absolute identity/framing)
+      - preset: pose_lock_graduated
+
+      - label: Identity lock
+        role: subject
+        category: identity_lock
+        optional: false
+
+      - label: Framing lock
+        role: subject
+        category: framing_lock
+        optional: false
 
       # ── Clothing lock — no changes ──────────────────────────────
       - label: Clothing lock
