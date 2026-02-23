@@ -1,11 +1,7 @@
 """Add channel column to log_entries for semantic log categorization.
 
-Note: The log_entries table also exists in the separate log database
-(managed by alembic_logs.ini). This migration keeps the main DB copy
-in sync with the LogEntry model.
-
-Revision ID: 20260223_0001
-Revises: 20260221_0002
+Revision ID: 20260223_0002
+Revises: 20260223_0001
 Create Date: 2026-02-23
 """
 
@@ -15,8 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260223_0001"
-down_revision = "20260221_0002"
+revision = "20260223_0002"
+down_revision = "20260223_0001"
 branch_labels = None
 depends_on = None
 

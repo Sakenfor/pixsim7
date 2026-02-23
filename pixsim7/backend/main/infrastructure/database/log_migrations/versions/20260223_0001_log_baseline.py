@@ -1,9 +1,8 @@
-"""Log DB baseline — stamp existing log_entries table.
+"""Log DB baseline — stamp existing log_entries table (pre-channel).
 
-The log_entries table was originally created by DBLogHandler.auto_create
-and the channel column was added manually. This migration establishes
-the Alembic version chain for the log database so future schema changes
-can be tracked properly.
+The log_entries table was originally created by DBLogHandler.auto_create.
+This migration establishes the Alembic version chain for the log database
+so future schema changes can be tracked properly.
 
 Revision ID: 20260223_0001
 Revises: None
@@ -23,8 +22,7 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Table already exists with all columns including channel.
-    # This is a stamp-only migration to establish the baseline.
+    # Table already exists — stamp only.
     pass
 
 
