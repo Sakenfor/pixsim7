@@ -233,6 +233,44 @@ class PixverseProvider(
                 )
             api_mode = PixverseApiMode.WEBAPI
 
+        # === Guidance plan: inject references into composition_assets ===
+        try:
+            guidance_plan_raw = None
+            raw_params = getattr(generation, "raw_params", None) or {}
+            gen_cfg = raw_params.get("generation_config")
+            if isinstance(gen_cfg, dict):
+                rc = gen_cfg.get("run_context")
+                if isinstance(rc, dict):
+                    guidance_plan_raw = rc.get("guidance_plan")
+
+            if isinstance(guidance_plan_raw, dict):
+                from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
+                from pixsim7.backend.main.services.provider.adapters.pixverse_guidance import (
+                    format_references_for_pixverse,
+                )
+
+                gp = GuidancePlanV1.model_validate(guidance_plan_raw)
+                existing_ca = result_params.get("composition_assets") or []
+                if not isinstance(existing_ca, list):
+                    existing_ca = []
+                fmt = format_references_for_pixverse(gp, existing_composition_assets=existing_ca)
+
+                if fmt.composition_assets != existing_ca:
+                    result_params["composition_assets"] = fmt.composition_assets
+                if fmt.legend_text:
+                    current_prompt = result_params.get("prompt") or ""
+                    result_params["prompt"] = f"{fmt.legend_text}\n{current_prompt}" if current_prompt else fmt.legend_text
+                result_params["_guidance_debug"] = fmt.debug_metadata
+
+                logger.info(
+                    "pixverse_guidance_plan_applied",
+                    guidance_count=fmt.debug_metadata.get("guidance_count", 0),
+                    image_index_map=fmt.image_index_map,
+                    has_legend=bool(fmt.legend_text),
+                )
+        except Exception as exc:
+            logger.warning("pixverse_guidance_plan_error", error=str(exc))
+
         # === Resolve composition_assets if present ===
         composition_assets = result_params.get("composition_assets")
         original_video_id = result_params.get("original_video_id")

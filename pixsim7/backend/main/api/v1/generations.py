@@ -182,6 +182,39 @@ async def create_generation(
                     request.config.__pydantic_extra__ = {}
                 request.config.__pydantic_extra__["run_context"] = updated_run_context
 
+        # === Guidance plan extraction & validation ===
+        raw_guidance_plan = run_context.get("guidance_plan")
+        if isinstance(raw_guidance_plan, dict):
+            try:
+                from pixsim7.backend.main.shared.schemas.guidance_plan import GuidancePlanV1
+                from pixsim7.backend.main.services.guidance import validate_guidance_plan
+
+                parsed_plan = GuidancePlanV1.model_validate(raw_guidance_plan)
+                gv = validate_guidance_plan(parsed_plan)
+                if gv.errors:
+                    logger.warning(
+                        "guidance_plan_validation_errors",
+                        errors=gv.errors,
+                    )
+                if gv.warnings:
+                    logger.info(
+                        "guidance_plan_validation_warnings",
+                        warnings=gv.warnings,
+                    )
+                # Stash validated plan back (round-tripped through Pydantic)
+                updated_run_context = dict(
+                    (request.config.__pydantic_extra__ or {}).get("run_context") or run_context
+                )
+                updated_run_context["guidance_plan"] = parsed_plan.model_dump()
+                if request.config.__pydantic_extra__ is None:
+                    request.config.__pydantic_extra__ = {}
+                request.config.__pydantic_extra__["run_context"] = updated_run_context
+            except Exception as exc:
+                logger.warning(
+                    "guidance_plan_parse_failed",
+                    error=str(exc),
+                )
+
         # Build canonical params from generation config after any server-side mutations
         canonical_params = {
             "generation_config": request.config.model_dump() if request.config else {},

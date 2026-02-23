@@ -198,6 +198,12 @@ export * from './prompt-roles.generated'
 export * from './compositionPackages'
 
 // ===================
+// Guidance Plan Types
+// ===================
+
+export * from './guidancePlan'
+
+// ===================
 // Region Label Utilities
 // ===================
 

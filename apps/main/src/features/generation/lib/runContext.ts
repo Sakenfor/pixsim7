@@ -5,6 +5,8 @@
  * generation_config.run_context. Keep keys snake_case.
  */
 
+import type { GuidancePlanV1 } from '@pixsim7/shared.types';
+
 export type GenerationRunMode =
   | 'quickgen_single'
   | 'quickgen_burst'
@@ -128,5 +130,34 @@ export function createGenerationRunItemContext(
   }
 
   return context;
+}
+
+/**
+ * Build a GuidancePlanV1 from character binding references.
+ *
+ * This helper converts the per-slot character bindings (typically from
+ * the template builder) into a structured guidance plan that the backend
+ * can validate and forward to the provider formatter.
+ */
+export function buildGuidancePlanReferences(
+  bindingRefs: Record<string, { assetId: number | string; kind?: string; priority?: number; label?: string }>,
+): GuidancePlanV1 {
+  const references: Record<string, { asset_id: string | number; kind: string; priority?: number; label?: string }> = {};
+
+  let defaultPriority = 1;
+  for (const [key, binding] of Object.entries(bindingRefs)) {
+    references[key] = {
+      asset_id: typeof binding.assetId === 'number' ? binding.assetId : String(binding.assetId),
+      kind: binding.kind || 'identity',
+      priority: binding.priority ?? defaultPriority,
+      label: binding.label,
+    };
+    defaultPriority++;
+  }
+
+  return {
+    version: 1,
+    references: Object.keys(references).length > 0 ? references : undefined,
+  };
 }
 
