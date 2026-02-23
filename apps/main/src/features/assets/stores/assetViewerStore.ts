@@ -49,6 +49,8 @@ export interface ViewerAsset {
     size?: number;
     createdAt?: string;
     path?: string;
+    /** Backend asset id when this local viewer asset is linked to a saved library/provider asset */
+    assetId?: number;
     providerId?: string;
     duration?: number;
     folderId?: string;
@@ -269,7 +271,8 @@ export const useAssetViewerStore = create<AssetViewerState>()(
 
       unregisterScope: (id) => {
         const { scopes, activeScopeId } = get();
-        const { [id]: _, ...remaining } = scopes;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { [id]: _removed, ...remaining } = scopes;
         const updates: Partial<AssetViewerState> = { scopes: remaining };
 
         if (id === activeScopeId) {

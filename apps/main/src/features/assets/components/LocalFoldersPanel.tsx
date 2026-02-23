@@ -1,11 +1,10 @@
 import { Dropdown, DropdownDivider, DropdownItem } from '@pixsim7/shared.ui';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent } from 'react';
 
 
 import { CompositeIcon, Icons } from '@lib/icons';
 
 import type { ClientFilterState } from '@features/gallery/lib/useClientFilters';
-import { useProviders } from '@features/providers';
 
 import type { LocalFoldersController } from '@/types/localSources';
 
@@ -17,15 +16,12 @@ import type { LocalAsset } from '../stores/localFoldersStore';
 import {
   ALL_ASSETS_SCROLL_SCOPE,
   type ContentScrollByScope,
-  type LocalGroupMode,
 } from './localFolders/constants';
 import { buildLocalFilterDefs } from './localFolders/filterDefs';
 import { LocalFoldersContent } from './localFolders/LocalFoldersContent';
 import {
   readStoredContentScrollByScope,
-  readStoredGroupMode,
   writeStoredContentScrollByScope,
-  writeStoredGroupMode,
 } from './localFolders/persistence';
 import { useLocalFolderCallbacks } from './localFolders/useLocalFolderCallbacks';
 import {
@@ -42,7 +38,6 @@ interface LocalFoldersPanelProps {
 }
 
 export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 260 }: LocalFoldersPanelProps) {
-  const { providers } = useProviders();
   const favoriteFoldersArr = useLocalFolderSettingsStore((s) => s.favoriteFolders);
   const toggleFavoriteFolder = useLocalFolderSettingsStore((s) => s.toggleFavoriteFolder);
   const favoriteFoldersSet = useMemo(() => new Set(favoriteFoldersArr), [favoriteFoldersArr]);
@@ -58,14 +53,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   const contentScrollRef = useRef<HTMLDivElement | null>(null);
   const contentScrollByScopeRef = useRef<ContentScrollByScope | null>(null);
 
-  const [groupMode, setGroupMode] = useState<LocalGroupMode>(() => readStoredGroupMode());
-  const [isManageFoldersOpen, setIsManageFoldersOpen] = useState(false);
-  const manageFoldersTriggerRef = useRef<HTMLButtonElement>(null);
-
-  const selectGroupMode = useCallback((next: LocalGroupMode) => {
-    setGroupMode(next);
-    writeStoredGroupMode(next);
-  }, []);
+  const [managedFolderId, setManagedFolderId] = useState<string | null>(null);
+  const [manageFolderMenuPos, setManageFolderMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   // --- Folder name / favorites / subfolder derivations ---
   const folderNames = useMemo(() => {
@@ -107,9 +96,8 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   const getSubfolderLabelFromValue = useCallback((value: string) => {
     const parsed = parseSubfolderValue(value);
     if (!parsed) return value;
-    const folderLabel = getFolderLabel(parsed.folderId);
-    return parsed.directory ? `${folderLabel}/${parsed.directory}` : `${folderLabel}/(root)`;
-  }, [getFolderLabel]);
+    return parsed.directory || '(root)';
+  }, []);
   const getSubfolderLabelForAsset = useCallback((asset: LocalAsset) => {
     return getSubfolderLabelFromValue(getSubfolderValue(asset));
   }, [getSubfolderLabelFromValue, getSubfolderValue]);
@@ -131,6 +119,10 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
   const localMetadataResolver = useCallback(
     (asset: LocalAsset) => ({
       folderName: folderNames[asset.folderId],
+      assetId:
+        typeof asset.last_upload_asset_id === 'number' && asset.last_upload_asset_id > 0
+          ? asset.last_upload_asset_id
+          : undefined,
       providerId: controller.providerId,
     }),
     [folderNames, controller.providerId]
@@ -172,6 +164,27 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
     return 'reading';
   }, [controller.hashingProgress?.phase]);
 
+  const closeManageFolderMenu = useCallback(() => {
+    setManagedFolderId(null);
+    setManageFolderMenuPos(null);
+  }, []);
+
+  const openManageFolderMenu = useCallback((event: ReactMouseEvent<HTMLButtonElement>, folderId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setManagedFolderId(folderId);
+    setManageFolderMenuPos({ x: rect.left, y: rect.bottom + 4 });
+  }, []);
+
+  const managedFolderName = managedFolderId ? (folderNames[managedFolderId] || managedFolderId) : null;
+
+  useEffect(() => {
+    if (!managedFolderId) return;
+    if (controller.folders.some((folder) => folder.id === managedFolderId)) return;
+    closeManageFolderMenu();
+  }, [managedFolderId, controller.folders, closeManageFolderMenu]);
+
   // --- Per-option action buttons for folder / subfolder filters ---
   const renderFolderOptionExtra = useCallback((folderId: string): ReactNode => {
     const isFav = favoriteFoldersSet.has(folderId);
@@ -197,9 +210,17 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
         >
           <Icons.star size={12} />
         </button>
+        <button
+          type="button"
+          className="p-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
+          title="Manage folder"
+          onClick={(e) => openManageFolderMenu(e, folderId)}
+        >
+          <Icons.settings size={12} />
+        </button>
       </>
     );
-  }, [controller, favoriteFoldersSet, toggleFavoriteFolder]);
+  }, [controller, favoriteFoldersSet, toggleFavoriteFolder, openManageFolderMenu]);
 
   const renderSubfolderOptionExtra = useCallback((subfolderValue: string): ReactNode => {
     const parsed = parseSubfolderValue(subfolderValue);
@@ -327,90 +348,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
             <h2 className="text-lg font-semibold truncate">Local Folders</h2>
           </div>
           <div className="flex items-center gap-2">
-            {/* Provider selector */}
-            <select
-              className="px-2 py-1 border rounded-lg bg-white dark:bg-neutral-800 text-xs focus:ring-2 focus:ring-accent focus:border-accent"
-              value={controller.providerId || ''}
-              onChange={(e) => controller.setProviderId(e.target.value || undefined)}
-            >
-              <option value="">Library only</option>
-              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-
-            {/* Manage Folders dropdown */}
-            <div className="relative">
-              <button
-                ref={manageFoldersTriggerRef}
-                type="button"
-                className="px-2.5 py-1.5 text-xs border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors flex items-center gap-1.5"
-                onClick={() => setIsManageFoldersOpen((prev) => !prev)}
-              >
-                <Icons.settings size={13} />
-                Manage
-              </button>
-              <Dropdown
-                isOpen={isManageFoldersOpen}
-                onClose={() => setIsManageFoldersOpen(false)}
-                position="bottom-right"
-                minWidth="220px"
-                triggerRef={manageFoldersTriggerRef}
-              >
-                {controller.folders.length === 0 ? (
-                  <DropdownItem disabled>No folders added</DropdownItem>
-                ) : (
-                  controller.folders.map((folder) => (
-                    <div key={folder.id}>
-                      <div className="px-2 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 truncate flex items-center gap-2">
-                        <Icons.folder size={12} className="flex-shrink-0 text-neutral-400" />
-                        <span className="truncate">{folderNames[folder.id] || folder.id}</span>
-                      </div>
-                      <div className="flex items-center gap-0.5 px-1 pb-1">
-                        <button
-                          type="button"
-                          className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-                          title="Refresh"
-                          onClick={() => { controller.refreshFolder(folder.id); setIsManageFoldersOpen(false); }}
-                        >
-                          <Icons.refreshCw size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-200 transition-colors"
-                          title="Hash files"
-                          onClick={() => { controller.hashFolder(folder.id); setIsManageFoldersOpen(false); }}
-                        >
-                          <Icons.hash size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className={`p-1 rounded transition-colors ${
-                            favoriteFoldersSet.has(folder.id)
-                              ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20'
-                              : 'text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 hover:text-amber-500'
-                          }`}
-                          title={favoriteFoldersSet.has(folder.id) ? 'Remove from favorites' : 'Add to favorites'}
-                          onClick={() => toggleFavoriteFolder(folder.id)}
-                        >
-                          <Icons.star size={12} />
-                        </button>
-                        <button
-                          type="button"
-                          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-                          title="Remove folder"
-                          onClick={() => { controller.removeFolder(folder.id); setIsManageFoldersOpen(false); }}
-                        >
-                          <Icons.trash size={12} />
-                        </button>
-                      </div>
-                      {controller.folders.indexOf(folder) < controller.folders.length - 1 && (
-                        <DropdownDivider />
-                      )}
-                    </div>
-                  ))
-                )}
-              </Dropdown>
-            </div>
-
             {/* Add Folder button */}
             <button
               type="button"
@@ -423,6 +360,60 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
             </button>
           </div>
         </div>
+
+        {managedFolderId && manageFolderMenuPos && (
+          <Dropdown
+            isOpen={!!managedFolderId}
+            onClose={closeManageFolderMenu}
+            positionMode="fixed"
+            anchorPosition={manageFolderMenuPos}
+            minWidth="210px"
+            portal
+          >
+            <DropdownItem disabled icon={<Icons.folder size={12} />}>
+              {managedFolderName ?? managedFolderId}
+            </DropdownItem>
+            <DropdownDivider />
+            <DropdownItem
+              icon={<Icons.refreshCw size={12} />}
+              onClick={() => {
+                controller.refreshFolder(managedFolderId);
+                closeManageFolderMenu();
+              }}
+            >
+              Refresh
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icons.hash size={12} />}
+              onClick={() => {
+                controller.hashFolder(managedFolderId);
+                closeManageFolderMenu();
+              }}
+            >
+              Hash Files
+            </DropdownItem>
+            <DropdownItem
+              icon={<Icons.star size={12} />}
+              onClick={() => {
+                toggleFavoriteFolder(managedFolderId);
+                closeManageFolderMenu();
+              }}
+            >
+              {favoriteFoldersSet.has(managedFolderId) ? 'Remove Favorite' : 'Add Favorite'}
+            </DropdownItem>
+            <DropdownDivider />
+            <DropdownItem
+              icon={<Icons.trash size={12} />}
+              variant="danger"
+              onClick={() => {
+                controller.removeFolder(managedFolderId);
+                closeManageFolderMenu();
+              }}
+            >
+              Remove Folder
+            </DropdownItem>
+          </Dropdown>
+        )}
 
         {/* Scanning progress */}
         {controller.scanning && (
@@ -528,8 +519,6 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
         <LocalFoldersContent
           controller={controller}
           localFilterDefs={localFilterDefs}
-          groupMode={groupMode}
-          selectGroupMode={selectGroupMode}
           favoriteFoldersSet={favoriteFoldersSet}
           layout={layout}
           cardSize={cardSize}
@@ -548,10 +537,9 @@ export function LocalFoldersPanel({ controller, layout = 'masonry', cardSize = 2
           getIsFavorite={callbacks.getIsFavorite}
           handleToggleFavorite={callbacks.handleToggleFavorite}
           getLocalMediaCardActions={callbacks.getLocalMediaCardActions}
-          getFolderLabel={getFolderLabel}
+          toGenerationInputAsset={callbacks.toGenerationInputAsset}
           getSubfolderValue={getSubfolderValue}
           getSubfolderLabelForAsset={getSubfolderLabelForAsset}
-          isAssetInFavoriteFolder={isAssetInFavoriteFolder}
         />
       </div>
     </div>

@@ -19,20 +19,26 @@ import { createPortal } from 'react-dom';
 
 import { useAssetAutoContextMenu } from '@lib/dockview';
 import { Icon } from '@lib/icons';
-import { OverlayContainer, VideoScrubWidgetRenderer, createBadgeWidget } from '@lib/ui/overlay';
+import { OverlayContainer, VideoScrubWidgetRenderer } from '@lib/ui/overlay';
 import type { OverlayWidget } from '@lib/ui/overlay';
+import type { OverlayPolicyStep } from '@lib/ui/overlay';
+import type { OverlayContextId } from '@lib/widgets';
 
 import { getAssetDisplayUrls } from '@features/assets/models/asset';
 import { CAP_ASSET, useProvideCapability } from '@features/contextHub';
 
+import { buildCompactAssetCardLocalWidgets } from '@/components/media/assetCardLocalWidgets';
 import { useOverlayWidgetsForAsset } from '@/components/media/hooks/useOverlayWidgetsForAsset';
 import { useMediaPreviewSource } from '@/hooks/useMediaPreviewSource';
 import { useResolvedAssetMedia } from '@/hooks/useResolvedAssetMedia';
 
 import type { AssetModel } from '../../types';
 
-/** Stable empty object to avoid busting the useMemo inside useOverlayWidgetsForAsset */
+/** Stable objects to avoid busting the useMemo inside useOverlayWidgetsForAsset */
 const STABLE_RUNTIME_PROPS = {};
+const STABLE_RUNTIME_PROPS_SKIP_UPLOAD = {
+  presetCapabilities: { skipPillUpload: true },
+};
 
 export interface ThumbnailGridItem {
   id: string | number;
@@ -86,6 +92,11 @@ export interface CompactAssetCardProps {
   overlay?: React.ReactNode; // Custom overlay content (absolute-positioned, pointer-events-none)
   hoverActions?: React.ReactNode; // Custom hover overlay replacing default behavior
   extraWidgets?: OverlayWidget[]; // Additional overlay widgets (participate in collision detection)
+  /** Override the overlay context for widget visibility (default: 'compact').
+   *  Use 'gallery' to show widgets like generation-button-group that are hidden in compact. */
+  overlayContext?: OverlayContextId;
+  /** Optional runtime overlay policy chain override. */
+  overlayPolicyChain?: OverlayPolicyStep[];
 }
 
 export function CompactAssetCard({
@@ -116,6 +127,8 @@ export function CompactAssetCard({
   overlay,
   hoverActions,
   extraWidgets,
+  overlayContext,
+  overlayPolicyChain,
 }: CompactAssetCardProps) {
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [isHovered, setIsHovered] = useState(false);
@@ -208,38 +221,50 @@ export function CompactAssetCard({
   const contextMenuProps = useAssetAutoContextMenu(asset);
 
   // Shared overlay widgets (favorite, quick-tag, etc.) from overlay context settings
+  // When using a non-compact context (e.g. gallery for mini-gallery cards), skip the
+  // upload button in the generation bar — these cards are already in the library.
+  const effectiveContext = overlayContext ?? 'compact';
   const { overlayConfig, overlayData } = useOverlayWidgetsForAsset({
     asset,
-    context: 'compact',
-    runtimeProps: STABLE_RUNTIME_PROPS,
+    context: effectiveContext,
+    runtimeProps: effectiveContext !== 'compact' ? STABLE_RUNTIME_PROPS_SKIP_UPLOAD : STABLE_RUNTIME_PROPS,
+    useCompactPositions: true,
+    suppressGenerationButtonGroup: !!hoverActions,
+    policyChain: overlayPolicyChain,
   });
 
   // Stable ref for onRemove so widget identity doesn't change every render
   const onRemoveRef = useRef(onRemove);
   onRemoveRef.current = onRemove;
 
-  // Build extra widgets from props (remove button, etc.)
-  const cardWidgets = useMemo(() => {
-    const widgets: OverlayWidget[] = [];
+  // Stable refs for callbacks used in overlay widgets (avoids identity changes)
+  const onGenerateRef = useRef(onGenerate);
+  onGenerateRef.current = onGenerate;
 
-    if (showRemoveButton) {
-      widgets.push(createBadgeWidget({
-        id: 'remove-asset',
-        position: { anchor: 'top-right', offset: { x: -4, y: 4 } },
-        visibility: { trigger: 'always', transition: 'none' },
-        variant: 'icon',
-        icon: 'close',
-        color: 'red',
-        shape: 'circle',
-        tooltip: 'Remove',
-        onClick: () => onRemoveRef.current?.(),
-        className: '!bg-red-600 hover:!bg-red-700 !text-white opacity-70 hover:opacity-100',
-        priority: 30,
-      }));
-    }
-
-    return widgets;
-  }, [showRemoveButton]);
+  // Build extra widgets from props (remove button, status indicators, etc.)
+  const cardWidgets = useMemo(
+    () => buildCompactAssetCardLocalWidgets({
+      showRemoveButton,
+      isLocalOnly,
+      isVideo,
+      hasLockedFrame,
+      lockedTimestamp,
+      onRemove: () => onRemoveRef.current?.(),
+      onGenerate: onGenerate ? () => onGenerateRef.current?.() : undefined,
+      generating,
+      onUploadToProvider,
+    }),
+    [
+      showRemoveButton,
+      isLocalOnly,
+      isVideo,
+      hasLockedFrame,
+      lockedTimestamp,
+      onGenerate,
+      generating,
+      onUploadToProvider,
+    ],
+  );
 
   // Merge all widgets into one config; enable collision detection only when extra widgets are present
   const mergedOverlayConfig = useMemo(() => {
@@ -302,39 +327,12 @@ export function CompactAssetCard({
           </div>
         )}
 
-        {/* Locked frame indicator - visible when not hovering */}
-        {isVideo && hasLockedFrame && !isHovering && (
-          <div className="cq-badge-xs cq-inset-tl absolute z-10 bg-accent/90 text-accent-text rounded whitespace-nowrap flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-white" />
-            {lockedTimestamp?.toFixed(1)}s
-          </div>
-        )}
-
         {showPlayOverlay && isVideo && !hoverPreviewEnabled && (
           <div className="absolute inset-0 z-[2] flex items-center justify-center pointer-events-none">
             <div className="cq-btn-lg rounded-full bg-black/50 flex items-center justify-center">
               <Icon name="play" size={12} variant="default" className="text-white" />
             </div>
           </div>
-        )}
-
-        {/* Status indicator */}
-        {isLocalOnly && (
-          <div className="cq-btn-md cq-inset-tr-md absolute rounded-full bg-amber-500/80 flex items-center justify-center z-10" title="Local only - not synced to provider">
-            <Icon name="alertTriangle" size={12} variant="default" className="text-white" />
-          </div>
-        )}
-
-        {/* Generate button - bottom left (hidden when upload-to-provider is needed) */}
-        {!onUploadToProvider && onGenerate && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-            className="cq-btn-sm cq-inset-bl absolute rounded-full bg-accent hover:bg-accent/80 flex items-center justify-center transition-all z-20 opacity-0 group-hover/card:opacity-90 hover:!opacity-100 disabled:opacity-30"
-            title="Generate"
-            disabled={generating}
-          >
-            <Icon name="play" size={10} variant="default" className="text-accent-text ml-px" />
-          </button>
         )}
 
         {/* Custom overlay (badges, indicators) */}

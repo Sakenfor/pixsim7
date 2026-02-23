@@ -111,6 +111,8 @@ export function PageJumpPopover({
           }}
           minWidth="180px"
           className="max-w-[220px]"
+          portal
+          triggerRef={anchorRef}
         >
           <div
             className="p-2 space-y-2"

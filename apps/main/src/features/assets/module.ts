@@ -4,8 +4,9 @@ import { lazy } from 'react';
 import { registerState } from '@lib/capabilities';
 import { ROUTES, navigateTo } from '@lib/capabilities/routeConstants';
 
-import { getAllAssetSources } from '@features/gallery';
+import { getAllAssetSources, registerAssetSources } from '@features/gallery';
 
+import { moduleRegistry } from '@app/modules';
 import type { Module } from '@app/modules/types';
 
 // === Assets Actions ===
@@ -82,6 +83,10 @@ export const assetsModule: Module = {
   async initialize() {
     // Register assets state capabilities
     registerAssetsState();
+
+    // Register asset sources at startup so the sidebar subNav works immediately
+    await registerAssetSources();
+    moduleRegistry.invalidate();
   },
 
   page: {

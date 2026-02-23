@@ -67,8 +67,12 @@ const PREVIEW_LOAD_CONCURRENCY = 4;
  * Module-level blob URL cache that survives panel mount/unmount cycles.
  * Without this, every blob URL is revoked on unmount and thumbnails must
  * be re-read from IndexedDB when the user switches back to Local Folders.
+ *
+ * Each entry tracks whether the URL was produced as a thumbnail or an
+ * original so a preview-mode change is detected as a cache miss and the
+ * asset is re-loaded at the correct resolution automatically.
  */
-const globalBlobUrlCache = new Map<string, string>();
+const globalBlobUrlCache = new Map<string, { url: string; original: boolean }>();
 const globalLoadingKeys = new Set<string>();
 
 function isAssetDirectlyInFolderPath(asset: LocalAsset, folderPath: string): boolean {
@@ -140,9 +144,22 @@ export function useLocalFoldersController(): LocalFoldersController {
   const manualHashRequestIdRef = useRef(0);
   const consumedManualHashRequestIdRef = useRef(0);
 
-  // Preview state — hydrated from module-level cache so thumbnails survive panel remounts
+  // Preview state — hydrated from module-level cache so thumbnails survive
+  // panel remounts.  Only hydrate entries whose mode tag matches the current
+  // preview setting so a mode switch doesn't flash stale images on mount.
   const [previews, setPreviews] = useState<Record<string, string>>(
-    () => Object.fromEntries(globalBlobUrlCache),
+    () => {
+      const wantOriginal = previewMode === 'original'
+        || (previewMode === 'gallery-settings'
+            && useAssetViewerStore.getState().settings.preferOriginal);
+      const entries: [string, string][] = [];
+      globalBlobUrlCache.forEach((entry, key) => {
+        if (entry.original === wantOriginal) {
+          entries.push([key, entry.url]);
+        }
+      });
+      return Object.fromEntries(entries);
+    },
   );
   const loadingPreviewsRef = useRef<Set<string>>(new Set());
 
@@ -639,8 +656,23 @@ export function useLocalFoldersController(): LocalFoldersController {
     const asset = typeof keyOrAsset === 'string' ? assetsRecordRef.current[keyOrAsset] : keyOrAsset;
     if (!asset) return;
 
-    // Check if already loaded (via ref or global cache) or currently loading
-    if (blobUrlsRef.current.has(asset.key) || globalBlobUrlCache.has(asset.key) || loadingPreviewsRef.current.has(asset.key) || globalLoadingKeys.has(asset.key)) return;
+    const wantOriginal = shouldUseOriginal(asset);
+
+    // Check if already loaded (via ref or global cache) or currently loading.
+    // If a cached entry exists but was produced by a different preview mode
+    // (thumbnail vs original), evict it and re-load at the correct resolution.
+    if (loadingPreviewsRef.current.has(asset.key) || globalLoadingKeys.has(asset.key)) return;
+
+    const globalEntry = globalBlobUrlCache.get(asset.key);
+    if (globalEntry && globalEntry.original === wantOriginal) return;
+
+    // Evict stale entry from a different mode if present
+    const staleUrl = blobUrlsRef.current.get(asset.key);
+    if (staleUrl) {
+      URL.revokeObjectURL(staleUrl);
+      blobUrlsRef.current.delete(asset.key);
+      globalBlobUrlCache.delete(asset.key);
+    }
 
     // Mark as loading (both local and global)
     loadingPreviewsRef.current.add(asset.key);
@@ -648,10 +680,11 @@ export function useLocalFoldersController(): LocalFoldersController {
 
     let url: string | undefined;
     let acquiredSlot = false;
-    let isThumbnail = false;
+    let isOriginal = false;
     try {
       // "Original" mode for images: skip thumbnails entirely, show the file directly
-      if (shouldUseOriginal(asset)) {
+      if (wantOriginal) {
+        isOriginal = true;
         await acquirePreviewSlot();
         acquiredSlot = true;
 
@@ -660,7 +693,6 @@ export function useLocalFoldersController(): LocalFoldersController {
           url = URL.createObjectURL(file);
         }
       } else {
-        isThumbnail = true;
         // Thumbnail mode: try cached thumbnail blob first (persisted in IndexedDB)
         try {
           const cached = await getLocalThumbnailBlob(asset);
@@ -694,10 +726,10 @@ export function useLocalFoldersController(): LocalFoldersController {
 
       if (url) {
         blobUrlsRef.current.set(asset.key, url);
-        // Only persist thumbnails in the global cache (originals are too large)
-        if (isThumbnail) {
-          globalBlobUrlCache.set(asset.key, url);
-        }
+        // Persist in the global cache with mode tag so remounts and mode
+        // switches are handled correctly.  Originals are large but we still
+        // tag them so the mode-mismatch check works on remount.
+        globalBlobUrlCache.set(asset.key, { url, original: isOriginal });
         setPreviews(p => ({ ...p, [asset.key]: url }));
       }
     } finally {
@@ -724,16 +756,18 @@ export function useLocalFoldersController(): LocalFoldersController {
     }
   }, []);
 
-  // On unmount, clear local ref but keep blob URLs alive in the global cache
-  // so thumbnails are instantly available when the panel remounts.
+  // On unmount, clear local ref but keep thumbnail blob URLs alive in the
+  // global cache so they're instantly available when the panel remounts.
+  // Original-mode URLs are large and not worth persisting across mounts.
   useEffect(() => {
     const blobUrls = blobUrlsRef.current;
     return () => {
-      // Only revoke URLs that are NOT in the global cache (e.g. "original" mode
-      // large file URLs that shouldn't persist across sessions).
       blobUrls.forEach((url, key) => {
-        if (!globalBlobUrlCache.has(key)) {
+        const entry = globalBlobUrlCache.get(key);
+        if (!entry || entry.original) {
+          // Not in global cache, or is an original → revoke and evict
           URL.revokeObjectURL(url);
+          globalBlobUrlCache.delete(key);
         }
       });
       blobUrls.clear();

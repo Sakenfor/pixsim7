@@ -90,6 +90,7 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
       icon: 'folder',
       type: 'enum',
       order: 2,
+      columns: 2,
       predicate: (asset, value) => {
         if (!Array.isArray(value) || value.length === 0) return true;
         return value.includes(asset.folderId);
@@ -116,6 +117,7 @@ export function buildLocalFilterDefs(deps: BuildLocalFilterDefsDeps): ClientFilt
       icon: 'folderTree',
       type: 'enum',
       order: 4,
+      columns: 2,
       renderOptionExtra: renderSubfolderOptionExtra,
       isVisible: (filterState) => getScopedFolderIds(filterState).length > 0,
       predicate: (asset, value) => {
