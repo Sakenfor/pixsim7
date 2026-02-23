@@ -10,9 +10,7 @@ import { createPortal } from 'react-dom';
 
 import { Icon } from '@lib/icons';
 
-import { useAssets, type AssetFilters } from '@features/assets';
-import { CompactAssetCard } from '@features/assets/components/shared/CompactAssetCard';
-import { PaginationStrip } from '@features/assets/components/shared/PaginationStrip';
+import type { AssetFilters } from '@features/assets';
 
 import {
   type FilterRuleType,
@@ -508,39 +506,3 @@ export function SmartFilterEditor({
   );
 }
 
-// ── Smart set preview ───────────────────────────────────────────────────
-
-const SMART_PREVIEW_PAGE_SIZE = 12;
-
-export function SmartSetPreview({ filters }: { filters: AssetFilters }) {
-  const { items, loading, currentPage, totalPages, hasMore, goToPage } = useAssets({
-    limit: SMART_PREVIEW_PAGE_SIZE,
-    filters,
-    paginationMode: 'page',
-  });
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="text-[10px] text-neutral-500 font-medium">
-        Preview {loading ? '…' : `(${items.length}+ matches)`}
-      </div>
-      {items.length > 0 && (
-        <div className="grid grid-cols-4 gap-1">
-          {items.map((a) => (
-            <CompactAssetCard key={a.id} asset={a} hideFooter aspectSquare />
-          ))}
-        </div>
-      )}
-      {(totalPages > 1 || hasMore) && (
-        <div className="flex justify-center pt-1">
-          <PaginationStrip
-            currentPage={currentPage}
-            totalPages={totalPages}
-            hasMore={hasMore}
-            loading={loading}
-            onPageChange={goToPage}
-          />
-        </div>
-      )}
-    </div>
-  );
-}

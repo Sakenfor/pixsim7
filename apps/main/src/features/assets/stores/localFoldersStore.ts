@@ -653,42 +653,32 @@ export const useLocalFolders = create<LocalFoldersState>((set, get) => ({
       });
 
       if (stored && stored.length) {
-        // Request permission again if needed
-        // IMPORTANT: Keep all folders even if permission fails - prevents data loss
-        const ok: FolderEntry[] = [];
-        const needsPermission: FolderEntry[] = [];
-        for (const f of stored) {
-          try {
-            const permissionHandle = f.handle as PermissionAwareDirHandle;
-            const perm = await permissionHandle.queryPermission?.({ mode: 'read' });
-            if (perm === 'granted') {
-              ok.push(f);
-            } else {
-              // Try to request permission
+        // Show folder names in the UI immediately — permission checks come next
+        set({ folders: stored });
+
+        // Check permissions in parallel instead of one-by-one
+        const permResults = await Promise.all(
+          stored.map(async (f): Promise<{ folder: FolderEntry; granted: boolean }> => {
+            try {
+              const permissionHandle = f.handle as PermissionAwareDirHandle;
+              const perm = await permissionHandle.queryPermission?.({ mode: 'read' });
+              if (perm === 'granted') return { folder: f, granted: true };
               try {
                 const requested = await permissionHandle.requestPermission?.({ mode: 'read' });
-                if (requested === 'granted') {
-                  ok.push(f);
-                } else {
-                  // Keep folder but mark as needing permission - don't lose it!
-                  needsPermission.push(f);
-                  console.warn(`[LocalFolders] Folder "${f.name}" needs permission re-grant`);
-                }
+                if (requested === 'granted') return { folder: f, granted: true };
               } catch (reqErr) {
-                // Keep folder even if request fails
-                needsPermission.push(f);
                 console.warn(`[LocalFolders] Folder "${f.name}" permission request failed:`, reqErr);
               }
+              console.warn(`[LocalFolders] Folder "${f.name}" needs permission re-grant`);
+              return { folder: f, granted: false };
+            } catch (e) {
+              console.warn(`[LocalFolders] Folder "${f.name}" permission check failed:`, e);
+              return { folder: f, granted: false };
             }
-          } catch (e) {
-            // Keep folder even on error - don't silently lose it!
-            needsPermission.push(f);
-            console.warn(`[LocalFolders] Folder "${f.name}" permission check failed:`, e);
-          }
-        }
-        // Include ALL folders in state - those needing permission just won't load assets yet
-        const allFolders = [...ok, ...needsPermission];
-        set({ folders: allFolders });
+          }),
+        );
+
+        const ok = permResults.filter((r) => r.granted).map((r) => r.folder);
         // Load all folder caches in parallel, then batch-set assets in one update
         // so the UI doesn't stagger folder-by-folder.
         const cacheResults = await Promise.all(
