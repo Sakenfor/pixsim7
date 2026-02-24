@@ -20,6 +20,9 @@ from pixsim7.backend.main.services.prompt.block.block_query import (
 )
 from pixsim7.backend.main.services.prompt.block.template_slots import TemplateSlotSpec
 from pixsim7.backend.main.domain.user import User
+from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
+    infer_composition_role,
+)
 
 router = APIRouter(prefix="/block-templates", tags=["block-templates"])
 
@@ -100,6 +103,8 @@ class TemplateSummaryResponse(BaseModel):
     tags: List[str] = Field(default_factory=list)
     is_public: bool = True
     roll_count: int = 0
+    composition_role_gap_count: int = 0
+    composition_role_ids: List[str] = Field(default_factory=list)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -129,6 +134,9 @@ class TemplateSlotDiagnosticsResponse(BaseModel):
     other_package_match_count: int = 0
     has_matches_outside_template_package: bool = False
     would_need_fallback_if_template_package_restricted: bool = False
+    composition_role_hint: Optional[str] = None
+    composition_role_confidence: Optional[str] = None
+    composition_role_reason: Optional[str] = None
 
 
 class TemplateDiagnosticsTemplateSummaryResponse(BaseModel):
@@ -176,6 +184,43 @@ async def create_template(
     return template
 
 
+def _compute_slot_composition_summary(slots: Any) -> tuple[int, List[str]]:
+    """Return (gap_count, unique_role_ids) from composition role inference."""
+    if not isinstance(slots, list):
+        return 0, []
+    gaps = 0
+    role_ids: set[str] = set()
+    for slot in slots:
+        if not isinstance(slot, dict):
+            continue
+        result = infer_composition_role(
+            role=slot.get("role"),
+            category=slot.get("category"),
+            tags=slot.get("tags") or slot.get("tag_constraints"),
+        )
+        if result.confidence in ("unknown", "ambiguous"):
+            gaps += 1
+        if result.role_id:
+            role_ids.add(result.role_id)
+    return gaps, sorted(role_ids)
+
+
+def _enrich_slots_with_composition_hints(slots: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Add composition_role_hint to each slot dict (non-mutating)."""
+    enriched = []
+    for slot in slots:
+        result = infer_composition_role(
+            role=slot.get("role"),
+            category=slot.get("category"),
+            tags=slot.get("tags") or slot.get("tag_constraints"),
+        )
+        enriched.append({
+            **slot,
+            "composition_role_hint": result.role_id,
+        })
+    return enriched
+
+
 @router.get("", response_model=List[TemplateSummaryResponse])
 async def list_templates(
     package_name: Optional[str] = Query(None),
@@ -194,8 +239,10 @@ async def list_templates(
         limit=limit,
         offset=offset,
     )
-    return [
-        TemplateSummaryResponse(
+    result = []
+    for t in templates:
+        gap_count, role_ids = _compute_slot_composition_summary(t.slots)
+        result.append(TemplateSummaryResponse(
             id=t.id,
             name=t.name,
             slug=t.slug,
@@ -206,11 +253,34 @@ async def list_templates(
             tags=t.tags or [],
             is_public=t.is_public,
             roll_count=t.roll_count,
+            composition_role_gap_count=gap_count,
+            composition_role_ids=role_ids,
             created_at=t.created_at,
             updated_at=t.updated_at,
-        )
-        for t in templates
-    ]
+        ))
+    return result
+
+
+def _template_response_with_hints(template: Any) -> TemplateResponse:
+    """Build TemplateResponse with composition_role_hint enriched on each slot."""
+    slots = template.slots if isinstance(template.slots, list) else []
+    return TemplateResponse(
+        id=template.id,
+        name=template.name,
+        slug=template.slug,
+        description=template.description,
+        slots=_enrich_slots_with_composition_hints(slots),
+        composition_strategy=template.composition_strategy,
+        package_name=template.package_name,
+        tags=template.tags or [],
+        is_public=template.is_public,
+        created_by=template.created_by,
+        roll_count=template.roll_count,
+        template_metadata=template.template_metadata or {},
+        character_bindings=template.character_bindings or {},
+        created_at=template.created_at,
+        updated_at=template.updated_at,
+    )
 
 
 @router.get("/{template_id}", response_model=TemplateResponse)
@@ -223,7 +293,7 @@ async def get_template(
     template = await service.get_template(template_id)
     if not template:
         raise HTTPException(404, "Template not found")
-    return template
+    return _template_response_with_hints(template)
 
 
 @router.get("/by-slug/{slug}", response_model=TemplateResponse)
@@ -236,7 +306,7 @@ async def get_template_by_slug(
     template = await service.get_template_by_slug(slug)
     if not template:
         raise HTTPException(404, "Template not found")
-    return template
+    return _template_response_with_hints(template)
 
 
 @router.patch("/{template_id}", response_model=TemplateResponse)
@@ -363,6 +433,113 @@ class BlockResponse(BaseModel):
         from_attributes = True
 
 
+class BlockCatalogRowResponse(BaseModel):
+    id: UUID
+    block_id: str
+    role: Optional[str] = None
+    category: Optional[str] = None
+    package_name: Optional[str] = None
+    kind: str = "single_state"
+    default_intent: Optional[str] = None
+    tags: Dict[str, Any] = Field(default_factory=dict)
+    word_count: int = 0
+    text_preview: str = ""
+
+
+class BlockMatrixCellSampleResponse(BaseModel):
+    id: UUID
+    block_id: str
+    package_name: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None
+
+
+class BlockMatrixCellResponse(BaseModel):
+    row_value: str
+    col_value: str
+    count: int
+    samples: List[BlockMatrixCellSampleResponse] = Field(default_factory=list)
+
+
+class BlockMatrixResponse(BaseModel):
+    row_key: str
+    col_key: str
+    row_values: List[str] = Field(default_factory=list)
+    col_values: List[str] = Field(default_factory=list)
+    total_blocks: int = 0
+    filters: Dict[str, Any] = Field(default_factory=dict)
+    cells: List[BlockMatrixCellResponse] = Field(default_factory=list)
+
+
+def _parse_tag_csv(tags: Optional[str]) -> Dict[str, str]:
+    tag_constraints: Dict[str, str] = {}
+    if not tags:
+        return tag_constraints
+    for pair in tags.split(","):
+        pair = pair.strip()
+        if ":" not in pair:
+            continue
+        tag_key, tag_value = pair.split(":", 1)
+        tag_constraints[tag_key.strip()] = tag_value.strip()
+    return tag_constraints
+
+
+def _resolve_block_matrix_value(
+    block: Any,
+    key: str,
+    *,
+    missing_label: str = "__missing__",
+) -> str:
+    """Resolve a matrix axis key from top-level block fields or tags.
+
+    Rules:
+    - `tag:<key>` explicitly targets tags
+    - known top-level keys use block attrs
+    - unknown keys fall back to tags[key]
+    """
+    key = (key or "").strip()
+    if not key:
+        return missing_label
+
+    top_level_keys = {"role", "category", "package_name", "kind", "default_intent", "complexity_level"}
+
+    if key.startswith("tag:"):
+        tag_key = key[4:]
+        value = (getattr(block, "tags", None) or {}).get(tag_key)
+    elif key in top_level_keys:
+        value = getattr(block, key, None)
+        if key == "default_intent" and value is not None:
+            value = getattr(value, "value", value)
+    else:
+        value = (getattr(block, "tags", None) or {}).get(key)
+
+    if value is None or value == "":
+        return missing_label
+    if isinstance(value, list):
+        return "|".join(str(v) for v in value)
+    if isinstance(value, dict):
+        # Keep matrix cells readable; nested dicts are not ideal matrix axes.
+        return "{...}"
+    return str(value)
+
+
+def _to_block_response(block: Any) -> BlockResponse:
+    return BlockResponse(
+        id=block.id,
+        block_id=block.block_id,
+        role=block.role,
+        category=block.category,
+        kind=block.kind,
+        default_intent=block.default_intent.value if block.default_intent else None,
+        text=block.text,
+        tags=block.tags or {},
+        complexity_level=block.complexity_level,
+        package_name=block.package_name,
+        description=block.description,
+        word_count=block.word_count or 0,
+    )
+
+
 @router.get("/blocks", response_model=List[BlockResponse])
 async def search_blocks(
     role: Optional[str] = Query(None, description="Filter by role"),
@@ -378,14 +555,7 @@ async def search_blocks(
     """Search prompt blocks with optional filters."""
     from pixsim7.backend.main.domain.prompt import PromptBlock
 
-    tag_constraints: Dict[str, str] = {}
-    if tags:
-        for pair in tags.split(","):
-            pair = pair.strip()
-            if ":" not in pair:
-                continue
-            tag_key, tag_value = pair.split(":", 1)
-            tag_constraints[tag_key.strip()] = tag_value.strip()
+    tag_constraints = _parse_tag_csv(tags)
 
     query = build_prompt_block_query(
         role=role,
@@ -402,23 +572,166 @@ async def search_blocks(
     result = await db.execute(query)
     blocks = result.scalars().all()
 
-    return [
-        BlockResponse(
-            id=b.id,
-            block_id=b.block_id,
-            role=b.role,
-            category=b.category,
-            kind=b.kind,
-            default_intent=b.default_intent.value if b.default_intent else None,
-            text=b.text,
-            tags=b.tags or {},
-            complexity_level=b.complexity_level,
-            package_name=b.package_name,
-            description=b.description,
-            word_count=b.word_count or 0,
+    return [_to_block_response(b) for b in blocks]
+
+
+@router.get("/meta/blocks/catalog", response_model=List[BlockCatalogRowResponse])
+async def get_block_catalog(
+    role: Optional[str] = Query(None, description="Filter by role"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    package_name: Optional[str] = Query(None, description="Filter by package"),
+    q: Optional[str] = Query(None, description="Text search in block_id and text"),
+    tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    preview_chars: int = Query(120, ge=20, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return normalized block rows for matrix tools / analysis / export."""
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    query = build_prompt_block_query(
+        role=role,
+        category=category,
+        kind=kind,
+        package_name=package_name,
+        text_query=q,
+        tag_constraints=_parse_tag_csv(tags) or None,
+    )
+    query = query.order_by(PromptBlock.role, PromptBlock.category, PromptBlock.block_id)
+    query = query.offset(offset).limit(limit)
+    result = await db.execute(query)
+    blocks = result.scalars().all()
+
+    rows: List[BlockCatalogRowResponse] = []
+    for b in blocks:
+        text = (b.text or "").strip()
+        if len(text) > preview_chars:
+            text = text[: max(0, preview_chars - 3)].rstrip() + "..."
+        rows.append(
+            BlockCatalogRowResponse(
+                id=b.id,
+                block_id=b.block_id,
+                role=b.role,
+                category=b.category,
+                package_name=b.package_name,
+                kind=b.kind,
+                default_intent=b.default_intent.value if b.default_intent else None,
+                tags=b.tags or {},
+                word_count=b.word_count or 0,
+                text_preview=text,
+            )
         )
-        for b in blocks
-    ]
+    return rows
+
+
+@router.get("/meta/blocks/matrix", response_model=BlockMatrixResponse)
+async def get_block_matrix(
+    row_key: str = Query(..., description="Matrix row axis key (tag key or top-level field; use tag:<key> for tags)"),
+    col_key: str = Query(..., description="Matrix column axis key (tag key or top-level field; use tag:<key> for tags)"),
+    role: Optional[str] = Query(None, description="Filter by role"),
+    category: Optional[str] = Query(None, description="Filter by category"),
+    kind: Optional[str] = Query(None, description="Filter by kind"),
+    package_name: Optional[str] = Query(None, description="Filter by package"),
+    q: Optional[str] = Query(None, description="Text search in block_id and text"),
+    tags: Optional[str] = Query(None, description="Tag filters as comma-separated key:value pairs"),
+    limit: int = Query(5000, ge=1, le=20000, description="Max blocks scanned for matrix"),
+    sample_per_cell: int = Query(3, ge=0, le=20, description="Sample blocks returned per matrix cell"),
+    missing_label: str = Query("__missing__", min_length=1, max_length=64),
+    include_empty: bool = Query(False, description="Include zero-count cells in response"),
+    expected_row_values: Optional[str] = Query(None, description="Optional comma-separated row values to include even when empty"),
+    expected_col_values: Optional[str] = Query(None, description="Optional comma-separated column values to include even when empty"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Build a block coverage matrix from DB-loaded blocks (AI + UI friendly)."""
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    query = build_prompt_block_query(
+        role=role,
+        category=category,
+        kind=kind,
+        package_name=package_name,
+        text_query=q,
+        tag_constraints=_parse_tag_csv(tags) or None,
+    )
+    query = query.order_by(PromptBlock.block_id).limit(limit)
+    result = await db.execute(query)
+    blocks = result.scalars().all()
+
+    matrix_counts: Dict[tuple[str, str], int] = {}
+    matrix_samples: Dict[tuple[str, str], List[Any]] = {}
+    row_values: set[str] = set()
+    col_values: set[str] = set()
+
+    for b in blocks:
+        row_value = _resolve_block_matrix_value(b, row_key, missing_label=missing_label)
+        col_value = _resolve_block_matrix_value(b, col_key, missing_label=missing_label)
+        row_values.add(row_value)
+        col_values.add(col_value)
+        key = (row_value, col_value)
+        matrix_counts[key] = matrix_counts.get(key, 0) + 1
+        if sample_per_cell > 0:
+            bucket = matrix_samples.setdefault(key, [])
+            if len(bucket) < sample_per_cell:
+                bucket.append(b)
+
+    if expected_row_values:
+        row_values.update(v.strip() for v in expected_row_values.split(",") if v.strip())
+    if expected_col_values:
+        col_values.update(v.strip() for v in expected_col_values.split(",") if v.strip())
+
+    sorted_rows = sorted(row_values)
+    sorted_cols = sorted(col_values)
+
+    cells: List[BlockMatrixCellResponse] = []
+    if include_empty:
+        keys_to_emit = [(r, c) for r in sorted_rows for c in sorted_cols]
+    else:
+        keys_to_emit = sorted(matrix_counts.keys())
+
+    for r, c in keys_to_emit:
+        count = matrix_counts.get((r, c), 0)
+        if not include_empty and count <= 0:
+            continue
+        samples = [
+            BlockMatrixCellSampleResponse(
+                id=b.id,
+                block_id=b.block_id,
+                package_name=b.package_name,
+                role=b.role,
+                category=b.category,
+            )
+            for b in matrix_samples.get((r, c), [])
+        ]
+        cells.append(
+            BlockMatrixCellResponse(
+                row_value=r,
+                col_value=c,
+                count=count,
+                samples=samples,
+            )
+        )
+
+    return BlockMatrixResponse(
+        row_key=row_key,
+        col_key=col_key,
+        row_values=sorted_rows,
+        col_values=sorted_cols,
+        total_blocks=len(blocks),
+        filters={
+            "role": role,
+            "category": category,
+            "kind": kind,
+            "package_name": package_name,
+            "q": q,
+            "tags": _parse_tag_csv(tags) or None,
+            "limit": limit,
+            "sample_per_cell": sample_per_cell,
+            "missing_label": missing_label,
+        },
+        cells=cells,
+    )
 
 
 @router.get("/blocks/roles", response_model=List[Dict[str, Any]])

@@ -81,6 +81,35 @@ export interface BlockTagFacetsQuery {
   package_name?: string;
 }
 
+export interface BlockCatalogQuery {
+  role?: string;
+  category?: string;
+  kind?: string;
+  package_name?: string;
+  q?: string;
+  tags?: string;
+  limit?: number;
+  offset?: number;
+  preview_chars?: number;
+}
+
+export interface BlockMatrixQuery {
+  row_key: string;
+  col_key: string;
+  role?: string;
+  category?: string;
+  kind?: string;
+  package_name?: string;
+  q?: string;
+  tags?: string;
+  limit?: number;
+  sample_per_cell?: number;
+  missing_label?: string;
+  include_empty?: boolean;
+  expected_row_values?: string;
+  expected_col_values?: string;
+}
+
 export interface PromptBlockResponse {
   id: string;
   block_id: string;
@@ -100,6 +129,44 @@ export interface BlockRoleSummary {
   role: string | null;
   category: string | null;
   count: number;
+}
+
+export interface BlockCatalogRow {
+  id: string;
+  block_id: string;
+  role: string | null;
+  category: string | null;
+  package_name: string | null;
+  kind: string;
+  default_intent: string | null;
+  tags: Record<string, unknown>;
+  word_count: number;
+  text_preview: string;
+}
+
+export interface BlockMatrixCellSample {
+  id: string;
+  block_id: string;
+  package_name: string | null;
+  role: string | null;
+  category: string | null;
+}
+
+export interface BlockMatrixCell {
+  row_value: string;
+  col_value: string;
+  count: number;
+  samples: BlockMatrixCellSample[];
+}
+
+export interface BlockMatrixResponse {
+  row_key: string;
+  col_key: string;
+  row_values: string[];
+  col_values: string[];
+  total_blocks: number;
+  filters: Record<string, unknown>;
+  cells: BlockMatrixCell[];
 }
 
 export interface ReloadContentPacksQuery {
@@ -151,6 +218,9 @@ export interface TemplateSlotDiagnostics {
   other_package_match_count: number;
   has_matches_outside_template_package: boolean;
   would_need_fallback_if_template_package_restricted: boolean;
+  composition_role_hint?: string | null;
+  composition_role_confidence?: 'exact' | 'heuristic' | 'ambiguous' | 'unknown' | null;
+  composition_role_reason?: string | null;
 }
 
 export interface TemplateDiagnosticsResponse {
@@ -284,6 +354,21 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
     ): Promise<Record<string, string[]>> {
       return client.get<Record<string, string[]>>(
         '/block-templates/blocks/tags',
+        { params: query },
+      );
+    },
+
+    async getBlockCatalog(query?: BlockCatalogQuery): Promise<BlockCatalogRow[]> {
+      const response = await client.get<readonly BlockCatalogRow[]>(
+        '/block-templates/meta/blocks/catalog',
+        { params: query },
+      );
+      return [...response];
+    },
+
+    async getBlockMatrix(query: BlockMatrixQuery): Promise<BlockMatrixResponse> {
+      return client.get<BlockMatrixResponse>(
+        '/block-templates/meta/blocks/matrix',
         { params: query },
       );
     },

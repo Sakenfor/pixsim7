@@ -73,6 +73,7 @@ export interface TemplateSlot {
   intensity?: number | null;
   inherit_intensity?: boolean;
   exclude_block_ids?: string[] | null;
+  composition_role_hint?: string | null;
 }
 
 /** Summary view of a block template (for lists) */
@@ -87,6 +88,8 @@ export interface BlockTemplateSummary {
   tags: string[];
   is_public: boolean;
   roll_count: number;
+  composition_role_gap_count?: number;
+  composition_role_ids?: string[];
   created_at: string;
   updated_at?: string;
 }

@@ -1,3 +1,4 @@
+import { ROLE_COLORS } from '@pixsim7/shared.types/composition-roles.generated';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -20,8 +21,41 @@ import { useWorkspaceStore } from '@features/workspace';
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
 import { BlockExplorerPanel } from '../block-explorer/BlockExplorerPanel';
+import { BlockMatrixView, type BlockMatrixPreset } from '../block-matrix/BlockMatrixView';
 
-type TabId = 'packages' | 'templates' | 'blocks';
+type TabId = 'packages' | 'templates' | 'blocks' | 'matrix';
+
+const MATRIX_PRESETS: BlockMatrixPreset[] = [
+  {
+    label: 'Role x Category',
+    description: 'Overview of all blocks by role and category',
+    query: { row_key: 'role', col_key: 'category' },
+  },
+  {
+    label: 'Pose Lock Coverage',
+    description: 'Pose lock blocks by rigidity and approach',
+    query: {
+      row_key: 'tag:rigidity',
+      col_key: 'tag:approach',
+      package_name: 'shared',
+      role: 'subject',
+      category: 'pose_lock',
+      include_empty: true,
+      expected_row_values: 'minimal,low,medium,high,maximum',
+      expected_col_values: 'skeletal,contour,gravity,i2v',
+    },
+  },
+  {
+    label: 'POV Progression',
+    description: 'POV approach response blocks by beat axis and response mode',
+    query: {
+      row_key: 'tag:beat_axis',
+      col_key: 'tag:response_mode',
+      tags: 'sequence_family:pov_approach_response',
+      include_empty: true,
+    },
+  },
+];
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -67,6 +101,10 @@ function roleBadgeClasses(color?: string): string {
       return 'border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300';
     case 'red':
       return 'border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300';
+    case 'pink':
+      return 'border-pink-200 text-pink-700 dark:border-pink-800/40 dark:text-pink-300';
+    case 'slate':
+      return 'border-slate-200 text-slate-700 dark:border-slate-700/40 dark:text-slate-300';
     default:
       return 'border-neutral-200 text-neutral-600 dark:border-neutral-700 dark:text-neutral-300';
   }
@@ -77,7 +115,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const { roles: compositionRoles, packages: compositionPackages } = useCompositionPackages();
   const contextTab = ((): TabId | undefined => {
     const raw = props.context?.tab;
-    return raw === 'packages' || raw === 'templates' || raw === 'blocks' ? raw : undefined;
+    return raw === 'packages' || raw === 'templates' || raw === 'blocks' || raw === 'matrix' ? raw : undefined;
   })();
   const contextFocusTemplateId =
     typeof props.context?.focusTemplateId === 'string' ? props.context.focusTemplateId : undefined;
@@ -312,6 +350,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             ['packages', 'Packages', 'library'],
             ['templates', 'Templates', 'layers'],
             ['blocks', 'Blocks', 'grid'],
+            ['matrix', 'Matrix', 'grid'],
           ] as Array<[TabId, string, string]>).map(([id, label, icon]) => (
             <button
               key={id}
@@ -490,7 +529,17 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                 >
                   <div className="text-xs font-medium text-neutral-800 dark:text-neutral-100 truncate">{t.name}</div>
                   <div className="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">{t.slug}</div>
-                  <div className="mt-1 text-[10px] text-neutral-500 dark:text-neutral-400">{t.package_name ?? 'unscoped'} | {t.slot_count} slots</div>
+                  <div className="mt-1 flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400">
+                    <span>{t.package_name ?? 'unscoped'} | {t.slot_count} slots</span>
+                    {(t.composition_role_gap_count ?? 0) > 0 && (
+                      <span
+                        className="px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300"
+                        title={`${t.composition_role_gap_count} slot(s) with unknown/ambiguous composition role`}
+                      >
+                        {t.composition_role_gap_count} unmapped
+                      </span>
+                    )}
+                  </div>
                 </button>
               ))}
             </div>
@@ -574,28 +623,50 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                         >
                           {(() => {
                             const roleId = slot.role ?? null;
-                            const roleDef = roleId ? compositionRoleMap.get(roleId) : undefined;
-                            const rolePkg = roleId ? compositionRolePackageMap.get(roleId) : undefined;
+                            const diag = slotDiagnosticsByIndex.get(slot.slot_index ?? i);
+                            const hintId = diag?.composition_role_hint;
+                            // Try direct composition role lookup first, then fall back to inferred hint
+                            const roleDef = (roleId ? compositionRoleMap.get(roleId) : undefined)
+                              ?? (hintId ? compositionRoleMap.get(hintId) : undefined);
+                            const effectiveRoleId = roleDef ? (compositionRoleMap.has(roleId ?? '') ? roleId! : hintId!) : null;
+                            const rolePkg = effectiveRoleId ? compositionRolePackageMap.get(effectiveRoleId) : undefined;
+                            const hintColor = hintId ? (ROLE_COLORS as Record<string, string>)[hintId] : undefined;
                             return (
                               <div className="flex items-center gap-1 flex-wrap">
-                                {roleId ? (
+                                {effectiveRoleId && roleDef ? (
                                   <button
                                     type="button"
-                                    onClick={() => openCompositionRole(roleId)}
+                                    onClick={() => openCompositionRole(effectiveRoleId)}
                                     className={clsx(
                                       'text-[10px] px-1 py-0.5 rounded border',
-                                      roleBadgeClasses(roleDef?.color),
+                                      roleBadgeClasses(roleDef.color),
                                     )}
-                                    title={roleDef ? `Open Composition Roles (${roleDef.label})` : 'Open Composition Roles'}
+                                    title={`Open Composition Roles (${roleDef.label})`}
                                   >
-                                    {roleDef?.label ?? roleId}
+                                    {roleDef.label}
                                   </button>
+                                ) : hintId ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openCompositionRole(hintId)}
+                                    className={clsx(
+                                      'text-[10px] px-1 py-0.5 rounded border',
+                                      roleBadgeClasses(hintColor),
+                                    )}
+                                    title={diag?.composition_role_reason ?? `Inferred: ${hintId}`}
+                                  >
+                                    {hintId}
+                                  </button>
+                                ) : roleId ? (
+                                  <span className="text-[10px] px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400">
+                                    {roleId}
+                                  </span>
                                 ) : (
                                   <span className="text-[10px] px-1 py-0.5 rounded border border-neutral-200 dark:border-neutral-700 text-neutral-500 dark:text-neutral-400">
                                     no role
                                   </span>
                                 )}
-                                {roleId && !roleDef && (
+                                {roleId && !roleDef && !hintId && (
                                   <span className="text-[10px] px-1 py-0.5 rounded border border-red-200 text-red-700 dark:border-red-900/40 dark:text-red-300">
                                     unknown role
                                   </span>
@@ -644,10 +715,39 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                           {(() => {
                             const diag = slotDiagnosticsByIndex.get(slot.slot_index ?? i);
                             if (!diag) return null;
+
+                            const crHint = diag.composition_role_hint;
+                            const crConf = diag.composition_role_confidence;
+                            const crReason = diag.composition_role_reason;
+                            const crColor = crHint ? (ROLE_COLORS as Record<string, string>)[crHint] : undefined;
+                            const isWeak = crConf === 'ambiguous' || crConf === 'unknown';
+                            const compositionRoleBadge = crHint ? (
+                              <button
+                                type="button"
+                                onClick={() => openCompositionRole(crHint)}
+                                className={clsx(
+                                  'text-[10px] px-1 py-0.5 rounded border',
+                                  roleBadgeClasses(crColor),
+                                )}
+                                title={crReason ?? crHint}
+                              >
+                                {crHint}
+                                {crConf === 'exact' ? '' : crConf === 'heuristic' ? ' ~' : ' ?'}
+                              </button>
+                            ) : isWeak ? (
+                              <span
+                                className="text-[10px] px-1 py-0.5 rounded border border-amber-200 text-amber-700 dark:border-amber-800/40 dark:text-amber-300"
+                                title={crReason ?? 'Could not infer composition role'}
+                              >
+                                {crConf === 'ambiguous' ? 'ambiguous role' : 'no role hint'}
+                              </span>
+                            ) : null;
+
                             if (diag.status_hint !== 'queryable') {
                               return (
-                                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                                  {diag.status_hint === 'reinforcement' ? 'Reinforcement slot (no block query)' : 'Audio cue slot (no block query)'}
+                                <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-neutral-500 dark:text-neutral-400">
+                                  <span>{diag.status_hint === 'reinforcement' ? 'Reinforcement slot (no block query)' : 'Audio cue slot (no block query)'}</span>
+                                  {compositionRoleBadge}
                                 </div>
                               );
                             }
@@ -673,6 +773,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
                                       needs package fallback
                                     </span>
                                   )}
+                                  {compositionRoleBadge}
                                 </div>
                                 {topPackages.length > 0 && (
                                   <div className="flex items-center gap-1 flex-wrap">
@@ -724,6 +825,17 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
               <div className="text-sm text-neutral-500">Select a template to inspect</div>
             )}
           </div>
+        </div>
+      )}
+
+      {tab === 'matrix' && (
+        <div className="flex-1 min-h-0">
+          <BlockMatrixView
+            embedded
+            initialQuery={selectedPackage ? { package_name: selectedPackage } : undefined}
+            lockedFields={selectedPackage ? { package_name: true } : undefined}
+            presets={MATRIX_PRESETS}
+          />
         </div>
       )}
     </div>

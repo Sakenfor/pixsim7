@@ -584,6 +584,24 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
 
   const selectedRole = selectedId ? roleMap.get(selectedId) : undefined;
 
+  // Eagerly load template summaries on mount (needed for unmapped role indicators)
+  useEffect(() => {
+    if (allTemplateSummaries) return;
+    void listTemplates({ limit: 200 }).then(setAllTemplateSummaries);
+  }, [allTemplateSummaries]);
+
+  // Compute set of composition role IDs used by at least one template slot
+  const usedRoleIds = useMemo(() => {
+    if (!allTemplateSummaries) return null;
+    const ids = new Set<string>();
+    for (const t of allTemplateSummaries) {
+      for (const id of t.composition_role_ids ?? []) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }, [allTemplateSummaries]);
+
   useEffect(() => {
     if (!focusRoleId) return;
     if (selectedId === focusRoleId) return;
@@ -625,7 +643,11 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
           }
         }
 
-        const missing = templateSummaries.filter((t) => !templateDetailsCacheRef.current.has(t.id));
+        // Pre-filter: only fetch details for templates that include this composition role
+        const candidateTemplates = templateSummaries.filter(
+          (t) => (t.composition_role_ids ?? []).includes(selectedId),
+        );
+        const missing = candidateTemplates.filter((t) => !templateDetailsCacheRef.current.has(t.id));
         for (const t of missing) {
           const detail = await getTemplate(t.id);
           templateDetailsCacheRef.current.set(t.id, detail);
@@ -638,12 +660,12 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
           .sort((a, b) => b.count - a.count || (a.category ?? '').localeCompare(b.category ?? ''));
 
         const templateMatches: RoleUsageTemplateMatch[] = [];
-        for (const t of templateSummaries) {
+        for (const t of candidateTemplates) {
           const detail = templateDetailsCacheRef.current.get(t.id);
           if (!detail) continue;
           const matchingSlots = (detail.slots ?? [])
             .map((slot, index) => ({ slot, index }))
-            .filter(({ slot }) => slot.role === selectedId)
+            .filter(({ slot }) => slot.composition_role_hint === selectedId)
             .map(({ slot, index }) => ({
               slotIndex: slot.slot_index ?? index,
               label: slot.label ?? '',
@@ -813,6 +835,7 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
                       ? role.id.split(':').pop()!
                       : role.id;
                     const pri = priorityMap.get(role.id);
+                    const isUnmapped = usedRoleIds != null && !usedRoleIds.has(role.id);
 
                     return (
                       <SidebarTreeLeafButton
@@ -821,12 +844,23 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
                         dotClassName={dotClass}
                         selected={role.id === selectedId}
                         onClick={() => setSelectedId(role.id)}
+                        labelClassName={isUnmapped ? 'opacity-40' : ''}
                         trailing={
-                          pri != null ? (
-                            <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">
-                              #{pri}
-                            </span>
-                          ) : undefined
+                          <>
+                            {isUnmapped && (
+                              <span
+                                className="text-[8px] px-1 py-px rounded border border-amber-700/40 text-amber-500/70 shrink-0"
+                                title="No template slots map to this composition role"
+                              >
+                                0
+                              </span>
+                            )}
+                            {pri != null && (
+                              <span className="text-[9px] text-neutral-600 tabular-nums shrink-0">
+                                #{pri}
+                              </span>
+                            )}
+                          </>
                         }
                       />
                     );
@@ -862,11 +896,22 @@ export function CompositionRolesPanel(props: CompositionRolesPanelProps = {}) {
           </div>
 
           {/* Footer count */}
-          {isFiltered && (
+          {(isFiltered || usedRoleIds != null) && (
             <div className="px-2 py-1 border-t border-neutral-800">
-              <p className="text-[9px] text-neutral-600 text-center">
-                {leafCount} / {totalLeafCount} roles
-              </p>
+              {isFiltered && (
+                <p className="text-[9px] text-neutral-600 text-center">
+                  {leafCount} / {totalLeafCount} roles
+                </p>
+              )}
+              {usedRoleIds != null && (() => {
+                const unmappedCount = roles.filter((r) => !r.isGroup && !usedRoleIds.has(r.id)).length;
+                if (unmappedCount === 0) return null;
+                return (
+                  <p className="text-[9px] text-amber-600/70 text-center">
+                    {unmappedCount} unmapped
+                  </p>
+                );
+              })()}
             </div>
           )}
         </div>

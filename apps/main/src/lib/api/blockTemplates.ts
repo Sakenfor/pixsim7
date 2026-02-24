@@ -23,6 +23,10 @@ export type {
   ListTemplatesQuery,
   SearchBlocksQuery,
   BlockTagFacetsQuery,
+  BlockCatalogQuery,
+  BlockCatalogRow,
+  BlockMatrixQuery,
+  BlockMatrixResponse,
   ReloadContentPacksQuery,
   ReloadContentPacksResponse,
   TemplateDiagnosticsResponse,
@@ -49,3 +53,5 @@ export const reloadContentPacks = blockTemplatesApi.reloadContentPacks;
 export const searchBlocks = blockTemplatesApi.searchBlocks;
 export const listBlockRoles = blockTemplatesApi.listBlockRoles;
 export const listBlockTagFacets = blockTemplatesApi.listBlockTagFacets;
+export const getBlockCatalog = blockTemplatesApi.getBlockCatalog;
+export const getBlockMatrix = blockTemplatesApi.getBlockMatrix;

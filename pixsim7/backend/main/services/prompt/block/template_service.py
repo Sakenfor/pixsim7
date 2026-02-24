@@ -29,6 +29,9 @@ from pixsim7.backend.main.services.prompt.block.template_slots import (
     normalize_template_slot,
     normalize_template_slots,
 )
+from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
+    infer_composition_role,
+)
 
 
 class BlockTemplateService:
@@ -258,6 +261,15 @@ class BlockTemplateService:
                 "template_package_name": template_package_name,
             }
 
+            inference = infer_composition_role(
+                role=slot.get("role"),
+                category=slot.get("category"),
+                tags=slot.get("tags") or slot.get("tag_constraints"),
+            )
+            base_entry["composition_role_hint"] = inference.role_id
+            base_entry["composition_role_confidence"] = inference.confidence
+            base_entry["composition_role_reason"] = inference.reason
+
             if kind in ("reinforcement", "audio_cue"):
                 slot_diagnostics.append({
                     **base_entry,
@@ -407,6 +419,28 @@ class BlockTemplateService:
         except (TypeError, ValueError):
             return default
 
+    @classmethod
+    def _intensity_proximity_score(
+        cls, block_tags: Dict[str, Any], target_intensity: Optional[int],
+    ) -> float:
+        """Score a candidate by how close its intensity tag is to the target.
+
+        Returns 1.0 for exact match, decays linearly by 0.2 per step of
+        distance, floors at 0.0.  Returns 0.0 if the block has no intensity
+        tag or if no target is set.
+        """
+        if target_intensity is None:
+            return 0.0
+        raw = block_tags.get("intensity")
+        if raw is None:
+            return 0.0
+        try:
+            block_intensity = int(raw)
+        except (TypeError, ValueError):
+            return 0.0
+        distance = abs(target_intensity - block_intensity)
+        return max(0.0, 1.0 - distance * 0.2)
+
     def _select_uniform_or_weighted_rating(
         self,
         *,
@@ -463,8 +497,11 @@ class BlockTemplateService:
         weight_avoid = self._coerce_float(weights_cfg.get("avoid_tags"), 1.0)
         weight_rating = self._coerce_float(weights_cfg.get("rating"), 0.25)
         weight_diversity = self._coerce_float(weights_cfg.get("diversity"), default_diversity_weight)
+        weight_intensity = self._coerce_float(weights_cfg.get("intensity"), 0.75)
         temperature = max(self._coerce_float(selection_config.get("temperature"), 0.0), 0.0)
         top_k = self._coerce_int(selection_config.get("top_k"), None)
+
+        target_intensity = self._coerce_int(slot.get("intensity"))
 
         scored: List[Tuple[PromptBlock, Dict[str, Any]]] = []
         for candidate in candidates:
@@ -473,11 +510,13 @@ class BlockTemplateService:
             avoid_score = self._match_ratio_for_tag_map(block_tags, preferences.get("avoid_tags"))
             rating_score = self._rating_score(candidate)
             diversity_score = self._diversity_score(candidate, selected_so_far, diversity_keys)
+            intensity_score = self._intensity_proximity_score(block_tags, target_intensity)
             total = (
                 weight_boost * boost_score
                 - weight_avoid * avoid_score
                 + weight_rating * rating_score
                 + weight_diversity * diversity_score
+                + weight_intensity * intensity_score
             )
             scored.append((
                 candidate,
@@ -486,6 +525,7 @@ class BlockTemplateService:
                     "avoid_tags": round(avoid_score, 6),
                     "rating": round(rating_score, 6),
                     "diversity": round(diversity_score, 6),
+                    "intensity": round(intensity_score, 6),
                     "total": round(total, 6),
                 },
             ))
@@ -524,7 +564,9 @@ class BlockTemplateService:
                 "avoid_tags": weight_avoid,
                 "rating": weight_rating,
                 "diversity": weight_diversity,
+                "intensity": weight_intensity,
             },
+            "target_intensity": target_intensity,
             "diversity_keys": diversity_keys or [],
             "scores": debug_scores,
         }
@@ -634,9 +676,10 @@ class BlockTemplateService:
         """Apply template control slider effects to slot preferences.
 
         For each slider control, resolves its current value (from control_values
-        or defaultValue), finds active slot_tag_boost effects (value >= enabledAt),
-        keeps the highest-threshold winner per slot label, and merges boost/avoid
-        tags into the matching slots' preferences.
+        or defaultValue) and applies effects:
+        - slot_tag_boost: merges boost/avoid tags into slot preferences
+          (highest-threshold winner per slot label)
+        - slot_intensity: sets slot intensity to the control's current value
         """
         controls = template_metadata.get("controls") or []
         if not controls:
@@ -657,6 +700,14 @@ class BlockTemplateService:
                 control_id, control.get("defaultValue", 0)
             )
             effects = control.get("effects") or []
+
+            # Apply slot_intensity effects
+            for effect in effects:
+                if effect.get("kind") != "slot_intensity":
+                    continue
+                slot_label = effect.get("slotLabel", "")
+                for target_slot in slots_by_label.get(slot_label, []):
+                    target_slot["intensity"] = round(value)
 
             # Collect winning slot_tag_boost per slot label
             # (highest enabledAt that is still active)
