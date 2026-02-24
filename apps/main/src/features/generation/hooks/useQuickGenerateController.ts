@@ -14,8 +14,10 @@ import { useQuickGenerateBindings } from '@features/prompts';
 import { useBlockTemplateStore } from '@features/prompts/stores/blockTemplateStore';
 import { providerCapabilityRegistry } from '@features/providers';
 
+import { resolveMaxSlotsFromSpecs, resolveMaxSlotsForModel } from '@/components/media/SlotPicker';
 import { getFallbackOperation } from '@/types/operations';
 import { resolvePromptLimitForModel } from '@/utils/prompt/limits';
+
 
 
 import { computeCombinations, computeSetCombinations, isSetStrategy, type EachStrategy, type CombinationStrategy } from '../lib/combinationStrategies';
@@ -92,6 +94,10 @@ export function useQuickGenerateController() {
   const setPrompt = useSessionStore((s) => s.setPrompt);
 
   // Template pinning state (global, from blockTemplateStore)
+  // Sync pinned template per-operation (same pattern as promptPerOperation in session store)
+  useEffect(() => {
+    useBlockTemplateStore.getState().syncOperation(operationType);
+  }, [operationType]);
   const pinnedTemplateId = useBlockTemplateStore((s) => s.pinnedTemplateId);
   const templateRollMode = useBlockTemplateStore((s) => s.templateRollMode);
 
@@ -211,22 +217,23 @@ export function useQuickGenerateController() {
     }
   }
 
-  /** Roll the pinned template (if any) and return the assembled prompt, or null. */
+  /** Roll the pinned template (if any) and return the assembled prompt.
+   *  Throws on failure so the caller can show a visible error instead of
+   *  silently falling back to the manual prompt. */
   async function maybeRollTemplate(): Promise<string | null> {
     if (!pinnedTemplateId) return null;
-    try {
-      const { draftCharacterBindings: bindings, controlValues } = useBlockTemplateStore.getState();
-      const hasBindings = Object.keys(bindings).length > 0;
-      const hasControlOverrides = Object.keys(controlValues).length > 0;
-      const result = await rollTemplate(pinnedTemplateId, {
-        character_bindings: hasBindings ? bindings : undefined,
-        control_values: hasControlOverrides ? controlValues : undefined,
-      });
-      return result?.success ? result.assembled_prompt : null;
-    } catch {
-      logEvent('WARN', 'template_roll_failed', { templateId: pinnedTemplateId });
-      return null;
+    const { draftCharacterBindings: bindings, controlValues } = useBlockTemplateStore.getState();
+    const hasBindings = Object.keys(bindings).length > 0;
+    const hasControlOverrides = Object.keys(controlValues).length > 0;
+    const result = await rollTemplate(pinnedTemplateId, {
+      character_bindings: hasBindings ? bindings : undefined,
+      control_values: hasControlOverrides ? controlValues : undefined,
+    });
+    if (!result?.success) {
+      const warnings = result?.warnings?.length ? `: ${result.warnings.join(', ')}` : '';
+      throw new Error(`Template roll failed${warnings}`);
     }
+    return result.assembled_prompt;
   }
 
   /** Build and validate a generation request, resolving the effective operation type */
@@ -238,13 +245,21 @@ export function useQuickGenerateController() {
   ): { error: string } | { finalPrompt: string; params: any; effectiveOperationType: string } {
     // Resolve prompt limit so buildGenerationRequest can clamp the prompt
     const opSpec = providerCapabilityRegistry.getOperationSpec(providerId ?? '', operationType);
-    const maxChars = resolvePromptLimitForModel(providerId, dynamicParams?.model as string | undefined, opSpec?.parameters);
+    const model = dynamicParams?.model as string | undefined;
+    const maxChars = resolvePromptLimitForModel(providerId, model, opSpec?.parameters);
+
+    // Clamp inputs to the model's max slot limit so we never send more assets than allowed
+    const maxSlots = resolveMaxSlotsFromSpecs(opSpec?.parameters, operationType, model)
+      ?? resolveMaxSlotsForModel(operationType, model);
+    const clampedInputs = operationInputs.length > maxSlots
+      ? operationInputs.slice(0, maxSlots)
+      : operationInputs;
 
     const buildResult = buildGenerationRequest({
       operationType,
       prompt: overrides?.promptOverride ?? prompt,
       dynamicParams,
-      operationInputs,
+      operationInputs: clampedInputs,
       prompts: bindings.prompts,
       transitionDurations: bindings.transitionDurations,
       activeAsset: overrides?.activeAsset ?? bindings.lastSelectedAsset,
