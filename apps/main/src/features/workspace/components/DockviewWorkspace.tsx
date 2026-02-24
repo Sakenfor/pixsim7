@@ -1,14 +1,13 @@
 import type { DockviewReadyEvent, DockviewApi } from "dockview-core";
-import { useRef, useEffect, useMemo, useCallback } from "react";
-import { useShallow } from "zustand/react/shallow";
+import { useRef, useEffect, useCallback } from "react";
 
-
-import { SmartDockview, getDockviewGroups, resolvePanelDefinitionId } from "@lib/dockview";
+import { SmartDockview, getDockviewGroups } from "@lib/dockview";
 import { SiblingPanelsDropdown } from "@lib/dockview/SiblingPanelsDropdown";
 // Note: widgets auto-register on import via @lib/widgets/register
 
 import { initializePanels } from "@features/panels";
 
+import { useAppDockviewIntegration } from "../hooks/useAppDockviewIntegration";
 import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -24,8 +23,10 @@ function WorkspaceWatermark() {
 export function DockviewWorkspace() {
   const apiRef = useRef<DockviewReadyEvent["api"] | null>(null);
   const isLocked = useWorkspaceStore((s) => s.isLocked);
-  const floatingPanelIdList = useWorkspaceStore(useShallow((s) => s.floatingPanels.map((p) => p.id)));
-  const floatingPanelIds = useMemo(() => new Set(floatingPanelIdList), [floatingPanelIdList]);
+  const {
+    capabilities,
+    floatingPanelDefinitionIdSet: floatingPanelIds,
+  } = useAppDockviewIntegration("workspace");
 
   // Wrap createDefaultLayout to pass floating panel IDs
   const defaultLayoutWithFloatingCheck = useCallback(
@@ -65,19 +66,6 @@ export function DockviewWorkspace() {
       }
     });
   }, [isLocked]);
-
-  // Memoize capabilities to prevent handleReady from being recreated on every render
-  const capabilities = useMemo(
-    () => ({
-      floatPanelHandler: (dockviewPanelId: string, panel: any, options?: any) => {
-        const workspacePanelId = resolvePanelDefinitionId(panel);
-        if (workspacePanelId) {
-          useWorkspaceStore.getState().openFloatingPanel(workspacePanelId, options);
-        }
-      },
-    }),
-    []
-  );
 
   return (
     <div className="h-full w-full">

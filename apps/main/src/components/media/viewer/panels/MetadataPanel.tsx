@@ -7,13 +7,16 @@
 
 import type { ViewerPanelContext } from '../types';
 
+import { useViewerContext } from './hooks';
+
 interface MetadataPanelProps {
   context: ViewerPanelContext;
   panelId: string;
 }
 
 export function MetadataPanel({ context }: MetadataPanelProps) {
-  const { asset } = context;
+  const { resolvedContext } = useViewerContext({ context });
+  const { asset } = resolvedContext;
 
   if (!asset) {
     return (

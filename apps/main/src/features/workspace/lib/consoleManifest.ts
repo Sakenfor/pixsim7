@@ -15,6 +15,7 @@ import { useWorkspaceStore } from '../stores/workspaceStore';
 import { getBuiltinPreset } from './builtinPresets';
 import { createDefaultLayout } from './defaultWorkspaceLayout';
 import { clearDockview, buildLayoutFromRecipe } from './layoutRecipes';
+import { panelPlacementCoordinator } from './panelPlacementCoordinator';
 import { resolveWorkspaceDockview } from './resolveWorkspaceDockview';
 
 /**
@@ -70,8 +71,7 @@ export const workspaceManifest: ConsoleManifest = {
             const builtin = getBuiltinPreset(presetId);
             if (builtin && builtin.recipe.panels.length > 0) {
               clearDockview(api);
-              const floatingIds = new Set(store.floatingPanels.map((p) => p.id));
-              buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
+              buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
             } else {
               clearDockview(api);
               createDefaultLayout(api);

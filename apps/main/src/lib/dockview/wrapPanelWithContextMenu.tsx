@@ -42,6 +42,57 @@ export interface PanelWrapOptions {
   category?: string;
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null) return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function sanitizeFloatingContextValue(
+  value: unknown,
+  seen: WeakSet<object>,
+  depth: number,
+): unknown {
+  if (value == null) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "bigint" || typeof value === "function" || typeof value === "symbol") {
+    return undefined;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (depth <= 0) {
+    return undefined;
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => sanitizeFloatingContextValue(entry, seen, depth - 1))
+      .filter((entry) => entry !== undefined);
+  }
+  if (!isPlainObject(value)) {
+    return undefined;
+  }
+  if (seen.has(value)) {
+    return undefined;
+  }
+  seen.add(value);
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const next = sanitizeFloatingContextValue(entry, seen, depth - 1);
+    if (next !== undefined) {
+      out[key] = next;
+    }
+  }
+  return out;
+}
+
+function buildFloatingContextPayload(context: unknown): Record<string, unknown> | undefined {
+  const sanitized = sanitizeFloatingContextValue(context, new WeakSet<object>(), 5);
+  return isPlainObject(sanitized) ? sanitized : undefined;
+}
+
 /**
  * Wraps a panel component with:
  * - Context menu handler (panel-content + component-level contexts)
@@ -79,6 +130,11 @@ export function wrapPanelWithContextMenu(
     const dockviewId = useDockviewId();
     const contextHubState = useContextHubState();
     const instanceId = getInstanceId(dockviewId, panelProps.api?.id ?? panelId);
+    const floatingContextPayload = buildFloatingContextPayload(contextRef.current);
+
+    // Expose a runtime-only, sanitized host context snapshot for float actions.
+    // Do not store this in panel params (those are persisted by dockview layouts).
+    (panelProps.api as any).__pixsimFloatingContextPayload = floatingContextPayload;
 
     const handleContextMenu = (event: React.MouseEvent) => {
       if (!contextMenuActive || !enablePanelContentContextMenu || !menu) return;

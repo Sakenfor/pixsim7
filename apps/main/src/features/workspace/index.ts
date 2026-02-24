@@ -32,9 +32,24 @@ export {
 
 // Hooks
 export { useWorkspacePresets } from "./hooks/useWorkspacePresets";
+export { useAppDockviewIntegration, type AppDockviewIntegration } from "./hooks/useAppDockviewIntegration";
+export {
+  useFloatingPanelDefinitionIds,
+  useFloatingPanelDefinitionIdSet,
+  useFloatingExcludedPanelIds,
+  useDockPlacementExclusions,
+  useDockviewDockedPanelDefinitionIds,
+  usePanelPlacements,
+  usePanelPlacementDiagnostics,
+} from "./hooks/useFloatingPanelPlacement";
 
 // Console Module
 export { workspaceManifest } from "./lib/consoleManifest";
+export {
+  panelPlacementCoordinator,
+  type PlacementDiagnostic,
+  type PanelPlacement,
+} from "./lib/panelPlacementCoordinator";
 
 // Dockview helpers
 export { resolveWorkspaceDockview } from "./lib/resolveWorkspaceDockview";

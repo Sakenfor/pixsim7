@@ -45,7 +45,7 @@ export function clearDockview(api: DockviewApi) {
 export function buildLayoutFromRecipe(
   api: DockviewApi,
   recipe: LayoutRecipe,
-  floatingPanelIds?: Set<string>,
+  floatingPanelIds?: ReadonlySet<string>,
 ) {
   for (const placement of recipe.panels) {
     const meta = panelSelectors.get(placement.id);

@@ -14,11 +14,7 @@
 import { useEffect, useMemo, useCallback, useRef } from 'react';
 
 import type { ViewerAsset } from '@features/assets';
-import {
-  CAP_ASSET_SELECTION,
-  useCapability,
-  type AssetSelection,
-} from '@features/contextHub';
+import { useResolvedPanelAsset } from '@features/panels/hooks/useResolvedPanelAsset';
 
 import {
   InteractiveImageSurface,
@@ -205,12 +201,13 @@ export function InteractiveSurfacePanel({
   params,
 }: InteractiveSurfacePanelProps) {
   const surfaceRef = useRef<InteractiveImageSurfaceHandle>(null);
-  const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
 
-  // Get asset from context hierarchy
-  const asset = useMemo(() => {
-    return context?.currentAsset || params?.asset || selection?.asset || null;
-  }, [context?.currentAsset, params?.asset, selection?.asset]);
+  // Generic panel asset resolution (host context -> params -> capability selection)
+  const asset = useResolvedPanelAsset({
+    context,
+    params,
+    precedence: ['context', 'params', 'selection'],
+  });
 
   // Initialize interaction layer
   const {

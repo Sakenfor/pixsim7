@@ -7,8 +7,10 @@
  * - Generic: Show workspace info
  */
 
-import { useMemo } from 'react';
 import type { ViewerAsset } from '@features/assets';
+
+import { useResolvedPanelAsset } from '../../hooks/useResolvedPanelAsset';
+import { useResolvedPanelScene } from '../../hooks/useResolvedPanelScene';
 
 export interface InfoPanelContext {
   /** Current asset being viewed */
@@ -142,9 +144,16 @@ function SceneInfo({ sceneId }: { sceneId: string }) {
 }
 
 export function InfoPanel({ context, params }: InfoPanelProps) {
-  const asset = useMemo(() => {
-    return context?.currentAsset || params?.asset;
-  }, [context?.currentAsset, params?.asset]);
+  const asset = useResolvedPanelAsset({
+    context,
+    params,
+    precedence: ['context', 'params', 'selection'],
+  });
+  const sceneId = useResolvedPanelScene({
+    context,
+    params,
+    precedence: ['context', 'params', 'capability'],
+  });
 
   // Asset context - Show asset metadata
   if (asset) {
@@ -152,8 +161,8 @@ export function InfoPanel({ context, params }: InfoPanelProps) {
   }
 
   // Scene context - Show scene info
-  if (context?.currentSceneId) {
-    return <SceneInfo sceneId={context.currentSceneId} />;
+  if (sceneId) {
+    return <SceneInfo sceneId={sceneId} />;
   }
 
   // Generic context - Show workspace info

@@ -6,9 +6,15 @@
  */
 
 import type { DockviewApi } from "dockview-core";
-import { useCallback, useEffect, useImperativeHandle, useState, forwardRef } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useState, forwardRef } from "react";
 
-import { SmartDockview, createDockviewHost, ensurePanels } from "@lib/dockview";
+import {
+  SmartDockview,
+  createDockviewHost,
+  ensurePanels,
+  getDockviewPanels,
+  resolvePanelDefinitionId,
+} from "@lib/dockview";
 import type { DockviewHost } from "@lib/dockview";
 
 type DockviewPanelPosition = Parameters<DockviewApi["addPanel"]>[0]["position"];
@@ -24,6 +30,8 @@ export interface PanelHostDockviewProps {
   allowedPanels?: string[];
   /** Optional allowlist of panel categories to include. */
   allowedCategories?: string[];
+  /** Panel IDs that should not exist in the persisted/embedded layout. */
+  excludeFromLayout?: readonly string[];
   /** Storage key for persisting layout. */
   storageKey: string;
   /**
@@ -41,6 +49,10 @@ export interface PanelHostDockviewProps {
   minPanelsForTabs?: number;
   /** Enable context menu (default: true). */
   enableContextMenu?: boolean;
+  /** Optional dock capabilities (e.g. floatPanelHandler). */
+  capabilities?: {
+    floatPanelHandler?: (dockviewPanelId: string, panel: any, options?: any) => void;
+  };
   /** CSS class for the container. */
   className?: string;
   /** Default scopes to apply to panels without explicit scopes. */
@@ -74,12 +86,14 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
       onReady,
       minPanelsForTabs = 1,
       enableContextMenu = true,
+      capabilities,
       className,
       defaultPanelScopes,
       dockId,
       excludePanels,
       allowedPanels,
       allowedCategories,
+      excludeFromLayout,
       resolvePanelTitle,
       resolvePanelPosition,
     },
@@ -88,45 +102,88 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
     const [dockviewApi, setDockviewApi] = useState<DockviewApi | null>(null);
     const [resetKey, setResetKey] = useState(0);
     const [dockviewHost, setDockviewHost] = useState<DockviewHost | null>(null);
+    const excludedFromLayoutSet = useMemo(
+      () => new Set(excludeFromLayout ?? []),
+      [excludeFromLayout]
+    );
 
-    const ensureDockviewPanels = useCallback(
+    const reconcileDockviewPanels = useCallback(
       (api: DockviewApi) => {
         if (!api) {
           return;
         }
-        ensurePanels(api, panels ?? [], {
-          resolveOptions: (panelId, apiInstance) => {
-            const position = resolvePanelPosition?.(panelId, apiInstance);
-            if (resolvePanelTitle) {
-              return {
-                title: resolvePanelTitle(panelId),
-                position,
-              };
+
+        if (excludedFromLayoutSet.size > 0) {
+          for (const panel of getDockviewPanels(api)) {
+            const panelId = typeof (panel as any)?.id === "string" ? (panel as any).id : undefined;
+            const resolvedId = resolvePanelDefinitionId(panel as any) ?? panelId;
+            if (
+              (panelId && excludedFromLayoutSet.has(panelId)) ||
+              (resolvedId && excludedFromLayoutSet.has(resolvedId))
+            ) {
+              api.removePanel(panel);
             }
-            if (position) {
-              return { position };
-            }
-            return undefined;
-          },
-        });
+          }
+        }
+
+        ensurePanels(
+          api,
+          (panels ?? []).filter((panelId) => !excludedFromLayoutSet.has(panelId)),
+          {
+            resolveOptions: (panelId, apiInstance) => {
+              const position = resolvePanelPosition?.(panelId, apiInstance);
+              if (resolvePanelTitle) {
+                return {
+                  title: resolvePanelTitle(panelId),
+                  position,
+                };
+              }
+              if (position) {
+                return { position };
+              }
+              return undefined;
+            },
+          }
+        );
       },
-      [panels, resolvePanelPosition, resolvePanelTitle]
+      [excludedFromLayoutSet, panels, resolvePanelPosition, resolvePanelTitle]
     );
 
     const handleReady = useCallback(
       (api: DockviewApi) => {
         setDockviewApi(api);
         setDockviewHost(createDockviewHost(panelManagerId ?? storageKey, api));
-        ensureDockviewPanels(api);
+        reconcileDockviewPanels(api);
         onReady?.(api);
       },
-      [ensureDockviewPanels, onReady, panelManagerId, storageKey]
+      [reconcileDockviewPanels, onReady, panelManagerId, storageKey]
     );
 
     useEffect(() => {
       if (!dockviewApi) return;
-      requestAnimationFrame(() => ensureDockviewPanels(dockviewApi));
-    }, [dockviewApi, ensureDockviewPanels]);
+      requestAnimationFrame(() => reconcileDockviewPanels(dockviewApi));
+    }, [dockviewApi, reconcileDockviewPanels]);
+
+    useEffect(() => {
+      if (!dockviewApi || excludedFromLayoutSet.size === 0) {
+        return;
+      }
+
+      const scheduleReconcile = () => {
+        requestAnimationFrame(() => reconcileDockviewPanels(dockviewApi));
+      };
+
+      const addDisposable = dockviewApi.onDidAddPanel(scheduleReconcile);
+      const layoutDisposable =
+        typeof (dockviewApi as any).onDidLayoutFromJSON === "function"
+          ? (dockviewApi as any).onDidLayoutFromJSON(scheduleReconcile)
+          : null;
+
+      return () => {
+        addDisposable.dispose();
+        layoutDisposable?.dispose?.();
+      };
+    }, [dockviewApi, excludedFromLayoutSet, reconcileDockviewPanels]);
 
     const resetLayout = useCallback(() => {
       if (storageKey) {
@@ -164,6 +221,7 @@ export const PanelHostDockview = forwardRef<PanelHostDockviewRef, PanelHostDockv
           minPanelsForTabs={minPanelsForTabs}
           onReady={handleReady}
           enableContextMenu={enableContextMenu}
+          capabilities={capabilities}
         />
       </div>
     );

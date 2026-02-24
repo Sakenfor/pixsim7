@@ -1,6 +1,8 @@
 import type { WorkspaceActions } from "../stores/workspaceStore";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
+import { panelPlacementCoordinator } from "./panelPlacementCoordinator";
+
 type FloatingOpenOptions = Parameters<WorkspaceActions["openFloatingPanel"]>[1];
 
 /**
@@ -18,5 +20,5 @@ export function openFloatingWorkspacePanel(
   panelId: string,
   options?: FloatingOpenOptions,
 ): void {
-  useWorkspaceStore.getState().openFloatingPanel(panelId, options);
+  panelPlacementCoordinator.openFloatingPanel(panelId, options);
 }

@@ -71,7 +71,18 @@ const panelsSubmenuAction: MenuAction = {
     const dynamicQuickAdd = getQuickAddActions(ctx)
       .filter(a => a.visible?.(ctx) !== false)
       .map(a => ({ ...a, category: undefined }));
-    items.push(...dynamicQuickAdd);
+    if (dynamicQuickAdd.length > 0) {
+      const editQuickAdd = getEditQuickAddActions(ctx);
+      items.push({
+        id: 'composite:panels:quick-add-header',
+        label: 'Quick Add ⚙',
+        icon: 'pin',
+        availableIn: ['background', 'tab', 'panel-content'],
+        children: editQuickAdd.children,
+        execute: () => {},
+      });
+      items.push(...dynamicQuickAdd);
+    }
 
     // Section 2: Add Panel submenu
     if (addPanelAction.visible?.(ctx) !== false) {
@@ -92,7 +103,7 @@ const panelsSubmenuAction: MenuAction = {
     }
 
     // Section 4: Edit Quick Add
-    if (ctx.panelRegistry) {
+    if (ctx.panelRegistry && dynamicQuickAdd.length === 0) {
       if (items.length > 0) {
         items[items.length - 1] = { ...items[items.length - 1], divider: true };
       }

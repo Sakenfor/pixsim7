@@ -647,6 +647,7 @@ export function SmartDockview<TContext = any, TPanelId extends string = string>(
       dockviewId={dockviewId}
       panelRegistry={dockviewPanelRegistry}
       dockviewApi={dockviewApi}
+      floatPanelHandler={capabilities?.floatPanelHandler}
     >
       <div
         className="h-full w-full"

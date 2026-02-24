@@ -10,6 +10,7 @@ import { menuActionsToCapabilityActions } from '@pixsim7/shared.ui.context-menu'
 
 import { registerActionsFromDefinitions } from '@lib/capabilities';
 
+import { getDockWidgetByDockviewId, getDockWidgetPanelIds } from '@features/panels';
 import { useWorkspaceStore } from '@features/workspace';
 
 import { resolveCurrentDockview } from '../resolveCurrentDockview';
@@ -66,6 +67,53 @@ function formatCategoryLabel(category: string): string {
     .replace(/\b\w/g, (match) => match.toUpperCase());
 }
 
+function getPanelRegistryEntries(ctx: MenuActionContext) {
+  if (!ctx.panelRegistry) return [];
+  return ctx.panelRegistry.getPublicPanels
+    ? ctx.panelRegistry.getPublicPanels()
+    : ctx.panelRegistry.getAll();
+}
+
+function getDefaultScopePanelSubmenu(ctx: MenuActionContext, api: ReturnType<typeof resolveCurrentDockview>["api"]): MenuAction | null {
+  if (!ctx.currentDockviewId || !ctx.panelRegistry) return null;
+
+  const defaultPanelIds = getDockWidgetPanelIds(ctx.currentDockviewId);
+  if (!defaultPanelIds.length) return null;
+
+  const panelMap = new Map(getPanelRegistryEntries(ctx).map((p) => [p.id, p]));
+  const dockWidget = getDockWidgetByDockviewId(ctx.currentDockviewId);
+  const scopeLabel = dockWidget?.label ?? ctx.currentDockviewId;
+
+  const children = defaultPanelIds
+    .map((panelId) => {
+      const panel = panelMap.get(panelId);
+      if (!panel) return null;
+      return {
+        id: `panel:add:default-scope:${panel.id}`,
+        label: panel.title,
+        icon: panel.icon,
+        availableIn: ['background', 'tab', 'panel-content'] as const,
+        disabled: () =>
+          panel.supportsMultipleInstances
+            ? false
+            : api && isPanelOpenInCurrentDockview(ctx, panel.id, false) ? 'Already open' : false,
+        execute: () => addPanel(ctx, panel.id, !!panel.supportsMultipleInstances),
+      } satisfies MenuAction;
+    })
+    .filter((item): item is MenuAction => item !== null);
+
+  if (!children.length) return null;
+
+  return {
+    id: `panel:add:defaults:${ctx.currentDockviewId}`,
+    label: `Default Panels (${scopeLabel})`,
+    icon: 'layout',
+    availableIn: ['background', 'tab', 'panel-content'],
+    children,
+    execute: () => {},
+  };
+}
+
 /**
  * Add panel to the current dockview
  */
@@ -120,6 +168,11 @@ export const addPanelAction: MenuAction = {
     const categoryActions: MenuAction[] = [];
     const { api } = resolveCurrentDockview(ctx);
 
+    const defaultScopeSubmenu = getDefaultScopePanelSubmenu(ctx, api);
+    if (defaultScopeSubmenu) {
+      categoryActions.push(defaultScopeSubmenu);
+    }
+
     // Sort categories (put "Core" first, "Other" last)
     const sortedCategories = Array.from(categories.entries()).sort(([a], [b]) => {
       if (a === 'Core') return -1;
@@ -148,6 +201,10 @@ export const addPanelAction: MenuAction = {
         })),
         execute: () => {},
       });
+    }
+
+    if (defaultScopeSubmenu && categoryActions.length > 1) {
+      categoryActions[0] = { ...categoryActions[0], divider: true };
     }
 
     return categoryActions;

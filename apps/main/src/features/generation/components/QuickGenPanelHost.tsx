@@ -26,14 +26,15 @@ import {
   PanelHostDockview,
   type PanelHostDockviewRef,
 } from '@features/panels';
-
-// Import from panel group definition
 import quickgenGroup, {
   QUICKGEN_PANEL_IDS,
   QUICKGEN_PRESETS,
   type QuickGenSlot,
   type QuickGenPreset,
 } from '@features/panels/domain/groups/quickgen';
+import { useAppDockviewIntegration } from '@features/workspace';
+
+// Import from panel group definition
 
 type DockviewPanelPosition = Parameters<DockviewApi['addPanel']>[0]['position'];
 
@@ -111,6 +112,12 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
     },
     ref
   ) => {
+    const {
+      capabilities: dockCapabilities,
+      floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
+      placementExclusions: floatingQuickGenPanelIds,
+    } = useAppDockviewIntegration(panelManagerId, panels);
+
     // Create default layout function for this panel set
     const createDefaultLayout = useCallback(
       (api: DockviewApi) => {
@@ -122,10 +129,11 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
 
         // Use safe API to avoid "panel already exists" errors
         const safe = createSafeApi(api);
+        const includedPanels = panels.filter((panelId) => !floatingPanelDefinitionIds.has(panelId));
 
         // Auto-layout: add panels in order with sensible positions
-        const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
-        const hasBlocks = panels.includes(QUICKGEN_PANEL_IDS.blocks);
+        const hasAsset = includedPanels.includes(QUICKGEN_PANEL_IDS.asset);
+        const hasBlocks = includedPanels.includes(QUICKGEN_PANEL_IDS.blocks);
 
         const promptPanel = api.getPanel(QUICKGEN_PANEL_IDS.prompt);
 
@@ -147,7 +155,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         }
 
         // Prompt (if not first)
-        if (hasAsset && panels.includes(QUICKGEN_PANEL_IDS.prompt)) {
+        if (hasAsset && includedPanels.includes(QUICKGEN_PANEL_IDS.prompt)) {
           safe.addPanel({
             id: QUICKGEN_PANEL_IDS.prompt,
             component: QUICKGEN_PANEL_IDS.prompt,
@@ -159,7 +167,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         }
 
         // Settings
-        if (panels.includes(QUICKGEN_PANEL_IDS.settings)) {
+        if (includedPanels.includes(QUICKGEN_PANEL_IDS.settings)) {
           const settingsRefPanel = api.getPanel(QUICKGEN_PANEL_IDS.prompt)
             ? QUICKGEN_PANEL_IDS.prompt
             : api.getPanel(QUICKGEN_PANEL_IDS.asset)
@@ -185,7 +193,7 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
           });
         }
       },
-      [panels, customDefaultLayout]
+      [panels, customDefaultLayout, floatingPanelDefinitionIds]
     );
 
     const resolvePanelPosition = useCallback(
@@ -216,10 +224,12 @@ export const QuickGenPanelHost = forwardRef<QuickGenPanelHostRef, QuickGenPanelH
         storageKey={storageKey}
         context={context}
         panelManagerId={panelManagerId}
+        excludeFromLayout={floatingQuickGenPanelIds}
         defaultLayout={createDefaultLayout}
         minPanelsForTabs={minPanelsForTabs}
         onReady={onReady}
         enableContextMenu={enableContextMenu}
+        capabilities={dockCapabilities}
         className={className}
         resolvePanelTitle={getPanelTitle}
         resolvePanelPosition={resolvePanelPosition}

@@ -8,12 +8,42 @@ import { devToolSelectors, panelSelectors } from "@lib/plugins/catalogSelectors"
 import { ContextHubHost, useProvideCapability, CAP_PANEL_CONTEXT } from "@features/contextHub";
 import { useWorkspaceStore, type FloatingPanelState } from "@features/workspace";
 import { getFloatingDefinitionId } from "@features/workspace/lib/floatingPanelUtils";
+import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
 
 import { DevToolDynamicPanel } from "@/components/dev/DevToolDynamicPanel";
 
 import { useDragToDock, type DropZone } from "../../hooks/useDragToDock";
 
 import { DropZoneOverlay } from "./DropZoneOverlay";
+
+interface FloatingOriginMeta {
+  sourceDockviewId?: string | null;
+  sourceGroupId?: string | null;
+  sourceDockPanelId?: string | null;
+  sourcePanelId?: string | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getFloatingOriginMeta(context: unknown): FloatingOriginMeta | null {
+  if (!isRecord(context)) return null;
+  const meta = context.__floatingMeta;
+  return isRecord(meta) ? (meta as FloatingOriginMeta) : null;
+}
+
+function formatDockviewOriginLabel(dockviewId: string | null | undefined): string | null {
+  if (!dockviewId) return null;
+  const known: Record<string, string> = {
+    workspace: "Workspace",
+    "asset-viewer": "Asset Viewer",
+    assetViewer: "Asset Viewer",
+    "control-center": "Control Center",
+    controlCenter: "Control Center",
+  };
+  return known[dockviewId] ?? dockviewId;
+}
 
 /**
  * Provides panel context as a capability for floating panels,
@@ -46,7 +76,6 @@ interface FloatingPanelProps {
 }
 
 const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: FloatingPanelProps) {
-  const closeFloatingPanel = useWorkspaceStore((s) => s.closeFloatingPanel);
   const minimizeFloatingPanel = useWorkspaceStore((s) => s.minimizeFloatingPanel);
   const updateFloatingPanelPosition = useWorkspaceStore(
     (s) => s.updateFloatingPanelPosition
@@ -57,7 +86,6 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
   const bringFloatingPanelToFront = useWorkspaceStore(
     (s) => s.bringFloatingPanelToFront
   );
-  const dockFloatingPanel = useWorkspaceStore((s) => s.dockFloatingPanel);
 
   const {
     activeDropZone,
@@ -79,8 +107,13 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
   let Component: React.ComponentType<any>;
   let title: string;
 
+  const rawPanelContext = isRecord(panel.context) ? panel.context : {};
+  const floatingOriginMeta = getFloatingOriginMeta(rawPanelContext);
+  const basePanelContext = { ...rawPanelContext };
+  delete (basePanelContext as Record<string, unknown>).__floatingMeta;
+
   // For dev-tool panels, extract toolId from definition ID and ensure it's in context
-  let panelContext = panel.context || {};
+  let panelContext = basePanelContext;
 
   if (isDevToolPanel) {
     // Extract tool ID from definition ID
@@ -100,6 +133,11 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
     Component = panelDef.component;
     title = panelDef.title;
   }
+
+  const originLabel = floatingOriginMeta?.sourcePanelId
+    ? (panelSelectors.get(floatingOriginMeta.sourcePanelId)?.title ?? floatingOriginMeta.sourcePanelId)
+    : formatDockviewOriginLabel(floatingOriginMeta?.sourceDockviewId);
+  const canReturnToOrigin = !!floatingOriginMeta?.sourceDockviewId;
 
   const handleDragStart = () => {
     onDragStart();
@@ -122,7 +160,7 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
 
     if (result.shouldDock && result.zone) {
       // Dock the panel at the detected zone
-      dockFloatingPanel(panel.id, {
+      panelPlacementCoordinator.dockFloatingPanel(panel.id, {
         direction: result.zone === "center" ? "within" : result.zone,
       });
     } else {
@@ -179,6 +217,11 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
                 FLOATING
               </span>
             )}
+            {!panel.minimized && originLabel && (
+              <span className="shrink-0 text-[10px] text-neutral-500 dark:text-neutral-400 truncate">
+                From {originLabel}
+              </span>
+            )}
           </div>
           <div className="flex items-center shrink-0">
             <IconButton
@@ -193,11 +236,29 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
               }
               title={panel.minimized ? "Restore panel" : "Minimize panel"}
             />
+            {canReturnToOrigin && (
+              <IconButton
+                size={panel.minimized ? "sm" : "md"}
+                rounded="md"
+                icon={<Icon name="log-in" size={panel.minimized ? 10 : 12} />}
+                onClick={() => {
+                  panelPlacementCoordinator.closeFloatingPanelWithReturn(panel.id);
+                }}
+                className={
+                  panel.minimized
+                    ? "text-neutral-300 hover:text-emerald-400"
+                    : "text-neutral-500 dark:text-neutral-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 hover:text-emerald-700 dark:hover:text-emerald-400"
+                }
+                title={originLabel ? `Return to ${originLabel}` : "Return to original dock"}
+              />
+            )}
             <IconButton
               size={panel.minimized ? "sm" : "md"}
               rounded="md"
               icon={<Icon name="x" size={panel.minimized ? 10 : 12} />}
-              onClick={() => closeFloatingPanel(panel.id)}
+              onClick={() => {
+                panelPlacementCoordinator.closeFloatingPanel(panel.id);
+              }}
               className={
                 panel.minimized
                   ? "text-neutral-300 hover:text-red-400"
@@ -207,7 +268,6 @@ const FloatingPanel = memo(function FloatingPanel({ panel, onDragStateChange }: 
             />
           </div>
         </div>
-
         {/* Content — hidden when minimized */}
         {!panel.minimized && (
           <div className="flex-1 overflow-auto">

@@ -6,11 +6,14 @@
  * applies GenerationScopeProvider automatically.
  */
 
-import { useMemo } from 'react';
 import type { IDockviewPanelProps } from 'dockview-core';
-import { ViewerQuickGenerate } from '../../../../components/media/ViewerQuickGenerate';
+import { useMemo } from 'react';
+
 import type { ViewerAsset } from '@features/assets';
-import { CAP_ASSET_SELECTION, useCapability, type AssetSelection } from '@features/contextHub';
+
+import { ViewerQuickGenerate } from '../../../../components/media/ViewerQuickGenerate';
+import { useResolvedPanelAsset } from '../../hooks/useResolvedPanelAsset';
+import { useResolvedPanelScene } from '../../hooks/useResolvedPanelScene';
 
 export interface QuickGeneratePanelContext {
   /** Current asset being viewed */
@@ -29,12 +32,16 @@ export interface QuickGeneratePanelProps extends IDockviewPanelProps {
 }
 
 export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps) {
-  const { value: selection } = useCapability<AssetSelection>(CAP_ASSET_SELECTION);
-
-  const asset = useMemo(() => {
-    // Try to get asset from context or params
-    return context?.currentAsset || params?.asset || selection?.asset || null;
-  }, [context?.currentAsset, params?.asset, selection?.asset]);
+  const asset = useResolvedPanelAsset({
+    context,
+    params,
+    precedence: ['context', 'params', 'selection'],
+  });
+  const sceneId = useResolvedPanelScene({
+    context,
+    params,
+    precedence: ['context', 'params', 'capability'],
+  });
 
   const content = useMemo(() => {
     // Asset context - Generate from asset
@@ -47,7 +54,7 @@ export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps)
     }
 
     // Scene context - Generate for scene
-    if (context?.currentSceneId) {
+    if (sceneId) {
       return (
         <div className="h-full flex items-center justify-center p-4 text-center">
           <div className="max-w-sm">
@@ -75,7 +82,7 @@ export function QuickGeneratePanel({ context, params }: QuickGeneratePanelProps)
         </div>
       </div>
     );
-  }, [asset, context?.currentSceneId]);
+  }, [asset, sceneId]);
 
   return content;
 }

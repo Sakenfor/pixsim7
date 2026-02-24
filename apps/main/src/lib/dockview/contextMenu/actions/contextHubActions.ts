@@ -14,8 +14,10 @@ import { getCapabilityKeys } from "@pixsim7/shared.ui.panels";
 import { panelSelectors } from "@lib/plugins/catalogSelectors";
 
 import { getCapabilityDescriptor, useContextHubOverridesStore } from "@features/contextHub";
+import { getDockWidgetByDockviewId } from "@features/panels";
 import { CATEGORY_LABELS } from "@features/panels/lib/panelConstants";
 import { resolveSiblings } from "@features/panels/lib/siblingResolution";
+import { panelPlacementCoordinator } from "@features/workspace/lib/panelPlacementCoordinator";
 
 import {
   getRegistryChain,
@@ -186,6 +188,8 @@ function buildProviderActions(
   return actions;
 }
 
+// Kept for potential dedicated inspector menu/panel reuse.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildCapabilityListActions(ctx: MenuActionContext): MenuAction[] {
   const chain = getRegistryChain(ctx);
   if (chain.length === 0) {
@@ -354,17 +358,6 @@ function resolveRelatedPanels(ctx: MenuActionContext): RelatedPanelCandidate[] {
  * Check if a single-instance panel is already open.
  * Returns a disabled reason string, or false if it can be opened.
  */
-function isPanelAlreadyOpen(
-  ctx: MenuActionContext,
-  panelId: string,
-): string | false {
-  const { api } = resolveCurrentDockview(ctx);
-  if (!api) return false;
-  const def = panelSelectors.get(panelId);
-  if (def?.supportsMultipleInstances) return false;
-  return isPanelOpenInCurrentDockview(ctx, panelId, false) ? "Already open" : false;
-}
-
 /**
  * Open a related panel in the same group as the current panel.
  */
@@ -382,6 +375,136 @@ function openRelatedPanel(ctx: MenuActionContext, panelId: string) {
       ? { direction: "within", referencePanel: ctx.panelId }
       : undefined,
   });
+}
+
+function formatDockviewIdLabel(dockviewId: string): string {
+  return dockviewId
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function resolveDockviewLabel(dockviewId: string): string {
+  return getDockWidgetByDockviewId(dockviewId)?.label
+    ?? formatDockviewIdLabel(dockviewId)
+    ?? dockviewId;
+}
+
+function focusPanelInDockview(ctx: MenuActionContext, dockviewId: string, panelId: string): boolean {
+  const host = ctx.getDockviewHost?.(dockviewId);
+  if (host?.focusPanel(panelId)) {
+    return true;
+  }
+
+  const api = ctx.getDockviewApi?.(dockviewId) ?? (dockviewId === ctx.currentDockviewId ? ctx.api : undefined);
+  const panel = (api as any)?.getPanel?.(panelId);
+  if (panel?.api?.setActive) {
+    panel.api.setActive();
+    return true;
+  }
+  return false;
+}
+
+function buildRelatedPanelItemActions(ctx: MenuActionContext, panel: RelatedPanelCandidate): MenuAction[] {
+  const def = panelSelectors.get(panel.id);
+  const allowMultiple = !!def?.supportsMultipleInstances;
+  const placements = panelPlacementCoordinator.getPlacements(panel.id);
+  const currentDockId = ctx.currentDockviewId;
+  const currentDockOpen = currentDockId
+    ? placements.some((p) => p.kind === "docked" && p.dockviewId === currentDockId)
+    : isPanelOpenInCurrentDockview(ctx, panel.id, false);
+  const otherDockPlacements = placements.filter(
+    (p): p is { kind: "docked"; dockviewId: string } =>
+      p.kind === "docked" && p.dockviewId !== currentDockId
+  );
+  const isFloating = placements.some((p) => p.kind === "floating");
+
+  const actions: MenuAction[] = [];
+
+  if (currentDockOpen) {
+    actions.push({
+      id: `connect:related:${panel.id}:focus-here`,
+      label: "Focus Here",
+      icon: "target",
+      availableIn: ["panel-content", "tab"],
+      execute: () => {
+        if (!currentDockId) return;
+        focusPanelInDockview(ctx, currentDockId, panel.id);
+      },
+    });
+  }
+
+  actions.push({
+    id: `connect:related:${panel.id}:add-here`,
+    label: "Add Here",
+    icon: "plus-circle",
+    availableIn: ["panel-content", "tab"],
+    disabled: () =>
+      allowMultiple
+        ? false
+        : isPanelOpenInCurrentDockview(ctx, panel.id, false) ? "Already open here" : false,
+    execute: () => openRelatedPanel(ctx, panel.id),
+  });
+
+  if (isFloating) {
+    actions.push({
+      id: `connect:related:${panel.id}:focus-floating`,
+      label: "Bring Floating To Front",
+      icon: "external-link",
+      availableIn: ["panel-content", "tab"],
+      execute: () => {
+        panelPlacementCoordinator.bringFloatingPanelDefinitionToFront(panel.id);
+      },
+    });
+  }
+
+  for (const placement of otherDockPlacements) {
+    actions.push({
+      id: `connect:related:${panel.id}:focus-dock:${placement.dockviewId}`,
+      label: `Focus in ${resolveDockviewLabel(placement.dockviewId)}`,
+      icon: "layout",
+      availableIn: ["panel-content", "tab"],
+      execute: () => {
+        focusPanelInDockview(ctx, placement.dockviewId, panel.id);
+      },
+    });
+  }
+
+  if (actions.length === 0) {
+    actions.push({
+      id: `connect:related:${panel.id}:none`,
+      label: "No actions available",
+      availableIn: ["panel-content", "tab"],
+      disabled: () => true,
+      execute: () => {},
+    });
+  }
+
+  return actions;
+}
+
+function buildRelatedPanelMenuItem(ctx: MenuActionContext, p: RelatedPanelCandidate): MenuAction {
+  const placements = panelPlacementCoordinator.getPlacements(p.id);
+  const currentDockId = ctx.currentDockviewId;
+  const status =
+    placements.some((x) => x.kind === "docked" && x.dockviewId === currentDockId)
+      ? "open here"
+      : placements.some((x) => x.kind === "floating")
+        ? "floating"
+        : placements.find((x): x is { kind: "docked"; dockviewId: string } => x.kind === "docked")
+          ? `open in ${resolveDockviewLabel(
+              (placements.find((x): x is { kind: "docked"; dockviewId: string } => x.kind === "docked")!).dockviewId
+            )}`
+          : null;
+
+  return {
+    id: `connect:related:${p.id}`,
+    label: status ? `${p.title} (${status})` : p.title,
+    icon: p.icon,
+    availableIn: ["panel-content", "tab"],
+    children: buildRelatedPanelItemActions(ctx, p),
+    execute: () => {},
+  };
 }
 
 /**
@@ -411,12 +534,8 @@ function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
           CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] ?? category,
         availableIn: ["panel-content", "tab"],
         children: panels.map((p) => ({
-          id: `connect:related:add:${p.id}`,
-          label: p.title,
-          icon: p.icon,
+          ...buildRelatedPanelMenuItem(ctx, p),
           availableIn: ["panel-content", "tab"] as const,
-          disabled: () => isPanelAlreadyOpen(ctx, p.id),
-          execute: () => openRelatedPanel(ctx, p.id),
         })),
         execute: () => {},
       });
@@ -426,12 +545,8 @@ function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
     for (const panels of byCategory.values()) {
       for (const p of panels) {
         relatedActions.push({
-          id: `connect:related:add:${p.id}`,
-          label: p.title,
-          icon: p.icon,
+          ...buildRelatedPanelMenuItem(ctx, p),
           availableIn: ["panel-content", "tab"],
-          disabled: () => isPanelAlreadyOpen(ctx, p.id),
-          execute: () => openRelatedPanel(ctx, p.id),
         });
       }
     }
@@ -441,17 +556,6 @@ function buildRelatedPanelActions(ctx: MenuActionContext): MenuAction[] | null {
 }
 
 export const contextHubActions: MenuAction[] = [
-  {
-    id: "capability:inspect",
-    label: "Capabilities",
-    icon: "info",
-    category: "zzz",
-    divider: true,
-    availableIn: ["panel-content", "tab"],
-    visible: (ctx) => hasLiveState(ctx),
-    children: (ctx) => buildCapabilityListActions(ctx),
-    execute: () => {},
-  },
   {
     id: "capability:connect",
     label: "Connect",

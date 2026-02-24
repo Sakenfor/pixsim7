@@ -8,13 +8,16 @@
 import { ViewerQuickGenerate } from '../../ViewerQuickGenerate';
 import type { ViewerPanelContext } from '../types';
 
+import { useViewerContext } from './hooks';
+
 interface QuickGeneratePanelProps {
   context: ViewerPanelContext;
   panelId: string;
 }
 
 export function QuickGeneratePanel({ context }: QuickGeneratePanelProps) {
-  const { asset } = context;
+  const { resolvedContext } = useViewerContext({ context });
+  const { asset } = resolvedContext;
 
   if (!asset) {
     return (

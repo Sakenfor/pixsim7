@@ -23,6 +23,7 @@ import { panelSelectors } from '@lib/plugins/catalogSelectors';
 
 import type { ViewerAsset } from '@features/assets';
 import { PanelHostDockview, type PanelHostDockviewRef } from '@features/panels';
+import { useAppDockviewIntegration } from '@features/workspace';
 
 import type { ViewerSettings } from './types';
 
@@ -65,34 +66,53 @@ const DEFAULT_VIEWER_PANEL_IDS = [
  * Create the default panel layout for asset viewer.
  * Media preview takes top 75%, generate/metadata tabs below.
  */
-function createDefaultLayout(api: DockviewApi) {
+function createDefaultLayout(api: DockviewApi, options?: { excludePanelIds?: ReadonlySet<string> }) {
+  const excludePanelIds = options?.excludePanelIds;
+  const shouldInclude = (panelId: string) => !excludePanelIds?.has(panelId);
+  const hasMediaPreview = shouldInclude('media-preview');
+  const hasQuickGenerate = shouldInclude('quickGenerate');
+  const willAddQuickGenerate = hasQuickGenerate && hasMediaPreview;
+
   // Media panel takes the top area
-  api.addPanel({
-    id: 'media-preview',
-    component: 'media-preview',
-    title: 'Preview',
-  });
+  if (hasMediaPreview) {
+    api.addPanel({
+      id: 'media-preview',
+      component: 'media-preview',
+      title: 'Preview',
+    });
+  }
 
-  // Quick generate panel below media
-  api.addPanel({
-    id: 'quickGenerate',
-    component: 'quickGenerate',
-    title: 'Generate',
-    position: {
-      direction: 'below',
-      referencePanel: 'media-preview',
-    },
-  });
+  if (willAddQuickGenerate) {
+    // Quick generate panel below media
+    api.addPanel({
+      id: 'quickGenerate',
+      component: 'quickGenerate',
+      title: 'Generate',
+      position: {
+        direction: 'below',
+        referencePanel: 'media-preview',
+      },
+    });
+  }
 
-  // Info panel as tab with quickGenerate
-  api.addPanel({
-    id: 'info',
-    component: 'info',
-    title: 'Metadata',
-    position: {
-      referencePanel: 'quickGenerate',
-    },
-  });
+  if (shouldInclude('info')) {
+    const infoPosition = willAddQuickGenerate
+      ? { referencePanel: 'quickGenerate' as const }
+      : hasMediaPreview
+        ? {
+            direction: 'below' as const,
+            referencePanel: 'media-preview',
+          }
+        : undefined;
+
+    // Info panel as tab with quickGenerate when present, otherwise below preview
+    api.addPanel({
+      id: 'info',
+      component: 'info',
+      title: 'Metadata',
+      position: infoPosition,
+    });
+  }
 
   // Set initial sizes - media gets 75% of height
   try {
@@ -129,6 +149,16 @@ export function AssetViewerDockview({
   const viewerPanelIds = useMemo(
     () => (scopedPanelIds.length > 0 ? scopedPanelIds : [...DEFAULT_VIEWER_PANEL_IDS]),
     [scopedPanelIds]
+  );
+  const resolvedDockviewId = panelManagerId ?? "asset-viewer";
+  const {
+    capabilities: dockCapabilities,
+    floatingPanelDefinitionIdSet: floatingPanelDefinitionIds,
+    placementExclusions: floatingViewerPanelIds,
+  } = useAppDockviewIntegration(resolvedDockviewId, viewerPanelIds);
+  const viewerDefaultLayout = useCallback(
+    (api: DockviewApi) => createDefaultLayout(api, { excludePanelIds: floatingPanelDefinitionIds }),
+    [floatingPanelDefinitionIds]
   );
   const useDockId = scopedPanelIds.length > 0;
 
@@ -196,15 +226,18 @@ export function AssetViewerDockview({
       ref={panelHostRef}
       panels={useDockId ? undefined : viewerPanelIds}
       dockId={useDockId ? 'asset-viewer' : undefined}
+      excludePanels={useDockId ? floatingViewerPanelIds : undefined}
       storageKey="dockview:asset-viewer:v5"
+      excludeFromLayout={floatingViewerPanelIds}
       context={context}
       defaultPanelScopes={['generation']}
-      defaultLayout={createDefaultLayout}
+      defaultLayout={viewerDefaultLayout}
       minPanelsForTabs={2}
       className={className}
       panelManagerId={panelManagerId}
       onReady={handleReady}
       enableContextMenu
+      capabilities={dockCapabilities}
       resolvePanelTitle={(panelId) => panelSelectors.get(panelId)?.title ?? panelId}
     />
   );

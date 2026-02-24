@@ -16,7 +16,7 @@ function resolveTitle(panelId: string, panelDefs?: PanelDefinition[]) {
 export function createDefaultLayout(
   api: DockviewReadyEvent["api"],
   panelDefs: PanelDefinition[] = [],
-  floatingPanelIds?: Set<string>
+  floatingPanelIds?: ReadonlySet<string>
 ) {
   const addPanel = (
     id: string,

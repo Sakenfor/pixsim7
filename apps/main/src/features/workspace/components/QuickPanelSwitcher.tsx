@@ -14,6 +14,7 @@ import { usePanelConfigStore } from "@features/panels";
 import { getBuiltinPreset } from "../lib/builtinPresets";
 import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
 import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
+import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -22,7 +23,6 @@ export function QuickPanelSwitcher() {
   const [activeTab, setActiveTab] = useState<"panels" | "profiles">("panels");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const panelConfigs = usePanelConfigStore((s) => s.panelConfigs);
   const getEnabledPanels = usePanelConfigStore((s) => s.getEnabledPanels);
   const getPanelConfig = usePanelConfigStore((s) => s.getPanelConfig);
 
@@ -80,10 +80,7 @@ export function QuickPanelSwitcher() {
     const builtin = getBuiltinPreset(presetId);
     if (builtin && builtin.recipe.panels.length > 0) {
       clearDockview(api);
-      const floatingIds = new Set(
-        useWorkspaceStore.getState().floatingPanels.map((p) => p.id)
-      );
-      buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
+      buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
     } else {
       clearDockview(api);
       createDefaultLayout(api);

@@ -4,6 +4,7 @@ import { useWorkspacePresets } from "../hooks/useWorkspacePresets";
 import { getBuiltinPreset } from "../lib/builtinPresets";
 import { createDefaultLayout } from "../lib/defaultWorkspaceLayout";
 import { clearDockview, buildLayoutFromRecipe } from "../lib/layoutRecipes";
+import { panelPlacementCoordinator } from "../lib/panelPlacementCoordinator";
 import { resolveWorkspaceDockview } from "../lib/resolveWorkspaceDockview";
 import { useWorkspaceStore } from "../stores/workspaceStore";
 
@@ -48,10 +49,7 @@ export function WorkspaceToolbar() {
     const builtin = getBuiltinPreset(presetId);
     if (builtin && builtin.recipe.panels.length > 0) {
       clearDockview(api);
-      const floatingIds = new Set(
-        useWorkspaceStore.getState().floatingPanels.map((p) => p.id)
-      );
-      buildLayoutFromRecipe(api, builtin.recipe, floatingIds);
+      buildLayoutFromRecipe(api, builtin.recipe, panelPlacementCoordinator.getFloatingPanelDefinitionIdSet());
     } else {
       // Empty recipe (scope defaults) — rebuild default layout
       clearDockview(api);

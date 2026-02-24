@@ -13,6 +13,8 @@
 import type { DockviewApi } from 'dockview-core';
 import { useMemo, useCallback } from 'react';
 
+import { createSafeApi } from '@lib/dockview';
+
 import { OPERATION_METADATA } from '@/types/operations';
 
 import { QUICKGEN_PRESETS, QUICKGEN_PANEL_IDS } from '../components/QuickGenPanelHost';
@@ -44,6 +46,7 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
     if (operationType !== 'video_transition') return undefined;
 
     return (api: DockviewApi) => {
+      const safe = createSafeApi(api);
       const hasAsset = panels.includes(QUICKGEN_PANEL_IDS.asset);
       const hasPrompt = panels.includes(QUICKGEN_PANEL_IDS.prompt);
       const hasSettings = panels.includes(QUICKGEN_PANEL_IDS.settings);
@@ -65,14 +68,14 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
         }
       };
 
-      api.addPanel({
+      safe.addPanel({
         id: firstPanel,
         component: firstPanel,
         title: getTitle(firstPanel),
       });
 
       if (hasAsset && hasPrompt) {
-        api.addPanel({
+        safe.addPanel({
           id: QUICKGEN_PANEL_IDS.prompt,
           component: QUICKGEN_PANEL_IDS.prompt,
           title: getTitle(QUICKGEN_PANEL_IDS.prompt),
@@ -81,7 +84,7 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
       }
 
       if (hasSettings) {
-        api.addPanel({
+        safe.addPanel({
           id: QUICKGEN_PANEL_IDS.settings,
           component: QUICKGEN_PANEL_IDS.settings,
           title: getTitle(QUICKGEN_PANEL_IDS.settings),
@@ -90,7 +93,7 @@ export function useQuickGenPanelLayout(config: UseQuickGenPanelLayoutConfig = {}
       }
 
       if (hasBlocks) {
-        api.addPanel({
+        safe.addPanel({
           id: QUICKGEN_PANEL_IDS.blocks,
           component: QUICKGEN_PANEL_IDS.blocks,
           title: getTitle(QUICKGEN_PANEL_IDS.blocks),
