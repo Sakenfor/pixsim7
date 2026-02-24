@@ -1053,3 +1053,731 @@ blocks:
       intent: modify
       depth_layers: 2
     complexity_level: simple
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CHARACTER — generic female reactions (reusable across scenes)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: react_breath_catch_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her breath catches, a small involuntary ga_s-p, her body
+      stiffening for a moment before she exhales slowly, eyes
+      forward, jaw tight, holding still as the sensation registers
+    tags:
+      motion: reaction
+      intensity: 3
+      response: startled
+      disposition: willing
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Breath catch — initial startle, holds still"
+
+  - block_id: react_breath_catch_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      A sharp intake of breath, her shoulders rising, then a
+      controlled exhale through parted lips, her fingers twitching
+      once at her sides before going still
+    tags:
+      motion: reaction
+      intensity: 3
+      response: startled
+      disposition: willing
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Sharp inhale — shoulders rise, controlled exhale"
+
+  - block_id: react_yield_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She shifts her weight slightly, hi_p-s angling toward the
+      pressure rather than away, a flush rising on her neck, her
+      lips parting with a quiet exhale, eyes half-closing
+    tags:
+      motion: reaction
+      intensity: 5
+      response: yielding
+      disposition: willing
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Yielding — leaning into contact, flush rising"
+
+  - block_id: react_yield_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her posture softens incrementally, shoulders dropping, spine
+      relaxing, she exhales through parted lips and her chin dips,
+      eyes lowering, the tension leaving her body in a slow wave
+    tags:
+      motion: reaction
+      intensity: 5
+      response: yielding
+      disposition: willing
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Softening posture — tension draining, eyes lowering"
+
+  - block_id: react_vocal_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      A low sound escapes her throat, not quite a mo_a-n, her back
+      arching subtly, she bites her lower lip and her fingers curl
+      at her sides, fingers digging into her palms
+    tags:
+      motion: reaction
+      intensity: 6
+      response: vocal
+      disposition: willing
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Vocal response — back arching, lip bite, fists clenching"
+
+  - block_id: react_vocal_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She exhales a trembling breath that breaks into a quiet
+      whimper, her head tilting back, throat exposed, eyes closed,
+      one hand gripping the nearest surface for balance
+    tags:
+      motion: reaction
+      intensity: 6
+      response: vocal
+      disposition: willing
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Trembling exhale — head back, throat exposed, gripping"
+
+  - block_id: react_surrender_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her knees weaken and she leans back into the pressure behind
+      her, head tilting to one side, exposing her neck, her
+      breathing audible and quickening, hi_p-s beginning to rock
+      with the rhythm of the contact
+    tags:
+      motion: reaction
+      intensity: 7
+      response: surrender
+      disposition: willing
+      motion_amount: large
+    complexity_level: moderate
+    description: "Surrender — leaning back, neck exposed, rocking"
+
+  - block_id: react_surrender_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She stops resisting the pull and lets her body settle against
+      the nearest surface, eyes half-lidded, lips parted, a quiet
+      mo_a-n escaping with each exhale, her body moving with rather
+      than against the pressure
+    tags:
+      motion: reaction
+      intensity: 7
+      response: surrender
+      disposition: willing
+      motion_amount: large
+    complexity_level: moderate
+    description: "Full surrender — settling in, moaning, moving with the pressure"
+
+  - block_id: react_composed_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She straightens her spine and presses her lips together,
+      chin level, eyes fixed forward, refusing to acknowledge the
+      contact, one hand smoothing her clothing in a practiced
+      gesture of composure
+    tags:
+      motion: reaction
+      intensity: 3
+      response: composed
+      disposition: willing
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Composed — straightening, refusing to acknowledge"
+
+  - block_id: react_composed_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She holds perfectly still, jaw tight, a deliberate calm
+      maintained across her features, only the faintest flush at
+      her neck betraying that she feels anything at all, hands
+      clasped in front of her as if nothing is happening
+    tags:
+      motion: reaction
+      intensity: 3
+      response: composed
+      disposition: willing
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Composed — forced stillness, flush betraying her"
+
+  - block_id: react_composure_slipping_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her composure cracks — a quick bite of the lower lip, eyes
+      fluttering closed for a beat too long, she corrects her
+      posture but her breathing has quickened and her fingers have
+      gone white where they grip the nearest surface
+    tags:
+      motion: reaction
+      intensity: 5
+      response: composure_slipping
+      disposition: willing
+      motion_amount: minimal
+    complexity_level: moderate
+    description: "Composure slipping — lip bite, eyes flutter, grip tightens"
+
+  - block_id: react_composure_slipping_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She inhales sharply, nostrils flaring with a controlled exhale,
+      her stance shifting almost imperceptibly wider, she tries to
+      hold position but her hi_p-s tilt backward by a fraction,
+      the involuntary adjustment betraying what her expression denies
+    tags:
+      motion: reaction
+      intensity: 5
+      response: composure_slipping
+      disposition: willing
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Composure slipping — controlled exhale, hips betray her"
+
+  - block_id: react_rhythm_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her hi_p-s begin a slow involuntary rock, matching the rhythm
+      of the pressure behind her, the motion small at first then
+      deepening, her back arching as her body finds the cadence,
+      breath syncing to each backward push
+    tags:
+      motion: reaction
+      intensity: 7
+      response: rhythm
+      disposition: willing
+      motion_amount: large
+    complexity_level: moderate
+    description: "Following rhythm — hips rocking, back arching, syncing"
+
+  - block_id: react_rhythm_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She gives up pretending and lets her hi_p-s roll with the
+      contact, the motion deliberate now, pushing back to meet each
+      nudge, her weight shifting forward onto her hands, spine
+      curved, head dropping between her shoulders as the rhythm
+      takes over
+    tags:
+      motion: reaction
+      intensity: 8
+      response: rhythm
+      disposition: willing
+      motion_amount: large
+    complexity_level: moderate
+    description: "Full rhythm — deliberate hip roll, pushing back, surrendered"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CHARACTER — reluctant reactions (disposition: reluctant)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: react_reluctant_flinch_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She flinches forward, shoulders curling inward, her hands
+      pressing flat against the surface ahead as she tries to pull
+      her hi_p-s away from the contact, a short panicked breath
+      escaping through clenched teeth
+    tags:
+      motion: reaction
+      intensity: 3
+      response: startled
+      disposition: reluctant
+      motion_amount: moderate
+    complexity_level: simple
+    description: "Reluctant flinch — pulling hips away, panicked breath"
+
+  - block_id: react_reluctant_flinch_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her body stiffens and she twists at the waist, one hand
+      reaching back as if to push something away, eyes wide and
+      darting toward the nearest exit, her weight shifting onto
+      the balls of her feet
+    tags:
+      motion: reaction
+      intensity: 3
+      response: startled
+      disposition: reluctant
+      motion_amount: moderate
+    complexity_level: simple
+    description: "Reluctant flinch — twisting away, looking for exit"
+
+  - block_id: react_reluctant_squirm_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She squirms under the pressure, hi_p-s rocking side to side
+      trying to dislodge the contact, her palms sliding on the
+      surface as she pushes forward, breath coming in quick shallow
+      gulps, shoulders hunched tight
+    tags:
+      motion: reaction
+      intensity: 5
+      response: composure_slipping
+      disposition: reluctant
+      motion_amount: large
+    complexity_level: moderate
+    description: "Reluctant squirm — hips rocking to dislodge, pushing forward"
+
+  - block_id: react_reluctant_squirm_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She tries to crawl forward, knees sliding on the surface,
+      fingers clawing for grip, her spine arching away from the
+      weight behind her, a choked whimper catching in her throat
+      as her progress stalls
+    tags:
+      motion: reaction
+      intensity: 5
+      response: vocal
+      disposition: reluctant
+      motion_amount: large
+    complexity_level: moderate
+    description: "Reluctant squirm — trying to crawl forward, whimpering"
+
+  - block_id: react_reluctant_struggle_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She braces both arms rigid against the surface and pushes
+      back hard, spine locked straight, shaking her head, her
+      whole body taut with the effort of resisting, breath hissing
+      through her teeth with each failed attempt to gain ground
+    tags:
+      motion: reaction
+      intensity: 7
+      response: composure_slipping
+      disposition: reluctant
+      motion_amount: large
+    complexity_level: moderate
+    description: "Reluctant struggle — arms braced, spine rigid, resisting"
+
+  - block_id: react_reluctant_struggle_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her hands scrabble at the edge of the surface, knuckles
+      white, trying to haul herself forward and away, her hi_p-s
+      twisting sharply, legs kicking for leverage, a desperate
+      sound rising in her throat between ragged breaths
+    tags:
+      motion: reaction
+      intensity: 7
+      response: vocal
+      disposition: reluctant
+      motion_amount: large
+    complexity_level: moderate
+    description: "Reluctant struggle — hauling forward, hips twisting, desperate"
+
+  - block_id: react_reluctant_rigid_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Every muscle in her body locks rigid, jaw clenched, eyes
+      fixed straight ahead and unblinking, her breathing forced
+      into shallow controlled sips through her nose, fingers white
+      around the nearest edge, refusing to move a single inch
+    tags:
+      motion: reaction
+      intensity: 3
+      response: composed
+      disposition: reluctant
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Reluctant rigid — total lockup, forced shallow breathing, eyes fixed"
+
+  - block_id: react_reluctant_rigid_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She goes perfectly still, only her eyes moving, darting
+      sideways without turning her head, her throat tight, lips
+      pressed into a thin line, grip tightening, a tremor
+      running through her locked shoulders
+    tags:
+      motion: reaction
+      intensity: 5
+      response: composure_slipping
+      disposition: reluctant
+      motion_amount: minimal
+    complexity_level: moderate
+    description: "Reluctant rigid — eyes darting, tremor, lips pressed, locked still"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CHARACTER — conflicted reactions (disposition: conflicted)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: react_conflicted_halt_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She stops mid-motion, caught between pulling away and
+      staying, her breath held, fingers hovering above the surface
+      without gripping, eyes unfocused, body perfectly still as if
+      any movement would commit her to a direction
+    tags:
+      motion: reaction
+      intensity: 3
+      response: composed
+      disposition: conflicted
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Conflicted halt — suspended between impulses"
+
+  - block_id: react_conflicted_halt_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      She starts to pull forward, her weight shifting onto her
+      hands, then stops, her hi_p-s drifting back to where they
+      were, a sharp exhale escaping, jaw tight, the aborted retreat
+      leaving her exactly where she started
+    tags:
+      motion: reaction
+      intensity: 4
+      response: composure_slipping
+      disposition: conflicted
+      motion_amount: minimal
+    complexity_level: moderate
+    description: "Conflicted — starts to retreat then drifts back"
+
+  - block_id: react_conflicted_yield_01
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her shoulders stay rigid but her lower back softens, hi_p-s
+      tilting almost imperceptibly toward the pressure, the
+      contradiction visible in every line of her body, her fingers
+      gripping the surface as if holding herself in place rather
+      than pulling away
+    tags:
+      motion: reaction
+      intensity: 5
+      response: yielding
+      disposition: conflicted
+      motion_amount: minimal
+    complexity_level: moderate
+    description: "Conflicted yield — shoulders rigid but hips softening"
+
+  - block_id: react_conflicted_yield_02
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      Her hands push at the surface but her hi_p-s tilt back
+      involuntarily, the two halves of her body arguing, a quiet
+      sound escaping that she immediately stifles, eyes squeezing
+      shut, her knees widening a fraction before she catches
+      herself and goes still
+    tags:
+      motion: reaction
+      intensity: 6
+      response: vocal
+      disposition: conflicted
+      motion_amount: moderate
+    complexity_level: moderate
+    description: "Conflicted yield — hands pushing forward, hips tilting back"
+
+  - block_id: react_conflicted_yield_03
+    role: character
+    category: reaction
+    kind: single_state
+    text: >-
+      A mo_a-n breaks from her before she can stop it, her hand
+      flying to cover her mouth, hi_p-s rocking back into the
+      pressure in sharp involuntary pulses even as her other arm
+      pushes at the surface ahead, the struggle between retreat and
+      response playing out in every trembling muscle
+    tags:
+      motion: reaction
+      intensity: 7
+      response: rhythm
+      disposition: conflicted
+      motion_amount: large
+    complexity_level: moderate
+    description: "Conflicted yield — moaning despite resistance, hips rocking involuntarily"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # CHARACTER — audio reactions by disposition (reusable across scenes)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: audio_her_willing_01
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      she whispers "{{her.utterance}}", {{her.vocal_pleasure}},
+      {{her.breath}} quickening
+    tags:
+      motion: audio_reaction
+      disposition: willing
+      intensity: 5
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Willing audio — whisper, vocal pleasure, breath quickening"
+
+  - block_id: audio_her_willing_02
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      a soft mo_a-n escapes her, {{her.vocal_pleasure}}, her breathing
+      deepening into a steady open-mouthed rhythm
+    tags:
+      motion: audio_reaction
+      disposition: willing
+      intensity: 7
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Willing audio — moan, vocal pleasure, rhythmic breathing"
+
+  - block_id: audio_her_conflicted_01
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      her breath catches and holds, a sound rising in her throat
+      that she stifles before it forms, breathing unsteady and
+      shallow
+    tags:
+      motion: audio_reaction
+      disposition: conflicted
+      intensity: 4
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Conflicted audio — caught breath, stifled sound"
+
+  - block_id: audio_her_conflicted_02
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      a choked half-ga_s-p escapes her, neither protest nor
+      encouragement, her breathing ragged and uncertain, each
+      exhale trembling at the edge of a sound she won't let form
+    tags:
+      motion: audio_reaction
+      disposition: conflicted
+      intensity: 6
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Conflicted audio — choked gasp, ragged uncertain breathing"
+
+  - block_id: audio_her_reluctant_01
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      a choked sound of protest rises from her throat, breathing
+      coming in quick shallow ga_s-ps through clenched teeth, jaw
+      tight
+    tags:
+      motion: audio_reaction
+      disposition: reluctant
+      intensity: 4
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Reluctant audio — choked protest, shallow gasps"
+
+  - block_id: audio_her_reluctant_02
+    role: character
+    category: audio_reaction
+    kind: single_state
+    text: >-
+      she exhales in short desperate bursts, a whimper pressed
+      through clenched teeth, her breathing sharp and panicked,
+      each inhale a thin hiss
+    tags:
+      motion: audio_reaction
+      disposition: reluctant
+      intensity: 7
+      motion_amount: minimal
+    complexity_level: simple
+    description: "Reluctant audio — desperate breathing, whimper, panicked hiss"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # ACTION — generic intimate touch (reusable across scenes)
+  # ═══════════════════════════════════════════════════════════════════
+
+  - block_id: touch_waist_01
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      A hand from the figure beside her slides onto her waist,
+      fingers pressing into the curve above her hi_p, the grip
+      tightening slowly, pulling the fabric taut against her skin
+    tags:
+      scene_type: grope
+      motion: hand_placement
+      target: waist
+      intensity: 4
+    complexity_level: simple
+    description: "Hand on waist — single hand, slow grip"
+
+  - block_id: touch_waist_02
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      Fingers curl around her hi_p from behind, thumb pressing into
+      the small of her back, the hand large enough to span from
+      spine to hi_p bone, settling with possessive weight
+    tags:
+      scene_type: grope
+      motion: hand_placement
+      target: waist
+      intensity: 5
+    complexity_level: simple
+    description: "Hand on hip from behind — possessive grip"
+
+  - block_id: touch_thigh_01
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      A hand drops to her thi_g-h, fingers splaying wide across the
+      fabric, sliding upward in a slow deliberate stroke, the heel
+      of the palm dragging against her skin through the thin material
+    tags:
+      scene_type: grope
+      motion: hand_slide
+      target: thigh
+      intensity: 5
+    complexity_level: moderate
+    description: "Hand sliding up thigh — deliberate stroke"
+
+  - block_id: touch_thigh_02
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      Fingers trace the inside of her thi_g-h from the knee upward,
+      pressing into the soft skin, the touch firm and unhurried,
+      fabric riding up as the hand advances higher
+    tags:
+      scene_type: grope
+      motion: hand_slide
+      target: thigh
+      intensity: 6
+    complexity_level: moderate
+    description: "Inner thigh trace — upward, unhurried"
+
+  - block_id: touch_rear_01
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      A palm presses flat against her bu_tt-oks, fingers spread
+      wide, the hand squeezing slowly into the soft curve, fabric
+      compressing under the grip, the touch brazen and unsubtle
+    tags:
+      scene_type: grope
+      motion: squeeze
+      target: rear
+      intensity: 6
+    complexity_level: moderate
+    description: "Palm on posterior — open squeeze"
+
+  - block_id: touch_rear_02
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      From behind a hand cups the lower curve of her bu_tt-oks,
+      lifting slightly, fingers digging into the underside, the
+      weight of the grip pulling her skirt taut, the motion slow
+      and deliberate as if testing the give
+    tags:
+      scene_type: grope
+      motion: squeeze
+      target: rear
+      intensity: 7
+    complexity_level: moderate
+    description: "Undercurve cup — lifting grip from behind"
+
+  - block_id: touch_chest_01
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      A hand reaches from behind and cups her bre_as-t through her
+      top, fingers closing around the curve, the fabric stretching
+      as the grip tightens, thumb brushing across the peak
+    tags:
+      scene_type: grope
+      motion: squeeze
+      target: chest
+      intensity: 7
+    complexity_level: moderate
+    description: "Hand on chest from behind — cupping grip"
+
+  - block_id: touch_chest_02
+    role: action
+    category: intimate_touch
+    kind: single_state
+    text: >-
+      Both hands slide up her sides from behind, rising over her
+      ribcage and closing over her bre_as-ts, palms pressing flat
+      then fingers curling inward, squeezing through the fabric,
+      pulling her back against the body behind her
+    tags:
+      scene_type: grope
+      motion: squeeze
+      target: chest
+      intensity: 8
+    complexity_level: complex
+    description: "Both hands from behind — sliding up to chest, pulling her back"

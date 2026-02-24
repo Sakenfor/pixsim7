@@ -117,10 +117,11 @@ blocks:
     category: approach
     kind: single_state
     text: >-
-      {{actor}} steps closer, its {{actor.muzzle}} pushing forward to
-      investigate, {{actor.limbs}} settling with audible weight on the
-      floor, its {{actor.chest}} presses against her thi_g-h as it leans
-      in, nostrils flaring, tail swaying in a slow deliberate arc
+      {{actor}} steps closer toward her re_a-r, its {{actor.muzzle}}
+      pushing forward to investigate, {{actor.limbs}} settling with
+      audible weight on the floor, its {{actor.chest}} presses against
+      her thi_g-h from behind as it leans in, nostrils flaring, tail
+      swaying in a slow deliberate arc
     tags:
       tone: dominant
       scene_type: encounter
@@ -153,10 +154,10 @@ blocks:
     category: approach
     kind: single_state
     text: >-
-      {{actor}} circles once then swings around to her re_a-r,
-      pressing its {{actor.chest}} against her bu_tt-oks, heavy
-      {{actor.muzzle}} nudging into the small of her back, one paw
-      lifting and planting on her hi_p as it leans its weight in
+      {{actor}} swings around to her re_a-r, pressing its
+      {{actor.chest}} against her bu_tt-oks, heavy {{actor.muzzle}}
+      nudging into the small of her back, one paw lifting and
+      planting on her hi_p as it leans its weight in
     tags:
       tone: dominant
       scene_type: encounter
@@ -164,7 +165,7 @@ blocks:
       intensity: 6
       species: canine_large
     complexity_level: complex
-    description: "Approach v3 — circles to re_a-r, chest against posterior, muzzle in back"
+    description: "Approach v3 — swings to re_a-r, chest against posterior, muzzle in back"
 
   - block_id: dane_approach_04
     role: action
@@ -209,8 +210,9 @@ blocks:
     text: >-
       {{actor}}'s long ton_gu-e drags across the back of her thi_g-h as
       it moves past, leaving a we_t- trail, it turns and comes back
-      the other way, {{actor.muzzle}} brushing her re_a-r, its body heat
-      radiating through the thin gap between them
+      the other way, {{actor.muzzle}} brushing her re_a-r, the warm
+      bulk of the animal close enough to feel through the thin gap
+      between them
     tags:
       tone: dominant
       scene_type: encounter
@@ -218,7 +220,7 @@ blocks:
       intensity: 5
       species: canine_large
     complexity_level: simple
-    description: "Approach v6 — lick in passing, circling body heat"
+    description: "Approach v6 — lick in passing, circling, warm proximity"
 
   # === Main action (intensity 6-8) ===
 
@@ -337,18 +339,19 @@ blocks:
     category: closeup
     kind: single_state
     text: >-
-      The frame tightens on {{actor}}'s face in profile, {{actor.grip}}
-      slightly open, ton_gu-e and teeth visible, hot breath condensing
-      in the air, {{actor.eyes}} eyes intent and focused, the {{actor.neck}}
-      muscles tense beneath the {{actor.pelt}}
+      The camera tightens to a medium-close framing that keeps both
+      {{actor}}'s {{actor.muzzle}} and her hi_p-s in the same shot,
+      the point of contact centred in frame, {{actor}}'s head working
+      against her body while her posture shifts in response, neither
+      figure cropped out, the action continuous and unbroken
     tags:
       tone: dominant
       scene_type: encounter
-      camera: face_closeup
+      camera: tight_closeup
       intensity: 8
       species: canine_large
     complexity_level: moderate
-    description: "Closeup v2 — dane face profile, jaw and breath detail"
+    description: "Closeup v2 — medium-close on contact zone, both figures in frame"
 
   - block_id: dane_closeup_03
     role: camera
@@ -422,6 +425,8 @@ blocks:
       motion: reaction
       intensity: 5
       species: canine_large
+      disposition: willing
+      motion_amount: moderate
     complexity_level: moderate
     description: "Her reaction v1 — breath catches, hand on skull, steadying"
 
@@ -440,6 +445,8 @@ blocks:
       motion: reaction
       intensity: 6
       species: canine_large
+      disposition: willing
+      motion_amount: moderate
     complexity_level: moderate
     description: "Her reaction v2 — trapped, throat sound, chin lifts exposing neck"
 
@@ -458,6 +465,8 @@ blocks:
       motion: reaction
       intensity: 6
       species: canine_large
+      disposition: willing
+      motion_amount: moderate
     complexity_level: moderate
     description: "Her reaction v3 — yielding posture, eyes half-closed, bracing"
 
@@ -468,14 +477,15 @@ blocks:
     text: >-
       She looks down at the massive animal pressed against her and
       a faint smile crosses her face, almost disbelieving, her
-      fingers scratch absently behind its ear as her other hand
-      grips the furniture beside her, knuckles whitening
+      fingers scratch absently behind its ear, grip tightening
     tags:
       tone: dominant
       scene_type: encounter
       motion: reaction
       intensity: 5
       species: canine_large
+      disposition: willing
+      motion_amount: minimal
     complexity_level: moderate
     description: "Her reaction v4 — disbelieving smile, contradicting grip"
 
@@ -650,10 +660,12 @@ blocks:
     tags:
       tone: intimate
       scene_type: reaction
-      motion: arch_present
+      motion: reaction
       element: dane
       intensity: 5
       species: canine_large
+      disposition: willing
+      motion_amount: large
     complexity_level: moderate
     description: "Her reaction — arching, tilting hi_p-s upward, presenting posterior"
 
@@ -670,10 +682,12 @@ blocks:
     tags:
       tone: intimate
       scene_type: reaction
-      motion: brace
+      motion: reaction
       element: dane
       intensity: 6
       species: canine_large
+      disposition: willing
+      motion_amount: large
     complexity_level: moderate
     description: "Her reaction v2 — bracing forward, pressing rear back, widening stance"
 
@@ -690,10 +704,12 @@ blocks:
     tags:
       tone: intimate
       scene_type: reaction
-      motion: push_back
+      motion: reaction
       element: dane
       intensity: 7
       species: canine_large
+      disposition: willing
+      motion_amount: large
     complexity_level: moderate
     description: "Her reaction v3 — moaning, hi_p-s rocking back, meeting thrusts"
 
@@ -807,7 +823,7 @@ blocks:
     kind: single_state
     text: >-
       Extreme close-up of her fingers tangled in the fur along the
-      {{actor}}'s neck, knuckles white, the {{actor.pelt}} bunching between
+      {{actor}}'s neck, fingers digging in, the {{actor.pelt}} bunching between
       her grip, the animal's pulse visible in the thick vein running
       below its jaw, her body jolting subtly with each impact at her re_a-r
     tags:
@@ -855,10 +871,12 @@ blocks:
     tags:
       tone: intimate
       scene_type: reaction
-      motion: brace
+      motion: reaction
       element: dane
       intensity: 6
       species: canine_large
+      disposition: willing
+      motion_amount: large
     complexity_level: moderate
     description: "Her reaction v4 — knees buckle, hi_p-s lift, pressing posterior back"
 
@@ -875,10 +893,12 @@ blocks:
     tags:
       tone: intimate
       scene_type: reaction
-      motion: yield
+      motion: reaction
       element: dane
       intensity: 7
       species: canine_large
+      disposition: willing
+      motion_amount: large
     complexity_level: moderate
     description: "Her reaction v5 — cheek to surface, rocking with thrusts, hi_p-s angled up"
 
@@ -889,29 +909,30 @@ blocks:
     category: approach
     kind: single_state
     text: >-
-      {{actor}} trots in a tight arc around her, its shoulder brushing
-      her calf on the first pass and her thi_g-h on the second, each
-      orbit tighter, its tail high and sti_f-f, breath coming in quick
-      excited snorts, circling the way a predator marks territory
+      {{actor}} moves past her side, shoulder brushing her calf,
+      then positions itself at her re_a-r, pressing its flank against
+      her bu_tt-oks, tail high and sti_f-f, breath coming in quick
+      excited snorts, its warm bulk settled firmly against her
+      from behind
     tags:
       tone: dominant
       scene_type: encounter
-      motion: circle
+      motion: reposition
       intensity: 5
       species: canine_large
     complexity_level: moderate
-    description: "Approach v7 — tightening orbit, shoulder contact escalation"
+    description: "Approach v7 — moves past side, settles at rear"
 
   - block_id: dane_approach_08
     role: action
     category: approach
     kind: single_state
     text: >-
-      It drops its head low and advances in a slow stalking gait,
-      shoulder blades rising and falling like pistons, {{actor.eyes}} eyes
-      fixed on her from beneath its brow, ton_gu-e working once across
-      its muzzle before it closes the final step and presses its
-      flank hard against her leg
+      It drops its head low and advances toward her re_a-r in a slow
+      stalking gait, shoulder blades rising and falling like pistons,
+      {{actor.eyes}} eyes locked on her posterior, ton_gu-e working
+      once across its muzzle before it closes the final step and
+      presses its flank hard against her thi_g-h from behind
     tags:
       tone: dominant
       scene_type: encounter
@@ -919,7 +940,7 @@ blocks:
       intensity: 6
       species: canine_large
     complexity_level: complex
-    description: "Approach v8 — low stalking gait, predatory eye contact, flank press"
+    description: "Approach v8 — low stalking gait toward her rear, flank press from behind"
 
   # === Additional closeups (intensity 7-8) ===
 
@@ -1000,3 +1021,184 @@ blocks:
       species: canine_large
     complexity_level: moderate
     description: "Dane entrance v7 — appears at edge, locks onto re_a-r, crosses to posterior"
+
+  # === Playful rear sniff (intensity 3-4) ===
+
+  - block_id: dane_sniff_rear_01
+    role: action
+    category: sniff
+    kind: single_state
+    text: >-
+      {{actor}} drops its head and pushes its {{actor.muzzle}} against
+      her bu_tt-oks, nostrils flaring wide, sniffing in quick excited
+      bursts, tail wagging in broad sweeps, the investigation playful
+      and insistent
+    tags:
+      tone: playful
+      scene_type: sniff
+      motion: sniff
+      target: rear
+      intensity: 3
+      species: canine_large
+    complexity_level: simple
+    description: "Rear sniff v1 — playful muzzle investigation"
+
+  - block_id: dane_sniff_rear_02
+    role: action
+    category: sniff
+    kind: single_state
+    text: >-
+      {{actor}}'s nose traces along the seam of her clothing from
+      thi_g-h to bu_tt-oks, sniffing in long deliberate draws, its
+      {{actor.muzzle}} pressing the fabric inward with each inhale,
+      tail held high and quivering
+    tags:
+      tone: playful
+      scene_type: sniff
+      motion: sniff
+      target: rear
+      intensity: 4
+      species: canine_large
+    complexity_level: simple
+    description: "Rear sniff v2 — tracing seam, pressing fabric inward"
+
+  - block_id: dane_sniff_rear_03
+    role: action
+    category: sniff
+    kind: single_state
+    text: >-
+      {{actor}} noses between her thi_g-hs from behind, its broad
+      {{actor.muzzle}} pushing upward into the cl_ef-t of her
+      bu_tt-oks, sniffing with single-minded focus, the wet
+      tip of its nose dragging against the thin fabric
+    tags:
+      tone: playful
+      scene_type: sniff
+      motion: sniff
+      target: rear
+      intensity: 4
+      species: canine_large
+    complexity_level: moderate
+    description: "Rear sniff v3 — nosing between thighs into cleft"
+
+  # === Nudge at cleft (intensity 5-6) ===
+
+  - block_id: dane_nudge_cleft_01
+    role: action
+    category: nudge_cleft
+    kind: single_state
+    text: >-
+      {{actor}} presses its {{actor.muzzle}} firmly into the cl_ef-t
+      of her bu_tt-oks, nudging upward with the flat of its nose,
+      the pressure steady and deliberate, tail wagging slowly,
+      repeating the motion when she shifts
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: nudge
+      target: cleft
+      intensity: 5
+      species: canine_large
+    complexity_level: moderate
+    description: "Cleft nudge v1 — firm muzzle pressure, repeating"
+
+  - block_id: dane_nudge_cleft_02
+    role: action
+    category: nudge_cleft
+    kind: single_state
+    text: >-
+      Its muzzle wedges deeper into the cl_ef-t of her bu_tt-oks,
+      the broad flat of {{actor}}'s nose pushing the fabric tight
+      against her skin, {{actor.breath}} hot through the thin material,
+      each exhale a warm pulse, the dog shifting its weight to press
+      harder with its skull
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: nudge
+      target: cleft
+      intensity: 6
+      species: canine_large
+    complexity_level: moderate
+    description: "Cleft nudge v2 — wedging deeper, hot breath through fabric"
+
+  - block_id: dane_nudge_cleft_03
+    role: action
+    category: nudge_cleft
+    kind: single_state
+    text: >-
+      {{actor}} drives its muzzle into the cl_ef-t of her bu_tt-oks
+      with a low insistent whine, the nose pushing rhythmically —
+      nudge, retreat, nudge harder — each pass splitting the fabric
+      tighter into the groove, its ton_gu-e flicking once across the
+      stretched material
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: nudge
+      target: cleft
+      intensity: 6
+      species: canine_large
+    complexity_level: complex
+    description: "Cleft nudge v3 — rhythmic pushing, tongue flick"
+
+  # === Persistent nudge / rhythmic (intensity 7-8) ===
+
+  - block_id: dane_nudge_persistent_01
+    role: action
+    category: nudge_persistent
+    kind: single_state
+    text: >-
+      {{actor}} settles into a steady rhythm, its {{actor.muzzle}}
+      rocking against the cl_ef-t of her bu_tt-oks in slow repetitive
+      strokes, the motion mechanical and unhurried, each push parting
+      the fabric deeper, {{actor.breath}} coming in loud wet snorts
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: persistent_nudge
+      target: cleft
+      intensity: 7
+      species: canine_large
+    complexity_level: complex
+    description: "Persistent nudge v1 — steady rhythmic rocking into cleft"
+
+  - block_id: dane_nudge_persistent_02
+    role: action
+    category: nudge_persistent
+    kind: single_state
+    text: >-
+      The dog's muzzle works in a grinding rhythm against her
+      bu_tt-oks, {{actor.muzzle}} pressing the cl_ef-t wide through
+      the fabric, its skull rocking side to side with each forward
+      drive, pan_ti-ng hard, its forepaws planted wide as it uses
+      the strength of its neck to push
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: persistent_nudge
+      target: cleft
+      intensity: 8
+      species: canine_large
+    complexity_level: complex
+    description: "Persistent nudge v2 — grinding rhythm, skull rocking, neck strength"
+
+  - block_id: dane_nudge_persistent_03
+    role: action
+    category: nudge_persistent
+    kind: single_state
+    text: >-
+      {{actor}}'s ton_gu-e drags a long we_t- stripe up through the
+      cl_ef-t of her bu_tt-oks, the fabric dark and clinging where it
+      passes, then the muzzle returns to its rhythmic nudging, each
+      push accompanied by a low rumbling vibration from the animal's
+      chest, relentless and steady
+    tags:
+      tone: dominant
+      scene_type: nudge
+      motion: persistent_nudge
+      target: cleft
+      intensity: 8
+      species: canine_large
+    complexity_level: complex
+    description: "Persistent nudge v3 — tongue stripe then rhythmic return, chest rumble"

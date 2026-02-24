@@ -64,6 +64,137 @@ templates:
               enabledAt: 8
               boostTags: { rigidity: maximum }
               avoidTags: { rigidity: [minimal, low, medium] }
+            # Cross-wire: high pose lock → prefer minimal-motion reactions
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 0
+              boostTags: { motion_amount: large }
+              avoidTags: { motion_amount: [minimal] }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 4
+              boostTags: { motion_amount: moderate }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 7
+              boostTags: { motion_amount: minimal }
+              avoidTags: { motion_amount: [large] }
+        - id: camera_stability
+          type: slider
+          label: Camera Stability
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 0
+              boostTags: { camera_rigidity: low }
+              avoidTags: { camera_rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 3
+              boostTags: { camera_rigidity: low }
+              avoidTags: { camera_rigidity: [maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 5
+              boostTags: { camera_rigidity: medium }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 7
+              boostTags: { camera_rigidity: high }
+              avoidTags: { camera_rigidity: [low] }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 9
+              boostTags: { camera_rigidity: maximum }
+              avoidTags: { camera_rigidity: [low, medium] }
+        - id: detail_shot
+          type: slider
+          label: Detail Shot
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 4
+          effects:
+            - kind: slot_intensity
+              slotLabel: Detail shot
+            - kind: slot_tag_boost
+              slotLabel: Detail shot
+              enabledAt: 0
+              boostTags: { intensity: 7 }
+              avoidTags: { intensity: [9] }
+            - kind: slot_tag_boost
+              slotLabel: Detail shot
+              enabledAt: 4
+              boostTags: { camera: tight_closeup }
+            - kind: slot_tag_boost
+              slotLabel: Detail shot
+              enabledAt: 7
+              boostTags: { camera: [face_closeup, detail_shot] }
+            - kind: slot_tag_boost
+              slotLabel: Detail shot
+              enabledAt: 9
+              boostTags: { intensity: 8 }
+              avoidTags: { intensity: [7] }
+        - id: disposition
+          type: slider
+          label: Her Response
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 7
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 0
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 3
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing] }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 5
+              boostTags: { disposition: conflicted }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 7
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant] }
+            - kind: slot_tag_boost
+              slotLabel: Her Reaction
+              enabledAt: 9
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 0
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 3
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 5
+              boostTags: { disposition: conflicted }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 7
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 9
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant, conflicted] }
 
     slots:
       # ── Opening
@@ -134,19 +265,54 @@ templates:
         reinforcement_text: "({{actor}} {{actor.vocal_effort}}, {{actor.breath}}, {{actor.weight_shift}}; {{actor.press}}, {{actor.muscle}})"
         inherit_intensity: true
 
-      # ── Her reaction audio
+      # ── Her reaction audio (shared — graduated via disposition slider)
       - label: Her audio cue
-        kind: audio_cue
-        reinforcement_text: "she whispers \"{{her.utterance}}\", {{her.vocal_pleasure}}, {{her.breath}}"
-        inherit_intensity: true
+        role: character
+        category: audio_reaction
+        selection_strategy: weighted_tags
+        tag_constraints:
+          motion: audio_reaction
+        intensity: 5
+        preferences:
+          boost_tags:
+            disposition: willing
+        optional: true
+        fallback_text: ""
 
-      # ── Her physical reaction
+      # ── Her physical reaction (shared — graduated via disposition slider)
       - label: Her Reaction
         role: character
         category: reaction
+        selection_strategy: weighted_tags
         tag_constraints:
-          element: dane
-        selection_strategy: uniform
+          motion: reaction
+        intensity: 5
+        preferences:
+          boost_tags:
+            disposition: willing
+        optional: false
+
+      # ── Detail / closeup (dane pack — graduated via slider)
+      - label: Detail shot
+        role: camera
+        category: closeup
+        tag_constraints:
+          species: canine_large
+        selection_strategy: weighted_tags
+        intensity: 7
+        optional: true
+        fallback_text: ""
+
+      # ── Camera stability (shared — graduated via slider)
+      - label: Camera stability
+        role: camera
+        category: camera_stability
+        selection_strategy: weighted_tags
+        tags:
+          lock: camera
+        preferences:
+          boost_tags:
+            camera_rigidity: medium
         optional: false
 
       # ── Terminal camera lock (generic block)
@@ -154,6 +320,350 @@ templates:
         role: camera
         category: camera_lock
         tag_constraints:
+          camera: observer_lock
+        selection_strategy: uniform
+        optional: false
+
+  - slug: dane-rear-sniff-nudge
+    name: "Dog — Playful Rear Sniff & Nudge"
+    description: >-
+      Playful i2v scene: dog already positioned behind her, progresses
+      from curious sniffing to insistent muzzle nudging at the cleft.
+      Her reaction graduates from forced composure to following the
+      rhythm with her hips. Source image should show the dog behind her.
+      Uses shared reactions and dane-specific sniff/nudge blocks.
+    composition_strategy: sequential
+    package_name: dane_encounter
+    tags: [dane, sniff, nudge, rear, playful, canine_large, i2v]
+    is_public: true
+    character_bindings:
+      actor:
+        character_id: "great_dane_01"
+        cast:
+          label: "Animal"
+          filter_species: "canine_large"
+      her:
+        character_id: "her_01"
+        cast:
+          label: "Subject"
+          filter_category: "human"
+    template_metadata:
+      target_duration_sec: 5
+      max_chars: 2048
+      provider: pixverse
+      mode: image_to_video
+      target_operation: image_to_video
+      notes: "Source image: dog positioned behind her. Bind 'actor' to canine_large, 'her' to human."
+      controls:
+        - id: pose_lock
+          type: slider
+          label: Pose Lock
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 4
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 0
+              boostTags: { rigidity: minimal }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 2
+              boostTags: { rigidity: low }
+              avoidTags: { rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 4
+              boostTags: { rigidity: medium }
+              avoidTags: { rigidity: [minimal, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 7
+              boostTags: { rigidity: high }
+              avoidTags: { rigidity: [minimal, low] }
+            - kind: slot_tag_boost
+              slotLabel: Pose lock
+              enabledAt: 9
+              boostTags: { rigidity: maximum }
+              avoidTags: { rigidity: [minimal, low, medium] }
+            # Cross-wire: high pose lock → prefer minimal-motion reactions
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 0
+              boostTags: { motion_amount: large }
+              avoidTags: { motion_amount: [minimal] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 4
+              boostTags: { motion_amount: moderate }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 7
+              boostTags: { motion_amount: minimal }
+              avoidTags: { motion_amount: [large] }
+        - id: escalation
+          type: slider
+          label: Escalation
+          min: 1
+          max: 10
+          step: 1
+          defaultValue: 5
+          effects:
+            - kind: slot_intensity
+              slotLabel: Sniff
+            - kind: slot_intensity
+              slotLabel: Nudge
+            - kind: slot_intensity
+              slotLabel: Persistent nudge
+            - kind: slot_tag_boost
+              slotLabel: Sniff
+              enabledAt: 1
+              boostTags: { intensity: 3 }
+            - kind: slot_tag_boost
+              slotLabel: Sniff
+              enabledAt: 5
+              boostTags: { intensity: 4 }
+            - kind: slot_tag_boost
+              slotLabel: Nudge
+              enabledAt: 1
+              boostTags: { intensity: 5 }
+            - kind: slot_tag_boost
+              slotLabel: Nudge
+              enabledAt: 6
+              boostTags: { intensity: 6 }
+            - kind: slot_tag_boost
+              slotLabel: Persistent nudge
+              enabledAt: 1
+              boostTags: { intensity: 7 }
+            - kind: slot_tag_boost
+              slotLabel: Persistent nudge
+              enabledAt: 8
+              boostTags: { intensity: 8 }
+        - id: reaction_tone
+          type: slider
+          label: Reaction Tone
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 4
+          effects:
+            - kind: slot_intensity
+              slotLabel: Her reaction
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 0
+              boostTags: { response: composed }
+              avoidTags: { response: [rhythm, surrender] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 3
+              boostTags: { response: composure_slipping }
+              avoidTags: { response: [rhythm] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 5
+              boostTags: { response: yielding }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 7
+              boostTags: { response: vocal }
+              avoidTags: { response: [composed] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 9
+              boostTags: { response: rhythm }
+              avoidTags: { response: [composed, startled] }
+        - id: camera_stability
+          type: slider
+          label: Camera Stability
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 6
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 0
+              boostTags: { camera_rigidity: low }
+              avoidTags: { camera_rigidity: [high, maximum] }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 3
+              boostTags: { camera_rigidity: medium }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 6
+              boostTags: { camera_rigidity: high }
+              avoidTags: { camera_rigidity: [low] }
+            - kind: slot_tag_boost
+              slotLabel: Camera stability
+              enabledAt: 9
+              boostTags: { camera_rigidity: maximum }
+              avoidTags: { camera_rigidity: [low, medium] }
+        - id: disposition
+          type: slider
+          label: Her Response
+          min: 0
+          max: 10
+          step: 1
+          defaultValue: 7
+          effects:
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 0
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 3
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 5
+              boostTags: { disposition: conflicted }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 7
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant] }
+            - kind: slot_tag_boost
+              slotLabel: Her reaction
+              enabledAt: 9
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 0
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing, conflicted] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 3
+              boostTags: { disposition: reluctant }
+              avoidTags: { disposition: [willing] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 5
+              boostTags: { disposition: conflicted }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 7
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant] }
+            - kind: slot_tag_boost
+              slotLabel: Her audio cue
+              enabledAt: 9
+              boostTags: { disposition: willing }
+              avoidTags: { disposition: [reluctant, conflicted] }
+
+    slots:
+      # ── Pose lock (shared — graduated via slider)
+      - label: Pose lock
+        role: subject
+        category: pose_lock
+        selection_strategy: weighted_tags
+        tags:
+          lock: pose
+          mode: [i2v, any]
+        preferences:
+          boost_tags:
+            rigidity: medium
+        optional: false
+
+      # ── Anatomy reinforcement
+      - label: Physical reminder
+        kind: reinforcement
+        reinforcement_text: "({{actor}}: {{actor.chest}}, {{actor.haunches}}, {{actor.muzzle}}, {{actor.tail_motion}}. Both figures distinct and separately rendered.)"
+
+      # ── Camera stability (shared)
+      - label: Camera stability
+        role: camera
+        category: camera_stability
+        selection_strategy: weighted_tags
+        tags:
+          lock: camera
+        preferences:
+          boost_tags:
+            camera_rigidity: high
+        optional: false
+
+      # ── Playful sniff (dane pack)
+      - label: Sniff
+        role: action
+        category: sniff
+        selection_strategy: weighted_tags
+        tags:
+          scene_type: sniff
+          species: canine_large
+        intensity: 4
+        optional: false
+
+      # ── Nudge at cleft (dane pack)
+      - label: Nudge
+        role: action
+        category: nudge_cleft
+        selection_strategy: weighted_tags
+        tags:
+          scene_type: nudge
+          target: cleft
+          species: canine_large
+        intensity: 5
+        optional: false
+
+      # ── Audio cue
+      - label: Nudge cue
+        kind: audio_cue
+        reinforcement_text: "{{actor}} {{actor.breath}}, {{actor.vocal_pleasure}}, {{actor.tail_motion}}"
+        inherit_intensity: true
+
+      # ── Persistent nudge (dane pack — optional escalation)
+      - label: Persistent nudge
+        role: action
+        category: nudge_persistent
+        selection_strategy: weighted_tags
+        tags:
+          scene_type: nudge
+          motion: persistent_nudge
+          species: canine_large
+        intensity: 7
+        optional: true
+        fallback_text: ""
+
+      # ── Her reaction (shared — graduated via reaction_tone slider)
+      - label: Her reaction
+        role: character
+        category: reaction
+        selection_strategy: weighted_tags
+        tags:
+          motion: reaction
+        intensity: 5
+        preferences:
+          boost_tags:
+            response: composure_slipping
+        optional: false
+
+      # ── Her audio cue (shared — graduated via disposition slider)
+      - label: Her audio cue
+        role: character
+        category: audio_reaction
+        selection_strategy: weighted_tags
+        tag_constraints:
+          motion: audio_reaction
+        intensity: 5
+        preferences:
+          boost_tags:
+            disposition: willing
+        optional: true
+        fallback_text: ""
+
+      # ── Terminal camera lock
+      - label: Camera lock
+        role: camera
+        category: camera_lock
+        tags:
           camera: observer_lock
         selection_strategy: uniform
         optional: false

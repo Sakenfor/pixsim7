@@ -4,6 +4,7 @@
  * Zustand store for managing block templates, draft slots, and roll results.
  */
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 import type {
   BlockTemplateSummary,
@@ -83,8 +84,14 @@ interface BlockTemplateState {
   // Template pinning (for auto-roll on generation)
   pinnedTemplateId: string | null;
   templateRollMode: 'once' | 'each';
+  /** Per-operation pinned state — preserved when switching operations (mirrors promptPerOperation pattern) */
+  pinnedPerOperation: Partial<Record<string, PinnedOperationState>>;
+  /** Tracks which operation the current pinned state belongs to */
+  _activeOperation: string | null;
   setPinnedTemplateId: (id: string | null) => void;
   setTemplateRollMode: (mode: 'once' | 'each') => void;
+  /** Save current pinned state for the old operation and restore for the new one */
+  syncOperation: (operationType: string) => void;
 
   // Control slider overrides (control_id -> value)
   controlValues: Record<string, number>;
@@ -94,6 +101,12 @@ interface BlockTemplateState {
   // Rolling
   roll: (templateId: string, seed?: number) => Promise<RollResult | null>;
   clearRollResult: () => void;
+}
+
+interface PinnedOperationState {
+  templateId: string | null;
+  rollMode: 'once' | 'each';
+  controlValues: Record<string, number>;
 }
 
 function createEmptySlot(index: number): TemplateSlot {
@@ -132,7 +145,7 @@ function areBindingsEqual(a: CharacterBindings, b: CharacterBindings): boolean {
   return true;
 }
 
-export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
+export const useBlockTemplateStore = create<BlockTemplateState>()(persist((set, get) => ({
   templates: [],
   templatesLoading: false,
   activeTemplate: null,
@@ -143,6 +156,8 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   rolling: false,
   pinnedTemplateId: null,
   templateRollMode: 'once',
+  pinnedPerOperation: {},
+  _activeOperation: null,
   controlValues: {},
 
   fetchTemplates: async () => {
@@ -333,14 +348,77 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
     }
   },
 
-  setPinnedTemplateId: (id) => set({ pinnedTemplateId: id, controlValues: {} }),
-  setTemplateRollMode: (mode) => set({ templateRollMode: mode }),
+  setPinnedTemplateId: (id) => {
+    const { _activeOperation, pinnedPerOperation, templateRollMode } = get();
+    const updated: Record<string, any> = { pinnedTemplateId: id, controlValues: {} };
+    // Also save to per-operation dictionary (mirrors setPrompt → promptPerOperation)
+    if (_activeOperation) {
+      updated.pinnedPerOperation = {
+        ...pinnedPerOperation,
+        [_activeOperation]: { templateId: id, rollMode: templateRollMode, controlValues: {} },
+      };
+    }
+    set(updated);
+  },
+  setTemplateRollMode: (mode) => {
+    const { _activeOperation, pinnedPerOperation, pinnedTemplateId, controlValues } = get();
+    const updated: Record<string, any> = { templateRollMode: mode };
+    if (_activeOperation) {
+      updated.pinnedPerOperation = {
+        ...pinnedPerOperation,
+        [_activeOperation]: { templateId: pinnedTemplateId, rollMode: mode, controlValues },
+      };
+    }
+    set(updated);
+  },
+
+  syncOperation: (operationType) => {
+    const { _activeOperation, pinnedTemplateId, templateRollMode, controlValues, pinnedPerOperation } = get();
+    if (_activeOperation === operationType) return;
+
+    // Save current pinned state to the old operation (if we had one)
+    const updatedPerOp = _activeOperation
+      ? {
+        ...pinnedPerOperation,
+        [_activeOperation]: { templateId: pinnedTemplateId, rollMode: templateRollMode, controlValues },
+      }
+      : pinnedPerOperation;
+
+    // Load pinned state for the new operation (or defaults)
+    const saved = updatedPerOp[operationType];
+
+    set({
+      _activeOperation: operationType,
+      pinnedPerOperation: updatedPerOp,
+      pinnedTemplateId: saved?.templateId ?? null,
+      templateRollMode: saved?.rollMode ?? 'once',
+      controlValues: saved?.controlValues ?? {},
+    });
+  },
 
   setControlValue: (controlId, value) => {
-    const { controlValues } = get();
-    set({ controlValues: { ...controlValues, [controlId]: value } });
+    const { controlValues, _activeOperation, pinnedPerOperation, pinnedTemplateId, templateRollMode } = get();
+    const newControlValues = { ...controlValues, [controlId]: value };
+    const updated: Record<string, any> = { controlValues: newControlValues };
+    if (_activeOperation) {
+      updated.pinnedPerOperation = {
+        ...pinnedPerOperation,
+        [_activeOperation]: { templateId: pinnedTemplateId, rollMode: templateRollMode, controlValues: newControlValues },
+      };
+    }
+    set(updated);
   },
-  resetControlValues: () => set({ controlValues: {} }),
+  resetControlValues: () => {
+    const { _activeOperation, pinnedPerOperation, pinnedTemplateId, templateRollMode } = get();
+    const updated: Record<string, any> = { controlValues: {} };
+    if (_activeOperation) {
+      updated.pinnedPerOperation = {
+        ...pinnedPerOperation,
+        [_activeOperation]: { templateId: pinnedTemplateId, rollMode: templateRollMode, controlValues: {} },
+      };
+    }
+    set(updated);
+  },
 
   roll: async (templateId, seed) => {
     const { draftCharacterBindings, activeTemplate, controlValues } = get();
@@ -367,6 +445,33 @@ export const useBlockTemplateStore = create<BlockTemplateState>((set, get) => ({
   },
 
   clearRollResult: () => set({ lastRollResult: null }),
+}), {
+  name: 'block-template-pin',
+  version: 2,
+  partialize: (state) => ({
+    pinnedTemplateId: state.pinnedTemplateId,
+    templateRollMode: state.templateRollMode,
+    controlValues: state.controlValues,
+    pinnedPerOperation: state.pinnedPerOperation,
+    _activeOperation: state._activeOperation,
+  }),
+  migrate: (persisted: any, version: number) => {
+    if (version < 2) {
+      // v1 had flat pinning — seed into pinnedPerOperation for the active operation
+      const op = persisted._activeOperation;
+      if (op && persisted.pinnedTemplateId) {
+        persisted.pinnedPerOperation = {
+          ...(persisted.pinnedPerOperation ?? {}),
+          [op]: {
+            templateId: persisted.pinnedTemplateId,
+            rollMode: persisted.templateRollMode ?? 'once',
+            controlValues: persisted.controlValues ?? {},
+          },
+        };
+      }
+    }
+    return persisted;
+  },
 }));
 
 export { createEmptySlot };
