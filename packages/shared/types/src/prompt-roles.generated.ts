@@ -1,9 +1,9 @@
 // Auto-generated from prompt roles vocabulary - DO NOT EDIT
 // Re-run: pnpm prompt-roles:gen
 //
-// Source: pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_roles.yaml
+// Source: merged plugin prompt_roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
 
-export const PROMPT_ROLES = ["character","action","setting","mood","romance","camera","other"] as const;
+export const PROMPT_ROLES = ["action","camera","character","mood","other","romance","setting"] as const;
 
 /**
  * Core prompt role type, derived from vocab.
@@ -20,39 +20,39 @@ export type PromptRole = PromptRoleId | (string & {});
  * Role labels for UI display.
  */
 export const PROMPT_ROLE_LABELS = {
-  "character": "Character",
   "action": "Action",
-  "setting": "Setting",
-  "mood": "Mood",
-  "romance": "Romance",
   "camera": "Camera",
-  "other": "Other"
+  "character": "Character",
+  "mood": "Mood",
+  "other": "Other",
+  "romance": "Romance",
+  "setting": "Setting"
 } as const satisfies Record<PromptRoleId, string>;
 
 /**
  * Role descriptions for UI display.
  */
 export const PROMPT_ROLE_DESCRIPTIONS = {
-  "character": "Descriptions of people, creatures, or beings",
   "action": "Actions, movement, behaviors, or interactions",
-  "setting": "Environment, location, or time of day",
-  "mood": "Emotional tone or atmosphere",
-  "romance": "Romantic or intimate content",
   "camera": "Camera and shot instructions",
-  "other": "Unclassified or technical content"
+  "character": "Descriptions of people, creatures, or beings",
+  "mood": "Emotional tone or atmosphere",
+  "other": "Unclassified or technical content",
+  "romance": "Romantic or intimate content",
+  "setting": "Environment, location, or time of day"
 } as const satisfies Record<PromptRoleId, string>;
 
 /**
  * Role priority map (higher = more important).
  */
 export const PROMPT_ROLE_PRIORITIES = {
-  "character": 20,
   "action": 30,
-  "setting": 40,
-  "mood": 50,
-  "romance": 60,
   "camera": 10,
-  "other": 0
+  "character": 20,
+  "mood": 50,
+  "other": 0,
+  "romance": 60,
+  "setting": 40
 } as const satisfies Record<PromptRoleId, number>;
 
 /**
@@ -64,13 +64,13 @@ export const PROMPT_ROLE_PRIORITY = ["romance","mood","setting","action","charac
  * Role aliases (lowercased).
  */
 export const PROMPT_ROLE_ALIASES = {
-  "character": [],
   "action": [],
-  "setting": [],
-  "mood": [],
-  "romance": [],
   "camera": [],
-  "other": []
+  "character": [],
+  "mood": [],
+  "other": [],
+  "romance": [],
+  "setting": []
 } as const satisfies Record<PromptRoleId, readonly string[]>;
 
 /**
@@ -78,12 +78,12 @@ export const PROMPT_ROLE_ALIASES = {
  * Composition role IDs are normalized (no "role:" prefix).
  */
 export const PROMPT_ROLE_TO_COMPOSITION_ROLE = {
-  "character": "main_character",
-  "action": "effect",
-  "setting": "environment",
-  "mood": "style_reference",
-  "romance": "style_reference",
-  "camera": "effect"
+  "action": "animation:action",
+  "camera": "camera:angle",
+  "character": "entities:main_character",
+  "mood": "materials:atmosphere",
+  "romance": "materials:romance",
+  "setting": "world:environment"
 } as const satisfies Partial<Record<PromptRoleId, string>>;
 
 /**
@@ -91,11 +91,11 @@ export const PROMPT_ROLE_TO_COMPOSITION_ROLE = {
  * Derived from prompt roles vocab (or composition role color if inherited).
  */
 export const PROMPT_ROLE_COLORS = {
-  "character": "blue",
   "action": "cyan",
-  "setting": "green",
+  "camera": "slate",
+  "character": "blue",
   "mood": "pink",
+  "other": "gray",
   "romance": "pink",
-  "camera": "cyan",
-  "other": "gray"
+  "setting": "green"
 } as const satisfies Record<PromptRoleId, string>;

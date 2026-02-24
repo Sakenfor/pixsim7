@@ -2,4 +2,10 @@
 # Role keyword authorities are provided by dedicated prompt-role packs.
 version: "1.0.0"
 
-roles: {}
+roles:
+  other:
+    label: "Other"
+    description: "Unclassified or technical content"
+    priority: 0
+    aliases: []
+    color: gray

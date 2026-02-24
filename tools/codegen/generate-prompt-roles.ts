@@ -2,7 +2,7 @@
 /**
  * Generates TypeScript constants from prompt roles vocabulary
  *
- * Source:  pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_roles.yaml
+ * Source:  merged plugin prompt_roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
  * Output:  packages/shared/types/src/prompt-roles.generated.ts
  *
  * Usage:
@@ -22,9 +22,9 @@ const normalizedDir = process.platform === 'win32' && SCRIPT_DIR.startsWith('/')
   ? SCRIPT_DIR.slice(1)
   : SCRIPT_DIR;
 
-const PROMPT_YAML_PATH = path.resolve(
+const PLUGINS_DIR = path.resolve(
   normalizedDir,
-  '../../pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_roles.yaml'
+  '../../pixsim7/backend/main/plugins'
 );
 const COMPOSITION_YAML_PATH = path.resolve(
   normalizedDir,
@@ -35,30 +35,14 @@ const OUT_PATH = path.resolve(
   '../../packages/shared/types/src/prompt-roles.generated.ts'
 );
 
-// Validate YAML file exists
-if (!fs.existsSync(PROMPT_YAML_PATH)) {
-  console.error(`✗ Missing prompt roles data: ${PROMPT_YAML_PATH}`);
-  console.error('  Ensure pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_roles.yaml exists.');
+// Validate plugins directory exists
+if (!fs.existsSync(PLUGINS_DIR)) {
+  console.error(`Error: Missing plugins directory: ${PLUGINS_DIR}`);
+  console.error('  Ensure pixsim7/backend/main/plugins exists.');
   process.exit(1);
 }
 
-// Parse YAML
-let promptData: Record<string, unknown>;
-try {
-  promptData = yaml.parse(fs.readFileSync(PROMPT_YAML_PATH, 'utf8'));
-} catch (err) {
-  console.error(`✗ Failed to parse ${PROMPT_YAML_PATH}:`);
-  console.error(`  ${err instanceof Error ? err.message : err}`);
-  process.exit(1);
-}
-
-// Validate required keys
-if (!('roles' in promptData)) {
-  console.error(`✗ Missing required key in ${PROMPT_YAML_PATH}: roles`);
-  process.exit(1);
-}
-
-const promptRolesData = promptData.roles as Record<string, Record<string, unknown>>;
+const promptRolesData = loadPromptRolesFromPluginPacks(PLUGINS_DIR);
 
 // Optional: load composition roles for inheritance (colors/labels/desc)
 let compositionRoles: Record<string, { label?: string; description?: string; color?: string }> = {};
@@ -77,13 +61,20 @@ if (fs.existsSync(COMPOSITION_YAML_PATH)) {
       ])
     );
   } catch (err) {
-    console.error(`✗ Failed to parse ${COMPOSITION_YAML_PATH}:`);
+    console.error(`Error: Failed to parse ${COMPOSITION_YAML_PATH}:`);
     console.error(`  ${err instanceof Error ? err.message : err}`);
     process.exit(1);
   }
 }
 
 const roleIds = Object.keys(promptRolesData).map((roleId) => normalizePromptRoleId(roleId));
+if (roleIds.length === 0) {
+  console.error('Error: No prompt roles found across plugin vocab packs.');
+  console.error(`  Checked: ${PLUGINS_DIR}\\*\\vocabularies\\prompt_roles.yaml`);
+  console.error('  This would generate an empty prompt-roles file and likely break UI defaults.');
+  process.exit(1);
+}
+
 
 const labels: Record<string, string> = {};
 const descriptions: Record<string, string> = {};
@@ -126,7 +117,7 @@ const priorityOrder = [...roleIds].sort((a, b) => {
 const output = `// Auto-generated from prompt roles vocabulary - DO NOT EDIT
 // Re-run: pnpm prompt-roles:gen
 //
-// Source: pixsim7/backend/main/plugins/starter_pack/vocabularies/prompt_roles.yaml
+// Source: merged plugin prompt_roles.yaml files under pixsim7/backend/main/plugins/<plugin>/vocabularies/
 
 export const PROMPT_ROLES = ${JSON.stringify(roleIds)} as const;
 
@@ -181,23 +172,23 @@ export const PROMPT_ROLE_COLORS = ${JSON.stringify(colors, null, 2)} as const sa
 
 if (CHECK_MODE) {
   if (!fs.existsSync(OUT_PATH)) {
-    console.error(`✗ Generated file missing: ${OUT_PATH}`);
+    console.error(`Error: Generated file missing: ${OUT_PATH}`);
     console.error('  Run: pnpm prompt-roles:gen');
     process.exit(1);
   }
   const existing = fs.readFileSync(OUT_PATH, 'utf8');
   if (existing !== output) {
-    console.error(`✗ Generated file out of date: ${OUT_PATH}`);
+    console.error(`Error: Generated file out of date: ${OUT_PATH}`);
     console.error('  Run: pnpm prompt-roles:gen');
     process.exit(1);
   }
-  console.log(`✓ Generated file is current: ${OUT_PATH}`);
+  console.log(`OK: Generated file is current: ${OUT_PATH}`);
   process.exit(0);
 }
 
 fs.mkdirSync(path.dirname(OUT_PATH), { recursive: true });
 fs.writeFileSync(OUT_PATH, output, 'utf8');
-console.log(`✓ Generated: ${OUT_PATH}`);
+console.log(`OK: Generated: ${OUT_PATH}`);
 
 function normalizePromptRoleId(value: string): string {
   const trimmed = value.trim().toLowerCase();
@@ -234,4 +225,52 @@ function toStringArray(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
     .filter(Boolean);
+}
+
+function loadPromptRolesFromPluginPacks(pluginsDir: string): Record<string, Record<string, unknown>> {
+  const merged: Record<string, Record<string, unknown>> = {};
+  const owners: Record<string, string> = {};
+
+  for (const entry of fs.readdirSync(pluginsDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!entry.isDirectory()) continue;
+    const pluginId = entry.name;
+    const promptYamlPath = path.join(pluginsDir, pluginId, 'vocabularies', 'prompt_roles.yaml');
+    if (!fs.existsSync(promptYamlPath)) continue;
+
+    let promptData: Record<string, unknown>;
+    try {
+      promptData = yaml.parse(fs.readFileSync(promptYamlPath, 'utf8')) as Record<string, unknown>;
+    } catch (err) {
+      console.error(`Error: Failed to parse ${promptYamlPath}:`);
+      console.error(`  ${err instanceof Error ? err.message : err}`);
+      process.exit(1);
+    }
+
+    if (!('roles' in promptData)) {
+      console.error(`Error: Missing required key in ${promptYamlPath}: roles`);
+      process.exit(1);
+    }
+
+    const roles = promptData.roles;
+    if (!roles || typeof roles !== 'object') {
+      console.error(`Error: Invalid roles object in ${promptYamlPath}`);
+      process.exit(1);
+    }
+
+    for (const [rawRoleId, rawRoleData] of Object.entries(roles as Record<string, unknown>)) {
+      if (!rawRoleData || typeof rawRoleData !== 'object') continue;
+      const roleId = normalizePromptRoleId(rawRoleId);
+      const existingOwner = owners[roleId];
+      if (existingOwner && existingOwner !== pluginId) {
+        console.error(`Error: Duplicate prompt role '${roleId}' across plugins '${existingOwner}' and '${pluginId}'`);
+        process.exit(1);
+      }
+      owners[roleId] = pluginId;
+      merged[roleId] = rawRoleData as Record<string, unknown>;
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(merged).sort(([a], [b]) => a.localeCompare(b))
+  );
 }
