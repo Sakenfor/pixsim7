@@ -212,13 +212,14 @@ async def enqueue_generation_retry_job(
         "generation_id": generation_id,
         "_queue_name": GENERATION_RETRY_QUEUE_NAME,
     }
-    actual_defer_seconds: int | None = None
-    if defer_seconds and defer_seconds > 0:
-        jitter = _get_retry_defer_jitter_seconds()
-        actual_defer_seconds = defer_seconds + (
-            random.randint(0, jitter) if jitter > 0 else 0
-        )
+    jitter = _get_retry_defer_jitter_seconds()
+    base_defer = max(defer_seconds or 0, 0)
+    jitter_amount = random.randint(0, jitter) if jitter > 0 else 0
+    actual_defer_seconds: int | None = base_defer + jitter_amount
+    if actual_defer_seconds > 0:
         kwargs["_defer_by"] = timedelta(seconds=actual_defer_seconds)
+    else:
+        actual_defer_seconds = None
 
     lease_defer_seconds = actual_defer_seconds if actual_defer_seconds is not None else defer_seconds
     if not await acquire_generation_enqueue_lease(

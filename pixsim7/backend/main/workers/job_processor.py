@@ -6,7 +6,9 @@ Processes generations created via GenerationService:
 2. Submit generation to provider
 3. Update generation status
 """
+import asyncio
 import os
+import random
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from pixsim7.backend.main.domain import Generation
@@ -89,6 +91,8 @@ PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS = int(
     os.getenv("PIXVERSE_I2I_CONCURRENT_COOLDOWN_SECONDS", "2")
 )
 NO_ACCOUNT_AVAILABLE_DEFER_SECONDS = 10
+DISPATCH_STAGGER_PER_SLOT_SECONDS = float(os.getenv("DISPATCH_STAGGER_PER_SLOT_SECONDS", "1.5"))
+MAX_DISPATCH_STAGGER_SECONDS = float(os.getenv("DISPATCH_STAGGER_MAX_SECONDS", "12"))
 PINNED_WAIT_PADDING_SECONDS = int(os.getenv("PINNED_WAIT_PADDING_SECONDS", "1"))
 MIN_PINNED_COOLDOWN_DEFER_SECONDS = int(os.getenv("MIN_PINNED_COOLDOWN_DEFER_SECONDS", "2"))
 
@@ -884,6 +888,14 @@ async def process_generation(ctx: dict, generation_id: int) -> dict:
             await generation_service.mark_started(generation_id)
             gen_logger.info("generation_started")
             debug.worker("generation_started", generation_id=generation_id)
+
+            # Stagger concurrent dispatches to avoid thundering-herd on provider API
+            concurrent = account.current_processing_jobs or 0
+            if concurrent > 1:
+                stagger = random.uniform(0, min(concurrent * DISPATCH_STAGGER_PER_SLOT_SECONDS, MAX_DISPATCH_STAGGER_SECONDS))
+                if stagger > 0.1:
+                    gen_logger.info("dispatch_stagger", stagger_seconds=round(stagger, 2), concurrent_jobs=concurrent)
+                    await asyncio.sleep(stagger)
 
             # Execute generation via provider
             try:
