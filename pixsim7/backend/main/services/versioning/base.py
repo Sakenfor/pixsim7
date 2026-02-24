@@ -7,13 +7,13 @@ and provides a base service class with common operations.
 Usage:
     1. Define your Family and Entity models implementing the protocols
     2. Create a concrete service extending VersioningServiceBase
-    3. Implement the abstract methods for your specific entity type
+    3. Set class-level config attributes and implement get_timeline_metadata()
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     Any,
     Dict,
@@ -65,7 +65,7 @@ class VersionedEntityProtocol(Protocol):
     version_family_id: Optional[Any]  # Links to family
     version_number: Optional[int]
     parent_version_id: Optional[Any]  # For PromptVersion
-    # OR parent_asset_id for Asset - handled via get_parent_id()
+    # OR parent_asset_id for Asset - handled via parent_id_attr config
 
     # Timestamps
     created_at: datetime
@@ -152,80 +152,96 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
     """
     Abstract base class for versioning services.
 
-    Provides common operations that work across different entity types:
-    - Timeline queries
-    - Ancestry traversal
-    - Version number management
-    - Family statistics
+    Subclasses configure entity mapping via class-level attributes:
 
-    Subclasses must implement abstract methods for entity-specific behavior.
+        family_model         — SQLModel class for families (REQUIRED)
+        entity_model         — SQLModel class for versioned entities (REQUIRED)
+        entity_id_attr       — PK column name on entity (default "id")
+        family_id_attr       — FK column linking entity -> family (default "version_family_id")
+        parent_id_attr       — FK column linking entity -> parent entity (REQUIRED)
+        version_number_attr  — column for version number (default "version_number")
+        version_message_attr — column for version message (default "version_message")
+        head_id_attr         — FK on *family* pointing to HEAD entity (None = no HEAD)
+
+    The only abstract method is get_timeline_metadata().
 
     Type Parameters:
         TFamily: The family model type (e.g., AssetVersionFamily)
         TEntity: The versioned entity type (e.g., Asset)
     """
 
+    # -- Config attributes (set by subclasses) --------------------------------
+    family_model: type
+    entity_model: type
+    entity_id_attr: str = "id"
+    family_id_attr: str = "version_family_id"
+    parent_id_attr: str  # REQUIRED — varies per entity
+    version_number_attr: str = "version_number"
+    version_message_attr: str = "version_message"
+    head_id_attr: Optional[str] = None  # None = no HEAD (e.g. Prompt)
+
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._validate_config()
+
+    def _validate_config(self) -> None:
+        """Fail fast if required config attributes are missing."""
+        missing = [
+            attr for attr in ("family_model", "entity_model", "parent_id_attr")
+            if not getattr(type(self), attr, None)
+        ]
+        if missing:
+            raise TypeError(
+                f"{type(self).__name__} must set class attributes: "
+                f"{', '.join(missing)}"
+            )
 
     # =========================================================================
-    # ABSTRACT METHODS - Must be implemented by subclasses
+    # ENTITY ACCESSORS — concrete defaults using config attrs
+    # Subclasses can still override via MRO if needed.
     # =========================================================================
 
-    @abstractmethod
     def get_family_model(self) -> type:
         """Return the SQLModel class for families."""
-        ...
+        return self.family_model
 
-    @abstractmethod
     def get_entity_model(self) -> type:
         """Return the SQLModel class for versioned entities."""
-        ...
+        return self.entity_model
 
-    @abstractmethod
-    def get_family_id_field(self, entity: TEntity) -> Optional[str]:
-        """Get the family ID from an entity (as string for UUID comparison)."""
-        ...
-
-    @abstractmethod
     def get_parent_id(self, entity: TEntity) -> Optional[Any]:
         """Get the parent entity ID from an entity."""
-        ...
+        return getattr(entity, self.parent_id_attr)
 
-    @abstractmethod
     def get_entity_id(self, entity: TEntity) -> Any:
         """Get the entity's primary key."""
-        ...
+        return getattr(entity, self.entity_id_attr)
 
-    @abstractmethod
     def get_version_number(self, entity: TEntity) -> Optional[int]:
         """Get the version number from an entity."""
-        ...
+        return getattr(entity, self.version_number_attr)
 
-    @abstractmethod
     def get_version_message(self, entity: TEntity) -> Optional[str]:
         """Get the version message from an entity."""
-        ...
+        return getattr(entity, self.version_message_attr)
 
-    @abstractmethod
     def get_head_id(self, family: TFamily) -> Optional[Any]:
         """Get the HEAD entity ID from a family (if applicable)."""
-        ...
+        if self.head_id_attr is None:
+            return None
+        return getattr(family, self.head_id_attr)
 
-    @abstractmethod
     def build_family_id_filter(self, family_id: UUID):
         """Build SQLAlchemy filter for matching family_id on entities."""
-        ...
+        return getattr(self.entity_model, self.family_id_attr) == family_id
 
-    @abstractmethod
     def build_entity_id_filter(self, entity_id: Any):
         """Build SQLAlchemy filter for matching entity by ID."""
-        ...
+        return getattr(self.entity_model, self.entity_id_attr) == entity_id
 
-    @abstractmethod
     def build_parent_id_filter(self, parent_id: Any):
         """Build SQLAlchemy filter for matching parent_id on entities."""
-        ...
+        return getattr(self.entity_model, self.parent_id_attr) == parent_id
 
     @abstractmethod
     def get_timeline_metadata(self, entity: TEntity) -> Dict[str, Any]:
@@ -259,11 +275,12 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
         Computed at query time to avoid concurrency issues.
         """
         EntityModel = self.get_entity_model()
+        version_col = getattr(EntityModel, self.version_number_attr)
         result = await self.db.execute(
             select(
                 func.count(EntityModel.id).label("version_count"),
-                func.max(EntityModel.version_number).label("max_version"),
-                func.min(EntityModel.version_number).label("min_version"),
+                func.max(version_col).label("max_version"),
+                func.min(version_col).label("min_version"),
             ).where(self.build_family_id_filter(family_id))
         )
         row = result.one()
@@ -298,8 +315,9 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
             )
 
         EntityModel = self.get_entity_model()
+        version_col = getattr(EntityModel, self.version_number_attr)
         result = await self.db.execute(
-            select(func.max(EntityModel.version_number))
+            select(func.max(version_col))
             .where(self.build_family_id_filter(family_id))
         )
         max_version = result.scalar() or 0
@@ -312,7 +330,8 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
     ) -> List[TEntity]:
         """Get all versions in a family, ordered by version number."""
         EntityModel = self.get_entity_model()
-        order = EntityModel.version_number.asc() if order_asc else EntityModel.version_number.desc()
+        version_col = getattr(EntityModel, self.version_number_attr)
+        order = version_col.asc() if order_asc else version_col.desc()
         result = await self.db.execute(
             select(EntityModel)
             .where(self.build_family_id_filter(family_id))
@@ -411,10 +430,11 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
     async def get_descendants(self, entity_id: Any) -> List[TEntity]:
         """Get all direct descendants (children) of an entity."""
         EntityModel = self.get_entity_model()
+        version_col = getattr(EntityModel, self.version_number_attr)
         result = await self.db.execute(
             select(EntityModel)
             .where(self.build_parent_id_filter(entity_id))
-            .order_by(EntityModel.version_number.asc())
+            .order_by(version_col.asc())
         )
         return list(result.scalars().all())
 
@@ -443,3 +463,111 @@ class VersioningServiceBase(ABC, Generic[TFamily, TEntity]):
             ancestors.append(entity)
 
         return ancestors
+
+    # =========================================================================
+    # HEAD MANAGEMENT — shared for entities with head_id_attr
+    # =========================================================================
+
+    async def set_head(self, family_id: UUID, entity_id: Any) -> TFamily:
+        """
+        Set which entity is the HEAD (current best) version.
+
+        Args:
+            family_id: The family to update
+            entity_id: The entity to set as HEAD
+
+        Returns:
+            Updated family
+
+        Raises:
+            ValueError: If head_id_attr is None or entity doesn't belong to family
+        """
+        if self.head_id_attr is None:
+            raise ValueError(
+                f"{type(self).__name__} does not support HEAD management"
+            )
+
+        # Verify entity belongs to family
+        result = await self.db.execute(
+            select(self.entity_model).where(
+                self.build_entity_id_filter(entity_id),
+                self.build_family_id_filter(family_id),
+            )
+        )
+        entity = result.scalar_one_or_none()
+        if not entity:
+            raise ValueError(
+                f"Entity {entity_id} does not belong to family {family_id}"
+            )
+
+        # Update family HEAD
+        family = await self.get_family(family_id)
+        if not family:
+            raise ValueError(f"Family {family_id} not found")
+
+        setattr(family, self.head_id_attr, entity_id)
+        family.updated_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+        return family
+
+    async def elect_new_head(self, family_id: UUID) -> Optional[Any]:
+        """
+        Auto-elect a new HEAD after the current HEAD is deleted.
+
+        Strategy: Pick the entity with the highest version_number.
+
+        Returns:
+            The new head entity ID, or None if family is empty.
+            No-op (returns None) if head_id_attr is None.
+        """
+        if self.head_id_attr is None:
+            return None
+
+        EntityModel = self.entity_model
+        id_col = getattr(EntityModel, self.entity_id_attr)
+        version_col = getattr(EntityModel, self.version_number_attr)
+
+        result = await self.db.execute(
+            select(id_col)
+            .where(self.build_family_id_filter(family_id))
+            .order_by(version_col.desc())
+            .limit(1)
+        )
+        new_head_id = result.scalar_one_or_none()
+
+        if new_head_id:
+            family = await self.get_family(family_id)
+            if family:
+                setattr(family, self.head_id_attr, new_head_id)
+                family.updated_at = datetime.now(timezone.utc)
+                await self.db.flush()
+
+        return new_head_id
+
+    async def get_version_timeline(self, family_id: UUID) -> List[dict]:
+        """
+        Get timeline view of all versions (returns dicts for API response).
+
+        Wraps the base get_timeline() and converts to dicts.
+        """
+        timeline = await self.get_timeline(family_id)
+        return [entry.to_dict() for entry in timeline]
+
+    async def upgrade_entity_to_v1(
+        self,
+        family: TFamily,
+        entity: TEntity,
+        message: str = "Initial version",
+    ) -> None:
+        """
+        Upgrade a standalone entity to v1 of a family.
+
+        Sets family_id, version_number=1, parent=None, and version_message.
+        Flushes but does NOT create the family — caller must do that first.
+        """
+        setattr(entity, self.family_id_attr, family.id)
+        setattr(entity, self.version_number_attr, 1)
+        setattr(entity, self.parent_id_attr, None)
+        setattr(entity, self.version_message_attr, message)
+        await self.db.flush()

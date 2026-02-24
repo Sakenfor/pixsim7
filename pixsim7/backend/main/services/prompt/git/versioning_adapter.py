@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from pixsim7.backend.main.domain.prompt import PromptVersion, PromptFamily
 from pixsim7.backend.main.services.versioning import (
-    VersionContext,
     VersioningServiceBase,
     TimelineEntry,
 )
@@ -48,47 +47,19 @@ class PromptVersioningService(VersioningServiceBase[PromptFamily, PromptVersion]
     use the dedicated GitBranchService, GitMergeService, etc.
     """
 
+    family_model = PromptFamily
+    entity_model = PromptVersion
+    family_id_attr = "family_id"             # override default
+    parent_id_attr = "parent_version_id"
+    version_message_attr = "commit_message"  # override default
+    head_id_attr = None                      # no HEAD concept
+
     def __init__(self, db: AsyncSession):
         super().__init__(db)
 
     # =========================================================================
-    # ABSTRACT METHOD IMPLEMENTATIONS
+    # ENTITY-SPECIFIC METADATA
     # =========================================================================
-
-    def get_family_model(self) -> type:
-        return PromptFamily
-
-    def get_entity_model(self) -> type:
-        return PromptVersion
-
-    def get_family_id_field(self, entity: PromptVersion) -> Optional[str]:
-        return str(entity.family_id) if entity.family_id else None
-
-    def get_parent_id(self, entity: PromptVersion) -> Optional[UUID]:
-        return entity.parent_version_id
-
-    def get_entity_id(self, entity: PromptVersion) -> UUID:
-        return entity.id
-
-    def get_version_number(self, entity: PromptVersion) -> Optional[int]:
-        return entity.version_number
-
-    def get_version_message(self, entity: PromptVersion) -> Optional[str]:
-        return entity.commit_message
-
-    def get_head_id(self, family: PromptFamily) -> Optional[UUID]:
-        # Prompts don't have explicit HEAD - return None
-        # Could be extended to return latest version on main branch
-        return None
-
-    def build_family_id_filter(self, family_id: UUID):
-        return PromptVersion.family_id == family_id
-
-    def build_entity_id_filter(self, entity_id: UUID):
-        return PromptVersion.id == entity_id
-
-    def build_parent_id_filter(self, parent_id: UUID):
-        return PromptVersion.parent_version_id == parent_id
 
     def get_timeline_metadata(self, entity: PromptVersion) -> Dict[str, Any]:
         """Extract prompt-specific metadata for timeline entries."""
