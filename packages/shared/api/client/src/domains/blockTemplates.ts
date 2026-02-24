@@ -169,6 +169,61 @@ export interface BlockMatrixResponse {
   cells: BlockMatrixCell[];
 }
 
+export interface BlockTagDictionaryQuery {
+  package_name?: string;
+  role?: string;
+  category?: string;
+  include_values?: boolean;
+  include_usage_examples?: boolean;
+  include_aliases?: boolean;
+  limit_values_per_key?: number;
+  limit_examples_per_key?: number;
+}
+
+export interface BlockTagDictionaryValueSummary {
+  value: string;
+  count: number;
+  status: string;
+}
+
+export interface BlockTagDictionaryAliases {
+  keys: string[];
+  values: Record<string, string>;
+}
+
+export interface BlockTagDictionaryExample {
+  id: string;
+  block_id: string;
+  package_name: string | null;
+  role: string | null;
+  category: string | null;
+}
+
+export interface BlockTagDictionaryKey {
+  key: string;
+  status: string;
+  description?: string | null;
+  data_type: string;
+  observed_count: number;
+  common_values: BlockTagDictionaryValueSummary[];
+  aliases?: BlockTagDictionaryAliases | null;
+  examples: BlockTagDictionaryExample[];
+}
+
+export interface BlockTagDictionaryWarning {
+  kind: string;
+  message: string;
+  keys: string[];
+}
+
+export interface BlockTagDictionaryResponse {
+  version: number;
+  generated_at: string;
+  scope: Record<string, unknown>;
+  keys: BlockTagDictionaryKey[];
+  warnings: BlockTagDictionaryWarning[];
+}
+
 export interface ReloadContentPacksQuery {
   pack?: string;
   force?: boolean;
@@ -369,6 +424,15 @@ export function createBlockTemplatesApi(client: PixSimApiClient) {
     async getBlockMatrix(query: BlockMatrixQuery): Promise<BlockMatrixResponse> {
       return client.get<BlockMatrixResponse>(
         '/block-templates/meta/blocks/matrix',
+        { params: query },
+      );
+    },
+
+    async getBlockTagDictionary(
+      query?: BlockTagDictionaryQuery,
+    ): Promise<BlockTagDictionaryResponse> {
+      return client.get<BlockTagDictionaryResponse>(
+        '/block-templates/meta/blocks/tag-dictionary',
         { params: query },
       );
     },

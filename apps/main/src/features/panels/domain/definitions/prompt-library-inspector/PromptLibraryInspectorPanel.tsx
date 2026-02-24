@@ -21,41 +21,15 @@ import { useWorkspaceStore } from '@features/workspace';
 import { useCompositionPackages } from '@/stores/compositionPackageStore';
 
 import { BlockExplorerPanel } from '../block-explorer/BlockExplorerPanel';
-import { BlockMatrixView, type BlockMatrixPreset } from '../block-matrix/BlockMatrixView';
+import { BlockMatrixView } from '../block-matrix/BlockMatrixView';
+import {
+  DEFAULT_BLOCK_MATRIX_PRESETS,
+  mergeBlockMatrixPresets,
+  readTemplateMatrixPresets,
+  type BlockMatrixPreset,
+} from '../block-matrix/presets';
 
 type TabId = 'packages' | 'templates' | 'blocks' | 'matrix';
-
-const MATRIX_PRESETS: BlockMatrixPreset[] = [
-  {
-    label: 'Role x Category',
-    description: 'Overview of all blocks by role and category',
-    query: { row_key: 'role', col_key: 'category' },
-  },
-  {
-    label: 'Pose Lock Coverage',
-    description: 'Pose lock blocks by rigidity and approach',
-    query: {
-      row_key: 'tag:rigidity',
-      col_key: 'tag:approach',
-      package_name: 'shared',
-      role: 'subject',
-      category: 'pose_lock',
-      include_empty: true,
-      expected_row_values: 'minimal,low,medium,high,maximum',
-      expected_col_values: 'skeletal,contour,gravity,i2v',
-    },
-  },
-  {
-    label: 'POV Progression',
-    description: 'POV approach response blocks by beat axis and response mode',
-    query: {
-      row_key: 'tag:beat_axis',
-      col_key: 'tag:response_mode',
-      tags: 'sequence_family:pov_approach_response',
-      include_empty: true,
-    },
-  },
-];
 
 interface PromptLibraryInspectorPanelProps {
   tab?: TabId;
@@ -300,6 +274,14 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
   const currentPackageStats = selectedPackage ? packageStats[selectedPackage] : undefined;
 
   const templateMeta = (templateDetail?.template_metadata ?? {}) as Record<string, unknown>;
+  const templateMatrixPresets = useMemo(
+    () => readTemplateMatrixPresets(templateMeta),
+    [templateMeta],
+  );
+  const matrixPresets = useMemo<BlockMatrixPreset[]>(
+    () => mergeBlockMatrixPresets(DEFAULT_BLOCK_MATRIX_PRESETS, templateMatrixPresets),
+    [templateMatrixPresets],
+  );
   const source = (templateMeta.source ?? {}) as Record<string, unknown>;
   const dependencies = (templateMeta.dependencies ?? {}) as Record<string, unknown>;
   const requiredPackages = readStringArray(dependencies.required_block_packages);
@@ -834,7 +816,7 @@ export function PromptLibraryInspectorPanel(props: PromptLibraryInspectorPanelPr
             embedded
             initialQuery={selectedPackage ? { package_name: selectedPackage } : undefined}
             lockedFields={selectedPackage ? { package_name: true } : undefined}
-            presets={MATRIX_PRESETS}
+            presets={matrixPresets}
           />
         </div>
       )}

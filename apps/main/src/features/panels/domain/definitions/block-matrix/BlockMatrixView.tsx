@@ -14,20 +14,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   getBlockMatrix,
+  getBlockTagDictionary,
   type BlockMatrixQuery,
   type BlockMatrixResponse,
   type BlockMatrixCell,
   type BlockMatrixCellSample,
+  type BlockTagDictionaryResponse,
 } from '@lib/api/blockTemplates';
 import { Icon } from '@lib/icons';
 
-// ── Types ──────────────────────────────────────────────────────────────────
+import type { BlockMatrixPreset } from './presets';
 
-export interface BlockMatrixPreset {
-  label: string;
-  description?: string;
-  query: Partial<BlockMatrixQuery>;
-}
+// ── Types ──────────────────────────────────────────────────────────────────
 
 export interface BlockMatrixViewProps {
   /** Initial query values (merged with defaults) */
@@ -54,6 +52,14 @@ const AXIS_OPTIONS = [
   { value: 'default_intent', label: 'Intent' },
   { value: 'complexity_level', label: 'Complexity' },
 ];
+
+function baseAxisOptionsWithCurrent(current?: string): Array<{ value: string; label: string }> {
+  const options = [...AXIS_OPTIONS];
+  if (current && !options.some((o) => o.value === current)) {
+    options.push({ value: current, label: current.startsWith('tag:') ? `Tag: ${current.slice(4)}` : current });
+  }
+  return options;
+}
 
 const DEFAULT_QUERY: BlockMatrixQuery = {
   row_key: 'role',
@@ -94,7 +100,12 @@ export function BlockMatrixView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCell, setSelectedCell] = useState<BlockMatrixCell | null>(null);
+  const [tagDictionary, setTagDictionary] = useState<BlockTagDictionaryResponse | null>(null);
+  const [dataQuerySnapshot, setDataQuerySnapshot] = useState<BlockMatrixQuery | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied-query' | 'copied-json' | 'error'>('idle');
   const fetchIdRef = useRef(0);
+  const tagDictFetchIdRef = useRef(0);
+  const copyTimerRef = useRef<number | null>(null);
 
   // ── Fetch ──────────────────────────────────────────────────────────────
 
@@ -107,11 +118,13 @@ export function BlockMatrixView({
       const result = await getBlockMatrix(q);
       if (id === fetchIdRef.current) {
         setData(result);
+        setDataQuerySnapshot({ ...q });
       }
     } catch (err) {
       if (id === fetchIdRef.current) {
         setError(err instanceof Error ? err.message : 'Failed to load matrix');
         setData(null);
+        setDataQuerySnapshot(null);
       }
     } finally {
       if (id === fetchIdRef.current) {
@@ -123,6 +136,30 @@ export function BlockMatrixView({
   useEffect(() => {
     void fetchMatrix(query);
   }, [fetchMatrix, query]);
+
+  // Fetch scoped tag dictionary (canonical keys + alias/unknown warnings) for axis suggestions.
+  useEffect(() => {
+    const id = ++tagDictFetchIdRef.current;
+    void (async () => {
+      try {
+        const result = await getBlockTagDictionary({
+          package_name: query.package_name,
+          role: query.role,
+          category: query.category,
+          include_values: false,
+          include_usage_examples: false,
+          include_aliases: true,
+        });
+        if (id === tagDictFetchIdRef.current) {
+          setTagDictionary(result);
+        }
+      } catch {
+        if (id === tagDictFetchIdRef.current) {
+          setTagDictionary(null);
+        }
+      }
+    })();
+  }, [query.package_name, query.role, query.category]);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -139,6 +176,61 @@ export function BlockMatrixView({
     () => data ? Math.max(1, ...data.cells.map((c) => c.count)) : 1,
     [data],
   );
+
+  const canonicalTagAxisOptions = useMemo(() => {
+    const keys = (tagDictionary?.keys ?? [])
+      .filter((k) => k.status !== 'unknown' && k.status !== 'alias_key')
+      .map((k) => k.key)
+      .sort();
+    return keys.map((k) => ({ value: `tag:${k}`, label: `Tag: ${k}` }));
+  }, [tagDictionary]);
+
+  const aliasTagKeyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const keyEntry of tagDictionary?.keys ?? []) {
+      if (keyEntry.status !== 'alias_key') continue;
+      const canonical = keyEntry.aliases?.values?.$key_alias;
+      if (canonical) map.set(keyEntry.key, canonical);
+    }
+    return map;
+  }, [tagDictionary]);
+
+  const axisAliasSuggestions = useMemo(() => {
+    const suggestions: Array<{ axis: 'row' | 'col'; from: string; to: string }> = [];
+    const checkAxis = (axis: 'row' | 'col', axisKey: string | undefined) => {
+      if (!axisKey) return;
+      const isTagAxis = axisKey.startsWith('tag:');
+      const rawKey = isTagAxis ? axisKey.slice(4) : axisKey;
+      const canonical = aliasTagKeyMap.get(rawKey);
+      if (!canonical) return;
+      suggestions.push({
+        axis,
+        from: axisKey,
+        to: isTagAxis ? `tag:${canonical}` : canonical,
+      });
+    };
+    checkAxis('row', query.row_key);
+    checkAxis('col', query.col_key);
+    return suggestions;
+  }, [aliasTagKeyMap, query.col_key, query.row_key]);
+
+  const rowAxisOptions = useMemo(() => {
+    const base = baseAxisOptionsWithCurrent(query.row_key);
+    const seen = new Set(base.map((o) => o.value));
+    for (const opt of canonicalTagAxisOptions) {
+      if (!seen.has(opt.value)) base.push(opt);
+    }
+    return base;
+  }, [canonicalTagAxisOptions, query.row_key]);
+
+  const colAxisOptions = useMemo(() => {
+    const base = baseAxisOptionsWithCurrent(query.col_key);
+    const seen = new Set(base.map((o) => o.value));
+    for (const opt of canonicalTagAxisOptions) {
+      if (!seen.has(opt.value)) base.push(opt);
+    }
+    return base;
+  }, [canonicalTagAxisOptions, query.col_key]);
 
   const isLocked = (field: keyof BlockMatrixQuery) => lockedFields?.[field] === true;
 
@@ -162,6 +254,47 @@ export function BlockMatrixView({
       ...preset.query,
     }));
   };
+
+  const copyMatrixQuery = useCallback(async () => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v === undefined || v === null || v === '') continue;
+      params.set(k, String(v));
+    }
+    const payload = `/block-templates/meta/blocks/matrix?${params.toString()}`;
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopyStatus('copied-query');
+    } catch {
+      setCopyStatus('error');
+    }
+    if (copyTimerRef.current) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => setCopyStatus('idle'), 1500);
+  }, [query]);
+
+  const copyMatrixJson = useCallback(async () => {
+    if (!data) return;
+    const payload = JSON.stringify(
+      {
+        query: dataQuerySnapshot ?? query,
+        matrix: data,
+      },
+      null,
+      2,
+    );
+    try {
+      await navigator.clipboard.writeText(payload);
+      setCopyStatus('copied-json');
+    } catch {
+      setCopyStatus('error');
+    }
+    if (copyTimerRef.current) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => setCopyStatus('idle'), 1500);
+  }, [data, dataQuerySnapshot, query]);
 
   // ── Render ─────────────────────────────────────────────────────────────
 
@@ -200,7 +333,7 @@ export function BlockMatrixView({
               disabled={isLocked('row_key')}
               className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-200 text-[11px] outline-none disabled:opacity-50"
             >
-              {AXIS_OPTIONS.map((o) => (
+              {rowAxisOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
@@ -213,7 +346,7 @@ export function BlockMatrixView({
               disabled={isLocked('col_key')}
               className="px-1.5 py-0.5 rounded border border-neutral-700 bg-neutral-800 text-neutral-200 text-[11px] outline-none disabled:opacity-50"
             >
-              {AXIS_OPTIONS.map((o) => (
+              {colAxisOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
@@ -284,7 +417,7 @@ export function BlockMatrixView({
             <span className="text-[10px] text-neutral-500">Presets:</span>
             {presets.map((p) => (
               <button
-                key={p.label}
+                key={p.id ?? p.label}
                 type="button"
                 onClick={() => applyPreset(p)}
                 className="text-[10px] px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
@@ -295,6 +428,64 @@ export function BlockMatrixView({
             ))}
           </div>
         )}
+
+        {tagDictionary && (
+          <div className="flex items-center gap-2 flex-wrap text-[10px]">
+            <span className="text-neutral-500">
+              Tag dictionary: {(tagDictionary.keys ?? []).filter((k) => k.status !== 'unknown').length} known keys
+            </span>
+            {(tagDictionary.warnings ?? []).slice(0, 2).map((w) => (
+              <span
+                key={`${w.kind}:${w.keys.join(',')}`}
+                className={clsx(
+                  'px-1.5 py-0.5 rounded border',
+                  w.kind === 'unknown_keys_present'
+                    ? 'border-amber-700/50 text-amber-300'
+                    : 'border-cyan-700/50 text-cyan-300',
+                )}
+                title={`${w.message}${w.keys.length ? ` (${w.keys.join(', ')})` : ''}`}
+              >
+                {w.kind === 'unknown_keys_present' ? 'unknown tag keys in scope' : 'alias tag keys in scope'}
+              </span>
+            ))}
+            {axisAliasSuggestions.map((s) => (
+              <button
+                key={`${s.axis}:${s.from}->${s.to}`}
+                type="button"
+                onClick={() => updateField(s.axis === 'row' ? 'row_key' : 'col_key', s.to)}
+                className="px-1.5 py-0.5 rounded border border-emerald-700/50 text-emerald-300 hover:bg-emerald-900/20"
+                title={`Switch ${s.axis} axis to canonical key`}
+              >
+                Use canonical {s.axis}: {s.to}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-2 flex-wrap text-[10px]">
+          <button
+            type="button"
+            onClick={() => void copyMatrixQuery()}
+            className="px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100"
+            title="Copy current matrix endpoint query"
+          >
+            <Icon name="copy" size={11} className="inline mr-1" />
+            Copy Query
+          </button>
+          <button
+            type="button"
+            onClick={() => void copyMatrixJson()}
+            disabled={!data}
+            className="px-1.5 py-0.5 rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 disabled:opacity-50"
+            title="Copy current matrix response JSON"
+          >
+            <Icon name="copy" size={11} className="inline mr-1" />
+            Copy JSON
+          </button>
+          {copyStatus === 'copied-query' && <span className="text-emerald-300">query copied</span>}
+          {copyStatus === 'copied-json' && <span className="text-emerald-300">json copied</span>}
+          {copyStatus === 'error' && <span className="text-amber-300">clipboard failed</span>}
+        </div>
       </div>
 
       {/* Matrix grid + detail split */}

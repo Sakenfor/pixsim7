@@ -4,7 +4,13 @@ import { BlockMatrixPanel } from './BlockMatrixPanel';
 
 export { BlockMatrixPanel };
 export { BlockMatrixView } from './BlockMatrixView';
-export type { BlockMatrixViewProps, BlockMatrixPreset } from './BlockMatrixView';
+export type { BlockMatrixViewProps } from './BlockMatrixView';
+export {
+  DEFAULT_BLOCK_MATRIX_PRESETS,
+  mergeBlockMatrixPresets,
+  readTemplateMatrixPresets,
+} from './presets';
+export type { BlockMatrixPreset } from './presets';
 
 export default definePanel({
   id: 'block-matrix',

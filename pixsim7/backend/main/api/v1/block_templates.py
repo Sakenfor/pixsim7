@@ -23,6 +23,10 @@ from pixsim7.backend.main.domain.user import User
 from pixsim7.backend.main.services.prompt.block.composition_role_inference import (
     infer_composition_role,
 )
+from pixsim7.backend.main.services.prompt.block.tag_dictionary import (
+    get_canonical_block_tag_dictionary,
+    get_block_tag_alias_key_map,
+)
 
 router = APIRouter(prefix="/block-templates", tags=["block-templates"])
 
@@ -471,6 +475,50 @@ class BlockMatrixResponse(BaseModel):
     cells: List[BlockMatrixCellResponse] = Field(default_factory=list)
 
 
+class BlockTagDictionaryValueSummaryResponse(BaseModel):
+    value: str
+    count: int
+    status: str = "observed"
+
+
+class BlockTagDictionaryAliasesResponse(BaseModel):
+    keys: List[str] = Field(default_factory=list)
+    values: Dict[str, str] = Field(default_factory=dict)
+
+
+class BlockTagDictionaryExampleResponse(BaseModel):
+    id: UUID
+    block_id: str
+    package_name: Optional[str] = None
+    role: Optional[str] = None
+    category: Optional[str] = None
+
+
+class BlockTagDictionaryKeyResponse(BaseModel):
+    key: str
+    status: str = "canonical"
+    description: Optional[str] = None
+    data_type: str = "string"
+    observed_count: int = 0
+    common_values: List[BlockTagDictionaryValueSummaryResponse] = Field(default_factory=list)
+    aliases: Optional[BlockTagDictionaryAliasesResponse] = None
+    examples: List[BlockTagDictionaryExampleResponse] = Field(default_factory=list)
+
+
+class BlockTagDictionaryWarningResponse(BaseModel):
+    kind: str
+    message: str
+    keys: List[str] = Field(default_factory=list)
+
+
+class BlockTagDictionaryResponse(BaseModel):
+    version: int = 1
+    generated_at: str
+    scope: Dict[str, Any] = Field(default_factory=dict)
+    keys: List[BlockTagDictionaryKeyResponse] = Field(default_factory=list)
+    warnings: List[BlockTagDictionaryWarningResponse] = Field(default_factory=list)
+
+
 def _parse_tag_csv(tags: Optional[str]) -> Dict[str, str]:
     tag_constraints: Dict[str, str] = {}
     if not tags:
@@ -538,6 +586,22 @@ def _to_block_response(block: Any) -> BlockResponse:
         description=block.description,
         word_count=block.word_count or 0,
     )
+
+
+def _iter_scalar_tag_values(value: Any) -> List[str]:
+    """Flatten tag values for lightweight dictionary statistics."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        out: List[str] = []
+        for item in value:
+            if item is None or isinstance(item, (dict, list)):
+                continue
+            out.append(str(item))
+        return out
+    if isinstance(value, dict):
+        return []
+    return [str(value)]
 
 
 @router.get("/blocks", response_model=List[BlockResponse])
@@ -792,6 +856,186 @@ async def list_block_tag_facets(
             facets[key].add(str(value))
 
     return {key: sorted(values) for key, values in sorted(facets.items())}
+
+
+@router.get("/meta/blocks/tag-dictionary", response_model=BlockTagDictionaryResponse)
+async def get_block_tag_dictionary(
+    package_name: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    include_values: bool = Query(True),
+    include_usage_examples: bool = Query(False),
+    include_aliases: bool = Query(True),
+    limit_values_per_key: int = Query(50, ge=1, le=500),
+    limit_examples_per_key: int = Query(5, ge=0, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return canonical tag dictionary with scoped DB usage stats (Phase 1)."""
+    from pixsim7.backend.main.domain.prompt import PromptBlock
+
+    canonical = get_canonical_block_tag_dictionary()
+    alias_key_map = get_block_tag_alias_key_map()
+    canonical_keys = set(canonical.keys())
+    alias_keys = set(alias_key_map.keys())
+
+    query = select(
+        PromptBlock.id,
+        PromptBlock.block_id,
+        PromptBlock.package_name,
+        PromptBlock.role,
+        PromptBlock.category,
+        PromptBlock.tags,
+    )
+    if package_name:
+        query = query.where(PromptBlock.package_name == package_name)
+    if role:
+        query = query.where(PromptBlock.role == role)
+    if category:
+        query = query.where(PromptBlock.category == category)
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    key_counts: Dict[str, int] = {}
+    value_counts: Dict[str, Dict[str, int]] = {}
+    key_examples: Dict[str, List[BlockTagDictionaryExampleResponse]] = {}
+    observed_unknown_keys: set[str] = set()
+    observed_alias_keys: set[str] = set()
+
+    for row in rows:
+        tags = row.tags if isinstance(row.tags, dict) else {}
+        if not tags:
+            continue
+        for tag_key, tag_value in tags.items():
+            tag_key = str(tag_key)
+            key_counts[tag_key] = key_counts.get(tag_key, 0) + 1
+            if tag_key in alias_keys:
+                observed_alias_keys.add(tag_key)
+            elif tag_key not in canonical_keys:
+                observed_unknown_keys.add(tag_key)
+
+            if include_values:
+                bucket = value_counts.setdefault(tag_key, {})
+                for scalar in _iter_scalar_tag_values(tag_value):
+                    bucket[scalar] = bucket.get(scalar, 0) + 1
+
+            if include_usage_examples and limit_examples_per_key > 0:
+                ex_bucket = key_examples.setdefault(tag_key, [])
+                if len(ex_bucket) < limit_examples_per_key:
+                    ex_bucket.append(
+                        BlockTagDictionaryExampleResponse(
+                            id=row.id,
+                            block_id=row.block_id,
+                            package_name=row.package_name,
+                            role=row.role,
+                            category=row.category,
+                        )
+                    )
+
+    responses: List[BlockTagDictionaryKeyResponse] = []
+
+    # Canonical keys first (even if unused in current scope)
+    for key in sorted(canonical.keys()):
+        meta = canonical[key]
+        aliases = None
+        if include_aliases:
+            aliases = BlockTagDictionaryAliasesResponse(
+                keys=[str(v) for v in (meta.get("aliases") or [])],
+                values={str(k): str(v) for k, v in (meta.get("value_aliases") or {}).items()},
+            )
+
+        common_values: List[BlockTagDictionaryValueSummaryResponse] = []
+        if include_values:
+            observed_values = value_counts.get(key, {})
+            allowed_values = [str(v) for v in (meta.get("allowed_values") or [])]
+            status_map = {v: "canonical" for v in allowed_values}
+            # Include observed first by count, then include canonical-only zero-count values.
+            for value, count in sorted(observed_values.items(), key=lambda item: (-item[1], item[0]))[:limit_values_per_key]:
+                common_values.append(
+                    BlockTagDictionaryValueSummaryResponse(
+                        value=value,
+                        count=count,
+                        status=status_map.get(value, "observed"),
+                    )
+                )
+            seen_values = {cv.value for cv in common_values}
+            for value in allowed_values:
+                if len(common_values) >= limit_values_per_key:
+                    break
+                if value in seen_values:
+                    continue
+                common_values.append(
+                    BlockTagDictionaryValueSummaryResponse(value=value, count=0, status="canonical")
+                )
+
+        responses.append(
+            BlockTagDictionaryKeyResponse(
+                key=key,
+                status=str(meta.get("status") or "active"),
+                description=meta.get("description"),
+                data_type=str(meta.get("data_type") or "string"),
+                observed_count=key_counts.get(key, 0),
+                common_values=common_values,
+                aliases=aliases,
+                examples=key_examples.get(key, []),
+            )
+        )
+
+    # Include observed non-canonical keys for visibility (helps prevent scattering).
+    for key in sorted((set(key_counts.keys()) - canonical_keys)):
+        status = "alias_key" if key in alias_keys else "unknown"
+        mapped_to = alias_key_map.get(key)
+        aliases = None
+        if include_aliases and mapped_to:
+            aliases = BlockTagDictionaryAliasesResponse(keys=[], values={"$key_alias": mapped_to})
+        common_values = []
+        if include_values:
+            observed_values = value_counts.get(key, {})
+            common_values = [
+                BlockTagDictionaryValueSummaryResponse(value=v, count=c, status="observed")
+                for v, c in sorted(observed_values.items(), key=lambda item: (-item[1], item[0]))[:limit_values_per_key]
+            ]
+        responses.append(
+            BlockTagDictionaryKeyResponse(
+                key=key,
+                status=status,
+                description=f"Observed non-canonical key{f'; alias of {mapped_to}' if mapped_to else ''}.",
+                data_type="string",
+                observed_count=key_counts.get(key, 0),
+                common_values=common_values,
+                aliases=aliases,
+                examples=key_examples.get(key, []),
+            )
+        )
+
+    warnings: List[BlockTagDictionaryWarningResponse] = []
+    if observed_alias_keys:
+        warnings.append(
+            BlockTagDictionaryWarningResponse(
+                kind="alias_keys_present",
+                keys=sorted(observed_alias_keys),
+                message="Observed alias keys in scoped blocks; prefer canonical keys for new content.",
+            )
+        )
+    if observed_unknown_keys:
+        warnings.append(
+            BlockTagDictionaryWarningResponse(
+                kind="unknown_keys_present",
+                keys=sorted(observed_unknown_keys),
+                message="Observed non-canonical keys in scoped blocks.",
+            )
+        )
+
+    return BlockTagDictionaryResponse(
+        generated_at=datetime.utcnow().isoformat() + "Z",
+        scope={
+            "package_name": package_name,
+            "role": role,
+            "category": category,
+        },
+        keys=responses,
+        warnings=warnings,
+    )
 
 
 # ===== Content Pack Management =====

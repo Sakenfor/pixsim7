@@ -6,56 +6,12 @@
  */
 import { useMemo } from 'react';
 
-import { BlockMatrixView, type BlockMatrixPreset, type BlockMatrixViewProps } from './BlockMatrixView';
-
-// ── Default presets ────────────────────────────────────────────────────────
-
-const DEFAULT_PRESETS: BlockMatrixPreset[] = [
-  {
-    label: 'Role x Category',
-    description: 'Overview of all blocks by role and category',
-    query: {
-      row_key: 'role',
-      col_key: 'category',
-      include_empty: false,
-    },
-  },
-  {
-    label: 'Package x Role',
-    description: 'Block distribution across packages and roles',
-    query: {
-      row_key: 'package_name',
-      col_key: 'role',
-      include_empty: false,
-    },
-  },
-  {
-    label: 'Pose Lock Coverage',
-    description: 'Pose lock blocks by rigidity and approach',
-    query: {
-      row_key: 'tag:rigidity',
-      col_key: 'tag:approach',
-      package_name: 'shared',
-      role: 'subject',
-      category: 'pose_lock',
-      include_empty: true,
-      expected_row_values: 'minimal,low,medium,high,maximum',
-      expected_col_values: 'skeletal,contour,gravity,i2v',
-    },
-  },
-  {
-    label: 'POV Progression',
-    description: 'POV approach response blocks by beat axis and response mode',
-    query: {
-      row_key: 'tag:beat_axis',
-      col_key: 'tag:response_mode',
-      tags: 'sequence_family:pov_approach_response',
-      include_empty: true,
-    },
-  },
-];
-
-// ── Component ──────────────────────────────────────────────────────────────
+import { BlockMatrixView, type BlockMatrixViewProps } from './BlockMatrixView';
+import {
+  DEFAULT_BLOCK_MATRIX_PRESETS,
+  mergeBlockMatrixPresets,
+  type BlockMatrixPreset,
+} from './presets';
 
 interface BlockMatrixPanelProps {
   context?: Record<string, unknown>;
@@ -74,10 +30,31 @@ export function BlockMatrixPanel({ context }: BlockMatrixPanelProps) {
     return Object.keys(q).length > 0 ? q : undefined;
   }, [context]);
 
+  const contextPresets = useMemo(() => {
+    const raw = context?.presets;
+    if (!Array.isArray(raw)) return undefined;
+    const out: BlockMatrixPreset[] = [];
+    for (let i = 0; i < raw.length; i += 1) {
+      const item = raw[i];
+      if (!item || typeof item !== 'object') continue;
+      const rec = item as Record<string, unknown>;
+      if (typeof rec.label !== 'string' || !rec.label.trim()) continue;
+      if (!rec.query || typeof rec.query !== 'object') continue;
+      out.push({
+        id: typeof rec.id === 'string' ? rec.id : `context-${i}`,
+        label: rec.label.trim(),
+        description: typeof rec.description === 'string' ? rec.description : undefined,
+        query: rec.query as BlockMatrixPreset['query'],
+        source: 'context',
+      });
+    }
+    return out.length > 0 ? out : undefined;
+  }, [context]);
+
   return (
     <BlockMatrixView
       initialQuery={initialQuery}
-      presets={DEFAULT_PRESETS}
+      presets={mergeBlockMatrixPresets(DEFAULT_BLOCK_MATRIX_PRESETS, contextPresets)}
     />
   );
 }
