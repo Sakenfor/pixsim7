@@ -141,6 +141,12 @@ export * from './prompt'
 export * from './blockTemplate'
 
 // ===================
+// Generation Chain Types
+// ===================
+
+export * from './chain'
+
+// ===================
 // Brain State Types
 // ===================
 

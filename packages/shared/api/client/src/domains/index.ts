@@ -9,6 +9,7 @@ export { createAccountsApi } from './accounts';
 export { createCodegenApi } from './codegen';
 export { createActionBlocksApi } from './actionBlocks';
 export { createBlockTemplatesApi } from './blockTemplates';
+export { createChainsApi } from './chains';
 export { createCharactersApi } from './characters';
 export { createAdminApi } from './admin';
 export { createAnalyzersApi } from './analyzers';
@@ -55,6 +56,21 @@ export type {
   PromptBlockResponse,
   BlockRoleSummary,
 } from './blockTemplates';
+
+export type {
+  ChainSummary,
+  ChainDetail,
+  ChainStepDefinition,
+  ChainExecution,
+  GuidanceInheritFlags,
+  ChainExecutionStatus,
+  ChainStepState,
+  CreateChainRequest,
+  UpdateChainRequest,
+  ExecuteChainRequest,
+  ExecuteChainResponse,
+  ListChainsQuery,
+} from './chains';
 
 export type {
   ReferenceAsset,
