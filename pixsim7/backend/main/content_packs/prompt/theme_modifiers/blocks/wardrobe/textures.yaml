@@ -1,0 +1,112 @@
+version: "1.0.0"
+
+blocks:
+  - block_id: ie_mod_wardrobe_texture_matte_clean_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Keep clothing surfaces clean and mostly matte. Avoid shiny finishes and keep
+      the material read subtle and realistic.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_level: matte_clean
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_texture_denim_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Steer clothing toward a denim-like material read with visible seam structure and
+      sturdy paneling, without adding logos or loud branding.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: denim
+      texture_level: clear
+      surface_finish: matte
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_texture_knit_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Introduce a knit-like surface read with gentle micro-structure and soft edges,
+      keeping the garment shapes coherent and wearable.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: knit
+      texture_level: clear
+      surface_finish: matte
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_texture_tweed_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Steer surfaces toward a tweed-like texture with subtle weave depth. Keep it refined
+      and realistic, and avoid turning it into a busy print.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: tweed
+      texture_level: clear
+      surface_finish: matte
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_texture_leather_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Give selected clothing surfaces a leather-like material read with clean panel edges
+      and mild specular highlights, staying realistic and non-glossy.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: leather
+      texture_level: clear
+      surface_finish: soft_sheen
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_texture_linen_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Steer fabrics toward a linen-like read with gentle natural wrinkling and a breathable
+      drape, keeping it understated and everyday.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: linen
+      texture_level: subtle
+      surface_finish: matte
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_texture_satin_sheen_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add a subtle satin-like sheen to clothing surfaces where appropriate. Keep highlights
+      smooth and controlled, avoiding a high-gloss or wet look.
+    tags:
+      intent: modify
+      modifier_family: texture
+      modifier_target: wardrobe
+      texture_family: satin_like
+      texture_level: subtle
+      surface_finish: soft_sheen
+    complexity_level: moderate

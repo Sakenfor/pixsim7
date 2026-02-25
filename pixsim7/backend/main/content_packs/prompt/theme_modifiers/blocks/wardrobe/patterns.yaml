@@ -1,0 +1,186 @@
+version: "1.0.0"
+
+blocks:
+  - block_id: ie_mod_wardrobe_pattern_none_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Keep clothing surfaces mostly solid and low-variation. Avoid busy prints and
+      keep any existing patterning minimal and unobtrusive.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_level: none
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_pattern_pinstripe_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add subtle pinstripe patterning where appropriate on clothing panels. Keep the
+      stripe spacing fine and the contrast low so it reads as refined, not loud.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: pinstripe
+      pattern_level: subtle
+      pattern_scale: fine
+      pattern_contrast: low
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_pattern_pinstripe_clear_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Use clear pinstripe patterning on selected garment areas. Keep the stripes
+      consistent and evenly aligned across seams without becoming a distracting focal point.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: pinstripe
+      pattern_level: clear
+      pattern_scale: fine
+      pattern_contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_pattern_plaid_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Introduce a subtle plaid pattern to clothing surfaces. Keep the grid small and
+      the contrast restrained so it supports the outfit rather than dominating it.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: plaid
+      pattern_level: subtle
+      pattern_scale: small
+      pattern_contrast: low
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_pattern_plaid_clear_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Apply a clear plaid pattern to one or more clothing pieces. Keep the alignment
+      coherent across panels and avoid mismatched scaling between garments.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: plaid
+      pattern_level: clear
+      pattern_scale: medium
+      pattern_contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_pattern_check_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add a subtle check pattern in small squares. Keep the pattern regular and
+      low-contrast so it reads as everyday and wearable.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: check
+      pattern_level: subtle
+      pattern_scale: small
+      pattern_contrast: low
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_pattern_check_clear_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Use a clear check pattern on a primary garment surface. Keep the squares
+      consistent and avoid visual clutter from overlapping prints.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: check
+      pattern_level: clear
+      pattern_scale: medium
+      pattern_contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_pattern_polka_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Introduce a subtle small polka-dot pattern on select clothing areas. Keep dots
+      evenly spaced and low-contrast for a light, casual look.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: polka_dot
+      pattern_level: subtle
+      pattern_scale: small
+      pattern_contrast: low
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_pattern_polka_clear_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Apply a clear polka-dot pattern with consistent dot sizing. Keep it playful but
+      not busy, and avoid combining it with other strong prints.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: polka_dot
+      pattern_level: clear
+      pattern_scale: medium
+      pattern_contrast: medium
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_pattern_floral_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add a subtle small-scale floral print on one garment surface. Keep it delicate
+      and low-contrast so it reads as an accent rather than a statement.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: floral
+      pattern_level: subtle
+      pattern_scale: small
+      pattern_contrast: low
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_pattern_geometric_subtle_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Introduce a subtle geometric motif with clean repetition. Keep the scale small
+      and the contrast restrained to avoid overpowering the outfit.
+    tags:
+      intent: modify
+      modifier_family: pattern
+      modifier_target: wardrobe
+      pattern_family: geometric
+      pattern_level: subtle
+      pattern_scale: small
+      pattern_contrast: low
+    complexity_level: moderate

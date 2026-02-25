@@ -1,0 +1,74 @@
+version: "1.0.0"
+
+blocks:
+  - block_id: ie_mod_wardrobe_condition_pristine_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Keep clothing in pristine condition with crisp construction and no visible wear.
+      Avoid stains, fraying, and roughness.
+    tags:
+      intent: modify
+      modifier_family: condition
+      modifier_target: wardrobe
+      condition_level: pristine
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_condition_light_wear_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add light everyday wear: small natural creasing and slight softening at edges,
+      while keeping garments clean and well-maintained.
+    tags:
+      intent: modify
+      modifier_family: condition
+      modifier_target: wardrobe
+      condition_level: light_wear
+    complexity_level: simple
+
+  - block_id: ie_mod_wardrobe_condition_worn_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Make clothing look worn-in but still functional: softened structure, subtle edge
+      fray, and gentle fading, without becoming messy or extreme.
+    tags:
+      intent: modify
+      modifier_family: condition
+      modifier_target: wardrobe
+      condition_level: worn
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_condition_rugged_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Steer the outfit toward a rugged, hard-used feel: visible wear at stress points,
+      reinforced seams, and minor repaired areas, while keeping the look believable.
+    tags:
+      intent: modify
+      modifier_family: condition
+      modifier_target: wardrobe
+      condition_level: rugged
+      repair_level: minor
+    complexity_level: moderate
+
+  - block_id: ie_mod_wardrobe_condition_distressed_01
+    role: style
+    category: wardrobe_modifier
+    kind: single_state
+    text: >-
+      Add a distressed condition with noticeable wear details: stronger fray, small
+      patch repairs, and uneven edge finish, while staying tasteful and realistic.
+    tags:
+      intent: modify
+      modifier_family: condition
+      modifier_target: wardrobe
+      condition_level: distressed
+      repair_level: visible
+    complexity_level: complex
