@@ -1,0 +1,29 @@
+id: shared.progression.ten_seconds_forward
+title: "Progression: Ten Seconds Forward"
+description: "Helper presets for querying generic micro-progression blocks."
+
+matrix_presets:
+  - label: "Ten seconds forward (axis × role)"
+    query:
+      row_key: "tag:beat_axis"
+      col_key: "role"
+      package_name: "shared"
+      tags: "sequence_family:ten_seconds_forward"
+      include_empty: true
+      include_drift_report: true
+      expected_row_values: "view,presence,continuity,activity,expression,refine,tone"
+      expected_col_values: "camera,composition,placement,action,subject,style"
+      expected_tag_keys: "sequence_family,beat_axis,delta_t"
+      required_tag_keys: "sequence_family,beat_axis"
+
+  - label: "Ten seconds forward activity (group × beat_type)"
+    query:
+      row_key: "tag:activity_group"
+      col_key: "tag:beat_type"
+      package_name: "shared"
+      tags: "sequence_family:ten_seconds_forward,beat_axis:activity"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "sequence_family,beat_axis,delta_t,activity_group,beat_type"
+      required_tag_keys: "sequence_family,beat_axis,activity_group,beat_type"
+

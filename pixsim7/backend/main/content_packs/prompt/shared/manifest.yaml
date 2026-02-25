@@ -45,3 +45,15 @@ matrix_presets:
       expected_tag_keys: "sequence_family,beat_axis,beat_type,social_tone"
       required_tag_keys: "sequence_family,beat_axis,beat_type,social_tone"
 
+  - label: "Ten seconds forward (axis × role)"
+    query:
+      row_key: "tag:beat_axis"
+      col_key: "role"
+      package_name: "shared"
+      tags: "sequence_family:ten_seconds_forward"
+      include_empty: true
+      include_drift_report: true
+      expected_row_values: "view,presence,continuity,activity,expression,refine,tone"
+      expected_col_values: "camera,composition,placement,action,subject,style"
+      expected_tag_keys: "sequence_family,beat_axis,delta_t"
+      required_tag_keys: "sequence_family,beat_axis"

@@ -1,0 +1,408 @@
+version: "1.0.0"
+
+blocks:
+  # Ten Seconds Forward — generic micro-progression blocks.
+  # Design intent: advance the moment by ~10 seconds with small, plausible changes.
+
+  # ── view — framing options ───────────────────────────────────────────────
+  - block_id: tsf_view_observer_wide_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Observer wide framing. Keep a stable, natural camera position and preserve the
+      overall scene layout; allow only minor framing adjustments consistent with a
+      continuous moment.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: view
+      view_profile: observer
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_view_observer_medium_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Observer medium framing. Keep the subject comfortably readable while maintaining
+      a documentary, non-dramatic viewpoint; do not introduce cinematic angle changes.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: view
+      view_profile: observer
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_view_ots_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Over-the-shoulder framing where a nearby adult is partially in the foreground.
+      Keep the foreground figure unobtrusive and do not steal focus from the subject.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: view
+      view_profile: ots
+      delta_t: "10s"
+      intent: modify
+    complexity_level: moderate
+
+  # ── presence — continuity-friendly framing constraints ───────────────────
+  - block_id: tsf_presence_stable_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      Keep the framing and background features stable as time advances slightly.
+      Avoid jump cuts: no sudden camera relocation, no major background rearrangement.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: presence
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_presence_minor_reframe_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      Allow a small, natural reframing consistent with handheld observation, but keep
+      the scene clearly continuous and anchored to the same moment.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: presence
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  # ── continuity — subject anchoring ───────────────────────────────────────
+  - block_id: tsf_continuity_anchor_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Keep the subject anchored to the same location and general posture. Only small,
+      plausible shifts are allowed (weight shift, head turn, minor hand reposition).
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: continuity
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_continuity_motion_small_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Maintain continuity: same outfit, same setting, same time-of-day cues. Depict a
+      subtle progression, not a new scene.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: continuity
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_continuity_pair_safe_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      If another adult is present nearby, keep positions consistent and interactions
+      light and public; avoid intimate contact or escalation.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: continuity
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  # ── activity — micro-actions within ~10 seconds ──────────────────────────
+  - block_id: tsf_act_hold_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Advance the moment by about ten seconds while the subject continues their current
+      activity without noticeable change.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: hold
+      beat_type: hold
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_weight_shift_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject subtly shifts their weight and adjusts stance in a natural, relaxed way.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: micro_motion
+      beat_type: weight_shift
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_glance_around_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject briefly glances around the space, then returns attention forward.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: micro_motion
+      beat_type: glance_around
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_check_phone_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      If a phone is already present or plausible, the subject briefly checks it (quick look,
+      short tap) and then lowers it again.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: object_use
+      beat_type: check_phone
+      intent: modify
+    complexity_level: moderate
+
+  - block_id: tsf_act_adjust_strap_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject adjusts a bag strap, jacket edge, or sleeve in a small, practical motion.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: micro_gesture
+      beat_type: adjust_clothing
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_take_step_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject takes a small step and re-settles, moving only slightly within the scene.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: move
+      beat_type: small_step
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_turn_slightly_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject turns slightly at the shoulders or hips, as if acknowledging a sound or
+      shifting attention, without changing the overall pose dramatically.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: micro_motion
+      beat_type: turn_slightly
+      intent: modify
+    complexity_level: moderate
+
+  - block_id: tsf_act_nod_acknowledge_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      The subject gives a brief nod or small wave of acknowledgment to someone nearby,
+      then returns to neutral posture.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: social_light
+      beat_type: brief_acknowledge
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_act_brief_exchange_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      A short, everyday exchange happens with a nearby adult (a quick comment, a simple
+      question), lasting only a moment and staying public and friendly.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: social_light
+      beat_type: brief_exchange
+      intent: modify
+    complexity_level: moderate
+
+  - block_id: tsf_act_pass_item_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      A simple item handoff occurs (ticket, receipt, small object). Keep the motion brief,
+      clear, and non-intimate.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: activity
+      delta_t: "10s"
+      activity_group: social_light
+      beat_type: pass_item
+      intent: modify
+    complexity_level: moderate
+
+  # ── expression — light facial changes ────────────────────────────────────
+  - block_id: tsf_expr_neutral_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Neutral expression: relaxed face, natural gaze, no exaggerated emotion.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: expression
+      delta_t: "10s"
+      expression_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_expr_mild_smile_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Mild friendly expression: a small, natural smile that reads as everyday and casual.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: expression
+      delta_t: "10s"
+      expression_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_expr_focus_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Focused expression: attentive eyes and a composed face, as if briefly concentrating.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: expression
+      delta_t: "10s"
+      expression_tone: focused
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_expr_curiosity_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Curious expression: subtle eyebrow lift or slight head tilt, then settling back to normal.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: expression
+      delta_t: "10s"
+      expression_tone: curious
+      intent: modify
+    complexity_level: moderate
+
+  # ── refine — anti-drift / time-step constraints ──────────────────────────
+  - block_id: tsf_refine_no_jump_cut_01
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Treat this as the same continuous shot advanced by about ten seconds. Do not change
+      the setting, time-of-day, or outfit in a way that implies a new scene.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: refine
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_refine_keep_public_safe_01
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Keep interactions light, everyday, and game-friendly. Everyone depicted is an adult.
+      No coercion, no intimate escalation, and no graphic contact.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: refine
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  # ── tone — gentle ambient mood ───────────────────────────────────────────
+  - block_id: tsf_tone_neutral_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Neutral ambient tone with natural lighting and no dramatic color grading.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: tone
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_tone_warm_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Warm, inviting ambient tone with soft highlights and comfortable public energy.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: tone
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
+  - block_id: tsf_tone_calm_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Calm, everyday tone: subtle background activity, no heightened drama.
+    tags:
+      sequence_family: ten_seconds_forward
+      beat_axis: tone
+      delta_t: "10s"
+      intent: modify
+    complexity_level: simple
+
