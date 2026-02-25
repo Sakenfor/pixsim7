@@ -4,6 +4,7 @@
  * Sidebar-based settings panel with expandable sub-sections.
  * Modules register themselves and provide their own UI components.
  */
+import { HierarchicalSidebarNav, SidebarPaneShell } from '@pixsim7/shared.ui';
 import { useState, useEffect, Suspense, type ReactNode } from 'react';
 
 import { Icon } from '@lib/icons';
@@ -14,96 +15,6 @@ import { useSettingsUiStore } from '../stores/settingsUiStore';
 
 // Import modules to trigger registration
 import './modules';
-
-/** Chevron icon for expand/collapse */
-function ChevronIcon({ expanded }: { expanded: boolean }) {
-  return (
-    <svg
-      className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
-  );
-}
-
-/** Sidebar item for a settings module */
-function SidebarModuleItem({
-  module,
-  isActive,
-  isExpanded,
-  activeSubSectionId,
-  onSelect,
-  onToggleExpand,
-  onSelectSubSection,
-}: {
-  module: SettingsModule;
-  isActive: boolean;
-  isExpanded: boolean;
-  activeSubSectionId: string | null;
-  onSelect: () => void;
-  onToggleExpand: () => void;
-  onSelectSubSection: (subId: string) => void;
-}) {
-  const hasSubSections = module.subSections && module.subSections.length > 0;
-
-  return (
-    <div className="select-none">
-      {/* Main module item */}
-      <button
-        onClick={() => {
-          if (hasSubSections) {
-            onToggleExpand();
-          }
-          onSelect();
-        }}
-        className={`w-full flex items-center gap-2 px-3 py-2 text-left text-xs rounded-md transition-colors ${
-          isActive && !activeSubSectionId
-            ? 'bg-blue-500 text-white'
-            : isActive
-            ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-            : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
-        }`}
-      >
-        {hasSubSections && (
-          <span
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand();
-            }}
-            className="p-0.5 -ml-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded"
-          >
-            <ChevronIcon expanded={isExpanded} />
-          </span>
-        )}
-        {module.icon && <Icon name={module.icon as string} size={14} className="flex-shrink-0" />}
-        <span className="font-medium truncate">{module.label}</span>
-      </button>
-
-      {/* Sub-sections */}
-      {hasSubSections && isExpanded && (
-        <div className="ml-4 mt-0.5 space-y-0.5 border-l border-neutral-200 dark:border-neutral-700">
-          {module.subSections!.map((sub) => (
-            <button
-              key={sub.id}
-              onClick={() => onSelectSubSection(sub.id)}
-              className={`w-full flex items-center gap-2 pl-3 pr-2 py-1.5 text-left text-[11px] rounded-r-md transition-colors ${
-                isActive && activeSubSectionId === sub.id
-                  ? 'bg-blue-500 text-white'
-                  : 'hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
-              }`}
-            >
-              {sub.icon && <Icon name={sub.icon as string} size={12} className="flex-shrink-0" />}
-              <span className="truncate">{sub.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /** Loading spinner for suspense fallback */
 function LoadingSpinner() {
@@ -227,34 +138,36 @@ export function SettingsPanel() {
   };
 
   const activeModule = modules.find((m) => m.id === activeTabId);
+  const navItems = modules.map((module) => ({
+    id: module.id,
+    label: module.label,
+    icon: module.icon ? <Icon name={module.icon as string} size={14} className="flex-shrink-0" /> : undefined,
+    children: module.subSections?.map((sub) => ({
+      id: sub.id,
+      label: sub.label,
+      icon: sub.icon ? <Icon name={sub.icon as string} size={12} className="flex-shrink-0" /> : undefined,
+    })),
+  }));
 
   return (
     <div className="h-full w-full flex bg-white dark:bg-neutral-900">
-      {/* Sidebar */}
-      <div className="w-48 flex-shrink-0 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-        {/* Sidebar header */}
-        <div className="flex-shrink-0 px-3 py-3 border-b border-neutral-200 dark:border-neutral-800">
-          <h1 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
-            Settings
-          </h1>
-        </div>
-
-        {/* Sidebar navigation */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
-          {modules.map((module) => (
-            <SidebarModuleItem
-              key={module.id}
-              module={module}
-              isActive={activeTabId === module.id}
-              isExpanded={expandedModules.has(module.id)}
-              activeSubSectionId={activeTabId === module.id ? activeSubSection : null}
-              onSelect={() => handleSelectModule(module.id)}
-              onToggleExpand={() => handleToggleExpand(module.id)}
-              onSelectSubSection={(subId) => handleSelectSubSection(module.id, subId)}
-            />
-          ))}
-        </div>
-      </div>
+      <SidebarPaneShell title="Settings" variant="light" widthClassName="w-48">
+        <HierarchicalSidebarNav
+          className="space-y-0.5"
+          items={navItems}
+          expandedItemIds={expandedModules}
+          onSelectItem={handleSelectModule}
+          onToggleExpand={handleToggleExpand}
+          onSelectChild={handleSelectSubSection}
+          getItemState={(item) => {
+            if (activeTabId !== item.id) return 'inactive';
+            return activeSubSection ? 'ancestor' : 'active';
+          }}
+          getChildState={(item, child) =>
+            activeTabId === item.id && activeSubSection === child.id ? 'active' : 'inactive'
+          }
+        />
+      </SidebarPaneShell>
 
       {/* Content area */}
       {activeModule ? (
