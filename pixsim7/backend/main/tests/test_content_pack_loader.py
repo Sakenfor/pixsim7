@@ -41,6 +41,107 @@ blocks:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_blocks_supports_fragments_and_pack_defaults() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+package_name: demo_pkg
+defaults:
+  style: cinematic
+  duration_sec: 2.0
+blocks: []
+""",
+        )
+        (pack_dir / "blocks").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "blocks" / "approach.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: demo_block_01
+    role: camera
+    category: composition
+    text: "POV framing."
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert len(parsed) == 1
+        assert parsed[0]["block_id"] == "demo_block_01"
+        assert parsed[0]["package_name"] == "demo_pkg"
+        assert parsed[0]["style"] == "cinematic"
+        assert parsed[0]["duration_sec"] == 2.0
+        assert parsed[0]["char_count"] == len("POV framing.")
+        assert parsed[0]["block_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_supports_nested_fragments() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+package_name: demo_pkg
+defaults:
+  style: photorealistic
+blocks: []
+""",
+        )
+        (pack_dir / "blocks" / "wardrobe" / "skirts").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "blocks" / "wardrobe" / "skirts" / "shape.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: nested_block_01
+    role: style
+    category: wardrobe
+    text: "Skirt shape: A-line."
+""",
+        )
+
+        parsed = loader.parse_blocks(pack_dir)
+        assert [b["block_id"] for b in parsed] == ["nested_block_01"]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_blocks_rejects_conflicting_package_name_across_sources() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        _write(
+            pack_dir / "blocks.yaml",
+            """
+version: "1.0.0"
+package_name: pkg_a
+blocks: []
+""",
+        )
+        (pack_dir / "blocks").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "blocks" / "part.yaml",
+            """
+version: "1.0.0"
+package_name: pkg_b
+blocks:
+  - block_id: demo_block_02
+    role: camera
+    text: "x"
+""",
+        )
+
+        with pytest.raises(loader.ContentPackValidationError, match="package_name.*conflicts"):
+            loader.parse_blocks(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_templates_requires_slug() -> None:
     root, pack_dir = _make_pack_dir()
     try:
@@ -60,6 +161,39 @@ templates:
         shutil.rmtree(root, ignore_errors=True)
 
 
+def test_parse_templates_supports_fragments() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        (pack_dir / "templates").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "templates" / "a.yaml",
+            """
+version: "1.0.0"
+templates:
+  - slug: t-a
+    name: A
+    slots: []
+""",
+        )
+        _write(
+            pack_dir / "templates" / "b.yaml",
+            """
+version: "1.0.0"
+templates:
+  - slug: t-b
+    name: B
+    slots: []
+""",
+        )
+
+        parsed = loader.parse_templates(pack_dir)
+        assert sorted(t["slug"] for t in parsed) == ["t-a", "t-b"]
+        for t in parsed:
+            assert t["template_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_parse_characters_requires_character_id() -> None:
     root, pack_dir = _make_pack_dir()
     try:
@@ -74,6 +208,57 @@ characters:
 
         with pytest.raises(loader.ContentPackValidationError, match="character_id"):
             loader.parse_characters(pack_dir)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_parse_characters_supports_fragments() -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        (pack_dir / "characters").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "characters" / "humans.yaml",
+            """
+version: "1.0.0"
+characters:
+  - character_id: c1
+    name: One
+""",
+        )
+        _write(
+            pack_dir / "characters" / "more.yaml",
+            """
+version: "1.0.0"
+characters:
+  - character_id: c2
+    name: Two
+""",
+        )
+
+        parsed = loader.parse_characters(pack_dir)
+        assert sorted(c["character_id"] for c in parsed) == ["c1", "c2"]
+        for c in parsed:
+            assert c["character_metadata"][loader.CONTENT_PACK_SOURCE_KEY] == "demo_pack"
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_discover_content_packs_detects_directory_sources(monkeypatch: pytest.MonkeyPatch) -> None:
+    root, pack_dir = _make_pack_dir()
+    try:
+        monkeypatch.setattr(loader, "CONTENT_PACKS_DIR", root)
+        (pack_dir / "blocks" / "wardrobe").mkdir(parents=True, exist_ok=True)
+        _write(
+            pack_dir / "blocks" / "wardrobe" / "one.yaml",
+            """
+version: "1.0.0"
+blocks:
+  - block_id: b1
+    role: action
+    text: hi
+""",
+        )
+        assert loader.discover_content_packs() == ["demo_pack"]
     finally:
         shutil.rmtree(root, ignore_errors=True)
 

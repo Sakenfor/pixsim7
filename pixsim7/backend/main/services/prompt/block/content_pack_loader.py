@@ -3,9 +3,18 @@ Content-pack loader — discovers and loads blocks, templates, and characters
 from content_packs/prompt/ directories into the database.
 
 Layout:
-    content_packs/prompt/<pack_name>/blocks.yaml
-    content_packs/prompt/<pack_name>/templates.yaml
-    content_packs/prompt/<pack_name>/characters.yaml
+    Single-file (legacy, still supported):
+        content_packs/prompt/<pack_name>/blocks.yaml
+        content_packs/prompt/<pack_name>/templates.yaml
+        content_packs/prompt/<pack_name>/characters.yaml
+
+    Multi-file (authoring convenience):
+        content_packs/prompt/<pack_name>/blocks/*.yaml
+        content_packs/prompt/<pack_name>/templates/*.yaml
+        content_packs/prompt/<pack_name>/characters/*.yaml
+
+    When both a single file and a directory exist (e.g. blocks.yaml + blocks/*.yaml),
+    all sources are merged (single file first, then directory files in name order).
 
 Auto-discovered by startup.py during optional seeding.
 Also usable from CLI via scripts/load_content_pack.py.
@@ -32,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 CONTENT_PACKS_DIR = Path(__file__).resolve().parents[3] / "content_packs" / "prompt"
 CONTENT_PACK_SOURCE_KEY = "content_pack"
+_YAML_SUFFIXES = (".yaml", ".yml")
 
 
 class ContentPackValidationError(ValueError):
@@ -89,6 +99,44 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
             f"{path}: expected top-level YAML mapping, got {type(data).__name__}"
         )
     return data
+
+
+def _iter_pack_sources(content_dir: Path, stem: str) -> List[Path]:
+    """Return ordered YAML sources for a pack section (blocks/templates/characters)."""
+    sources: List[Path] = []
+
+    # Prefer .yaml, then .yml; include at most one single-file source.
+    for suffix in _YAML_SUFFIXES:
+        single = content_dir / f"{stem}{suffix}"
+        if single.exists():
+            sources.append(single)
+            break
+
+    # Merge in fragments from <stem>/ directory (if present).
+    fragments_dir = content_dir / stem
+    if fragments_dir.is_dir():
+        fragments: List[Path] = []
+        for suffix in _YAML_SUFFIXES:
+            fragments.extend(
+                p
+                for p in fragments_dir.rglob(f"*{suffix}")
+                if p.is_file()
+            )
+        sources.extend(sorted(fragments))
+
+    return sources
+
+
+def _has_any_pack_source(content_dir: Path, stem: str) -> bool:
+    if any((content_dir / f"{stem}{suffix}").exists() for suffix in _YAML_SUFFIXES):
+        return True
+    fragments_dir = content_dir / stem
+    if not fragments_dir.is_dir():
+        return False
+    return any(
+        f.is_file() and f.suffix in _YAML_SUFFIXES
+        for f in fragments_dir.rglob("*")
+    )
 
 
 def _required_non_empty_string(
@@ -153,224 +201,259 @@ def discover_content_packs() -> List[str]:
     return sorted(
         d.name for d in CONTENT_PACKS_DIR.iterdir()
         if d.is_dir() and (
-            (d / "blocks.yaml").exists()
-            or (d / "templates.yaml").exists()
-            or (d / "characters.yaml").exists()
+            _has_any_pack_source(d, "blocks")
+            or _has_any_pack_source(d, "templates")
+            or _has_any_pack_source(d, "characters")
         )
     )
 
 
 def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
-    """Parse blocks.yaml, merging defaults into each block."""
-    blocks_path = content_dir / "blocks.yaml"
-    if not blocks_path.exists():
+    """Parse blocks YAML sources, merging defaults into each block."""
+    sources = _iter_pack_sources(content_dir, "blocks")
+    if not sources:
         return []
 
-    data = _load_yaml(blocks_path)
-    defaults = data.get("defaults", {})
-    if defaults is None:
-        defaults = {}
-    if not isinstance(defaults, dict):
-        raise ContentPackValidationError(f"{blocks_path}: defaults must be an object")
+    # Pack-level defaults can be provided by the single-file source (blocks.yaml)
+    # and apply to all fragment files too.
+    pack_defaults: Dict[str, Any] = {}
+    pack_defaults_source: Path | None = None
+    pack_package_name: str | None = None
+    pack_package_name_source: Path | None = None
 
-    package_name = data.get("package_name")
-    if package_name is not None and not isinstance(package_name, str):
-        raise ContentPackValidationError(f"{blocks_path}: package_name must be a string")
+    # First pass: validate and capture pack-level package_name consistency.
+    for src in sources:
+        data = _load_yaml(src)
 
-    raw_blocks = data.get("blocks", [])
-    if raw_blocks is None:
-        raw_blocks = []
-    if not isinstance(raw_blocks, list):
-        raise ContentPackValidationError(f"{blocks_path}: blocks must be a list")
-
-    blocks = []
-    seen_block_ids: set[str] = set()
-
-    for index, raw in enumerate(raw_blocks):
-        if not isinstance(raw, dict):
-            raise ContentPackValidationError(
-                f"{blocks_path}: blocks[{index}] must be an object"
-            )
-        block = {**defaults, **raw}
-
-        block_id = _required_non_empty_string(
-            value=block.get("block_id"),
-            path=blocks_path,
-            section="blocks",
-            index=index,
-            field="block_id",
-        )
-        if block_id in seen_block_ids:
-            raise ContentPackValidationError(
-                f"{blocks_path}: duplicate block_id '{block_id}' in blocks[{index}]"
-            )
-        seen_block_ids.add(block_id)
-        block["block_id"] = block_id
-
-        if package_name and "package_name" not in raw:
-            block["package_name"] = package_name
-
-        for field_name in ("role", "category", "kind", "description", "complexity_level", "package_name", "default_intent"):
-            value = block.get(field_name)
-            if value is not None and not isinstance(value, str):
+        src_package_name = data.get("package_name")
+        if src_package_name is not None and not isinstance(src_package_name, str):
+            raise ContentPackValidationError(f"{src}: package_name must be a string")
+        if isinstance(src_package_name, str):
+            if pack_package_name is None:
+                pack_package_name = src_package_name
+                pack_package_name_source = src
+            elif src_package_name != pack_package_name:
                 raise ContentPackValidationError(
-                    f"{blocks_path}: blocks[{index}].{field_name} must be a string"
+                    f"{src}: package_name '{src_package_name}' conflicts with '{pack_package_name}' from {pack_package_name_source}"
                 )
 
-        tags = block.get("tags")
-        if tags is None:
-            block["tags"] = {}
-        elif not isinstance(tags, dict):
-            raise ContentPackValidationError(
-                f"{blocks_path}: blocks[{index}].tags must be an object"
+        # Treat the first single-file source as pack defaults (if present).
+        if pack_defaults_source is None and src.parent == content_dir and src.stem == "blocks":
+            defaults = data.get("defaults", {})
+            if defaults is None:
+                defaults = {}
+            if not isinstance(defaults, dict):
+                raise ContentPackValidationError(f"{src}: defaults must be an object")
+            pack_defaults = dict(defaults)
+            pack_defaults_source = src
+
+    blocks: List[Dict[str, Any]] = []
+    seen_block_ids: Dict[str, Path] = {}
+
+    for src in sources:
+        data = _load_yaml(src)
+
+        defaults = data.get("defaults", {})
+        if defaults is None:
+            defaults = {}
+        if not isinstance(defaults, dict):
+            raise ContentPackValidationError(f"{src}: defaults must be an object")
+
+        raw_blocks = data.get("blocks", [])
+        if raw_blocks is None:
+            raw_blocks = []
+        if not isinstance(raw_blocks, list):
+            raise ContentPackValidationError(f"{src}: blocks must be a list")
+
+        effective_defaults = {**pack_defaults, **defaults}
+
+        for index, raw in enumerate(raw_blocks):
+            if not isinstance(raw, dict):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{index}] must be an object"
+                )
+            block = {**effective_defaults, **raw}
+
+            block_id = _required_non_empty_string(
+                value=block.get("block_id"),
+                path=src,
+                section="blocks",
+                index=index,
+                field="block_id",
+            )
+            if block_id in seen_block_ids:
+                raise ContentPackValidationError(
+                    f"{src}: duplicate block_id '{block_id}' in blocks[{index}] (already defined in {seen_block_ids[block_id]})"
+                )
+            seen_block_ids[block_id] = src
+            block["block_id"] = block_id
+
+            if pack_package_name and "package_name" not in raw:
+                block["package_name"] = pack_package_name
+
+            for field_name in ("role", "category", "kind", "description", "complexity_level", "package_name", "default_intent"):
+                value = block.get(field_name)
+                if value is not None and not isinstance(value, str):
+                    raise ContentPackValidationError(
+                        f"{src}: blocks[{index}].{field_name} must be a string"
+                    )
+
+            tags = block.get("tags")
+            if tags is None:
+                block["tags"] = {}
+            elif not isinstance(tags, dict):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{index}].tags must be an object"
+                )
+
+            block_metadata = _ensure_optional_dict(
+                value=block.get("block_metadata"),
+                path=src,
+                section="blocks",
+                index=index,
+                field="block_metadata",
+            )
+            block["block_metadata"] = _set_content_pack_source(
+                block_metadata,
+                content_dir.name,
             )
 
-        block_metadata = _ensure_optional_dict(
-            value=block.get("block_metadata"),
-            path=blocks_path,
-            section="blocks",
-            index=index,
-            field="block_metadata",
-        )
-        block["block_metadata"] = _set_content_pack_source(
-            block_metadata,
-            content_dir.name,
-        )
-
-        text = block.get("text", "")
-        if text is None:
-            text = ""
-        if not isinstance(text, str):
-            raise ContentPackValidationError(
-                f"{blocks_path}: blocks[{index}].text must be a string"
-            )
-        block["text"] = text
-        block["char_count"] = len(text)
-        block["word_count"] = len(text.split())
-        blocks.append(block)
+            text = block.get("text", "")
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                raise ContentPackValidationError(
+                    f"{src}: blocks[{index}].text must be a string"
+                )
+            block["text"] = text
+            block["char_count"] = len(text)
+            block["word_count"] = len(text.split())
+            blocks.append(block)
 
     return blocks
 
 
 def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:
-    """Parse templates.yaml, normalising slot indices."""
-    templates_path = content_dir / "templates.yaml"
-    if not templates_path.exists():
+    """Parse templates YAML sources, normalising slot indices."""
+    sources = _iter_pack_sources(content_dir, "templates")
+    if not sources:
         return []
 
-    data = _load_yaml(templates_path)
-    raw_templates = data.get("templates", [])
-    if raw_templates is None:
-        raw_templates = []
-    if not isinstance(raw_templates, list):
-        raise ContentPackValidationError(f"{templates_path}: templates must be a list")
+    templates: List[Dict[str, Any]] = []
+    seen_slugs: Dict[str, Path] = {}
 
-    templates = []
-    seen_slugs: set[str] = set()
+    for src in sources:
+        data = _load_yaml(src)
+        raw_templates = data.get("templates", [])
+        if raw_templates is None:
+            raw_templates = []
+        if not isinstance(raw_templates, list):
+            raise ContentPackValidationError(f"{src}: templates must be a list")
 
-    for index, raw in enumerate(raw_templates):
-        if not isinstance(raw, dict):
-            raise ContentPackValidationError(
-                f"{templates_path}: templates[{index}] must be an object"
-            )
-
-        slug = _required_non_empty_string(
-            value=raw.get("slug"),
-            path=templates_path,
-            section="templates",
-            index=index,
-            field="slug",
-        )
-        if slug in seen_slugs:
-            raise ContentPackValidationError(
-                f"{templates_path}: duplicate slug '{slug}' in templates[{index}]"
-            )
-        seen_slugs.add(slug)
-        raw["slug"] = slug
-
-        for field_name in ("name", "description", "composition_strategy", "package_name"):
-            value = raw.get(field_name)
-            if value is not None and not isinstance(value, str):
+        for index, raw in enumerate(raw_templates):
+            if not isinstance(raw, dict):
                 raise ContentPackValidationError(
-                    f"{templates_path}: templates[{index}].{field_name} must be a string"
+                    f"{src}: templates[{index}] must be an object"
                 )
 
-        slots = _ensure_optional_list(
-            value=raw.get("slots"),
-            path=templates_path,
-            section="templates",
-            index=index,
-            field="slots",
-        )
-        raw_metadata = _ensure_optional_dict(
-            value=raw.get("template_metadata"),
-            path=templates_path,
-            section="templates",
-            index=index,
-            field="template_metadata",
-        )
-        slot_schema_version = raw_metadata.get("slot_schema_version")
-        try:
-            raw["slots"] = normalize_template_slots(slots, schema_version=slot_schema_version)
-        except ValueError as exc:
-            raise ContentPackValidationError(
-                f"{templates_path}: templates[{index}].slots invalid: {exc}"
-            ) from exc
+            slug = _required_non_empty_string(
+                value=raw.get("slug"),
+                path=src,
+                section="templates",
+                index=index,
+                field="slug",
+            )
+            if slug in seen_slugs:
+                raise ContentPackValidationError(
+                    f"{src}: duplicate slug '{slug}' in templates[{index}] (already defined in {seen_slugs[slug]})"
+                )
+            seen_slugs[slug] = src
+            raw["slug"] = slug
 
-        metadata = raw_metadata
-        metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
-        metadata[CONTENT_PACK_SOURCE_KEY] = content_dir.name
-        raw["template_metadata"] = metadata
-        templates.append(raw)
+            for field_name in ("name", "description", "composition_strategy", "package_name"):
+                value = raw.get(field_name)
+                if value is not None and not isinstance(value, str):
+                    raise ContentPackValidationError(
+                        f"{src}: templates[{index}].{field_name} must be a string"
+                    )
+
+            slots = _ensure_optional_list(
+                value=raw.get("slots"),
+                path=src,
+                section="templates",
+                index=index,
+                field="slots",
+            )
+            raw_metadata = _ensure_optional_dict(
+                value=raw.get("template_metadata"),
+                path=src,
+                section="templates",
+                index=index,
+                field="template_metadata",
+            )
+            slot_schema_version = raw_metadata.get("slot_schema_version")
+            try:
+                raw["slots"] = normalize_template_slots(slots, schema_version=slot_schema_version)
+            except ValueError as exc:
+                raise ContentPackValidationError(
+                    f"{src}: templates[{index}].slots invalid: {exc}"
+                ) from exc
+
+            metadata = raw_metadata
+            metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
+            metadata[CONTENT_PACK_SOURCE_KEY] = content_dir.name
+            raw["template_metadata"] = metadata
+            templates.append(raw)
 
     return templates
 
 
 def parse_characters(content_dir: Path) -> List[Dict[str, Any]]:
-    """Parse characters.yaml."""
-    chars_path = content_dir / "characters.yaml"
-    if not chars_path.exists():
+    """Parse character YAML sources."""
+    sources = _iter_pack_sources(content_dir, "characters")
+    if not sources:
         return []
 
-    data = _load_yaml(chars_path)
-    raw_characters = data.get("characters", [])
-    if raw_characters is None:
-        raw_characters = []
-    if not isinstance(raw_characters, list):
-        raise ContentPackValidationError(f"{chars_path}: characters must be a list")
-
     characters: List[Dict[str, Any]] = []
-    seen_character_ids: set[str] = set()
+    seen_character_ids: Dict[str, Path] = {}
 
-    for index, raw in enumerate(raw_characters):
-        if not isinstance(raw, dict):
-            raise ContentPackValidationError(
-                f"{chars_path}: characters[{index}] must be an object"
+    for src in sources:
+        data = _load_yaml(src)
+        raw_characters = data.get("characters", [])
+        if raw_characters is None:
+            raw_characters = []
+        if not isinstance(raw_characters, list):
+            raise ContentPackValidationError(f"{src}: characters must be a list")
+
+        for index, raw in enumerate(raw_characters):
+            if not isinstance(raw, dict):
+                raise ContentPackValidationError(
+                    f"{src}: characters[{index}] must be an object"
+                )
+
+            character_id = _required_non_empty_string(
+                value=raw.get("character_id"),
+                path=src,
+                section="characters",
+                index=index,
+                field="character_id",
             )
+            if character_id in seen_character_ids:
+                raise ContentPackValidationError(
+                    f"{src}: duplicate character_id '{character_id}' in characters[{index}] (already defined in {seen_character_ids[character_id]})"
+                )
+            seen_character_ids[character_id] = src
+            raw["character_id"] = character_id
 
-        character_id = _required_non_empty_string(
-            value=raw.get("character_id"),
-            path=chars_path,
-            section="characters",
-            index=index,
-            field="character_id",
-        )
-        if character_id in seen_character_ids:
-            raise ContentPackValidationError(
-                f"{chars_path}: duplicate character_id '{character_id}' in characters[{index}]"
+            metadata = _ensure_optional_dict(
+                value=raw.get("character_metadata"),
+                path=src,
+                section="characters",
+                index=index,
+                field="character_metadata",
             )
-        seen_character_ids.add(character_id)
-        raw["character_id"] = character_id
-
-        metadata = _ensure_optional_dict(
-            value=raw.get("character_metadata"),
-            path=chars_path,
-            section="characters",
-            index=index,
-            field="character_metadata",
-        )
-        raw["character_metadata"] = _set_content_pack_source(metadata, content_dir.name)
-        characters.append(raw)
+            raw["character_metadata"] = _set_content_pack_source(metadata, content_dir.name)
+            characters.append(raw)
 
     return characters
 

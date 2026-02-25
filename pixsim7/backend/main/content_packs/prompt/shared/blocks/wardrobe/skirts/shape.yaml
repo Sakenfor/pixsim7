@@ -1,0 +1,338 @@
+version: "1.0.0"
+
+blocks:
+  - block_id: wd_skirt_shape_pencil_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: pencil. Clean, fitted upper silhouette with a straight, narrow line
+      to the hem for a tailored profile.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: pencil
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_pencil_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      A close, streamlined skirt cut that follows the waistline and keeps a refined,
+      minimal outline without extra volume.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: pencil
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_a_line_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: A-line. Defined at the waist and gently widening toward the hem,
+      creating a balanced, everyday silhouette.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: a_line
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_a_line_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      A skirt that sits cleanly at the waist and opens gradually into a simple flare,
+      keeping the outline neat and readable from most angles.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: a_line
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_pleated_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: pleated. Structured pleats create regular vertical folds that add
+      controlled volume and clear rhythm without looking bulky.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: pleated
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_pleated_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Add evenly spaced pleats that open slightly with movement while the waistband
+      stays tidy and the silhouette remains organized.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: pleated
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_wrap_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: wrap. An overlapping front panel creates a diagonal closure line
+      and a natural, adjustable drape.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: wrap
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_wrap_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Use a wrap construction with a clean overlap and subtle asymmetry at the front,
+      keeping the shape practical and uncluttered.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: wrap
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_circle_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: circle. Even flare from the waist with a rounded hemline that
+      creates a classic, buoyant outline.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: circle
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_circle_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      A skirt with generous, uniform sweep that forms soft arcs around the legs and
+      reads as evenly flared from multiple viewpoints.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: circle
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_tiered_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: tiered. Stacked horizontal tiers add stepwise volume and a clear
+      layered structure toward the hem.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: tiered
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_tiered_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Build the skirt from multiple tiers so the silhouette expands in stages, giving
+      an airy, layered outline without heavy detailing.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: tiered
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_bias_cut_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: bias-cut. Smooth, continuous drape that follows the body's lines and
+      falls with a fluid outline rather than crisp structure.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: bias_cut
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_bias_cut_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Use a bias-cut silhouette that avoids sharp angles and instead forms a clean,
+      slightly contour-following fall from waist to hem.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: bias_cut
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_tulip_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: tulip. Overlapping front shaping creates a rounded upper contour with
+      a gently tapering impression toward the hem.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: tulip
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_tulip_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      A skirt with a subtle overlap that forms a petal-like outline, slightly fuller in the
+      upper portion and cleaner at the lower portion.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: tulip
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_trumpet_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: trumpet. Fitted through the upper portion, then flaring outward closer
+      to the hem for a distinct finish.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: trumpet
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_trumpet_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Keep the upper skirt streamlined, then introduce a controlled flare lower down
+      so the silhouette opens up near the hem.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: trumpet
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_skater_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: skater. Defined waist with a lively, even flare that creates a clear,
+      light outline without extra structure.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: skater
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_skater_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      A skirt that sits neatly at the waist and fans out smoothly, forming a simple
+      silhouette that reads well with small movement.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: skater
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_asym_hem_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: asymmetric hem. An intentionally uneven hemline creates a dynamic
+      outline with a clear angled or dipped edge.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: asym_hem
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_asym_hem_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Use an asymmetric hem treatment so one side sits higher or dips lower, while the
+      rest of the skirt remains clean and wearable.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: asym_hem
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_slit_01
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Skirt shape: slit. Introduce one practical slit (side or back) that breaks the hem
+      line cleanly without changing the overall silhouette.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: slit
+    complexity_level: simple
+
+  - block_id: wd_skirt_shape_slit_02
+    role: style
+    category: wardrobe
+    kind: single_state
+    text: >-
+      Add a single, minimal slit for ease of movement, keeping it subtle, realistic,
+      and not the main focal detail.
+    tags:
+      intent: modify
+      garment: skirt
+      wardrobe_axis: shape
+      skirt_shape: slit
+    complexity_level: simple
