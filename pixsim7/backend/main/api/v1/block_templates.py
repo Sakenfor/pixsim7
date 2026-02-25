@@ -476,6 +476,20 @@ class BlockMatrixResponse(BaseModel):
     cells: List[BlockMatrixCellResponse] = Field(default_factory=list)
 
 
+class ContentPackMatrixPresetResponse(BaseModel):
+    label: str
+    query: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ContentPackMatrixManifestResponse(BaseModel):
+    pack_name: str
+    source: str
+    id: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    matrix_presets: List[ContentPackMatrixPresetResponse] = Field(default_factory=list)
+
+
 class BlockTagDictionaryValueSummaryResponse(BaseModel):
     value: str
     count: int
@@ -1285,6 +1299,28 @@ async def list_content_packs():
         discover_content_packs,
     )
     return discover_content_packs()
+
+
+@router.get("/meta/content-packs/manifests", response_model=List[ContentPackMatrixManifestResponse])
+async def list_content_pack_manifests(
+    pack: Optional[str] = Query(None, description="Optional pack name filter"),
+):
+    """List optional content-pack manifest files with Block Matrix query presets."""
+    from pixsim7.backend.main.services.prompt.block.content_pack_loader import (
+        CONTENT_PACKS_DIR,
+        discover_content_packs,
+        parse_manifests,
+    )
+
+    packs = [pack] if pack else discover_content_packs()
+    manifests: List[ContentPackMatrixManifestResponse] = []
+    for pack_name in packs:
+        content_dir = CONTENT_PACKS_DIR / pack_name
+        if not content_dir.exists() or not content_dir.is_dir():
+            continue
+        for raw in parse_manifests(content_dir, pack_name=pack_name):
+            manifests.append(ContentPackMatrixManifestResponse(**raw))
+    return manifests
 
 
 @router.post("/meta/content-packs/reload")

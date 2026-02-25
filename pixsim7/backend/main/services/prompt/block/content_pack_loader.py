@@ -188,6 +188,20 @@ def _ensure_optional_list(
     return value
 
 
+def _ensure_optional_string(
+    *,
+    value: Any,
+    path: Path,
+    field: str,
+) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ContentPackValidationError(f"{path}: {field} must be a string")
+    value = value.strip()
+    return value or None
+
+
 def _set_content_pack_source(metadata: Dict[str, Any], pack_name: str) -> Dict[str, Any]:
     stamped = dict(metadata)
     stamped[CONTENT_PACK_SOURCE_KEY] = pack_name
@@ -331,6 +345,101 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
             blocks.append(block)
 
     return blocks
+
+
+def _iter_pack_manifest_sources(content_dir: Path) -> List[Path]:
+    """Return manifest.yaml/yml sources within a content pack.
+
+    Convention:
+    - <pack>/manifest.(yaml|yml) (pack-level)
+    - <pack>/blocks/**/manifest.(yaml|yml) (group/folder-level)
+    - <pack>/templates/**/manifest.(yaml|yml) (optional; template-grouping)
+    """
+    sources: List[Path] = []
+    for suffix in _YAML_SUFFIXES:
+        root = content_dir / f"manifest{suffix}"
+        if root.exists() and root.is_file():
+            sources.append(root)
+
+    for section in ("blocks", "templates"):
+        base = content_dir / section
+        if not base.exists() or not base.is_dir():
+            continue
+        for suffix in _YAML_SUFFIXES:
+            sources.extend(p for p in base.rglob(f"*{suffix}") if p.is_file() and p.stem == "manifest")
+
+    # Stable output.
+    return sorted(set(sources))
+
+
+def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]]:
+    """Parse optional manifest YAML sources for matrix-query presets.
+
+    These manifests are *non-authoritative helpers* for tools/agents/UI to offer
+    ready-made Block Matrix queries without hardcoding them in code.
+
+    Minimal supported schema (top-level):
+      - id: str?            (optional)
+      - title: str?         (optional)
+      - description: str?   (optional)
+      - matrix_presets: []  (required for a valid manifest file)
+          - label: str (required)
+          - query:  object (required; must include row_key + col_key)
+    """
+    sources = _iter_pack_manifest_sources(content_dir)
+    if not sources:
+        return []
+
+    manifests: List[Dict[str, Any]] = []
+    for src in sources:
+        data = _load_yaml(src)
+        if not isinstance(data, dict):
+            raise ContentPackValidationError(f"{src}: manifest must be an object")
+
+        matrix_presets = data.get("matrix_presets")
+        if matrix_presets is None:
+            continue
+        if not isinstance(matrix_presets, list):
+            raise ContentPackValidationError(f"{src}: matrix_presets must be a list")
+
+        parsed_presets: List[Dict[str, Any]] = []
+        for i, raw in enumerate(matrix_presets):
+            if not isinstance(raw, dict):
+                raise ContentPackValidationError(f"{src}: matrix_presets[{i}] must be an object")
+            label = _required_non_empty_string(
+                value=raw.get("label"),
+                path=src,
+                section="matrix_presets",
+                index=i,
+                field="label",
+            )
+            query = raw.get("query")
+            if not isinstance(query, dict):
+                raise ContentPackValidationError(f"{src}: matrix_presets[{i}].query must be an object")
+            row_key = query.get("row_key")
+            col_key = query.get("col_key")
+            if not isinstance(row_key, str) or not row_key.strip():
+                raise ContentPackValidationError(
+                    f"{src}: matrix_presets[{i}].query.row_key must be a non-empty string"
+                )
+            if not isinstance(col_key, str) or not col_key.strip():
+                raise ContentPackValidationError(
+                    f"{src}: matrix_presets[{i}].query.col_key must be a non-empty string"
+                )
+            parsed_presets.append({"label": label, "query": dict(query)})
+
+        manifests.append(
+            {
+                "pack_name": pack_name,
+                "source": str(src.relative_to(content_dir).as_posix()),
+                "id": _ensure_optional_string(value=data.get("id"), path=src, field="id"),
+                "title": _ensure_optional_string(value=data.get("title"), path=src, field="title"),
+                "description": _ensure_optional_string(value=data.get("description"), path=src, field="description"),
+                "matrix_presets": parsed_presets,
+            }
+        )
+
+    return manifests
 
 
 def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:

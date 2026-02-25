@@ -1,0 +1,18 @@
+id: shared.wardrobe.skirts
+title: "Wardrobe: Skirts"
+description: "Helper presets for querying skirt descriptor blocks via Block Matrix."
+
+matrix_presets:
+  - label: "Skirt shapes (axis x shape)"
+    query:
+      row_key: "tag:wardrobe_axis"
+      col_key: "tag:skirt_shape"
+      role: "style"
+      category: "wardrobe"
+      package_name: "shared"
+      tags: "garment:skirt"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,garment,wardrobe_axis,skirt_shape"
+      required_tag_keys: "garment,wardrobe_axis,skirt_shape"
+
