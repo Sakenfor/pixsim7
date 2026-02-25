@@ -36,6 +36,13 @@ from pixsim7.backend.main.services.prompt.block.template_slots import (
     TEMPLATE_SLOT_SCHEMA_VERSION,
     normalize_template_slots,
 )
+from pixsim7.backend.main.services.prompt.block.family_contract_validation import (
+    BlockFamilyContractValidationError,
+    load_prompt_block_family_schemas,
+    load_prompt_block_tag_keys,
+    validate_block_family_contract,
+    validate_template_slots_family_contracts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +270,7 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
 
     blocks: List[Dict[str, Any]] = []
     seen_block_ids: Dict[str, Path] = {}
+    family_schemas = load_prompt_block_family_schemas()
 
     for src in sources:
         data = _load_yaml(src)
@@ -319,6 +327,15 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
                 raise ContentPackValidationError(
                     f"{src}: blocks[{index}].tags must be an object"
                 )
+            try:
+                validate_block_family_contract(
+                    block=block,
+                    path=src,
+                    index=index,
+                    family_schemas=family_schemas,
+                )
+            except BlockFamilyContractValidationError as exc:
+                raise ContentPackValidationError(str(exc)) from exc
 
             block_metadata = _ensure_optional_dict(
                 value=block.get("block_metadata"),
@@ -345,6 +362,113 @@ def parse_blocks(content_dir: Path) -> List[Dict[str, Any]]:
             blocks.append(block)
 
     return blocks
+
+
+# ── Manifest query field type sets ──────────────────────────────────────────
+_MANIFEST_QUERY_STRING_FIELDS: frozenset[str] = frozenset({
+    "role", "category", "package_name", "tags",
+    "expected_row_values", "expected_col_values",
+    "expected_tag_keys", "required_tag_keys",
+})
+_MANIFEST_QUERY_BOOL_FIELDS: frozenset[str] = frozenset({"include_empty", "include_drift_report"})
+_MANIFEST_QUERY_INT_FIELDS: frozenset[str] = frozenset({"limit"})
+
+
+def _normalize_manifest_query(
+    *,
+    query: Dict[str, Any],
+    src: Path,
+    preset_index: int,
+) -> Dict[str, Any]:
+    """Validate types and normalize a manifest query object.
+
+    Known string fields are type-checked and trimmed.  Bool and int fields are
+    type-checked.  Unknown fields are preserved as-is for forward compatibility.
+    ``row_key`` and ``col_key`` must already be validated as non-empty strings.
+    """
+    normalized = dict(query)
+    # Trim the required axis keys (already validated as non-empty strings).
+    normalized["row_key"] = str(normalized["row_key"]).strip()
+    normalized["col_key"] = str(normalized["col_key"]).strip()
+
+    for field in _MANIFEST_QUERY_STRING_FIELDS:
+        value = normalized.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, str):
+            raise ContentPackValidationError(
+                f"{src}: matrix_presets[{preset_index}].query.{field} must be a string"
+            )
+        normalized[field] = value.strip()
+
+    for field in _MANIFEST_QUERY_BOOL_FIELDS:
+        value = normalized.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, bool):
+            raise ContentPackValidationError(
+                f"{src}: matrix_presets[{preset_index}].query.{field} must be a boolean"
+            )
+
+    for field in _MANIFEST_QUERY_INT_FIELDS:
+        value = normalized.get(field)
+        if value is None:
+            continue
+        # bool is a subclass of int in Python — reject it explicitly.
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ContentPackValidationError(
+                f"{src}: matrix_presets[{preset_index}].query.{field} must be an integer"
+            )
+
+    return normalized
+
+
+def _validate_manifest_query_registry(
+    *,
+    query: Dict[str, Any],
+    src: Path,
+    preset_index: int,
+    family_schemas: Dict[str, Any],
+    known_tag_keys: frozenset[str],
+) -> None:
+    """Registry-aware validation for manifest query fields.
+
+    Validates ``sequence_family`` values found in the compact ``tags`` filter
+    string against registered prompt block families, and validates
+    ``tag:<key>`` references in ``row_key``/``col_key`` against canonical
+    prompt block tag keys.
+
+    Individual checks are silently skipped when the corresponding registry
+    data is unavailable (empty collections) so the loader degrades gracefully
+    in environments where the registry is not fully populated.
+    """
+    # Validate sequence_family values in the compact "key:value,..." tags string.
+    tags_str = query.get("tags")
+    if isinstance(tags_str, str) and family_schemas:
+        for part in tags_str.split(","):
+            part = part.strip()
+            kv = part.split(":", 1)
+            if len(kv) == 2 and kv[0].strip() == "sequence_family":
+                family_id = kv[1].strip()
+                if family_id and family_id not in family_schemas:
+                    known = ", ".join(sorted(family_schemas.keys()))
+                    raise ContentPackValidationError(
+                        f"{src}: matrix_presets[{preset_index}].query.tags references "
+                        f"unknown sequence_family '{family_id}'"
+                        + (f" (known: {known})" if known else "")
+                    )
+
+    # Validate tag key references in row_key and col_key.
+    if known_tag_keys:
+        for field in ("row_key", "col_key"):
+            value = query.get(field, "")
+            if isinstance(value, str) and value.startswith("tag:"):
+                tag_key = value[4:].strip()
+                if tag_key and tag_key not in known_tag_keys:
+                    raise ContentPackValidationError(
+                        f"{src}: matrix_presets[{preset_index}].query.{field} references "
+                        f"unknown tag key '{tag_key}' (not registered in prompt_block_tags)"
+                    )
 
 
 def _iter_pack_manifest_sources(content_dir: Path) -> List[Path]:
@@ -378,19 +502,38 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
     These manifests are *non-authoritative helpers* for tools/agents/UI to offer
     ready-made Block Matrix queries without hardcoding them in code.
 
-    Minimal supported schema (top-level):
-      - id: str?            (optional)
+    Supported schema (top-level):
+      - id: str?            (optional; must be unique across all manifests in the pack)
       - title: str?         (optional)
       - description: str?   (optional)
       - matrix_presets: []  (required for a valid manifest file)
-          - label: str (required)
-          - query:  object (required; must include row_key + col_key)
+          - label: str      (required; must be unique within this manifest file)
+          - query: object   (required)
+              - row_key: str               (required, non-empty)
+              - col_key: str               (required, non-empty)
+              - role: str?
+              - category: str?
+              - package_name: str?
+              - tags: str?                 (compact "key:value,..." filter)
+              - include_empty: bool?
+              - include_drift_report: bool?
+              - expected_row_values: str?
+              - expected_col_values: str?
+              - expected_tag_keys: str?
+              - required_tag_keys: str?
+              - limit: int?
     """
     sources = _iter_pack_manifest_sources(content_dir)
     if not sources:
         return []
 
+    # Load registry data once for the whole pack so per-file loops stay cheap.
+    family_schemas = load_prompt_block_family_schemas()
+    known_tag_keys = load_prompt_block_tag_keys()
+
     manifests: List[Dict[str, Any]] = []
+    seen_manifest_ids: Dict[str, Path] = {}
+
     for src in sources:
         data = _load_yaml(src)
         if not isinstance(data, dict):
@@ -403,9 +546,12 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
             raise ContentPackValidationError(f"{src}: matrix_presets must be a list")
 
         parsed_presets: List[Dict[str, Any]] = []
+        seen_preset_labels: Dict[str, int] = {}
+
         for i, raw in enumerate(matrix_presets):
             if not isinstance(raw, dict):
                 raise ContentPackValidationError(f"{src}: matrix_presets[{i}] must be an object")
+
             label = _required_non_empty_string(
                 value=raw.get("label"),
                 path=src,
@@ -413,9 +559,17 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
                 index=i,
                 field="label",
             )
+            if label in seen_preset_labels:
+                raise ContentPackValidationError(
+                    f"{src}: matrix_presets[{i}].label '{label}' duplicates "
+                    f"matrix_presets[{seen_preset_labels[label]}].label"
+                )
+            seen_preset_labels[label] = i
+
             query = raw.get("query")
             if not isinstance(query, dict):
                 raise ContentPackValidationError(f"{src}: matrix_presets[{i}].query must be an object")
+
             row_key = query.get("row_key")
             col_key = query.get("col_key")
             if not isinstance(row_key, str) or not row_key.strip():
@@ -426,13 +580,30 @@ def parse_manifests(content_dir: Path, *, pack_name: str) -> List[Dict[str, Any]
                 raise ContentPackValidationError(
                     f"{src}: matrix_presets[{i}].query.col_key must be a non-empty string"
                 )
-            parsed_presets.append({"label": label, "query": dict(query)})
+
+            normalized_query = _normalize_manifest_query(query=query, src=src, preset_index=i)
+            _validate_manifest_query_registry(
+                query=normalized_query,
+                src=src,
+                preset_index=i,
+                family_schemas=family_schemas,
+                known_tag_keys=known_tag_keys,
+            )
+            parsed_presets.append({"label": label, "query": normalized_query})
+
+        manifest_id = _ensure_optional_string(value=data.get("id"), path=src, field="id")
+        if manifest_id is not None:
+            if manifest_id in seen_manifest_ids:
+                raise ContentPackValidationError(
+                    f"{src}: manifest id '{manifest_id}' already defined in {seen_manifest_ids[manifest_id]}"
+                )
+            seen_manifest_ids[manifest_id] = src
 
         manifests.append(
             {
                 "pack_name": pack_name,
                 "source": str(src.relative_to(content_dir).as_posix()),
-                "id": _ensure_optional_string(value=data.get("id"), path=src, field="id"),
+                "id": manifest_id,
                 "title": _ensure_optional_string(value=data.get("title"), path=src, field="title"),
                 "description": _ensure_optional_string(value=data.get("description"), path=src, field="description"),
                 "matrix_presets": parsed_presets,
@@ -450,6 +621,7 @@ def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:
 
     templates: List[Dict[str, Any]] = []
     seen_slugs: Dict[str, Path] = {}
+    family_schemas = load_prompt_block_family_schemas()
 
     for src in sources:
         data = _load_yaml(src)
@@ -507,6 +679,16 @@ def parse_templates(content_dir: Path) -> List[Dict[str, Any]]:
                 raise ContentPackValidationError(
                     f"{src}: templates[{index}].slots invalid: {exc}"
                 ) from exc
+            try:
+                validate_template_slots_family_contracts(
+                    slots=raw["slots"],
+                    path=src,
+                    template_index=index,
+                    template_slug=slug,
+                    family_schemas=family_schemas,
+                )
+            except BlockFamilyContractValidationError as exc:
+                raise ContentPackValidationError(str(exc)) from exc
 
             metadata = raw_metadata
             metadata["slot_schema_version"] = TEMPLATE_SLOT_SCHEMA_VERSION
