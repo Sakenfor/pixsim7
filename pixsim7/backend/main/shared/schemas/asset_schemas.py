@@ -271,9 +271,21 @@ class AssetResponse(BaseModel):
             object.__setattr__(self, "file_url", None)
 
         # Compute thumbnail_url from key
-        # Priority: thumbnail_key > file_url > remote_url > original_source_url
+        # Priority: thumbnail_key > provider_thumbnail_url > file_url > remote_url > original_source_url
+        # provider_thumbnail_url is a cover/first-frame image URL returned by the provider,
+        # stashed in media_metadata during asset creation. It's an image (not video) so the
+        # frontend can display it immediately before local ingestion generates a thumbnail.
+        media_type = getattr(self, "media_type", None)
+        media_type_value = getattr(media_type, "value", media_type)
+        allow_provider_thumb = not (
+            provider_id == "pixverse" and str(media_type_value).lower() == "video"
+        )
+        media_metadata = getattr(self, "media_metadata", None) or {}
+        provider_thumb = media_metadata.get("provider_thumbnail_url") if isinstance(media_metadata, dict) else None
         if thumbnail_key:
             object.__setattr__(self, "thumbnail_url", storage_key_to_url(thumbnail_key))
+        elif allow_provider_thumb and is_valid_url(provider_thumb):
+            object.__setattr__(self, "thumbnail_url", provider_thumb)
         elif getattr(self, "thumbnail_url", None) is None:
             file_url = getattr(self, "file_url", None)
             if file_url:

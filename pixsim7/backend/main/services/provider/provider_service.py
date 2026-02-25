@@ -836,7 +836,17 @@ class ProviderService:
         existing_provider_id = submission.response.get("provider_video_id") or submission.response.get("provider_asset_id")
 
         video_url = status_result.video_url or existing_video_url
-        thumbnail_url = status_result.thumbnail_url or existing_thumbnail
+        is_pixverse_video_submission = (
+            submission.provider_id == "pixverse"
+            and operation_type in get_video_operations()
+        )
+        # PixVerse video first-frame thumbnails can be temporary grey placeholders
+        # with incorrect aspect ratios. Prefer no provider thumbnail over persisting
+        # a fragile placeholder into submission/asset state.
+        if is_pixverse_video_submission:
+            thumbnail_url = None
+        else:
+            thumbnail_url = status_result.thumbnail_url or existing_thumbnail
         provider_video_id = status_result.provider_video_id or existing_provider_id or submission.provider_job_id
 
         # Update response - use assignment to ensure SQLAlchemy detects the change
