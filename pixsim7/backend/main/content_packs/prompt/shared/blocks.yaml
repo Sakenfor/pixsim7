@@ -1781,3 +1781,1549 @@ blocks:
       intensity: 8
     complexity_level: complex
     description: "Both hands from behind — sliding up to chest, pulling her back"
+
+  # ═══════════════════════════════════════════════════════════════════
+  # POV APPROACH-RESPONSE PROGRESSION — reusable sequential beat blocks
+  # ═══════════════════════════════════════════════════════════════════
+
+  # ── view — camera/POV framing per view_profile ─────────────────────
+
+  - block_id: pov_view_observer_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Wide shot framing {{subject}} from a stationary observer angle.
+      Camera maintains a neutral, uninvolved perspective at a natural
+      standing distance.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_observer_02
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Medium-wide observer framing with {{subject}} centered in the
+      composition. Camera holds a passive bystander vantage with a
+      stable horizon line.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_pov_hand_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      First-person camera framing as seen from {{pov_actor}}'s eye
+      level. The lower edge of frame may include a partial view of
+      {{pov_actor}}'s hand or forearm; if it is already present in the
+      source image, preserve it. Do not invent extra hands.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: pov_hand
+      hand_anchor: allow
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_pov_hand_02
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Subjective point-of-view shot at {{pov_actor}}'s natural eye
+      height. One hand or wrist may enter the bottom of frame; if the
+      source image already contains it, preserve it to anchor the POV.
+      Avoid adding extra limbs.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: pov_hand
+      hand_anchor: allow
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_pov_hand_03
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      POV framing from {{pov_actor}} with at least one hand visible in
+      the foreground near the bottom edge of frame, relaxed and not
+      contacting {{subject}}. Avoid cropping the hand out of frame.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: pov_hand
+      hand_anchor: require
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_ots_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Over-the-shoulder framing past {{pov_actor}}'s near shoulder
+      toward {{subject}}. The shoulder and upper arm of {{pov_actor}}
+      occupy the foreground edge of frame.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: ots
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_view_ots_02
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Camera positioned just behind and beside {{pov_actor}}, looking
+      past their shoulder toward {{subject}}. Shallow depth of field
+      separates the foreground silhouette from the subject.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: view
+      view_profile: ots
+      intent: modify
+    complexity_level: simple
+
+  # ── presence — implied off-camera nearness per view_profile ────────
+
+  - block_id: pov_presence_observer_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      A shadow or reflected silhouette at the frame edge suggests
+      another person nearby but off-camera. No direct figure visible.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_presence_observer_02
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      Ambient spatial cues — a faint cast shadow, a reflected shape
+      in glass — hint at a second presence just outside the frame
+      boundary.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_presence_pov_hand_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      If the source image already shows {{pov_actor}}'s hand or forearm
+      at the lower edge of frame, preserve it to establish a first-person
+      spatial relationship to {{subject}}. Do not invent extra hands.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: pov_hand
+      hand_anchor: allow
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_presence_pov_hand_02
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      If a hand is already visible in the foreground, preserve it and
+      allow a subtle shift in position between beats, reinforcing that
+      the viewpoint belongs to {{pov_actor}}. No contact is made with
+      {{subject}}.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: pov_hand
+      hand_anchor: allow
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_presence_pov_hand_03
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      A visible hand or forearm of {{pov_actor}} rests in the foreground
+      at the lower edge of frame, clearly anchoring the POV. Avoid
+      cropping it out. No contact is made with {{subject}}.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: pov_hand
+      hand_anchor: require
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_presence_ots_01
+    role: composition
+    category: framing
+    kind: single_state
+    text: >-
+      {{pov_actor}}'s shoulder and upper back create a soft foreground
+      silhouette, framing the composition toward {{subject}} from
+      behind.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: presence
+      view_profile: ots
+      intent: modify
+    complexity_level: simple
+
+  # ── continuity — subject placement anchoring ───────────────────────
+
+  - block_id: pov_continuity_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} holds the same general position, posture, and facing
+      direction as the previous frame. Spatial relationship to
+      background elements remains consistent.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_continuity_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Maintain {{subject}}'s relative placement and body orientation
+      from the preceding step. Background depth and proportions remain
+      unchanged.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_continuity_03
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} occupies the same compositional zone as before. Body
+      axis, weight distribution, and spatial anchors carry forward from
+      the prior frame.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  # ── proximity — spatial distance per proximity_stage ────────────────
+
+  - block_id: pov_prox_far_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} is positioned at a natural social distance, several
+      paces away. Clear open space separates the camera viewpoint from
+      {{subject}}.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: far
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_far_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Full-body framing of {{subject}} at a comfortable distance.
+      A substantial spatial gap remains between the viewpoint and
+      subject.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: far
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_near_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} is at a relaxed conversational distance, roughly two
+      arm lengths away. The framing shifts toward a medium shot.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: near
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_near_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Medium-distance framing with {{subject}} close enough for easy
+      conversation. Personal space is maintained but the gap has
+      narrowed noticeably.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: near
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_arm_reach_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} is within arm's reach. The framing tightens to a
+      medium-close shot as interpersonal distance narrows.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: arm_reach
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_arm_reach_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Close enough that an extended hand could make contact. {{subject}}
+      fills more of the frame as the spatial gap shrinks to roughly one
+      arm length.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: arm_reach
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_close_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      {{subject}} is at close intimate distance, well within arm's
+      reach. Tight framing captures upper body and face prominently.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: close
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_prox_close_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Minimal spatial separation between viewpoint and {{subject}}.
+      Close-up framing emphasizes facial detail and the upper body.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: proximity
+      proximity_stage: close
+      intent: modify
+    complexity_level: simple
+
+  # ── contact — physical contact state per contact_stage ──────────────
+
+  - block_id: pov_contact_none_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      No physical contact occurs. Hands remain neutral and non-contact
+      (they may still be visible in the foreground), and clear personal
+      space is maintained between all parties.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: none
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_contact_none_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Personal boundaries are fully intact with no gesture toward
+      touching. Comfortable spatial separation is preserved.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: none
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_contact_offered_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{pov_actor}} extends an open hand toward {{subject}} in a
+      non-demanding gesture, palm visible. Contact has not been made.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: offered_hand
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_contact_offered_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      An open hand is offered forward at a natural height, relaxed
+      fingers indicating invitation rather than insistence. No contact
+      yet established.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: offered_hand
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_contact_brief_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{pov_actor}}'s fingertips lightly touch {{subject}}'s hand or
+      forearm — a brief, gentle point of contact.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: brief_contact
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_contact_brief_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      A light, momentary touch between {{pov_actor}} and {{subject}}
+      at the hand or wrist. Gentle and brief, without lingering.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: contact
+      contact_stage: brief_contact
+      intent: modify
+    complexity_level: simple
+
+  # ── response — body-language response per response_mode ─────────────
+
+  - block_id: pov_resp_receptive_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} shifts weight slightly forward, body orientation
+      open and angled toward the approaching presence. Shoulders
+      relaxed and uncrossed.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: receptive
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_receptive_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}}'s posture opens subtly — shoulders square toward
+      the viewer, chin lifts slightly, body language welcoming and
+      at ease.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: receptive
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_neutral_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} holds a composed, neutral posture. Body orientation
+      remains unchanged, neither leaning toward nor pulling away.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_neutral_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} maintains a relaxed but non-committal stance. No
+      clear approach or withdrawal signal in the body language.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_hesitant_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} shifts weight to the back foot, shoulders drawing
+      in slightly. Body language signals mild uncertainty without
+      full withdrawal.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: hesitant
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_hesitant_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      A subtle tension enters {{subject}}'s posture — a half-step
+      pause, hands drifting to a self-comforting position. Not
+      retreating but not inviting.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: hesitant
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_boundary_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} takes a small but deliberate step back, one hand
+      rising palm-out in a clear stop gesture. Body turns partially
+      away.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: boundary
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_resp_boundary_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} angles away from the approaching presence, arms
+      crossing or hands bracing against the nearest surface. Posture
+      clearly communicates distance and refusal.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: response
+      response_mode: boundary
+      intent: modify
+    complexity_level: simple
+
+  # ── expression — facial cues per response_mode ──────────────────────
+
+  - block_id: pov_expr_receptive_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      {{subject}}'s expression is warm and open — soft eye contact,
+      a gentle smile forming at the corners of the mouth.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: receptive
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_receptive_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Relaxed brow, slightly parted lips, and direct but unhurried
+      eye contact. {{subject}}'s face reads as curious and welcoming.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: receptive
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_neutral_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      {{subject}}'s face is calm and composed — a neutral, steady
+      gaze with relaxed features and no strong emotional signal.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_neutral_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Even expression, mouth in a natural resting position, eyes
+      attentive but unreadable. {{subject}} gives away little.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_hesitant_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      A flicker of uncertainty crosses {{subject}}'s face — brows
+      drawn slightly together, gaze briefly breaking contact before
+      returning.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: hesitant
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_hesitant_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      {{subject}}'s expression carries a note of caution — lips
+      pressed lightly together, eyes watchful, a slight tightness
+      around the jaw.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: hesitant
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_boundary_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      {{subject}}'s expression firms — direct eye contact with a set
+      jaw and flat mouth. The gaze is resolute, not fearful.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: boundary
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_expr_boundary_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      {{subject}}'s brow lowers, nostrils flare subtly, and the
+      mouth sets into a firm line. Eyes communicate a clear,
+      unwavering refusal.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: expression
+      response_mode: boundary
+      intent: modify
+    complexity_level: simple
+
+  # ── refine — anti-drift continuity reinforcement ────────────────────
+
+  - block_id: pov_refine_01
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Reinforce continuity: {{subject}}'s core features, hair, and
+      visible clothing remain consistent with previous frames. No
+      unexplained changes in setting or props.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_refine_02
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Anti-drift anchor: preserve spatial proportions, lighting
+      direction, and background elements across this progression
+      step. Avoid introducing new objects or figures.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: pov_refine_03
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Stabilize scene coherence — {{subject}}'s position relative to
+      environmental landmarks stays fixed. Color temperature and depth
+      cues match preceding frames.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  # ── tone — light atmosphere ─────────────────────────────────────────
+
+  - block_id: pov_tone_neutral_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Natural, unforced ambiance with even lighting and no dramatic
+      color grading. The atmosphere is calm and unremarkable.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: tone
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_tone_warm_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Gently warm color temperature with soft natural light. The
+      atmosphere suggests comfort and ease without theatricality.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: tone
+      intent: modify
+    complexity_level: simple
+
+  - block_id: pov_tone_tense_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      A slight undercurrent of tension in the ambient mood —
+      marginally cooler tones, quieter spatial impression. Understated,
+      not dramatic.
+    tags:
+      sequence_family: pov_approach_response
+      beat_axis: tone
+      intent: modify
+    complexity_level: simple
+
+  # ════════════════════════════════════════════════════════════════════════════════
+  # PUBLIC SOCIAL IDLE (GENERIC) — reusable blocks for public-space harvesting
+  # ════════════════════════════════════════════════════════════════════════════════
+
+  # ── environment — public-space semantics (loc_type x crowd_level) ───────────────
+
+  - block_id: psi_env_cafe_low_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Casual cafe setting in a public space. A few adult patrons sit at
+      scattered tables; a counter and menu board are visible. Ambient
+      indoor daylight feels natural and everyday.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: cafe
+      crowd_level: low
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_cafe_moderate_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Cafe with a moderate crowd level. Several adult patrons and staff
+      create gentle background activity; tables, counter area, and warm
+      practical lighting read as a real public venue.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: cafe
+      crowd_level: moderate
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_mall_low_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Indoor shopping mall concourse with low foot traffic. A few adult
+      shoppers pass at a distance; storefronts and seating areas are
+      visible with clean, even indoor lighting.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: mall
+      crowd_level: low
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_mall_moderate_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Shopping mall with a moderate crowd level. Background adults move
+      through the concourse; storefronts, signage, and distant seating
+      add believable public-space texture without stealing focus.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: mall
+      crowd_level: moderate
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_station_low_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transit station environment with low crowd level. A few adult
+      commuters wait or walk through; platform or concourse elements
+      (benches, signs, rails) establish the setting.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: station
+      crowd_level: low
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_station_moderate_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Transit station with moderate crowd level. Adult commuters create
+      steady but orderly background motion; signage, seating, and
+      structural lines read clearly as a station interior.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: station
+      crowd_level: moderate
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_park_low_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Public park setting with low crowd level. Trees, paths, and benches
+      provide context; a small number of adults are present in the
+      distance under natural daylight.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: park
+      crowd_level: low
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_env_park_moderate_01
+    role: environment
+    category: scene_build
+    kind: single_state
+    text: >-
+      Public park with moderate crowd level. Background adults walk past
+      on paths or sit on benches; greenery and open space read clearly as
+      a calm public venue.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: environment
+      loc_type: park
+      crowd_level: moderate
+      intent: modify
+    complexity_level: simple
+
+  # ── view — camera framing (view_profile) ───────────────────────────────────────
+
+  - block_id: psi_view_observer_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Observer framing: neutral eye-level camera at a comfortable public
+      distance. {{subject}} is clearly visible, with the surrounding
+      public space readable in the background.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: view
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_view_observer_02
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Observer framing with mild documentary feel: stable camera, natural
+      perspective, no dramatic angle. Keep the scene readable and
+      game-friendly.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: view
+      view_profile: observer
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_view_ots_01
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      Over-the-shoulder framing: a nearby adult shoulder/upper back is a
+      soft foreground element while {{subject}} remains the clear focal
+      point. Keep it casual and non-cinematic.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: view
+      view_profile: ots
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_view_ots_02
+    role: camera
+    category: composition
+    kind: single_state
+    text: >-
+      OTS variant: frame from behind {{subject}} toward a nearby public
+      area so the world feels populated. Keep the shoulder line subtle
+      and do not block the subject.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: view
+      view_profile: ots
+      intent: modify
+    complexity_level: simple
+
+  # ── continuity — subject placement continuity ─────────────────────────────────
+
+  - block_id: psi_continuity_anchor_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Continuity anchor: keep {{subject}}'s scale, distance to camera,
+      and position in frame consistent. No sudden repositioning relative
+      to nearby background landmarks.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: psi_continuity_anchor_02
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Maintain depth continuity: {{subject}} stays in the same foreground
+      layer with consistent perspective lines. Background remains
+      believable without pulling focus.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: psi_continuity_posture_01
+    role: placement
+    category: depth
+    kind: single_state
+    text: >-
+      Keep {{subject}}'s general stance and body orientation consistent
+      across variations. Any movement is small and natural, not a new
+      pose or a scene reset.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: continuity
+      intent: preserve
+    complexity_level: simple
+
+  # ── activity — idle / notice / greet / brief exchange variations ──────────────
+
+  - block_id: psi_activity_idle_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} is simply idle in a public space: relaxed posture,
+      hands resting naturally, attention on the immediate surroundings.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: idle
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_idle_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Calm waiting moment: {{subject}} pauses as if between tasks,
+      shifting weight subtly and holding a neutral, everyday presence.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: idle
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_drink_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} takes a casual sip from a drink (cup or bottle), then
+      lowers it naturally. Unhurried, public, everyday.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: drink
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_notice_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} notices a nearby adult passerby with a brief glance,
+      then returns attention forward. No strong reaction.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: notice
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_notice_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      A small awareness beat: {{subject}}'s eyes track subtle movement in
+      the public space for a moment, then settle back into a relaxed
+      idle state.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: notice
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_greet_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      {{subject}} gives a simple greeting gesture toward {{passerby}}:
+      a small wave or nod, polite and brief.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: greet
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_greet_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Friendly acknowledgment: {{subject}} turns slightly and offers a
+      quick hello to {{passerby}} without stepping closer or changing the
+      scene dynamics.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: greet
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_brief_exchange_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Brief exchange: {{subject}} and {{passerby}} share a short,
+      everyday interaction (a couple of words and a small gesture), then
+      it ends naturally.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: brief_exchange
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_brief_exchange_02
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Quick question/answer beat in a public place: {{subject}} responds
+      to {{passerby}} with a short, polite reply and minimal movement.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: brief_exchange
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_activity_look_back_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Look-back beat: after a moment, {{subject}} glances back over a
+      shoulder as if noticing someone passing, then returns forward.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: activity
+      beat_type: look_back
+      intent: modify
+    complexity_level: simple
+
+  # ── social_cue — lightweight body-language tone (beat_type x social_tone) ─────
+
+  - block_id: psi_social_notice_neutral_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Neutral social cue: {{subject}}'s body language stays relaxed and
+      non-committal — a quick glance, then back to idle.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: notice
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_notice_warm_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Warm social cue: {{subject}} gives a small friendly acknowledgment
+      (soft nod or slight smile) when noticing {{passerby}}.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: notice
+      social_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_greet_neutral_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Polite greeting cue: a simple nod and brief eye contact. No big
+      gestures, just everyday public courtesy.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: greet
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_greet_warm_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Warm greeting cue: open shoulders, gentle smile, and a friendly
+      hello gesture toward {{passerby}}.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: greet
+      social_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_greet_playful_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Playful greeting cue: a light, casual wave with a slightly amused
+      posture. Keep it public and friendly, not intimate.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: greet
+      social_tone: playful
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_exchange_neutral_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Neutral exchange cue: brief conversational stance with small hand
+      gestures, then return to relaxed posture.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: brief_exchange
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_social_exchange_playful_01
+    role: action
+    category: interaction_beat
+    kind: single_state
+    text: >-
+      Playful exchange cue: a light shrug or small laugh gesture during a
+      quick interaction with {{passerby}}, then it ends naturally.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: social_cue
+      beat_type: brief_exchange
+      social_tone: playful
+      intent: modify
+    complexity_level: simple
+
+  # ── passerby — nearby person cue (presence/placement without stealing focus) ──
+
+  - block_id: psi_passerby_notice_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{passerby}} (an adult) is present nearby in the midground, within
+      the same public space. They are not centered and do not block
+      {{subject}}.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: passerby
+      beat_type: notice
+      intent: add
+    complexity_level: simple
+
+  - block_id: psi_passerby_greet_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{passerby}} (an adult) is close enough for a greeting but remains
+      secondary in the frame — slightly off to the side, not dominant.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: passerby
+      beat_type: greet
+      intent: add
+    complexity_level: simple
+
+  - block_id: psi_passerby_exchange_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{passerby}} (an adult) stands at a respectful public distance,
+      oriented toward {{subject}} for a brief exchange. No crowding or
+      physical contact.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: passerby
+      beat_type: brief_exchange
+      intent: add
+    complexity_level: simple
+
+  - block_id: psi_passerby_exchange_02
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      Nearby adult passerby presence: {{passerby}} is visible in the
+      scene, positioned so the interaction reads as casual and
+      game-friendly without becoming a focal portrait.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: passerby
+      beat_type: brief_exchange
+      intent: add
+    complexity_level: simple
+
+  - block_id: psi_passerby_look_back_01
+    role: placement
+    category: character_desc
+    kind: single_state
+    default_intent: add
+    text: >-
+      {{passerby}} (an adult) is moving past in the background or
+      midground, giving context for {{subject}}'s look-back moment while
+      remaining visually subtle.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: passerby
+      beat_type: look_back
+      intent: add
+    complexity_level: simple
+
+  # ── expression — facial expression tone (social_tone) ─────────────────────────
+
+  - block_id: psi_expr_neutral_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Neutral expression: calm eyes, relaxed brow, natural resting mouth.
+      Attentive but not signaling strongly.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_expr_neutral_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Subtle curiosity without invitation: slight eyebrow lift and soft,
+      brief eye contact, then neutral again.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_expr_warm_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Warm expression: gentle smile with soft eyes, friendly and
+      approachable in a public setting.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_expr_warm_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Friendly public smile: relaxed cheeks, slight head tilt, and a
+      calm, welcoming look.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_expr_playful_01
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      Playful expression: a small grin and amused eyes, as if sharing a
+      light moment. Keep it subtle and public-appropriate.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: playful
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_expr_playful_02
+    role: subject
+    category: expression_behavior
+    kind: single_state
+    text: >-
+      A brief, playful smirk with raised brow — friendly teasing energy
+      without intimacy.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: expression
+      social_tone: playful
+      intent: modify
+    complexity_level: simple
+
+  # ── refine — anti-drift / continuity reinforcement ────────────────────────────
+
+  - block_id: psi_refine_01
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Anti-drift refine: keep the public-space context consistent across
+      steps (layout, lighting direction, crowd level). No sudden new
+      props, signage, or scene swaps.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: psi_refine_02
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Continuity reinforcement: maintain stable camera perspective and
+      background landmarks while allowing only small natural motion in
+      gestures and expressions.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  - block_id: psi_refine_03
+    role: composition
+    category: motion_beat
+    kind: single_state
+    text: >-
+      Keep secondary figures secondary: if {{passerby}} or other adults
+      appear, they remain background/midground support and do not become
+      the new focal subject.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: refine
+      intent: preserve
+    complexity_level: simple
+
+  # ── tone — ambient public mood (social_tone) ──────────────────────────────────
+
+  - block_id: psi_tone_neutral_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Neutral public atmosphere: natural lighting, balanced contrast, and
+      an everyday mood. Calm, realistic, and game-friendly.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: tone
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_tone_neutral_02
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Lightly busy public vibe without drama: clear ambient soundscape
+      implied by subtle background motion, but visually clean and
+      readable.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: tone
+      social_tone: neutral
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_tone_warm_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Warm ambient tone: slightly warmer color temperature and soft
+      practical lighting. Comforting, friendly public mood.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: tone
+      social_tone: warm
+      intent: modify
+    complexity_level: simple
+
+  - block_id: psi_tone_playful_01
+    role: style
+    category: atmosphere
+    kind: single_state
+    text: >-
+      Playful public tone: bright, lively but not chaotic — clean color,
+      upbeat ambiance, and a light social energy.
+    tags:
+      sequence_family: public_social_idle
+      beat_axis: tone
+      social_tone: playful
+      intent: modify
+    complexity_level: simple
