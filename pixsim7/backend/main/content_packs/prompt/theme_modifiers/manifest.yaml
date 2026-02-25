@@ -1,0 +1,44 @@
+id: theme_modifiers
+title: "Theme Modifiers"
+description: "Optional query presets for wardrobe modifier blocks."
+
+matrix_presets:
+  - label: "Wardrobe patterns (family × level)"
+    query:
+      row_key: "tag:pattern_family"
+      col_key: "tag:pattern_level"
+      role: "style"
+      category: "wardrobe_modifier"
+      package_name: "theme_modifiers"
+      tags: "modifier_family:pattern,modifier_target:wardrobe"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,modifier_family,modifier_target,pattern_family,pattern_level,pattern_scale,pattern_contrast"
+      required_tag_keys: "modifier_family,modifier_target,pattern_family,pattern_level"
+
+  - label: "Wardrobe textures (family × level)"
+    query:
+      row_key: "tag:texture_family"
+      col_key: "tag:texture_level"
+      role: "style"
+      category: "wardrobe_modifier"
+      package_name: "theme_modifiers"
+      tags: "modifier_family:texture,modifier_target:wardrobe"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,modifier_family,modifier_target,texture_family,texture_level,texture_sheen,texture_weight"
+      required_tag_keys: "modifier_family,modifier_target,texture_family,texture_level"
+
+  - label: "Wardrobe condition (wear × damage)"
+    query:
+      row_key: "tag:wear_level"
+      col_key: "tag:damage_level"
+      role: "style"
+      category: "wardrobe_modifier"
+      package_name: "theme_modifiers"
+      tags: "modifier_family:condition,modifier_target:wardrobe"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,modifier_family,modifier_target,wear_level,damage_level,condition_notes"
+      required_tag_keys: "modifier_family,modifier_target,wear_level,damage_level"
+

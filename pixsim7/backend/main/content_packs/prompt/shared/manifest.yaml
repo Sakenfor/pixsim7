@@ -1,0 +1,47 @@
+id: shared
+title: "Shared Prompt Content"
+description: "Optional query presets for Block Matrix navigation and drift checks."
+
+matrix_presets:
+  - label: "Theme cues (family × variant)"
+    query:
+      row_key: "tag:theme_family"
+      col_key: "tag:theme_variant"
+      role: "style"
+      category: "theme_cue"
+      package_name: "shared"
+      include_empty: true
+      include_drift_report: true
+      expected_tag_keys: "intent,cue_family,theme_family,theme_variant,aesthetic"
+      required_tag_keys: "theme_family"
+
+  - label: "Public social idle env (loc_type × crowd)"
+    query:
+      row_key: "tag:loc_type"
+      col_key: "tag:crowd_level"
+      role: "environment"
+      category: "scene_build"
+      package_name: "shared"
+      tags: "sequence_family:public_social_idle,beat_axis:environment"
+      include_empty: true
+      include_drift_report: true
+      expected_row_values: "cafe,mall,station,park"
+      expected_col_values: "low,moderate"
+      expected_tag_keys: "sequence_family,beat_axis,loc_type,crowd_level"
+      required_tag_keys: "sequence_family,beat_axis,loc_type,crowd_level"
+
+  - label: "Public social idle social cues (beat_type × social_tone)"
+    query:
+      row_key: "tag:beat_type"
+      col_key: "tag:social_tone"
+      role: "action"
+      category: "interaction_beat"
+      package_name: "shared"
+      tags: "sequence_family:public_social_idle,beat_axis:social_cue"
+      include_empty: true
+      include_drift_report: true
+      expected_row_values: "idle,drink,notice,greet,brief_exchange,look_back"
+      expected_col_values: "neutral,warm,playful"
+      expected_tag_keys: "sequence_family,beat_axis,beat_type,social_tone"
+      required_tag_keys: "sequence_family,beat_axis,beat_type,social_tone"
+
